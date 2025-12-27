@@ -81,6 +81,31 @@ export interface MeshMessage {
   rxRssi?: number;
 }
 
+type TextMessage = {
+  id: string;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  text: string;
+  channel: number;
+  portnum: 1; // TEXT_MESSAGE_APP
+  requestId?: number; // For Virtual Node messages, preserve packet ID for ACK matching
+  timestamp: number;
+  rxTime: number;
+  hopStart?: number;
+  hopLimit?: number;
+  relayNode?: number; // Last byte of the node that relayed this message
+  replyId?: number;
+  emoji?: number;
+  viaMqtt: boolean; // Capture whether message was received via MQTT bridge
+  rxSnr?: number; // SNR of received packet
+  rxRssi?: number; // RSSI of received packet
+  wantAck?: number; // Expect ACK for Virtual Node messages
+  deliveryState?: string; // Track delivery for Virtual Node messages
+  createdAt: number;
+};
+
 class MeshtasticManager {
   private transport: TcpTransport | null = null;
   private isConnected = false;
@@ -2094,7 +2119,7 @@ class MeshtasticManager {
         const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
         const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
 
-        const message = {
+        const message: TextMessage = {
           id: `${fromNum}_${meshPacket.id || Date.now()}`,
           fromNodeNum: fromNum,
           toNodeNum: actualToNum,
@@ -2136,7 +2161,7 @@ class MeshtasticManager {
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
 
         // Auto-respond to matching messages
-        await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, message.hopStart, message.hopLimit, meshPacket.rxSnr, meshPacket.rxRssi, message.viaMqtt);
+        await this.checkAutoResponder(message, isDirectMessage, meshPacket.id);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -5703,7 +5728,7 @@ class MeshtasticManager {
     return normalizedResolved;
   }
 
-  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, hopStart?: number | null, hopLimit?: number | null, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean): Promise<void> {
+  private async checkAutoResponder(message: TextMessage, isDirectMessage: boolean, packetId?: number): Promise<void> {
     try {
       // Get auto-responder settings from database
       const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
@@ -5715,7 +5740,7 @@ class MeshtasticManager {
 
       // Skip messages from our own locally connected node
       const localNodeNum = databaseService.getSetting('localNodeNum');
-      if (localNodeNum && parseInt(localNodeNum) === fromNum) {
+      if (localNodeNum && parseInt(localNodeNum) === message.fromNodeNum) {
         logger.debug('⏭️  Skipping auto-responder for message from local node');
         return;
       }
@@ -5724,9 +5749,9 @@ class MeshtasticManager {
       // This prevents sending automated messages to nodes that may not be on the same secure channel
       const autoResponderSkipIncompleteNodes = databaseService.getSetting('autoResponderSkipIncompleteNodes');
       if (autoResponderSkipIncompleteNodes === 'true') {
-        const fromNode = databaseService.getNode(fromNum);
+        const fromNode = databaseService.getNode(message.fromNodeNum);
         if (fromNode && !isNodeComplete(fromNode)) {
-          logger.debug(`⏭️  Skipping auto-responder for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          logger.debug(`⏭️  Skipping auto-responder for incomplete node ${fromNode.nodeId || message.fromNodeNum} (missing proper name or hwModel)`);
           return;
         }
       }
@@ -5750,14 +5775,14 @@ class MeshtasticManager {
         return;
       }
 
-      logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}: "${messageText}"`);
+      logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}: "${message.text}"`);
 
       // Try to match message against triggers
       for (const trigger of triggers) {
         // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
         const triggerChannel = trigger.channel ?? 'dm';
 
-        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
+        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}`);
 
         // Check if this trigger applies to the current message
         if (isDirectMessage) {
@@ -5768,8 +5793,8 @@ class MeshtasticManager {
           }
         } else {
           // For channel messages, only match triggers configured for this specific channel
-          if (triggerChannel !== channelIndex) {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
+          if (triggerChannel !== message.channel) {
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${message.channel}`);
             continue;
           }
         }
@@ -5891,7 +5916,7 @@ class MeshtasticManager {
           }
 
           const triggerRegex = new RegExp(`^${pattern}$`, 'i');
-          const triggerMatch = messageText.match(triggerRegex);
+          const triggerMatch = message.text.match(triggerRegex);
 
           if (triggerMatch) {
             // Extract parameters
@@ -5905,19 +5930,19 @@ class MeshtasticManager {
         }
 
         if (matchedPattern) {
-          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${matchedPattern}" (from trigger: "${trigger.trigger}")`);
+          logger.debug(`🤖 Auto-responder triggered by: "${message.text}" matching pattern: "${matchedPattern}" (from trigger: "${trigger.trigger}")`);
 
           let responseText: string;
 
           // Calculate values for Auto Acknowledge tokens (Issue #1159)
-          const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+          const nodeId = `!${message.fromNodeNum.toString(16).padStart(8, '0')}`;
           const hopsTraveled =
-            hopStart !== null &&
-            hopStart !== undefined &&
-            hopLimit !== null &&
-            hopLimit !== undefined &&
-            hopStart >= hopLimit
-              ? hopStart - hopLimit
+            message.hopStart !== null &&
+            message.hopStart !== undefined &&
+            message.hopLimit !== null &&
+            message.hopLimit !== undefined &&
+            message.hopStart >= message.hopLimit
+              ? message.hopStart - message.hopLimit
               : 0;
           const timestamp = new Date();
           const dateFormat = databaseService.getSetting('dateFormat') || 'MM/DD/YYYY';
@@ -5960,8 +5985,7 @@ class MeshtasticManager {
               logger.debug(`📥 HTTP response received: ${responseText.substring(0, 50)}...`);
 
               // Replace Auto Acknowledge tokens in HTTP response (Issue #1159)
-              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, viaMqtt);
-
+              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, message.fromNodeNum, hopsTraveled, receivedDate, receivedTime, message.channel, isDirectMessage, message.rxSnr, message.rxRssi, message.viaMqtt);
             } catch (error: any) {
               if (error.name === 'AbortError') {
                 logger.debug('⏭️  HTTP request timed out after 5 seconds');
@@ -6027,47 +6051,7 @@ class MeshtasticManager {
               const { promisify } = await import('util');
               const execFileAsync = promisify(execFile);
 
-              // Prepare environment variables
-              const scriptEnv: Record<string, string> = {
-                ...process.env as Record<string, string>,
-                MESSAGE: messageText,
-                FROM_NODE: String(fromNum),
-                PACKET_ID: String(packetId),
-                TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
-                MATCHED_PATTERN: matchedPattern || '',
-              };
-
-              // Add sender node information environment variables
-              const fromNode = databaseService.getNode(fromNum);
-              if (fromNode) {
-                // Add node names (Issue #1099)
-                if (fromNode.shortName) {
-                  scriptEnv.FROM_SHORT_NAME = fromNode.shortName;
-                }
-                if (fromNode.longName) {
-                  scriptEnv.FROM_LONG_NAME = fromNode.longName;
-                }
-                // Add location (FROM_LAT, FROM_LON)
-                if (fromNode.latitude != null && fromNode.longitude != null) {
-                  scriptEnv.FROM_LAT = String(fromNode.latitude);
-                  scriptEnv.FROM_LON = String(fromNode.longitude);
-                }
-              }
-
-              // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
-              const localNodeInfo = this.getLocalNodeInfo();
-              if (localNodeInfo) {
-                const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
-                if (mmNode?.latitude != null && mmNode?.longitude != null) {
-                  scriptEnv.MM_LAT = String(mmNode.latitude);
-                  scriptEnv.MM_LON = String(mmNode.longitude);
-                }
-              }
-
-              // Add extracted parameters as PARAM_* environment variables
-              Object.entries(extractedParams).forEach(([key, value]) => {
-                scriptEnv[`PARAM_${key}`] = value;
-              });
+              const scriptEnv = this.createScriptEnvVariables(message, matchedPattern, extractedParams, trigger, packetId);
 
               // Execute script with 10-second timeout
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
@@ -6111,7 +6095,7 @@ class MeshtasticManager {
 
               // For scripts with multiple responses, send each one
               const triggerChannel = trigger.channel ?? 'dm';
-              const target = triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+              const target = triggerChannel === 'dm' ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
               logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}`);
 
               scriptResponses.forEach((resp, index) => {
@@ -6120,7 +6104,7 @@ class MeshtasticManager {
 
                 messageQueueService.enqueue(
                   truncated,
-                  triggerChannel === 'dm' ? fromNum : 0, // destination: node number for DM, 0 for channel
+                  triggerChannel === 'dm' ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
                   (trigger.verifyResponse && isFirstMessage) ? packetId : undefined,
                   () => {
                     logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to ${target}`);
@@ -6156,7 +6140,7 @@ class MeshtasticManager {
             });
 
             // Replace Auto Acknowledge tokens in text response (Issue #1159)
-            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, viaMqtt);
+            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, message.fromNodeNum, hopsTraveled, receivedDate, receivedTime, message.channel, isDirectMessage, message.rxSnr, message.rxRssi, message.viaMqtt);
           }
 
           // Handle multiline responses or truncate as needed
@@ -6180,14 +6164,14 @@ class MeshtasticManager {
 
           // Enqueue all messages for delivery with retry logic
           const triggerChannel = trigger.channel ?? 'dm';
-          const target = triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+          const target = triggerChannel === 'dm' ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
           logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${target}`);
 
           messagesToSend.forEach((msg, index) => {
             const isFirstMessage = index === 0;
             messageQueueService.enqueue(
               msg,
-              triggerChannel === 'dm' ? fromNum : 0, // destination: node number for DM, 0 for channel
+              triggerChannel === 'dm' ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
               (trigger.verifyResponse && isFirstMessage) ? packetId : undefined, // Only reply to original for first message if verifyResponse is enabled
               () => {
                 logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to ${target}`);
@@ -6207,6 +6191,59 @@ class MeshtasticManager {
     } catch (error) {
       logger.error('❌ Error in auto-responder:', error);
     }
+  }
+
+  /**
+   * Prepare environment variables
+   */
+  private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: any, packetId?: number) {
+    const scriptEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      MESSAGE: message.text,
+      FROM_NODE: String(message.fromNodeNum),
+      PACKET_ID: String(packetId),
+      TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
+      MATCHED_PATTERN: matchedPattern || '',
+    };
+
+    // Add sender node information environment variables
+    const fromNode = databaseService.getNode(message.fromNodeNum);
+    if (fromNode) {
+      // Add node names (Issue #1099)
+      if (fromNode.shortName) {
+        scriptEnv.FROM_SHORT_NAME = fromNode.shortName;
+      }
+      if (fromNode.longName) {
+        scriptEnv.FROM_LONG_NAME = fromNode.longName;
+      }
+      // Add location (FROM_LAT, FROM_LON)
+      if (fromNode.latitude != null && fromNode.longitude != null) {
+        scriptEnv.FROM_LAT = String(fromNode.latitude);
+        scriptEnv.FROM_LON = String(fromNode.longitude);
+      }
+    }
+
+    // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
+    const localNodeInfo = this.getLocalNodeInfo();
+    if (localNodeInfo) {
+      const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
+      if (mmNode?.latitude != null && mmNode?.longitude != null) {
+        scriptEnv.MM_LAT = String(mmNode.latitude);
+        scriptEnv.MM_LON = String(mmNode.longitude);
+      }
+    }
+
+    // Add all message data as MSG_* environment variables
+    Object.entries(message).forEach(([key, value]) => {
+      scriptEnv[`MSG_${key}`] = String(value);
+    });
+
+    // Add extracted parameters as PARAM_* environment variables
+    Object.entries(extractedParams).forEach(([key, value]) => {
+      scriptEnv[`PARAM_${key}`] = value;
+    });
+
+    return scriptEnv;
   }
 
   /**
