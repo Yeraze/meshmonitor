@@ -12,7 +12,7 @@ import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
-import { getUtf8ByteLength, formatByteCount } from '../utils/text';
+import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
@@ -548,7 +548,7 @@ export default function ChannelsTab({
                               <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
                                 {!isMine && (
                                   <div
-                                    className="sender-dot clickable"
+                                    className={`sender-dot clickable ${isEmoji(getNodeShortName(msg.from)) ? 'is-emoji' : ''}`}
                                     title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
                                     onClick={e => handleSenderClick(msg.from, e)}
                                   >

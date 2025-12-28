@@ -20,7 +20,7 @@ import {
   shouldShowDateSeparator,
 } from '../utils/datetime';
 import { formatTracerouteRoute } from '../utils/traceroute';
-import { getUtf8ByteLength, formatByteCount } from '../utils/text';
+import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition } from '../utils/nodeHelpers';
 import HopCountDisplay from './HopCountDisplay';
@@ -912,7 +912,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
                         {!isMine && (
                           <div
-                            className="sender-dot clickable"
+                            className={`sender-dot clickable ${isEmoji(getNodeShortName(msg.from)) ? 'is-emoji' : ''}`}
                             title={`Click for ${getNodeName(msg.from)} details`}
                             onClick={e => handleSenderClick(msg.from, e)}
                           >
