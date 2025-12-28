@@ -34,3 +34,16 @@ export function formatByteCount(byteCount: number, maxBytes: number = 200): { te
     className
   };
 }
+
+/**
+ * Check if a string consists primarily of emoji characters
+ * Used for styling sender dots that use emoji as shortnames
+ *
+ * @param content - The text to check
+ * @returns True if the content is primarily emoji (1-2 emoji characters)
+ */
+export function isEmoji(content: string): boolean {
+  if (!content) return false;
+  // Match emoji characters - the string should be 1-2 emoji with no other characters
+  return /^\p{Emoji}+$/u.test(content) && content.length <= 2;
+}

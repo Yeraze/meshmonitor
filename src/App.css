@@ -2138,6 +2138,12 @@ body {
   cursor: help;
 }
 
+.sender-dot.is-emoji {
+  font-size: 1.25rem;
+  font-weight: normal;
+  line-height: 1;
+}
+
 .message-bubble {
   max-width: 100%;
   padding: 0.75rem 1rem;
