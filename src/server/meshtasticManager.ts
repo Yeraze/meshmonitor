@@ -2278,6 +2278,9 @@ class MeshtasticManager {
           // Save position to nodes table (current position)
           databaseService.upsertNode(nodeData);
 
+          // Emit node update event to notify frontend via WebSocket
+          dataEventEmitter.emitNodeUpdate(fromNum, nodeData);
+
           // Save position to telemetry table (historical tracking with precision metadata)
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'latitude',
