@@ -1436,15 +1436,14 @@ body {
     font-size: 0.85rem;
   }
 
-  /* Hide channel grid buttons on mobile, show dropdown instead */
-  .channels-grid {
-    display: none !important;
-  }
-
+  /* Mobile adjustments for channel dropdown */
   .channel-dropdown-mobile {
-    display: block !important;
     margin-bottom: 0.5rem;
     flex-shrink: 0;
+  }
+
+  .channel-dropdown-select {
+    max-width: 100%;
   }
 
   /* Make channel conversation section fill remaining space */
@@ -1577,27 +1576,6 @@ body {
     gap: 0.25rem;
   }
 
-  .channel-dropdown-select {
-    width: 100%;
-    padding: 0.75rem;
-    background: var(--ctp-surface0);
-    border: 2px solid var(--ctp-surface2);
-    border-radius: 8px;
-    color: var(--ctp-text);
-    font-size: 0.875rem;
-    cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    padding-right: 2.5rem;
-  }
-
-  .channel-dropdown-select:focus {
-    outline: none;
-    border-color: var(--ctp-blue);
-  }
-
   .connection-form {
     flex-direction: column;
   }
@@ -1608,10 +1586,6 @@ body {
 
   .info-grid {
     grid-template-columns: 1fr;
-  }
-
-  .channels-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
   /* Make message bubbles full width on mobile */
@@ -1842,9 +1816,32 @@ body {
 }
 
 /* Channel Buttons Grid */
-/* Mobile channel dropdown - hidden on desktop */
+/* Channel dropdown - shown on both mobile and desktop */
 .channel-dropdown-mobile {
-  display: none;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.channel-dropdown-select {
+  width: 100%;
+  max-width: 400px;
+  padding: 0.75rem;
+  background: var(--ctp-surface0);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: 8px;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
+
+.channel-dropdown-select:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
 }
 
 /* Mobile node dropdown - hidden on desktop */
@@ -1852,11 +1849,9 @@ body {
   display: none;
 }
 
+/* Channel buttons grid - hidden, using dropdown instead */
 .channels-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
+  display: none;
 }
 
 .channel-button {
