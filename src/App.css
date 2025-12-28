@@ -1437,7 +1437,7 @@ body {
   }
 
   /* Mobile adjustments for channel dropdown */
-  .channel-dropdown-mobile {
+  .channel-dropdown {
     margin-bottom: 0.5rem;
     flex-shrink: 0;
   }
@@ -1816,15 +1816,15 @@ body {
 }
 
 /* Channel Buttons Grid */
-/* Channel dropdown - shown on both mobile and desktop */
-.channel-dropdown-mobile {
+/* Channel dropdown selector - shown on both mobile and desktop */
+.channel-dropdown {
   display: block;
   margin-bottom: 1rem;
 }
 
 .channel-dropdown-select {
   width: 100%;
-  max-width: 400px;
+  max-width: min(400px, 90vw);
   padding: 0.75rem;
   background: var(--ctp-surface0);
   border: 2px solid var(--ctp-surface2);

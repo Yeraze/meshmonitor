@@ -292,8 +292,8 @@ export default function ChannelsTab({
       {shouldShowData() ? (
         availableChannels.length > 0 ? (
           <>
-            {/* Mobile Channel Dropdown */}
-            <div className="channel-dropdown-mobile">
+            {/* Channel Dropdown Selector */}
+            <div className="channel-dropdown">
               <select
                 className="channel-dropdown-select"
                 value={selectedChannel}
