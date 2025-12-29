@@ -1130,7 +1130,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <div className="node-indicators">
                     {node.position && node.position.latitude != null && node.position.longitude != null && (
                       <div className="node-location" title={t('nodes.location')}>
-                        📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                        📍
                         {node.isMobile && <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>🚶</span>}
                         {node.position.altitude != null && (
                           <span title={t('nodes.elevation')} style={{ marginLeft: '4px' }}>⛰️ {Math.round(node.position.altitude)}m</span>
