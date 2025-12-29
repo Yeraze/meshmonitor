@@ -175,18 +175,19 @@ npm start
 If you're developing without physical hardware, use `meshtasticd` for virtual node simulation:
 
 ```bash
-# Install meshtasticd
-pip install meshtasticd
-
-# Run a virtual node
-meshtasticd --hwmodel RAK4631
+# Create a config.yaml file first (see meshtasticd docs)
+# Run meshtasticd in simulation mode
+docker run -d --name meshtasticd \
+  -v ./config.yaml:/etc/meshtasticd/config.yaml:ro \
+  -p 4403:4403 \
+  meshtastic/meshtasticd:latest meshtasticd -s
 
 # Point MeshMonitor to localhost
 export MESHTASTIC_NODE_IP=localhost
 npm run dev:full
 ```
 
-See the [meshtasticd configuration guide](/configuration/meshtasticd) for more details.
+See the [meshtasticd configuration guide](/configuration/meshtasticd) for config.yaml examples and more details.
 
 ### Serial/USB Devices
 

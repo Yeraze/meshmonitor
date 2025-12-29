@@ -1,6 +1,6 @@
 # Using meshtasticd for Virtual Nodes
 
-`meshtasticd` is a virtual Meshtastic node daemon that simulates a Meshtastic device in software. It's perfect for development, testing, and running virtual mesh networks without physical hardware.
+`meshtasticd` is a virtual Meshtastic node daemon that runs Meshtastic firmware on Linux using portduino. It's perfect for development, testing, and running virtual mesh networks without physical hardware.
 
 ## What is meshtasticd?
 
@@ -24,57 +24,74 @@ Use cases include:
 
 ## Installing meshtasticd
 
-### From Python Package
+### Docker (Recommended)
 
-The easiest way to install `meshtasticd` is via pip:
-
-```bash
-pip install meshtastic
-```
-
-This installs both the Meshtastic Python library and the `meshtasticd` daemon.
-
-### From Source
-
-To install from source:
+The easiest way to run `meshtasticd` is via Docker:
 
 ```bash
-git clone https://github.com/meshtastic/python.git
-cd python
-pip install -e .
+docker pull meshtastic/meshtasticd:latest
 ```
+
+### Native Installation
+
+For native installation on Linux, see the [official Meshtastic documentation](https://meshtastic.org/docs/hardware/devices/linux-native-hardware/).
 
 ## Running meshtasticd
 
-### Basic Usage
+### Configuration File
 
-Start `meshtasticd` with a hardware model:
+meshtasticd requires a `config.yaml` configuration file. Create one with your desired settings:
 
-```bash
-meshtasticd --hwmodel RAK4631
+```yaml
+# config.yaml
+Lora:
+  Module: sx1262
+  DIO2_AS_RF_SWITCH: true
+  CS: 1
+  IRQ: 2
+  Busy: 3
+  Reset: 4
+
+Webserver:
+  Port: 80
+
+General:
+  MACAddress: AA:BB:CC:DD:EE:01
 ```
 
-Available hardware models include:
-- `RAK4631` - RAK WisBlock Core
-- `TBEAM` - TTGO T-Beam
-- `TLORA_V2` - TTGO LoRa32 V2
-- `HELTEC_V3` - Heltec V3
-- `BETAFPV_2400_TX` - BetaFPV 2.4GHz TX
+### Basic Usage (Docker)
 
-### With Custom Port
-
-By default, `meshtasticd` listens on `localhost:4403`. To specify a different port:
+Run meshtasticd in simulation mode (no real LoRa hardware):
 
 ```bash
-meshtasticd --hwmodel RAK4631 --port 4404
+docker run -d \
+  --name meshtasticd \
+  -v ./config.yaml:/etc/meshtasticd/config.yaml:ro \
+  -p 4403:4403 \
+  meshtastic/meshtasticd:latest \
+  meshtasticd -s
 ```
 
-### With Configuration File
+### Command Line Options
 
-You can specify a custom configuration file:
+| Option | Description |
+|--------|-------------|
+| `-s` | Simulation mode - run without real LoRa hardware |
+| `-c <file>` | Specify configuration file path |
+| `-p <port>` | TCP port for client connections (default: 4403) |
+| `-d` | Enable debug logging |
+
+### With Custom TCP Port
+
+To specify a different TCP port:
 
 ```bash
-meshtasticd --hwmodel RAK4631 --config ./meshtastic-config.yaml
+docker run -d \
+  --name meshtasticd \
+  -v ./config.yaml:/etc/meshtasticd/config.yaml:ro \
+  -p 4404:4404 \
+  meshtastic/meshtasticd:latest \
+  meshtasticd -s -p 4404
 ```
 
 ## Configuring MeshMonitor
@@ -95,99 +112,137 @@ MESHTASTIC_NODE_IP=localhost
 
 ### Docker Compose Setup
 
-When running both `meshtasticd` and MeshMonitor in Docker, you need to ensure they can communicate:
+When running both `meshtasticd` and MeshMonitor in Docker, use Docker's bridge networking:
 
 ```yaml
-version: '3.8'
-
 services:
   meshtasticd:
     image: meshtastic/meshtasticd:latest
-    command: meshtasticd --hwmodel RAK4631
+    container_name: meshtasticd-sim
+    command: meshtasticd -s
+    volumes:
+      - ./config.yaml:/etc/meshtasticd/config.yaml:ro
     ports:
       - "4403:4403"
-    networks:
-      - mesh-network
+    restart: unless-stopped
 
   meshmonitor:
-    image: meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
     environment:
       - MESHTASTIC_NODE_IP=meshtasticd
+      - MESHTASTIC_NODE_PORT=4403
     ports:
-      - "8080:8080"
-    networks:
-      - mesh-network
+      - "8080:3001"
     depends_on:
       - meshtasticd
-
-networks:
-  mesh-network:
-    driver: bridge
+    restart: unless-stopped
 ```
+
+Create the `config.yaml` file in the same directory:
+
+```yaml
+# config.yaml
+Lora:
+  Module: sx1262
+  DIO2_AS_RF_SWITCH: true
+  CS: 1
+  IRQ: 2
+  Busy: 3
+  Reset: 4
+
+Webserver:
+  Port: 80
+
+General:
+  MACAddress: AA:BB:CC:DD:EE:01
+```
+
+Then start both services:
+
+```bash
+docker compose up -d
+```
+
+MeshMonitor will be accessible at `http://localhost:8080`.
+
+::: warning Important Notes
+- MeshMonitor's internal port is **3001**, not 8080. Always map to port 3001.
+- Use the Docker service name (`meshtasticd`) as the IP address when using bridge networking.
+- Do **not** use `network_mode: host` with port mappings - they are mutually exclusive.
+:::
 
 ### Using Docker Host Network
 
-Alternatively, use host networking to simplify connectivity:
+If you prefer host networking (no port isolation):
 
 ```yaml
 services:
+  meshtasticd:
+    image: meshtastic/meshtasticd:latest
+    command: meshtasticd -s
+    volumes:
+      - ./config.yaml:/etc/meshtasticd/config.yaml:ro
+    network_mode: host
+    restart: unless-stopped
+
   meshmonitor:
-    image: meshmonitor:latest
-    network_mode: "host"
+    image: ghcr.io/yeraze/meshmonitor:latest
+    network_mode: host
     environment:
       - MESHTASTIC_NODE_IP=localhost
+      - MESHTASTIC_NODE_PORT=4403
+    restart: unless-stopped
 ```
+
+With host networking, MeshMonitor will be accessible at `http://localhost:3001`.
 
 ## Initial Configuration
 
-After starting `meshtasticd`, you may want to configure it using the Meshtastic CLI:
+After starting `meshtasticd`, you can configure it using the Meshtastic CLI:
 
 ```bash
 # Connect to the virtual node
 meshtastic --host localhost
 
 # Set your node name
-meshtastic --set node.name "My Virtual Node"
+meshtastic --set-owner "My Virtual Node"
 
 # Configure LoRa region
 meshtastic --set lora.region US
-
-# Enable WiFi (if desired)
-meshtastic --set network.wifi_enabled true
 ```
 
 ## Testing the Connection
 
 Verify MeshMonitor can connect to your `meshtasticd` instance:
 
-1. Start `meshtasticd`:
+1. Start both containers:
    ```bash
-   meshtasticd --hwmodel RAK4631
+   docker compose up -d
    ```
 
-2. In another terminal, test connectivity:
+2. Check meshtasticd logs:
    ```bash
-   meshtastic --host localhost --info
+   docker logs meshtasticd-sim
    ```
+   You should see router and packet processing messages.
 
-3. Start MeshMonitor and check the logs for successful connection
+3. Check MeshMonitor logs:
+   ```bash
+   docker logs meshmonitor
+   ```
+   Look for `Connection status: connected` message.
 
-## Virtual Mesh Network
+4. Access MeshMonitor at `http://localhost:8080`
 
-You can create a virtual mesh network by running multiple `meshtasticd` instances:
+## Expected Behavior
 
-```bash
-# Terminal 1: First node
-meshtasticd --hwmodel RAK4631 --port 4403
+When running with meshtasticd in simulation mode:
 
-# Terminal 2: Second node
-meshtasticd --hwmodel TBEAM --port 4404
-
-# Terminal 3: Third node
-meshtasticd --hwmodel HELTEC_V3 --port 4405
-```
-
-Connect MeshMonitor to any of these nodes, and configure them to communicate with each other using MQTT or other Meshtastic networking features.
+- MeshMonitor will connect and show the simulated node
+- You'll see telemetry updates (battery, uptime, etc.)
+- Some admin queries may return `NO_RESPONSE` - this is normal for simulated nodes
+- The node will appear with a name like "Meshtastic c43b"
 
 ## Troubleshooting
 
@@ -199,8 +254,8 @@ If you see "Address already in use" errors:
 # Find what's using port 4403
 lsof -i :4403
 
-# Kill the process or use a different port
-meshtasticd --hwmodel RAK4631 --port 4404
+# Use a different port
+docker run ... meshtasticd -s -p 4404
 ```
 
 ### Connection Refused
@@ -209,35 +264,35 @@ If MeshMonitor cannot connect:
 
 1. Verify `meshtasticd` is running:
    ```bash
-   ps aux | grep meshtasticd
+   docker ps | grep meshtasticd
    ```
 
-2. Check if the port is open:
+2. Check meshtasticd logs for errors:
    ```bash
-   netstat -an | grep 4403
+   docker logs meshtasticd-sim
    ```
 
-3. Test with the Meshtastic CLI:
+3. Verify port is accessible:
    ```bash
-   meshtastic --host localhost --info
+   nc -zv localhost 4403
    ```
 
-### Permission Denied
+### NO_RESPONSE Warnings
 
-On Linux, you may need permissions for virtual serial ports:
+MeshMonitor may show `NO_RESPONSE` warnings for LocalStats requests. This is expected behavior - the simulated node doesn't implement all admin features.
 
-```bash
-sudo usermod -aG dialout $USER
-# Log out and back in
-```
+### Docker Networking Issues
+
+Common mistakes:
+- Using `network_mode: host` with port mappings (they're mutually exclusive)
+- Using `localhost` as IP when containers are on bridge network (use service name instead)
+- Mapping to wrong internal port (MeshMonitor uses 3001, not 8080)
 
 ## Production Use
 
-For production deployments of `meshtasticd`:
-
 ### Using systemd
 
-Create a systemd service file `/etc/systemd/system/meshtasticd.service`:
+For native installations, create a systemd service file `/etc/systemd/system/meshtasticd.service`:
 
 ```ini
 [Unit]
@@ -247,7 +302,7 @@ After=network.target
 [Service]
 Type=simple
 User=meshtastic
-ExecStart=/usr/local/bin/meshtasticd --hwmodel RAK4631
+ExecStart=/usr/bin/meshtasticd -c /etc/meshtasticd/config.yaml
 Restart=always
 RestartSec=10
 
@@ -270,9 +325,10 @@ Run `meshtasticd` as a Docker container:
 docker run -d \
   --name meshtasticd \
   --restart unless-stopped \
+  -v ./config.yaml:/etc/meshtasticd/config.yaml:ro \
   -p 4403:4403 \
   meshtastic/meshtasticd:latest \
-  meshtasticd --hwmodel RAK4631
+  meshtasticd -s
 ```
 
 ## Next Steps

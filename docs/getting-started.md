@@ -221,15 +221,18 @@ ALLOWED_ORIGINS=https://meshmonitor.example.com # REQUIRED!
 If you're using `meshtasticd` (the virtual Meshtastic node daemon) for testing without physical hardware:
 
 ```bash
-# Start meshtasticd (example)
-meshtasticd --hwmodel BETAFPV_2400_TX
+# Start meshtasticd in simulation mode (requires config.yaml)
+docker run -d --name meshtasticd \
+  -v ./config.yaml:/etc/meshtasticd/config.yaml:ro \
+  -p 4403:4403 \
+  meshtastic/meshtasticd:latest meshtasticd -s
 
 # Then set the IP to localhost
 export MESHTASTIC_NODE_IP=localhost
 docker compose up -d
 ```
 
-See the [meshtasticd configuration guide](/configuration/meshtasticd) for more details.
+See the [meshtasticd configuration guide](/configuration/meshtasticd) for config.yaml examples and more details.
 
 ### Serial/USB Devices
 
