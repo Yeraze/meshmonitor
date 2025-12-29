@@ -523,51 +523,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <div className="node-name">
                           {node.isFavorite && <span className="favorite-indicator">⭐</span>}
                           <span className="node-name-text">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</span>
-                          {node.hopsAway != null && (
-                            <span
-                              className="node-hops"
-                              title={t('nodes.hops_away')}
-                              style={{
-                                fontSize: '0.75rem',
-                                color: 'var(--ctp-subtext0)',
-                                marginLeft: '0.5rem',
-                              }}
-                            >
-                              🔗 {node.hopsAway}
-                            </span>
-                          )}
-                          {node.hopsAway === 0 && node.snr != null && (
-                            <span
-                              className="node-snr"
-                              title={t('nodes.snr')}
-                              style={{
-                                fontSize: '0.75rem',
-                                color: 'var(--ctp-subtext0)',
-                                marginLeft: '0.5rem',
-                              }}
-                            >
-                              📶 {node.snr.toFixed(1)}dB
-                            </span>
-                          )}
-                          {node.hopsAway === 0 && node.rssi != null && (
-                            <span
-                              className="node-rssi"
-                              title={t('nodes.rssi')}
-                              style={{
-                                fontSize: '0.75rem',
-                                color: 'var(--ctp-subtext0)',
-                                marginLeft: '0.5rem',
-                              }}
-                            >
-                              📡 {node.rssi}dBm
-                            </span>
-                          )}
-                          <DistanceDisplay
-                            homeNode={homeNode}
-                            targetNode={node}
-                            distanceUnit={distanceUnit}
-                            t={t}
-                          />
                         </div>
                         <div className="node-actions">
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
@@ -646,6 +601,30 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             )}
                           </div>
                         </div>
+                      </div>
+
+                      <div className="node-stats">
+                        {node.hopsAway === 0 && node.snr != null && (
+                          <span className="stat" title={t('nodes.snr')}>
+                            📶 {node.snr.toFixed(1)}dB
+                          </span>
+                        )}
+                        {node.hopsAway === 0 && node.rssi != null && (
+                          <span className="stat" title={t('nodes.rssi')}>
+                            📡 {node.rssi}dBm
+                          </span>
+                        )}
+                        {node.hopsAway != null && (
+                          <span className="stat" title={t('nodes.hops_away')}>
+                            🔗 {node.hopsAway} {t('nodes.hop', { count: node.hopsAway })}
+                          </span>
+                        )}
+                        <DistanceDisplay
+                          homeNode={homeNode}
+                          targetNode={node}
+                          distanceUnit={distanceUnit}
+                          t={t}
+                        />
                       </div>
 
                       <div className="node-indicators">
