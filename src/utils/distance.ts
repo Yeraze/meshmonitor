@@ -78,10 +78,10 @@ export function getDistanceToNode(
   targetNode: NodeWithPosition,
   unit: 'km' | 'mi'
 ): string | null {
-  // Check if home node has valid position
-  if (!homeNode?.position?.latitude || !homeNode?.position?.longitude) return null;
+  // Check if home node has valid position (use != null to allow 0 coordinates)
+  if (homeNode?.position?.latitude == null || homeNode?.position?.longitude == null) return null;
   // Check if target node has valid position
-  if (!targetNode.position?.latitude || !targetNode.position?.longitude) return null;
+  if (targetNode.position?.latitude == null || targetNode.position?.longitude == null) return null;
   // Don't show distance to self
   if (homeNode.user?.id && homeNode.user.id === targetNode.user?.id) return null;
 

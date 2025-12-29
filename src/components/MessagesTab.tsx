@@ -51,6 +51,36 @@ interface TracerouteData {
   toNodeNum: number;
 }
 
+// Memoized distance display component to avoid recalculating on every render
+const DistanceDisplay = React.memo<{
+  homeNode: DeviceInfo | undefined;
+  targetNode: DeviceInfo;
+  distanceUnit: 'km' | 'mi';
+  t: (key: string) => string;
+}>(({ homeNode, targetNode, distanceUnit, t }) => {
+  const distance = React.useMemo(
+    () => getDistanceToNode(homeNode, targetNode, distanceUnit),
+    [homeNode?.position?.latitude, homeNode?.position?.longitude,
+     targetNode.position?.latitude, targetNode.position?.longitude, distanceUnit]
+  );
+
+  if (!distance) return null;
+
+  return (
+    <span
+      className="node-distance"
+      title={t('nodes.distance')}
+      style={{
+        fontSize: '0.75rem',
+        color: 'var(--ctp-subtext0)',
+        marginLeft: '0.5rem',
+      }}
+    >
+      📏 {distance}
+    </span>
+  );
+});
+
 export interface MessagesTabProps {
   // Data
   processedNodes: DeviceInfo[];
@@ -532,22 +562,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               📡 {node.rssi}dBm
                             </span>
                           )}
-                          {(() => {
-                            const distance = getDistanceToNode(homeNode, node, distanceUnit);
-                            return distance ? (
-                              <span
-                                className="node-distance"
-                                title={t('nodes.distance')}
-                                style={{
-                                  fontSize: '0.75rem',
-                                  color: 'var(--ctp-subtext0)',
-                                  marginLeft: '0.5rem',
-                                }}
-                              >
-                                📏 {distance}
-                              </span>
-                            ) : null;
-                          })()}
+                          <DistanceDisplay
+                            homeNode={homeNode}
+                            targetNode={node}
+                            distanceUnit={distanceUnit}
+                            t={t}
+                          />
                         </div>
                         <div className="node-actions">
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (

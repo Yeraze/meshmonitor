@@ -202,6 +202,18 @@ describe('Distance Utilities', () => {
       expect(result).not.toBeNull();
     });
 
+    it('should handle zero coordinates (equator/prime meridian)', () => {
+      // Zero is a valid coordinate - should not be treated as null/undefined
+      const equatorHome = { user: { id: '!equator1' }, position: { latitude: 0, longitude: 0 } };
+      const equatorTarget = { user: { id: '!equator2' }, position: { latitude: 0, longitude: 10 } };
+      const result = getDistanceToNode(equatorHome, equatorTarget, 'km');
+      expect(result).not.toBeNull();
+      // 10 degrees longitude at equator is approximately 1111 km
+      const distanceValue = parseFloat(result!.replace(' km', ''));
+      expect(distanceValue).toBeGreaterThan(1100);
+      expect(distanceValue).toBeLessThan(1120);
+    });
+
     it('should calculate short distances accurately', () => {
       const nearbyNode = {
         user: { id: '!nearby00' },

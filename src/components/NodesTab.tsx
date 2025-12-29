@@ -61,6 +61,28 @@ const isToday = (date: Date): boolean => {
     date.getFullYear() === today.getFullYear();
 };
 
+// Memoized distance display component to avoid recalculating on every render
+const DistanceDisplay = React.memo<{
+  homeNode: DeviceInfo | undefined;
+  targetNode: DeviceInfo;
+  distanceUnit: 'km' | 'mi';
+  t: (key: string) => string;
+}>(({ homeNode, targetNode, distanceUnit, t }) => {
+  const distance = React.useMemo(
+    () => getDistanceToNode(homeNode, targetNode, distanceUnit),
+    [homeNode?.position?.latitude, homeNode?.position?.longitude,
+     targetNode.position?.latitude, targetNode.position?.longitude, distanceUnit]
+  );
+
+  if (!distance) return null;
+
+  return (
+    <span className="stat" title={t('nodes.distance')}>
+      📏 {distance}
+    </span>
+  );
+});
+
 // Separate components for traceroutes that can update independently
 // These prevent marker re-renders when only the traceroute paths change
 const TraceroutePathsLayer = React.memo<{ paths: React.ReactNode; enabled: boolean }>(
@@ -1086,14 +1108,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                         </span>
                       )}
-                      {(() => {
-                        const distance = getDistanceToNode(homeNode, node, distanceUnit);
-                        return distance ? (
-                          <span className="stat" title={t('nodes.distance')}>
-                            📏 {distance}
-                          </span>
-                        ) : null;
-                      })()}
+                      <DistanceDisplay
+                        homeNode={homeNode}
+                        targetNode={node}
+                        distanceUnit={distanceUnit}
+                        t={t}
+                      />
                     </div>
 
                     <div className="node-time">
