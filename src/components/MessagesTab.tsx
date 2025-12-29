@@ -21,6 +21,7 @@ import {
 } from '../utils/datetime';
 import { formatTracerouteRoute } from '../utils/traceroute';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition } from '../utils/nodeHelpers';
 import HopCountDisplay from './HopCountDisplay';
@@ -49,6 +50,36 @@ interface TracerouteData {
   fromNodeNum: number;
   toNodeNum: number;
 }
+
+// Memoized distance display component to avoid recalculating on every render
+const DistanceDisplay = React.memo<{
+  homeNode: DeviceInfo | undefined;
+  targetNode: DeviceInfo;
+  distanceUnit: 'km' | 'mi';
+  t: (key: string) => string;
+}>(({ homeNode, targetNode, distanceUnit, t }) => {
+  const distance = React.useMemo(
+    () => getDistanceToNode(homeNode, targetNode, distanceUnit),
+    [homeNode?.position?.latitude, homeNode?.position?.longitude,
+     targetNode.position?.latitude, targetNode.position?.longitude, distanceUnit]
+  );
+
+  if (!distance) return null;
+
+  return (
+    <span
+      className="node-distance"
+      title={t('nodes.distance')}
+      style={{
+        fontSize: '0.75rem',
+        color: 'var(--ctp-subtext0)',
+        marginLeft: '0.5rem',
+      }}
+    >
+      📏 {distance}
+    </span>
+  );
+});
 
 export interface MessagesTabProps {
   // Data
@@ -304,6 +335,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     );
   }
 
+  // Find the home node for distance calculations
+  const homeNode = nodes.find(n => n.user?.id === currentNodeId);
+
   // Process nodes with message metadata
   const nodesWithMessages: NodeWithMessages[] = processedNodes
     .filter(node => node.user?.id !== currentNodeId)
@@ -489,19 +523,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <div className="node-name">
                           {node.isFavorite && <span className="favorite-indicator">⭐</span>}
                           <span className="node-name-text">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</span>
-                          {node.hopsAway != null && (
-                            <span
-                              className="node-hops"
-                              title={t('nodes.hops_away')}
-                              style={{
-                                fontSize: '0.75rem',
-                                color: 'var(--ctp-subtext0)',
-                                marginLeft: '0.5rem',
-                              }}
-                            >
-                              🔗 {node.hopsAway}
-                            </span>
-                          )}
                         </div>
                         <div className="node-actions">
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
@@ -582,13 +603,42 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         </div>
                       </div>
 
+                      <div className="node-stats">
+                        {node.hopsAway === 0 && node.snr != null && (
+                          <span className="stat" title={t('nodes.snr')}>
+                            📶 {node.snr.toFixed(1)}dB
+                          </span>
+                        )}
+                        {node.hopsAway === 0 && node.rssi != null && (
+                          <span className="stat" title={t('nodes.rssi')}>
+                            📡 {node.rssi}dBm
+                          </span>
+                        )}
+                        {node.hopsAway != null && (
+                          <span className="stat" title={t('nodes.hops_away')}>
+                            🔗 {node.hopsAway} {t('nodes.hop', { count: node.hopsAway })}
+                          </span>
+                        )}
+                        <DistanceDisplay
+                          homeNode={homeNode}
+                          targetNode={node}
+                          distanceUnit={distanceUnit}
+                          t={t}
+                        />
+                      </div>
+
                       <div className="node-indicators">
                         {node.position && node.position.latitude != null && node.position.longitude != null && (
                           <div className="node-location" title={t('nodes.location')}>
-                            📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                            📍
                             {node.isMobile && (
                               <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>
                                 🚶
+                              </span>
+                            )}
+                            {node.position.altitude != null && (
+                              <span title={t('nodes.elevation')} style={{ marginLeft: '4px' }}>
+                                ⛰️ {Math.round(node.position.altitude)}m
                               </span>
                             )}
                           </div>

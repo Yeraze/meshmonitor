@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateDistance, kmToMiles, formatDistance } from './distance';
+import { calculateDistance, kmToMiles, formatDistance, getDistanceToNode } from './distance';
 
 describe('Distance Utilities', () => {
   describe('calculateDistance', () => {
@@ -122,6 +122,108 @@ describe('Distance Utilities', () => {
     it('should convert and format correctly in one operation', () => {
       const kmDistance = 160.9344; // Exactly 100 miles
       expect(formatDistance(kmDistance, 'mi', 0)).toBe('100 mi');
+    });
+  });
+
+  describe('getDistanceToNode', () => {
+    const homeNode = {
+      user: { id: '!home1234' },
+      position: { latitude: 40.7128, longitude: -74.0060 } // New York
+    };
+
+    const targetNode = {
+      user: { id: '!target56' },
+      position: { latitude: 34.0522, longitude: -118.2437 } // Los Angeles
+    };
+
+    it('should calculate distance between two nodes with positions', () => {
+      const result = getDistanceToNode(homeNode, targetNode, 'km');
+      expect(result).not.toBeNull();
+      // NY to LA is approximately 3935 km
+      expect(result).toMatch(/^\d+\.?\d*\s*km$/);
+      const distanceValue = parseFloat(result!.replace(' km', ''));
+      expect(distanceValue).toBeGreaterThan(3900);
+      expect(distanceValue).toBeLessThan(4000);
+    });
+
+    it('should format distance in miles when specified', () => {
+      const result = getDistanceToNode(homeNode, targetNode, 'mi');
+      expect(result).not.toBeNull();
+      expect(result).toMatch(/^\d+\.?\d*\s*mi$/);
+      const distanceValue = parseFloat(result!.replace(' mi', ''));
+      // ~3935 km = ~2444 miles
+      expect(distanceValue).toBeGreaterThan(2400);
+      expect(distanceValue).toBeLessThan(2500);
+    });
+
+    it('should return null when home node is undefined', () => {
+      const result = getDistanceToNode(undefined, targetNode, 'km');
+      expect(result).toBeNull();
+    });
+
+    it('should return null when home node has no position', () => {
+      const noPositionHome = { user: { id: '!home1234' } };
+      const result = getDistanceToNode(noPositionHome, targetNode, 'km');
+      expect(result).toBeNull();
+    });
+
+    it('should return null when home node has null latitude', () => {
+      const nullLatHome = { user: { id: '!home1234' }, position: { latitude: null as unknown as number, longitude: -74.0060 } };
+      const result = getDistanceToNode(nullLatHome, targetNode, 'km');
+      expect(result).toBeNull();
+    });
+
+    it('should return null when target node has no position', () => {
+      const noPositionTarget = { user: { id: '!target56' } };
+      const result = getDistanceToNode(homeNode, noPositionTarget, 'km');
+      expect(result).toBeNull();
+    });
+
+    it('should return null when target node has null longitude', () => {
+      const nullLonTarget = { user: { id: '!target56' }, position: { latitude: 34.0522, longitude: null as unknown as number } };
+      const result = getDistanceToNode(homeNode, nullLonTarget, 'km');
+      expect(result).toBeNull();
+    });
+
+    it('should return null when nodes are the same (by user id)', () => {
+      const sameNode = {
+        user: { id: '!home1234' },
+        position: { latitude: 40.7128, longitude: -74.0060 }
+      };
+      const result = getDistanceToNode(homeNode, sameNode, 'km');
+      expect(result).toBeNull();
+    });
+
+    it('should calculate distance when nodes have matching undefined user ids', () => {
+      // When both nodes have undefined user ids, they're not considered the same
+      const noIdHome = { position: { latitude: 40.7128, longitude: -74.0060 } };
+      const noIdTarget = { position: { latitude: 34.0522, longitude: -118.2437 } };
+      const result = getDistanceToNode(noIdHome, noIdTarget, 'km');
+      expect(result).not.toBeNull();
+    });
+
+    it('should handle zero coordinates (equator/prime meridian)', () => {
+      // Zero is a valid coordinate - should not be treated as null/undefined
+      const equatorHome = { user: { id: '!equator1' }, position: { latitude: 0, longitude: 0 } };
+      const equatorTarget = { user: { id: '!equator2' }, position: { latitude: 0, longitude: 10 } };
+      const result = getDistanceToNode(equatorHome, equatorTarget, 'km');
+      expect(result).not.toBeNull();
+      // 10 degrees longitude at equator is approximately 1111 km
+      const distanceValue = parseFloat(result!.replace(' km', ''));
+      expect(distanceValue).toBeGreaterThan(1100);
+      expect(distanceValue).toBeLessThan(1120);
+    });
+
+    it('should calculate short distances accurately', () => {
+      const nearbyNode = {
+        user: { id: '!nearby00' },
+        position: { latitude: 40.7218, longitude: -74.0060 } // ~1km north of home
+      };
+      const result = getDistanceToNode(homeNode, nearbyNode, 'km');
+      expect(result).not.toBeNull();
+      const distanceValue = parseFloat(result!.replace(' km', ''));
+      expect(distanceValue).toBeGreaterThan(0.9);
+      expect(distanceValue).toBeLessThan(1.1);
     });
   });
 });

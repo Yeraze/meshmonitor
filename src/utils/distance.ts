@@ -54,3 +54,42 @@ export function formatDistance(km: number, unit: 'km' | 'mi' = 'km', decimals: n
   }
   return `${km.toFixed(decimals)} km`;
 }
+
+/**
+ * Node position interface for distance calculations
+ */
+interface NodeWithPosition {
+  user?: { id?: string };
+  position?: {
+    latitude?: number;
+    longitude?: number;
+  };
+}
+
+/**
+ * Calculate and format distance from home node to target node
+ * @param homeNode The home/local node with position data
+ * @param targetNode The target node to calculate distance to
+ * @param unit Distance unit preference ('km' or 'mi')
+ * @returns Formatted distance string or null if positions unavailable
+ */
+export function getDistanceToNode(
+  homeNode: NodeWithPosition | undefined,
+  targetNode: NodeWithPosition,
+  unit: 'km' | 'mi'
+): string | null {
+  // Check if home node has valid position (use != null to allow 0 coordinates)
+  if (homeNode?.position?.latitude == null || homeNode?.position?.longitude == null) return null;
+  // Check if target node has valid position
+  if (targetNode.position?.latitude == null || targetNode.position?.longitude == null) return null;
+  // Don't show distance to self
+  if (homeNode.user?.id && homeNode.user.id === targetNode.user?.id) return null;
+
+  const km = calculateDistance(
+    homeNode.position.latitude,
+    homeNode.position.longitude,
+    targetNode.position.latitude,
+    targetNode.position.longitude
+  );
+  return formatDistance(km, unit);
+}

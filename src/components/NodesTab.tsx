@@ -9,9 +9,10 @@ import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
 import { getHardwareModelName, getRoleName, isNodeComplete } from '../utils/nodeHelpers';
 import { formatTime, formatDateTime } from '../utils/datetime';
+import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { useMapContext } from '../contexts/MapContext';
-import { useTelemetryNodes, useDeviceConfig } from '../hooks/useServerData';
+import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -59,6 +60,28 @@ const isToday = (date: Date): boolean => {
     date.getMonth() === today.getMonth() &&
     date.getFullYear() === today.getFullYear();
 };
+
+// Memoized distance display component to avoid recalculating on every render
+const DistanceDisplay = React.memo<{
+  homeNode: DeviceInfo | undefined;
+  targetNode: DeviceInfo;
+  distanceUnit: 'km' | 'mi';
+  t: (key: string) => string;
+}>(({ homeNode, targetNode, distanceUnit, t }) => {
+  const distance = React.useMemo(
+    () => getDistanceToNode(homeNode, targetNode, distanceUnit),
+    [homeNode?.position?.latitude, homeNode?.position?.longitude,
+     targetNode.position?.latitude, targetNode.position?.longitude, distanceUnit]
+  );
+
+  if (!distance) return null;
+
+  return (
+    <span className="stat" title={t('nodes.distance')}>
+      📏 {distance}
+    </span>
+  );
+});
 
 // Separate components for traceroutes that can update independently
 // These prevent marker re-renders when only the traceroute paths change
@@ -117,6 +140,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useMapContext();
 
   const { currentNodeId } = useDeviceConfig();
+  const { nodes } = useNodes();
 
   const {
     nodesWithTelemetry,
@@ -148,6 +172,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setMapTileset,
     mapPinStyle,
     customTilesets,
+    distanceUnit,
   } = useSettings();
 
   const { hasPermission } = useAuth();
@@ -971,6 +996,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         {!isNodeListCollapsed && (
         <div className="nodes-list">
           {shouldShowData() ? (() => {
+            // Find the home node for distance calculations (use unfiltered nodes to ensure home node is found)
+            const homeNode = nodes.find(n => n.user?.id === currentNodeId);
+
             // Apply security, channel, and incomplete node filters
             const filteredNodes = processedNodes.filter(node => {
               // Security filter
@@ -1060,9 +1088,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
                   <div className="node-details">
                     <div className="node-stats">
-                      {node.snr != null && (
+                      {node.hopsAway === 0 && node.snr != null && (
                         <span className="stat" title={t('nodes.snr')}>
                           📶 {node.snr.toFixed(1)}dB
+                        </span>
+                      )}
+                      {node.hopsAway === 0 && node.rssi != null && (
+                        <span className="stat" title={t('nodes.rssi')}>
+                          📡 {node.rssi}dBm
                         </span>
                       )}
                       {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
@@ -1076,6 +1109,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                         </span>
                       )}
+                      <DistanceDisplay
+                        homeNode={homeNode}
+                        targetNode={node}
+                        distanceUnit={distanceUnit}
+                        t={t}
+                      />
                     </div>
 
                     <div className="node-time">
@@ -1091,8 +1130,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <div className="node-indicators">
                     {node.position && node.position.latitude != null && node.position.longitude != null && (
                       <div className="node-location" title={t('nodes.location')}>
-                        📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                        📍
                         {node.isMobile && <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>🚶</span>}
+                        {node.position.altitude != null && (
+                          <span title={t('nodes.elevation')} style={{ marginLeft: '4px' }}>⛰️ {Math.round(node.position.altitude)}m</span>
+                        )}
                       </div>
                     )}
                     {node.viaMqtt && (
