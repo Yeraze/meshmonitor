@@ -9,6 +9,7 @@ import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
 import { getHardwareModelName, getRoleName, isNodeComplete } from '../utils/nodeHelpers';
 import { formatTime, formatDateTime } from '../utils/datetime';
+import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig } from '../hooks/useServerData';
@@ -148,6 +149,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setMapTileset,
     mapPinStyle,
     customTilesets,
+    distanceUnit,
   } = useSettings();
 
   const { hasPermission } = useAuth();
@@ -971,6 +973,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         {!isNodeListCollapsed && (
         <div className="nodes-list">
           {shouldShowData() ? (() => {
+            // Find the home node for distance calculations
+            const homeNode = processedNodes.find(n => n.user?.id === currentNodeId);
+
             // Apply security, channel, and incomplete node filters
             const filteredNodes = processedNodes.filter(node => {
               // Security filter
@@ -1060,9 +1065,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
                   <div className="node-details">
                     <div className="node-stats">
-                      {node.snr != null && (
+                      {node.hopsAway === 0 && node.snr != null && (
                         <span className="stat" title={t('nodes.snr')}>
                           📶 {node.snr.toFixed(1)}dB
+                        </span>
+                      )}
+                      {node.hopsAway === 0 && node.rssi != null && (
+                        <span className="stat" title={t('nodes.rssi')}>
+                          📡 {node.rssi}dBm
                         </span>
                       )}
                       {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
@@ -1076,6 +1086,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                         </span>
                       )}
+                      {(() => {
+                        const distance = getDistanceToNode(homeNode, node, distanceUnit);
+                        return distance ? (
+                          <span className="stat" title={t('nodes.distance')}>
+                            📏 {distance}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
 
                     <div className="node-time">
@@ -1093,6 +1111,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <div className="node-location" title={t('nodes.location')}>
                         📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
                         {node.isMobile && <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>🚶</span>}
+                        {node.position.altitude != null && (
+                          <span title={t('nodes.elevation')} style={{ marginLeft: '4px' }}>⛰️ {Math.round(node.position.altitude)}m</span>
+                        )}
                       </div>
                     )}
                     {node.viaMqtt && (

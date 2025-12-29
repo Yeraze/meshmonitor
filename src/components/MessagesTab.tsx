@@ -21,6 +21,7 @@ import {
 } from '../utils/datetime';
 import { formatTracerouteRoute } from '../utils/traceroute';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition } from '../utils/nodeHelpers';
 import HopCountDisplay from './HopCountDisplay';
@@ -304,6 +305,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     );
   }
 
+  // Find the home node for distance calculations
+  const homeNode = nodes.find(n => n.user?.id === currentNodeId);
+
   // Process nodes with message metadata
   const nodesWithMessages: NodeWithMessages[] = processedNodes
     .filter(node => node.user?.id !== currentNodeId)
@@ -502,6 +506,48 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               🔗 {node.hopsAway}
                             </span>
                           )}
+                          {node.hopsAway === 0 && node.snr != null && (
+                            <span
+                              className="node-snr"
+                              title={t('nodes.snr')}
+                              style={{
+                                fontSize: '0.75rem',
+                                color: 'var(--ctp-subtext0)',
+                                marginLeft: '0.5rem',
+                              }}
+                            >
+                              📶 {node.snr.toFixed(1)}dB
+                            </span>
+                          )}
+                          {node.hopsAway === 0 && node.rssi != null && (
+                            <span
+                              className="node-rssi"
+                              title={t('nodes.rssi')}
+                              style={{
+                                fontSize: '0.75rem',
+                                color: 'var(--ctp-subtext0)',
+                                marginLeft: '0.5rem',
+                              }}
+                            >
+                              📡 {node.rssi}dBm
+                            </span>
+                          )}
+                          {(() => {
+                            const distance = getDistanceToNode(homeNode, node, distanceUnit);
+                            return distance ? (
+                              <span
+                                className="node-distance"
+                                title={t('nodes.distance')}
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: 'var(--ctp-subtext0)',
+                                  marginLeft: '0.5rem',
+                                }}
+                              >
+                                📏 {distance}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                         <div className="node-actions">
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
@@ -589,6 +635,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {node.isMobile && (
                               <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>
                                 🚶
+                              </span>
+                            )}
+                            {node.position.altitude != null && (
+                              <span title={t('nodes.elevation')} style={{ marginLeft: '4px' }}>
+                                ⛰️ {Math.round(node.position.altitude)}m
                               </span>
                             )}
                           </div>
