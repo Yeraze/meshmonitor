@@ -106,6 +106,18 @@ type TextMessage = {
   createdAt: number;
 };
 
+/**
+ * Auto-responder trigger configuration
+ */
+interface AutoResponderTrigger {
+  trigger: string | string[];
+  response: string;
+  responseType?: 'text' | 'http' | 'script';
+  channel?: number | 'dm';
+  verifyResponse?: boolean;
+  multiline?: boolean;
+}
+
 class MeshtasticManager {
   private transport: TcpTransport | null = null;
   private isConnected = false;
@@ -5763,7 +5775,7 @@ class MeshtasticManager {
         return;
       }
 
-      let triggers: any[];
+      let triggers: AutoResponderTrigger[];
       try {
         triggers = JSON.parse(autoResponderTriggersStr);
       } catch (error) {
@@ -6194,14 +6206,26 @@ class MeshtasticManager {
   }
 
   /**
-   * Prepare environment variables
+   * Prepare environment variables for auto-responder scripts
+   *
+   * Environment variables provided:
+   * - MESSAGE: The message text
+   * - FROM_NODE: Sender's node number
+   * - PACKET_ID: The packet ID (empty string if undefined)
+   * - TRIGGER: The matched trigger pattern(s)
+   * - MATCHED_PATTERN: The specific pattern that matched
+   * - FROM_SHORT_NAME, FROM_LONG_NAME: Sender's node names
+   * - FROM_LAT, FROM_LON: Sender's location (if available)
+   * - MM_LAT, MM_LON: MeshMonitor node location (if available)
+   * - MSG_*: All message fields (e.g., MSG_rxSnr, MSG_rxRssi, MSG_hopStart, MSG_hopLimit, MSG_viaMqtt, etc.)
+   * - PARAM_*: Extracted parameters from trigger pattern
    */
-  private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: any, packetId?: number) {
+  private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: AutoResponderTrigger, packetId?: number) {
     const scriptEnv: Record<string, string> = {
       ...process.env as Record<string, string>,
       MESSAGE: message.text,
       FROM_NODE: String(message.fromNodeNum),
-      PACKET_ID: String(packetId),
+      PACKET_ID: packetId !== undefined ? String(packetId) : '',
       TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
       MATCHED_PATTERN: matchedPattern || '',
     };
