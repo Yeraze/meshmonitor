@@ -12,7 +12,7 @@ import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { useMapContext } from '../contexts/MapContext';
-import { useTelemetryNodes, useDeviceConfig } from '../hooks/useServerData';
+import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -140,6 +140,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useMapContext();
 
   const { currentNodeId } = useDeviceConfig();
+  const { nodes } = useNodes();
 
   const {
     nodesWithTelemetry,
@@ -995,8 +996,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         {!isNodeListCollapsed && (
         <div className="nodes-list">
           {shouldShowData() ? (() => {
-            // Find the home node for distance calculations
-            const homeNode = processedNodes.find(n => n.user?.id === currentNodeId);
+            // Find the home node for distance calculations (use unfiltered nodes to ensure home node is found)
+            const homeNode = nodes.find(n => n.user?.id === currentNodeId);
 
             // Apply security, channel, and incomplete node filters
             const filteredNodes = processedNodes.filter(node => {
