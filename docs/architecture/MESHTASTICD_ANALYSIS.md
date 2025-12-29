@@ -89,8 +89,11 @@ MESHTASTIC_TCP_PORT=4403
 
 **For meshtasticd users:**
 ```bash
-# Run meshtasticd for BLE device
-meshtasticd --ble-device "Meshtastic_1234"
+# Run meshtasticd in simulation mode (create config.yaml first)
+docker run -d --name meshtasticd \
+  -v ./config.yaml:/etc/meshtasticd/config.yaml:ro \
+  -p 4403:4403 \
+  meshtastic/meshtasticd:latest meshtasticd -s
 
 # Point MeshMonitor to meshtasticd
 export MESHTASTIC_NODE_IP=localhost
@@ -98,15 +101,7 @@ export MESHTASTIC_TCP_PORT=4403
 docker compose up -d
 ```
 
-**For Serial device users:**
-```bash
-# Run meshtasticd for Serial device
-meshtasticd --serial-port /dev/ttyUSB0
-
-# Point MeshMonitor to meshtasticd
-export MESHTASTIC_NODE_IP=localhost
-docker compose up -d
-```
+**Note:** meshtasticd configuration (BLE, Serial, etc.) is done via `config.yaml`, not command line flags. See the [meshtasticd documentation](/configuration/meshtasticd) for configuration file examples.
 
 ### Documentation Updates
 
@@ -598,18 +593,17 @@ describe('TCPTransport', () => {
 
 **Key Insight:** Docker Compose can significantly reduce complexity **only for users who need meshtasticd** (serial/BLE users). Network users gain no benefit.
 
-### Deployment Option 1: Current (HTTP - Network Nodes)
+### Deployment Option 1: Current (TCP - Network Nodes)
 
-**File:** `docker-compose.yml` (unchanged)
+**File:** `docker-compose.yml`
 
 ```yaml
 services:
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     environment:
-      - TRANSPORT=http
       - MESHTASTIC_NODE_IP=192.168.1.100
-      - MESHTASTIC_USE_TLS=false
+      - MESHTASTIC_NODE_PORT=4403
     ports:
       - "8080:3001"
     volumes:
@@ -623,34 +617,26 @@ docker compose up -d
 
 **Complexity:** ⭐ Very Low (current simplicity maintained)
 
-### Deployment Option 2: meshtasticd (Serial/BLE Nodes)
+### Deployment Option 2: meshtasticd (Simulation Mode)
 
-**File:** `docker-compose.meshtasticd.yml` (new)
+**File:** `docker-compose.meshtasticd.yml`
 
 ```yaml
 services:
   meshtasticd:
     image: meshtastic/meshtasticd:latest
-    # For USB/Serial devices
-    devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
-    # For Bluetooth (requires privileged)
-    # privileged: true
-    # network_mode: host
+    command: meshtasticd -s
     volumes:
-      - meshtasticd-config:/etc/meshtasticd
-      - meshtasticd-data:/root/.portduino
+      - ./config.yaml:/etc/meshtasticd/config.yaml:ro
     ports:
       - "4403:4403"
-      - "443:443"  # Web interface (optional)
     restart: unless-stopped
 
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     environment:
-      - TRANSPORT=tcp
-      - MESHTASTICD_HOST=meshtasticd
-      - MESHTASTICD_PORT=4403
+      - MESHTASTIC_NODE_IP=meshtasticd
+      - MESHTASTIC_NODE_PORT=4403
     ports:
       - "8080:3001"
     volumes:
@@ -661,34 +647,43 @@ services:
 
 volumes:
   meshmonitor-data:
-  meshtasticd-config:
-  meshtasticd-data:
+```
+
+**config.yaml** (required):
+```yaml
+Lora:
+  Module: sx1262
+  DIO2_AS_RF_SWITCH: true
+  CS: 1
+  IRQ: 2
+  Busy: 3
+  Reset: 4
+
+Webserver:
+  Port: 80
+
+General:
+  MACAddress: AA:BB:CC:DD:EE:01
 ```
 
 **Usage:**
 ```bash
-# Serial/USB node
-docker compose -f docker-compose.meshtasticd.yml up -d
-
-# Bluetooth node (requires privileged)
-# Uncomment privileged/network_mode in yaml first
 docker compose -f docker-compose.meshtasticd.yml up -d
 ```
 
-**Complexity:** ⭐⭐ Low-Medium (one command, but requires understanding device passthrough)
+**Complexity:** ⭐⭐ Low-Medium (one command, requires config.yaml setup)
 
 ### Deployment Option 3: Standalone meshtasticd (Advanced)
 
-For users running meshtasticd separately:
+For users running meshtasticd separately (on another host or native installation):
 
 ```yaml
 services:
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     environment:
-      - TRANSPORT=tcp
-      - MESHTASTICD_HOST=external-host.local
-      - MESHTASTICD_PORT=4403
+      - MESHTASTIC_NODE_IP=external-host.local
+      - MESHTASTIC_NODE_PORT=4403
     ports:
       - "8080:3001"
     volumes:
