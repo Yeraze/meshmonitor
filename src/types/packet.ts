@@ -26,6 +26,7 @@ export interface PacketLog {
   priority?: number;
   payload_preview?: string;
   metadata?: string;
+  direction?: 'rx' | 'tx';
   created_at?: number;
 }
 

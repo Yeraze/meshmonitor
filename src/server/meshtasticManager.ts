@@ -484,6 +484,47 @@ class MeshtasticManager {
     logger.debug('✅ Basic setup ensured');
   }
 
+  /**
+   * Log an outgoing packet to the packet monitor
+   * @param portnum The portnum (e.g., 1 for TEXT_MESSAGE, 6 for ADMIN, 70 for TRACEROUTE)
+   * @param destination The destination node number
+   * @param channel The channel number
+   * @param payloadPreview Human-readable preview of what was sent
+   * @param metadata Additional metadata object
+   */
+  private logOutgoingPacket(
+    portnum: number,
+    destination: number,
+    channel: number,
+    payloadPreview: string,
+    metadata: Record<string, unknown> = {}
+  ): void {
+    if (!packetLogService.isEnabled()) return;
+
+    const localNodeNum = this.localNodeInfo?.nodeNum;
+    if (!localNodeNum) return;
+
+    const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+    const toNodeId = destination === 0xffffffff
+      ? 'broadcast'
+      : `!${destination.toString(16).padStart(8, '0')}`;
+
+    packetLogService.logPacket({
+      timestamp: Math.floor(Date.now() / 1000),
+      from_node: localNodeNum,
+      from_node_id: localNodeId,
+      to_node: destination,
+      to_node_id: toNodeId,
+      channel: channel,
+      portnum: portnum,
+      portnum_name: meshtasticProtobufService.getPortNumName(portnum),
+      encrypted: false,  // Outgoing packets are logged before encryption
+      payload_preview: payloadPreview,
+      metadata: JSON.stringify({ ...metadata, direction: 'tx' }),
+      direction: 'tx'
+    });
+  }
+
   private async sendWantConfigId(): Promise<void> {
     if (!this.transport) {
       throw new Error('Transport not initialized');
@@ -1961,7 +2002,8 @@ class MeshtasticManager {
           want_ack: meshPacket.wantAck ?? false,
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
-          metadata: JSON.stringify(metadata)
+          metadata: JSON.stringify(metadata),
+          direction: 'rx'
         });
       }
     } catch (error) {
@@ -5105,6 +5147,15 @@ class MeshtasticManager {
       logger.info(`📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" (ID: ${messageId})`);
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
+      // Log outgoing message to packet monitor
+      this.logOutgoingPacket(
+        1, // TEXT_MESSAGE_APP
+        destination || 0xffffffff,
+        channel,
+        `"${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`,
+        { messageId, replyId, emoji }
+      );
+
       // Save sent message to database for UI display
       // Try database settings first, then fall back to this.localNodeInfo
       let localNodeNum = databaseService.getSetting('localNodeNum');
@@ -5193,6 +5244,15 @@ class MeshtasticManager {
 
       databaseService.recordTracerouteRequest(this.localNodeInfo.nodeNum, destination);
       logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+
+      // Log outgoing traceroute to packet monitor
+      this.logOutgoingPacket(
+        70, // TRACEROUTE_APP
+        destination,
+        channel,
+        `Traceroute request to !${destination.toString(16).padStart(8, '0')}`,
+        { destination }
+      );
     } catch (error) {
       logger.error('Error sending traceroute:', error);
       throw error;
@@ -5243,6 +5303,16 @@ class MeshtasticManager {
       }
 
       logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+
+      // Log outgoing position exchange to packet monitor
+      this.logOutgoingPacket(
+        3, // POSITION_APP
+        destination,
+        channel,
+        `Position exchange with !${destination.toString(16).padStart(8, '0')}`,
+        { destination, packetId, requestId }
+      );
+
       return { packetId, requestId };
     } catch (error) {
       logger.error('Error sending position exchange:', error);
@@ -5308,6 +5378,16 @@ class MeshtasticManager {
       }
 
       logger.info(`📤 NodeInfo exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+
+      // Log outgoing NodeInfo exchange to packet monitor
+      this.logOutgoingPacket(
+        4, // NODEINFO_APP
+        destination,
+        channel,
+        `NodeInfo exchange with !${destination.toString(16).padStart(8, '0')}`,
+        { destination, packetId, requestId }
+      );
+
       return { packetId, requestId };
     } catch (error) {
       logger.error('Error sending NodeInfo exchange:', error);
@@ -7806,6 +7886,18 @@ class MeshtasticManager {
 
       await this.transport.send(adminPacket);
       logger.debug(`✅ Sent admin command to node ${destinationNodeNum}`);
+
+      // Log outgoing admin command to packet monitor (ONLY for remote admin)
+      // Skip logging for local admin (destination == localNodeNum)
+      if (destinationNodeNum !== localNodeNum) {
+        this.logOutgoingPacket(
+          6, // ADMIN_APP
+          destinationNodeNum,
+          0, // Admin uses channel 0
+          `Remote Admin to !${destinationNodeNum.toString(16).padStart(8, '0')}`,
+          { destinationNodeNum, isRemoteAdmin: true }
+        );
+      }
     } catch (error) {
       logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
       throw error;

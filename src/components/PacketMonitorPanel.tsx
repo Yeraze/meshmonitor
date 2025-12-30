@@ -424,6 +424,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               <table className="packet-table packet-table-fixed">
                 <colgroup>
                   <col style={{ width: '60px' }} />
+                  <col style={{ width: '35px' }} />
                   <col style={{ width: '110px' }} />
                   <col style={{ width: '140px' }} />
                   <col style={{ width: '140px' }} />
@@ -437,6 +438,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 <thead>
                   <tr>
                     <th style={{ width: '60px' }}>#</th>
+                    <th style={{ width: '35px' }}>{t('packet_monitor.column.dir')}</th>
                     <th style={{ width: '110px' }}>{t('packet_monitor.column.time')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
@@ -459,6 +461,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 <table className="packet-table packet-table-fixed">
                   <colgroup>
                     <col style={{ width: '60px' }} />
+                    <col style={{ width: '35px' }} />
                     <col style={{ width: '110px' }} />
                     <col style={{ width: '140px' }} />
                     <col style={{ width: '140px' }} />
@@ -489,7 +492,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               tableLayout: 'fixed',
                             }}
                           >
-                            <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                               {t('packet_monitor.loading_more')}
                             </td>
                           </tr>
@@ -515,6 +518,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                         >
                           <td className="packet-number" style={{ width: '60px', textAlign: 'right' }}>
                             {virtualRow.index + 1}
+                          </td>
+                          <td
+                            className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`}
+                            style={{ width: '35px', textAlign: 'center' }}
+                            title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}
+                          >
+                            {packet.direction === 'tx' ? 'TX' : 'RX'}
                           </td>
                           <td
                             className="timestamp"
