@@ -47,6 +47,7 @@ import { migration as autoTracerouteLogMigration } from '../server/migrations/04
 import { migration as relayNodePacketLogMigration } from '../server/migrations/042_add_relay_node_to_packet_log.js';
 import { migration as positionOverridePrivacyMigration } from '../server/migrations/043_add_position_override_privacy.js';
 import { migration as nodesPrivatePermissionMigration } from '../server/migrations/044_add_nodes_private_permission.js';
+import { migration as packetDirectionMigration } from '../server/migrations/045_add_packet_direction.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -226,6 +227,7 @@ export interface DbPacketLog {
   priority?: number;
   payload_preview?: string;
   metadata?: string;
+  direction?: 'rx' | 'tx';
   created_at?: number;
 }
 
@@ -436,6 +438,7 @@ class DatabaseService {
     this.runPositionOverrideMigration();
     this.runPositionOverridePrivacyMigration();
     this.runNodesPrivatePermissionMigration();
+    this.runPacketDirectionMigration();
     this.runAutoTracerouteLogMigration();
     this.runRelayNodePacketLogMigration();
     this.ensureAutomationDefaults();
@@ -1223,6 +1226,26 @@ class DatabaseService {
       logger.debug('✅ Nodes private permission migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run nodes private permission migration:', error);
+      throw error;
+    }
+  }
+
+  private runPacketDirectionMigration(): void {
+    try {
+      const migrationKey = 'migration_045_packet_direction';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Packet direction migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 045: Add direction field to packet_log table...');
+      packetDirectionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Packet direction migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run packet direction migration:', error);
       throw error;
     }
   }
@@ -4743,8 +4766,8 @@ class DatabaseService {
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
         channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
-        relay_node, payload_size, want_ack, priority, payload_preview, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -4767,7 +4790,8 @@ class DatabaseService {
       packet.want_ack ? 1 : 0,
       packet.priority ?? null,
       packet.payload_preview ?? null,
-      packet.metadata ?? null
+      packet.metadata ?? null,
+      packet.direction ?? 'rx'
     );
 
     // Enforce max count limit

@@ -2,6 +2,29 @@
 
 ## Current Sprint
 
+### Outgoing Mesh Commands in Packet Monitor (#1322)
+
+**Completed:**
+- [x] Database migration 045 - Add direction column to packet_log table
+- [x] Update DbPacketLog interface with direction field
+- [x] Update insertPacketLog to include direction in INSERT
+- [x] Add logOutgoingPacket helper method to meshtasticManager
+- [x] Add logging to sendTextMessage (TEXT_MESSAGE_APP)
+- [x] Add logging to sendTraceroute (TRACEROUTE_APP)
+- [x] Add logging to sendPositionRequest (POSITION_APP)
+- [x] Add logging to sendNodeInfoRequest (NODEINFO_APP)
+- [x] Add logging to sendAdminCommand (ADMIN_APP - remote only)
+- [x] Update existing incoming packet logging with direction: 'rx'
+- [x] Update PacketLog type definition with direction field
+- [x] Update Packet Monitor UI with direction indicator column (TX/RX)
+- [x] Add CSS styles for direction indicators (green RX, orange TX)
+- [x] Add translation keys for direction column and tooltips
+
+**Summary:**
+Users can now see outgoing mesh commands (text messages, traceroutes, position/nodeinfo exchanges, and remote admin commands) in the Packet Monitor. A new "Dir" column displays TX (transmitted) or RX (received) with color coding. Local IP commands to the node (like wantConfig) are intentionally not logged.
+
+---
+
 ### MQTT Client Proxy Integration (#1244)
 
 **Completed:**
