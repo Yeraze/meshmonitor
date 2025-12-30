@@ -56,6 +56,7 @@ class DatabaseMaintenanceService {
   private schedulerInterval: NodeJS.Timeout | null = null;
   private isRunning = false;
   private isMaintenanceInProgress = false;
+  private maintenanceLock: Promise<MaintenanceStats> | null = null;
   private lastRunTime: number | null = null;
   private lastRunStats: MaintenanceStats | null = null;
 
@@ -144,12 +145,29 @@ class DatabaseMaintenanceService {
 
   /**
    * Run database maintenance (can be called manually or by scheduler)
+   * Uses a lock to prevent race conditions from concurrent calls
    */
   async runMaintenance(): Promise<MaintenanceStats> {
-    if (this.isMaintenanceInProgress) {
+    // If maintenance is already running, throw an error
+    // The lock ensures atomic check-and-set
+    if (this.maintenanceLock) {
       throw new Error('Maintenance already in progress');
     }
 
+    // Create the maintenance promise and store it as the lock
+    this.maintenanceLock = this.executeMaintenanceInternal();
+
+    try {
+      return await this.maintenanceLock;
+    } finally {
+      this.maintenanceLock = null;
+    }
+  }
+
+  /**
+   * Internal maintenance execution - should only be called via runMaintenance()
+   */
+  private async executeMaintenanceInternal(): Promise<MaintenanceStats> {
     this.isMaintenanceInProgress = true;
     const startTime = Date.now();
 
