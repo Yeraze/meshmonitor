@@ -10,6 +10,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import SystemBackupSection from './configuration/SystemBackupSection';
+import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
@@ -635,6 +636,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
+        { id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') },
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
@@ -1127,6 +1129,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         <div id="settings-backup">
           <SystemBackupSection />
         </div>
+
+        <DatabaseMaintenanceSection />
 
         <AutoUpgradeTestSection baseUrl={baseUrl} />
 

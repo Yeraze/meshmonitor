@@ -2503,11 +2503,6 @@ class DatabaseService {
     return Number(result.changes) > 0;
   }
 
-  // Database maintenance
-  vacuum(): void {
-    this.db.exec('VACUUM');
-  }
-
   // Helper function to convert BigInt values to numbers
   private normalizeBigInts(obj: any): any {
     if (obj === null || obj === undefined) return obj;
@@ -4055,6 +4050,45 @@ class DatabaseService {
     `);
     const result = stmt.run(cutoff);
     return Number(result.changes);
+  }
+
+  /**
+   * Delete traceroutes older than the specified number of days
+   */
+  cleanupOldTraceroutes(days: number = 30): number {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const stmt = this.db.prepare('DELETE FROM traceroutes WHERE timestamp < ?');
+    const result = stmt.run(cutoff);
+    return Number(result.changes);
+  }
+
+  /**
+   * Delete neighbor info records older than the specified number of days
+   */
+  cleanupOldNeighborInfo(days: number = 30): number {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const stmt = this.db.prepare('DELETE FROM neighbor_info WHERE timestamp < ?');
+    const result = stmt.run(cutoff);
+    return Number(result.changes);
+  }
+
+  /**
+   * Run VACUUM to reclaim unused space in the database file
+   * This can take a while on large databases and temporarily doubles disk usage
+   */
+  vacuum(): void {
+    logger.info('🧹 Running VACUUM on database...');
+    this.db.exec('VACUUM');
+    logger.info('✅ VACUUM complete');
+  }
+
+  /**
+   * Get the current database file size in bytes
+   */
+  getDatabaseSize(): number {
+    const stmt = this.db.prepare('SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()');
+    const result = stmt.get() as { size: number } | undefined;
+    return result?.size ?? 0;
   }
 
   saveNeighborInfo(neighborInfo: Omit<DbNeighborInfo, 'id' | 'createdAt'>): void {

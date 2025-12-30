@@ -28,6 +28,7 @@ import { appriseNotificationService } from './services/appriseNotificationServic
 import { deviceBackupService } from './services/deviceBackupService.js';
 import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
+import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
 import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
@@ -373,6 +374,10 @@ setTimeout(async () => {
     // Initialize solar monitoring service
     solarMonitoringService.initialize();
     logger.debug('Solar monitoring service initialized');
+
+    // Initialize database maintenance service
+    databaseMaintenanceService.initialize();
+    logger.debug('Database maintenance service initialized');
 
     // Start inactive node notification service with validation
     const inactiveThresholdHoursRaw = parseInt(databaseService.getSetting('inactiveNodeThresholdHours') || '24', 10);
@@ -3791,6 +3796,60 @@ apiRouter.post('/system/backup/settings', requirePermission('configuration', 'wr
   }
 });
 
+// ==========================================
+// Database Maintenance Endpoints
+// ==========================================
+
+// Get database maintenance status
+apiRouter.get('/maintenance/status', requirePermission('configuration', 'read'), (_req, res) => {
+  try {
+    const status = databaseMaintenanceService.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('❌ Error getting maintenance status:', error);
+    res.status(500).json({
+      error: 'Failed to get maintenance status',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Get current database size
+apiRouter.get('/maintenance/size', requirePermission('configuration', 'read'), (_req, res) => {
+  try {
+    const size = databaseMaintenanceService.getDatabaseSize();
+    res.json({
+      size,
+      formatted: databaseMaintenanceService.formatBytes(size),
+    });
+  } catch (error) {
+    logger.error('❌ Error getting database size:', error);
+    res.status(500).json({
+      error: 'Failed to get database size',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Manually trigger database maintenance
+apiRouter.post('/maintenance/run', requirePermission('configuration', 'write'), async (_req, res) => {
+  try {
+    logger.info('🔧 Manual database maintenance requested...');
+    const stats = await databaseMaintenanceService.runMaintenance();
+    res.json({
+      success: true,
+      stats,
+      message: `Maintenance complete: deleted ${stats.messagesDeleted + stats.traceroutesDeleted + stats.routeSegmentsDeleted + stats.neighborInfoDeleted} records, saved ${databaseMaintenanceService.formatBytes(stats.sizeBefore - stats.sizeAfter)}`,
+    });
+  } catch (error) {
+    logger.error('❌ Error running maintenance:', error);
+    res.status(500).json({
+      error: 'Failed to run maintenance',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Refresh nodes from device endpoint
 apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_req, res) => {
   try {
@@ -4170,6 +4229,12 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'inactiveNodeCheckIntervalMinutes',
       'inactiveNodeCooldownHours',
       'autoUpgradeImmediate',
+      'maintenanceEnabled',
+      'maintenanceTime',
+      'messageRetentionDays',
+      'tracerouteRetentionDays',
+      'routeSegmentRetentionDays',
+      'neighborInfoRetentionDays',
     ];
     const filteredSettings: Record<string, string> = {};
 
