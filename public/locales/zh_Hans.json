@@ -2999,7 +2999,7 @@
     "messages.signal_info": "信号强度（SNR/RSSI）-直频消息",
     "automation.auto_announce.nodeinfo_no_channels_warning": "请至少选择一个频道来广播节点信息。",
     "messages.by_hops": "按跳（最近者优先）",
-    "messages.exclude_infrastructure": "",
+    "messages.exclude_infrastructure": "不包括基础设施",
     "automation.auto_announce.nodeinfo_description": "将节点信息广播到所选频道。这有助于辅助通道上的节点发现您的节点，而无需手动交换。节点信息数据包与每个预定的公告一起发送。",
     "automation.auto_announce.nodeinfo_channels": "广播频道",
     "automation.auto_announce.nodeinfo_channels_description": "选择要在哪些频道上广播节点信息。选择多个频道在每个频道上广播。",
