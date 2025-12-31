@@ -383,7 +383,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           channelNum: config.channelNum,
           sx126xRxBoostedGain: config.sx126xRxBoostedGain,
           ignoreMqtt: config.ignoreMqtt,
-          configOkToMqtt: config.configOkToMqtt
+          configOkToMqtt: config.configOkToMqtt,
+          txEnabled: config.txEnabled !== false,  // Default to true if undefined
+          overrideDutyCycle: config.overrideDutyCycle ?? false,
+          paFanDisabled: config.paFanDisabled ?? false
         });
       });
       await new Promise(resolve => setTimeout(resolve, 200));
@@ -706,7 +709,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               channelNum: config.channelNum,
               sx126xRxBoostedGain: config.sx126xRxBoostedGain,
               ignoreMqtt: config.ignoreMqtt,
-              configOkToMqtt: config.configOkToMqtt
+              configOkToMqtt: config.configOkToMqtt,
+              txEnabled: config.txEnabled !== false,  // Default to true if undefined
+              overrideDutyCycle: config.overrideDutyCycle ?? false,
+              paFanDisabled: config.paFanDisabled ?? false
             });
             break;
           case 'position':
@@ -1198,7 +1204,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       channelNum: configState.lora.channelNum,
       sx126xRxBoostedGain: configState.lora.sx126xRxBoostedGain,
       ignoreMqtt: configState.lora.ignoreMqtt,
-      configOkToMqtt: configState.lora.configOkToMqtt
+      configOkToMqtt: configState.lora.configOkToMqtt,
+      txEnabled: configState.lora.txEnabled,
+      overrideDutyCycle: configState.lora.overrideDutyCycle,
+      paFanDisabled: configState.lora.paFanDisabled
     };
 
     if (configState.lora.usePreset) {
@@ -2115,6 +2124,51 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <div style={{ flex: 1 }}>
               <div>{t('admin_commands.config_ok_to_mqtt')}</div>
               <span className="setting-description">{t('admin_commands.config_ok_to_mqtt_description')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={configState.lora.txEnabled}
+              onChange={(e) => setLoRaConfig({ txEnabled: e.target.checked })}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.tx_enabled')}</div>
+              <span className="setting-description">{t('admin_commands.tx_enabled_description')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={configState.lora.overrideDutyCycle}
+              onChange={(e) => setLoRaConfig({ overrideDutyCycle: e.target.checked })}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.override_duty_cycle')}</div>
+              <span className="setting-description">{t('admin_commands.override_duty_cycle_description')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={configState.lora.paFanDisabled}
+              onChange={(e) => setLoRaConfig({ paFanDisabled: e.target.checked })}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.pa_fan_disabled')}</div>
+              <span className="setting-description">{t('admin_commands.pa_fan_disabled_description')}</span>
             </div>
           </label>
         </div>

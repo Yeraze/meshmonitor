@@ -2,6 +2,21 @@
 
 ## Current Sprint
 
+### Remote Admin LoRa Config Missing txEnabled Fields (#1328)
+
+**Completed:**
+- [x] Add txEnabled, overrideDutyCycle, paFanDisabled to LoRaConfigState interface
+- [x] Add defaults to initial state (txEnabled: true to prevent accidental TX disable)
+- [x] Update setLoRaConfig calls when loading config from remote node
+- [x] Update handleSetLoRaConfig to include the new fields when saving
+- [x] Add UI controls for txEnabled, overrideDutyCycle, paFanDisabled in Remote Admin
+- [x] Add translation keys for new settings
+
+**Summary:**
+Fixed a bug where saving Remote Admin LoRa configuration would silently disable transmission (txEnabled=false). The issue was that txEnabled, overrideDutyCycle, and paFanDisabled were missing from the Remote Admin LoRa state, causing protobuf to default boolean fields to false when saving. Added all three fields to the state interface, load callbacks, save handler, and UI.
+
+---
+
 ### Outgoing Mesh Commands in Packet Monitor (#1322)
 
 **Completed:**
