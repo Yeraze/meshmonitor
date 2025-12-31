@@ -2,6 +2,23 @@
 
 ## Current Sprint
 
+### NodeInfo hopsAway Calculation Bug (#1310)
+
+**Completed:**
+- [x] Identify bug: `processNodeInfoMessageProtobuf` was reading `meshPacket.hopsAway` which doesn't exist
+- [x] Fix: Calculate hopsAway from `hopStart - hopLimit` (like we do for text messages)
+- [x] Update debug logging to show calculated value
+
+**Summary:**
+Fixed a bug where nodes would show incorrect hop counts (e.g., 6+ hops when actually direct). The issue was that `processNodeInfoMessageProtobuf` was trying to read `meshPacket.hopsAway`, but MeshPacket doesn't have this field - it has `hopStart` and `hopLimit`. Since `hopsAway` was always `undefined`, nodes never got their hop count updated from NODEINFO_APP packets.
+
+**Verification:**
+- `processNodeInfoProtobuf` (direct NodeInfo events) - uses `nodeInfo.hopsAway` ✅
+- `processNodeInfoMessageProtobuf` (NODEINFO_APP packets) - now calculates `hopStart - hopLimit` ✅
+- `upsertNode` COALESCE logic correctly updates when value provided, keeps existing when not ✅
+
+---
+
 ### Remote Admin LoRa Config Missing txEnabled Fields (#1328)
 
 **Completed:**

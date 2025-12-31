@@ -2421,6 +2421,15 @@ class MeshtasticManager {
       const timestamp = Date.now();
       // Extract channel from mesh packet - this tells us which channel the node was heard on
       const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : undefined;
+
+      // Calculate hopsAway from hopStart and hopLimit (MeshPacket doesn't have hopsAway field)
+      // hopStart is the initial hop limit, hopLimit is remaining hops, so hops traveled = hopStart - hopLimit
+      const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start;
+      const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit;
+      const calculatedHopsAway = (hopStart !== undefined && hopLimit !== undefined && hopStart >= hopLimit)
+        ? hopStart - hopLimit
+        : undefined;
+
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
@@ -2428,7 +2437,7 @@ class MeshtasticManager {
         shortName: user.shortName,
         hwModel: user.hwModel,
         role: user.role,
-        hopsAway: meshPacket.hopsAway,
+        hopsAway: calculatedHopsAway,
         // Cap lastHeard at current time to prevent stale timestamps from node clock issues
         lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000, Date.now() / 1000),
         channel: channelIndex
@@ -2518,7 +2527,7 @@ class MeshtasticManager {
         }
       }
 
-      logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
+      logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${calculatedHopsAway} (hopStart=${hopStart}, hopLimit=${hopLimit})`);
       databaseService.upsertNode(nodeData);
       logger.debug(`👤 Updated user info: ${user.longName || nodeId}`);
 
