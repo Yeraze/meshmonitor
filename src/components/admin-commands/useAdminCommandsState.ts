@@ -22,6 +22,9 @@ export interface LoRaConfigState {
   sx126xRxBoostedGain: boolean;
   ignoreMqtt: boolean;
   configOkToMqtt: boolean;
+  txEnabled: boolean;
+  overrideDutyCycle: boolean;
+  paFanDisabled: boolean;
 }
 
 // Position Config State
@@ -144,6 +147,9 @@ const initialState: AdminCommandsState = {
     sx126xRxBoostedGain: false,
     ignoreMqtt: false,
     configOkToMqtt: false,
+    txEnabled: true,  // Default to true - never accidentally disable transmission
+    overrideDutyCycle: false,
+    paFanDisabled: false,
   },
   position: {
     positionBroadcastSecs: 900,
