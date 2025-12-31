@@ -1,1 +1,9 @@
-{}
+{
+    "nav.nodes": "Noder",
+    "nav.messages": "Meldinger",
+    "nav.channels": "Kanaler",
+    "nav.info": "Info",
+    "nav.dashboard": "Dashboard",
+    "nav.settings": "Innstillinger",
+    "nav.configuration": "Enhet"
+}
