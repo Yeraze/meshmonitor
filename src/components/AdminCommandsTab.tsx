@@ -384,7 +384,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           sx126xRxBoostedGain: config.sx126xRxBoostedGain,
           ignoreMqtt: config.ignoreMqtt,
           configOkToMqtt: config.configOkToMqtt,
-          txEnabled: config.txEnabled !== false,  // Default to true if undefined
+          txEnabled: config.txEnabled ?? true,  // Default to true if undefined
           overrideDutyCycle: config.overrideDutyCycle ?? false,
           paFanDisabled: config.paFanDisabled ?? false
         });
@@ -710,7 +710,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               sx126xRxBoostedGain: config.sx126xRxBoostedGain,
               ignoreMqtt: config.ignoreMqtt,
               configOkToMqtt: config.configOkToMqtt,
-              txEnabled: config.txEnabled !== false,  // Default to true if undefined
+              txEnabled: config.txEnabled ?? true,  // Default to true if undefined
               overrideDutyCycle: config.overrideDutyCycle ?? false,
               paFanDisabled: config.paFanDisabled ?? false
             });
