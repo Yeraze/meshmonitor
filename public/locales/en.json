@@ -2831,6 +2831,12 @@
   "admin_commands.ignore_mqtt_description": "If enabled, the device will not process any packets received via LoRa that passed via MQTT anywhere on the path",
   "admin_commands.config_ok_to_mqtt": "OK to MQTT",
   "admin_commands.config_ok_to_mqtt_description": "If enabled, sets the ok_to_mqtt bit on outgoing packets, allowing them to be forwarded via MQTT",
+  "admin_commands.tx_enabled": "Transmit Enabled",
+  "admin_commands.tx_enabled_description": "Enable LoRa transmission. If disabled, the device will only receive packets.",
+  "admin_commands.override_duty_cycle": "Override Duty Cycle",
+  "admin_commands.override_duty_cycle_description": "Override the duty cycle limitation. Use with caution - may violate local regulations.",
+  "admin_commands.pa_fan_disabled": "PA Fan Disabled",
+  "admin_commands.pa_fan_disabled_description": "Disable the power amplifier cooling fan (for devices with PA fans)",
   "admin_commands.save_lora_config": "Save LoRa Config",
 
   "admin_commands.position_configuration": "Position Configuration",
