@@ -2979,7 +2979,7 @@
     "gpio_summary.monitor_pin": "监测引脚",
     "gpio_summary.serial_rx": "串口 RX",
     "gpio_summary.serial_tx": "串口 TX",
-    "automation.auto_traceroute.status_failed": "",
+    "automation.auto_traceroute.status_failed": "失败",
     "automation.auto_traceroute.log_destination": "目标存储",
     "automation.auto_traceroute.status_success": "成功",
     "automation.auto_traceroute.log_timestamp": "时间戳",
@@ -2991,7 +2991,7 @@
     "automation.auto_announce.seconds": "秒",
     "header.polling": "",
     "header.updateMethod": "更新",
-    "messages.favorites_only": "",
+    "messages.favorites_only": "仅收藏",
     "messages.with_position": "按位置",
     "automation.auto_announce.nodeinfo_delay": "频道之间的延时",
     "automation.auto_traceroute.sort_by_hops_description": "启用后，跳数较少的节点将首先进行跟踪路由。这在密集网络中很有用，因为到远程节点的跟踪路由经常失败。禁用时，节点将随机选择。",
@@ -3064,5 +3064,13 @@
     "maintenance.toast_complete": "维护完成：删除{{count}}条记录，释放{{saved}}空间",
     "maintenance.toast_failed": "维护失败：{{error}}",
     "admin_commands.tx_enabled": "传输已启用",
-    "admin_commands.tx_enabled_description": "启用LoRa传输。如果禁用，设备将只接收数据包。"
+    "admin_commands.tx_enabled_description": "启用LoRa传输。如果禁用，设备将只接收数据包。",
+    "maintenance.last_run": "最后运行",
+    "maintenance.running": "运行中...",
+    "maintenance.not_scheduled": "尚未计划",
+    "maintenance.never_run": "从不",
+    "admin_commands.pa_fan_disabled": "禁用功放风扇",
+    "messages.traceroute_failed": "失败",
+    "maintenance.toast_settings_failed": "保存设置失败：{{error}}",
+    "admin_commands.override_duty_cycle": "忽略占空比限制"
 }
