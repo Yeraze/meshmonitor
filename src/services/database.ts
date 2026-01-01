@@ -2488,7 +2488,21 @@ class DatabaseService {
     nodeDeleted: boolean;
   } {
     // Delete all data associated with the node and then the node itself
-    const messagesDeleted = this.purgeDirectMessages(nodeNum);
+
+    // Delete DMs to/from this node
+    const dmsDeleted = this.purgeDirectMessages(nodeNum);
+
+    // Also delete broadcast/channel messages FROM this node
+    // (messages the deleted node sent to public channels)
+    const broadcastStmt = this.db.prepare(`
+      DELETE FROM messages
+      WHERE fromNodeNum = ?
+      AND toNodeId = '!ffffffff'
+    `);
+    const broadcastResult = broadcastStmt.run(nodeNum);
+    const broadcastDeleted = Number(broadcastResult.changes);
+
+    const messagesDeleted = dmsDeleted + broadcastDeleted;
     const traceroutesDeleted = this.purgeNodeTraceroutes(nodeNum);
     const telemetryDeleted = this.purgeNodeTelemetry(nodeNum);
 
