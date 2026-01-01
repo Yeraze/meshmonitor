@@ -270,6 +270,7 @@
   "messages.mark_read_conversation_title": "Mark all messages in this conversation as read",
   "messages.mark_read_button": "Mark all as Read",
   "messages.security_risk": "This node is a security risk",
+  "messages.key_mismatch": "Key mismatch detected - messages may fail",
   "messages.traceroute_badge": "TRACEROUTE",
   "messages.empty_message": "Empty Message",
   "messages.message_unavailable": "Message not available",

@@ -916,10 +916,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               const filteredCount = processedNodes.filter(node => {
                 // Security filter
                 if (securityFilter === 'flaggedOnly') {
-                  if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
+                  if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
                 }
                 if (securityFilter === 'hideFlagged') {
-                  if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                  if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
                 }
                 // Incomplete nodes filter
                 if (!showIncompleteNodes && !isNodeComplete(node)) {
@@ -1003,10 +1003,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             const filteredNodes = processedNodes.filter(node => {
               // Security filter
               if (securityFilter === 'flaggedOnly') {
-                if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
+                if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
               }
               if (securityFilter === 'hideFlagged') {
-                if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
               }
 
               // Channel filter
@@ -1066,7 +1066,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           💬
                         </button>
                       )}
-                      {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
+                      {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
                         <span
                           className="security-warning-icon"
                           title={node.keySecurityIssueDetails || 'Key security issue detected'}
@@ -1077,7 +1077,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             cursor: 'help'
                           }}
                         >
-                          ⚠️
+                          {node.keyMismatchDetected ? '🔓' : '⚠️'}
                         </span>
                       )}
                       <div className="node-short">

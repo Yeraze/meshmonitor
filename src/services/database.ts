@@ -86,6 +86,7 @@ export interface DbNode {
   lastPKIPacket?: number;
   keyIsLowEntropy?: boolean;
   duplicateKeyDetected?: boolean;
+  keyMismatchDetected?: boolean;
   keySecurityIssueDetails?: string;
   welcomedAt?: number;
   // Position precision tracking (Migration 020)
@@ -1737,6 +1738,17 @@ class DatabaseService {
 
     try {
       this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN keyMismatchDetected BOOLEAN DEFAULT 0;
+      `);
+      logger.debug('✅ Added keyMismatchDetected column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ keyMismatchDetected column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
         ALTER TABLE nodes ADD COLUMN keySecurityIssueDetails TEXT;
       `);
       logger.debug('✅ Added keySecurityIssueDetails column');
@@ -1969,6 +1981,7 @@ class DatabaseService {
           welcomedAt = COALESCE(?, welcomedAt),
           keyIsLowEntropy = COALESCE(?, keyIsLowEntropy),
           duplicateKeyDetected = COALESCE(?, duplicateKeyDetected),
+          keyMismatchDetected = COALESCE(?, keyMismatchDetected),
           keySecurityIssueDetails = COALESCE(?, keySecurityIssueDetails),
           updatedAt = ?
         WHERE nodeNum = ?
@@ -2003,6 +2016,7 @@ class DatabaseService {
         nodeData.welcomedAt !== undefined ? nodeData.welcomedAt : null,
         nodeData.keyIsLowEntropy !== undefined ? (nodeData.keyIsLowEntropy ? 1 : 0) : null,
         nodeData.duplicateKeyDetected !== undefined ? (nodeData.duplicateKeyDetected ? 1 : 0) : null,
+        nodeData.keyMismatchDetected !== undefined ? (nodeData.keyMismatchDetected ? 1 : 0) : null,
         nodeData.keySecurityIssueDetails || null,
         now,
         nodeData.nodeNum
@@ -2014,9 +2028,9 @@ class DatabaseService {
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion, channel,
           isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt,
-          keyIsLowEntropy, duplicateKeyDetected, keySecurityIssueDetails,
+          keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, keySecurityIssueDetails,
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -2049,6 +2063,7 @@ class DatabaseService {
         nodeData.welcomedAt || null,
         nodeData.keyIsLowEntropy ? 1 : 0,
         nodeData.duplicateKeyDetected ? 1 : 0,
+        nodeData.keyMismatchDetected ? 1 : 0,
         nodeData.keySecurityIssueDetails || null,
         now,
         now
