@@ -1,1 +1,21 @@
-{}
+{
+    "nav.nodes": "Noder",
+    "nav.messages": "Meldinger",
+    "nav.channels": "Kanaler",
+    "nav.info": "Info",
+    "nav.dashboard": "Dashboard",
+    "nav.settings": "Innstillinger",
+    "nav.configuration": "Enhet",
+    "nav.automation": "Automatisering",
+    "nav.notifications": "Varsler",
+    "nav.users": "Brukere",
+    "nav.security": "Sikkerhet",
+    "nav.configuration_section": "Konfigurasjon",
+    "nav.admin_section": "Admin",
+    "banners.default_password_warning": "Sikkerhetsvarsel: Adminkonto bruker standardpassord. Vennligst endre umiddelbart på Bruker-siden.",
+    "nav.section_main": "Hovedrolle",
+    "nav.section_configuration": "Konfigurasjon",
+    "nav.section_admin": "admin",
+    "nav.device": "Enhet",
+    "nav.audit_log": "Oppsynslogg"
+}
