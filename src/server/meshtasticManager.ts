@@ -3329,11 +3329,12 @@ class MeshtasticManager {
           databaseService.upsertNode({
             nodeNum: targetNodeNum,
             nodeId: targetNodeId,
+            keyMismatchDetected: true,
             keySecurityIssueDetails: errorDescription
           });
 
           // Emit event to notify UI of the key issue
-          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keySecurityIssueDetails: errorDescription });
+          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
         }
       }
 

@@ -1077,7 +1077,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             cursor: 'help'
                           }}
                         >
-                          {node.keySecurityIssueDetails?.includes('mismatch') ? '🔓' : '⚠️'}
+                          {node.keyMismatchDetected ? '🔓' : '⚠️'}
                         </span>
                       )}
                       <div className="node-short">

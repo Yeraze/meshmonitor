@@ -32,6 +32,7 @@ export interface DeviceInfo {
   isIgnored?: boolean;
   keyIsLowEntropy?: boolean;
   duplicateKeyDetected?: boolean;
+  keyMismatchDetected?: boolean;
   keySecurityIssueDetails?: string;
   channel?: number;
   // Position override fields (positionOverrideEnabled is 0 or 1 from database)

@@ -536,7 +536,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 cursor: 'help',
                               }}
                             >
-                              {node.keySecurityIssueDetails?.includes('mismatch') ? '🔓' : '⚠️'}
+                              {node.keyMismatchDetected ? '🔓' : '⚠️'}
                             </span>
                           )}
                           <div className="node-short">{node.user?.shortName || '-'}</div>
@@ -888,7 +888,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   textAlign: 'center',
                 }}
               >
-                {selectedNode.keySecurityIssueDetails?.includes('mismatch') ? '🔓' : '⚠️'} {selectedNode.keySecurityIssueDetails?.includes('mismatch') ? t('messages.key_mismatch') : t('messages.security_risk')}
+                {selectedNode.keyMismatchDetected ? '🔓' : '⚠️'} {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
               </div>
             )}
 
@@ -1338,7 +1338,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               </>
                             );
                           })()}
-                        {selectedNode.keySecurityIssueDetails?.includes('mismatch') && (
+                        {selectedNode.keyMismatchDetected && (
                           <div style={{ marginTop: selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected ? '8px' : 0 }}>
                             {selectedNode.keySecurityIssueDetails}
                           </div>
