@@ -3072,5 +3072,6 @@
     "admin_commands.pa_fan_disabled": "禁用功放风扇",
     "messages.traceroute_failed": "失败",
     "maintenance.toast_settings_failed": "保存设置失败：{{error}}",
-    "admin_commands.override_duty_cycle": "忽略占空比限制"
+    "admin_commands.override_duty_cycle": "忽略占空比限制",
+    "packet_monitor.column.dir": ""
 }
