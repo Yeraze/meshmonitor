@@ -278,6 +278,11 @@ class DatabaseService {
   public permissionModel: PermissionModel;
   public apiTokenModel: APITokenModel;
 
+  // Cache for telemetry types per node (expensive GROUP BY query)
+  private telemetryTypesCache: Map<string, string[]> | null = null;
+  private telemetryTypesCacheTime: number = 0;
+  private static readonly TELEMETRY_TYPES_CACHE_TTL_MS = 60000; // 60 seconds
+
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
     // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
@@ -2768,6 +2773,9 @@ class DatabaseService {
       telemetryData.createdAt,
       telemetryData.packetTimestamp || null
     );
+
+    // Invalidate the telemetry types cache since we may have added a new type
+    this.invalidateTelemetryTypesCache();
   }
 
   getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
@@ -3851,8 +3859,20 @@ class DatabaseService {
     return results.map(r => r.telemetryType);
   }
 
-  // Get all nodes with their telemetry types (efficient bulk query)
+  // Get all nodes with their telemetry types (cached for performance)
+  // This query can be slow with large telemetry tables, so results are cached
   getAllNodesTelemetryTypes(): Map<string, string[]> {
+    const now = Date.now();
+
+    // Return cached result if still valid
+    if (
+      this.telemetryTypesCache !== null &&
+      now - this.telemetryTypesCacheTime < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS
+    ) {
+      return this.telemetryTypesCache;
+    }
+
+    // Query the database and update cache
     const stmt = this.db.prepare(`
       SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
       FROM telemetry
@@ -3863,7 +3883,17 @@ class DatabaseService {
     results.forEach(r => {
       map.set(r.nodeId, r.types ? r.types.split(',') : []);
     });
+
+    this.telemetryTypesCache = map;
+    this.telemetryTypesCacheTime = now;
+
     return map;
+  }
+
+  // Invalidate the telemetry types cache (call when new telemetry is inserted)
+  invalidateTelemetryTypesCache(): void {
+    this.telemetryTypesCache = null;
+    this.telemetryTypesCacheTime = 0;
   }
 
   // Danger zone operations
