@@ -423,9 +423,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Filter for display
   const filteredNodes = sortedNodesWithMessages.filter(node => {
     if (securityFilter === 'flaggedOnly') {
-      if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
+      if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
     } else if (securityFilter === 'hideFlagged') {
-      if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+      if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
     }
     if (!showIncompleteNodes && !isNodeComplete(node)) {
       return false;
@@ -525,7 +525,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           <span className="node-name-text">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</span>
                         </div>
                         <div className="node-actions">
-                          {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
+                          {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
                             <span
                               className="security-warning-icon"
                               title={node.keySecurityIssueDetails || t('messages.key_security_issue')}
@@ -536,7 +536,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 cursor: 'help',
                               }}
                             >
-                              ⚠️
+                              {node.keySecurityIssueDetails?.includes('mismatch') ? '🔓' : '⚠️'}
                             </span>
                           )}
                           <div className="node-short">{node.user?.shortName || '-'}</div>
@@ -876,7 +876,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             </div>
 
             {/* Security Warning Bar */}
-            {selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected) && (
+            {selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected || selectedNode.keySecurityIssueDetails) && (
               <div
                 style={{
                   backgroundColor: '#f44336',
@@ -888,7 +888,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   textAlign: 'center',
                 }}
               >
-                ⚠️ {t('messages.security_risk')}
+                {selectedNode.keySecurityIssueDetails?.includes('mismatch') ? '🔓' : '⚠️'} {selectedNode.keySecurityIssueDetails?.includes('mismatch') ? t('messages.key_mismatch') : t('messages.security_risk')}
               </div>
             )}
 
@@ -1287,8 +1287,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
             {/* Security Details Section */}
             {selectedNode &&
-              (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected) &&
-              selectedNode.keySecurityIssueDetails && (
+              (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected || selectedNode.keySecurityIssueDetails) && (
                 <div className="node-details-block" style={{ marginTop: '1rem' }}>
                   <h3 className="node-details-title" style={{ color: '#f44336' }}>
                     ⚠️ {t('messages.security_issue_title')}
@@ -1339,6 +1338,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               </>
                             );
                           })()}
+                        {selectedNode.keySecurityIssueDetails?.includes('mismatch') && (
+                          <div style={{ marginTop: selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected ? '8px' : 0 }}>
+                            {selectedNode.keySecurityIssueDetails}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

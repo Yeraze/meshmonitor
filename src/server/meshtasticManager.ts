@@ -3247,8 +3247,13 @@ class MeshtasticManager {
         7: 'TOO_LARGE',
         8: 'NO_RESPONSE',
         9: 'DUTY_CYCLE_LIMIT',
-        10: 'BAD_REQUEST',
-        11: 'NOT_AUTHORIZED'
+        32: 'BAD_REQUEST',
+        33: 'NOT_AUTHORIZED',
+        34: 'PKI_FAILED',
+        35: 'PKI_UNKNOWN_PUBKEY',
+        36: 'ADMIN_BAD_SESSION_KEY',
+        37: 'ADMIN_PUBLIC_KEY_UNAUTHORIZED',
+        38: 'RATE_LIMIT_EXCEEDED'
       };
 
       const errorName = errorReasonNames[errorReason] || `UNKNOWN(${errorReason})`;
@@ -3306,6 +3311,31 @@ class MeshtasticManager {
         requestId: requestId,
         route: routing.route || []
       });
+
+      // Detect PKI/encryption errors and flag the target node
+      if (errorReason === 34 || errorReason === 35) {
+        // PKI_FAILED (34) or PKI_UNKNOWN_PUBKEY (35) - indicates key mismatch
+        const originalMessage = requestId ? databaseService.getMessageByRequestId(requestId) : null;
+        if (originalMessage && originalMessage.toNodeNum) {
+          const targetNodeNum = originalMessage.toNodeNum;
+          const targetNodeId = originalMessage.toNodeId;
+          const errorDescription = errorReason === 34
+            ? 'PKI encryption failed - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
+            : 'Remote node missing public key - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+          logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
+
+          // Flag the node with the key security issue
+          databaseService.upsertNode({
+            nodeNum: targetNodeNum,
+            nodeId: targetNodeId,
+            keySecurityIssueDetails: errorDescription
+          });
+
+          // Emit event to notify UI of the key issue
+          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keySecurityIssueDetails: errorDescription });
+        }
+      }
 
       // Update message in database to mark delivery as failed
       if (requestId) {
