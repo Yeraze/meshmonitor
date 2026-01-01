@@ -100,6 +100,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
   }, [queryClient]);
 
   // Helper to add a new message to the cache
+  // Messages are ordered newest-first, so new messages go at the beginning
   const addMessageToCache = useCallback((message: RawMessage) => {
     queryClient.setQueryData<PollData>(POLL_QUERY_KEY, (old) => {
       if (!old) return old;
@@ -112,9 +113,10 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
         return old;
       }
 
+      // Add new message at the beginning (messages are sorted newest-first)
       return {
         ...old,
-        messages: [...existingMessages, message],
+        messages: [message, ...existingMessages],
       };
     });
   }, [queryClient]);
@@ -219,10 +221,10 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       updateNodeInCache(data.nodeNum, data.node);
     });
 
-    socket.on('message:new', (_data: RawMessage) => {
-      // Invalidate cache to trigger refetch - ensures full processPollData flow runs
-      // including timestamp conversion, notification sounds, and unread counts
-      queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY });
+    socket.on('message:new', (data: RawMessage) => {
+      // Add message directly to cache - processPollData will run when cache updates
+      // and handle timestamp conversion, notification sounds via the useEffect
+      addMessageToCache(data);
     });
 
     socket.on('channel:updated', (data: Channel) => {
