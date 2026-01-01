@@ -447,7 +447,21 @@ class DatabaseService {
     this.runAutoTracerouteLogMigration();
     this.runRelayNodePacketLogMigration();
     this.ensureAutomationDefaults();
+    this.warmupCaches();
     this.isInitialized = true;
+  }
+
+  // Warm up caches on startup to avoid cold cache latency on first request
+  private warmupCaches(): void {
+    try {
+      logger.debug('🔥 Warming up database caches...');
+      // Pre-populate the telemetry types cache
+      this.getAllNodesTelemetryTypes();
+      logger.debug('✅ Cache warmup complete');
+    } catch (error) {
+      // Cache warmup failure is non-critical - cache will populate on first request
+      logger.warn('⚠️ Cache warmup failed (non-critical):', error);
+    }
   }
 
   private ensureAutomationDefaults(): void {
