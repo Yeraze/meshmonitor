@@ -7,14 +7,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { shouldExcludeFromPacketLog } from './meshtasticManager.js';
+import { PortNum } from './constants/meshtastic.js';
 
-// Port numbers
-const ROUTING_APP = 5;
-const ADMIN_APP = 6;
-const TEXT_MESSAGE_APP = 1;
-const POSITION_APP = 3;
-const NODEINFO_APP = 4;
-const TELEMETRY_APP = 67;
+// Use constants from the shared meshtastic constants file
+const { ROUTING_APP, ADMIN_APP, TEXT_MESSAGE_APP, POSITION_APP, NODEINFO_APP, TELEMETRY_APP } = PortNum;
 
 // Test node numbers
 const LOCAL_NODE = 123456789;
