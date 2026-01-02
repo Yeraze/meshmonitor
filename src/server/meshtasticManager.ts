@@ -2025,6 +2025,18 @@ class MeshtasticManager {
         const portnum = meshPacket.decoded?.portnum ?? 0;
         const portnumName = meshtasticProtobufService.getPortNumName(portnum);
 
+        // Skip logging for local internal packets (ADMIN_APP and ROUTING_APP)
+        // These are management packets between MeshMonitor and the local node, not actual mesh traffic
+        const localNodeNum = this.localNodeInfo?.nodeNum;
+        const isLocalPacket = localNodeNum && (fromNum === localNodeNum || toNum === localNodeNum);
+        const isInternalPortnum = portnum === 5 || portnum === 6; // ROUTING_APP (5) or ADMIN_APP (6)
+
+        if (isLocalPacket && isInternalPortnum) {
+          // Skip logging - these are internal management packets
+          // ROUTING_APP: ACK/NACK responses
+          // ADMIN_APP: Configuration requests/responses to local node
+        } else {
+
         // Generate payload preview and store decoded payload
         let payloadPreview = null;
         let decodedPayload: any = null;
@@ -2145,6 +2157,7 @@ class MeshtasticManager {
           metadata: JSON.stringify(metadata),
           direction: 'rx'
         });
+        } // end else (not internal packet)
       }
     } catch (error) {
       logger.error('❌ Failed to log packet:', error);
