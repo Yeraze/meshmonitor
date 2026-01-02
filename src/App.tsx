@@ -61,6 +61,7 @@ import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { usePoll, type PollData } from './hooks/usePoll';
 import { useTraceroutePaths } from './hooks/useTraceroutePaths';
+import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
 
@@ -185,6 +186,7 @@ function App() {
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
+
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
@@ -1630,6 +1632,23 @@ function App() {
       markMessagesAsRead(undefined, undefined, selectedDMNode);
     }
   }, [selectedDMNode, activeTab, markMessagesAsRead]);
+
+  // Handle push notification navigation (click on notification -> navigate to channel/DM and scroll to message)
+  useNotificationNavigationHandler(
+    {
+      setActiveTab,
+      setSelectedChannel,
+      setSelectedDMNode,
+      selectedChannelRef,
+    },
+    {
+      connectionStatus,
+      channels,
+      activeTab,
+      selectedChannel,
+      selectedDMNode,
+    }
+  );
 
   // Update favicon when unread counts change
   useEffect(() => {

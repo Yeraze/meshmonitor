@@ -5768,10 +5768,24 @@ class MeshtasticManager {
         body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
       }
 
+      // Build navigation data for push notification click handling
+      const navigationData = isDirectMessage
+        ? {
+            type: 'dm' as const,
+            messageId: message.id,
+            senderNodeId: fromNode?.nodeId || message.fromNodeId,
+          }
+        : {
+            type: 'channel' as const,
+            channelId: message.channel,
+            messageId: message.id,
+          };
+
       // Send notifications (Web Push + Apprise) with filtering to all subscribed users
       const result = await notificationService.broadcast({
         title,
-        body
+        body,
+        data: navigationData
       }, {
         messageText,
         channelId: message.channel,
