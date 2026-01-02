@@ -20,15 +20,12 @@ registerRoute(
   ({ request }) => request.mode === 'navigate',
   new NetworkFirst({
     cacheName: 'html-cache',
-    networkTimeoutSeconds: 3
+    networkTimeoutSeconds: 3,
   })
 );
 
 // Handle API routes (never cache)
-registerRoute(
-  ({ url }) => url.pathname.startsWith('/api/'),
-  new NetworkOnly()
-);
+registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly());
 
 // Handle map tiles from all supported providers (cache first)
 registerRoute(
@@ -42,12 +39,12 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 500,
-        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+        maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
       }),
       new CacheableResponsePlugin({
-        statuses: [0, 200]
-      })
-    ]
+        statuses: [0, 200],
+      }),
+    ],
   })
 );
 
@@ -55,8 +52,16 @@ registerRoute(
 // PUSH NOTIFICATION HANDLERS
 // ==========================================
 
+// Navigation data interface for notification clicks
+interface NotificationNavigationData {
+  type: 'channel' | 'dm';
+  channelId?: number;
+  messageId?: string;
+  senderNodeId?: string;
+}
+
 // Handle push events (background notifications)
-self.addEventListener('push', (event) => {
+self.addEventListener('push', event => {
   console.log('[Service Worker] Push received:', event);
 
   let notificationData = {
@@ -64,7 +69,8 @@ self.addEventListener('push', (event) => {
     body: 'You have a new notification',
     icon: '/logo.png',
     badge: '/logo.png',
-    tag: undefined as string | undefined  // Will be set uniquely per notification
+    tag: undefined as string | undefined, // Will be set uniquely per notification
+    data: undefined as NotificationNavigationData | undefined, // Navigation data for click handling
   };
 
   // Parse notification data from push payload
@@ -76,7 +82,8 @@ self.addEventListener('push', (event) => {
         body: data.body || notificationData.body,
         icon: data.icon || notificationData.icon,
         badge: data.badge || notificationData.badge,
-        tag: data.tag  // Use tag from payload, or undefined for unique notifications
+        tag: data.tag, // Use tag from payload, or undefined for unique notifications
+        data: data.data, // Navigation data (channelId, messageId, senderNodeId)
       };
     } catch (error) {
       console.error('[Service Worker] Failed to parse push data:', error);
@@ -95,43 +102,71 @@ self.addEventListener('push', (event) => {
       icon: notificationData.icon,
       badge: notificationData.badge,
       tag: finalTag,
-      requireInteraction: false  // Allow notifications to auto-dismiss
+      data: notificationData.data, // Attach navigation data to notification
+      requireInteraction: false, // Allow notifications to auto-dismiss
     } as NotificationOptions)
   );
 });
 
 // Handle notification clicks
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener('notificationclick', event => {
   console.log('[Service Worker] Notification clicked:', event);
+
+  // Get navigation data from the notification
+  const navigationData = event.notification.data as NotificationNavigationData | undefined;
+
+  if (navigationData) {
+    console.log(
+      '[Service Worker] Navigating to:',
+      navigationData.type,
+      navigationData.channelId ?? navigationData.senderNodeId
+    );
+  }
 
   event.notification.close();
 
-  // Open or focus the MeshMonitor app
+  // Open or focus the MeshMonitor app and send navigation data
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Check if app is already open
-        for (const client of clientList) {
-          if (client.url.includes(self.registration.scope) && 'focus' in client) {
-            return client.focus();
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async clientList => {
+      // Check if app is already open
+      for (const client of clientList) {
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
+          // Focus the window
+          await client.focus();
+          // Send navigation data to the app if available
+          if (navigationData) {
+            client.postMessage({
+              type: 'NOTIFICATION_CLICK',
+              payload: navigationData,
+            });
           }
+          return;
         }
+      }
 
-        // If app is not open, open it
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(self.registration.scope);
+      // If app is not open, open it with navigation data in URL hash
+      if (self.clients.openWindow) {
+        let url = self.registration.scope;
+        if (navigationData) {
+          // Encode navigation data in URL hash for the app to read on load
+          const params = new URLSearchParams();
+          params.set('notificationNav', JSON.stringify(navigationData));
+          url = `${self.registration.scope}#${params.toString()}`;
         }
-      })
+        return self.clients.openWindow(url);
+      }
+    })
   );
 });
 
 // Handle push subscription changes (e.g., subscription expired)
-self.addEventListener('pushsubscriptionchange', (event) => {
+self.addEventListener('pushsubscriptionchange', event => {
   console.log('[Service Worker] Push subscription changed:', event);
 
   event.waitUntil(
-    self.registration.pushManager.subscribe(event.oldSubscription?.options || { userVisibleOnly: true })
-      .then((subscription) => {
+    self.registration.pushManager
+      .subscribe(event.oldSubscription?.options || { userVisibleOnly: true })
+      .then(subscription => {
         console.log('[Service Worker] Re-subscribed:', subscription);
 
         const p256dh = subscription.getKey('p256dh');
@@ -145,20 +180,20 @@ self.addEventListener('pushsubscriptionchange', (event) => {
         return fetch('/api/push/subscribe', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             subscription: {
               endpoint: subscription.endpoint,
               keys: {
                 p256dh: arrayBufferToBase64(p256dh),
-                auth: arrayBufferToBase64(auth)
-              }
-            }
-          })
+                auth: arrayBufferToBase64(auth),
+              },
+            },
+          }),
         });
       })
-      .catch((error) => {
+      .catch(error => {
         console.error('[Service Worker] Re-subscription failed:', error);
       })
   );
@@ -177,13 +212,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 console.log('[Service Worker] MeshMonitor service worker with push notifications loaded');
 
 // Skip waiting on install to activate new service worker immediately
-self.addEventListener('install', (event) => {
+self.addEventListener('install', event => {
   console.log('[Service Worker] Installing new service worker');
   event.waitUntil(self.skipWaiting());
 });
 
 // Claim all clients when activated
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate', event => {
   console.log('[Service Worker] Activating new service worker');
   event.waitUntil(
     self.clients.claim().then(() => {

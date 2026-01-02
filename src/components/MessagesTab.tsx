@@ -959,7 +959,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           </span>
                         </div>
                       )}
-                      <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                      <div 
+                        className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}
+                        data-message-id={msg.id}
+                      >
                         {!isMine && (
                           <div
                             className={`sender-dot clickable ${isEmoji(getNodeShortName(msg.from)) ? 'is-emoji' : ''}`}

@@ -6,6 +6,13 @@ export interface NotificationPayload {
   title: string;
   body: string;
   type?: 'info' | 'success' | 'warning' | 'failure' | 'error';
+  /** Navigation data for push notifications - allows opening specific channel/DM when clicked */
+  data?: {
+    type: 'channel' | 'dm';
+    channelId?: number;
+    messageId?: string;
+    senderNodeId?: string;
+  };
 }
 
 export interface NotificationFilterContext {

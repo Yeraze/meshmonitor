@@ -6008,3 +6008,22 @@ body {
     display: block !important;
   }
 }
+/* Push notification navigation - highlight effect for scrolled-to messages */
+.message-highlight .message-bubble,
+.message-bubble-container.message-highlight .message-content {
+  animation: message-highlight-pulse 2s ease-out;
+}
+
+@keyframes message-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(137, 180, 250, 0.7);
+    background-color: rgba(137, 180, 250, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px 10px rgba(137, 180, 250, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(137, 180, 250, 0);
+    background-color: transparent;
+  }
+}
