@@ -15,6 +15,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName } from './constants/meshtastic.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -104,8 +105,8 @@ export function shouldExcludeFromPacketLog(
   // Check if packet is to/from the local node
   const isLocalPacket = fromNum === localNodeNum || toNum === localNodeNum;
 
-  // Check if it's an internal portnum (ROUTING_APP = 5, ADMIN_APP = 6)
-  const isInternalPortnum = portnum === 5 || portnum === 6;
+  // Check if it's an internal portnum (ROUTING_APP or ADMIN_APP)
+  const isInternalPortnum = portnum === PortNum.ROUTING_APP || portnum === PortNum.ADMIN_APP;
 
   return isLocalPacket && isInternalPortnum;
 }
@@ -3440,27 +3441,7 @@ class MeshtasticManager {
       // Use decoded.requestId which contains the ID of the original message that was ACK'd/failed
       const requestId = meshPacket.decoded?.requestId;
 
-      const errorReasonNames: Record<number, string> = {
-        0: 'NONE',
-        1: 'NO_ROUTE',
-        2: 'GOT_NAK',
-        3: 'TIMEOUT',
-        4: 'NO_INTERFACE',
-        5: 'MAX_RETRANSMIT',
-        6: 'NO_CHANNEL',
-        7: 'TOO_LARGE',
-        8: 'NO_RESPONSE',
-        9: 'DUTY_CYCLE_LIMIT',
-        32: 'BAD_REQUEST',
-        33: 'NOT_AUTHORIZED',
-        34: 'PKI_FAILED',
-        35: 'PKI_UNKNOWN_PUBKEY',
-        36: 'ADMIN_BAD_SESSION_KEY',
-        37: 'ADMIN_PUBLIC_KEY_UNAUTHORIZED',
-        38: 'RATE_LIMIT_EXCEEDED'
-      };
-
-      const errorName = errorReasonNames[errorReason] || `UNKNOWN(${errorReason})`;
+      const errorName = getRoutingErrorName(errorReason);
 
       // Handle successful ACKs (error_reason = 0 means success)
       if (errorReason === 0 && requestId) {
@@ -3517,13 +3498,13 @@ class MeshtasticManager {
       });
 
       // Detect PKI/encryption errors and flag the target node
-      if (errorReason === 34 || errorReason === 35) {
-        // PKI_FAILED (34) or PKI_UNKNOWN_PUBKEY (35) - indicates key mismatch
+      if (isPkiError(errorReason)) {
+        // PKI_FAILED or PKI_UNKNOWN_PUBKEY - indicates key mismatch
         const originalMessage = requestId ? databaseService.getMessageByRequestId(requestId) : null;
         if (originalMessage && originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
           const targetNodeId = originalMessage.toNodeId;
-          const errorDescription = errorReason === 34
+          const errorDescription = errorReason === RoutingError.PKI_FAILED
             ? 'PKI encryption failed - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
             : 'Remote node missing public key - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
 
