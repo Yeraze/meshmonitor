@@ -28,8 +28,9 @@ The Packet Monitor displays **only incoming packets** received from the mesh net
 
 ### Packets That Do NOT Appear
 
-The following packets sent **by MeshMonitor** are not logged to the Packet Monitor:
+The following packets are not logged to the Packet Monitor:
 
+**Outgoing packets sent by MeshMonitor:**
 - **Outgoing text messages** - Messages you send via the chat interface
 - **Outgoing traceroute requests** - Traceroutes initiated manually or by Auto Traceroute
 - **Outgoing position requests** - Position exchange requests
@@ -37,7 +38,13 @@ The following packets sent **by MeshMonitor** are not logged to the Packet Monit
 - **Auto-welcome messages** - Welcome messages sent to new nodes
 - **Auto-announcements** - Scheduled announcement messages
 
-This is by design - the Packet Monitor shows what is received from the mesh, not what MeshMonitor transmits.
+**Internal management packets (to/from local node):**
+- **ADMIN_APP (6)** - Administrative packets for local device configuration
+- **ROUTING_APP (5)** - Routing acknowledgments to/from your connected node
+
+These internal packets are filtered to reduce noise and keep the log focused on actual mesh traffic. ADMIN and ROUTING packets between remote nodes on the mesh are still logged.
+
+This is by design - the Packet Monitor shows mesh network traffic, not MeshMonitor's internal operations or local device management.
 
 ## Filtering Packets
 
