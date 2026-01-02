@@ -6,6 +6,7 @@
  */
 import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPacket } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
+import { PortNum } from './constants/meshtastic.js';
 
 export class MeshtasticProtobufService {
   private static instance: MeshtasticProtobufService;
@@ -83,7 +84,7 @@ export class MeshtasticProtobufService {
       // Create the Data message with TRACEROUTE_APP portnum
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
-        portnum: 70, // TRACEROUTE_APP
+        portnum: PortNum.TRACEROUTE_APP,
         payload: payload,
         dest: destination,
         wantResponse: true
@@ -156,7 +157,7 @@ export class MeshtasticProtobufService {
       // Create the Data message with POSITION_APP portnum
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
-        portnum: 3, // POSITION_APP
+        portnum: PortNum.POSITION_APP,
         payload: payload,
         dest: destination,
         wantResponse: true, // Request position exchange from destination
@@ -238,7 +239,7 @@ export class MeshtasticProtobufService {
       // Create the Data message with NODEINFO_APP portnum
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
-        portnum: 4, // NODEINFO_APP
+        portnum: PortNum.NODEINFO_APP,
         payload: payload,
         dest: destination,
         wantResponse: true, // Request nodeinfo exchange from destination
@@ -298,7 +299,7 @@ export class MeshtasticProtobufService {
       // Create Data message with TELEMETRY_APP portnum
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
-        portnum: 67, // TELEMETRY_APP
+        portnum: PortNum.TELEMETRY_APP,
         payload: payload,
         dest: destination,
         wantResponse: true, // Request telemetry from destination
@@ -343,7 +344,7 @@ export class MeshtasticProtobufService {
       // Create the Data message with text payload
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
-        portnum: 1, // TEXT_MESSAGE_APP
+        portnum: PortNum.TEXT_MESSAGE_APP,
         payload: new TextEncoder().encode(text),
         replyId: replyId,
         emoji: emoji
@@ -649,40 +650,40 @@ export class MeshtasticProtobufService {
 
     try {
       switch (portnum) {
-        case 1: // TEXT_MESSAGE_APP
+        case PortNum.TEXT_MESSAGE_APP:
           return new TextDecoder('utf-8').decode(payload);
 
-        case 3: // POSITION_APP
+        case PortNum.POSITION_APP:
           const Position = root.lookupType('meshtastic.Position');
           const position = Position.decode(payload);
           return position;
 
-        case 4: // NODEINFO_APP
+        case PortNum.NODEINFO_APP:
           const User = root.lookupType('meshtastic.User');
           const user = User.decode(payload);
           return user;
 
-        case 5: // ROUTING_APP
+        case PortNum.ROUTING_APP:
           const Routing = root.lookupType('meshtastic.Routing');
           const routing = Routing.decode(payload);
           return routing;
 
-        case 34: // PAXCOUNTER_APP
+        case PortNum.PAXCOUNTER_APP:
           const Paxcount = root.lookupType('meshtastic.Paxcount');
           const paxcount = Paxcount.decode(payload);
           return paxcount;
 
-        case 67: // TELEMETRY_APP
+        case PortNum.TELEMETRY_APP:
           const Telemetry = root.lookupType('meshtastic.Telemetry');
           const telemetry = Telemetry.decode(payload);
           return telemetry;
 
-        case 70: // TRACEROUTE_APP
+        case PortNum.TRACEROUTE_APP:
           const RouteDiscovery = root.lookupType('meshtastic.RouteDiscovery');
           const routeDiscovery = RouteDiscovery.decode(payload);
           return routeDiscovery;
 
-        case 71: // NEIGHBORINFO_APP
+        case PortNum.NEIGHBORINFO_APP:
           const NeighborInfo = root.lookupType('meshtastic.NeighborInfo');
           const neighborInfo = NeighborInfo.decode(payload);
           return neighborInfo;

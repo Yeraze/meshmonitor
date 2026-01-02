@@ -39,6 +39,7 @@ import { getUserNotificationPreferences, saveUserNotificationPreferences, applyN
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
+import { PortNum } from './constants/meshtastic.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -2482,7 +2483,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
         toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
         text: 'Position exchange requested',
         channel: messageChannel,
-        portnum: 1, // TEXT_MESSAGE_APP so it shows in DM view (DM filter requires portnum === 1)
+        portnum: PortNum.TEXT_MESSAGE_APP, // Shows in DM view (DM filter requires TEXT_MESSAGE_APP)
         requestId: requestId, // Store requestId for ACK matching
         timestamp: timestamp,
         rxTime: timestamp,
@@ -2546,7 +2547,7 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
         toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
         text: 'User info exchange requested',
         channel: messageChannel,
-        portnum: 1, // TEXT_MESSAGE_APP so it shows in DM view (DM filter requires portnum === 1)
+        portnum: PortNum.TEXT_MESSAGE_APP, // Shows in DM view (DM filter requires TEXT_MESSAGE_APP)
         requestId: requestId, // Store requestId for ACK matching
         timestamp: timestamp,
         rxTime: timestamp,

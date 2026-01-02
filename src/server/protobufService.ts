@@ -2,6 +2,7 @@ import protobuf from 'protobufjs';
 import path from 'path';
 import { getProtobufRoot } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
+import { PortNum } from './constants/meshtastic.js';
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -464,21 +465,21 @@ class ProtobufService {
           logger.debug(`📦 Attempting to decode payload for port ${unencrypted.portnum} (${this.getPortNumName(unencrypted.portnum)})`);
 
           switch (unencrypted.portnum) {
-            case 3: // POSITION_APP
+            case PortNum.POSITION_APP:
               const position = this.decodePosition(unencrypted.payload);
               if (position) {
                 logger.debug('📦 Successfully decoded position from MeshPacket payload');
                 unencrypted.decodedPayload = position;
               }
               break;
-            case 4: // NODEINFO_APP
+            case PortNum.NODEINFO_APP:
               const nodeInfo = this.decodeNodeInfo(unencrypted.payload);
               if (nodeInfo) {
                 logger.debug('📦 Successfully decoded NodeInfo from MeshPacket payload');
                 unencrypted.decodedPayload = nodeInfo;
               }
               break;
-            case 67: // TELEMETRY_APP
+            case PortNum.TELEMETRY_APP:
               const telemetry = this.decodeTelemetry(unencrypted.payload);
               if (telemetry) {
                 logger.debug('📦 Successfully decoded telemetry from MeshPacket payload');
@@ -1849,7 +1850,7 @@ class ProtobufService {
 
       // Create Data message with admin payload
       const dataMsg = Data.create({
-        portnum: 6, // ADMIN_APP
+        portnum: PortNum.ADMIN_APP,
         payload: adminMessagePayload,
         wantResponse: true  // Request response for admin config changes
       });
