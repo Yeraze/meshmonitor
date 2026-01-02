@@ -91,6 +91,14 @@ interface UIContextType {
   setAutoResponderTriggers: React.Dispatch<React.SetStateAction<AutoResponderTrigger[]>>;
   autoResponderSkipIncompleteNodes: boolean;
   setAutoResponderSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  autoKeyManagementEnabled: boolean;
+  setAutoKeyManagementEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoKeyManagementIntervalMinutes: number;
+  setAutoKeyManagementIntervalMinutes: React.Dispatch<React.SetStateAction<number>>;
+  autoKeyManagementMaxExchanges: number;
+  setAutoKeyManagementMaxExchanges: React.Dispatch<React.SetStateAction<number>>;
+  autoKeyManagementAutoPurge: boolean;
+  setAutoKeyManagementAutoPurge: React.Dispatch<React.SetStateAction<boolean>>;
   timerTriggers: TimerTrigger[];
   setTimerTriggers: React.Dispatch<React.SetStateAction<TimerTrigger[]>>;
   showNodeFilterPopup: boolean;
@@ -181,6 +189,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoResponderEnabled, setAutoResponderEnabled] = useState<boolean>(false);
   const [autoResponderTriggers, setAutoResponderTriggers] = useState<AutoResponderTrigger[]>([]);
   const [autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes] = useState<boolean>(false);
+  const [autoKeyManagementEnabled, setAutoKeyManagementEnabled] = useState<boolean>(false);
+  const [autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes] = useState<number>(5);
+  const [autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges] = useState<number>(3);
+  const [autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge] = useState<boolean>(false);
   const [timerTriggers, setTimerTriggers] = useState<TimerTrigger[]>([]);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
@@ -306,6 +318,14 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoResponderTriggers,
         autoResponderSkipIncompleteNodes,
         setAutoResponderSkipIncompleteNodes,
+        autoKeyManagementEnabled,
+        setAutoKeyManagementEnabled,
+        autoKeyManagementIntervalMinutes,
+        setAutoKeyManagementIntervalMinutes,
+        autoKeyManagementMaxExchanges,
+        setAutoKeyManagementMaxExchanges,
+        autoKeyManagementAutoPurge,
+        setAutoKeyManagementAutoPurge,
         timerTriggers,
         setTimerTriggers,
         showNodeFilterPopup,
