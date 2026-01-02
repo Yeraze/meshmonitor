@@ -48,6 +48,33 @@ Frontend → Backend API → Command Queue → Serial/TCP → Node
 
 **Location**: `src/services/telemetry.ts` - NodeInfo handling (PR #427)
 
+### Protocol Constants
+
+**Lesson**: Magic numbers for protocol values lead to scattered, hard-to-maintain code.
+
+**Solution**: Use shared constants from `src/server/constants/meshtastic.ts`:
+
+```typescript
+import { PortNum, RoutingError, isPkiError, getPortNumName } from './constants/meshtastic.js';
+
+// Use constants instead of magic numbers
+if (portnum === PortNum.TEXT_MESSAGE_APP) { ... }
+if (isPkiError(errorReason)) { ... }
+
+// Get human-readable names for logging
+logger.info(`Received ${getPortNumName(portnum)} packet`);
+```
+
+**Available Constants**:
+- `PortNum` - All Meshtastic application port numbers
+- `RoutingError` - Routing error codes
+- `getPortNumName(portnum)` - Convert port number to name
+- `getRoutingErrorName(code)` - Convert error code to name
+- `isPkiError(code)` - Check if error is PKI-related
+- `isInternalPortNum(portnum)` - Check if port is internal (ADMIN/ROUTING)
+
+**Location**: `src/server/constants/meshtastic.ts`
+
 ### Config Management Complexity
 
 **Pattern**: The wantConfigId/ConfigComplete handshake requires careful state machine management.
@@ -494,5 +521,5 @@ class BackgroundTask {
 
 ---
 
-**Last Updated**: 2025-01-15
-**Related PRs**: #427, #429, #430, #431, #432, #433
+**Last Updated**: 2026-01-02
+**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants)
