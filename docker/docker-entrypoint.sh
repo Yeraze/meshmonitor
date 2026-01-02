@@ -1,14 +1,55 @@
 #!/bin/sh
 set -e
 
+# PUID/PGID Support
+# If PUID and/or PGID environment variables are set, modify the node user/group
+# to match those IDs. This is useful for NAS systems like Synology where the
+# host directory ownership may differ from the default container user.
+
+PUID=${PUID:-1000}
+PGID=${PGID:-1000}
+
+# Get current node user/group IDs
+CURRENT_UID=$(id -u node)
+CURRENT_GID=$(id -g node)
+
+# Only modify if IDs differ from current
+if [ "$PGID" != "$CURRENT_GID" ]; then
+    echo "Setting node group GID to $PGID..."
+    # Delete existing group with target GID if it exists (and isn't node's group)
+    EXISTING_GROUP=$(getent group "$PGID" 2>/dev/null | cut -d: -f1 || true)
+    if [ -n "$EXISTING_GROUP" ] && [ "$EXISTING_GROUP" != "node" ]; then
+        delgroup "$EXISTING_GROUP" 2>/dev/null || true
+    fi
+    # Modify node group GID
+    sed -i "s/^node:x:$CURRENT_GID:/node:x:$PGID:/" /etc/group
+fi
+
+if [ "$PUID" != "$CURRENT_UID" ]; then
+    echo "Setting node user UID to $PUID..."
+    # Delete existing user with target UID if it exists (and isn't node)
+    EXISTING_USER=$(getent passwd "$PUID" 2>/dev/null | cut -d: -f1 || true)
+    if [ -n "$EXISTING_USER" ] && [ "$EXISTING_USER" != "node" ]; then
+        deluser "$EXISTING_USER" 2>/dev/null || true
+    fi
+    # Modify node user UID and GID
+    sed -i "s/^node:x:$CURRENT_UID:$CURRENT_GID:/node:x:$PUID:$PGID:/" /etc/passwd
+fi
+
 # Copy upgrade-related scripts to shared data volume
 SCRIPTS_SOURCE_DIR="/app/scripts"
 SCRIPTS_DEST_DIR="/data/scripts"
 AUDIT_LOG="/data/logs/audit.log"
 
+# Create directories first (as root), then chown after
+mkdir -p /data/scripts /data/logs /data/apprise-config
+
+# Fix ownership of data directory and app dist
+echo "Setting ownership of /data and /app/dist to node ($PUID:$PGID)..."
+chown -R node:node /data /app/dist
+
 if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
     echo "Deploying scripts to /data/scripts/..."
-    mkdir -p "$SCRIPTS_DEST_DIR" /data/logs
 
     # Copy upgrade watchdog script
     if [ -f "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" ]; then
