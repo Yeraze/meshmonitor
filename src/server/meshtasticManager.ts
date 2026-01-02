@@ -6413,7 +6413,7 @@ class MeshtasticManager {
                 messageQueueService.enqueue(
                   truncated,
                   triggerChannel === 'dm' ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
-                  (trigger.verifyResponse && isFirstMessage) ? packetId : undefined,
+                  isFirstMessage ? packetId : undefined, // Reply to original message for first response
                   () => {
                     logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to ${target}`);
                   },
@@ -6480,7 +6480,7 @@ class MeshtasticManager {
             messageQueueService.enqueue(
               msg,
               triggerChannel === 'dm' ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
-              (trigger.verifyResponse && isFirstMessage) ? packetId : undefined, // Only reply to original for first message if verifyResponse is enabled
+              isFirstMessage ? packetId : undefined, // Reply to original message for first response
               () => {
                 logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to ${target}`);
               },
