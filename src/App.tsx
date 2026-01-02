@@ -24,6 +24,7 @@ import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
 import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
+import AutoKeyManagementSection from './components/AutoKeyManagementSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
@@ -464,6 +465,14 @@ function App() {
     setAutoResponderTriggers,
     autoResponderSkipIncompleteNodes,
     setAutoResponderSkipIncompleteNodes,
+    autoKeyManagementEnabled,
+    setAutoKeyManagementEnabled,
+    autoKeyManagementIntervalMinutes,
+    setAutoKeyManagementIntervalMinutes,
+    autoKeyManagementMaxExchanges,
+    setAutoKeyManagementMaxExchanges,
+    autoKeyManagementAutoPurge,
+    setAutoKeyManagementAutoPurge,
     timerTriggers,
     setTimerTriggers,
     showNodeFilterPopup,
@@ -919,6 +928,20 @@ function App() {
 
           if (settings.autoResponderSkipIncompleteNodes !== undefined) {
             setAutoResponderSkipIncompleteNodes(settings.autoResponderSkipIncompleteNodes === 'true');
+          }
+
+          // Auto key management settings
+          if (settings.autoKeyManagementEnabled !== undefined) {
+            setAutoKeyManagementEnabled(settings.autoKeyManagementEnabled === 'true');
+          }
+          if (settings.autoKeyManagementIntervalMinutes !== undefined) {
+            setAutoKeyManagementIntervalMinutes(parseInt(settings.autoKeyManagementIntervalMinutes) || 5);
+          }
+          if (settings.autoKeyManagementMaxExchanges !== undefined) {
+            setAutoKeyManagementMaxExchanges(parseInt(settings.autoKeyManagementMaxExchanges) || 3);
+          }
+          if (settings.autoKeyManagementAutoPurge !== undefined) {
+            setAutoKeyManagementAutoPurge(settings.autoKeyManagementAutoPurge === 'true');
           }
 
           if (settings.timerTriggers) {
@@ -4096,6 +4119,7 @@ function App() {
                 { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
                 { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
                 { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
+                { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management') },
                 { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
               ]}
             />
@@ -4185,6 +4209,19 @@ function App() {
                   onEnabledChange={setAutoResponderEnabled}
                   onTriggersChange={setAutoResponderTriggers}
                   onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
+                />
+              </div>
+              <div id="auto-key-management">
+                <AutoKeyManagementSection
+                  enabled={autoKeyManagementEnabled}
+                  intervalMinutes={autoKeyManagementIntervalMinutes}
+                  maxExchanges={autoKeyManagementMaxExchanges}
+                  autoPurge={autoKeyManagementAutoPurge}
+                  baseUrl={baseUrl}
+                  onEnabledChange={setAutoKeyManagementEnabled}
+                  onIntervalChange={setAutoKeyManagementIntervalMinutes}
+                  onMaxExchangesChange={setAutoKeyManagementMaxExchanges}
+                  onAutoPurgeChange={setAutoKeyManagementAutoPurge}
                 />
               </div>
               <div id="timer-triggers">

@@ -48,6 +48,7 @@ import { migration as relayNodePacketLogMigration } from '../server/migrations/0
 import { migration as positionOverridePrivacyMigration } from '../server/migrations/043_add_position_override_privacy.js';
 import { migration as nodesPrivatePermissionMigration } from '../server/migrations/044_add_nodes_private_permission.js';
 import { migration as packetDirectionMigration } from '../server/migrations/045_add_packet_direction.js';
+import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -447,6 +448,7 @@ class DatabaseService {
     this.runPacketDirectionMigration();
     this.runAutoTracerouteLogMigration();
     this.runRelayNodePacketLogMigration();
+    this.runAutoKeyRepairMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1329,6 +1331,27 @@ class DatabaseService {
       logger.debug('✅ Relay node packet log migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run relay node packet log migration:', error);
+      throw error;
+    }
+  }
+
+  private runAutoKeyRepairMigration(): void {
+    logger.debug('Running auto key repair migration...');
+    try {
+      const migrationKey = 'migration_046_auto_key_repair';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Auto key repair migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 046: Add auto key repair tables...');
+      autoKeyRepairMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Auto key repair migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run auto key repair migration:', error);
       throw error;
     }
   }
@@ -3834,6 +3857,168 @@ class DatabaseService {
       timestamp: number;
       toNodeNum: number;
       toNodeName: string | null;
+      success: number | null;
+    }[];
+
+    return results.map(r => ({
+      ...r,
+      success: r.success === null ? null : r.success === 1
+    }));
+  }
+
+  // Auto key repair state methods
+  getKeyRepairState(nodeNum: number): {
+    nodeNum: number;
+    attemptCount: number;
+    lastAttemptTime: number | null;
+    exhausted: boolean;
+    startedAt: number;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt
+      FROM auto_key_repair_state
+      WHERE nodeNum = ?
+    `);
+    const result = stmt.get(nodeNum) as {
+      nodeNum: number;
+      attemptCount: number;
+      lastAttemptTime: number | null;
+      exhausted: number;
+      startedAt: number;
+    } | undefined;
+
+    if (!result) return null;
+
+    return {
+      ...result,
+      exhausted: result.exhausted === 1
+    };
+  }
+
+  setKeyRepairState(nodeNum: number, state: {
+    attemptCount?: number;
+    lastAttemptTime?: number;
+    exhausted?: boolean;
+    startedAt?: number;
+  }): void {
+    const existing = this.getKeyRepairState(nodeNum);
+    const now = Date.now();
+
+    if (existing) {
+      // Update existing state
+      const stmt = this.db.prepare(`
+        UPDATE auto_key_repair_state
+        SET attemptCount = ?, lastAttemptTime = ?, exhausted = ?
+        WHERE nodeNum = ?
+      `);
+      stmt.run(
+        state.attemptCount ?? existing.attemptCount,
+        state.lastAttemptTime ?? existing.lastAttemptTime,
+        (state.exhausted ?? existing.exhausted) ? 1 : 0,
+        nodeNum
+      );
+    } else {
+      // Insert new state
+      const stmt = this.db.prepare(`
+        INSERT INTO auto_key_repair_state (nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        nodeNum,
+        state.attemptCount ?? 0,
+        state.lastAttemptTime ?? null,
+        (state.exhausted ?? false) ? 1 : 0,
+        state.startedAt ?? now
+      );
+    }
+  }
+
+  clearKeyRepairState(nodeNum: number): void {
+    const stmt = this.db.prepare(`
+      DELETE FROM auto_key_repair_state
+      WHERE nodeNum = ?
+    `);
+    stmt.run(nodeNum);
+  }
+
+  getNodesNeedingKeyRepair(): {
+    nodeNum: number;
+    nodeId: string;
+    longName: string | null;
+    shortName: string | null;
+    attemptCount: number;
+    lastAttemptTime: number | null;
+    startedAt: number | null;
+  }[] {
+    // Get nodes with keyMismatchDetected=true that are not exhausted
+    const stmt = this.db.prepare(`
+      SELECT
+        n.nodeNum,
+        n.nodeId,
+        n.longName,
+        n.shortName,
+        COALESCE(s.attemptCount, 0) as attemptCount,
+        s.lastAttemptTime,
+        s.startedAt
+      FROM nodes n
+      LEFT JOIN auto_key_repair_state s ON n.nodeNum = s.nodeNum
+      WHERE n.keyMismatchDetected = 1
+        AND (s.exhausted IS NULL OR s.exhausted = 0)
+    `);
+    return stmt.all() as {
+      nodeNum: number;
+      nodeId: string;
+      longName: string | null;
+      shortName: string | null;
+      attemptCount: number;
+      lastAttemptTime: number | null;
+      startedAt: number | null;
+    }[];
+  }
+
+  // Auto key repair log methods
+  logKeyRepairAttempt(nodeNum: number, nodeName: string | null, action: string, success: boolean | null = null): number {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(now, nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), now);
+
+    // Clean up old entries (keep last 100)
+    const cleanupStmt = this.db.prepare(`
+      DELETE FROM auto_key_repair_log
+      WHERE id NOT IN (
+        SELECT id FROM auto_key_repair_log
+        ORDER BY timestamp DESC
+        LIMIT 100
+      )
+    `);
+    cleanupStmt.run();
+
+    return result.lastInsertRowid as number;
+  }
+
+  getKeyRepairLog(limit: number = 50): {
+    id: number;
+    timestamp: number;
+    nodeNum: number;
+    nodeName: string | null;
+    action: string;
+    success: boolean | null;
+  }[] {
+    const stmt = this.db.prepare(`
+      SELECT id, timestamp, nodeNum, nodeName, action, success
+      FROM auto_key_repair_log
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const results = stmt.all(limit) as {
+      id: number;
+      timestamp: number;
+      nodeNum: number;
+      nodeName: string | null;
+      action: string;
       success: number | null;
     }[];
 

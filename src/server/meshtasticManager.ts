@@ -130,6 +130,11 @@ class MeshtasticManager {
   private announceCronJob: cron.ScheduledTask | null = null;
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
   private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
+  private keyRepairInterval: NodeJS.Timeout | null = null;
+  private keyRepairEnabled: boolean = false;
+  private keyRepairIntervalMinutes: number = 5;  // Default 5 minutes
+  private keyRepairMaxExchanges: number = 3;     // Default 3 attempts
+  private keyRepairAutoPurge: boolean = false;   // Default: don't auto-purge
   private serverStartTime: number = Date.now();
   private localNodeInfo: {
     nodeNum: number;
@@ -408,6 +413,9 @@ class MeshtasticManager {
         // Start timer trigger scheduler
         this.startTimerScheduler();
 
+        // Start auto key repair scheduler
+        this.startKeyRepairScheduler();
+
         logger.debug(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
       }, 5000);
 
@@ -626,6 +634,138 @@ class MeshtasticManager {
 
     if (this.isConnected) {
       this.startTracerouteScheduler();
+    }
+  }
+
+  /**
+   * Start the auto key repair scheduler
+   * Periodically checks for nodes with key mismatches and attempts to repair them
+   */
+  private startKeyRepairScheduler(): void {
+    if (this.keyRepairInterval) {
+      clearInterval(this.keyRepairInterval);
+      this.keyRepairInterval = null;
+    }
+
+    // If disabled, don't start the scheduler
+    if (!this.keyRepairEnabled) {
+      logger.debug('🔐 Auto key repair is disabled');
+      return;
+    }
+
+    const intervalMs = this.keyRepairIntervalMinutes * 60 * 1000;
+    logger.debug(`🔐 Starting key repair scheduler with ${this.keyRepairIntervalMinutes} minute interval`);
+
+    this.keyRepairInterval = setInterval(async () => {
+      if (this.isConnected && this.localNodeInfo) {
+        await this.processKeyRepairs();
+      } else {
+        logger.debug('🔐 Key repair: Skipping - not connected or no local node info');
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Process pending key repairs for nodes with key mismatches
+   */
+  private async processKeyRepairs(): Promise<void> {
+    try {
+      const nodesNeedingRepair = databaseService.getNodesNeedingKeyRepair();
+
+      for (const node of nodesNeedingRepair) {
+        const now = Date.now();
+        const intervalMs = this.keyRepairIntervalMinutes * 60 * 1000;
+
+        // Check if enough time has passed since last attempt
+        if (node.lastAttemptTime && (now - node.lastAttemptTime) < intervalMs) {
+          continue; // Skip - not enough time has passed
+        }
+
+        const nodeName = node.longName || node.shortName || node.nodeId;
+
+        // Check if we've exhausted our attempts
+        if (node.attemptCount >= this.keyRepairMaxExchanges) {
+          logger.info(`🔐 Key repair: Node ${nodeName} exhausted ${this.keyRepairMaxExchanges} attempts`);
+
+          if (this.keyRepairAutoPurge) {
+            // Auto-purge the node from device database
+            logger.info(`🔐 Key repair: Auto-purging node ${nodeName} from device database`);
+            try {
+              await this.sendRemoveNode(node.nodeNum);
+              databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'purge', true);
+              logger.info(`🔐 Key repair: Purged node ${nodeName}, sending final node info exchange`);
+
+              // Send one more node info exchange after purge
+              await this.sendNodeInfoRequest(node.nodeNum, 0);
+              databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exchange', null);
+            } catch (error) {
+              logger.error(`🔐 Key repair: Failed to purge node ${nodeName}:`, error);
+              databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'purge', false);
+            }
+          }
+
+          // Mark as exhausted
+          databaseService.setKeyRepairState(node.nodeNum, { exhausted: true });
+          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exhausted', null);
+          continue;
+        }
+
+        // Send node info exchange
+        logger.info(`🔐 Key repair: Sending node info exchange to ${nodeName} (attempt ${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`);
+        try {
+          await this.sendNodeInfoRequest(node.nodeNum, 0);
+
+          // Update repair state
+          databaseService.setKeyRepairState(node.nodeNum, {
+            attemptCount: node.attemptCount + 1,
+            lastAttemptTime: now,
+            startedAt: node.startedAt ?? now
+          });
+
+          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exchange', null);
+        } catch (error) {
+          logger.error(`🔐 Key repair: Failed to send node info to ${nodeName}:`, error);
+          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exchange', false);
+        }
+      }
+    } catch (error) {
+      logger.error('🔐 Key repair: Error processing repairs:', error);
+    }
+  }
+
+  /**
+   * Configure auto key repair settings
+   */
+  setKeyRepairSettings(settings: {
+    enabled?: boolean;
+    intervalMinutes?: number;
+    maxExchanges?: number;
+    autoPurge?: boolean;
+  }): void {
+    if (settings.enabled !== undefined) {
+      this.keyRepairEnabled = settings.enabled;
+    }
+    if (settings.intervalMinutes !== undefined) {
+      if (settings.intervalMinutes < 1 || settings.intervalMinutes > 60) {
+        throw new Error('Key repair interval must be between 1 and 60 minutes');
+      }
+      this.keyRepairIntervalMinutes = settings.intervalMinutes;
+    }
+    if (settings.maxExchanges !== undefined) {
+      if (settings.maxExchanges < 1 || settings.maxExchanges > 10) {
+        throw new Error('Max exchanges must be between 1 and 10');
+      }
+      this.keyRepairMaxExchanges = settings.maxExchanges;
+    }
+    if (settings.autoPurge !== undefined) {
+      this.keyRepairAutoPurge = settings.autoPurge;
+    }
+
+    logger.debug(`🔐 Key repair settings updated: enabled=${this.keyRepairEnabled}, interval=${this.keyRepairIntervalMinutes}min, maxExchanges=${this.keyRepairMaxExchanges}, autoPurge=${this.keyRepairAutoPurge}`);
+
+    // Restart scheduler if connected
+    if (this.isConnected) {
+      this.startKeyRepairScheduler();
     }
   }
 
@@ -2458,6 +2598,34 @@ class MeshtasticManager {
           // This ensures that if a node regenerates their key, the flag is cleared immediately
           nodeData.keyIsLowEntropy = false;
           nodeData.keySecurityIssueDetails = undefined;
+        }
+
+        // Check if this node had a key mismatch that is now fixed
+        const existingNode = databaseService.getNode(fromNum);
+        if (existingNode && existingNode.keyMismatchDetected) {
+          const oldKey = existingNode.publicKey;
+          const newKey = nodeData.publicKey;
+
+          if (oldKey !== newKey) {
+            // Key has changed - the mismatch is fixed!
+            logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - received new key`);
+            nodeData.keyMismatchDetected = false;
+            // Don't clear keySecurityIssueDetails if there's a low-entropy issue
+            if (!isLowEntropy) {
+              nodeData.keySecurityIssueDetails = undefined;
+            }
+
+            // Clear the repair state and log success
+            databaseService.clearKeyRepairState(fromNum);
+            const nodeName = user.longName || user.shortName || nodeId;
+            databaseService.logKeyRepairAttempt(fromNum, nodeName, 'fixed', true);
+
+            // Emit update to UI
+            dataEventEmitter.emitNodeUpdate(fromNum, {
+              keyMismatchDetected: false,
+              keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
+            });
+          }
         }
       }
 

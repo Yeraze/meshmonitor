@@ -355,6 +355,20 @@ setTimeout(async () => {
       }
     }
 
+    // Load auto key repair settings
+    const keyRepairEnabled = databaseService.getSetting('autoKeyManagementEnabled');
+    const keyRepairInterval = databaseService.getSetting('autoKeyManagementIntervalMinutes');
+    const keyRepairMaxExchanges = databaseService.getSetting('autoKeyManagementMaxExchanges');
+    const keyRepairAutoPurge = databaseService.getSetting('autoKeyManagementAutoPurge');
+
+    meshtasticManager.setKeyRepairSettings({
+      enabled: keyRepairEnabled === 'true',
+      intervalMinutes: keyRepairInterval ? parseInt(keyRepairInterval) : 5,
+      maxExchanges: keyRepairMaxExchanges ? parseInt(keyRepairMaxExchanges) : 3,
+      autoPurge: keyRepairAutoPurge === 'true'
+    });
+    logger.debug('✅ Loaded auto key repair settings');
+
     // NOTE: We no longer mark existing nodes as welcomed on startup.
     // This is now handled when autoWelcomeEnabled is first changed to 'true'
     // via the settings endpoint. This prevents welcoming existing nodes when
@@ -4075,6 +4089,20 @@ apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'),
   }
 });
 
+// Get auto key repair log (recent key repair attempts with success/fail status)
+apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), (_req, res) => {
+  try {
+    const log = databaseService.getKeyRepairLog(50);
+    res.json({
+      success: true,
+      log,
+    });
+  } catch (error) {
+    logger.error('Error fetching auto key repair log:', error);
+    res.status(500).json({ error: 'Failed to fetch auto key repair log' });
+  }
+});
+
 // Helper functions for tile URL validation
 function validateTileUrl(url: string): boolean {
   // Must contain {z}, {x}, {y} placeholders
@@ -4235,6 +4263,10 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'tracerouteRetentionDays',
       'routeSegmentRetentionDays',
       'neighborInfoRetentionDays',
+      'autoKeyManagementEnabled',
+      'autoKeyManagementIntervalMinutes',
+      'autoKeyManagementMaxExchanges',
+      'autoKeyManagementAutoPurge',
     ];
     const filteredSettings: Record<string, string> = {};
 
@@ -4465,6 +4497,34 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       if (!isNaN(interval) && interval >= 0 && interval <= 60) {
         meshtasticManager.setTracerouteInterval(interval);
       }
+    }
+
+    // Apply auto key repair settings if changed
+    const keyRepairSettings = [
+      'autoKeyManagementEnabled',
+      'autoKeyManagementIntervalMinutes',
+      'autoKeyManagementMaxExchanges',
+      'autoKeyManagementAutoPurge',
+    ];
+    const keyRepairSettingsChanged = keyRepairSettings.some(key => key in filteredSettings);
+    if (keyRepairSettingsChanged) {
+      meshtasticManager.setKeyRepairSettings({
+        enabled: filteredSettings.autoKeyManagementEnabled === 'true' ||
+          (filteredSettings.autoKeyManagementEnabled === undefined &&
+           databaseService.getSetting('autoKeyManagementEnabled') === 'true'),
+        intervalMinutes: parseInt(
+          filteredSettings.autoKeyManagementIntervalMinutes ||
+          databaseService.getSetting('autoKeyManagementIntervalMinutes') || '5'
+        ),
+        maxExchanges: parseInt(
+          filteredSettings.autoKeyManagementMaxExchanges ||
+          databaseService.getSetting('autoKeyManagementMaxExchanges') || '3'
+        ),
+        autoPurge: filteredSettings.autoKeyManagementAutoPurge === 'true' ||
+          (filteredSettings.autoKeyManagementAutoPurge === undefined &&
+           databaseService.getSetting('autoKeyManagementAutoPurge') === 'true'),
+      });
+      logger.info('✅ Auto key repair settings updated');
     }
 
     // Restart inactive node notification service if any inactive node settings changed
