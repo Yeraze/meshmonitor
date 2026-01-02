@@ -81,6 +81,35 @@ export interface MeshMessage {
   rxRssi?: number;
 }
 
+/**
+ * Determines if a packet should be excluded from the packet log.
+ * Internal packets (ADMIN_APP and ROUTING_APP) to/from the local node are excluded
+ * since they are management traffic, not actual mesh traffic.
+ *
+ * @param fromNum - Source node number
+ * @param toNum - Destination node number (null for broadcast)
+ * @param portnum - Port number indicating packet type
+ * @param localNodeNum - The local node's number (null if not connected)
+ * @returns true if the packet should be excluded from logging
+ */
+export function shouldExcludeFromPacketLog(
+  fromNum: number,
+  toNum: number | null,
+  portnum: number,
+  localNodeNum: number | null
+): boolean {
+  // If we don't know the local node, can't determine if it's local traffic
+  if (!localNodeNum) return false;
+
+  // Check if packet is to/from the local node
+  const isLocalPacket = fromNum === localNodeNum || toNum === localNodeNum;
+
+  // Check if it's an internal portnum (ROUTING_APP = 5, ADMIN_APP = 6)
+  const isInternalPortnum = portnum === 5 || portnum === 6;
+
+  return isLocalPacket && isInternalPortnum;
+}
+
 type TextMessage = {
   id: string;
   fromNodeNum: number;
@@ -2027,14 +2056,8 @@ class MeshtasticManager {
 
         // Skip logging for local internal packets (ADMIN_APP and ROUTING_APP)
         // These are management packets between MeshMonitor and the local node, not actual mesh traffic
-        const localNodeNum = this.localNodeInfo?.nodeNum;
-        const isLocalPacket = localNodeNum && (fromNum === localNodeNum || toNum === localNodeNum);
-        const isInternalPortnum = portnum === 5 || portnum === 6; // ROUTING_APP (5) or ADMIN_APP (6)
-
-        if (isLocalPacket && isInternalPortnum) {
+        if (shouldExcludeFromPacketLog(fromNum, toNum, portnum, this.localNodeInfo?.nodeNum ?? null)) {
           // Skip logging - these are internal management packets
-          // ROUTING_APP: ACK/NACK responses
-          // ADMIN_APP: Configuration requests/responses to local node
         } else {
 
         // Generate payload preview and store decoded payload
