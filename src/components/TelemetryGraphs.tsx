@@ -378,6 +378,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         ch8Voltage: 'Channel 8 Voltage',
         ch8Current: 'Channel 8 Current',
         altitude: 'Altitude',
+        sats_in_view: 'GPS Satellites',
         // Air Quality metrics
         pm10Standard: 'PM1.0 (Standard)',
         pm25Standard: 'PM2.5 (Standard)',
@@ -432,6 +433,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         ch8Voltage: '#d8c088',
         ch8Current: '#ffbf6b',
         altitude: '#74c0fc',
+        sats_in_view: '#f9e2af', // Yellow for satellite count
         // Air Quality metrics - using earthy/green tones for PM and blue/purple for particles
         pm10Standard: '#a6da95', // Light green
         pm25Standard: '#8bd5ca', // Teal

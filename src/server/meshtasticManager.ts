@@ -2556,6 +2556,16 @@ class MeshtasticManager {
             });
           }
 
+          // Store satellites in view for GPS accuracy tracking
+          const satsInView = position.satsInView ?? position.sats_in_view;
+          if (satsInView !== undefined && satsInView > 0) {
+            databaseService.insertTelemetry({
+              nodeId, nodeNum: fromNum, telemetryType: 'sats_in_view',
+              timestamp, value: satsInView, unit: 'sats', createdAt: now, packetTimestamp,
+              channel: channelIndex
+            });
+          }
+
           // Update mobility detection for this node
           databaseService.updateNodeMobility(nodeId);
 
