@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NodePopupState } from '../../types/ui';
 import type { DeviceInfo } from '../../types/device';
 import type { ResourceType } from '../../types/permission';
+import type { DbTraceroute } from '../../services/database';
 import { getHardwareModelName, getRoleName } from '../../utils/nodeHelpers';
-import { formatDateTime } from '../../utils/datetime';
+import { formatDateTime, formatRelativeTime } from '../../utils/datetime';
+import { formatTracerouteRoute } from '../../utils/traceroute';
 import './NodePopup.css';
 
 interface NodePopupProps {
@@ -16,6 +18,10 @@ interface NodePopupProps {
   onDMNode: (nodeId: string) => void;
   onShowOnMap: (node: DeviceInfo) => void;
   onClose: () => void;
+  traceroutes?: DbTraceroute[];
+  currentNodeId?: string | null;
+  distanceUnit?: 'km' | 'mi' | 'nm';
+  onViewTracerouteHistory?: (fromNodeNum: number, toNodeNum: number, fromNodeName: string, toNodeName: string) => void;
 }
 
 export const NodePopup: React.FC<NodePopupProps> = ({
@@ -27,8 +33,49 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   onDMNode,
   onShowOnMap,
   onClose,
+  traceroutes,
+  currentNodeId,
+  distanceUnit = 'km',
+  onViewTracerouteHistory,
 }) => {
   const { t } = useTranslation();
+
+  // Find the most recent traceroute between current node and popup node
+  const recentTraceroute = useMemo(() => {
+    if (!traceroutes || !currentNodeId || !nodePopup) return null;
+
+    // Get current node number from ID
+    const currentNodeNumStr = currentNodeId.replace('!', '');
+    const currentNodeNum = parseInt(currentNodeNumStr, 16);
+    if (isNaN(currentNodeNum)) return null;
+
+    // Get popup node number from ID
+    const popupNodeNumStr = nodePopup.nodeId.replace('!', '');
+    const popupNodeNum = parseInt(popupNodeNumStr, 16);
+    if (isNaN(popupNodeNum)) return null;
+
+    // Use 7 days for traceroute visibility (same as Messages tab)
+    const TRACEROUTE_DISPLAY_HOURS = 7 * 24;
+    const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
+
+    // Find traceroutes between these two nodes
+    const relevantTraceroutes = traceroutes
+      .filter(tr => {
+        const isRelevant =
+          (tr.fromNodeNum === currentNodeNum && tr.toNodeNum === popupNodeNum) ||
+          (tr.fromNodeNum === popupNodeNum && tr.toNodeNum === currentNodeNum);
+
+        if (!isRelevant || tr.timestamp < cutoff) {
+          return false;
+        }
+
+        // Include all traceroutes, even failed ones
+        return true;
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    return relevantTraceroutes.length > 0 ? relevantTraceroutes[0] : null;
+  }, [traceroutes, currentNodeId, nodePopup]);
 
   if (!nodePopup) return null;
 
@@ -83,6 +130,71 @@ export const NodePopup: React.FC<NodePopupProps> = ({
       {node.lastHeard && (
         <div className="route-usage">
           {t('node_popup.last_seen', 'Last Seen')}: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
+        </div>
+      )}
+
+      {/* Traceroute Section */}
+      {recentTraceroute && (
+        <div className="node-popup-traceroute">
+          <div className="traceroute-header">
+            <strong>{t('node_popup.last_traceroute', 'Last Traceroute')}</strong>
+            <span className="traceroute-age">
+              ({formatRelativeTime(recentTraceroute.timestamp)})
+            </span>
+          </div>
+          {recentTraceroute.route && recentTraceroute.route !== 'null' ? (
+            <>
+              <div className="traceroute-path">
+                <span className="traceroute-label">{t('node_popup.forward_path', 'Forward')}:</span>
+                <span className="traceroute-route">
+                  {formatTracerouteRoute(
+                    recentTraceroute.route,
+                    recentTraceroute.snrTowards,
+                    recentTraceroute.fromNodeNum,
+                    recentTraceroute.toNodeNum,
+                    nodes,
+                    distanceUnit
+                  )}
+                </span>
+              </div>
+              {recentTraceroute.routeBack && recentTraceroute.routeBack !== 'null' && (
+                <div className="traceroute-path">
+                  <span className="traceroute-label">{t('node_popup.return_path', 'Return')}:</span>
+                  <span className="traceroute-route">
+                    {formatTracerouteRoute(
+                      recentTraceroute.routeBack,
+                      recentTraceroute.snrBack,
+                      recentTraceroute.toNodeNum,
+                      recentTraceroute.fromNodeNum,
+                      nodes,
+                      distanceUnit
+                    )}
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="traceroute-failed">
+              {t('node_popup.traceroute_failed', 'No response received')}
+            </div>
+          )}
+          {onViewTracerouteHistory && (
+            <button
+              className="popup-dm-btn traceroute-history-btn"
+              onClick={() => {
+                const localNodeName = nodes.find(n => n.user?.id === currentNodeId)?.user?.longName || currentNodeId || 'Local';
+                const remoteNodeName = node.user?.longName || nodePopup.nodeId;
+                onViewTracerouteHistory(
+                  recentTraceroute.fromNodeNum,
+                  recentTraceroute.toNodeNum,
+                  localNodeName,
+                  remoteNodeName
+                );
+              }}
+            >
+              {t('node_popup.view_traceroute_history', 'View History')}
+            </button>
+          )}
         </div>
       )}
 

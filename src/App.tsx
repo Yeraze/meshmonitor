@@ -4300,6 +4300,9 @@ function App() {
           }
         }}
         onClose={() => setNodePopup(null)}
+        traceroutes={traceroutes}
+        currentNodeId={currentNodeId}
+        distanceUnit={distanceUnit}
       />
 
       {/* System Status Modal */}
