@@ -9,6 +9,7 @@ interface Node {
   longName: string;
   shortName: string;
   hopsAway?: number;
+  role?: number;
 }
 
 interface RelayNodeModalProps {
@@ -34,23 +35,37 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Role constants
+  const ROLE_CLIENT_MUTE = 1;
+  const ROLE_ROUTER = 2;
+  const ROLE_CLIENT_BASE = 12;
+
+  // Helper to check if a node is a likely relay (Router or Client_Base)
+  const isLikelyRelay = (node: Node): boolean => {
+    return node.role === ROLE_ROUTER || node.role === ROLE_CLIENT_BASE;
+  };
+
   // If ackFromNode is provided (and not null), show that specific node
   // Otherwise, try to match relay_node:
   //   1. First try exact match (in case relay_node contains full node number)
   //   2. Fall back to matching lowest byte only
+  // Filter out CLIENT_MUTE nodes since they don't relay
   // Sort results by hopsAway ascending (closest nodes first)
   const matchingNodes = (ackFromNode !== undefined && ackFromNode !== null)
     ? nodes.filter(node => node.nodeNum === ackFromNode)
     : (() => {
+        // Filter out CLIENT_MUTE nodes - they don't relay
+        const relayCapableNodes = nodes.filter(node => node.role !== ROLE_CLIENT_MUTE);
+
         // Try exact match first
-        const exactMatches = nodes.filter(node => node.nodeNum === relayNode);
+        const exactMatches = relayCapableNodes.filter(node => node.nodeNum === relayNode);
         if (exactMatches.length > 0) {
           // Sort by hopsAway (ascending, closest first)
           return exactMatches.sort((a, b) => (a.hopsAway ?? Infinity) - (b.hopsAway ?? Infinity));
         }
 
         // Fall back to byte matching
-        const byteMatches = nodes.filter(node => (node.nodeNum & 0xFF) === relayNode);
+        const byteMatches = relayCapableNodes.filter(node => (node.nodeNum & 0xFF) === relayNode);
         // Sort by hopsAway (ascending, closest first)
         return byteMatches.sort((a, b) => (a.hopsAway ?? Infinity) - (b.hopsAway ?? Infinity));
       })();
@@ -120,6 +135,11 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
                   >
                     <span className="node-name">
                       {node.longName} ({node.shortName})
+                      {isLikelyRelay(node) && (
+                        <span className="relay-indicator" title={t('relay_modal.likely_relay')}>
+                          📡
+                        </span>
+                      )}
                     </span>
                     {node.hopsAway !== undefined && (
                       <span className="node-hops">
