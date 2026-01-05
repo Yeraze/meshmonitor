@@ -56,7 +56,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-i18next": "^16.4.0",
+    "react-i18next": "^16.5.1",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.11.0",
     "recharts": "^3.5.1",
