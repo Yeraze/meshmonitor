@@ -8,9 +8,10 @@ import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
 import { getHardwareModelName, getRoleName, isNodeComplete } from '../utils/nodeHelpers';
-import { formatTime, formatDateTime } from '../utils/datetime';
+import { formatTime, formatDateTime, formatRelativeTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
+import { formatTracerouteRoute } from '../utils/traceroute';
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { useUI } from '../contexts/UIContext';
@@ -139,6 +140,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setSelectedNodeId,
     neighborInfo,
     positionHistory,
+    traceroutes,
   } = useMapContext();
 
   const { currentNodeId } = useDeviceConfig();
@@ -1460,6 +1462,79 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
                       </div>
                     )}
+
+                    {/* Traceroute Section */}
+                    {(() => {
+                      if (!currentNodeId || !node.user?.id || currentNodeId === node.user.id) return null;
+
+                      // Get current node number from ID
+                      const currentNodeNumStr = currentNodeId.replace('!', '');
+                      const currentNodeNum = parseInt(currentNodeNumStr, 16);
+                      if (isNaN(currentNodeNum)) return null;
+
+                      // Use 7 days for traceroute visibility
+                      const TRACEROUTE_DISPLAY_HOURS = 7 * 24;
+                      const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
+
+                      // Find the most recent traceroute between these two nodes
+                      const recentTraceroute = traceroutes
+                        .filter(tr => {
+                          const isRelevant =
+                            (tr.fromNodeNum === currentNodeNum && tr.toNodeNum === node.nodeNum) ||
+                            (tr.fromNodeNum === node.nodeNum && tr.toNodeNum === currentNodeNum);
+                          return isRelevant && tr.timestamp >= cutoff;
+                        })
+                        .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+                      if (!recentTraceroute) return null;
+
+                      return (
+                        <div className="node-popup-traceroute">
+                          <div className="traceroute-header">
+                            <strong>{t('node_popup.last_traceroute')}</strong>
+                            <span className="traceroute-age">
+                              ({formatRelativeTime(recentTraceroute.timestamp)})
+                            </span>
+                          </div>
+                          {recentTraceroute.route && recentTraceroute.route !== 'null' ? (
+                            <>
+                              <div className="traceroute-path">
+                                <span className="traceroute-label">{t('node_popup.forward_path')}:</span>
+                                <span className="traceroute-route">
+                                  {formatTracerouteRoute(
+                                    recentTraceroute.route,
+                                    recentTraceroute.snrTowards,
+                                    recentTraceroute.fromNodeNum,
+                                    recentTraceroute.toNodeNum,
+                                    nodes,
+                                    distanceUnit
+                                  )}
+                                </span>
+                              </div>
+                              {recentTraceroute.routeBack && recentTraceroute.routeBack !== 'null' && (
+                                <div className="traceroute-path">
+                                  <span className="traceroute-label">{t('node_popup.return_path')}:</span>
+                                  <span className="traceroute-route">
+                                    {formatTracerouteRoute(
+                                      recentTraceroute.routeBack,
+                                      recentTraceroute.snrBack,
+                                      recentTraceroute.toNodeNum,
+                                      recentTraceroute.fromNodeNum,
+                                      nodes,
+                                      distanceUnit
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="traceroute-failed">
+                              {t('node_popup.traceroute_failed')}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {node.user?.id && hasPermission('messages', 'read') && (
                       <button
