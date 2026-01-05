@@ -71,6 +71,14 @@
   font-weight: 500;
   color: var(--text-primary);
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay-indicator {
+  font-size: 0.9em;
+  cursor: help;
 }
 
 .node-hops {

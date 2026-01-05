@@ -935,6 +935,7 @@
   "relay_modal.direct": "Direct",
   "relay_modal.hops_away": "{{count}} hop away",
   "relay_modal.hops_away_plural": "{{count}} hops away",
+  "relay_modal.likely_relay": "Router or Client_Base - likely relay node",
 
   "route_segment.title": "Traceroutes Using Segment",
   "route_segment.segment": "Segment",

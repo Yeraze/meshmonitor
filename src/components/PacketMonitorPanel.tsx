@@ -200,6 +200,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     longName: node.user?.longName || `Node ${node.nodeNum}`,
     shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
     hopsAway: node.hopsAway,
+    role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
   }));
 
   // Get port number color
