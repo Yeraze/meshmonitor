@@ -59,6 +59,8 @@ export interface DeviceInfo {
   snr?: number;
   rssi?: number;
   mobile?: number; // Database field: 0 = not mobile, 1 = mobile (moved >100m)
+  // Position precision fields
+  positionGpsAccuracy?: number; // GPS accuracy in meters
   // Position override fields
   positionOverrideEnabled?: number;
   latitudeOverride?: number;
@@ -8631,6 +8633,11 @@ class MeshtasticManager {
           longitude: node.longitude,
           altitude: node.altitude
         };
+      }
+
+      // Add GPS accuracy for position precision circles
+      if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
+        deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
       }
 
       // Add position override fields

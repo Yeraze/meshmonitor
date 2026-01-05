@@ -35,6 +35,8 @@ export interface DeviceInfo {
   keyMismatchDetected?: boolean;
   keySecurityIssueDetails?: string;
   channel?: number;
+  // Position precision fields
+  positionGpsAccuracy?: number; // GPS accuracy in meters
   // Position override fields (positionOverrideEnabled is 0 or 1 from database)
   positionOverrideEnabled?: number;
   latitudeOverride?: number;

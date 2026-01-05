@@ -126,6 +126,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowAnimations,
     showEstimatedPositions,
     setShowEstimatedPositions,
+    showAccuracyCircles,
+    setShowAccuracyCircles,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -1281,6 +1283,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Show Estimated Positions</span>
                   </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showAccuracyCircles}
+                      onChange={(e) => setShowAccuracyCircles(e.target.checked)}
+                    />
+                    <span>Show Accuracy Circles</span>
+                  </label>
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
                       <input
@@ -1493,6 +1503,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         opacity: 0.4,
                         weight: 2,
                         dashArray: '5, 5'
+                      }}
+                    />
+                  );
+                })}
+
+              {/* Draw GPS accuracy circles for all nodes with position accuracy data */}
+              {showAccuracyCircles && nodesWithPosition
+                .filter(node => node.positionGpsAccuracy && node.positionGpsAccuracy > 0)
+                .map(node => {
+                  // Use the GPS accuracy value directly as the radius in meters
+                  const radiusMeters = node.positionGpsAccuracy!;
+
+                  // Get hop color for the circle (same as marker)
+                  const isLocalNode = node.user?.id === currentNodeId;
+                  const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
+                  const color = getHopColor(hops);
+
+                  return (
+                    <Circle
+                      key={`accuracy-${node.nodeNum}`}
+                      center={[node.position!.latitude, node.position!.longitude]}
+                      radius={radiusMeters}
+                      pathOptions={{
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.08,
+                        opacity: 0.5,
+                        weight: 1,
                       }}
                     />
                   );
