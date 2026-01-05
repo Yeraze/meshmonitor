@@ -36,6 +36,7 @@ export interface DeviceInfo {
   keySecurityIssueDetails?: string;
   channel?: number;
   // Position precision fields
+  positionPrecisionBits?: number; // Position precision (0-32 bits, higher = more precise)
   positionGpsAccuracy?: number; // GPS accuracy in meters
   // Position override fields (positionOverrideEnabled is 0 or 1 from database)
   positionOverrideEnabled?: number;

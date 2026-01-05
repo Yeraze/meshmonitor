@@ -2006,6 +2006,9 @@ class DatabaseService {
           duplicateKeyDetected = COALESCE(?, duplicateKeyDetected),
           keyMismatchDetected = COALESCE(?, keyMismatchDetected),
           keySecurityIssueDetails = COALESCE(?, keySecurityIssueDetails),
+          positionChannel = COALESCE(?, positionChannel),
+          positionPrecisionBits = COALESCE(?, positionPrecisionBits),
+          positionTimestamp = COALESCE(?, positionTimestamp),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -2041,6 +2044,9 @@ class DatabaseService {
         nodeData.duplicateKeyDetected !== undefined ? (nodeData.duplicateKeyDetected ? 1 : 0) : null,
         nodeData.keyMismatchDetected !== undefined ? (nodeData.keyMismatchDetected ? 1 : 0) : null,
         nodeData.keySecurityIssueDetails || null,
+        nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
+        nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
+        nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         now,
         nodeData.nodeNum
       );
@@ -2052,8 +2058,9 @@ class DatabaseService {
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion, channel,
           isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt,
           keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, keySecurityIssueDetails,
+          positionChannel, positionPrecisionBits, positionTimestamp,
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -2088,6 +2095,9 @@ class DatabaseService {
         nodeData.duplicateKeyDetected ? 1 : 0,
         nodeData.keyMismatchDetected ? 1 : 0,
         nodeData.keySecurityIssueDetails || null,
+        nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
+        nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
+        nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         now,
         now
       );
