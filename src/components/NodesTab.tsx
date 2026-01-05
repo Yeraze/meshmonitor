@@ -1581,12 +1581,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   );
                 })}
 
-              {/* Draw GPS accuracy circles for all nodes with position accuracy data */}
+              {/* Draw position accuracy circles for all nodes with precision data */}
               {showAccuracyCircles && nodesWithPosition
-                .filter(node => node.positionGpsAccuracy && node.positionGpsAccuracy > 0)
+                .filter(node => node.positionPrecisionBits !== undefined && node.positionPrecisionBits !== null && node.positionPrecisionBits > 0 && node.positionPrecisionBits < 32)
                 .map(node => {
-                  // Use the GPS accuracy value directly as the radius in meters
-                  const radiusMeters = node.positionGpsAccuracy!;
+                  // Convert precision_bits to radius in meters
+                  // precision_bits indicates how many bits of lat/lon are valid
+                  // Earth's circumference is ~40,075,000 meters
+                  // At N precision bits, accuracy is Earth's circumference / 2^N
+                  // Radius is half of that accuracy diameter
+                  const earthCircumference = 40_075_000; // meters
+                  const radiusMeters = earthCircumference / Math.pow(2, node.positionPrecisionBits!) / 2;
 
                   // Get hop color for the circle (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;

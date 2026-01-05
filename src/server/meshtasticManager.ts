@@ -2458,7 +2458,16 @@ class MeshtasticManager {
 
         // Extract position precision metadata
         const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
-        const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
+        // Use precision_bits from packet if available, otherwise fall back to channel's positionPrecision
+        // Also fall back if precisionBits is 0 (which means no precision was set)
+        let precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
+        if (precisionBits === undefined || precisionBits === 0) {
+          const channel = databaseService.getChannelById(channelIndex);
+          if (channel && channel.positionPrecision !== undefined && channel.positionPrecision !== null && channel.positionPrecision > 0) {
+            precisionBits = channel.positionPrecision;
+            logger.debug(`🗺️ Using channel ${channelIndex} positionPrecision (${precisionBits}) for position from ${nodeId}`);
+          }
+        }
         const gpsAccuracy = position.gpsAccuracy ?? position.gps_accuracy ?? undefined;
         const hdop = position.HDOP ?? position.hdop ?? undefined;
 
@@ -3875,7 +3884,7 @@ class MeshtasticManager {
       }
 
       // Add position information if available
-      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number } | null = null;
+      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number; precisionBits?: number; channel?: number } | null = null;
       if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
         const coords = meshtasticProtobufService.convertCoordinates(
           nodeInfo.position.latitudeI,
@@ -3888,13 +3897,38 @@ class MeshtasticManager {
           nodeData.longitude = coords.longitude;
           nodeData.altitude = nodeInfo.position.altitude;
 
+          // Extract position precision if available in NodeInfo
+          // NodeInfo.position may have precisionBits from the original Position packet
+          // Note: precisionBits=0 means "no precision data" and should trigger channel fallback
+          let precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits ?? undefined;
+          const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
+
+          // Fall back to channel's positionPrecision if not in position data
+          // Also fall back if precisionBits is 0 (which means no precision was set)
+          if (precisionBits === undefined || precisionBits === 0) {
+            const channel = databaseService.getChannelById(channelIndex);
+            if (channel && channel.positionPrecision !== undefined && channel.positionPrecision !== null && channel.positionPrecision > 0) {
+              precisionBits = channel.positionPrecision;
+              logger.debug(`🗺️ NodeInfo for ${nodeId}: using channel ${channelIndex} positionPrecision (${precisionBits}) as fallback`);
+            }
+          }
+
+          // Save position precision metadata
+          if (precisionBits !== undefined) {
+            nodeData.positionPrecisionBits = precisionBits;
+            nodeData.positionChannel = channelIndex;
+            nodeData.positionTimestamp = Date.now();
+          }
+
           // Store position telemetry data to be inserted after node is created
           const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
           positionTelemetryData = {
             timestamp,
             latitude: coords.latitude,
             longitude: coords.longitude,
-            altitude: nodeInfo.position.altitude
+            altitude: nodeInfo.position.altitude,
+            precisionBits,
+            channel: channelIndex
           };
         } else {
           logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
@@ -3946,16 +3980,19 @@ class MeshtasticManager {
         const now = Date.now();
         databaseService.insertTelemetry({
           nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
-          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.latitude, unit: '°', createdAt: now
+          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.latitude, unit: '°', createdAt: now,
+          channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
         });
         databaseService.insertTelemetry({
           nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
-          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.longitude, unit: '°', createdAt: now
+          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.longitude, unit: '°', createdAt: now,
+          channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
         });
         if (positionTelemetryData.altitude !== undefined && positionTelemetryData.altitude !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
-            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now
+            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now,
+            channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
           });
         }
 
@@ -8635,7 +8672,10 @@ class MeshtasticManager {
         };
       }
 
-      // Add GPS accuracy for position precision circles
+      // Add position precision fields for accuracy circles
+      if (node.positionPrecisionBits !== null && node.positionPrecisionBits !== undefined) {
+        deviceInfo.positionPrecisionBits = node.positionPrecisionBits;
+      }
       if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
         deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
       }
