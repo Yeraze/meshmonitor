@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { DeviceRole, isRelayRole } from '../constants';
 import './RelayNodeModal.css';
 
 interface Node {
@@ -35,16 +36,6 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Role constants
-  const ROLE_CLIENT_MUTE = 1;
-  const ROLE_ROUTER = 2;
-  const ROLE_CLIENT_BASE = 12;
-
-  // Helper to check if a node is a likely relay (Router or Client_Base)
-  const isLikelyRelay = (node: Node): boolean => {
-    return node.role === ROLE_ROUTER || node.role === ROLE_CLIENT_BASE;
-  };
-
   // If ackFromNode is provided (and not null), show that specific node
   // Otherwise, try to match relay_node:
   //   1. First try exact match (in case relay_node contains full node number)
@@ -55,7 +46,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
     ? nodes.filter(node => node.nodeNum === ackFromNode)
     : (() => {
         // Filter out CLIENT_MUTE nodes - they don't relay
-        const relayCapableNodes = nodes.filter(node => node.role !== ROLE_CLIENT_MUTE);
+        const relayCapableNodes = nodes.filter(node => node.role !== DeviceRole.CLIENT_MUTE);
 
         // Try exact match first
         const exactMatches = relayCapableNodes.filter(node => node.nodeNum === relayNode);
@@ -135,7 +126,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
                   >
                     <span className="node-name">
                       {node.longName} ({node.shortName})
-                      {isLikelyRelay(node) && (
+                      {isRelayRole(node.role) && (
                         <span className="relay-indicator" title={t('relay_modal.likely_relay')}>
                           📡
                         </span>
