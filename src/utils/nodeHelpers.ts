@@ -8,6 +8,24 @@ import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 const INFRASTRUCTURE_ROLES = new Set([2, 3, 4, 11]);
 
 /**
+ * Traceroute display time window in hours (7 days).
+ * Used consistently across components that display traceroute data.
+ */
+export const TRACEROUTE_DISPLAY_HOURS = 7 * 24;
+
+/**
+ * Parse a node ID string (e.g., "!a1b2c3d4") to its numeric representation.
+ * @param nodeId - The node ID string with optional "!" prefix
+ * @returns The numeric node number, or null if parsing fails
+ */
+export const parseNodeId = (nodeId: string): number | null => {
+  if (!nodeId) return null;
+  const numStr = nodeId.replace('!', '');
+  const num = parseInt(numStr, 16);
+  return isNaN(num) ? null : num;
+};
+
+/**
  * Check if a node has an infrastructure role (Router, Repeater, etc.)
  * @param node - The device node to check
  * @returns true if the node has an infrastructure role

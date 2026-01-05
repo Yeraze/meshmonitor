@@ -7,7 +7,7 @@ import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
-import { getHardwareModelName, getRoleName, isNodeComplete } from '../utils/nodeHelpers';
+import { getHardwareModelName, getRoleName, isNodeComplete, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { formatTime, formatDateTime, formatRelativeTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
@@ -1468,12 +1468,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       if (!currentNodeId || !node.user?.id || currentNodeId === node.user.id) return null;
 
                       // Get current node number from ID
-                      const currentNodeNumStr = currentNodeId.replace('!', '');
-                      const currentNodeNum = parseInt(currentNodeNumStr, 16);
-                      if (isNaN(currentNodeNum)) return null;
+                      const currentNodeNum = parseNodeId(currentNodeId);
+                      if (currentNodeNum === null) return null;
 
-                      // Use 7 days for traceroute visibility
-                      const TRACEROUTE_DISPLAY_HOURS = 7 * 24;
+                      // Use shared constant for traceroute visibility window
                       const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
 
                       // Find the most recent traceroute between these two nodes

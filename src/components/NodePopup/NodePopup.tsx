@@ -4,7 +4,7 @@ import type { NodePopupState } from '../../types/ui';
 import type { DeviceInfo } from '../../types/device';
 import type { ResourceType } from '../../types/permission';
 import type { DbTraceroute } from '../../services/database';
-import { getHardwareModelName, getRoleName } from '../../utils/nodeHelpers';
+import { getHardwareModelName, getRoleName, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../../utils/nodeHelpers';
 import { formatDateTime, formatRelativeTime } from '../../utils/datetime';
 import { formatTracerouteRoute } from '../../utils/traceroute';
 import './NodePopup.css';
@@ -45,17 +45,14 @@ export const NodePopup: React.FC<NodePopupProps> = ({
     if (!traceroutes || !currentNodeId || !nodePopup) return null;
 
     // Get current node number from ID
-    const currentNodeNumStr = currentNodeId.replace('!', '');
-    const currentNodeNum = parseInt(currentNodeNumStr, 16);
-    if (isNaN(currentNodeNum)) return null;
+    const currentNodeNum = parseNodeId(currentNodeId);
+    if (currentNodeNum === null) return null;
 
     // Get popup node number from ID
-    const popupNodeNumStr = nodePopup.nodeId.replace('!', '');
-    const popupNodeNum = parseInt(popupNodeNumStr, 16);
-    if (isNaN(popupNodeNum)) return null;
+    const popupNodeNum = parseNodeId(nodePopup.nodeId);
+    if (popupNodeNum === null) return null;
 
-    // Use 7 days for traceroute visibility (same as Messages tab)
-    const TRACEROUTE_DISPLAY_HOURS = 7 * 24;
+    // Use shared constant for traceroute visibility window
     const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
 
     // Find traceroutes between these two nodes
