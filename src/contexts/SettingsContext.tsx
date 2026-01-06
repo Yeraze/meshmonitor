@@ -62,6 +62,9 @@ interface SettingsContextType {
   solarMonitoringAzimuth: number;
   solarMonitoringDeclination: number;
   enableAudioNotifications: boolean;
+  nodeDimmingEnabled: boolean;
+  nodeDimmingStartHours: number;
+  nodeDimmingMinOpacity: number;
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
@@ -92,6 +95,9 @@ interface SettingsContextType {
   setSolarMonitoringAzimuth: (azimuth: number) => void;
   setSolarMonitoringDeclination: (declination: number) => void;
   setEnableAudioNotifications: (enabled: boolean) => void;
+  setNodeDimmingEnabled: (enabled: boolean) => void;
+  setNodeDimmingStartHours: (hours: number) => void;
+  setNodeDimmingMinOpacity: (opacity: number) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -218,6 +224,22 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     const saved = localStorage.getItem('enableAudioNotifications');
     // Default to true for backward compatibility
     return saved === null ? true : saved === 'true';
+  });
+
+  // Node dimming settings - localStorage only
+  const [nodeDimmingEnabled, setNodeDimmingEnabledState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('nodeDimmingEnabled');
+    return saved === 'true';
+  });
+
+  const [nodeDimmingStartHours, setNodeDimmingStartHoursState] = useState<number>(() => {
+    const saved = localStorage.getItem('nodeDimmingStartHours');
+    return saved ? parseFloat(saved) : 1;
+  });
+
+  const [nodeDimmingMinOpacity, setNodeDimmingMinOpacityState] = useState<number>(() => {
+    const saved = localStorage.getItem('nodeDimmingMinOpacity');
+    return saved ? parseFloat(saved) : 0.3;
   });
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
@@ -506,6 +528,21 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setEnableAudioNotifications = (enabled: boolean) => {
     setEnableAudioNotificationsState(enabled);
     localStorage.setItem('enableAudioNotifications', enabled.toString());
+  };
+
+  const setNodeDimmingEnabled = (enabled: boolean) => {
+    setNodeDimmingEnabledState(enabled);
+    localStorage.setItem('nodeDimmingEnabled', enabled.toString());
+  };
+
+  const setNodeDimmingStartHours = (hours: number) => {
+    setNodeDimmingStartHoursState(hours);
+    localStorage.setItem('nodeDimmingStartHours', hours.toString());
+  };
+
+  const setNodeDimmingMinOpacity = (opacity: number) => {
+    setNodeDimmingMinOpacityState(opacity);
+    localStorage.setItem('nodeDimmingMinOpacity', opacity.toString());
   };
 
   /**
@@ -871,6 +908,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     solarMonitoringAzimuth,
     solarMonitoringDeclination,
     enableAudioNotifications,
+    nodeDimmingEnabled,
+    nodeDimmingStartHours,
+    nodeDimmingMinOpacity,
     temporaryTileset,
     setTemporaryTileset,
     isLoading,
@@ -901,6 +941,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setSolarMonitoringAzimuth,
     setSolarMonitoringDeclination,
     setEnableAudioNotifications,
+    setNodeDimmingEnabled,
+    setNodeDimmingStartHours,
+    setNodeDimmingMinOpacity,
   };
 
   return (

@@ -121,7 +121,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
-  const { customThemes, customTilesets, enableAudioNotifications, setEnableAudioNotifications } = useSettings();
+  const {
+    customThemes,
+    customTilesets,
+    enableAudioNotifications,
+    setEnableAudioNotifications,
+    nodeDimmingEnabled,
+    setNodeDimmingEnabled,
+    nodeDimmingStartHours,
+    setNodeDimmingStartHours,
+    nodeDimmingMinOpacity,
+    setNodeDimmingMinOpacity
+  } = useSettings();
   const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
 
   // Local state for editing
@@ -1021,6 +1032,59 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <p className="setting-description">
             {t('settings.hide_incomplete_description')}
           </p>
+        </div>
+
+        <div className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={nodeDimmingEnabled}
+                onChange={(e) => setNodeDimmingEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.node_dimming_enabled')}</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            {t('settings.node_dimming_description')}
+          </p>
+          {nodeDimmingEnabled && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="nodeDimmingStartHours">
+                  {t('settings.node_dimming_start_hours')}
+                  <span className="setting-description">{t('settings.node_dimming_start_hours_description')}</span>
+                </label>
+                <input
+                  id="nodeDimmingStartHours"
+                  type="number"
+                  min="0.5"
+                  max="24"
+                  step="0.5"
+                  value={nodeDimmingStartHours}
+                  onChange={(e) => setNodeDimmingStartHours(Math.min(24, Math.max(0.5, parseFloat(e.target.value) || 1)))}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="nodeDimmingMinOpacity">
+                  {t('settings.node_dimming_min_opacity')}
+                  <span className="setting-description">{t('settings.node_dimming_min_opacity_description')}</span>
+                </label>
+                <input
+                  id="nodeDimmingMinOpacity"
+                  type="number"
+                  min="0.1"
+                  max="0.9"
+                  step="0.1"
+                  value={nodeDimmingMinOpacity}
+                  onChange={(e) => setNodeDimmingMinOpacity(Math.min(0.9, Math.max(0.1, parseFloat(e.target.value) || 0.3)))}
+                  className="setting-input"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div id="settings-solar" className="settings-section">

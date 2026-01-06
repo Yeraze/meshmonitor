@@ -62,6 +62,34 @@ const isToday = (date: Date): boolean => {
     date.getFullYear() === today.getFullYear();
 };
 
+// Helper function to calculate node opacity based on last heard time
+const calculateNodeOpacity = (
+  lastHeard: number | undefined,
+  enabled: boolean,
+  startHours: number,
+  minOpacity: number,
+  maxNodeAgeHours: number
+): number => {
+  if (!enabled || !lastHeard) return 1;
+
+  const now = Date.now();
+  const lastHeardMs = lastHeard * 1000;
+  const ageHours = (now - lastHeardMs) / (1000 * 60 * 60);
+
+  // No dimming if node was heard within the start threshold
+  if (ageHours <= startHours) return 1;
+
+  // Calculate opacity linearly from 1 at startHours to minOpacity at maxNodeAgeHours
+  const dimmingRange = maxNodeAgeHours - startHours;
+  if (dimmingRange <= 0) return 1;
+
+  const ageInDimmingRange = ageHours - startHours;
+  const dimmingProgress = Math.min(1, ageInDimmingRange / dimmingRange);
+
+  // Linear interpolation from 1 to minOpacity
+  return 1 - (dimmingProgress * (1 - minOpacity));
+};
+
 // Memoized distance display component to avoid recalculating on every render
 const DistanceDisplay = React.memo<{
   homeNode: DeviceInfo | undefined;
@@ -177,6 +205,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapPinStyle,
     customTilesets,
     distanceUnit,
+    nodeDimmingEnabled,
+    nodeDimmingStartHours,
+    nodeDimmingMinOpacity,
+    maxNodeAgeHours,
   } = useSettings();
 
   const { hasPermission } = useAuth();
@@ -1363,11 +1395,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 // Use memoized position to prevent React-Leaflet from resetting marker position
                 const position = nodePositions.get(node.nodeNum)!;
 
+                // Calculate opacity based on last heard time
+                const markerOpacity = calculateNodeOpacity(
+                  node.lastHeard,
+                  nodeDimmingEnabled,
+                  nodeDimmingStartHours,
+                  nodeDimmingMinOpacity,
+                  maxNodeAgeHours
+                );
+
                 return (
               <Marker
                 key={node.nodeNum}
                 position={position}
                 icon={markerIcon}
+                opacity={markerOpacity}
                 zIndexOffset={shouldAnimate ? 10000 : 0}
                 ref={(ref) => handleMarkerRef(ref, node.user?.id)}
               >
