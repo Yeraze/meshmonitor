@@ -21,6 +21,7 @@ export interface DeviceInfo {
     uptimeSeconds?: number;
   };
   hopsAway?: number;
+  lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;
   lastHeard?: number;
   snr?: number;

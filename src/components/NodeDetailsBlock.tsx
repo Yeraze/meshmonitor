@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
-import { getHardwareModelName } from '../utils/nodeHelpers';
+import { getHardwareModelName, parseNodeId } from '../utils/nodeHelpers';
 import { getDeviceRoleName } from '../utils/deviceRole';
 import { getHardwareImageUrl } from '../utils/hardwareImages';
 import { formatRelativeTime } from '../utils/datetime';
-import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
-import { useChannels } from '../hooks/useServerData';
+import { getEffectiveHops } from '../utils/nodeHops';
+import { TimeFormat, DateFormat, useSettings } from '../contexts/SettingsContext';
+import { useMapContext } from '../contexts/MapContext';
+import { useChannels, useDeviceConfig } from '../hooks/useServerData';
 import './NodeDetailsBlock.css';
 
 interface NodeDetailsBlockProps {
@@ -18,6 +20,10 @@ interface NodeDetailsBlockProps {
 const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
+  const { currentNodeId } = useDeviceConfig();
+  const { nodeHopsCalculation } = useSettings();
+  const { traceroutes } = useMapContext();
+  const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     const stored = localStorage.getItem('nodeDetailsCollapsed');
     return stored === 'true';
@@ -300,14 +306,17 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         )}
 
         {/* Hops Away */}
-        {hopsAway !== undefined && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">{t('node_details.hops_away')}</div>
-            <div className="node-detail-value">
-              {hopsAway === 0 ? t('node_details.direct') : t('node_details.hops', { count: hopsAway })}
+        {(hopsAway !== undefined || node.lastMessageHops !== undefined) && (() => {
+          const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+          return effectiveHops < 999 ? (
+            <div className="node-detail-card">
+              <div className="node-detail-label">{t('node_details.hops_away')}</div>
+              <div className="node-detail-value">
+                {effectiveHops === 0 ? t('node_details.direct') : t('node_details.hops', { count: effectiveHops })}
+              </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         {/* Via MQTT */}
         {viaMqtt && (
