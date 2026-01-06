@@ -63,6 +63,7 @@ export interface DbNode {
   hwModel: number;
   role?: number;
   hopsAway?: number;
+  lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;
   macaddr?: string;
   latitude?: number;
@@ -1814,6 +1815,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN lastMessageHops INTEGER;
+      `);
+      logger.debug('✅ Added lastMessageHops column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ lastMessageHops column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 
@@ -2134,6 +2146,14 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
     const nodes = stmt.all(cutoff) as DbNode[];
     return nodes.map(node => this.normalizeBigInts(node));
+  }
+
+  /**
+   * Update the lastMessageHops for a node (calculated from hopStart - hopLimit of received packets)
+   */
+  updateNodeMessageHops(nodeNum: number, hops: number): void {
+    const stmt = this.db.prepare('UPDATE nodes SET lastMessageHops = ?, updatedAt = ? WHERE nodeNum = ?');
+    stmt.run(hops, Date.now(), nodeNum);
   }
 
   /**

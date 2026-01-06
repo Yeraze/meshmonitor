@@ -23,7 +23,10 @@ import { formatTracerouteRoute } from '../utils/traceroute';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
-import { isNodeComplete, isInfrastructureNode, hasValidPosition } from '../utils/nodeHelpers';
+import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId } from '../utils/nodeHelpers';
+import { getEffectiveHops } from '../utils/nodeHops';
+import { useMapContext } from '../contexts/MapContext';
+import { useSettings } from '../contexts/SettingsContext';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -238,6 +241,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  // Get settings and context for effective hops calculation
+  const { nodeHopsCalculation } = useSettings();
+  const { traceroutes } = useMapContext();
+  const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
+
   // Local state for actions menu
   const [showActionsMenu, setShowActionsMenu] = useState(false);
 
@@ -377,8 +385,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   // Sort by hops (ascending, 0 first, unknown last)
   const sortByHops = (a: NodeWithMessages, b: NodeWithMessages): number => {
-    const aHops = a.hopsAway ?? 999;
-    const bHops = b.hopsAway ?? 999;
+    const aHops = getEffectiveHops(a, nodeHopsCalculation, traceroutes, currentNodeNum);
+    const bHops = getEffectiveHops(b, nodeHopsCalculation, traceroutes, currentNodeNum);
     return aHops - bHops;
   };
 
@@ -615,11 +623,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             📡 {node.rssi}dBm
                           </span>
                         )}
-                        {node.hopsAway != null && (
-                          <span className="stat" title={t('nodes.hops_away')}>
-                            🔗 {node.hopsAway} {t('nodes.hop', { count: node.hopsAway })}
-                          </span>
-                        )}
+                        {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
+                          const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+                          return effectiveHops < 999 ? (
+                            <span className="stat" title={t('nodes.hops_away')}>
+                              🔗 {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
+                            </span>
+                          ) : null;
+                        })()}
                         <DistanceDisplay
                           homeNode={homeNode}
                           targetNode={node}

@@ -10,6 +10,7 @@ export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
+export type NodeHopsCalculation = 'nodeinfo' | 'traceroute' | 'messages';
 
 // Built-in theme types
 export type BuiltInTheme =
@@ -65,6 +66,7 @@ interface SettingsContextType {
   nodeDimmingEnabled: boolean;
   nodeDimmingStartHours: number;
   nodeDimmingMinOpacity: number;
+  nodeHopsCalculation: NodeHopsCalculation;
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
@@ -98,6 +100,7 @@ interface SettingsContextType {
   setNodeDimmingEnabled: (enabled: boolean) => void;
   setNodeDimmingStartHours: (hours: number) => void;
   setNodeDimmingMinOpacity: (opacity: number) => void;
+  setNodeHopsCalculation: (calculation: NodeHopsCalculation) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -240,6 +243,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [nodeDimmingMinOpacity, setNodeDimmingMinOpacityState] = useState<number>(() => {
     const saved = localStorage.getItem('nodeDimmingMinOpacity');
     return saved ? parseFloat(saved) : 0.3;
+  });
+
+  const [nodeHopsCalculation, setNodeHopsCalculationState] = useState<NodeHopsCalculation>(() => {
+    const saved = localStorage.getItem('nodeHopsCalculation');
+    return (saved === 'traceroute' || saved === 'messages') ? saved : 'nodeinfo';
   });
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
@@ -543,6 +551,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setNodeDimmingMinOpacity = (opacity: number) => {
     setNodeDimmingMinOpacityState(opacity);
     localStorage.setItem('nodeDimmingMinOpacity', opacity.toString());
+  };
+
+  const setNodeHopsCalculation = (calculation: NodeHopsCalculation) => {
+    setNodeHopsCalculationState(calculation);
+    localStorage.setItem('nodeHopsCalculation', calculation);
   };
 
   /**
@@ -911,6 +924,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     nodeDimmingEnabled,
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
+    nodeHopsCalculation,
     temporaryTileset,
     setTemporaryTileset,
     isLoading,
@@ -944,6 +958,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNodeDimmingEnabled,
     setNodeDimmingStartHours,
     setNodeDimmingMinOpacity,
+    setNodeHopsCalculation,
   };
 
   return (

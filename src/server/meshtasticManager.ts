@@ -2220,6 +2220,16 @@ class MeshtasticManager {
         nodeData.rssi = meshPacket.rxRssi;
       }
       databaseService.upsertNode(nodeData);
+
+      // Track message hops (hopStart - hopLimit) for "All messages" hop calculation mode
+      const hopStart = meshPacket.hopStart ?? meshPacket.hop_start;
+      const hopLimit = meshPacket.hopLimit ?? meshPacket.hop_limit;
+      if (hopStart !== undefined && hopStart !== null &&
+          hopLimit !== undefined && hopLimit !== null &&
+          hopStart >= hopLimit) {
+        const messageHops = hopStart - hopLimit;
+        databaseService.updateNodeMessageHops(fromNum, messageHops);
+      }
     }
 
     // Process decoded payload if present
@@ -8625,6 +8635,11 @@ class MeshtasticManager {
       // Add hopsAway if it exists
       if (node.hopsAway !== null && node.hopsAway !== undefined) {
         deviceInfo.hopsAway = node.hopsAway;
+      }
+
+      // Add lastMessageHops if it exists (for "All messages" hop calculation mode)
+      if (node.lastMessageHops !== null && node.lastMessageHops !== undefined) {
+        deviceInfo.lastMessageHops = node.lastMessageHops;
       }
 
       // Add viaMqtt if it exists

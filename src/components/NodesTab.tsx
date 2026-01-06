@@ -12,6 +12,7 @@ import { formatTime, formatDateTime, formatRelativeTime } from '../utils/datetim
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { formatTracerouteRoute } from '../utils/traceroute';
+import { getEffectiveHops } from '../utils/nodeHops';
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { useUI } from '../contexts/UIContext';
@@ -209,9 +210,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
     maxNodeAgeHours,
+    nodeHopsCalculation,
   } = useSettings();
 
   const { hasPermission } = useAuth();
+
+  // Parse current node ID to get node number for effective hops calculation
+  const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
 
   // Detect touch device to disable hover tooltips on mobile
   const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -844,8 +849,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           bVal = b.user?.hwModel ?? 0;
           break;
         case 'hops':
-          aVal = a.hopsAway ?? 999;
-          bVal = b.hopsAway ?? 999;
+          aVal = getEffectiveHops(a, nodeHopsCalculation, traceroutes, currentNodeNum);
+          bVal = getEffectiveHops(b, nodeHopsCalculation, traceroutes, currentNodeNum);
           break;
         default:
           return 0;
@@ -861,7 +866,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [sortField, sortDirection]);
+  }, [sortField, sortDirection, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
   // Calculate nodes with position
   const nodesWithPosition = processedNodes.filter(node =>
@@ -1139,12 +1144,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
                         </span>
                       )}
-                      {node.hopsAway != null && (
-                        <span className="stat" title={t('nodes.hops_away')}>
-                          🔗 {node.hopsAway} {t('nodes.hop', { count: node.hopsAway })}
-                          {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
-                        </span>
-                      )}
+                      {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
+                        const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+                        return effectiveHops < 999 ? (
+                          <span className="stat" title={t('nodes.hops_away')}>
+                            🔗 {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
+                            {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
+                          </span>
+                        ) : null;
+                      })()}
                       <DistanceDisplay
                         homeNode={homeNode}
                         targetNode={node}
@@ -1375,9 +1383,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 const isSelected = selectedNodeId === node.user?.id;
 
                 // Get hop count for this node
-                // Local node always gets 0 hops (green), otherwise use hopsAway from protobuf
+                // Local node always gets 0 hops (green), otherwise use effective hops based on setting
                 const isLocalNode = node.user?.id === currentNodeId;
-                const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
+                const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                 const showLabel = mapZoom >= 13; // Show labels when zoomed in
 
                 const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
@@ -1419,11 +1427,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <div style={{ fontWeight: 'bold' }}>
                         {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
                       </div>
-                      {node.hopsAway !== undefined && (
-                        <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
-                          {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
-                        </div>
-                      )}
+                      {(() => {
+                        const tooltipHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+                        return tooltipHops < 999 ? (
+                          <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                            {tooltipHops} hop{tooltipHops !== 1 ? 's' : ''}
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </Tooltip>
                 )}
@@ -1474,12 +1485,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </div>
                       )}
 
-                      {node.hopsAway != null && (
-                        <div className="node-popup-item">
-                          <span className="node-popup-icon">🔗</span>
-                          <span className="node-popup-value">{node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}</span>
-                        </div>
-                      )}
+                      {(() => {
+                        const popupHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+                        return popupHops < 999 ? (
+                          <div className="node-popup-item">
+                            <span className="node-popup-icon">🔗</span>
+                            <span className="node-popup-value">{popupHops} hop{popupHops !== 1 ? 's' : ''}</span>
+                          </div>
+                        ) : null;
+                      })()}
 
                       {node.position?.altitude != null && (
                         <div className="node-popup-item">
@@ -1603,7 +1617,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
                   // Get hop color for the circle (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
+                  const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                   const color = getHopColor(hops);
 
                   return (
@@ -1637,7 +1651,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
                   // Get hop color for the circle (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
+                  const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                   const color = getHopColor(hops);
 
                   return (
