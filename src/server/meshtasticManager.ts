@@ -2181,7 +2181,7 @@ class MeshtasticManager {
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
           metadata: JSON.stringify(metadata),
-          direction: 'rx'
+          direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx'
         });
         } // end else (not internal packet)
       }
