@@ -2568,6 +2568,36 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
   }
 });
 
+// NeighborInfo request endpoint (request neighbor info from remote node)
+apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write'), async (req, res) => {
+  try {
+    const { destination } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+
+    // Look up the node to get its channel
+    const node = databaseService.getNode(destinationNum);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const { packetId, requestId } = await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
+
+    logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+
+    res.json({
+      success: true,
+      message: `NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+      packetId,
+      requestId
+    });
+  } catch (error) {
+    logger.error('Error sending neighborinfo request:', error);
+    res.status(500).json({ error: 'Failed to send neighborinfo request' });
+  }
+});
+
 // Get recent traceroutes (last 24 hours)
 apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
