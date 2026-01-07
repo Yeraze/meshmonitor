@@ -24,6 +24,7 @@ import DetectionSensorConfigSection from './configuration/DetectionSensorConfigS
 import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
 import SerialConfigSection from './configuration/SerialConfigSection';
 import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
+import SecurityConfigSection from './configuration/SecurityConfigSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
@@ -248,6 +249,15 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [ambientRed, setAmbientRed] = useState(0);
   const [ambientGreen, setAmbientGreen] = useState(0);
   const [ambientBlue, setAmbientBlue] = useState(0);
+
+  // Security Config State
+  const [securityPublicKey, setSecurityPublicKey] = useState('');
+  const [securityPrivateKey, setSecurityPrivateKey] = useState('');
+  const [securityAdminKeys, setSecurityAdminKeys] = useState<string[]>(['']);
+  const [securityIsManaged, setSecurityIsManaged] = useState(false);
+  const [securitySerialEnabled, setSecuritySerialEnabled] = useState(true);
+  const [securityDebugLogApiEnabled, setSecurityDebugLogApiEnabled] = useState(false);
+  const [securityAdminChannelEnabled, setSecurityAdminChannelEnabled] = useState(false);
 
   // UI State
   const [isSaving, setIsSaving] = useState(false);
@@ -610,6 +620,33 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setAmbientRed(al.red ?? 0);
           setAmbientGreen(al.green ?? 0);
           setAmbientBlue(al.blue ?? 0);
+        }
+
+        // Populate Security config
+        if (config.deviceConfig?.security) {
+          const sec = config.deviceConfig.security;
+          // Admin keys come as base64 strings
+          if (sec.adminKey && Array.isArray(sec.adminKey)) {
+            setSecurityAdminKeys(sec.adminKey.length > 0 ? sec.adminKey : ['']);
+          }
+          setSecurityIsManaged(sec.isManaged || false);
+          setSecuritySerialEnabled(sec.serialEnabled !== false); // Default to true
+          setSecurityDebugLogApiEnabled(sec.debugLogApiEnabled || false);
+          setSecurityAdminChannelEnabled(sec.adminChannelEnabled || false);
+        }
+
+        // Fetch security keys (public/private) separately
+        try {
+          const securityKeys = await apiService.getSecurityKeys();
+          if (securityKeys.publicKey) {
+            setSecurityPublicKey(securityKeys.publicKey);
+          }
+          if (securityKeys.privateKey) {
+            setSecurityPrivateKey(securityKeys.privateKey);
+          }
+        } catch (keyError) {
+          logger.warn('Could not fetch security keys:', keyError);
+          // Non-fatal, continue loading
         }
       } catch (error) {
         logger.error('Error fetching configuration:', error);
@@ -1244,6 +1281,33 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
+  const handleSaveSecurityConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      // Filter out empty admin keys
+      const validAdminKeys = securityAdminKeys.filter(key => key && key.trim().length > 0);
+
+      await apiService.setSecurityConfig({
+        adminKeys: validAdminKeys,
+        isManaged: securityIsManaged,
+        serialEnabled: securitySerialEnabled,
+        debugLogApiEnabled: securityDebugLogApiEnabled,
+        adminChannelEnabled: securityAdminChannelEnabled
+      });
+      setStatusMessage(t('config.security_saved'));
+      showToast(t('config.security_saved_toast'), 'success');
+      // Security config changes may require reboot for some settings
+    } catch (error) {
+      logger.error('Error saving Security config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.security_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.security_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleRebootDevice = async () => {
     const confirmed = window.confirm(t('config.reboot_confirm'));
 
@@ -1630,6 +1694,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         { id: 'config-paxcounter', label: t('paxcounter_config.title', 'Paxcounter') },
         { id: 'config-serial', label: t('serial_config.title', 'Serial') },
         { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting') },
+        { id: 'config-security', label: t('security_config.title', 'Security') },
         { id: 'config-channels', label: t('config.channels', 'Channels') },
         { id: 'config-backup', label: t('config.backup_management', 'Backup') },
       ]} />
@@ -2282,6 +2347,25 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setBlue={setAmbientBlue}
             isSaving={isSaving}
             onSave={handleSaveAmbientLightingConfig}
+          />
+        </div>
+
+        <div id="config-security">
+          <SecurityConfigSection
+            publicKey={securityPublicKey}
+            privateKey={securityPrivateKey}
+            adminKeys={securityAdminKeys}
+            isManaged={securityIsManaged}
+            serialEnabled={securitySerialEnabled}
+            debugLogApiEnabled={securityDebugLogApiEnabled}
+            adminChannelEnabled={securityAdminChannelEnabled}
+            setAdminKeys={setSecurityAdminKeys}
+            setIsManaged={setSecurityIsManaged}
+            setSerialEnabled={setSecuritySerialEnabled}
+            setDebugLogApiEnabled={setSecurityDebugLogApiEnabled}
+            setAdminChannelEnabled={setSecurityAdminChannelEnabled}
+            isSaving={isSaving}
+            onSave={handleSaveSecurityConfig}
           />
         </div>
 

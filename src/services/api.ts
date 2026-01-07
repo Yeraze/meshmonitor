@@ -1123,6 +1123,19 @@ class ApiService {
     return response.json();
   }
 
+  async setSecurityConfig(config: {
+    adminKeys: string[];
+    isManaged: boolean;
+    serialEnabled: boolean;
+    debugLogApiEnabled: boolean;
+    adminChannelEnabled: boolean;
+  }): Promise<{ success: boolean }> {
+    return this.post('/api/admin-command', {
+      command: 'setSecurityConfig',
+      params: { config }
+    });
+  }
+
   async fetchLinkPreview(url: string) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/link-preview?url=${encodeURIComponent(url)}`, {
