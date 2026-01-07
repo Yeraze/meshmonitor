@@ -5416,13 +5416,27 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'security':
             if (finalConfig.deviceConfig?.security) {
               // Convert admin keys from Uint8Array to base64 strings for UI
-              const adminKeys = finalConfig.deviceConfig.security.adminKey || [];
+              const localAdminKeys = finalConfig.deviceConfig.security.adminKey || [];
               config = {
-                adminKeys: adminKeys.map((key: Uint8Array) => {
+                adminKeys: localAdminKeys.map((key: any) => {
                   if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
                     return Buffer.from(key).toString('base64');
                   }
-                  return key;
+                  // Handle JSON-serialized Buffer objects (e.g., { type: 'Buffer', data: [...] })
+                  if (key && typeof key === 'object' && key.type === 'Buffer' && Array.isArray(key.data)) {
+                    return Buffer.from(key.data).toString('base64');
+                  }
+                  // Handle array of bytes
+                  if (Array.isArray(key)) {
+                    return Buffer.from(key).toString('base64');
+                  }
+                  // Already a string (base64)
+                  if (typeof key === 'string') {
+                    return key;
+                  }
+                  // Fallback - try to convert
+                  logger.warn('Unknown admin key format:', typeof key, key);
+                  return String(key);
                 }),
                 isManaged: finalConfig.deviceConfig.security.isManaged,
                 serialEnabled: finalConfig.deviceConfig.security.serialEnabled,
@@ -5599,13 +5613,27 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
             break;
           case 'security':
             // Convert admin keys from Uint8Array to base64 strings for UI
-            const adminKeys = remoteConfig.adminKey || [];
+            const remoteAdminKeys = remoteConfig.adminKey || [];
             config = {
-              adminKeys: adminKeys.map((key: any) => {
+              adminKeys: remoteAdminKeys.map((key: any) => {
                 if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
                   return Buffer.from(key).toString('base64');
                 }
-                return key;
+                // Handle JSON-serialized Buffer objects (e.g., { type: 'Buffer', data: [...] })
+                if (key && typeof key === 'object' && key.type === 'Buffer' && Array.isArray(key.data)) {
+                  return Buffer.from(key.data).toString('base64');
+                }
+                // Handle array of bytes
+                if (Array.isArray(key)) {
+                  return Buffer.from(key).toString('base64');
+                }
+                // Already a string (base64)
+                if (typeof key === 'string') {
+                  return key;
+                }
+                // Fallback - try to convert
+                logger.warn('Unknown admin key format:', typeof key, key);
+                return String(key);
               }),
               isManaged: remoteConfig.isManaged,
               serialEnabled: remoteConfig.serialEnabled,
