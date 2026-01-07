@@ -38,6 +38,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     addAdminKey,
     removeAdminKey,
     setBluetoothConfig,
+    setNetworkConfig,
     setNeighborInfoConfig,
     setOwnerConfig,
     setDeviceConfig,
@@ -94,6 +95,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     mqtt: 'idle',
     security: 'idle',
     bluetooth: 'idle',
+    network: 'idle',
     neighborinfo: 'idle',
     owner: 'idle',
     channels: 'idle'
@@ -814,6 +816,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   fixedPin: config.fixedPin
                 });
                 break;
+              case 'network':
+                // Handle ipv4Config which may be nested
+                const ipv4 = config.ipv4Config || {};
+                setNetworkConfig({
+                  wifiEnabled: config.wifiEnabled || false,
+                  wifiSsid: config.wifiSsid || '',
+                  wifiPsk: config.wifiPsk || '',
+                  ntpServer: config.ntpServer || '',
+                  addressMode: config.addressMode || 0,
+                  ipv4Address: ipv4.ip || '',
+                  ipv4Gateway: ipv4.gateway || '',
+                  ipv4Subnet: ipv4.subnet || '',
+                  ipv4Dns: ipv4.dns || ''
+                });
+                break;
               case 'neighborinfo':
                 setNeighborInfoConfig({
                   enabled: config.enabled,
@@ -1379,6 +1396,33 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   }, [configState.bluetooth, executeCommand]);
 
+  const handleSetNetworkConfig = useCallback(async () => {
+    const config: any = {
+      wifiEnabled: configState.network.wifiEnabled,
+      wifiSsid: configState.network.wifiSsid,
+      wifiPsk: configState.network.wifiPsk,
+      ntpServer: configState.network.ntpServer,
+      addressMode: configState.network.addressMode
+    };
+
+    // Only include ipv4Config if using static addressing (addressMode === 1)
+    if (configState.network.addressMode === 1) {
+      config.ipv4Config = {
+        ip: configState.network.ipv4Address,
+        gateway: configState.network.ipv4Gateway,
+        subnet: configState.network.ipv4Subnet,
+        dns: configState.network.ipv4Dns
+      };
+    }
+
+    try {
+      await executeCommand('setNetworkConfig', { config });
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set Network config command failed:', error);
+    }
+  }, [configState.network, executeCommand]);
+
   // Wrapper functions for DeviceConfigurationSection
   const handleOwnerConfigChange = useCallback((field: string, value: any) => {
     setOwnerConfig({ [field]: value });
@@ -1399,6 +1443,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const handleBluetoothConfigChange = useCallback((field: string, value: any) => {
     setBluetoothConfig({ [field]: value });
   }, [setBluetoothConfig]);
+
+  const handleNetworkConfigChange = useCallback((field: string, value: any) => {
+    setNetworkConfig({ [field]: value });
+  }, [setNetworkConfig]);
 
   // Wrapper functions for ModuleConfigurationSection
   const handleMQTTConfigChange = useCallback((field: string, value: any) => {
@@ -2540,12 +2588,24 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         bluetoothFixedPin={configState.bluetooth.fixedPin}
         onBluetoothConfigChange={handleBluetoothConfigChange}
         onSaveBluetoothConfig={handleSetBluetoothConfig}
+        networkWifiEnabled={configState.network.wifiEnabled}
+        networkWifiSsid={configState.network.wifiSsid}
+        networkWifiPsk={configState.network.wifiPsk}
+        networkNtpServer={configState.network.ntpServer}
+        networkAddressMode={configState.network.addressMode}
+        networkIpv4Address={configState.network.ipv4Address}
+        networkIpv4Gateway={configState.network.ipv4Gateway}
+        networkIpv4Subnet={configState.network.ipv4Subnet}
+        networkIpv4Dns={configState.network.ipv4Dns}
+        onNetworkConfigChange={handleNetworkConfigChange}
+        onSaveNetworkConfig={handleSetNetworkConfig}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
         ownerHeaderActions={renderSectionLoadButton('owner')}
         deviceHeaderActions={renderSectionLoadButton('device')}
         positionHeaderActions={renderSectionLoadButton('position')}
         bluetoothHeaderActions={renderSectionLoadButton('bluetooth')}
+        networkHeaderActions={renderSectionLoadButton('network')}
       />
 
       {/* Module Configuration Section */}

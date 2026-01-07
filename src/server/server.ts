@@ -5242,6 +5242,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
           'device': { type: 0, isModule: false },  // DEVICE_CONFIG
           'position': { type: 1, isModule: false }, // POSITION_CONFIG
+          'network': { type: 3, isModule: false },  // NETWORK_CONFIG
           'lora': { type: 5, isModule: false },      // LORA_CONFIG
           'bluetooth': { type: 6, isModule: false }, // BLUETOOTH_CONFIG
           'security': { type: 7, isModule: false },  // SECURITY_CONFIG
@@ -6241,6 +6242,12 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'config is required for setBluetoothConfig' });
         }
         adminMessage = protobufService.createSetDeviceConfigMessageGeneric('bluetooth', params.config, sessionPasskey || undefined);
+        break;
+      case 'setNetworkConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setNetworkConfig' });
+        }
+        adminMessage = protobufService.createSetNetworkConfigMessage(params.config, sessionPasskey || undefined);
         break;
       case 'setNeighborInfoConfig':
         if (!params.config) {

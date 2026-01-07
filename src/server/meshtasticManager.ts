@@ -7985,10 +7985,13 @@ class MeshtasticManager {
             // Map device config types to their keys
             const deviceConfigMap: { [key: number]: string } = {
               0: 'device',
-              1: 'position',  // POSITION_CONFIG (was incorrectly 6)
-              5: 'lora',
-              6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
-              7: 'security'  // SECURITY_CONFIG
+              1: 'position',  // POSITION_CONFIG
+              2: 'power',     // POWER_CONFIG
+              3: 'network',   // NETWORK_CONFIG
+              4: 'display',   // DISPLAY_CONFIG
+              5: 'lora',      // LORA_CONFIG
+              6: 'bluetooth', // BLUETOOTH_CONFIG
+              7: 'security'   // SECURITY_CONFIG
             };
             const configKey = deviceConfigMap[configType];
             if (configKey && nodeConfig.deviceConfig?.[configKey]) {
