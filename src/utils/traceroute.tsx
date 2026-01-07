@@ -3,6 +3,52 @@ import { DeviceInfo } from '../types/device';
 import { calculateDistance, formatDistance } from './distance';
 
 /**
+ * INT8_MIN (-128) is the Meshtastic sentinel value for unknown SNR.
+ * This is used for MQTT gateways, older firmware, or nodes that couldn't decrypt.
+ * When scaled by 4 (as stored in protobuf), this becomes -32 dB.
+ */
+const INT8_MIN_SNR = -128;
+
+/**
+ * Formats SNR value for display, showing "MQTT" for unknown/MQTT links
+ */
+function formatSnrDisplay(snrValue: number | null): string {
+  if (snrValue === null) return '';
+  // INT8_MIN (-128) indicates unknown SNR (MQTT gateway, old firmware, etc.)
+  if (snrValue === INT8_MIN_SNR) {
+    return ' (MQTT)';
+  }
+  return ` (${(snrValue / 4).toFixed(1)} dB)`;
+}
+
+/**
+ * Formats SNR value for display as a React element, with MQTT styling
+ */
+function formatSnrElement(snrValue: number | null, key: string): React.ReactNode {
+  if (snrValue === null) return null;
+  // INT8_MIN (-128) indicates unknown SNR (MQTT gateway, old firmware, etc.)
+  if (snrValue === INT8_MIN_SNR) {
+    return (
+      <span
+        key={key}
+        style={{
+          marginLeft: '0.25rem',
+          padding: '0.1rem 0.3rem',
+          backgroundColor: 'var(--ctp-overlay0)',
+          color: 'var(--ctp-text)',
+          borderRadius: '3px',
+          fontSize: '0.85em',
+          fontWeight: 500,
+        }}
+      >
+        MQTT
+      </span>
+    );
+  }
+  return ` (${(snrValue / 4).toFixed(1)} dB)`;
+}
+
+/**
  * Formats a node name as "Longname [Shortname]" when both are present and different,
  * otherwise returns the available name or hex ID.
  *
@@ -117,9 +163,7 @@ export function formatTracerouteRoute(
       const nodeName = formatNodeName(nodeNum, nodes);
 
       // Get SNR for this hop (SNR array corresponds to hops between nodes)
-      // Note: Traceroute SNR values are scaled by 4 in the protobuf, so divide by 4
       const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
-      const snrDisplay = snrValue !== null ? ` (${(snrValue / 4).toFixed(1)} dB)` : '';
 
       // Check if this segment should be highlighted
       const isSegmentStart = options?.highlightSegment &&
@@ -138,8 +182,6 @@ export function formatTracerouteRoute(
       if (isSegmentStart) {
         const nextNodeName = formatNodeName(fullPath[idx + 1], nodes);
         const nextSnrValue = snrArray[idx + 1] !== undefined ? snrArray[idx + 1] : null;
-        // Note: Traceroute SNR values are scaled by 4 in the protobuf, so divide by 4
-        const nextSnrDisplay = nextSnrValue !== null ? ` (${(nextSnrValue / 4).toFixed(1)} dB)` : '';
 
         pathElements.push(
           <span
@@ -152,7 +194,7 @@ export function formatTracerouteRoute(
               fontWeight: 'bold'
             }}
           >
-            {nodeName}{snrDisplay} → {nextNodeName}{nextSnrDisplay}
+            {nodeName}{formatSnrDisplay(snrValue)} → {nextNodeName}{formatSnrDisplay(nextSnrValue)}
           </span>
         );
 
@@ -160,7 +202,10 @@ export function formatTracerouteRoute(
         renderedIndices.add(idx + 1);
       } else {
         pathElements.push(
-          <span key={idx}>{nodeName}{snrDisplay}</span>
+          <React.Fragment key={idx}>
+            <span>{nodeName}</span>
+            {formatSnrElement(snrValue, `snr-${idx}`)}
+          </React.Fragment>
         );
       }
 
