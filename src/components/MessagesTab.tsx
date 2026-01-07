@@ -139,6 +139,7 @@ export interface MessagesTabProps {
   tracerouteLoading: string | null;
   positionLoading: string | null;
   nodeInfoLoading: string | null;
+  neighborInfoLoading: string | null;
 
   // Settings
   timeFormat: TimeFormat;
@@ -157,6 +158,7 @@ export interface MessagesTabProps {
   handleTraceroute: (nodeId: string) => Promise<void>;
   handleExchangePosition: (nodeId: string) => Promise<void>;
   handleExchangeNodeInfo: (nodeId: string) => Promise<void>;
+  handleRequestNeighborInfo: (nodeId: string) => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
   handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
@@ -213,6 +215,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   tracerouteLoading,
   positionLoading,
   nodeInfoLoading,
+  neighborInfoLoading,
   timeFormat,
   dateFormat,
   temperatureUnit,
@@ -225,6 +228,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   handleTraceroute,
   handleExchangePosition,
   handleExchangeNodeInfo,
+  handleRequestNeighborInfo,
   handleDeleteMessage,
   handleSenderClick,
   handleSendTapback,
@@ -1294,6 +1298,28 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   }}
                 >
                   {positionLoading === selectedDMNode ? <span className="spinner"></span> : '📍'} {t('messages.exchange_position')}
+                </button>
+              )}
+
+              {/* Request Neighbor Info */}
+              {hasPermission('traceroute', 'write') && (
+                <button
+                  onClick={() => handleRequestNeighborInfo(selectedDMNode)}
+                  disabled={connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: '120px',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-blue)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                    opacity: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode ? 0.5 : 1,
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {neighborInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🏠'} {t('messages.request_neighbor_info')}
                 </button>
               )}
             </div>

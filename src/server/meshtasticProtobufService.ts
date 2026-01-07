@@ -331,6 +331,67 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a neighbor info request ToRadio to request NeighborInfo from a remote node
+   * This sends an empty NeighborInfo packet with wantResponse=true to request neighbor data
+   * Note: Target node must have NeighborInfo module enabled; firmware rate-limits responses to 1 per 3 minutes
+   */
+  createNeighborInfoRequestMessage(
+    destination: number,
+    channel?: number
+  ): { data: Uint8Array; packetId: number; requestId: number } {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+
+    try {
+      // Generate unique IDs
+      const packetId = Math.floor(Math.random() * 0xffffffff);
+      const requestId = Math.floor(Math.random() * 0xffffffff);
+
+      // Create empty NeighborInfo message (request format)
+      const NeighborInfo = root.lookupType('meshtastic.NeighborInfo');
+      const neighborInfoMessage = NeighborInfo.create({});
+
+      // Encode the NeighborInfo as payload
+      const payload = NeighborInfo.encode(neighborInfoMessage).finish();
+
+      // Create Data message with NEIGHBORINFO_APP portnum
+      const Data = root.lookupType('meshtastic.Data');
+      const dataMessage = Data.create({
+        portnum: PortNum.NEIGHBORINFO_APP,
+        payload: payload,
+        dest: destination,
+        wantResponse: true, // Request neighbor info from destination
+        requestId: requestId
+      });
+
+      // Create MeshPacket with explicit ID
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const meshPacket = MeshPacket.create({
+        id: packetId,
+        to: destination,
+        channel: channel || 0,
+        decoded: dataMessage,
+        wantAck: true, // Want delivery confirmation
+        hopLimit: 7 // Default hop limit for remote nodes
+      });
+
+      // Create ToRadio message
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.create({
+        packet: meshPacket
+      });
+
+      return { data: ToRadio.encode(toRadio).finish(), packetId, requestId };
+    } catch (error) {
+      logger.error('❌ Failed to create neighbor info request message:', error);
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+  }
+
+  /**
    * Create a text message ToRadio using proper protobuf encoding
    */
   createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {

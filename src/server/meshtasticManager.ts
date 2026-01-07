@@ -5691,6 +5691,59 @@ class MeshtasticManager {
   }
 
   /**
+   * Request neighbor info from a remote node
+   * The target node must have NeighborInfo module enabled (broadcast interval can be 0)
+   * Firmware rate-limits responses to one every 3 minutes
+   */
+  async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      const { data: neighborInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNeighborInfoRequestMessage(
+        destination,
+        channel
+      );
+
+      logger.info(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
+
+      await this.transport.send(neighborInfoRequestData);
+
+      // Broadcast to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(neighborInfoRequestData);
+          logger.debug(`📡 Broadcasted outgoing NeighborInfo request to virtual node clients (${neighborInfoRequestData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing NeighborInfo request:', error);
+        }
+      }
+
+      logger.info(`📤 NeighborInfo request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+
+      // Log outgoing NeighborInfo request to packet monitor
+      this.logOutgoingPacket(
+        71, // NEIGHBORINFO_APP
+        destination,
+        channel,
+        `NeighborInfo request to !${destination.toString(16).padStart(8, '0')}`,
+        { destination, packetId, requestId }
+      );
+
+      return { packetId, requestId };
+    } catch (error) {
+      logger.error('Error sending NeighborInfo request:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Broadcast NodeInfo to all nodes on a specific channel
    * Uses the broadcast address (0xFFFFFFFF) to send to all nodes
    * wantAck is set to false to reduce mesh traffic

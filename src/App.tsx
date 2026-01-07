@@ -513,6 +513,9 @@ function App() {
   // NodeInfo exchange loading state (for key exchange / user info request)
   const [nodeInfoLoading, setNodeInfoLoading] = useState<string | null>(null);
 
+  // NeighborInfo request loading state
+  const [neighborInfoLoading, setNeighborInfoLoading] = useState<string | null>(null);
+
   // Play notification sound using Web Audio API
   const playNotificationSound = useCallback(() => {
     // Check if audio notifications are enabled
@@ -2492,6 +2495,46 @@ function App() {
     }
   };
 
+  const handleRequestNeighborInfo = async (nodeId: string) => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    // Prevent duplicate requests (debounce logic)
+    if (neighborInfoLoading === nodeId) {
+      logger.debug(`🏠 NeighborInfo request already in progress for ${nodeId}`);
+      return;
+    }
+
+    try {
+      // Set loading state
+      setNeighborInfoLoading(nodeId);
+
+      // Convert nodeId to node number for backend
+      const nodeNumStr = nodeId.replace('!', '');
+      const nodeNum = parseInt(nodeNumStr, 16);
+
+      // Use direct fetch with CSRF token
+      await authFetch(`${baseUrl}/api/neighborinfo/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ destination: nodeNum }),
+      });
+
+      logger.debug(`🏠 NeighborInfo request sent to ${nodeId}`);
+
+      // Clear loading state after 30 seconds (firmware rate-limits to 3 min anyway)
+      setTimeout(() => {
+        setNeighborInfoLoading(null);
+      }, 30000);
+    } catch (error) {
+      logger.error('Failed to send neighborinfo request:', error);
+      setNeighborInfoLoading(null);
+    }
+  };
+
   const handleSendDirectMessage = async (destinationNodeId: string) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -4016,6 +4059,7 @@ function App() {
             tracerouteLoading={tracerouteLoading}
             positionLoading={positionLoading}
             nodeInfoLoading={nodeInfoLoading}
+            neighborInfoLoading={neighborInfoLoading}
             timeFormat={timeFormat}
             dateFormat={dateFormat}
             temperatureUnit={temperatureUnit}
@@ -4028,6 +4072,7 @@ function App() {
             handleTraceroute={handleTraceroute}
             handleExchangePosition={handleExchangePosition}
             handleExchangeNodeInfo={handleExchangeNodeInfo}
+            handleRequestNeighborInfo={handleRequestNeighborInfo}
             handleDeleteMessage={handleDeleteMessage}
             handleSenderClick={handleSenderClick}
             handleSendTapback={handleSendTapback}
