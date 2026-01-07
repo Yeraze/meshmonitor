@@ -473,6 +473,11 @@ class MeshtasticManager {
     this.localNodeInfo = null;
     // Clear favorites support cache on disconnect
     this.favoritesSupportCache = null;
+    // Clear init config cache - will be repopulated on reconnect
+    // This ensures virtual node clients get fresh data if a different node reconnects
+    this.initConfigCache = [];
+    this.configCaptureComplete = false;
+    logger.debug('📸 Cleared init config cache on disconnect');
 
     // Notify server event service of disconnection
     // Skip notification if this is a user-initiated disconnect (already notified in userDisconnect())
@@ -1679,6 +1684,21 @@ class MeshtasticManager {
 
     const nodeNum = Number(myNodeInfo.myNodeNum);
     const nodeId = `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`;
+
+    // Check for node ID mismatch with previously stored values
+    const previousNodeNum = databaseService.getSetting('localNodeNum');
+    const previousNodeId = databaseService.getSetting('localNodeId');
+    if (previousNodeNum && previousNodeId) {
+      const prevNum = parseInt(previousNodeNum);
+      if (prevNum !== nodeNum) {
+        logger.warn(`⚠️ NODE ID CHANGE DETECTED: Physical node changed from ${previousNodeId} (${prevNum}) to ${nodeId} (${nodeNum})`);
+        logger.warn(`⚠️ This can happen if: (1) The physical node was factory reset, (2) A different physical node was connected, or (3) The node's ID was reconfigured`);
+        logger.warn(`⚠️ Virtual node clients may briefly show the old node ID until they reconnect`);
+        // Clear the init config cache to force fresh data for virtual node clients
+        this.initConfigCache = [];
+        logger.info(`📸 Cleared init config cache due to node ID change`);
+      }
+    }
 
     // Save local node info to settings for persistence
     databaseService.setSetting('localNodeNum', nodeNum.toString());

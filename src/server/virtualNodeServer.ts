@@ -594,6 +594,9 @@ export class VirtualNodeServer extends EventEmitter {
           logger.debug(`Virtual node: Using fallback firmware version: ${firmwareVersion}`);
         }
 
+        // Log the node ID being sent to help diagnose identity issues
+        logger.info(`Virtual node: Sending MyNodeInfo with nodeNum=${localNodeInfo.nodeNum} (${localNodeInfo.nodeId}) to ${clientId}`);
+
         const myNodeInfoMessage = await meshtasticProtobufService.createMyNodeInfo({
           myNodeNum: localNodeInfo.nodeNum,
           numBands: 13,
@@ -611,7 +614,7 @@ export class VirtualNodeServer extends EventEmitter {
           logger.debug(`Virtual node: ✓ Sent fresh MyNodeInfo from database`);
         }
       } else {
-        logger.warn(`Virtual node: No local node info available, skipping MyNodeInfo`);
+        logger.warn(`Virtual node: No local node info available, skipping MyNodeInfo - clients may have incorrect identity!`);
       }
 
       // === STEP 2: Rebuild and send all NodeInfo entries from database ===
