@@ -83,6 +83,19 @@ export interface BluetoothConfigState {
   fixedPin: number;
 }
 
+// Network Config State
+export interface NetworkConfigState {
+  wifiEnabled: boolean;
+  wifiSsid: string;
+  wifiPsk: string;
+  ntpServer: string;
+  addressMode: number;
+  ipv4Address: string;
+  ipv4Gateway: string;
+  ipv4Subnet: string;
+  ipv4Dns: string;
+}
+
 // NeighborInfo Config State
 export interface NeighborInfoConfigState {
   enabled: boolean;
@@ -110,6 +123,7 @@ export interface AdminCommandsState {
   mqtt: MQTTConfigState;
   security: SecurityConfigState;
   bluetooth: BluetoothConfigState;
+  network: NetworkConfigState;
   neighborInfo: NeighborInfoConfigState;
   owner: OwnerConfigState;
   device: DeviceConfigState;
@@ -123,6 +137,7 @@ type AdminCommandsAction =
   | { type: 'SET_MQTT_CONFIG'; payload: Partial<MQTTConfigState> }
   | { type: 'SET_SECURITY_CONFIG'; payload: Partial<SecurityConfigState> }
   | { type: 'SET_BLUETOOTH_CONFIG'; payload: Partial<BluetoothConfigState> }
+  | { type: 'SET_NETWORK_CONFIG'; payload: Partial<NetworkConfigState> }
   | { type: 'SET_NEIGHBORINFO_CONFIG'; payload: Partial<NeighborInfoConfigState> }
   | { type: 'SET_OWNER_CONFIG'; payload: Partial<OwnerConfigState> }
   | { type: 'SET_DEVICE_CONFIG'; payload: Partial<DeviceConfigState> }
@@ -199,6 +214,17 @@ const initialState: AdminCommandsState = {
     mode: 0,
     fixedPin: 0,
   },
+  network: {
+    wifiEnabled: false,
+    wifiSsid: '',
+    wifiPsk: '',
+    ntpServer: '',
+    addressMode: 0,
+    ipv4Address: '',
+    ipv4Gateway: '',
+    ipv4Subnet: '',
+    ipv4Dns: '',
+  },
   neighborInfo: {
     enabled: false,
     updateInterval: 14400,
@@ -249,6 +275,11 @@ function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAc
       return {
         ...state,
         bluetooth: { ...state.bluetooth, ...action.payload },
+      };
+    case 'SET_NETWORK_CONFIG':
+      return {
+        ...state,
+        network: { ...state.network, ...action.payload },
       };
     case 'SET_NEIGHBORINFO_CONFIG':
       return {
@@ -367,6 +398,11 @@ export function useAdminCommandsState() {
     dispatch({ type: 'SET_BLUETOOTH_CONFIG', payload: config });
   }, []);
 
+  // Network config actions
+  const setNetworkConfig = useCallback((config: Partial<NetworkConfigState>) => {
+    dispatch({ type: 'SET_NETWORK_CONFIG', payload: config });
+  }, []);
+
   // NeighborInfo config actions
   const setNeighborInfoConfig = useCallback((config: Partial<NeighborInfoConfigState>) => {
     dispatch({ type: 'SET_NEIGHBORINFO_CONFIG', payload: config });
@@ -404,6 +440,8 @@ export function useAdminCommandsState() {
     removeAdminKey,
     // Bluetooth
     setBluetoothConfig,
+    // Network
+    setNetworkConfig,
     // NeighborInfo
     setNeighborInfoConfig,
     // Owner

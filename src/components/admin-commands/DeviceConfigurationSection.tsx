@@ -65,6 +65,19 @@ interface DeviceConfigurationSectionProps {
   onBluetoothConfigChange: (field: string, value: any) => void;
   onSaveBluetoothConfig: () => Promise<void>;
 
+  // Network Config
+  networkWifiEnabled: boolean;
+  networkWifiSsid: string;
+  networkWifiPsk: string;
+  networkNtpServer: string;
+  networkAddressMode: number;
+  networkIpv4Address: string;
+  networkIpv4Gateway: string;
+  networkIpv4Subnet: string;
+  networkIpv4Dns: string;
+  onNetworkConfigChange: (field: string, value: any) => void;
+  onSaveNetworkConfig: () => Promise<void>;
+
   // Common
   isExecuting: boolean;
   selectedNodeNum: number | null;
@@ -74,6 +87,7 @@ interface DeviceConfigurationSectionProps {
   deviceHeaderActions?: React.ReactNode;
   positionHeaderActions?: React.ReactNode;
   bluetoothHeaderActions?: React.ReactNode;
+  networkHeaderActions?: React.ReactNode;
 }
 
 export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProps> = ({
@@ -121,12 +135,24 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
   bluetoothFixedPin,
   onBluetoothConfigChange,
   onSaveBluetoothConfig,
+  networkWifiEnabled,
+  networkWifiSsid,
+  networkWifiPsk,
+  networkNtpServer,
+  networkAddressMode,
+  networkIpv4Address,
+  networkIpv4Gateway,
+  networkIpv4Subnet,
+  networkIpv4Dns,
+  onNetworkConfigChange,
+  onSaveNetworkConfig,
   isExecuting,
   selectedNodeNum,
   ownerHeaderActions,
   deviceHeaderActions,
   positionHeaderActions,
   bluetoothHeaderActions,
+  networkHeaderActions,
 }) => {
   const { t } = useTranslation();
 
@@ -756,6 +782,198 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_bluetooth_config', 'Save Bluetooth Config')}
+        </button>
+      </CollapsibleSection>
+
+      {/* Network Configuration */}
+      <CollapsibleSection
+        id="admin-network-config"
+        title={t('admin_commands.network_configuration', 'Network Configuration')}
+        defaultExpanded={false}
+        headerActions={networkHeaderActions}
+      >
+        {/* WiFi Enabled */}
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={networkWifiEnabled}
+              onChange={(e) => onNetworkConfigChange('wifiEnabled', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.wifi_enabled', 'WiFi Enabled')}</div>
+              <span className="setting-description">{t('admin_commands.wifi_enabled_description', 'Enable WiFi on this device')}</span>
+            </div>
+          </label>
+        </div>
+
+        {/* WiFi Settings - only show when WiFi is enabled */}
+        {networkWifiEnabled && (
+          <>
+            {/* WiFi SSID */}
+            <div className="setting-item">
+              <label>
+                {t('admin_commands.wifi_ssid', 'WiFi SSID')}
+                <span className="setting-description">{t('admin_commands.wifi_ssid_description', 'Network name to connect to')}</span>
+              </label>
+              <input
+                type="text"
+                value={networkWifiSsid}
+                onChange={(e) => onNetworkConfigChange('wifiSsid', e.target.value)}
+                disabled={isExecuting}
+                placeholder="MyNetwork"
+                maxLength={32}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              />
+            </div>
+
+            {/* WiFi Password */}
+            <div className="setting-item">
+              <label>
+                {t('admin_commands.wifi_psk', 'WiFi Password')}
+                <span className="setting-description">{t('admin_commands.wifi_psk_description', 'Network password')}</span>
+              </label>
+              <input
+                type="password"
+                value={networkWifiPsk}
+                onChange={(e) => onNetworkConfigChange('wifiPsk', e.target.value)}
+                disabled={isExecuting}
+                placeholder="••••••••"
+                maxLength={63}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              />
+            </div>
+
+            {/* Address Mode */}
+            <div className="setting-item">
+              <label>
+                {t('admin_commands.address_mode', 'Address Mode')}
+                <span className="setting-description">{t('admin_commands.address_mode_description', 'IP address assignment method')}</span>
+              </label>
+              <select
+                value={networkAddressMode}
+                onChange={(e) => onNetworkConfigChange('addressMode', parseInt(e.target.value))}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              >
+                <option value={0}>DHCP</option>
+                <option value={1}>Static</option>
+              </select>
+            </div>
+
+            {/* Static IP Settings - only show when address mode is STATIC (1) */}
+            {networkAddressMode === 1 && (
+              <div style={{
+                marginLeft: '1rem',
+                paddingLeft: '1rem',
+                borderLeft: '2px solid var(--ctp-surface2)',
+                marginTop: '1rem'
+              }}>
+                <h4 style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+                  {t('admin_commands.static_ip_settings', 'Static IP Settings')}
+                </h4>
+
+                {/* IP Address */}
+                <div className="setting-item">
+                  <label>
+                    {t('admin_commands.ip_address', 'IP Address')}
+                  </label>
+                  <input
+                    type="text"
+                    value={networkIpv4Address}
+                    onChange={(e) => onNetworkConfigChange('ipv4Address', e.target.value)}
+                    disabled={isExecuting}
+                    placeholder="192.168.1.100"
+                    className="setting-input"
+                    style={{ width: '100%', maxWidth: '300px' }}
+                  />
+                </div>
+
+                {/* Gateway */}
+                <div className="setting-item">
+                  <label>
+                    {t('admin_commands.gateway', 'Gateway')}
+                  </label>
+                  <input
+                    type="text"
+                    value={networkIpv4Gateway}
+                    onChange={(e) => onNetworkConfigChange('ipv4Gateway', e.target.value)}
+                    disabled={isExecuting}
+                    placeholder="192.168.1.1"
+                    className="setting-input"
+                    style={{ width: '100%', maxWidth: '300px' }}
+                  />
+                </div>
+
+                {/* Subnet */}
+                <div className="setting-item">
+                  <label>
+                    {t('admin_commands.subnet', 'Subnet Mask')}
+                  </label>
+                  <input
+                    type="text"
+                    value={networkIpv4Subnet}
+                    onChange={(e) => onNetworkConfigChange('ipv4Subnet', e.target.value)}
+                    disabled={isExecuting}
+                    placeholder="255.255.255.0"
+                    className="setting-input"
+                    style={{ width: '100%', maxWidth: '300px' }}
+                  />
+                </div>
+
+                {/* DNS */}
+                <div className="setting-item">
+                  <label>
+                    {t('admin_commands.dns', 'DNS Server')}
+                  </label>
+                  <input
+                    type="text"
+                    value={networkIpv4Dns}
+                    onChange={(e) => onNetworkConfigChange('ipv4Dns', e.target.value)}
+                    disabled={isExecuting}
+                    placeholder="8.8.8.8"
+                    className="setting-input"
+                    style={{ width: '100%', maxWidth: '300px' }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* NTP Server - always show */}
+        <div className="setting-item" style={{ marginTop: networkWifiEnabled ? '1rem' : 0 }}>
+          <label>
+            {t('admin_commands.ntp_server', 'NTP Server')}
+            <span className="setting-description">{t('admin_commands.ntp_server_description', 'Time synchronization server')}</span>
+          </label>
+          <input
+            type="text"
+            value={networkNtpServer}
+            onChange={(e) => onNetworkConfigChange('ntpServer', e.target.value)}
+            disabled={isExecuting}
+            placeholder="meshtastic.pool.ntp.org"
+            maxLength={33}
+            className="setting-input"
+            style={{ width: '100%', maxWidth: '600px' }}
+          />
+        </div>
+
+        <button
+          className="save-button"
+          onClick={onSaveNetworkConfig}
+          disabled={isExecuting || selectedNodeNum === null}
+          style={{
+            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('admin_commands.save_network_config', 'Save Network Config')}
         </button>
       </CollapsibleSection>
     </CollapsibleSection>
