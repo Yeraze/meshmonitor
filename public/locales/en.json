@@ -3313,6 +3313,9 @@
   "security_config.admin_channel_enabled": "Legacy Admin Channel",
   "security_config.admin_channel_enabled_description": "Allow device control over the insecure legacy admin channel. Disable for enhanced security.",
   "security_config.save_button": "Save Security Config",
+  "security_config.copy_private_key_confirm": "Are you sure you want to copy your private key to the clipboard? Never share this key with anyone!",
+  "security_config.invalid_base64": "Invalid format. Please enter a valid base64-encoded key.",
+  "security_config.fix_invalid_keys": "Please fix invalid admin keys before saving",
 
   "gpio_summary.title": "GPIO Pin Usage",
   "gpio_summary.description": "Pins currently configured across all sections",

@@ -1,5 +1,26 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+
+/**
+ * Validates if a string is valid base64 format
+ * Returns true for empty strings (optional keys)
+ */
+const isValidBase64 = (str: string): boolean => {
+  if (!str || !str.trim()) return true; // Empty is valid (optional)
+  const trimmed = str.trim();
+  // Check for valid base64 characters and proper padding
+  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+  if (!base64Regex.test(trimmed)) return false;
+  // Check length is multiple of 4 (valid base64)
+  if (trimmed.length % 4 !== 0) return false;
+  // Try to decode to verify
+  try {
+    atob(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 interface SecurityConfigSectionProps {
   // Keys (read-only display)
@@ -59,6 +80,17 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       setAdminKeys(newKeys);
     }
   };
+
+  const handleCopyPrivateKey = useCallback(() => {
+    if (!privateKey) return;
+    const confirmed = window.confirm(t('security_config.copy_private_key_confirm'));
+    if (confirmed) {
+      navigator.clipboard.writeText(privateKey);
+    }
+  }, [privateKey, t]);
+
+  // Check if any admin keys have invalid format
+  const hasInvalidKeys = adminKeys.some(key => key.trim() && !isValidBase64(key));
 
   return (
     <div className="settings-section">
@@ -144,7 +176,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           {privateKey && (
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText(privateKey)}
+              onClick={handleCopyPrivateKey}
               style={{
                 padding: '0.5rem',
                 backgroundColor: 'var(--ctp-surface1)',
@@ -173,34 +205,50 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           {t('security_config.admin_keys')}
           <span className="setting-description">{t('security_config.admin_keys_description')}</span>
         </label>
-        {adminKeys.map((key, index) => (
-          <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-            <input
-              type="text"
-              value={key}
-              onChange={(e) => handleAdminKeyChange(index, e.target.value)}
-              className="setting-input"
-              style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.85rem' }}
-              placeholder={t('security_config.admin_key_placeholder')}
-            />
-            {adminKeys.length > 1 && (
-              <button
-                type="button"
-                onClick={() => handleRemoveAdminKey(index)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  backgroundColor: 'var(--ctp-red)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  color: '#fff'
-                }}
-              >
-                {t('common.remove')}
-              </button>
-            )}
-          </div>
-        ))}
+        {adminKeys.map((key, index) => {
+          const isInvalid = key.trim() && !isValidBase64(key);
+          return (
+            <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-start', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', width: '100%', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={key}
+                  onChange={(e) => handleAdminKeyChange(index, e.target.value)}
+                  className="setting-input"
+                  style={{
+                    flex: 1,
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                    borderColor: isInvalid ? 'var(--ctp-red)' : undefined,
+                    boxShadow: isInvalid ? '0 0 0 1px var(--ctp-red)' : undefined
+                  }}
+                  placeholder={t('security_config.admin_key_placeholder')}
+                />
+                {adminKeys.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAdminKey(index)}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: 'var(--ctp-red)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      color: '#fff'
+                    }}
+                  >
+                    {t('common.remove')}
+                  </button>
+                )}
+              </div>
+              {isInvalid && (
+                <span style={{ color: 'var(--ctp-red)', fontSize: '0.85rem' }}>
+                  {t('security_config.invalid_base64')}
+                </span>
+              )}
+            </div>
+          );
+        })}
         {adminKeys.length < 3 && (
           <button
             type="button"
@@ -294,7 +342,8 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       <button
         className="save-button"
         onClick={onSave}
-        disabled={isSaving}
+        disabled={isSaving || hasInvalidKeys}
+        title={hasInvalidKeys ? t('security_config.fix_invalid_keys') : undefined}
       >
         {isSaving ? t('common.saving') : t('security_config.save_button')}
       </button>
