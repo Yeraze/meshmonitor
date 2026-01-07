@@ -655,23 +655,62 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     setSectionLoadStatus(prev => ({ ...prev, [configType]: 'loading' }));
 
+    // Determine if this is a remote node (need for session passkey pre-request)
+    const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
+    const isRemoteNode = selectedNodeNum !== localNodeNum && selectedNodeNum !== 0;
+
+    // Retry configuration - matches channel loading pattern
+    const maxRetries = 2;
+    const isRetryableError = (error: any): boolean => {
+      const msg = error?.message || '';
+      return msg.includes('404') || msg.includes('timeout') || msg.includes('not received') || msg.includes('not reachable');
+    };
+
     try {
-      if (configType === 'owner') {
-        const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
-          nodeNum: selectedNodeNum
-        });
-        if (result?.owner) {
-          setOwnerConfig({
-            longName: result.owner.longName,
-            shortName: result.owner.shortName,
-            isUnmessagable: result.owner.isUnmessagable
+      // For remote nodes, ensure session passkey is available before making any admin request
+      // This prevents timeout failures on slow mesh networks
+      // Note: This is done once before retries since the passkey persists
+      if (isRemoteNode) {
+        try {
+          await apiService.post('/api/admin/ensure-session-passkey', {
+            nodeNum: selectedNodeNum
           });
-          setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
-          showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
-        } else {
-          setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
-          showToast(t('admin_commands.config_load_failed', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'error');
+        } catch (error: any) {
+          throw new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
         }
+      }
+
+      if (configType === 'owner') {
+        // Owner config with retry logic
+        let lastError: any = null;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            if (attempt > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+            }
+            const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
+              nodeNum: selectedNodeNum
+            });
+            if (result?.owner) {
+              setOwnerConfig({
+                longName: result.owner.longName,
+                shortName: result.owner.shortName,
+                isUnmessagable: result.owner.isUnmessagable
+              });
+              setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
+              showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
+              return;
+            }
+            // No data in result - treat as retryable
+            lastError = new Error('No owner data received');
+            if (!isRetryableError(lastError) || attempt >= maxRetries) break;
+          } catch (error: any) {
+            lastError = error;
+            if (!isRetryableError(error) || attempt >= maxRetries) break;
+          }
+        }
+        setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
+        showToast(lastError?.message || t('admin_commands.config_load_failed', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'error');
         return;
       }
 
@@ -680,108 +719,128 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         return;
       }
 
-      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-        nodeNum: selectedNodeNum,
-        configType
-      });
+      // Generic config types with retry logic
+      let lastError: any = null;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+          }
 
-      if (result?.config) {
-        const config = result.config;
-        switch (configType) {
-          case 'device':
-            setDeviceConfig({
-              role: config.role,
-              nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
-            });
-            break;
-          case 'lora':
-            setLoRaConfig({
-              usePreset: config.usePreset,
-              modemPreset: config.modemPreset,
-              bandwidth: config.bandwidth,
-              spreadFactor: config.spreadFactor,
-              codingRate: config.codingRate,
-              frequencyOffset: config.frequencyOffset,
-              overrideFrequency: config.overrideFrequency,
-              region: config.region,
-              hopLimit: config.hopLimit,
-              txPower: config.txPower,
-              channelNum: config.channelNum,
-              sx126xRxBoostedGain: config.sx126xRxBoostedGain,
-              ignoreMqtt: config.ignoreMqtt,
-              configOkToMqtt: config.configOkToMqtt,
-              txEnabled: config.txEnabled ?? true,  // Default to true if undefined
-              overrideDutyCycle: config.overrideDutyCycle ?? false,
-              paFanDisabled: config.paFanDisabled ?? false
-            });
-            break;
-          case 'position':
-            setPositionConfig({
-              positionBroadcastSecs: config.positionBroadcastSecs,
-              positionSmartEnabled: config.positionBroadcastSmartEnabled ?? config.positionSmartEnabled,
-              fixedPosition: config.fixedPosition,
-              fixedLatitude: config.fixedLatitude,
-              fixedLongitude: config.fixedLongitude,
-              fixedAltitude: config.fixedAltitude,
-              gpsUpdateInterval: config.gpsUpdateInterval,
-              rxGpio: config.rxGpio,
-              txGpio: config.txGpio,
-              broadcastSmartMinimumDistance: config.broadcastSmartMinimumDistance,
-              broadcastSmartMinimumIntervalSecs: config.broadcastSmartMinimumIntervalSecs,
-              gpsEnGpio: config.gpsEnGpio,
-              gpsMode: config.gpsMode
-            });
-            if (config.positionFlags !== undefined) {
-              setPositionFlags(decodePositionFlags(config.positionFlags));
+          const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+            nodeNum: selectedNodeNum,
+            configType
+          });
+
+          if (result?.config) {
+            const config = result.config;
+            switch (configType) {
+              case 'device':
+                setDeviceConfig({
+                  role: config.role,
+                  nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+                });
+                break;
+              case 'lora':
+                setLoRaConfig({
+                  usePreset: config.usePreset,
+                  modemPreset: config.modemPreset,
+                  bandwidth: config.bandwidth,
+                  spreadFactor: config.spreadFactor,
+                  codingRate: config.codingRate,
+                  frequencyOffset: config.frequencyOffset,
+                  overrideFrequency: config.overrideFrequency,
+                  region: config.region,
+                  hopLimit: config.hopLimit,
+                  txPower: config.txPower,
+                  channelNum: config.channelNum,
+                  sx126xRxBoostedGain: config.sx126xRxBoostedGain,
+                  ignoreMqtt: config.ignoreMqtt,
+                  configOkToMqtt: config.configOkToMqtt,
+                  txEnabled: config.txEnabled ?? true,  // Default to true if undefined
+                  overrideDutyCycle: config.overrideDutyCycle ?? false,
+                  paFanDisabled: config.paFanDisabled ?? false
+                });
+                break;
+              case 'position':
+                setPositionConfig({
+                  positionBroadcastSecs: config.positionBroadcastSecs,
+                  positionSmartEnabled: config.positionBroadcastSmartEnabled ?? config.positionSmartEnabled,
+                  fixedPosition: config.fixedPosition,
+                  fixedLatitude: config.fixedLatitude,
+                  fixedLongitude: config.fixedLongitude,
+                  fixedAltitude: config.fixedAltitude,
+                  gpsUpdateInterval: config.gpsUpdateInterval,
+                  rxGpio: config.rxGpio,
+                  txGpio: config.txGpio,
+                  broadcastSmartMinimumDistance: config.broadcastSmartMinimumDistance,
+                  broadcastSmartMinimumIntervalSecs: config.broadcastSmartMinimumIntervalSecs,
+                  gpsEnGpio: config.gpsEnGpio,
+                  gpsMode: config.gpsMode
+                });
+                if (config.positionFlags !== undefined) {
+                  setPositionFlags(decodePositionFlags(config.positionFlags));
+                }
+                break;
+              case 'mqtt':
+                setMQTTConfig({
+                  enabled: config.enabled,
+                  address: config.address,
+                  username: config.username,
+                  password: config.password,
+                  encryptionEnabled: config.encryptionEnabled,
+                  jsonEnabled: config.jsonEnabled,
+                  root: config.root
+                });
+                break;
+              case 'security':
+                if (config.adminKeys !== undefined) {
+                  const keys = config.adminKeys.length === 0 ? [''] : (config.adminKeys.length < 3 ? [...config.adminKeys, ''] : config.adminKeys.slice(0, 3));
+                  setSecurityConfig({ adminKeys: keys });
+                }
+                const securityUpdates: Record<string, unknown> = {};
+                if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
+                if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
+                if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
+                if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
+                if (Object.keys(securityUpdates).length > 0) {
+                  setSecurityConfig(securityUpdates);
+                }
+                break;
+              case 'bluetooth':
+                setBluetoothConfig({
+                  enabled: config.enabled,
+                  mode: config.mode,
+                  fixedPin: config.fixedPin
+                });
+                break;
+              case 'neighborinfo':
+                setNeighborInfoConfig({
+                  enabled: config.enabled,
+                  updateInterval: config.updateInterval,
+                  transmitOverLora: config.transmitOverLora
+                });
+                break;
             }
-            break;
-          case 'mqtt':
-            setMQTTConfig({
-              enabled: config.enabled,
-              address: config.address,
-              username: config.username,
-              password: config.password,
-              encryptionEnabled: config.encryptionEnabled,
-              jsonEnabled: config.jsonEnabled,
-              root: config.root
-            });
-            break;
-          case 'security':
-            if (config.adminKeys !== undefined) {
-              const keys = config.adminKeys.length === 0 ? [''] : (config.adminKeys.length < 3 ? [...config.adminKeys, ''] : config.adminKeys.slice(0, 3));
-              setSecurityConfig({ adminKeys: keys });
-            }
-            const securityUpdates: Record<string, unknown> = {};
-            if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
-            if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
-            if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
-            if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
-            if (Object.keys(securityUpdates).length > 0) {
-              setSecurityConfig(securityUpdates);
-            }
-            break;
-          case 'bluetooth':
-            setBluetoothConfig({
-              enabled: config.enabled,
-              mode: config.mode,
-              fixedPin: config.fixedPin
-            });
-            break;
-          case 'neighborinfo':
-            setNeighborInfoConfig({
-              enabled: config.enabled,
-              updateInterval: config.updateInterval,
-              transmitOverLora: config.transmitOverLora
-            });
-            break;
+            setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
+            showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
+            return; // Success - exit
+          }
+
+          // No config data - treat as retryable error
+          lastError = new Error(`No ${configType} config data received`);
+          if (!isRetryableError(lastError) || attempt >= maxRetries) break;
+        } catch (error: any) {
+          lastError = error;
+          if (!isRetryableError(error) || attempt >= maxRetries) break;
         }
-        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
-        showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
-      } else {
-        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
-        showToast(t('admin_commands.config_load_failed', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'error');
       }
+
+      // All retries exhausted or non-retryable error
+      setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
+      showToast(lastError?.message || t('admin_commands.config_load_failed', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'error');
     } catch (error: any) {
+      // Session passkey failure or other non-retryable error
       setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
       showToast(error.message || t('admin_commands.config_load_failed', { configType }), 'error');
     }
