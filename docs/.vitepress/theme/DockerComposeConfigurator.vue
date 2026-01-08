@@ -622,9 +622,10 @@ const dockerComposeYaml = computed(() => {
     lines.push(`      - TZ=${config.value.timezone}`)
     lines.push('    healthcheck:')
     lines.push(`      test: ["CMD-SHELL", "pg_isready -U ${config.value.postgresUser} -d ${config.value.postgresDb}"]`)
-    lines.push('      interval: 10s')
+    lines.push('      interval: 5s')
     lines.push('      timeout: 5s')
-    lines.push('      retries: 5')
+    lines.push('      retries: 10')
+    lines.push('      start_period: 10s')
     lines.push('')
   }
 
@@ -644,9 +645,10 @@ const dockerComposeYaml = computed(() => {
     lines.push(`      - TZ=${config.value.timezone}`)
     lines.push('    healthcheck:')
     lines.push('      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]')
-    lines.push('      interval: 10s')
+    lines.push('      interval: 5s')
     lines.push('      timeout: 5s')
-    lines.push('      retries: 5')
+    lines.push('      retries: 10')
+    lines.push('      start_period: 15s')
     lines.push('')
   }
 
