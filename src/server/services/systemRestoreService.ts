@@ -1,7 +1,7 @@
 /**
  * System Restore Service
  * Restores complete database from JSON backup with migration support
- * Supports both SQLite and PostgreSQL backends
+ * Supports SQLite, PostgreSQL, and MySQL backends
  *
  * CRITICAL: This service implements the restore safety process from ARCHITECTURE_LESSONS.md:
  * 1. Validate backup integrity
@@ -21,6 +21,7 @@ import databaseService from '../../services/database.js';
 import { systemBackupService } from './systemBackupService.js';
 import { getDatabaseConfig } from '../../db/index.js';
 import { Pool } from 'pg';
+import mysql from 'mysql2/promise';
 
 const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
 const RESTORE_MARKER_FILE = '/data/.restore-completed';
@@ -96,6 +97,11 @@ class SystemRestoreService {
       if (dbConfig.type === 'postgres' && dbConfig.postgresUrl) {
         // PostgreSQL: use async transaction
         const result = await this.restorePostgres(backupPath, metadata.tables, dbConfig.postgresUrl);
+        totalRowsRestored = result.rowsRestored;
+        tablesRestored = result.tablesRestored;
+      } else if (dbConfig.type === 'mysql' && dbConfig.mysqlUrl) {
+        // MySQL: use async transaction
+        const result = await this.restoreMySQL(backupPath, metadata.tables, dbConfig.mysqlUrl);
         totalRowsRestored = result.rowsRestored;
         tablesRestored = result.tablesRestored;
       } else {
@@ -220,7 +226,7 @@ class SystemRestoreService {
           logger.info(`ℹ️  Requested restore is from: ${restoreFrom}`);
           logger.info('ℹ️  Different backup requested - proceeding with restore...');
         }
-      } catch (error) {
+      } catch (_error) {
         logger.warn('⚠️  Could not read restore marker file, proceeding with restore...');
       }
     }
@@ -413,6 +419,121 @@ class SystemRestoreService {
     } finally {
       client.release();
       await pool.end();
+    }
+  }
+
+  /**
+   * Restore database using MySQL (async transaction)
+   */
+  private async restoreMySQL(backupPath: string, tables: string[], connectionString: string): Promise<{ rowsRestored: number; tablesRestored: number }> {
+    // Parse the connection string
+    const parsed = this.parseMySQLUrl(connectionString);
+    if (!parsed) {
+      throw new Error('Invalid MySQL connection string');
+    }
+
+    const pool = mysql.createPool({
+      host: parsed.host,
+      port: parsed.port,
+      user: parsed.user,
+      password: parsed.password,
+      database: parsed.database,
+      connectionLimit: 1,
+    });
+
+    const connection = await pool.getConnection();
+    let totalRowsRestored = 0;
+    let tablesRestored = 0;
+
+    try {
+      await connection.beginTransaction();
+
+      for (const tableName of tables) {
+        try {
+          const tableFile = path.join(backupPath, `${tableName}.json`);
+
+          if (!fs.existsSync(tableFile)) {
+            logger.warn(`⚠️  Skipping missing table file: ${tableName}`);
+            continue;
+          }
+
+          // Check if table exists in MySQL
+          const [tableCheck] = await connection.query(
+            `SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = ? AND table_name = ?`,
+            [parsed.database, tableName]
+          );
+          const tableExists = (tableCheck as any[])[0]?.cnt > 0;
+          if (!tableExists) {
+            logger.warn(`⚠️  Skipping table not in database: ${tableName}`);
+            continue;
+          }
+
+          const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
+
+          // Clear existing table data (use backticks for MySQL identifiers)
+          await connection.execute(`DELETE FROM \`${tableName}\``);
+
+          // Insert backup data
+          if (data.length > 0) {
+            const columns = Object.keys(data[0]);
+            // MySQL uses ? for placeholders like SQLite
+            const placeholders = columns.map(() => '?').join(', ');
+            const quotedColumns = columns.map(c => `\`${c}\``).join(', ');
+            const insertSql = `INSERT INTO \`${tableName}\` (${quotedColumns}) VALUES (${placeholders})`;
+
+            for (const row of data) {
+              const values = columns.map(col => row[col]);
+              await connection.execute(insertSql, values);
+            }
+
+            totalRowsRestored += data.length;
+          }
+
+          tablesRestored++;
+          logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
+
+        } catch (error) {
+          logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
+          throw error; // Will trigger rollback
+        }
+      }
+
+      await connection.commit();
+      return { rowsRestored: totalRowsRestored, tablesRestored };
+
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+      await pool.end();
+    }
+  }
+
+  /**
+   * Parse a MySQL URL to extract components
+   * Supports both mysql:// and mariadb:// protocols
+   */
+  private parseMySQLUrl(url: string): {
+    host: string;
+    port: number;
+    database: string;
+    user: string;
+    password: string;
+  } | null {
+    try {
+      // Replace mysql:// or mariadb:// with a standard protocol for URL parsing
+      const normalizedUrl = url.replace(/^(mysql|mariadb):\/\//, 'http://');
+      const parsed = new URL(normalizedUrl);
+      return {
+        host: parsed.hostname,
+        port: parseInt(parsed.port || '3306', 10),
+        database: parsed.pathname.slice(1), // Remove leading /
+        user: decodeURIComponent(parsed.username),
+        password: decodeURIComponent(parsed.password),
+      };
+    } catch {
+      return null;
     }
   }
 }

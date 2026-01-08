@@ -54,6 +54,7 @@ import { validateThemeDefinition as validateTheme } from '../utils/themeValidati
 // Drizzle ORM imports for dual-database support
 import { createSQLiteDriver } from '../db/drivers/sqlite.js';
 import { createPostgresDriver } from '../db/drivers/postgres.js';
+import { createMySQLDriver } from '../db/drivers/mysql.js';
 import { getDatabaseConfig, Database } from '../db/index.js';
 import {
   SettingsRepository,
@@ -302,10 +303,11 @@ class DatabaseService {
   private telemetryTypesCacheTime: number = 0;
   private static readonly TELEMETRY_TYPES_CACHE_TTL_MS = 60000; // 60 seconds
 
-  // Drizzle ORM database and repositories (for async operations and PostgreSQL support)
+  // Drizzle ORM database and repositories (for async operations and PostgreSQL/MySQL support)
   private drizzleDatabase: Database | null = null;
   private drizzleDbType: DatabaseType = 'sqlite';
   private postgresPool: import('pg').Pool | null = null;
+  private mysqlPool: import('mysql2/promise').Pool | null = null;
 
   /**
    * Get the Drizzle database instance for direct access if needed
@@ -315,14 +317,21 @@ class DatabaseService {
   }
 
   /**
-   * Get the PostgreSQL pool for direct queries (returns null for SQLite)
+   * Get the PostgreSQL pool for direct queries (returns null for non-PostgreSQL)
    */
   getPostgresPool(): import('pg').Pool | null {
     return this.postgresPool;
   }
 
   /**
-   * Get the current database type (sqlite or postgres)
+   * Get the MySQL pool for direct queries (returns null for non-MySQL)
+   */
+  getMySQLPool(): import('mysql2/promise').Pool | null {
+    return this.mysqlPool;
+  }
+
+  /**
+   * Get the current database type (sqlite, postgres, or mysql)
    */
   getDatabaseType(): DatabaseType {
     return this.drizzleDbType;
@@ -489,6 +498,16 @@ class DatabaseService {
         drizzleDb = db;
         this.postgresPool = pool;
         this.drizzleDbType = 'postgres';
+      } else if (dbConfig.type === 'mysql' && dbConfig.mysqlUrl) {
+        // Use MySQL driver
+        logger.info('[DatabaseService] Using MySQL driver for Drizzle repositories');
+        const { db, pool } = await createMySQLDriver({
+          connectionString: dbConfig.mysqlUrl,
+          maxConnections: dbConfig.mysqlMaxConnections || 10,
+        });
+        drizzleDb = db;
+        this.mysqlPool = pool;
+        this.drizzleDbType = 'mysql';
       } else {
         // Use SQLite driver (default)
         const { db } = createSQLiteDriver({
