@@ -119,7 +119,28 @@
       "Advanced scripting pattern"
     ]
   },
-{
+  {
+    "name": "Battery Status Monitor",
+    "filename": "battery-status.py",
+    "icon": "🔋",
+    "description": "Reports battery status for a configured list of nodes. Queries the database directly for battery level, voltage, and last heard time. Edit the script to configure which nodes to monitor.",
+    "language": "Python",
+    "tags": ["Example", "Battery", "Monitoring", "Status", "Database"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/battery-status.py",
+    "exampleTrigger": "battery, batt",
+    "requirements": [
+      "Python 3.12+ (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Monitor multiple nodes",
+      "Battery percentage and voltage display",
+      "Relative time since last heard",
+      "Multi-message support for many nodes",
+      "No API token required"
+    ]
+  },
+  {
     "name": "Weather Bot",
     "filename": "PirateWeather.py",
     "icon": "🌤️",
