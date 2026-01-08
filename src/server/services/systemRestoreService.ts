@@ -1,6 +1,7 @@
 /**
  * System Restore Service
  * Restores complete database from JSON backup with migration support
+ * Supports both SQLite and PostgreSQL backends
  *
  * CRITICAL: This service implements the restore safety process from ARCHITECTURE_LESSONS.md:
  * 1. Validate backup integrity
@@ -18,6 +19,8 @@ import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { systemBackupService } from './systemBackupService.js';
+import { getDatabaseConfig } from '../../db/index.js';
+import { Pool } from 'pg';
 
 const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
 const RESTORE_MARKER_FILE = '/data/.restore-completed';
@@ -88,52 +91,19 @@ class SystemRestoreService {
       // Phase 4: Restore database atomically
       logger.debug('Phase 4: Restoring database...');
       const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
-      const db = databaseService.db;
+      const dbConfig = getDatabaseConfig();
 
-      // Use transaction for atomic restore
-      const transaction = db.transaction(() => {
-        for (const tableName of metadata.tables) {
-          try {
-            const tableFile = path.join(backupPath, `${tableName}.json`);
-
-            if (!fs.existsSync(tableFile)) {
-              logger.warn(`⚠️  Skipping missing table: ${tableName}`);
-              continue;
-            }
-
-            const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
-
-            // Clear existing table data
-            db.prepare(`DELETE FROM ${tableName}`).run();
-
-            // Insert backup data
-            if (data.length > 0) {
-              const columns = Object.keys(data[0]);
-              const placeholders = columns.map(() => '?').join(', ');
-              const stmt = db.prepare(
-                `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
-              );
-
-              for (const row of data) {
-                const values = columns.map(col => row[col]);
-                stmt.run(...values);
-              }
-
-              totalRowsRestored += data.length;
-            }
-
-            tablesRestored++;
-            logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
-
-          } catch (error) {
-            logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
-            throw error; // Transaction will rollback
-          }
-        }
-      });
-
-      // Execute transaction
-      transaction();
+      if (dbConfig.type === 'postgres' && dbConfig.postgresUrl) {
+        // PostgreSQL: use async transaction
+        const result = await this.restorePostgres(backupPath, metadata.tables, dbConfig.postgresUrl);
+        totalRowsRestored = result.rowsRestored;
+        tablesRestored = result.tablesRestored;
+      } else {
+        // SQLite: use synchronous transaction
+        const result = this.restoreSQLite(backupPath, metadata.tables);
+        totalRowsRestored = result.rowsRestored;
+        tablesRestored = result.tablesRestored;
+      }
 
       // Phase 5: Run schema migrations if needed
       if (migrationRequired) {
@@ -314,6 +284,135 @@ class SystemRestoreService {
         can: false,
         reason: `Restore validation error: ${error instanceof Error ? error.message : String(error)}`
       };
+    }
+  }
+
+  /**
+   * Restore database using SQLite (synchronous transaction)
+   */
+  private restoreSQLite(backupPath: string, tables: string[]): { rowsRestored: number; tablesRestored: number } {
+    const db = databaseService.db;
+    let totalRowsRestored = 0;
+    let tablesRestored = 0;
+
+    const transaction = db.transaction(() => {
+      for (const tableName of tables) {
+        try {
+          const tableFile = path.join(backupPath, `${tableName}.json`);
+
+          if (!fs.existsSync(tableFile)) {
+            logger.warn(`⚠️  Skipping missing table: ${tableName}`);
+            continue;
+          }
+
+          const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
+
+          // Clear existing table data
+          db.prepare(`DELETE FROM ${tableName}`).run();
+
+          // Insert backup data
+          if (data.length > 0) {
+            const columns = Object.keys(data[0]);
+            const placeholders = columns.map(() => '?').join(', ');
+            const stmt = db.prepare(
+              `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
+            );
+
+            for (const row of data) {
+              const values = columns.map(col => row[col]);
+              stmt.run(...values);
+            }
+
+            totalRowsRestored += data.length;
+          }
+
+          tablesRestored++;
+          logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
+
+        } catch (error) {
+          logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
+          throw error; // Transaction will rollback
+        }
+      }
+    });
+
+    // Execute transaction
+    transaction();
+
+    return { rowsRestored: totalRowsRestored, tablesRestored };
+  }
+
+  /**
+   * Restore database using PostgreSQL (async transaction)
+   */
+  private async restorePostgres(backupPath: string, tables: string[], connectionString: string): Promise<{ rowsRestored: number; tablesRestored: number }> {
+    const pool = new Pool({ connectionString });
+    const client = await pool.connect();
+    let totalRowsRestored = 0;
+    let tablesRestored = 0;
+
+    try {
+      await client.query('BEGIN');
+
+      for (const tableName of tables) {
+        try {
+          const tableFile = path.join(backupPath, `${tableName}.json`);
+
+          if (!fs.existsSync(tableFile)) {
+            logger.warn(`⚠️  Skipping missing table file: ${tableName}`);
+            continue;
+          }
+
+          // Check if table exists in PostgreSQL
+          const tableExists = await client.query(
+            `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)`,
+            [tableName]
+          );
+          if (!tableExists.rows[0].exists) {
+            logger.warn(`⚠️  Skipping table not in database: ${tableName}`);
+            continue;
+          }
+
+          const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
+
+          // Clear existing table data (quote table name for case-sensitivity)
+          await client.query(`DELETE FROM "${tableName}"`);
+
+          // Insert backup data
+          if (data.length > 0) {
+            const columns = Object.keys(data[0]);
+            // PostgreSQL uses $1, $2, etc. for placeholders
+            // Quote column names to preserve case-sensitivity
+            const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+            const quotedColumns = columns.map(c => `"${c}"`).join(', ');
+            const insertSql = `INSERT INTO "${tableName}" (${quotedColumns}) VALUES (${placeholders})`;
+
+            for (const row of data) {
+              const values = columns.map(col => row[col]);
+              await client.query(insertSql, values);
+            }
+
+            totalRowsRestored += data.length;
+          }
+
+          tablesRestored++;
+          logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
+
+        } catch (error) {
+          logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
+          throw error; // Will trigger rollback
+        }
+      }
+
+      await client.query('COMMIT');
+      return { rowsRestored: totalRowsRestored, tablesRestored };
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+      await pool.end();
     }
   }
 }

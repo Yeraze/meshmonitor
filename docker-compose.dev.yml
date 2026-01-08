@@ -10,6 +10,29 @@ services:
     environment:
       - TZ=America/New_York
 
+  # PostgreSQL service for testing dual-database support
+  # Start with: docker compose -f docker-compose.dev.yml --profile postgres up -d
+  postgres:
+    image: postgres:16-alpine
+    container_name: meshmonitor-postgres
+    profiles:
+      - postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=meshmonitor
+      - POSTGRES_USER=meshmonitor
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-meshmonitor_dev}
+      - TZ=America/New_York
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meshmonitor -d meshmonitor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   meshmonitor:
     build:
       context: .
@@ -21,6 +44,11 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     container_name: meshmonitor
+    profiles:
+      - postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8081:3001"  # Changed to 8081 to avoid conflict with devcontainer
       - "4405:4404"  # Virtual Node Server on unique external port
@@ -31,7 +59,9 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
-      - DATABASE_PATH=/data/meshmonitor.db
+      # SQLite (default): - DATABASE_PATH=/data/meshmonitor.db
+      # PostgreSQL: Enabled for testing
+      - DATABASE_URL=postgres://meshmonitor:meshmonitor_dev@postgres:5432/meshmonitor
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
@@ -51,4 +81,6 @@ services:
 
 volumes:
   meshmonitor-data:
+    driver: local
+  postgres-data:
     driver: local
