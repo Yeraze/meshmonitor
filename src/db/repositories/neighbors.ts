@@ -130,4 +130,21 @@ export class NeighborsRepository extends BaseRepository {
       return result.length;
     }
   }
+
+  /**
+   * Delete all neighbor info
+   */
+  async deleteAllNeighborInfo(): Promise<number> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const count = await db.select().from(neighborInfoSqlite);
+      await db.delete(neighborInfoSqlite);
+      return count.length;
+    } else {
+      const db = this.getPostgresDb();
+      const count = await db.select().from(neighborInfoPostgres);
+      await db.delete(neighborInfoPostgres);
+      return count.length;
+    }
+  }
 }

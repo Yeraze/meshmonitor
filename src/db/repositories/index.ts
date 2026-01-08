@@ -20,3 +20,9 @@ export type {
 } from './auth.js';
 export { TraceroutesRepository } from './traceroutes.js';
 export { NeighborsRepository } from './neighbors.js';
+export { NotificationsRepository } from './notifications.js';
+export type {
+  DbPushSubscription,
+  NotificationPreferences,
+  PushSubscriptionInput,
+} from './notifications.js';

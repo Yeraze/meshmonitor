@@ -344,3 +344,167 @@ export function applyNodeNamePrefix(
   // Apply prefix
   return `[${nodeName}] ${body}`;
 }
+
+// ============ ASYNC VERSIONS ============
+// These versions use the notifications repository and work with PostgreSQL
+
+/**
+ * Load notification preferences for a user from the database (async version)
+ * Uses the notifications repository for database-agnostic queries
+ */
+export async function getUserNotificationPreferencesAsync(userId: number): Promise<NotificationPreferences | null> {
+  // Validate userId
+  if (!Number.isInteger(userId) || userId <= 0) {
+    logger.error(`❌ Invalid userId: ${userId}`);
+    return null;
+  }
+
+  try {
+    if (!databaseService.notificationsRepo) {
+      logger.debug('Notifications repository not initialized');
+      return null;
+    }
+
+    const prefs = await databaseService.notificationsRepo.getUserPreferences(userId);
+    if (prefs) {
+      return prefs;
+    }
+
+    // Fall back to old settings table for backward compatibility
+    const prefsJson = await databaseService.getSettingAsync(`push_prefs_${userId}`);
+    if (prefsJson) {
+      const oldPrefs = JSON.parse(prefsJson);
+      return {
+        enableWebPush: true, // Old users had push enabled
+        enableApprise: false, // New feature, default to disabled
+        enabledChannels: oldPrefs.enabledChannels || [],
+        enableDirectMessages: oldPrefs.enableDirectMessages !== undefined
+          ? oldPrefs.enableDirectMessages
+          : true,
+        notifyOnEmoji: true, // Default to enabled for backward compatibility
+        notifyOnMqtt: true, // Default to enabled for backward compatibility
+        notifyOnNewNode: true, // Default to enabled for backward compatibility
+        notifyOnTraceroute: true, // Default to enabled for backward compatibility
+        notifyOnInactiveNode: false, // Default to disabled
+        notifyOnServerEvents: false, // Default to disabled
+        prefixWithNodeName: false, // Default to disabled
+        monitoredNodes: [], // Default to empty array
+        whitelist: oldPrefs.whitelist || [],
+        blacklist: oldPrefs.blacklist || [],
+        appriseUrls: [] // Default to empty array
+      };
+    }
+
+    logger.debug(`No preferences found for user ${userId}`);
+    return null;
+  } catch (error) {
+    logger.error(`Failed to load preferences for user ${userId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get users who have a specific notification service enabled (async version)
+ */
+export async function getUsersWithServiceEnabledAsync(service: 'web_push' | 'apprise'): Promise<number[]> {
+  try {
+    if (!databaseService.notificationsRepo) {
+      logger.debug('Notifications repository not initialized');
+      return [];
+    }
+
+    return databaseService.notificationsRepo.getUsersWithServiceEnabled(service);
+  } catch (error) {
+    logger.debug('No user_notification_preferences table yet, returning empty array');
+    return [];
+  }
+}
+
+/**
+ * Check if a notification should be filtered for a specific user (async version)
+ */
+export async function shouldFilterNotificationAsync(
+  userId: number,
+  filterContext: NotificationFilterContext
+): Promise<boolean> {
+  // Validate userId
+  if (!Number.isInteger(userId) || userId <= 0) {
+    logger.error(`❌ Invalid userId: ${userId}`);
+    return false; // Allow on validation error (fail-open for UX)
+  }
+
+  // Load user preferences
+  const prefs = await getUserNotificationPreferencesAsync(userId);
+  if (!prefs) {
+    logger.debug(`No preferences for user ${userId}, allowing notification`);
+    return false; // Allow if no preferences found
+  }
+
+  const messageTextLower = filterContext.messageText.toLowerCase();
+
+  // WHITELIST (highest priority)
+  for (const word of prefs.whitelist) {
+    if (word && messageTextLower.includes(word.toLowerCase())) {
+      logger.debug(`✅ Whitelist match for user ${userId}: "${word}"`);
+      return false; // Don't filter
+    }
+  }
+
+  // BLACKLIST (second priority)
+  for (const word of prefs.blacklist) {
+    if (word && messageTextLower.includes(word.toLowerCase())) {
+      logger.debug(`🚫 Blacklist match for user ${userId}: "${word}"`);
+      return true; // Filter
+    }
+  }
+
+  // EMOJI CHECK (third priority)
+  if (!prefs.notifyOnEmoji && isEmojiOnlyMessage(filterContext.messageText)) {
+    logger.debug(`😀 Emoji-only message filtered for user ${userId}`);
+    return true; // Filter
+  }
+
+  // MQTT CHECK (fourth priority)
+  if (!prefs.notifyOnMqtt && filterContext.viaMqtt === true) {
+    logger.debug(`📡 MQTT message filtered for user ${userId}`);
+    return true; // Filter
+  }
+
+  // CHANNEL/DM CHECK (fifth priority)
+  if (filterContext.isDirectMessage) {
+    if (!prefs.enableDirectMessages) {
+      logger.debug(`🔇 Direct messages disabled for user ${userId}`);
+      return true; // Filter
+    }
+  } else {
+    if (!prefs.enabledChannels.includes(filterContext.channelId)) {
+      logger.debug(`🔇 Channel ${filterContext.channelId} disabled for user ${userId}`);
+      return true; // Filter
+    }
+  }
+
+  return false; // Don't filter (allow by default)
+}
+
+/**
+ * Apply node name prefix to a notification body if the user has it enabled (async version)
+ */
+export async function applyNodeNamePrefixAsync(
+  userId: number | null | undefined,
+  body: string,
+  nodeName: string | null | undefined
+): Promise<string> {
+  // No prefix if no user ID or node name
+  if (!userId || !nodeName) {
+    return body;
+  }
+
+  // Check user preferences
+  const prefs = await getUserNotificationPreferencesAsync(userId);
+  if (!prefs || !prefs.prefixWithNodeName) {
+    return body;
+  }
+
+  // Apply prefix
+  return `[${nodeName}] ${body}`;
+}
