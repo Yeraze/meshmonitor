@@ -2,7 +2,7 @@
  * Database Factory
  *
  * This module provides a unified interface for creating database connections
- * supporting both SQLite and PostgreSQL backends.
+ * supporting SQLite, PostgreSQL, and MySQL/MariaDB backends.
  *
  * Usage:
  * ```typescript
@@ -16,11 +16,18 @@
  *   type: 'postgres',
  *   postgresUrl: 'postgres://user:pass@localhost/meshmonitor'
  * });
+ *
+ * // MySQL/MariaDB
+ * const { db, close } = await createDatabase({
+ *   type: 'mysql',
+ *   mysqlUrl: 'mysql://user:pass@localhost/meshmonitor'
+ * });
  * ```
  */
 
 import { createSQLiteDriver, SQLiteDatabase } from './drivers/sqlite.js';
 import { createPostgresDriver, PostgresDatabase } from './drivers/postgres.js';
+import { createMySQLDriver, MySQLDatabase } from './drivers/mysql.js';
 import { DatabaseConfig, DatabaseType } from './types.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { logger } from '../utils/logger.js';
@@ -31,11 +38,12 @@ export * from './schema/index.js';
 export * from './repositories/index.js';
 export type { SQLiteDatabase } from './drivers/sqlite.js';
 export type { PostgresDatabase } from './drivers/postgres.js';
+export type { MySQLDatabase } from './drivers/mysql.js';
 
 /**
- * Union type for both database types
+ * Union type for all database types
  */
-export type Database = SQLiteDatabase | PostgresDatabase;
+export type Database = SQLiteDatabase | PostgresDatabase | MySQLDatabase;
 
 /**
  * Database connection result
@@ -52,11 +60,14 @@ export interface DatabaseConnection {
 export function detectDatabaseType(): DatabaseType {
   const config = getEnvironmentConfig();
 
-  // Check for DATABASE_URL first (PostgreSQL)
+  // Check for DATABASE_URL first
   if (config.databaseUrl) {
     const url = config.databaseUrl.toLowerCase();
     if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
       return 'postgres';
+    }
+    if (url.startsWith('mysql://') || url.startsWith('mariadb://')) {
+      return 'mysql';
     }
   }
 
@@ -74,9 +85,11 @@ export function getDatabaseConfig(): DatabaseConfig {
   return {
     type,
     sqlitePath: config.databasePath,
-    postgresUrl: config.databaseUrl,
+    postgresUrl: type === 'postgres' ? config.databaseUrl : undefined,
     postgresMaxConnections: 10,
     postgresSsl: false,
+    mysqlUrl: type === 'mysql' ? config.databaseUrl : undefined,
+    mysqlMaxConnections: 10,
   };
 }
 
@@ -112,6 +125,23 @@ export async function createDatabase(config?: Partial<DatabaseConfig>): Promise<
     };
   }
 
+  if (finalConfig.type === 'mysql') {
+    if (!finalConfig.mysqlUrl) {
+      throw new Error('MySQL URL is required when type is "mysql"');
+    }
+
+    const { db, close } = await createMySQLDriver({
+      connectionString: finalConfig.mysqlUrl,
+      maxConnections: finalConfig.mysqlMaxConnections,
+    });
+
+    return {
+      db,
+      type: 'mysql',
+      close,
+    };
+  }
+
   // Default to SQLite
   if (!finalConfig.sqlitePath) {
     throw new Error('SQLite path is required when type is "sqlite"');
@@ -133,15 +163,22 @@ export async function createDatabase(config?: Partial<DatabaseConfig>): Promise<
  */
 export function isPostgres(db: Database): db is PostgresDatabase {
   // PostgresDatabase uses node-postgres which has different internal structure
-  // We can check for the existence of pool-specific methods
   return 'query' in db && typeof (db as any).query === 'function';
+}
+
+/**
+ * Check if a database connection is MySQL
+ */
+export function isMySQL(db: Database): db is MySQLDatabase {
+  // MySQLDatabase uses mysql2 which has execute method
+  return 'execute' in db && typeof (db as any).execute === 'function';
 }
 
 /**
  * Check if a database connection is SQLite
  */
 export function isSQLite(db: Database): db is SQLiteDatabase {
-  return !isPostgres(db);
+  return !isPostgres(db) && !isMySQL(db);
 }
 
 /**

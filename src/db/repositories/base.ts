@@ -2,19 +2,21 @@
  * Base Repository Class
  *
  * Provides common functionality for all repository implementations.
- * Supports both SQLite and PostgreSQL through Drizzle ORM.
+ * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { MySql2Database } from 'drizzle-orm/mysql2';
 import * as schema from '../schema/index.js';
 import { DatabaseType } from '../types.js';
 
 // Specific database types for type narrowing
 export type SQLiteDrizzle = BetterSQLite3Database<typeof schema>;
 export type PostgresDrizzle = NodePgDatabase<typeof schema>;
+export type MySQLDrizzle = MySql2Database<typeof schema>;
 
-// Union type for both database types
-export type DrizzleDatabase = SQLiteDrizzle | PostgresDrizzle;
+// Union type for all database types
+export type DrizzleDatabase = SQLiteDrizzle | PostgresDrizzle | MySQLDrizzle;
 
 /**
  * Base repository providing common functionality
@@ -25,6 +27,7 @@ export abstract class BaseRepository {
   // Store the specific typed databases
   protected readonly sqliteDb: SQLiteDrizzle | null;
   protected readonly postgresDb: PostgresDrizzle | null;
+  protected readonly mysqlDb: MySQLDrizzle | null;
 
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     this.dbType = dbType;
@@ -33,9 +36,15 @@ export abstract class BaseRepository {
     if (dbType === 'sqlite') {
       this.sqliteDb = db as SQLiteDrizzle;
       this.postgresDb = null;
-    } else {
+      this.mysqlDb = null;
+    } else if (dbType === 'postgres') {
       this.sqliteDb = null;
       this.postgresDb = db as PostgresDrizzle;
+      this.mysqlDb = null;
+    } else {
+      this.sqliteDb = null;
+      this.postgresDb = null;
+      this.mysqlDb = db as MySQLDrizzle;
     }
   }
 
@@ -54,11 +63,18 @@ export abstract class BaseRepository {
   }
 
   /**
+   * Check if using MySQL
+   */
+  protected isMySQL(): boolean {
+    return this.dbType === 'mysql';
+  }
+
+  /**
    * Get the SQLite database (throws if not SQLite)
    */
   protected getSqliteDb(): SQLiteDrizzle {
     if (!this.sqliteDb) {
-      throw new Error('Cannot access SQLite database when using PostgreSQL');
+      throw new Error('Cannot access SQLite database when using PostgreSQL or MySQL');
     }
     return this.sqliteDb;
   }
@@ -68,9 +84,19 @@ export abstract class BaseRepository {
    */
   protected getPostgresDb(): PostgresDrizzle {
     if (!this.postgresDb) {
-      throw new Error('Cannot access PostgreSQL database when using SQLite');
+      throw new Error('Cannot access PostgreSQL database when using SQLite or MySQL');
     }
     return this.postgresDb;
+  }
+
+  /**
+   * Get the MySQL database (throws if not MySQL)
+   */
+  protected getMysqlDb(): MySQLDrizzle {
+    if (!this.mysqlDb) {
+      throw new Error('Cannot access MySQL database when using SQLite or PostgreSQL');
+    }
+    return this.mysqlDb;
   }
 
   /**

@@ -1,9 +1,10 @@
 # Database
 
-MeshMonitor supports two database backends:
+MeshMonitor supports three database backends:
 
 - **SQLite** (default) - Simple file-based database, no additional setup required
 - **PostgreSQL** - Scalable relational database for larger deployments
+- **MySQL / MariaDB** - Alternative scalable database option
 
 ## Choosing a Database
 
@@ -27,6 +28,15 @@ Consider PostgreSQL when:
 - You require **advanced queries** or reporting
 - You want **enterprise-grade reliability** and backups
 - You're running **multiple MeshMonitor instances** accessing the same data
+
+### MySQL / MariaDB (Alternative Scalable Option)
+
+Consider MySQL/MariaDB when:
+
+- You already have **existing MySQL/MariaDB infrastructure**
+- Your team has **MySQL expertise**
+- You need **compatibility with MySQL-based tools**
+- You're running **MariaDB** as your preferred database
 
 ## Configuration
 
@@ -118,6 +128,87 @@ Create a `.env` file:
 # PostgreSQL credentials
 POSTGRES_USER=meshmonitor
 POSTGRES_PASSWORD=your_secure_password_here
+```
+
+### MySQL / MariaDB Configuration
+
+To use MySQL or MariaDB, set the `DATABASE_URL` environment variable:
+
+```yaml
+environment:
+  - DATABASE_URL=mysql://user:password@hostname:3306/meshmonitor
+```
+
+#### Connection String Format
+
+```
+mysql://[user]:[password]@[host]:[port]/[database]
+```
+
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `user` | MySQL username | `meshmonitor` |
+| `password` | MySQL password | `secretpassword` |
+| `host` | Server hostname or IP | `localhost`, `mysql`, `db.example.com` |
+| `port` | MySQL port | `3306` (default) |
+| `database` | Database name | `meshmonitor` |
+
+::: tip MariaDB Support
+MariaDB URLs use the same format: `mariadb://user:password@host:3306/database`
+:::
+
+#### Docker Compose with MySQL
+
+Use the [Docker Compose Configurator](/configurator) to generate a complete configuration, or use this example:
+
+```yaml
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: meshmonitor-mysql
+    restart: unless-stopped
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      - MYSQL_DATABASE=meshmonitor
+      - MYSQL_USER=meshmonitor
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-data:/data
+    env_file: .env
+    environment:
+      - DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/meshmonitor
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  meshmonitor-data:
+    driver: local
+  mysql-data:
+    driver: local
+```
+
+Create a `.env` file:
+
+```bash
+# MySQL credentials
+MYSQL_USER=meshmonitor
+MYSQL_PASSWORD=your_secure_password_here
+MYSQL_ROOT_PASSWORD=your_root_password_here
 ```
 
 ## Migrating from SQLite to PostgreSQL
@@ -271,9 +362,84 @@ Some SQLite data types are loosely typed. The migration tool handles most cases,
 - Float values in integer columns (automatically truncated)
 - Boolean values stored as 0/1 (automatically converted)
 
+## Migrating from SQLite to MySQL
+
+The migration process for MySQL is similar to PostgreSQL.
+
+### Migration Steps
+
+#### 1. Stop MeshMonitor
+
+```bash
+docker compose stop meshmonitor
+```
+
+#### 2. Create the MySQL Database
+
+If using the included MySQL container:
+
+```bash
+docker compose up -d mysql
+```
+
+If using an external MySQL server:
+
+```sql
+CREATE DATABASE meshmonitor CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'meshmonitor'@'%' IDENTIFIED BY 'your_secure_password';
+GRANT ALL PRIVILEGES ON meshmonitor.* TO 'meshmonitor'@'%';
+FLUSH PRIVILEGES;
+```
+
+#### 3. Copy the SQLite Database
+
+Extract the SQLite database from the Docker volume:
+
+```bash
+docker cp meshmonitor:/data/meshmonitor.db ./meshmonitor.db
+```
+
+#### 4. Run the Migration
+
+```bash
+npx tsx src/cli/migrate-db.ts \
+  --from sqlite:./meshmonitor.db \
+  --to mysql://meshmonitor:password@localhost:3306/meshmonitor
+```
+
+#### 5. Update Configuration
+
+Update your `docker-compose.yml` to use MySQL:
+
+```yaml
+environment:
+  - DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/meshmonitor
+```
+
+#### 6. Start MeshMonitor
+
+```bash
+docker compose up -d meshmonitor
+```
+
+#### 7. Verify Operation
+
+Check the logs to confirm MySQL is being used:
+
+```bash
+docker compose logs meshmonitor | grep -i "database\|mysql"
+```
+
+You should see:
+```
+[INFO] Database: MySQL (configured via DATABASE_URL)
+[INFO] [DatabaseService] Using MySQL driver for Drizzle repositories
+[INFO] [MySQL Driver] Database initialized successfully
+```
+
 ## Database Schema
 
-MeshMonitor uses [Drizzle ORM](https://orm.drizzle.team/) for type-safe database operations. The schema supports both SQLite and PostgreSQL with automatic dialect handling.
+MeshMonitor uses [Drizzle ORM](https://orm.drizzle.team/) for type-safe database operations. The schema supports SQLite, PostgreSQL, and MySQL/MariaDB with automatic dialect handling.
 
 ### Core Tables
 
@@ -340,6 +506,31 @@ FROM pg_catalog.pg_statio_user_tables
 ORDER BY pg_total_relation_size(relid) DESC;
 ```
 
+### MySQL / MariaDB
+
+MySQL/MariaDB have built-in maintenance, but consider:
+
+```sql
+-- Optimize tables (reclaim space and defragment)
+OPTIMIZE TABLE nodes, messages, telemetry;
+
+-- Check database size
+SELECT
+  table_schema AS 'Database',
+  ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'Size (MB)'
+FROM information_schema.tables
+WHERE table_schema = 'meshmonitor'
+GROUP BY table_schema;
+
+-- Check table sizes
+SELECT
+  table_name AS 'Table',
+  ROUND((data_length + index_length) / 1024 / 1024, 2) AS 'Size (MB)'
+FROM information_schema.tables
+WHERE table_schema = 'meshmonitor'
+ORDER BY (data_length + index_length) DESC;
+```
+
 ## Backups
 
 ### SQLite Backup
@@ -377,6 +568,26 @@ docker compose exec postgres psql -U meshmonitor -c "DROP DATABASE meshmonitor; 
 cat backup.sql | docker compose exec -T postgres psql -U meshmonitor meshmonitor
 ```
 
+### MySQL / MariaDB Backup
+
+```bash
+# Using mysqldump
+docker compose exec mysql mysqldump -u meshmonitor -p meshmonitor > backup-$(date +%Y%m%d).sql
+
+# Compressed backup
+docker compose exec mysql mysqldump -u meshmonitor -p meshmonitor | gzip > backup-$(date +%Y%m%d).sql.gz
+```
+
+### Restore MySQL / MariaDB
+
+```bash
+# Drop and recreate database
+docker compose exec mysql mysql -u root -p -e "DROP DATABASE meshmonitor; CREATE DATABASE meshmonitor CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# Restore from backup
+cat backup.sql | docker compose exec -T mysql mysql -u meshmonitor -p meshmonitor
+```
+
 ## Performance Tuning
 
 ### SQLite
@@ -404,6 +615,26 @@ ALTER SYSTEM SET work_mem = '64MB';
 
 -- Enable parallel queries
 ALTER SYSTEM SET max_parallel_workers_per_gather = 2;
+```
+
+### MySQL / MariaDB
+
+For production MySQL/MariaDB deployments, add to your `my.cnf`:
+
+```ini
+[mysqld]
+# Buffer pool size (50-70% of RAM for dedicated server)
+innodb_buffer_pool_size = 1G
+
+# Log file size (larger = better performance, longer recovery)
+innodb_log_file_size = 256M
+
+# Flush logs once per second instead of each transaction
+innodb_flush_log_at_trx_commit = 2
+
+# Query cache (MariaDB only, MySQL 8.0+ removed this)
+# query_cache_size = 64M
+# query_cache_type = 1
 ```
 
 ## Need Help?
