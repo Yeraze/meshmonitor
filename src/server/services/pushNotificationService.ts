@@ -40,35 +40,36 @@ class PushNotificationService {
       // Wait for the database to be ready before accessing settings
       try {
         await databaseService.waitForReady();
+
+        const storedPublicKey = await databaseService.getSettingAsync('vapid_public_key');
+        const storedPrivateKey = await databaseService.getSettingAsync('vapid_private_key');
+        const storedSubject = await databaseService.getSettingAsync('vapid_subject');
+
+        if (!storedPublicKey || !storedPrivateKey) {
+          // Auto-generate VAPID keys on first run
+          logger.info('🔑 No VAPID keys found, generating new keys...');
+          const vapidKeys = webpush.generateVAPIDKeys();
+
+          await databaseService.setSettingAsync('vapid_public_key', vapidKeys.publicKey);
+          await databaseService.setSettingAsync('vapid_private_key', vapidKeys.privateKey);
+          await databaseService.setSettingAsync('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
+
+          publicKey = vapidKeys.publicKey;
+          privateKey = vapidKeys.privateKey;
+          subject = storedSubject || 'mailto:admin@meshmonitor.local';
+
+          logger.info('✅ Generated and saved new VAPID keys to database');
+        } else {
+          publicKey = storedPublicKey;
+          privateKey = storedPrivateKey;
+          subject = storedSubject || 'mailto:admin@meshmonitor.local';
+          logger.info('✅ Loaded VAPID keys from database');
+        }
       } catch (error) {
-        logger.error('❌ Database initialization failed, push notifications disabled:', error);
+        // Database not ready or settings table doesn't exist (e.g., during tests)
+        logger.debug('⚠️ Could not load VAPID keys from database, push notifications disabled:', error);
         this.isConfigured = false;
         return;
-      }
-
-      const storedPublicKey = await databaseService.getSettingAsync('vapid_public_key');
-      const storedPrivateKey = await databaseService.getSettingAsync('vapid_private_key');
-      const storedSubject = await databaseService.getSettingAsync('vapid_subject');
-
-      if (!storedPublicKey || !storedPrivateKey) {
-        // Auto-generate VAPID keys on first run
-        logger.info('🔑 No VAPID keys found, generating new keys...');
-        const vapidKeys = webpush.generateVAPIDKeys();
-
-        await databaseService.setSettingAsync('vapid_public_key', vapidKeys.publicKey);
-        await databaseService.setSettingAsync('vapid_private_key', vapidKeys.privateKey);
-        await databaseService.setSettingAsync('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
-
-        publicKey = vapidKeys.publicKey;
-        privateKey = vapidKeys.privateKey;
-        subject = storedSubject || 'mailto:admin@meshmonitor.local';
-
-        logger.info('✅ Generated and saved new VAPID keys to database');
-      } else {
-        publicKey = storedPublicKey;
-        privateKey = storedPrivateKey;
-        subject = storedSubject || 'mailto:admin@meshmonitor.local';
-        logger.info('✅ Loaded VAPID keys from database');
       }
     }
 
