@@ -2,22 +2,25 @@
 /**
  * Database Migration CLI Tool
  *
- * Migrates data from SQLite to PostgreSQL database.
+ * Migrates data from SQLite to PostgreSQL or MySQL database.
  *
  * Usage:
  *   npx ts-node src/cli/migrate-db.ts --from sqlite:/data/meshmonitor.db --to postgres://user:pass@host/db
+ *   npx ts-node src/cli/migrate-db.ts --from sqlite:/data/meshmonitor.db --to mysql://user:pass@host/db
  *
  * Options:
- *   --from    Source database connection string (sqlite:path or postgres://...)
- *   --to      Target database connection string (postgres://...)
+ *   --from    Source database connection string (sqlite:path)
+ *   --to      Target database connection string (postgres://... or mysql://...)
  *   --dry-run Show what would be migrated without making changes
  *   --verbose Enable verbose logging
  */
 
 import Database from 'better-sqlite3';
 import { Pool } from 'pg';
+import mysql from 'mysql2/promise';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
+import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2';
 import * as schema from '../db/schema/index.js';
 
 // Table migration order (respects foreign key dependencies)
@@ -122,6 +125,8 @@ Options:
                   Examples:
                     postgres://user:pass@localhost:5432/meshmonitor
                     postgresql://user:pass@host/db
+                    mysql://user:pass@localhost:3306/meshmonitor
+                    mariadb://user:pass@host/db
 
   --dry-run       Show what would be migrated without making changes
   --verbose       Enable verbose logging
@@ -132,6 +137,11 @@ Examples:
   npx ts-node src/cli/migrate-db.ts \\
     --from sqlite:/data/meshmonitor.db \\
     --to postgres://meshmonitor:password@localhost:5432/meshmonitor
+
+  # Migrate from SQLite to MySQL
+  npx ts-node src/cli/migrate-db.ts \\
+    --from sqlite:/data/meshmonitor.db \\
+    --to mysql://meshmonitor:password@localhost:3306/meshmonitor
 
   # Dry run to see what would be migrated
   npx ts-node src/cli/migrate-db.ts \\
@@ -169,6 +179,58 @@ async function connectPostgres(url: string): Promise<{ db: ReturnType<typeof dri
   client.release();
 
   const db = drizzlePg(pool, { schema });
+
+  return { db, pool };
+}
+
+/**
+ * Parse a MySQL URL to extract components
+ */
+function parseMySQLUrl(url: string): {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+} | null {
+  try {
+    const normalizedUrl = url.replace(/^(mysql|mariadb):\/\//, 'http://');
+    const parsed = new URL(normalizedUrl);
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port || '3306', 10),
+      database: parsed.pathname.slice(1),
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function connectMySQL(url: string): Promise<{ db: any; pool: mysql.Pool }> {
+  console.log(`🐬 Connecting to MySQL: ${url.replace(/:[^:@]+@/, ':****@')}`);
+
+  const parsed = parseMySQLUrl(url);
+  if (!parsed) {
+    throw new Error('Invalid MySQL connection string');
+  }
+
+  const pool = mysql.createPool({
+    host: parsed.host,
+    port: parsed.port,
+    user: parsed.user,
+    password: parsed.password,
+    database: parsed.database,
+    connectionLimit: 10,
+  });
+
+  // Test connection
+  const connection = await pool.getConnection();
+  await connection.query('SELECT NOW()');
+  connection.release();
+
+  const db = drizzleMysql(pool, { schema, mode: 'default' });
 
   return { db, pool };
 }
@@ -282,6 +344,101 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
     throw err;
   } finally {
     client.release();
+  }
+
+  return inserted;
+}
+
+/**
+ * Get column types for a MySQL table
+ */
+async function getMySQLColumnTypes(connection: mysql.PoolConnection, table: string, database: string): Promise<Map<string, string>> {
+  const [rows] = await connection.query(`
+    SELECT COLUMN_NAME, DATA_TYPE
+    FROM information_schema.columns
+    WHERE table_schema = ? AND table_name = ?
+  `, [database, table]);
+
+  const typeMap = new Map<string, string>();
+  for (const row of rows as Array<{ COLUMN_NAME: string; DATA_TYPE: string }>) {
+    typeMap.set(row.COLUMN_NAME, row.DATA_TYPE);
+  }
+  return typeMap;
+}
+
+/**
+ * Sanitize a value based on MySQL target type
+ */
+function sanitizeMySQLValue(value: unknown, mysqlType: string): unknown {
+  if (value === null || value === undefined) return value;
+
+  // Handle integer types - truncate floats
+  if (mysqlType === 'bigint' || mysqlType === 'int' || mysqlType === 'smallint' || mysqlType === 'tinyint') {
+    if (typeof value === 'number' && !Number.isInteger(value)) {
+      return Math.trunc(value);
+    }
+    if (typeof value === 'string' && value.includes('.')) {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        return Math.trunc(num);
+      }
+    }
+  }
+
+  // Handle boolean - MySQL stores as TINYINT(1)
+  if (mysqlType === 'tinyint') {
+    if (value === 0 || value === '0' || value === 'false' || value === false) return 0;
+    if (value === 1 || value === '1' || value === 'true' || value === true) return 1;
+    return value ? 1 : 0;
+  }
+
+  return value;
+}
+
+async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[], database: string): Promise<number> {
+  if (rows.length === 0) return 0;
+
+  const connection = await pool.getConnection();
+  let inserted = 0;
+  let columnTypes: Map<string, string> | null = null;
+
+  try {
+    // Get column types for this table
+    columnTypes = await getMySQLColumnTypes(connection, table, database);
+
+    await connection.beginTransaction();
+
+    for (const row of rows) {
+      const obj = row as Record<string, unknown>;
+      const columns = Object.keys(obj);
+
+      // Sanitize values based on MySQL column types
+      const values = columns.map((col) => {
+        const mysqlType = columnTypes?.get(col) || 'text';
+        return sanitizeMySQLValue(obj[col], mysqlType);
+      });
+
+      const placeholders = columns.map(() => '?').join(', ');
+      // Quote column names for MySQL (use backticks)
+      const quotedColumns = columns.map((c) => `\`${c}\``).join(', ');
+
+      const query = `INSERT IGNORE INTO \`${table}\` (${quotedColumns}) VALUES (${placeholders})`;
+
+      try {
+        await connection.execute(query, values);
+        inserted++;
+      } catch (err) {
+        // Log but continue - some rows may have FK issues
+        console.warn(`  ⚠️  Failed to insert row: ${(err as Error).message}`);
+      }
+    }
+
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
   }
 
   return inserted;
@@ -429,6 +586,166 @@ async function createPostgresSchemaFromSqlite(pool: Pool, sqliteDb: Database.Dat
   }
 }
 
+/**
+ * Convert SQLite type to MySQL type
+ */
+function sqliteToMySQLType(sqliteType: string): string {
+  const type = sqliteType.toUpperCase();
+  if (type.includes('INTEGER') || type.includes('INT')) return 'BIGINT';
+  if (type.includes('REAL') || type.includes('FLOAT') || type.includes('DOUBLE')) return 'DOUBLE';
+  if (type.includes('TEXT') || type.includes('VARCHAR') || type.includes('CHAR')) return 'TEXT';
+  if (type.includes('BLOB')) return 'BLOB';
+  if (type.includes('BOOLEAN') || type.includes('BOOL')) return 'TINYINT(1)';
+  return 'TEXT'; // Default
+}
+
+/**
+ * Parse SQLite CREATE TABLE statement and convert to MySQL
+ */
+function convertCreateTableForMySQL(sqliteSchema: string): string {
+  // Extract table name
+  const tableMatch = sqliteSchema.match(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?["']?(\w+)["']?\s*\(/i);
+  if (!tableMatch) return '';
+
+  const tableName = tableMatch[1];
+
+  // Skip sqlite internal tables
+  if (tableName === 'sqlite_sequence') return '';
+
+  // Extract column definitions - handle multi-line
+  const columnsStart = sqliteSchema.indexOf('(') + 1;
+  const columnsEnd = sqliteSchema.lastIndexOf(')');
+  const columnsStr = sqliteSchema.substring(columnsStart, columnsEnd);
+
+  // Parse columns
+  const columns: string[] = [];
+  let currentCol = '';
+  let parenDepth = 0;
+
+  for (const char of columnsStr) {
+    if (char === '(') parenDepth++;
+    else if (char === ')') parenDepth--;
+
+    if (char === ',' && parenDepth === 0) {
+      if (currentCol.trim()) columns.push(currentCol.trim());
+      currentCol = '';
+    } else {
+      currentCol += char;
+    }
+  }
+  if (currentCol.trim()) columns.push(currentCol.trim());
+
+  // Convert each column
+  const mysqlColumns: string[] = [];
+  const constraints: string[] = [];
+
+  for (const col of columns) {
+    const trimmed = col.trim();
+
+    // Skip constraints for now (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
+    if (/^(PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|CONSTRAINT)/i.test(trimmed)) {
+      // Convert constraint if it's a simple UNIQUE constraint
+      if (/^UNIQUE\s*\(/i.test(trimmed)) {
+        constraints.push(trimmed);
+      }
+      continue;
+    }
+
+    // Parse column: name type [constraints]
+    const colMatch = trimmed.match(/^["']?(\w+)["']?\s+(\w+)(.*)$/i);
+    if (!colMatch) continue;
+
+    const [, colName, colType, rest] = colMatch;
+    let mysqlType = sqliteToMySQLType(colType);
+
+    // Handle TEXT PRIMARY KEY - MySQL requires key length for TEXT/BLOB
+    // Convert to VARCHAR(255) when used as primary key
+    const isPrimaryKey = /PRIMARY KEY/i.test(rest);
+    if (isPrimaryKey && mysqlType === 'TEXT') {
+      mysqlType = 'VARCHAR(255)';
+    }
+
+    let mysqlCol = `\`${colName}\` ${mysqlType}`;
+
+    // Handle constraints in column definition
+    const isAutoIncrement = /AUTOINCREMENT/i.test(rest);
+    if (isPrimaryKey) {
+      if (isAutoIncrement) {
+        mysqlCol += ' AUTO_INCREMENT PRIMARY KEY';
+      } else {
+        mysqlCol += ' PRIMARY KEY';
+      }
+    }
+    if (/NOT NULL/i.test(rest) && !isPrimaryKey) {
+      // PRIMARY KEY implies NOT NULL, don't duplicate
+      mysqlCol += ' NOT NULL';
+    }
+    if (/UNIQUE/i.test(rest) && !isPrimaryKey) {
+      mysqlCol += ' UNIQUE';
+    }
+    if (/DEFAULT/i.test(rest)) {
+      // Handle DEFAULT values - need to capture parenthesized expressions too
+      const defaultMatch = rest.match(/DEFAULT\s+(\([^)]+\)|'[^']*'|\S+)/i);
+      if (defaultMatch) {
+        let defaultVal = defaultMatch[1];
+        // Convert SQLite-specific default values
+        if (/strftime\s*\(\s*'%s'\s*,\s*'now'\s*\)/i.test(defaultVal)) {
+          // Convert strftime('%s', 'now') to UNIX_TIMESTAMP()
+          defaultVal = '(UNIX_TIMESTAMP())';
+        } else if (/CURRENT_TIMESTAMP/i.test(defaultVal)) {
+          defaultVal = 'CURRENT_TIMESTAMP';
+        }
+        mysqlCol += ` DEFAULT ${defaultVal}`;
+      }
+    }
+
+    mysqlColumns.push(mysqlCol);
+  }
+
+  if (mysqlColumns.length === 0) return '';
+
+  let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  ${mysqlColumns.join(',\n  ')}`;
+  if (constraints.length > 0) {
+    createSql += ',\n  ' + constraints.join(',\n  ');
+  }
+  createSql += '\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
+
+  return createSql;
+}
+
+async function createMySQLSchemaFromSqlite(pool: mysql.Pool, sqliteDb: Database.Database): Promise<void> {
+  console.log('📋 Creating MySQL schema from SQLite...');
+
+  const connection = await pool.getConnection();
+
+  try {
+    // Get all table schemas from SQLite
+    const tables = sqliteDb.prepare(`
+      SELECT name, sql FROM sqlite_master
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all() as Array<{ name: string; sql: string }>;
+
+    for (const table of tables) {
+      if (!table.sql) continue;
+
+      const mysqlSql = convertCreateTableForMySQL(table.sql);
+      if (mysqlSql) {
+        try {
+          await connection.execute(mysqlSql);
+          console.log(`  ✅ Created table: ${table.name}`);
+        } catch (err) {
+          console.warn(`  ⚠️  Failed to create table ${table.name}: ${(err as Error).message}`);
+        }
+      }
+    }
+
+    console.log('✅ MySQL schema created');
+  } finally {
+    connection.release();
+  }
+}
+
 async function migrate(options: MigrationOptions): Promise<void> {
   console.log('\n🚀 MeshMonitor Database Migration Tool\n');
   console.log('━'.repeat(50));
@@ -444,8 +761,11 @@ async function migrate(options: MigrationOptions): Promise<void> {
     process.exit(1);
   }
 
-  if (!options.to.startsWith('postgres://') && !options.to.startsWith('postgresql://')) {
-    console.error('❌ Error: Target must be a PostgreSQL database (postgres://...)');
+  const isPostgresTarget = options.to.startsWith('postgres://') || options.to.startsWith('postgresql://');
+  const isMySQLTarget = options.to.startsWith('mysql://') || options.to.startsWith('mariadb://');
+
+  if (!isPostgresTarget && !isMySQLTarget) {
+    console.error('❌ Error: Target must be a PostgreSQL (postgres://...) or MySQL (mysql://...) database');
     process.exit(1);
   }
 
@@ -455,18 +775,37 @@ async function migrate(options: MigrationOptions): Promise<void> {
 
   const stats: MigrationStats[] = [];
   let sourceDb: { db: ReturnType<typeof drizzleSqlite>; rawDb: Database.Database } | null = null;
-  let targetDb: { db: ReturnType<typeof drizzlePg>; pool: Pool } | null = null;
+  let targetPgDb: { db: ReturnType<typeof drizzlePg>; pool: Pool } | null = null;
+  let targetMySQLDb: { db: any; pool: mysql.Pool } | null = null;
+
+  // Get MySQL database name for insertIntoMySQL
+  let mysqlDatabase = '';
+  if (isMySQLTarget) {
+    const parsed = parseMySQLUrl(options.to);
+    if (parsed) {
+      mysqlDatabase = parsed.database;
+    }
+  }
 
   try {
     // Connect to databases
     sourceDb = await connectSqlite(options.from);
-    targetDb = await connectPostgres(options.to);
+
+    if (isPostgresTarget) {
+      targetPgDb = await connectPostgres(options.to);
+    } else {
+      targetMySQLDb = await connectMySQL(options.to);
+    }
 
     console.log('✅ Connected to both databases\n');
 
-    // Create schema in PostgreSQL from SQLite schema
+    // Create schema from SQLite schema
     if (!options.dryRun) {
-      await createPostgresSchemaFromSqlite(targetDb.pool, sourceDb.rawDb);
+      if (isPostgresTarget && targetPgDb) {
+        await createPostgresSchemaFromSqlite(targetPgDb.pool, sourceDb.rawDb);
+      } else if (isMySQLTarget && targetMySQLDb) {
+        await createMySQLSchemaFromSqlite(targetMySQLDb.pool, sourceDb.rawDb);
+      }
     }
 
     console.log('\n📊 Migration Progress:\n');
@@ -507,7 +846,14 @@ async function migrate(options: MigrationOptions): Promise<void> {
       }
 
       const rows = await getTableData(sourceDb.rawDb, table);
-      const migratedCount = await insertIntoPostgres(targetDb.pool, table, rows);
+      let migratedCount = 0;
+
+      if (isPostgresTarget && targetPgDb) {
+        migratedCount = await insertIntoPostgres(targetPgDb.pool, table, rows);
+      } else if (isMySQLTarget && targetMySQLDb) {
+        migratedCount = await insertIntoMySQL(targetMySQLDb.pool, table, rows, mysqlDatabase);
+      }
+
       const duration = Date.now() - startTime;
 
       console.log(`✅ ${migratedCount} migrated (${duration}ms)`);
@@ -548,8 +894,11 @@ async function migrate(options: MigrationOptions): Promise<void> {
     if (sourceDb) {
       sourceDb.rawDb.close();
     }
-    if (targetDb) {
-      await targetDb.pool.end();
+    if (targetPgDb) {
+      await targetPgDb.pool.end();
+    }
+    if (targetMySQLDb) {
+      await targetMySQLDb.pool.end();
     }
   }
 }
