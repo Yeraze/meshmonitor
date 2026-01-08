@@ -156,6 +156,9 @@ export interface EnvironmentConfig {
   // Database
   databasePath: string;
   databasePathProvided: boolean;
+  databaseUrl: string | undefined;
+  databaseUrlProvided: boolean;
+  databaseType: 'sqlite' | 'postgres';
 
   // Meshtastic
   meshtasticNodeIp: string;
@@ -364,6 +367,27 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.DATABASE_PATH !== undefined
   };
 
+  // DATABASE_URL for PostgreSQL support
+  const databaseUrl = {
+    value: process.env.DATABASE_URL,
+    wasProvided: process.env.DATABASE_URL !== undefined
+  };
+
+  // Determine database type from DATABASE_URL
+  let databaseType: 'sqlite' | 'postgres' = 'sqlite';
+  if (databaseUrl.value) {
+    const url = databaseUrl.value.toLowerCase();
+    if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+      databaseType = 'postgres';
+      logger.info('📦 Database: PostgreSQL (configured via DATABASE_URL)');
+    } else {
+      logger.warn(`⚠️  DATABASE_URL provided but not recognized as PostgreSQL. Using SQLite.`);
+      logger.warn(`   PostgreSQL URLs must start with postgres:// or postgresql://`);
+    }
+  } else {
+    logger.debug('📦 Database: SQLite (default)');
+  }
+
   const versionCheckDisabled = process.env.VERSION_CHECK_DISABLED == "true";
 
   // Meshtastic
@@ -530,6 +554,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     // Database
     databasePath: databasePath.value,
     databasePathProvided: databasePath.wasProvided,
+    databaseUrl: databaseUrl.value,
+    databaseUrlProvided: databaseUrl.wasProvided,
+    databaseType,
 
     // Meshtastic
     meshtasticNodeIp: meshtasticNodeIp.value,
