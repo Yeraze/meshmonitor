@@ -1,13 +1,13 @@
 /**
  * Shared Database Types
- * These types are used by both SQLite and PostgreSQL implementations
+ * These types are used by SQLite, PostgreSQL, and MySQL implementations
  * and match the existing DbNode, DbMessage, etc. interfaces in database.ts
  */
 
 // Re-export types from existing database.ts for compatibility
 // These will eventually be moved here as the source of truth
 
-export type DatabaseType = 'sqlite' | 'postgres';
+export type DatabaseType = 'sqlite' | 'postgres' | 'mysql';
 
 /**
  * Database configuration
@@ -20,6 +20,9 @@ export interface DatabaseConfig {
   postgresUrl?: string;
   postgresMaxConnections?: number;
   postgresSsl?: boolean | { rejectUnauthorized: boolean };
+  // MySQL/MariaDB specific
+  mysqlUrl?: string;
+  mysqlMaxConnections?: number;
 }
 
 /**

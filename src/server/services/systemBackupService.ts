@@ -1,7 +1,7 @@
 /**
  * System Backup Service
  * Exports complete database to JSON format for disaster recovery and migration
- * Supports both SQLite and PostgreSQL backends
+ * Supports SQLite, PostgreSQL, and MySQL backends
  */
 
 import * as fs from 'fs';
@@ -166,7 +166,7 @@ class SystemBackupService {
 
   /**
    * Export a single table to array of objects
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   private async exportTable(tableName: string): Promise<any[]> {
     try {
@@ -178,6 +178,12 @@ class SystemBackupService {
         if (!pool) throw new Error('PostgreSQL pool not initialized');
         const result = await pool.query(`SELECT * FROM "${tableName}"`);
         return this.normalizeRows(result.rows);
+      } else if (dbType === 'mysql') {
+        // MySQL: Use async query via pool
+        const pool = databaseService.getMySQLPool();
+        if (!pool) throw new Error('MySQL pool not initialized');
+        const [rows] = await pool.query(`SELECT * FROM \`${tableName}\``);
+        return this.normalizeRows(rows as any[]);
       } else {
         // SQLite: Use synchronous query
         const db = databaseService.db;
@@ -210,7 +216,7 @@ class SystemBackupService {
 
   /**
    * Record a backup in the database
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   private async recordBackupInDatabase(
     dirname: string,
@@ -232,6 +238,15 @@ class SystemBackupService {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now()]
       );
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      await pool.execute(
+        `INSERT INTO system_backup_history
+         (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now()]
+      );
     } else {
       const db = databaseService.db;
       const stmt = db.prepare(`
@@ -245,7 +260,7 @@ class SystemBackupService {
 
   /**
    * Execute a query and return rows
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   private async queryRows(sql: string, params: any[] = []): Promise<any[]> {
     const dbType = databaseService.getDatabaseType();
@@ -255,6 +270,11 @@ class SystemBackupService {
       if (!pool) throw new Error('PostgreSQL pool not initialized');
       const result = await pool.query(sql, params);
       return result.rows;
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      const [rows] = await pool.execute(sql, params);
+      return rows as any[];
     } else {
       const db = databaseService.db;
       const stmt = db.prepare(sql);
@@ -264,7 +284,7 @@ class SystemBackupService {
 
   /**
    * Execute a query that returns a single row
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   private async queryOne(sql: string, params: any[] = []): Promise<any> {
     const dbType = databaseService.getDatabaseType();
@@ -274,6 +294,11 @@ class SystemBackupService {
       if (!pool) throw new Error('PostgreSQL pool not initialized');
       const result = await pool.query(sql, params);
       return result.rows[0] || null;
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      const [rows] = await pool.execute(sql, params);
+      return (rows as any[])[0] || null;
     } else {
       const db = databaseService.db;
       const stmt = db.prepare(sql);
@@ -283,7 +308,7 @@ class SystemBackupService {
 
   /**
    * Execute a statement (INSERT, UPDATE, DELETE)
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   private async executeStatement(sql: string, params: any[] = []): Promise<void> {
     const dbType = databaseService.getDatabaseType();
@@ -292,10 +317,18 @@ class SystemBackupService {
       const pool = databaseService.getPostgresPool();
       if (!pool) throw new Error('PostgreSQL pool not initialized');
       await pool.query(sql, params);
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      await pool.execute(sql, params);
     } else {
       const db = databaseService.db;
       const stmt = db.prepare(sql);
-      params.length > 0 ? stmt.run(...params) : stmt.run();
+      if (params.length > 0) {
+        stmt.run(...params);
+      } else {
+        stmt.run();
+      }
     }
   }
 
@@ -324,7 +357,7 @@ class SystemBackupService {
 
   /**
    * List all system backups
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async listBackups(): Promise<SystemBackupInfo[]> {
     try {
@@ -420,7 +453,7 @@ class SystemBackupService {
 
   /**
    * Delete a specific backup
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async deleteBackup(dirname: string): Promise<void> {
     try {
@@ -465,7 +498,7 @@ class SystemBackupService {
 
   /**
    * Purge old backups based on max backups setting
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async purgeOldBackups(): Promise<void> {
     try {
@@ -542,7 +575,7 @@ class SystemBackupService {
 
   /**
    * Get backup statistics
-   * Supports both SQLite and PostgreSQL
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async getBackupStats(): Promise<{
     count: number;
@@ -556,7 +589,7 @@ class SystemBackupService {
       const stats = await this.queryOne(`
         SELECT
           COUNT(*) as count,
-          ${dbType === 'postgres' ? 'COALESCE(SUM(size), 0)' : 'SUM(size)'} as "totalSize",
+          ${dbType === 'sqlite' ? 'SUM(size)' : 'COALESCE(SUM(size), 0)'} as "totalSize",
           MIN(timestamp) as "oldestTimestamp",
           MAX(timestamp) as "newestTimestamp"
         FROM system_backup_history
