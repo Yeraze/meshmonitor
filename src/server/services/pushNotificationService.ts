@@ -18,12 +18,17 @@ export interface PushNotificationPayload {
 
 class PushNotificationService {
   private isConfigured = false;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    // Start async initialization - it will wait for the database to be ready
+    this.initPromise = this.initializeAsync();
   }
 
-  private initialize(): void {
+  /**
+   * Async initialization that waits for the database to be ready
+   */
+  private async initializeAsync(): Promise<void> {
     // Try to load from environment first (for backward compatibility)
     const config = getEnvironmentConfig();
     let publicKey = config.vapidPublicKey;
@@ -32,18 +37,27 @@ class PushNotificationService {
 
     // If not in environment, check database and auto-generate if needed
     if (!publicKey || !privateKey) {
-      const storedPublicKey = databaseService.getSetting('vapid_public_key');
-      const storedPrivateKey = databaseService.getSetting('vapid_private_key');
-      const storedSubject = databaseService.getSetting('vapid_subject');
+      // Wait for the database to be ready before accessing settings
+      try {
+        await databaseService.waitForReady();
+      } catch (error) {
+        logger.error('❌ Database initialization failed, push notifications disabled:', error);
+        this.isConfigured = false;
+        return;
+      }
+
+      const storedPublicKey = await databaseService.getSettingAsync('vapid_public_key');
+      const storedPrivateKey = await databaseService.getSettingAsync('vapid_private_key');
+      const storedSubject = await databaseService.getSettingAsync('vapid_subject');
 
       if (!storedPublicKey || !storedPrivateKey) {
         // Auto-generate VAPID keys on first run
         logger.info('🔑 No VAPID keys found, generating new keys...');
         const vapidKeys = webpush.generateVAPIDKeys();
 
-        databaseService.setSetting('vapid_public_key', vapidKeys.publicKey);
-        databaseService.setSetting('vapid_private_key', vapidKeys.privateKey);
-        databaseService.setSetting('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
+        await databaseService.setSettingAsync('vapid_public_key', vapidKeys.publicKey);
+        await databaseService.setSettingAsync('vapid_private_key', vapidKeys.privateKey);
+        await databaseService.setSettingAsync('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
 
         publicKey = vapidKeys.publicKey;
         privateKey = vapidKeys.privateKey;
@@ -73,12 +87,21 @@ class PushNotificationService {
       this.isConfigured = true;
 
       // Log TTL configuration for visibility
-      const config = getEnvironmentConfig();
-      const ttlMinutes = Math.round(config.pushNotificationTtl / 60);
-      logger.info(`✅ Push notification service configured with VAPID keys (TTL: ${config.pushNotificationTtl}s / ${ttlMinutes}min)`);
+      const envConfig = getEnvironmentConfig();
+      const ttlMinutes = Math.round(envConfig.pushNotificationTtl / 60);
+      logger.info(`✅ Push notification service configured with VAPID keys (TTL: ${envConfig.pushNotificationTtl}s / ${ttlMinutes}min)`);
     } catch (error) {
       logger.error('❌ Failed to configure push notification service:', error);
       this.isConfigured = false;
+    }
+  }
+
+  /**
+   * Wait for initialization to complete
+   */
+  async waitForInit(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
     }
   }
 
@@ -124,14 +147,14 @@ class PushNotificationService {
   /**
    * Update VAPID subject (contact email)
    */
-  public updateVapidSubject(subject: string): void {
+  public async updateVapidSubject(subject: string): Promise<void> {
     if (!subject.startsWith('mailto:')) {
       throw new Error('VAPID subject must start with mailto:');
     }
-    databaseService.setSetting('vapid_subject', subject);
+    await databaseService.setSettingAsync('vapid_subject', subject);
     logger.info(`✅ Updated VAPID subject to: ${subject}`);
     // Reinitialize to apply new subject
-    this.initialize();
+    await this.initializeAsync();
   }
 
   /**
