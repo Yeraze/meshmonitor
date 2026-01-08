@@ -6727,7 +6727,7 @@ apiRouter.get('/push/status', optionalAuth(), (_req, res) => {
 });
 
 // Update VAPID subject (admin only)
-apiRouter.put('/push/vapid-subject', requireAdmin(), (req, res) => {
+apiRouter.put('/push/vapid-subject', requireAdmin(), async (req, res) => {
   try {
     const { subject } = req.body;
 
@@ -6735,7 +6735,7 @@ apiRouter.put('/push/vapid-subject', requireAdmin(), (req, res) => {
       return res.status(400).json({ error: 'Subject is required and must be a string' });
     }
 
-    pushNotificationService.updateVapidSubject(subject);
+    await pushNotificationService.updateVapidSubject(subject);
     res.json({ success: true, subject });
   } catch (error: any) {
     logger.error('Error updating VAPID subject:', error);

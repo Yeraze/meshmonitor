@@ -16,33 +16,59 @@ interface AppriseConfig {
 
 class AppriseNotificationService {
   private config: AppriseConfig | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    // Start async initialization - it will wait for the database to be ready
+    this.initPromise = this.initializeAsync();
   }
 
-  private initialize(): void {
-    // Default to internal Apprise API (bundled in container)
-    const appriseUrl = databaseService.getSetting('apprise_url') || 'http://localhost:8000';
-    const enabledSetting = databaseService.getSetting('apprise_enabled');
+  /**
+   * Async initialization that waits for the database to be ready
+   */
+  private async initializeAsync(): Promise<void> {
+    try {
+      // Wait for the database to be ready before accessing settings
+      await databaseService.waitForReady();
 
-    // Default to enabled if not explicitly set (backward compatibility)
-    const enabled = enabledSetting !== 'false';
+      // Default to internal Apprise API (bundled in container)
+      const appriseUrl = await databaseService.getSettingAsync('apprise_url') || 'http://localhost:8000';
+      const enabledSetting = await databaseService.getSettingAsync('apprise_enabled');
 
-    // If not set, initialize it to 'true'
-    if (enabledSetting === null || enabledSetting === undefined) {
-      databaseService.setSetting('apprise_enabled', 'true');
+      // Default to enabled if not explicitly set (backward compatibility)
+      const enabled = enabledSetting !== 'false';
+
+      // If not set, initialize it to 'true'
+      if (enabledSetting === null || enabledSetting === undefined) {
+        await databaseService.setSettingAsync('apprise_enabled', 'true');
+      }
+
+      this.config = {
+        url: appriseUrl,
+        enabled
+      };
+
+      if (enabled) {
+        logger.info(`✅ Apprise notification service configured at ${appriseUrl}`);
+      } else {
+        logger.debug('ℹ️  Apprise notifications disabled');
+      }
+    } catch (error) {
+      logger.error('❌ Failed to initialize Apprise notification service:', error);
+      // Default to disabled state
+      this.config = {
+        url: 'http://localhost:8000',
+        enabled: false
+      };
     }
+  }
 
-    this.config = {
-      url: appriseUrl,
-      enabled
-    };
-
-    if (enabled) {
-      logger.info(`✅ Apprise notification service configured at ${appriseUrl}`);
-    } else {
-      logger.debug('ℹ️  Apprise notifications disabled');
+  /**
+   * Wait for initialization to complete
+   */
+  async waitForInit(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
     }
   }
 

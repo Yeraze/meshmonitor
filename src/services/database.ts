@@ -311,6 +311,12 @@ class DatabaseService {
   private postgresPool: import('pg').Pool | null = null;
   private mysqlPool: import('mysql2/promise').Pool | null = null;
 
+  // Promise that resolves when async initialization (PostgreSQL/MySQL) is complete
+  private readyPromise: Promise<void>;
+  private readyResolve!: () => void;
+  private readyReject!: (error: Error) => void;
+  private isReady = false;
+
   /**
    * Get the Drizzle database instance for direct access if needed
    */
@@ -339,6 +345,25 @@ class DatabaseService {
     return this.drizzleDbType;
   }
 
+  /**
+   * Wait for the database to be fully initialized
+   * For SQLite, this resolves immediately
+   * For PostgreSQL/MySQL, this waits for async schema creation and repo initialization
+   */
+  async waitForReady(): Promise<void> {
+    if (this.isReady) {
+      return;
+    }
+    return this.readyPromise;
+  }
+
+  /**
+   * Check if the database is ready (sync check)
+   */
+  isDatabaseReady(): boolean {
+    return this.isReady;
+  }
+
   // Repositories - will be initialized after Drizzle connection
   public settingsRepo: SettingsRepository | null = null;
   public channelsRepo: ChannelsRepository | null = null;
@@ -351,6 +376,12 @@ class DatabaseService {
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
+
+    // Initialize the ready promise - will be resolved when async initialization is complete
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
 
     // Check database type FIRST before any initialization
     const dbConfig = getDatabaseConfig();
@@ -380,7 +411,8 @@ class DatabaseService {
       this.apiTokenModel = new APITokenModel(this.db);
 
       // Initialize Drizzle repositories (async) - this will create the schema
-      this.initializeDrizzleRepositories(dbPath);
+      // The readyPromise will be resolved when this completes
+      this.initializeDrizzleRepositoriesForPostgres(dbPath);
 
       // Skip SQLite-specific initialization
       this.isInitialized = true;
@@ -498,6 +530,10 @@ class DatabaseService {
     this.ensureBroadcastNode();
     // Ensure admin user exists for authentication
     this.ensureAdminUser();
+
+    // SQLite is ready immediately after sync initialization
+    this.isReady = true;
+    this.readyResolve();
   }
 
   /**
@@ -510,6 +546,23 @@ class DatabaseService {
       logger.warn('[DatabaseService] Failed to initialize Drizzle repositories:', error);
       logger.warn('[DatabaseService] Async repository methods will not be available');
     });
+  }
+
+  /**
+   * Initialize Drizzle ORM for PostgreSQL/MySQL with proper ready promise handling
+   * This is used when NOT using SQLite - it sets up the async repos and resolves/rejects the readyPromise
+   */
+  private initializeDrizzleRepositoriesForPostgres(dbPath: string): void {
+    this.initializeDrizzleRepositoriesAsync(dbPath)
+      .then(() => {
+        logger.info('[DatabaseService] PostgreSQL/MySQL initialization complete - database is ready');
+        this.isReady = true;
+        this.readyResolve();
+      })
+      .catch((error) => {
+        logger.error('[DatabaseService] Failed to initialize PostgreSQL/MySQL:', error);
+        this.readyReject(error instanceof Error ? error : new Error(String(error)));
+      });
   }
 
   /**
@@ -4420,12 +4473,35 @@ class DatabaseService {
 
   // Settings methods
   getSetting(key: string): string | null {
+    // For PostgreSQL/MySQL, use async repo - return null if not ready
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Cannot use sync method with PostgreSQL/MySQL
+      // Callers should use getSettingAsync() instead
+      logger.warn(`getSetting('${key}') called but using ${this.drizzleDbType}. Use getSettingAsync() instead.`);
+      return null;
+    }
     const stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
     const row = stmt.get(key) as { value: string } | undefined;
     return row ? row.value : null;
   }
 
+  /**
+   * Async version of getSetting - works with all database backends
+   */
+  async getSettingAsync(key: string): Promise<string | null> {
+    if (this.settingsRepo) {
+      return this.settingsRepo.getSetting(key);
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getSetting(key);
+  }
+
   getAllSettings(): Record<string, string> {
+    // For PostgreSQL/MySQL, return empty - callers should use getAllSettingsAsync()
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      logger.warn(`getAllSettings() called but using ${this.drizzleDbType}. Use getAllSettingsAsync() instead.`);
+      return {};
+    }
     const stmt = this.db.prepare('SELECT key, value FROM settings');
     const rows = stmt.all() as Array<{ key: string; value: string }>;
     const settings: Record<string, string> = {};
@@ -4435,7 +4511,26 @@ class DatabaseService {
     return settings;
   }
 
+  /**
+   * Async version of getAllSettings - works with all database backends
+   */
+  async getAllSettingsAsync(): Promise<Record<string, string>> {
+    if (this.settingsRepo) {
+      return this.settingsRepo.getAllSettings();
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getAllSettings();
+  }
+
   setSetting(key: string, value: string): void {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Fire and forget async version
+      this.setSettingAsync(key, value).catch(err => {
+        logger.error(`Failed to set setting ${key}:`, err);
+      });
+      return;
+    }
     const now = Date.now();
     const stmt = this.db.prepare(`
       INSERT INTO settings (key, value, createdAt, updatedAt)
@@ -4447,7 +4542,26 @@ class DatabaseService {
     stmt.run(key, value, now, now);
   }
 
+  /**
+   * Async version of setSetting - works with all database backends
+   */
+  async setSettingAsync(key: string, value: string): Promise<void> {
+    if (this.settingsRepo) {
+      await this.settingsRepo.setSetting(key, value);
+      return;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    this.setSetting(key, value);
+  }
+
   setSettings(settings: Record<string, string>): void {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      this.setSettingsAsync(settings).catch(err => {
+        logger.error('Failed to set settings:', err);
+      });
+      return;
+    }
     const now = Date.now();
     const stmt = this.db.prepare(`
       INSERT INTO settings (key, value, createdAt, updatedAt)
@@ -4464,9 +4578,39 @@ class DatabaseService {
     })();
   }
 
+  /**
+   * Async version of setSettings - works with all database backends
+   */
+  async setSettingsAsync(settings: Record<string, string>): Promise<void> {
+    if (this.settingsRepo) {
+      await this.settingsRepo.setSettings(settings);
+      return;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    this.setSettings(settings);
+  }
+
   deleteAllSettings(): void {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      this.deleteAllSettingsAsync().catch(err => {
+        logger.error('Failed to delete all settings:', err);
+      });
+      return;
+    }
     logger.debug('🔄 Resetting all settings to defaults');
     this.db.exec('DELETE FROM settings');
+  }
+
+  /**
+   * Async version of deleteAllSettings - works with all database backends
+   */
+  async deleteAllSettingsAsync(): Promise<void> {
+    if (this.settingsRepo) {
+      await this.settingsRepo.deleteAllSettings();
+      return;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    this.deleteAllSettings();
   }
 
   // Route segment operations
@@ -5722,7 +5866,9 @@ class DatabaseService {
 
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY,
-          value TEXT
+          value TEXT NOT NULL,
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS users (
@@ -5994,7 +6140,9 @@ class DatabaseService {
       await connection.query(`
         CREATE TABLE IF NOT EXISTS settings (
           \`key\` VARCHAR(255) PRIMARY KEY,
-          value TEXT
+          value TEXT NOT NULL,
+          createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
