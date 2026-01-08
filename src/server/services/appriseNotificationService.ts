@@ -54,7 +54,8 @@ class AppriseNotificationService {
         logger.debug('ℹ️  Apprise notifications disabled');
       }
     } catch (error) {
-      logger.error('❌ Failed to initialize Apprise notification service:', error);
+      // Database not ready or settings table doesn't exist (e.g., during tests)
+      logger.debug('⚠️ Could not initialize Apprise notification service:', error);
       // Default to disabled state
       this.config = {
         url: 'http://localhost:8000',
