@@ -44,6 +44,11 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     container_name: meshmonitor
+    profiles:
+      - postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8081:3001"  # Changed to 8081 to avoid conflict with devcontainer
       - "4405:4404"  # Virtual Node Server on unique external port
@@ -54,9 +59,9 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
-      - DATABASE_PATH=/data/meshmonitor.db
-      # PostgreSQL: Uncomment below and start with --profile postgres
-      # - DATABASE_URL=postgres://meshmonitor:meshmonitor_dev@postgres:5432/meshmonitor
+      # SQLite (default): - DATABASE_PATH=/data/meshmonitor.db
+      # PostgreSQL: Enabled for testing
+      - DATABASE_URL=postgres://meshmonitor:meshmonitor_dev@postgres:5432/meshmonitor
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York

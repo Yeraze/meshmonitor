@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import BetterSqlite3Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
@@ -52,7 +52,9 @@ import { migration as autoKeyRepairMigration } from '../server/migrations/046_ad
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
-import { createSQLiteDriver, SQLiteDatabase } from '../db/drivers/sqlite.js';
+import { createSQLiteDriver } from '../db/drivers/sqlite.js';
+import { createPostgresDriver } from '../db/drivers/postgres.js';
+import { getDatabaseConfig, Database } from '../db/index.js';
 import {
   SettingsRepository,
   ChannelsRepository,
@@ -289,7 +291,7 @@ export interface ThemeDefinition {
 }
 
 class DatabaseService {
-  public db: Database.Database;
+  public db: BetterSqlite3Database.Database;
   private isInitialized = false;
   public userModel: UserModel;
   public permissionModel: PermissionModel;
@@ -300,15 +302,23 @@ class DatabaseService {
   private telemetryTypesCacheTime: number = 0;
   private static readonly TELEMETRY_TYPES_CACHE_TTL_MS = 60000; // 60 seconds
 
-  // Drizzle ORM database and repositories (for async operations and future PostgreSQL support)
-  private drizzleDatabase: SQLiteDatabase | null = null;
+  // Drizzle ORM database and repositories (for async operations and PostgreSQL support)
+  private drizzleDatabase: Database | null = null;
   private drizzleDbType: DatabaseType = 'sqlite';
+  private postgresPool: import('pg').Pool | null = null;
 
   /**
    * Get the Drizzle database instance for direct access if needed
    */
-  getDrizzleDb(): SQLiteDatabase | null {
+  getDrizzleDb(): Database | null {
     return this.drizzleDatabase;
+  }
+
+  /**
+   * Get the PostgreSQL pool for direct queries (returns null for SQLite)
+   */
+  getPostgresPool(): import('pg').Pool | null {
+    return this.postgresPool;
   }
 
   /**
@@ -392,7 +402,7 @@ class DatabaseService {
 
     // Now attempt to open the database with better error handling
     try {
-      this.db = new Database(dbPath);
+      this.db = new BetterSqlite3Database(dbPath);
       this.db.pragma('journal_mode = WAL');
       this.db.pragma('foreign_keys = ON');
       this.db.pragma('busy_timeout = 5000'); // 5 second timeout for locked database
@@ -447,21 +457,50 @@ class DatabaseService {
 
   /**
    * Initialize Drizzle ORM and all repositories
-   * This provides async database operations and prepares for PostgreSQL support
+   * This provides async database operations and supports both SQLite and PostgreSQL
    */
   private initializeDrizzleRepositories(dbPath: string): void {
+    // Note: We call this synchronously but handle async PostgreSQL init via Promise
+    this.initializeDrizzleRepositoriesAsync(dbPath).catch((error) => {
+      logger.warn('[DatabaseService] Failed to initialize Drizzle repositories:', error);
+      logger.warn('[DatabaseService] Async repository methods will not be available');
+    });
+  }
+
+  /**
+   * Async initialization of Drizzle ORM repositories
+   */
+  private async initializeDrizzleRepositoriesAsync(dbPath: string): Promise<void> {
     try {
       logger.debug('[DatabaseService] Initializing Drizzle ORM repositories');
 
-      // Create Drizzle connection using the same database file
-      const { db: drizzleDb } = createSQLiteDriver({
-        databasePath: dbPath,
-        enableWAL: false, // Already enabled on main connection
-        enableForeignKeys: false, // Already enabled on main connection
-      });
+      // Check database configuration to determine which driver to use
+      const dbConfig = getDatabaseConfig();
+      let drizzleDb: Database;
+
+      if (dbConfig.type === 'postgres' && dbConfig.postgresUrl) {
+        // Use PostgreSQL driver
+        logger.info('[DatabaseService] Using PostgreSQL driver for Drizzle repositories');
+        const { db, pool } = await createPostgresDriver({
+          connectionString: dbConfig.postgresUrl,
+          maxConnections: dbConfig.postgresMaxConnections || 10,
+          ssl: dbConfig.postgresSsl || false,
+        });
+        drizzleDb = db;
+        this.postgresPool = pool;
+        this.drizzleDbType = 'postgres';
+      } else {
+        // Use SQLite driver (default)
+        const { db } = createSQLiteDriver({
+          databasePath: dbPath,
+          enableWAL: false, // Already enabled on main connection
+          enableForeignKeys: false, // Already enabled on main connection
+        });
+        drizzleDb = db;
+        this.drizzleDbType = 'sqlite';
+      }
 
       this.drizzleDatabase = drizzleDb;
-      this.drizzleDbType = 'sqlite';
 
       // Initialize all repositories
       this.settingsRepo = new SettingsRepository(drizzleDb, this.drizzleDbType);
@@ -478,6 +517,7 @@ class DatabaseService {
       // Log but don't fail - repositories are optional during migration period
       logger.warn('[DatabaseService] Failed to initialize Drizzle repositories:', error);
       logger.warn('[DatabaseService] Async repository methods will not be available');
+      throw error;
     }
   }
 

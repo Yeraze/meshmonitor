@@ -21,6 +21,7 @@ import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import * as schema from '../db/schema/index.js';
 
 // Table migration order (respects foreign key dependencies)
+// Tables not in this list will be migrated at the end
 const TABLE_ORDER = [
   // Core tables (no dependencies)
   'nodes',
@@ -49,7 +50,12 @@ const TABLE_ORDER = [
   'user_map_preferences',
   'upgrade_history',
   'auto_traceroute_log',
+  'auto_traceroute_nodes',
   'key_repair_state',
+  'auto_key_repair_state',
+  'auto_key_repair_log',
+  'solar_estimates',
+  'system_backup_history',
 ];
 
 interface MigrationOptions {
@@ -184,22 +190,82 @@ async function getTableData(rawDb: Database.Database, table: string): Promise<un
   }
 }
 
+/**
+ * Get column types for a PostgreSQL table
+ */
+async function getPostgresColumnTypes(client: import('pg').PoolClient, table: string): Promise<Map<string, string>> {
+  const result = await client.query(`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = $1
+  `, [table]);
+
+  const typeMap = new Map<string, string>();
+  for (const row of result.rows) {
+    typeMap.set(row.column_name, row.data_type);
+  }
+  return typeMap;
+}
+
+/**
+ * Sanitize a value based on PostgreSQL target type
+ * Handles SQLite's loose typing (floats in INTEGER columns, etc.)
+ */
+function sanitizeValue(value: unknown, pgType: string): unknown {
+  if (value === null || value === undefined) return value;
+
+  // Handle integer types - truncate floats
+  if (pgType === 'bigint' || pgType === 'integer' || pgType === 'smallint') {
+    if (typeof value === 'number' && !Number.isInteger(value)) {
+      return Math.trunc(value);
+    }
+    // Handle string numbers that might be floats
+    if (typeof value === 'string' && value.includes('.')) {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        return Math.trunc(num);
+      }
+    }
+  }
+
+  // Handle boolean - SQLite stores as 0/1
+  if (pgType === 'boolean') {
+    if (value === 0 || value === '0' || value === 'false') return false;
+    if (value === 1 || value === '1' || value === 'true') return true;
+    return Boolean(value);
+  }
+
+  return value;
+}
+
 async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): Promise<number> {
   if (rows.length === 0) return 0;
 
   const client = await pool.connect();
   let inserted = 0;
+  let columnTypes: Map<string, string> | null = null;
 
   try {
+    // Get column types for this table
+    columnTypes = await getPostgresColumnTypes(client, table);
+
     await client.query('BEGIN');
 
     for (const row of rows) {
       const obj = row as Record<string, unknown>;
       const columns = Object.keys(obj);
-      const values = Object.values(obj);
-      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
 
-      const query = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`;
+      // Sanitize values based on PostgreSQL column types
+      const values = columns.map((col) => {
+        const pgType = columnTypes?.get(col) || 'text';
+        return sanitizeValue(obj[col], pgType);
+      });
+
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+      // Quote column names for PostgreSQL (case-sensitive)
+      const quotedColumns = columns.map((c) => `"${c}"`).join(', ');
+
+      const query = `INSERT INTO "${table}" (${quotedColumns}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`;
 
       try {
         await client.query(query, values);
@@ -221,391 +287,142 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
   return inserted;
 }
 
-async function createPostgresSchema(pool: Pool): Promise<void> {
-  console.log('📋 Creating PostgreSQL schema...');
+/**
+ * Convert SQLite type to PostgreSQL type
+ */
+function sqliteToPostgresType(sqliteType: string): string {
+  const type = sqliteType.toUpperCase();
+  if (type.includes('INTEGER') || type.includes('INT')) return 'BIGINT';
+  if (type.includes('REAL') || type.includes('FLOAT') || type.includes('DOUBLE')) return 'DOUBLE PRECISION';
+  if (type.includes('TEXT') || type.includes('VARCHAR') || type.includes('CHAR')) return 'TEXT';
+  if (type.includes('BLOB')) return 'BYTEA';
+  if (type.includes('BOOLEAN') || type.includes('BOOL')) return 'BOOLEAN';
+  return 'TEXT'; // Default
+}
+
+/**
+ * Parse SQLite CREATE TABLE statement and convert to PostgreSQL
+ */
+function convertCreateTable(sqliteSchema: string): string {
+  // Extract table name
+  const tableMatch = sqliteSchema.match(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?["']?(\w+)["']?\s*\(/i);
+  if (!tableMatch) return '';
+
+  const tableName = tableMatch[1];
+
+  // Skip sqlite internal tables
+  if (tableName === 'sqlite_sequence') return '';
+
+  // Extract column definitions - handle multi-line
+  const columnsStart = sqliteSchema.indexOf('(') + 1;
+  const columnsEnd = sqliteSchema.lastIndexOf(')');
+  const columnsStr = sqliteSchema.substring(columnsStart, columnsEnd);
+
+  // Parse columns
+  const columns: string[] = [];
+  let currentCol = '';
+  let parenDepth = 0;
+
+  for (const char of columnsStr) {
+    if (char === '(') parenDepth++;
+    else if (char === ')') parenDepth--;
+
+    if (char === ',' && parenDepth === 0) {
+      if (currentCol.trim()) columns.push(currentCol.trim());
+      currentCol = '';
+    } else {
+      currentCol += char;
+    }
+  }
+  if (currentCol.trim()) columns.push(currentCol.trim());
+
+  // Convert each column
+  const pgColumns: string[] = [];
+  const constraints: string[] = [];
+
+  for (const col of columns) {
+    const trimmed = col.trim();
+
+    // Skip constraints for now (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
+    if (/^(PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|CONSTRAINT)/i.test(trimmed)) {
+      // Convert constraint if it's a simple UNIQUE constraint
+      if (/^UNIQUE\s*\(/i.test(trimmed)) {
+        constraints.push(trimmed);
+      }
+      continue;
+    }
+
+    // Parse column: name type [constraints]
+    const colMatch = trimmed.match(/^["']?(\w+)["']?\s+(\w+)(.*)$/i);
+    if (!colMatch) continue;
+
+    const [, colName, colType, rest] = colMatch;
+    const pgType = sqliteToPostgresType(colType);
+
+    let pgCol = `"${colName}" ${pgType}`;
+
+    // Handle constraints in column definition
+    if (/PRIMARY KEY/i.test(rest)) {
+      pgCol += ' PRIMARY KEY';
+    }
+    if (/NOT NULL/i.test(rest)) {
+      pgCol += ' NOT NULL';
+    }
+    if (/UNIQUE/i.test(rest) && !/PRIMARY KEY/i.test(rest)) {
+      pgCol += ' UNIQUE';
+    }
+    if (/DEFAULT/i.test(rest)) {
+      const defaultMatch = rest.match(/DEFAULT\s+(\S+)/i);
+      if (defaultMatch) {
+        let defaultVal = defaultMatch[1];
+        // Convert SQLite boolean defaults
+        if (defaultVal === '0' && pgType === 'BOOLEAN') defaultVal = 'false';
+        else if (defaultVal === '1' && pgType === 'BOOLEAN') defaultVal = 'true';
+        pgCol += ` DEFAULT ${defaultVal}`;
+      }
+    }
+
+    pgColumns.push(pgCol);
+  }
+
+  if (pgColumns.length === 0) return '';
+
+  let createSql = `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${pgColumns.join(',\n  ')}`;
+  if (constraints.length > 0) {
+    createSql += ',\n  ' + constraints.join(',\n  ');
+  }
+  createSql += '\n);';
+
+  return createSql;
+}
+
+async function createPostgresSchemaFromSqlite(pool: Pool, sqliteDb: Database.Database): Promise<void> {
+  console.log('📋 Creating PostgreSQL schema from SQLite...');
 
   const client = await pool.connect();
 
   try {
-    // Create tables in order - this is a simplified version
-    // In production, you'd use Drizzle migrations
-    const schemaSql = `
-      -- Nodes table
-      CREATE TABLE IF NOT EXISTS nodes (
-        "nodeNum" INTEGER PRIMARY KEY,
-        "nodeId" TEXT NOT NULL UNIQUE,
-        "longName" TEXT,
-        "shortName" TEXT,
-        "hwModel" INTEGER,
-        role INTEGER,
-        "hopsAway" INTEGER,
-        "lastMessageHops" INTEGER,
-        "viaMqtt" BOOLEAN DEFAULT false,
-        macaddr TEXT,
-        latitude REAL,
-        longitude REAL,
-        altitude REAL,
-        "batteryLevel" INTEGER,
-        voltage REAL,
-        "channelUtilization" REAL,
-        "airUtilTx" REAL,
-        "lastHeard" BIGINT,
-        snr REAL,
-        rssi INTEGER,
-        "lastTracerouteRequest" BIGINT,
-        "firmwareVersion" TEXT,
-        channel INTEGER,
-        "isFavorite" BOOLEAN DEFAULT false,
-        "isIgnored" BOOLEAN DEFAULT false,
-        mobile INTEGER DEFAULT 0,
-        "rebootCount" INTEGER,
-        "publicKey" TEXT,
-        "hasPKC" BOOLEAN DEFAULT false,
-        "lastPKIPacket" BIGINT,
-        "keyIsLowEntropy" BOOLEAN DEFAULT false,
-        "duplicateKeyDetected" BOOLEAN DEFAULT false,
-        "keyMismatchDetected" BOOLEAN DEFAULT false,
-        "keySecurityIssueDetails" TEXT,
-        "welcomedAt" BIGINT,
-        "positionChannel" INTEGER,
-        "positionPrecisionBits" INTEGER,
-        "positionGpsAccuracy" INTEGER,
-        "positionHdop" REAL,
-        "positionTimestamp" BIGINT,
-        "positionOverrideLat" REAL,
-        "positionOverrideLon" REAL,
-        "positionOverrideSource" TEXT,
-        "positionOverrideUpdatedAt" BIGINT,
-        "positionOverridePrivacy" TEXT,
-        "estimatedLatitude" REAL,
-        "estimatedLongitude" REAL,
-        "estimatedPositionTimestamp" BIGINT,
-        "estimatedPositionConfidence" REAL,
-        "createdAt" BIGINT,
-        "updatedAt" BIGINT
-      );
+    // Get all table schemas from SQLite
+    const tables = sqliteDb.prepare(`
+      SELECT name, sql FROM sqlite_master
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all() as Array<{ name: string; sql: string }>;
 
-      -- Channels table
-      CREATE TABLE IF NOT EXISTS channels (
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        psk TEXT,
-        role INTEGER DEFAULT 0,
-        "uplinkEnabled" BOOLEAN DEFAULT false,
-        "downlinkEnabled" BOOLEAN DEFAULT false,
-        "positionPrecision" INTEGER
-      );
+    for (const table of tables) {
+      if (!table.sql) continue;
 
-      -- Messages table
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        "fromNodeId" TEXT NOT NULL,
-        "toNodeId" TEXT,
-        channel INTEGER,
-        message TEXT,
-        timestamp BIGINT NOT NULL,
-        "rxTime" BIGINT,
-        "rxSnr" REAL,
-        "rxRssi" INTEGER,
-        "hopLimit" INTEGER,
-        "hopStart" INTEGER,
-        "wantAck" BOOLEAN DEFAULT false,
-        acknowledged BOOLEAN DEFAULT false,
-        "ackFailed" BOOLEAN DEFAULT false,
-        "requestId" INTEGER,
-        "deliveryState" TEXT,
-        "createdAt" BIGINT
-      );
+      const pgSql = convertCreateTable(table.sql);
+      if (pgSql) {
+        try {
+          await client.query(pgSql);
+          console.log(`  ✅ Created table: ${table.name}`);
+        } catch (err) {
+          console.warn(`  ⚠️  Failed to create table ${table.name}: ${(err as Error).message}`);
+        }
+      }
+    }
 
-      -- Telemetry table
-      CREATE TABLE IF NOT EXISTS telemetry (
-        id SERIAL PRIMARY KEY,
-        "nodeId" TEXT NOT NULL,
-        "telemetryType" TEXT NOT NULL,
-        "batteryLevel" INTEGER,
-        voltage REAL,
-        "channelUtilization" REAL,
-        "airUtilTx" REAL,
-        temperature REAL,
-        "relativeHumidity" REAL,
-        "barometricPressure" REAL,
-        "gasResistance" REAL,
-        iaq INTEGER,
-        distance REAL,
-        lux REAL,
-        "whiteLux" REAL,
-        ir INTEGER,
-        uv REAL,
-        wind_direction INTEGER,
-        wind_speed REAL,
-        weight REAL,
-        current REAL,
-        voltage1 REAL,
-        voltage2 REAL,
-        voltage3 REAL,
-        current1 REAL,
-        current2 REAL,
-        current3 REAL,
-        "uptimeSeconds" INTEGER,
-        timestamp BIGINT NOT NULL,
-        "createdAt" BIGINT
-      );
-
-      -- Settings table
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-
-      -- Neighbor info table
-      CREATE TABLE IF NOT EXISTS neighbor_info (
-        id SERIAL PRIMARY KEY,
-        "nodeNum" INTEGER NOT NULL,
-        "neighborNodeNum" INTEGER NOT NULL,
-        snr REAL,
-        "lastRxTime" BIGINT,
-        timestamp BIGINT NOT NULL,
-        "createdAt" BIGINT
-      );
-
-      -- Traceroutes table
-      CREATE TABLE IF NOT EXISTS traceroutes (
-        id SERIAL PRIMARY KEY,
-        "fromNodeNum" INTEGER NOT NULL,
-        "toNodeNum" INTEGER NOT NULL,
-        "fromNodeId" TEXT,
-        "toNodeId" TEXT,
-        route TEXT,
-        "routeBack" TEXT,
-        "snrTowards" TEXT,
-        "snrBack" TEXT,
-        timestamp BIGINT NOT NULL,
-        "createdAt" BIGINT
-      );
-
-      -- Route segments table
-      CREATE TABLE IF NOT EXISTS route_segments (
-        id SERIAL PRIMARY KEY,
-        "fromNodeNum" INTEGER NOT NULL,
-        "toNodeNum" INTEGER NOT NULL,
-        "fromNodeId" TEXT,
-        "toNodeId" TEXT,
-        "distanceKm" REAL,
-        "isRecordHolder" BOOLEAN DEFAULT false,
-        timestamp BIGINT NOT NULL,
-        "createdAt" BIGINT
-      );
-
-      -- Users table
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT,
-        email TEXT,
-        display_name TEXT,
-        auth_provider TEXT NOT NULL DEFAULT 'local',
-        oidc_subject TEXT,
-        is_admin BOOLEAN DEFAULT false,
-        is_active BOOLEAN DEFAULT true,
-        password_locked BOOLEAN DEFAULT false,
-        created_at BIGINT NOT NULL,
-        last_login_at BIGINT,
-        created_by INTEGER
-      );
-
-      -- Permissions table
-      CREATE TABLE IF NOT EXISTS permissions (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        resource TEXT NOT NULL,
-        can_read BOOLEAN DEFAULT false,
-        can_write BOOLEAN DEFAULT false,
-        granted_at BIGINT NOT NULL,
-        granted_by INTEGER
-      );
-
-      -- Sessions table
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        expires_at BIGINT NOT NULL,
-        created_at BIGINT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT
-      );
-
-      -- Audit log table
-      CREATE TABLE IF NOT EXISTS audit_log (
-        id SERIAL PRIMARY KEY,
-        timestamp BIGINT NOT NULL,
-        user_id INTEGER,
-        username TEXT,
-        action TEXT NOT NULL,
-        resource TEXT,
-        resource_id TEXT,
-        details TEXT,
-        ip_address TEXT,
-        user_agent TEXT
-      );
-
-      -- API tokens table
-      CREATE TABLE IF NOT EXISTS api_tokens (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        prefix TEXT NOT NULL,
-        is_active BOOLEAN DEFAULT true,
-        created_at BIGINT NOT NULL,
-        last_used_at BIGINT,
-        expires_at BIGINT
-      );
-
-      -- Push subscriptions table
-      CREATE TABLE IF NOT EXISTS push_subscriptions (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER,
-        endpoint TEXT NOT NULL UNIQUE,
-        p256dh_key TEXT NOT NULL,
-        auth_key TEXT NOT NULL,
-        user_agent TEXT,
-        created_at BIGINT NOT NULL,
-        updated_at BIGINT NOT NULL,
-        last_used_at BIGINT
-      );
-
-      -- User notification preferences table
-      CREATE TABLE IF NOT EXISTS user_notification_preferences (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        channel_id INTEGER,
-        notify_on_message BOOLEAN DEFAULT true,
-        notify_on_emoji BOOLEAN DEFAULT true,
-        notify_on_inactive_node BOOLEAN DEFAULT false,
-        notify_on_server_events BOOLEAN DEFAULT false,
-        prefix_with_node_name BOOLEAN DEFAULT false,
-        apprise_urls TEXT,
-        created_at BIGINT NOT NULL,
-        updated_at BIGINT NOT NULL,
-        UNIQUE(user_id, channel_id)
-      );
-
-      -- Read messages table
-      CREATE TABLE IF NOT EXISTS read_messages (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        message_id TEXT NOT NULL,
-        read_at BIGINT NOT NULL,
-        UNIQUE(user_id, message_id)
-      );
-
-      -- Packet log table
-      CREATE TABLE IF NOT EXISTS packet_log (
-        id SERIAL PRIMARY KEY,
-        packet_id INTEGER,
-        timestamp BIGINT NOT NULL,
-        from_node INTEGER NOT NULL,
-        from_node_id TEXT,
-        "from_node_longName" TEXT,
-        to_node INTEGER,
-        to_node_id TEXT,
-        "to_node_longName" TEXT,
-        channel INTEGER,
-        portnum INTEGER NOT NULL,
-        portnum_name TEXT,
-        encrypted BOOLEAN NOT NULL,
-        snr REAL,
-        rssi INTEGER,
-        hop_limit INTEGER,
-        hop_start INTEGER,
-        relay_node INTEGER,
-        payload_size INTEGER,
-        want_ack BOOLEAN,
-        priority INTEGER,
-        payload_preview TEXT,
-        metadata TEXT,
-        direction TEXT,
-        created_at BIGINT
-      );
-
-      -- Backup history table
-      CREATE TABLE IF NOT EXISTS backup_history (
-        id SERIAL PRIMARY KEY,
-        filename TEXT NOT NULL,
-        size_bytes BIGINT,
-        backup_type TEXT NOT NULL,
-        status TEXT NOT NULL,
-        started_at BIGINT NOT NULL,
-        completed_at BIGINT,
-        error_message TEXT,
-        metadata TEXT
-      );
-
-      -- Custom themes table
-      CREATE TABLE IF NOT EXISTS custom_themes (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        slug TEXT NOT NULL UNIQUE,
-        definition TEXT NOT NULL,
-        is_builtin BOOLEAN DEFAULT false,
-        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        created_at BIGINT NOT NULL,
-        updated_at BIGINT NOT NULL
-      );
-
-      -- User map preferences table
-      CREATE TABLE IF NOT EXISTS user_map_preferences (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        "mapCenter" TEXT,
-        "mapZoom" INTEGER,
-        "mapStyle" TEXT,
-        "showOfflineNodes" BOOLEAN DEFAULT true,
-        "showFavoriteNodes" BOOLEAN DEFAULT true,
-        "clusterNodes" BOOLEAN DEFAULT true,
-        created_at BIGINT NOT NULL,
-        updated_at BIGINT NOT NULL,
-        UNIQUE(user_id)
-      );
-
-      -- Upgrade history table
-      CREATE TABLE IF NOT EXISTS upgrade_history (
-        id SERIAL PRIMARY KEY,
-        from_version TEXT NOT NULL,
-        to_version TEXT NOT NULL,
-        status TEXT NOT NULL,
-        started_at BIGINT NOT NULL,
-        completed_at BIGINT,
-        error_message TEXT,
-        metadata TEXT
-      );
-
-      -- Auto traceroute log table
-      CREATE TABLE IF NOT EXISTS auto_traceroute_log (
-        id SERIAL PRIMARY KEY,
-        "toNodeNum" INTEGER NOT NULL,
-        "toNodeId" TEXT,
-        "requestedAt" BIGINT NOT NULL,
-        "completedAt" BIGINT,
-        success BOOLEAN,
-        "errorMessage" TEXT
-      );
-
-      -- Key repair state table
-      CREATE TABLE IF NOT EXISTS key_repair_state (
-        id SERIAL PRIMARY KEY,
-        "nodeNum" INTEGER NOT NULL UNIQUE,
-        state TEXT NOT NULL,
-        "requestedAt" BIGINT,
-        "completedAt" BIGINT,
-        "attempts" INTEGER DEFAULT 0,
-        "lastError" TEXT,
-        "createdAt" BIGINT NOT NULL,
-        "updatedAt" BIGINT NOT NULL
-      );
-    `;
-
-    await client.query(schemaSql);
     console.log('✅ PostgreSQL schema created');
   } finally {
     client.release();
@@ -647,15 +464,27 @@ async function migrate(options: MigrationOptions): Promise<void> {
 
     console.log('✅ Connected to both databases\n');
 
-    // Create schema in PostgreSQL
+    // Create schema in PostgreSQL from SQLite schema
     if (!options.dryRun) {
-      await createPostgresSchema(targetDb.pool);
+      await createPostgresSchemaFromSqlite(targetDb.pool, sourceDb.rawDb);
     }
 
     console.log('\n📊 Migration Progress:\n');
 
+    // Get all tables from SQLite
+    const allTables = sourceDb.rawDb.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+    `).all() as Array<{ name: string }>;
+    const allTableNames = allTables.map((t) => t.name);
+
+    // Migrate tables in order, then any remaining tables
+    const orderedTables = TABLE_ORDER.filter((t) => allTableNames.includes(t));
+    const remainingTables = allTableNames.filter((t) => !TABLE_ORDER.includes(t));
+    const tablesToMigrate = [...orderedTables, ...remainingTables];
+
     // Migrate each table
-    for (const table of TABLE_ORDER) {
+    for (const table of tablesToMigrate) {
       const startTime = Date.now();
       const sourceCount = await getTableCount(sourceDb.rawDb, table);
 
