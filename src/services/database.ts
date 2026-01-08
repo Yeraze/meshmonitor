@@ -351,10 +351,44 @@ class DatabaseService {
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
-    // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
+
+    // Check database type FIRST before any initialization
+    const dbConfig = getDatabaseConfig();
     const dbPath = getEnvironmentConfig().databasePath;
 
-    logger.debug('Initializing database at:', dbPath);
+    // For PostgreSQL or MySQL, skip SQLite initialization entirely
+    if (dbConfig.type === 'postgres' || dbConfig.type === 'mysql') {
+      logger.info(`📦 Using ${dbConfig.type === 'postgres' ? 'PostgreSQL' : 'MySQL'} database - skipping SQLite initialization`);
+
+      // Create a dummy SQLite db object that will throw helpful errors if used
+      // This ensures code that accidentally uses this.db will fail fast
+      this.db = new Proxy({} as BetterSqlite3Database.Database, {
+        get: (_target, prop) => {
+          if (prop === 'exec' || prop === 'prepare' || prop === 'pragma') {
+            return () => {
+              throw new Error(`SQLite method '${String(prop)}' called but using ${dbConfig.type} database. Use Drizzle repositories instead.`);
+            };
+          }
+          return undefined;
+        },
+      });
+
+      // Models will not work with PostgreSQL/MySQL - they need to be migrated to use repositories
+      // For now, create them with the proxy db - they'll throw errors if used
+      this.userModel = new UserModel(this.db);
+      this.permissionModel = new PermissionModel(this.db);
+      this.apiTokenModel = new APITokenModel(this.db);
+
+      // Initialize Drizzle repositories (async) - this will create the schema
+      this.initializeDrizzleRepositories(dbPath);
+
+      // Skip SQLite-specific initialization
+      this.isInitialized = true;
+      return;
+    }
+
+    // SQLite initialization (existing code)
+    logger.debug('Initializing SQLite database at:', dbPath);
 
     // Validate database directory access
     const dbDir = path.dirname(dbPath);
