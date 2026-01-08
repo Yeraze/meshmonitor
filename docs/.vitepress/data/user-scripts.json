@@ -234,7 +234,7 @@
     "description": "Weather bot that uses nodes lat/long to pull current data from api.weather.gov. Falls back to local instance GPS info if none was provided by the requesting node.",
     "language": "JavaScript",
     "tags": ["Weather", "Node.js", "API", "GPS"],
-    "githubPath": "Yoss101/MM-Weather",
+    "githubPath": "Yoss101/MM-Weather/index.js",
     "exampleTrigger": "wthr, weather",
     "requirements": [
       "Node.js (included in MeshMonitor)",
@@ -277,7 +277,7 @@
     "description": "Register radio identities (Ham callsign, GMRS callsign/unit, CB handle, or Club alias) and request on-demand QTH responses with Maidenhead grid and optional distance/bearing to MeshMonitor station.",
     "language": "Python",
     "tags": ["Ham Radio", "GMRS", "CB", "Callsign", "QTH", "Maidenhead", "Grid", "Identity"],
-    "githubPath": "maxhayim/meshmonitor-radio-id-qth",
+    "githubPath": "maxhayim/meshmonitor-radio-id-qth/mm_radio_id_qth.py",
     "exampleTrigger": "!id ham {callsign}, !id gmrs {callsign}, !qth",
     "requirements": [
       "Python 3 (included in MeshMonitor)",
