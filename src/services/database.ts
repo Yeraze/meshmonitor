@@ -56,6 +56,8 @@ import { createSQLiteDriver } from '../db/drivers/sqlite.js';
 import { createPostgresDriver } from '../db/drivers/postgres.js';
 import { createMySQLDriver } from '../db/drivers/mysql.js';
 import { getDatabaseConfig, Database } from '../db/index.js';
+import type { Pool as PgPool } from 'pg';
+import type { Pool as MySQLPool } from 'mysql2/promise';
 import {
   SettingsRepository,
   ChannelsRepository,
@@ -498,6 +500,9 @@ class DatabaseService {
         drizzleDb = db;
         this.postgresPool = pool;
         this.drizzleDbType = 'postgres';
+
+        // Create PostgreSQL schema if tables don't exist
+        await this.createPostgresSchema(pool);
       } else if (dbConfig.type === 'mysql' && dbConfig.mysqlUrl) {
         // Use MySQL driver
         logger.info('[DatabaseService] Using MySQL driver for Drizzle repositories');
@@ -508,6 +513,9 @@ class DatabaseService {
         drizzleDb = db;
         this.mysqlPool = pool;
         this.drizzleDbType = 'mysql';
+
+        // Create MySQL schema if tables don't exist
+        await this.createMySQLSchema(pool);
       } else {
         // Use SQLite driver (default)
         const { db } = createSQLiteDriver({
@@ -5548,6 +5556,649 @@ class DatabaseService {
     }
 
     return validation.isValid;
+  }
+
+  /**
+   * Create PostgreSQL schema if tables don't exist
+   */
+  private async createPostgresSchema(pool: PgPool): Promise<void> {
+    logger.info('[PostgreSQL] Creating database schema...');
+
+    const client = await pool.connect();
+    try {
+      // Check if nodes table exists (indicates schema is already created)
+      const result = await client.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'nodes'
+        );
+      `);
+
+      if (result.rows[0].exists) {
+        logger.info('[PostgreSQL] Schema already exists, skipping creation');
+        return;
+      }
+
+      logger.info('[PostgreSQL] Creating tables...');
+
+      // Create all tables
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS nodes (
+          "nodeNum" BIGINT PRIMARY KEY,
+          "nodeId" TEXT UNIQUE NOT NULL,
+          "longName" TEXT,
+          "shortName" TEXT,
+          "hwModel" INTEGER,
+          role INTEGER,
+          "hopsAway" INTEGER,
+          macaddr TEXT,
+          latitude DOUBLE PRECISION,
+          longitude DOUBLE PRECISION,
+          altitude DOUBLE PRECISION,
+          "batteryLevel" INTEGER,
+          voltage DOUBLE PRECISION,
+          "channelUtilization" DOUBLE PRECISION,
+          "airUtilTx" DOUBLE PRECISION,
+          "lastHeard" BIGINT,
+          snr DOUBLE PRECISION,
+          rssi INTEGER,
+          "firmwareVersion" TEXT,
+          channel INTEGER,
+          "isFavorite" BOOLEAN DEFAULT false,
+          "isIgnored" BOOLEAN DEFAULT false,
+          "viaMqtt" BOOLEAN DEFAULT false,
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          "fromNodeNum" BIGINT NOT NULL,
+          "toNodeNum" BIGINT NOT NULL,
+          "fromNodeId" TEXT NOT NULL,
+          "toNodeId" TEXT NOT NULL,
+          text TEXT NOT NULL,
+          channel INTEGER NOT NULL DEFAULT 0,
+          portnum INTEGER,
+          timestamp BIGINT NOT NULL,
+          "rxTime" BIGINT,
+          "hopStart" INTEGER,
+          "hopLimit" INTEGER,
+          "replyId" BIGINT,
+          emoji BOOLEAN DEFAULT false,
+          "viaMqtt" BOOLEAN DEFAULT false,
+          direct BOOLEAN DEFAULT false
+        );
+
+        CREATE TABLE IF NOT EXISTS channels (
+          id INTEGER PRIMARY KEY,
+          name TEXT,
+          role INTEGER DEFAULT 0,
+          psk TEXT,
+          "uplinkEnabled" BOOLEAN DEFAULT false,
+          "downlinkEnabled" BOOLEAN DEFAULT false,
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS telemetry (
+          id SERIAL PRIMARY KEY,
+          "nodeNum" BIGINT NOT NULL,
+          "batteryLevel" INTEGER,
+          voltage DOUBLE PRECISION,
+          "channelUtilization" DOUBLE PRECISION,
+          "airUtilTx" DOUBLE PRECISION,
+          temperature DOUBLE PRECISION,
+          "relativeHumidity" DOUBLE PRECISION,
+          "barometricPressure" DOUBLE PRECISION,
+          timestamp BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS traceroutes (
+          id SERIAL PRIMARY KEY,
+          "requestId" TEXT UNIQUE NOT NULL,
+          "fromNodeNum" BIGINT NOT NULL,
+          "toNodeNum" BIGINT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          "requestedAt" BIGINT NOT NULL,
+          "completedAt" BIGINT,
+          "wantResponse" BOOLEAN DEFAULT true,
+          snr DOUBLE PRECISION,
+          "viaMqtt" BOOLEAN DEFAULT false
+        );
+
+        CREATE TABLE IF NOT EXISTS route_segments (
+          id SERIAL PRIMARY KEY,
+          "tracerouteId" INTEGER NOT NULL REFERENCES traceroutes(id) ON DELETE CASCADE,
+          "nodeNum" BIGINT NOT NULL,
+          "nodeId" TEXT NOT NULL,
+          snr DOUBLE PRECISION,
+          "viaMqtt" BOOLEAN DEFAULT false,
+          "hopIndex" INTEGER NOT NULL,
+          direction TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS neighbor_info (
+          id SERIAL PRIMARY KEY,
+          "nodeNum" BIGINT NOT NULL,
+          "neighborNum" BIGINT NOT NULL,
+          snr DOUBLE PRECISION,
+          "timestamp" BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          email TEXT,
+          "displayName" TEXT,
+          "passwordHash" TEXT,
+          "authMethod" TEXT NOT NULL DEFAULT 'native',
+          "oidcSubject" TEXT UNIQUE,
+          "isActive" BOOLEAN NOT NULL DEFAULT true,
+          "passwordLocked" BOOLEAN NOT NULL DEFAULT false,
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL,
+          "lastLoginAt" BIGINT
+        );
+
+        CREATE TABLE IF NOT EXISTS permissions (
+          id SERIAL PRIMARY KEY,
+          "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          resource TEXT NOT NULL,
+          "canRead" BOOLEAN NOT NULL DEFAULT false,
+          "canWrite" BOOLEAN NOT NULL DEFAULT false,
+          "canDelete" BOOLEAN NOT NULL DEFAULT false
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+          sid TEXT PRIMARY KEY,
+          sess TEXT NOT NULL,
+          expire BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id SERIAL PRIMARY KEY,
+          "userId" INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          username TEXT,
+          action TEXT NOT NULL,
+          resource TEXT,
+          details TEXT,
+          "ipAddress" TEXT,
+          "userAgent" TEXT,
+          timestamp BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS api_tokens (
+          id SERIAL PRIMARY KEY,
+          "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          "tokenHash" TEXT NOT NULL,
+          "createdAt" BIGINT NOT NULL,
+          "lastUsedAt" BIGINT,
+          "expiresAt" BIGINT,
+          "isRevoked" BOOLEAN NOT NULL DEFAULT false
+        );
+
+        CREATE TABLE IF NOT EXISTS read_messages (
+          "messageId" TEXT NOT NULL,
+          "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          "readAt" BIGINT NOT NULL,
+          PRIMARY KEY ("messageId", "userId")
+        );
+
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+          id SERIAL PRIMARY KEY,
+          "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          endpoint TEXT NOT NULL UNIQUE,
+          keys TEXT NOT NULL,
+          "createdAt" BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS user_notification_preferences (
+          "userId" INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          "notifyOnMention" BOOLEAN DEFAULT true,
+          "notifyOnDirectMessage" BOOLEAN DEFAULT true,
+          "notifyOnBroadcast" BOOLEAN DEFAULT false,
+          "notifyOnEmoji" BOOLEAN DEFAULT true,
+          "notifyOnNewNode" BOOLEAN DEFAULT false,
+          "notifyOnInactiveNode" BOOLEAN DEFAULT false,
+          "notifyOnServerEvents" BOOLEAN DEFAULT false,
+          "notifyOnMqtt" BOOLEAN DEFAULT true,
+          "prefixWithNodeName" BOOLEAN DEFAULT true,
+          "inactiveNodeThresholdMinutes" INTEGER DEFAULT 60,
+          "appriseUrls" TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS packet_log (
+          id SERIAL PRIMARY KEY,
+          "packetId" BIGINT NOT NULL,
+          "fromNodeNum" BIGINT,
+          "toNodeNum" BIGINT,
+          channel INTEGER,
+          portnum INTEGER,
+          "hopLimit" INTEGER,
+          "hopStart" INTEGER,
+          "wantAck" BOOLEAN,
+          "viaMqtt" BOOLEAN DEFAULT false,
+          "rxTime" BIGINT,
+          "rxSnr" DOUBLE PRECISION,
+          "rxRssi" INTEGER,
+          decoded TEXT,
+          raw TEXT,
+          "createdAt" BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS backup_history (
+          id SERIAL PRIMARY KEY,
+          filename TEXT NOT NULL,
+          "filePath" TEXT NOT NULL,
+          "sizeBytes" BIGINT NOT NULL,
+          "schemaVersion" INTEGER NOT NULL,
+          "nodeCount" INTEGER,
+          "messageCount" INTEGER,
+          "createdAt" BIGINT NOT NULL,
+          "createdBy" TEXT,
+          notes TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS upgrade_history (
+          id SERIAL PRIMARY KEY,
+          "fromVersion" TEXT NOT NULL,
+          "toVersion" TEXT NOT NULL,
+          "upgradeType" TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          "startedAt" BIGINT NOT NULL,
+          "completedAt" BIGINT,
+          error TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_themes (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          definition TEXT NOT NULL,
+          "createdBy" INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS user_map_preferences (
+          "userId" INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          "centerLat" DOUBLE PRECISION,
+          "centerLng" DOUBLE PRECISION,
+          zoom INTEGER,
+          "selectedNodeNum" BIGINT,
+          "updatedAt" BIGINT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_nodes_nodeid ON nodes("nodeId");
+        CREATE INDEX IF NOT EXISTS idx_nodes_lastheard ON nodes("lastHeard");
+        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
+        CREATE INDEX IF NOT EXISTS idx_telemetry_nodenum ON telemetry("nodeNum");
+        CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_traceroutes_requestid ON traceroutes("requestId");
+        CREATE INDEX IF NOT EXISTS idx_route_segments_tracerouteid ON route_segments("tracerouteId");
+        CREATE INDEX IF NOT EXISTS idx_neighbor_info_nodenum ON neighbor_info("nodeNum");
+        CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log("createdAt");
+      `);
+
+      logger.info('[PostgreSQL] Schema created successfully');
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Create MySQL schema if tables don't exist
+   */
+  private async createMySQLSchema(pool: MySQLPool): Promise<void> {
+    logger.info('[MySQL] Creating database schema...');
+
+    const connection = await pool.getConnection();
+    try {
+      // Check if nodes table exists (indicates schema is already created)
+      const [rows] = await connection.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'nodes'
+      `);
+
+      if ((rows as any)[0].count > 0) {
+        logger.info('[MySQL] Schema already exists, skipping creation');
+        connection.release();
+        return;
+      }
+
+      logger.info('[MySQL] Creating tables...');
+
+      // Create all tables - MySQL uses backticks for identifiers
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS nodes (
+          nodeNum BIGINT PRIMARY KEY,
+          nodeId VARCHAR(255) UNIQUE NOT NULL,
+          longName TEXT,
+          shortName VARCHAR(255),
+          hwModel INT,
+          role INT,
+          hopsAway INT,
+          macaddr VARCHAR(255),
+          latitude DOUBLE,
+          longitude DOUBLE,
+          altitude DOUBLE,
+          batteryLevel INT,
+          voltage DOUBLE,
+          channelUtilization DOUBLE,
+          airUtilTx DOUBLE,
+          lastHeard BIGINT,
+          snr DOUBLE,
+          rssi INT,
+          firmwareVersion VARCHAR(255),
+          channel INT,
+          isFavorite BOOLEAN DEFAULT false,
+          isIgnored BOOLEAN DEFAULT false,
+          viaMqtt BOOLEAN DEFAULT false,
+          createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id VARCHAR(255) PRIMARY KEY,
+          fromNodeNum BIGINT NOT NULL,
+          toNodeNum BIGINT NOT NULL,
+          fromNodeId VARCHAR(255) NOT NULL,
+          toNodeId VARCHAR(255) NOT NULL,
+          text TEXT NOT NULL,
+          channel INT NOT NULL DEFAULT 0,
+          portnum INT,
+          timestamp BIGINT NOT NULL,
+          rxTime BIGINT,
+          hopStart INT,
+          hopLimit INT,
+          replyId BIGINT,
+          emoji BOOLEAN DEFAULT false,
+          viaMqtt BOOLEAN DEFAULT false,
+          direct BOOLEAN DEFAULT false
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS channels (
+          id INT PRIMARY KEY,
+          name VARCHAR(255),
+          role INT DEFAULT 0,
+          psk TEXT,
+          uplinkEnabled BOOLEAN DEFAULT false,
+          downlinkEnabled BOOLEAN DEFAULT false,
+          createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS telemetry (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          nodeNum BIGINT NOT NULL,
+          batteryLevel INT,
+          voltage DOUBLE,
+          channelUtilization DOUBLE,
+          airUtilTx DOUBLE,
+          temperature DOUBLE,
+          relativeHumidity DOUBLE,
+          barometricPressure DOUBLE,
+          timestamp BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS settings (
+          \`key\` VARCHAR(255) PRIMARY KEY,
+          value TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          username VARCHAR(255) UNIQUE NOT NULL,
+          email VARCHAR(255),
+          displayName VARCHAR(255),
+          passwordHash TEXT,
+          authMethod VARCHAR(50) NOT NULL DEFAULT 'native',
+          oidcSubject VARCHAR(255) UNIQUE,
+          isActive BOOLEAN NOT NULL DEFAULT true,
+          passwordLocked BOOLEAN NOT NULL DEFAULT false,
+          createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL,
+          lastLoginAt BIGINT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS permissions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          resource VARCHAR(255) NOT NULL,
+          canRead BOOLEAN NOT NULL DEFAULT false,
+          canWrite BOOLEAN NOT NULL DEFAULT false,
+          canDelete BOOLEAN NOT NULL DEFAULT false,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          sid VARCHAR(255) PRIMARY KEY,
+          sess TEXT NOT NULL,
+          expire BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS traceroutes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          requestId VARCHAR(255) UNIQUE NOT NULL,
+          fromNodeNum BIGINT NOT NULL,
+          toNodeNum BIGINT NOT NULL,
+          status VARCHAR(50) NOT NULL DEFAULT 'pending',
+          requestedAt BIGINT NOT NULL,
+          completedAt BIGINT,
+          wantResponse BOOLEAN DEFAULT true,
+          snr DOUBLE,
+          viaMqtt BOOLEAN DEFAULT false
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS route_segments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          tracerouteId INT NOT NULL,
+          nodeNum BIGINT NOT NULL,
+          nodeId VARCHAR(255) NOT NULL,
+          snr DOUBLE,
+          viaMqtt BOOLEAN DEFAULT false,
+          hopIndex INT NOT NULL,
+          direction VARCHAR(50) NOT NULL,
+          FOREIGN KEY (tracerouteId) REFERENCES traceroutes(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS neighbor_info (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          nodeNum BIGINT NOT NULL,
+          neighborNum BIGINT NOT NULL,
+          snr DOUBLE,
+          timestamp BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT,
+          username VARCHAR(255),
+          action VARCHAR(255) NOT NULL,
+          resource VARCHAR(255),
+          details TEXT,
+          ipAddress VARCHAR(255),
+          userAgent TEXT,
+          timestamp BIGINT NOT NULL,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS api_tokens (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          tokenHash TEXT NOT NULL,
+          createdAt BIGINT NOT NULL,
+          lastUsedAt BIGINT,
+          expiresAt BIGINT,
+          isRevoked BOOLEAN NOT NULL DEFAULT false,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS read_messages (
+          messageId VARCHAR(255) NOT NULL,
+          userId INT NOT NULL,
+          readAt BIGINT NOT NULL,
+          PRIMARY KEY (messageId, userId),
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          endpoint TEXT NOT NULL,
+          \`keys\` TEXT NOT NULL,
+          createdAt BIGINT NOT NULL,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS user_notification_preferences (
+          userId INT PRIMARY KEY,
+          notifyOnMention BOOLEAN DEFAULT true,
+          notifyOnDirectMessage BOOLEAN DEFAULT true,
+          notifyOnBroadcast BOOLEAN DEFAULT false,
+          notifyOnEmoji BOOLEAN DEFAULT true,
+          notifyOnNewNode BOOLEAN DEFAULT false,
+          notifyOnInactiveNode BOOLEAN DEFAULT false,
+          notifyOnServerEvents BOOLEAN DEFAULT false,
+          notifyOnMqtt BOOLEAN DEFAULT true,
+          prefixWithNodeName BOOLEAN DEFAULT true,
+          inactiveNodeThresholdMinutes INT DEFAULT 60,
+          appriseUrls TEXT,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS packet_log (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          packetId BIGINT NOT NULL,
+          fromNodeNum BIGINT,
+          toNodeNum BIGINT,
+          channel INT,
+          portnum INT,
+          hopLimit INT,
+          hopStart INT,
+          wantAck BOOLEAN,
+          viaMqtt BOOLEAN DEFAULT false,
+          rxTime BIGINT,
+          rxSnr DOUBLE,
+          rxRssi INT,
+          decoded TEXT,
+          raw TEXT,
+          createdAt BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS backup_history (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          filename VARCHAR(255) NOT NULL,
+          filePath TEXT NOT NULL,
+          sizeBytes BIGINT NOT NULL,
+          schemaVersion INT NOT NULL,
+          nodeCount INT,
+          messageCount INT,
+          createdAt BIGINT NOT NULL,
+          createdBy VARCHAR(255),
+          notes TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS upgrade_history (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          fromVersion VARCHAR(255) NOT NULL,
+          toVersion VARCHAR(255) NOT NULL,
+          upgradeType VARCHAR(255) NOT NULL,
+          status VARCHAR(50) NOT NULL DEFAULT 'pending',
+          startedAt BIGINT NOT NULL,
+          completedAt BIGINT,
+          error TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS custom_themes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          definition TEXT NOT NULL,
+          createdBy INT,
+          createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL,
+          FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS user_map_preferences (
+          userId INT PRIMARY KEY,
+          centerLat DOUBLE,
+          centerLng DOUBLE,
+          zoom INT,
+          selectedNodeNum BIGINT,
+          updatedAt BIGINT NOT NULL,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      // Create indexes
+      await connection.query(`CREATE INDEX idx_nodes_nodeid ON nodes(nodeId)`);
+      await connection.query(`CREATE INDEX idx_nodes_lastheard ON nodes(lastHeard)`);
+      await connection.query(`CREATE INDEX idx_messages_timestamp ON messages(timestamp)`);
+      await connection.query(`CREATE INDEX idx_messages_channel ON messages(channel)`);
+      await connection.query(`CREATE INDEX idx_telemetry_nodenum ON telemetry(nodeNum)`);
+      await connection.query(`CREATE INDEX idx_telemetry_timestamp ON telemetry(timestamp)`);
+      await connection.query(`CREATE INDEX idx_traceroutes_requestid ON traceroutes(requestId)`);
+      await connection.query(`CREATE INDEX idx_route_segments_tracerouteid ON route_segments(tracerouteId)`);
+      await connection.query(`CREATE INDEX idx_neighbor_info_nodenum ON neighbor_info(nodeNum)`);
+      await connection.query(`CREATE INDEX idx_sessions_expire ON sessions(expire)`);
+      await connection.query(`CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp)`);
+      await connection.query(`CREATE INDEX idx_packet_log_createdat ON packet_log(createdAt)`);
+
+      logger.info('[MySQL] Schema created successfully');
+    } finally {
+      connection.release();
+    }
   }
 }
 
