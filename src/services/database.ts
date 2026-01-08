@@ -51,6 +51,20 @@ import { migration as packetDirectionMigration } from '../server/migrations/045_
 import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
+// Drizzle ORM imports for dual-database support
+import { createSQLiteDriver, SQLiteDatabase } from '../db/drivers/sqlite.js';
+import {
+  SettingsRepository,
+  ChannelsRepository,
+  NodesRepository,
+  MessagesRepository,
+  TelemetryRepository,
+  AuthRepository,
+  TraceroutesRepository,
+  NeighborsRepository,
+} from '../db/repositories/index.js';
+import type { DatabaseType } from '../db/types.js';
+
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
 const PENDING_TRACEROUTE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -286,6 +300,34 @@ class DatabaseService {
   private telemetryTypesCacheTime: number = 0;
   private static readonly TELEMETRY_TYPES_CACHE_TTL_MS = 60000; // 60 seconds
 
+  // Drizzle ORM database and repositories (for async operations and future PostgreSQL support)
+  private drizzleDatabase: SQLiteDatabase | null = null;
+  private drizzleDbType: DatabaseType = 'sqlite';
+
+  /**
+   * Get the Drizzle database instance for direct access if needed
+   */
+  getDrizzleDb(): SQLiteDatabase | null {
+    return this.drizzleDatabase;
+  }
+
+  /**
+   * Get the current database type (sqlite or postgres)
+   */
+  getDatabaseType(): DatabaseType {
+    return this.drizzleDbType;
+  }
+
+  // Repositories - will be initialized after Drizzle connection
+  public settingsRepo: SettingsRepository | null = null;
+  public channelsRepo: ChannelsRepository | null = null;
+  public nodesRepo: NodesRepository | null = null;
+  public messagesRepo: MessagesRepository | null = null;
+  public telemetryRepo: TelemetryRepository | null = null;
+  public authRepo: AuthRepository | null = null;
+  public traceroutesRepo: TraceroutesRepository | null = null;
+  public neighborsRepo: NeighborsRepository | null = null;
+
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
     // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
@@ -391,12 +433,52 @@ class DatabaseService {
     this.permissionModel = new PermissionModel(this.db);
     this.apiTokenModel = new APITokenModel(this.db);
 
+    // Initialize Drizzle ORM and repositories
+    // This uses the same database file but through Drizzle for async operations
+    this.initializeDrizzleRepositories(dbPath);
+
     this.initialize();
     // Channel 0 will be created automatically when the device syncs its configuration
     // Always ensure broadcast node exists for channel messages
     this.ensureBroadcastNode();
     // Ensure admin user exists for authentication
     this.ensureAdminUser();
+  }
+
+  /**
+   * Initialize Drizzle ORM and all repositories
+   * This provides async database operations and prepares for PostgreSQL support
+   */
+  private initializeDrizzleRepositories(dbPath: string): void {
+    try {
+      logger.debug('[DatabaseService] Initializing Drizzle ORM repositories');
+
+      // Create Drizzle connection using the same database file
+      const { db: drizzleDb } = createSQLiteDriver({
+        databasePath: dbPath,
+        enableWAL: false, // Already enabled on main connection
+        enableForeignKeys: false, // Already enabled on main connection
+      });
+
+      this.drizzleDatabase = drizzleDb;
+      this.drizzleDbType = 'sqlite';
+
+      // Initialize all repositories
+      this.settingsRepo = new SettingsRepository(drizzleDb, this.drizzleDbType);
+      this.channelsRepo = new ChannelsRepository(drizzleDb, this.drizzleDbType);
+      this.nodesRepo = new NodesRepository(drizzleDb, this.drizzleDbType);
+      this.messagesRepo = new MessagesRepository(drizzleDb, this.drizzleDbType);
+      this.telemetryRepo = new TelemetryRepository(drizzleDb, this.drizzleDbType);
+      this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
+      this.traceroutesRepo = new TraceroutesRepository(drizzleDb, this.drizzleDbType);
+      this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
+
+      logger.info('[DatabaseService] Drizzle repositories initialized successfully');
+    } catch (error) {
+      // Log but don't fail - repositories are optional during migration period
+      logger.warn('[DatabaseService] Failed to initialize Drizzle repositories:', error);
+      logger.warn('[DatabaseService] Async repository methods will not be available');
+    }
   }
 
   private initialize(): void {
