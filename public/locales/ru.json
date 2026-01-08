@@ -3116,5 +3116,6 @@
     "messages.request_neighbor_info_title": "Запросить информацию о соседях у этого узла (требуется включенный модуль NeighborInfo)",
     "settings.node_hops_calculation_description": "Как определить количество переходов до каждого узла. Влияет на индикаторы списка узлов, цвета маркеров на карте и подробную информацию об узлах в сообщениях.",
     "settings.node_hops_traceroute": "Длина трассировки маршрута",
-    "settings.node_hops_messages": "Все сообщения"
+    "settings.node_hops_messages": "Все сообщения",
+    "messages.request_neighbor_info": "Запросить соседей"
 }
