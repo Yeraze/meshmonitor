@@ -287,6 +287,25 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Generic update for a node's fields
+   */
+  async updateNode(nodeNum: number, updates: Partial<Omit<DbNode, 'nodeNum'>>): Promise<void> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db
+        .update(nodesSqlite)
+        .set(updates as any)
+        .where(eq(nodesSqlite.nodeNum, nodeNum));
+    } else {
+      const db = this.getPostgresDb();
+      await db
+        .update(nodesPostgres)
+        .set(updates as any)
+        .where(eq(nodesPostgres.nodeNum, nodeNum));
+    }
+  }
+
+  /**
    * Update the lastMessageHops for a node
    */
   async updateNodeMessageHops(nodeNum: number, hops: number): Promise<void> {
@@ -703,6 +722,27 @@ export class NodesRepository extends BaseRepository {
         .update(nodesPostgres)
         .set({ lastTracerouteRequest: timestamp, updatedAt: now })
         .where(eq(nodesPostgres.nodeNum, nodeNum));
+    }
+  }
+
+  /**
+   * Delete all nodes
+   */
+  async deleteAllNodes(): Promise<number> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const count = await db
+        .select({ nodeNum: nodesSqlite.nodeNum })
+        .from(nodesSqlite);
+      await db.delete(nodesSqlite);
+      return count.length;
+    } else {
+      const db = this.getPostgresDb();
+      const count = await db
+        .select({ nodeNum: nodesPostgres.nodeNum })
+        .from(nodesPostgres);
+      await db.delete(nodesPostgres);
+      return count.length;
     }
   }
 }
