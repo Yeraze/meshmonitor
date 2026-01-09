@@ -5809,6 +5809,23 @@ class DatabaseService {
     valueBefore?: string | null,
     valueAfter?: string | null
   ): void {
+    // Route to async method for PostgreSQL/MySQL
+    if (this.authRepo) {
+      this.authRepo.createAuditLogEntry({
+        userId,
+        action,
+        resource,
+        details,
+        ipAddress,
+        userAgent: null,
+        timestamp: Date.now(),
+      }).catch(error => {
+        logger.error('Failed to write audit log (async):', error);
+      });
+      return;
+    }
+
+    // SQLite sync path
     try {
       const stmt = this.db.prepare(`
         INSERT INTO audit_log (user_id, action, resource, details, ip_address, value_before, value_after, timestamp)
@@ -7271,6 +7288,44 @@ class DatabaseService {
   }
 
   /**
+   * Async method to authenticate a user with username and password.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   * Returns the user if authentication succeeds, null otherwise.
+   */
+  async authenticateAsync(username: string, password: string): Promise<any | null> {
+    if (this.authRepo) {
+      const dbUser = await this.authRepo.getUserByUsername(username);
+      if (!dbUser || !dbUser.passwordHash) return null;
+
+      // Verify password using bcrypt
+      const bcrypt = await import('bcrypt');
+      const isValid = await bcrypt.compare(password, dbUser.passwordHash);
+      if (!isValid) return null;
+
+      // Update last login
+      await this.authRepo.updateUser(dbUser.id, { lastLoginAt: Date.now() });
+
+      // Map DbUser to User type
+      return {
+        id: dbUser.id,
+        username: dbUser.username,
+        passwordHash: dbUser.passwordHash,
+        email: dbUser.email,
+        displayName: dbUser.displayName,
+        authProvider: dbUser.authMethod,
+        oidcSubject: dbUser.oidcSubject,
+        isAdmin: dbUser.isAdmin,
+        isActive: dbUser.isActive,
+        passwordLocked: dbUser.passwordLocked,
+        createdAt: dbUser.createdAt,
+        lastLoginAt: Date.now(),
+      };
+    }
+    // Fallback to sync for SQLite
+    return this.userModel.authenticate(username, password);
+  }
+
+  /**
    * Async method to validate an API token.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    * Returns the user associated with the token if valid, null otherwise.
@@ -7346,6 +7401,27 @@ class DatabaseService {
     }
     // Fallback to sync for SQLite if repo not ready
     return this.permissionModel.check(userId, resource as any, action as any);
+  }
+
+  /**
+   * Async method to get user permission set.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   * Returns permissions in the same format as PermissionModel.getUserPermissionSet()
+   */
+  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { read: boolean; write: boolean }>> {
+    if (this.authRepo) {
+      const permissions = await this.authRepo.getPermissionsForUser(userId);
+      const permissionSet: Record<string, { read: boolean; write: boolean }> = {};
+      for (const perm of permissions) {
+        permissionSet[perm.resource] = {
+          read: perm.canRead,
+          write: perm.canWrite,
+        };
+      }
+      return permissionSet;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.permissionModel.getUserPermissionSet(userId);
   }
 
   /**

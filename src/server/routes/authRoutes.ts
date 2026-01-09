@@ -22,7 +22,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 const router = Router();
 
 // Get authentication status
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
   try {
     const localAuthDisabled = getEnvironmentConfig().disableLocalAuth;
     const anonymousDisabled = getEnvironmentConfig().disableAnonymous;
@@ -45,9 +45,9 @@ router.get('/status', (req: Request, res: Response) => {
       }
 
       // Return anonymous user permissions for unauthenticated users (if anonymous is enabled)
-      const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+      const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
       const anonymousPermissions = anonymousUser && anonymousUser.isActive && !anonymousDisabled
-        ? databaseService.permissionModel.getUserPermissionSet(anonymousUser.id)
+        ? await databaseService.getUserPermissionSetAsync(anonymousUser.id)
         : {};
 
       return res.json({
@@ -60,7 +60,7 @@ router.get('/status', (req: Request, res: Response) => {
       });
     }
 
-    const user = databaseService.userModel.findById(req.session.userId);
+    const user = await databaseService.findUserByIdAsync(req.session.userId);
 
     if (!user || !user.isActive) {
       // Clear invalid session
@@ -70,9 +70,9 @@ router.get('/status', (req: Request, res: Response) => {
       req.session.isAdmin = undefined;
 
       // Return anonymous user permissions (if anonymous is enabled)
-      const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+      const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
       const anonymousPermissions = anonymousUser && anonymousUser.isActive && !anonymousDisabled
-        ? databaseService.permissionModel.getUserPermissionSet(anonymousUser.id)
+        ? await databaseService.getUserPermissionSetAsync(anonymousUser.id)
         : {};
 
       return res.json({
@@ -86,7 +86,7 @@ router.get('/status', (req: Request, res: Response) => {
     }
 
     // Get user permissions
-    const permissions = databaseService.permissionModel.getUserPermissionSet(user.id);
+    const permissions = await databaseService.getUserPermissionSetAsync(user.id);
 
     // Don't send password hash to client
     const { passwordHash, ...userWithoutPassword } = user;
@@ -106,9 +106,9 @@ router.get('/status', (req: Request, res: Response) => {
 });
 
 // Check if admin is using default password
-router.get('/check-default-password', (_req: Request, res: Response) => {
+router.get('/check-default-password', async (_req: Request, res: Response) => {
   try {
-    const admin = databaseService.userModel.findByUsername('admin');
+    const admin = await databaseService.findUserByUsernameAsync('admin');
 
     if (!admin || !admin.passwordHash) {
       // No admin user or no password hash - not using default
@@ -116,7 +116,7 @@ router.get('/check-default-password', (_req: Request, res: Response) => {
     }
 
     // Check if password is 'changeme'
-    const isDefault = bcrypt.compareSync('changeme', admin.passwordHash);
+    const isDefault = await bcrypt.compare('changeme', admin.passwordHash);
 
     return res.json({ isDefaultPassword: isDefault });
   } catch (error) {
