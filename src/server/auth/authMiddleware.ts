@@ -18,7 +18,7 @@ export function optionalAuth() {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       if (req.session.userId) {
-        const user = databaseService.userModel.findById(req.session.userId);
+        const user = await databaseService.findUserByIdAsync(req.session.userId);
         if (user && user.isActive) {
           req.user = user;
         } else {
@@ -32,7 +32,7 @@ export function optionalAuth() {
 
       // If no authenticated user, attach anonymous user for permission checks
       if (!req.user) {
-        const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+        const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
         if (anonymousUser && anonymousUser.isActive) {
           req.user = anonymousUser;
         }
@@ -68,7 +68,7 @@ export function requireAuth() {
         });
       }
 
-      const user = databaseService.userModel.findById(req.session.userId);
+      const user = await databaseService.findUserByIdAsync(req.session.userId);
 
       if (!user || !user.isActive) {
         // Clear invalid session
@@ -106,7 +106,7 @@ export function requirePermission(resource: ResourceType, action: PermissionActi
 
       // Get authenticated user or anonymous user
       if (req.session.userId) {
-        user = databaseService.userModel.findById(req.session.userId);
+        user = await databaseService.findUserByIdAsync(req.session.userId);
 
         if (!user || !user.isActive) {
           // Clear invalid session
@@ -120,7 +120,7 @@ export function requirePermission(resource: ResourceType, action: PermissionActi
 
       // If no authenticated user, try anonymous
       if (!user) {
-        const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+        const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
         if (anonymousUser && anonymousUser.isActive) {
           user = anonymousUser;
         }
@@ -141,7 +141,7 @@ export function requirePermission(resource: ResourceType, action: PermissionActi
       }
 
       // Check permission
-      const hasPermission = databaseService.permissionModel.check(
+      const hasPermission = await databaseService.checkPermissionAsync(
         user.id,
         resource,
         action
@@ -182,7 +182,7 @@ export function requireAdmin() {
         });
       }
 
-      const user = databaseService.userModel.findById(req.session.userId);
+      const user = await databaseService.findUserByIdAsync(req.session.userId);
 
       if (!user || !user.isActive) {
         // Clear invalid session
@@ -219,16 +219,16 @@ export function requireAdmin() {
 }
 
 /**
- * Check if user has a specific permission
+ * Check if user has a specific permission (async version)
  */
-export function hasPermission(user: User, resource: ResourceType, action: PermissionAction): boolean {
+export async function hasPermission(user: User, resource: ResourceType, action: PermissionAction): Promise<boolean> {
   // Admins have all permissions
   if (user.isAdmin) {
     return true;
   }
 
-  // Check permission via database
-  return databaseService.permissionModel.check(user.id, resource, action);
+  // Check permission via database (async for PostgreSQL support)
+  return databaseService.checkPermissionAsync(user.id, resource, action);
 }
 
 /**
@@ -249,17 +249,17 @@ export function requireAPIToken() {
 
       const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-      // Validate token and get user ID
-      const userId = await databaseService.apiTokenModel.validate(token);
-      if (!userId) {
-        // Log failed attempt for security monitoring
-        databaseService.auditLog(
+      // Validate token and get user (async method returns user object directly)
+      const user = await databaseService.validateApiTokenAsync(token);
+      if (!user) {
+        // Log failed attempt for security monitoring (fire-and-forget)
+        databaseService.auditLogAsync(
           null,
           'api_token_invalid',
           null,
           JSON.stringify({ path: req.path }),
           req.ip || req.socket.remoteAddress || 'unknown'
-        );
+        ).catch(err => logger.error('Failed to write audit log:', err));
 
         return res.status(401).json({
           error: 'Unauthorized',
@@ -267,9 +267,8 @@ export function requireAPIToken() {
         });
       }
 
-      // Get user details
-      const user = databaseService.userModel.findById(userId);
-      if (!user || !user.isActive) {
+      // Check if user is active
+      if (!user.isActive) {
         return res.status(401).json({
           error: 'Unauthorized',
           message: 'User account is inactive'
@@ -279,14 +278,14 @@ export function requireAPIToken() {
       // Attach user to request (same pattern as session auth)
       req.user = user;
 
-      // Log successful API access (for audit trail)
-      databaseService.auditLog(
+      // Log successful API access (for audit trail, fire-and-forget)
+      databaseService.auditLogAsync(
         user.id,
         'api_token_used',
         req.path,
         JSON.stringify({ method: req.method }),
         req.ip || req.socket.remoteAddress || 'unknown'
-      );
+      ).catch(err => logger.error('Failed to write audit log:', err));
 
       next();
     } catch (error) {

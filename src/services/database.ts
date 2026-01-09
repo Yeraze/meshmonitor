@@ -453,7 +453,7 @@ class DatabaseService {
         fs.accessSync(dbPath, fs.constants.W_OK | fs.constants.R_OK);
       }
     } catch (error: unknown) {
-      const err = error as NodeJS.ErrnoException;
+      const err = error as { code?: string; message?: string };
       logger.error('❌ DATABASE STARTUP ERROR ❌');
       logger.error('═══════════════════════════════════════════════════════════');
       logger.error('Failed to access database directory or file');
@@ -572,6 +572,8 @@ class DatabaseService {
         logger.info('[DatabaseService] PostgreSQL/MySQL initialization complete - database is ready');
         this.isReady = true;
         this.readyResolve();
+        // Ensure admin and anonymous users exist (same as SQLite path)
+        this.ensureAdminUser();
       })
       .catch((error) => {
         logger.error('[DatabaseService] Failed to initialize PostgreSQL/MySQL:', error);
@@ -636,7 +638,11 @@ class DatabaseService {
       this.nodesRepo = new NodesRepository(drizzleDb, this.drizzleDbType);
       this.messagesRepo = new MessagesRepository(drizzleDb, this.drizzleDbType);
       this.telemetryRepo = new TelemetryRepository(drizzleDb, this.drizzleDbType);
-      this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
+      // Auth repo only for PostgreSQL/MySQL - SQLite uses existing sync models (UserModel, etc.)
+      // because SQLite migrations created tables with different schema than Drizzle expects
+      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+        this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
+      }
       this.traceroutesRepo = new TraceroutesRepository(drizzleDb, this.drizzleDbType);
       this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
@@ -3207,7 +3213,7 @@ class DatabaseService {
     if (typeof obj === 'object') {
       const normalized: any = Array.isArray(obj) ? [] : {};
       for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
           normalized[key] = this.normalizeBigInts(obj[key]);
         }
       }
@@ -3621,6 +3627,12 @@ class DatabaseService {
    * Returns a Map of nodeId -> { latitude, longitude } for nodes with estimated positions.
    */
   getAllNodesEstimatedPositions(): Map<string, { latitude: number; longitude: number }> {
+    // For PostgreSQL/MySQL, estimated positions require async telemetry queries
+    // Return empty map - estimated positions will be computed via API endpoints
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return new Map();
+    }
+
     // Use a subquery to get the latest timestamp for each node/type combination,
     // then join to get the actual values. This avoids the N+1 query problem.
     const query = `
@@ -4890,6 +4902,20 @@ class DatabaseService {
   }
 
   purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
+    // PostgreSQL/MySQL: Use async telemetry repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Fire-and-forget async deletion for PostgreSQL
+      const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+      if (this.telemetryRepo) {
+        this.telemetryRepo.deleteOldTelemetry(regularCutoffTime).then(count => {
+          logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
+        }).catch(error => {
+          logger.error('Error purging old telemetry:', error);
+        });
+      }
+      return 0; // Cannot return sync count for async operation
+    }
+
     const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
 
     // If no favorite storage duration specified, purge all telemetry older than hoursToKeep
@@ -5547,54 +5573,117 @@ class DatabaseService {
   private async createAdminIfNeeded(): Promise<void> {
     logger.debug('🔐 Checking for admin user...');
     try {
-      // Check if any admin users exist
-      if (this.userModel.hasAdminUser()) {
-        logger.debug('✅ Admin user already exists');
-        return;
-      }
-
-      // No admin exists, create one
-      logger.debug('📝 No admin user found, creating default admin...');
-
-      // Use default password for fresh installs
       const password = 'changeme';
       const adminUsername = getEnvironmentConfig().adminUsername;
 
-      // Create admin user
-      const admin = await this.userModel.create({
-        username: adminUsername,
-        password: password,
-        authProvider: 'local',
-        isAdmin: true,
-        displayName: 'Administrator'
-      });
+      if (this.authRepo) {
+        // PostgreSQL/MySQL: use Drizzle repository
+        const allUsers = await this.authRepo.getAllUsers();
+        const hasAdmin = allUsers.some(u => u.isAdmin);
+        if (hasAdmin) {
+          logger.debug('✅ Admin user already exists');
+          return;
+        }
 
-      // Grant all permissions
-      this.permissionModel.grantDefaultPermissions(admin.id, true);
+        logger.debug('📝 No admin user found, creating default admin...');
+        const bcrypt = await import('bcrypt');
+        const passwordHash = await bcrypt.hash(password, 10);
+        const now = Date.now();
 
-      // Log the password (this is the only time it will be shown)
-      logger.warn('');
-      logger.warn('═══════════════════════════════════════════════════════════');
-      logger.warn('🔐 FIRST RUN: Admin user created');
-      logger.warn('═══════════════════════════════════════════════════════════');
-      logger.warn(`   Username: ${adminUsername}`);
-      logger.warn(`   Password: changeme`);
-      logger.warn('');
-      logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
-      logger.warn('═══════════════════════════════════════════════════════════');
-      logger.warn('');
+        const adminId = await this.authRepo.createUser({
+          username: adminUsername,
+          passwordHash,
+          email: null,
+          displayName: 'Administrator',
+          authMethod: 'local',
+          oidcSubject: null,
+          isAdmin: true,
+          isActive: true,
+          passwordLocked: false,
+          createdAt: now,
+          updatedAt: now,
+          lastLoginAt: null
+        });
 
-      // Log to audit log
-      this.auditLog(
-        admin.id,
-        'first_run_admin_created',
-        'users',
-        JSON.stringify({ username: adminUsername }),
-        null
-      );
+        // Grant all permissions for admin
+        const allResources = ['dashboard', 'nodes', 'messages', 'traceroutes', 'channels', 'configuration', 'info', 'notifications', 'audit', 'users', 'packets'];
+        for (const resource of allResources) {
+          await this.authRepo.createPermission({
+            userId: adminId,
+            resource,
+            canRead: true,
+            canWrite: true,
+            canDelete: true
+          });
+        }
 
-      // Save to settings so we know setup is complete
-      this.setSetting('setup_complete', 'true');
+        // Log the password
+        logger.warn('');
+        logger.warn('═══════════════════════════════════════════════════════════');
+        logger.warn('🔐 FIRST RUN: Admin user created');
+        logger.warn('═══════════════════════════════════════════════════════════');
+        logger.warn(`   Username: ${adminUsername}`);
+        logger.warn(`   Password: changeme`);
+        logger.warn('');
+        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+        logger.warn('═══════════════════════════════════════════════════════════');
+        logger.warn('');
+
+        // Log to audit log (fire-and-forget)
+        this.auditLogAsync(
+          adminId,
+          'first_run_admin_created',
+          'users',
+          JSON.stringify({ username: adminUsername }),
+          'system'
+        ).catch(err => logger.error('Failed to write audit log:', err));
+
+        // Save to settings
+        await this.setSettingAsync('setup_complete', 'true');
+      } else {
+        // SQLite: use sync models
+        if (this.userModel.hasAdminUser()) {
+          logger.debug('✅ Admin user already exists');
+          return;
+        }
+
+        logger.debug('📝 No admin user found, creating default admin...');
+
+        const admin = await this.userModel.create({
+          username: adminUsername,
+          password: password,
+          authProvider: 'local',
+          isAdmin: true,
+          displayName: 'Administrator'
+        });
+
+        // Grant all permissions
+        this.permissionModel.grantDefaultPermissions(admin.id, true);
+
+        // Log the password
+        logger.warn('');
+        logger.warn('═══════════════════════════════════════════════════════════');
+        logger.warn('🔐 FIRST RUN: Admin user created');
+        logger.warn('═══════════════════════════════════════════════════════════');
+        logger.warn(`   Username: ${adminUsername}`);
+        logger.warn(`   Password: changeme`);
+        logger.warn('');
+        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+        logger.warn('═══════════════════════════════════════════════════════════');
+        logger.warn('');
+
+        // Log to audit log
+        this.auditLog(
+          admin.id,
+          'first_run_admin_created',
+          'users',
+          JSON.stringify({ username: adminUsername }),
+          null
+        );
+
+        // Save to settings
+        this.setSetting('setup_complete', 'true');
+      }
     } catch (error) {
       logger.error('❌ Failed to create admin user:', error);
       throw error;
@@ -5603,58 +5692,107 @@ class DatabaseService {
 
   private async ensureAnonymousUser(): Promise<void> {
     try {
-      // Check if anonymous user exists
-      const anonymousUser = this.userModel.findByUsername('anonymous');
-
-      if (anonymousUser) {
-        logger.debug('✅ Anonymous user already exists');
-        return;
-      }
-
-      // Create anonymous user
-      logger.debug('📝 Creating anonymous user for unauthenticated access...');
-
       // Generate a random password that nobody will know (anonymous user should not be able to log in)
       const crypto = await import('crypto');
+      const bcrypt = await import('bcrypt');
       const randomPassword = crypto.randomBytes(32).toString('hex');
+      const passwordHash = await bcrypt.hash(randomPassword, 10);
 
-      const anonymous = await this.userModel.create({
-        username: 'anonymous',
-        password: randomPassword,  // Random password - effectively cannot login
-        authProvider: 'local',
-        isAdmin: false,
-        displayName: 'Anonymous User'
-      });
-
-      // Grant default read-only permissions for anonymous users
-      // Admin can modify these via the Users tab
+      // Default permissions for anonymous user
       const defaultAnonPermissions = [
-        { resource: 'dashboard' as const, canRead: true, canWrite: false },
-        { resource: 'nodes' as const, canRead: true, canWrite: false },
-        { resource: 'info' as const, canRead: true, canWrite: false }
+        { resource: 'dashboard' as const, canRead: true, canWrite: false, canDelete: false },
+        { resource: 'nodes' as const, canRead: true, canWrite: false, canDelete: false },
+        { resource: 'info' as const, canRead: true, canWrite: false, canDelete: false }
       ];
 
-      for (const perm of defaultAnonPermissions) {
-        this.permissionModel.grant({
-          userId: anonymous.id,
-          resource: perm.resource,
-          canRead: perm.canRead,
-          canWrite: perm.canWrite,
-          grantedBy: anonymous.id
+      // Use appropriate method based on database type
+      if (this.authRepo) {
+        // PostgreSQL/MySQL: use Drizzle repository
+        const existingUser = await this.authRepo.getUserByUsername('anonymous');
+        if (existingUser) {
+          logger.debug('✅ Anonymous user already exists');
+          return;
+        }
+
+        logger.debug('📝 Creating anonymous user for unauthenticated access...');
+        const now = Date.now();
+        const anonymousId = await this.authRepo.createUser({
+          username: 'anonymous',
+          passwordHash,
+          email: null,
+          displayName: 'Anonymous User',
+          authMethod: 'local',
+          oidcSubject: null,
+          isAdmin: false,
+          isActive: true,
+          passwordLocked: false,
+          createdAt: now,
+          updatedAt: now,
+          lastLoginAt: null
         });
+
+        // Grant default permissions
+        for (const perm of defaultAnonPermissions) {
+          await this.authRepo.createPermission({
+            userId: anonymousId,
+            resource: perm.resource,
+            canRead: perm.canRead,
+            canWrite: perm.canWrite,
+            canDelete: perm.canDelete
+          });
+        }
+
+        logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
+        logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
+
+        // Log to audit log (fire-and-forget for async)
+        this.auditLogAsync(
+          anonymousId,
+          'anonymous_user_created',
+          'users',
+          JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
+          'system'
+        ).catch(err => logger.error('Failed to write audit log:', err));
+      } else {
+        // SQLite: use sync models
+        const anonymousUser = this.userModel.findByUsername('anonymous');
+        if (anonymousUser) {
+          logger.debug('✅ Anonymous user already exists');
+          return;
+        }
+
+        logger.debug('📝 Creating anonymous user for unauthenticated access...');
+        const anonymous = await this.userModel.create({
+          username: 'anonymous',
+          password: randomPassword,  // Random password - effectively cannot login
+          authProvider: 'local',
+          isAdmin: false,
+          displayName: 'Anonymous User'
+        });
+
+        // Grant default permissions
+        for (const perm of defaultAnonPermissions) {
+          this.permissionModel.grant({
+            userId: anonymous.id,
+            resource: perm.resource,
+            canRead: perm.canRead,
+            canWrite: perm.canWrite,
+            grantedBy: anonymous.id
+          });
+        }
+
+        logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
+        logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
+
+        // Log to audit log
+        this.auditLog(
+          anonymous.id,
+          'anonymous_user_created',
+          'users',
+          JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
+          null
+        );
       }
-
-      logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
-      logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
-
-      // Log to audit log
-      this.auditLog(
-        anonymous.id,
-        'anonymous_user_created',
-        'users',
-        JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
-        null
-      );
     } catch (error) {
       logger.error('❌ Failed to create anonymous user:', error);
       throw error;
@@ -6549,8 +6687,9 @@ class DatabaseService {
           email TEXT,
           "displayName" TEXT,
           "passwordHash" TEXT,
-          "authMethod" TEXT NOT NULL DEFAULT 'native',
+          "authMethod" TEXT NOT NULL DEFAULT 'local',
           "oidcSubject" TEXT UNIQUE,
+          "isAdmin" BOOLEAN NOT NULL DEFAULT false,
           "isActive" BOOLEAN NOT NULL DEFAULT true,
           "passwordLocked" BOOLEAN NOT NULL DEFAULT false,
           "createdAt" BIGINT NOT NULL,
@@ -6588,12 +6727,16 @@ class DatabaseService {
         CREATE TABLE IF NOT EXISTS api_tokens (
           id SERIAL PRIMARY KEY,
           "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          name TEXT NOT NULL,
-          "tokenHash" TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          "tokenHash" TEXT NOT NULL UNIQUE,
+          prefix TEXT NOT NULL,
+          "isActive" BOOLEAN NOT NULL DEFAULT true,
           "createdAt" BIGINT NOT NULL,
           "lastUsedAt" BIGINT,
           "expiresAt" BIGINT,
-          "isRevoked" BOOLEAN NOT NULL DEFAULT false
+          "createdBy" INTEGER,
+          "revokedAt" BIGINT,
+          "revokedBy" INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS read_messages (
@@ -6858,8 +7001,9 @@ class DatabaseService {
           email VARCHAR(255),
           displayName VARCHAR(255),
           passwordHash TEXT,
-          authMethod VARCHAR(50) NOT NULL DEFAULT 'native',
+          authMethod VARCHAR(50) NOT NULL DEFAULT 'local',
           oidcSubject VARCHAR(255) UNIQUE,
+          isAdmin BOOLEAN NOT NULL DEFAULT false,
           isActive BOOLEAN NOT NULL DEFAULT true,
           passwordLocked BOOLEAN NOT NULL DEFAULT false,
           createdAt BIGINT NOT NULL,
@@ -7093,6 +7237,146 @@ class DatabaseService {
     } finally {
       connection.release();
     }
+  }
+
+  // ============ ASYNC AUTH METHODS FOR POSTGRESQL ============
+  // These methods delegate to the authRepo for PostgreSQL/MySQL support
+
+  /**
+   * Async method to find a user by username.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async findUserByUsernameAsync(username: string): Promise<any | null> {
+    if (this.authRepo) {
+      const dbUser = await this.authRepo.getUserByUsername(username);
+      if (!dbUser) return null;
+      // Map DbUser to User type expected by auth middleware
+      return {
+        id: dbUser.id,
+        username: dbUser.username,
+        passwordHash: dbUser.passwordHash,
+        email: dbUser.email,
+        displayName: dbUser.displayName,
+        authProvider: dbUser.authMethod,
+        oidcSubject: dbUser.oidcSubject,
+        isAdmin: dbUser.isAdmin,
+        isActive: dbUser.isActive,
+        passwordLocked: dbUser.passwordLocked,
+        createdAt: dbUser.createdAt,
+        lastLoginAt: dbUser.lastLoginAt,
+      };
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.userModel.findByUsername(username);
+  }
+
+  /**
+   * Async method to validate an API token.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   * Returns the user associated with the token if valid, null otherwise.
+   */
+  async validateApiTokenAsync(token: string): Promise<any | null> {
+    if (this.authRepo) {
+      const result = await this.authRepo.validateApiToken(token);
+      if (!result) return null;
+      // Map DbUser to User type
+      return {
+        id: result.id,
+        username: result.username,
+        passwordHash: result.passwordHash,
+        email: result.email,
+        displayName: result.displayName,
+        authProvider: result.authMethod,
+        oidcSubject: result.oidcSubject,
+        isAdmin: result.isAdmin,
+        isActive: result.isActive,
+        passwordLocked: result.passwordLocked,
+        createdAt: result.createdAt,
+        lastLoginAt: result.lastLoginAt,
+      };
+    }
+    // Fallback to sync for SQLite - apiTokenModel.validate returns userId
+    const userId = await this.apiTokenModel.validate(token);
+    if (!userId) return null;
+    return this.userModel.findById(userId);
+  }
+
+  /**
+   * Async method to find a user by ID.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async findUserByIdAsync(id: number): Promise<any | null> {
+    if (this.authRepo) {
+      const dbUser = await this.authRepo.getUserById(id);
+      if (!dbUser) return null;
+      // Map DbUser to User type expected by auth middleware
+      return {
+        id: dbUser.id,
+        username: dbUser.username,
+        passwordHash: dbUser.passwordHash,
+        email: dbUser.email,
+        displayName: dbUser.displayName,
+        authProvider: dbUser.authMethod,
+        oidcSubject: dbUser.oidcSubject,
+        isAdmin: dbUser.isAdmin,
+        isActive: dbUser.isActive,
+        passwordLocked: dbUser.passwordLocked,
+        createdAt: dbUser.createdAt,
+        lastLoginAt: dbUser.lastLoginAt,
+      };
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.userModel.findById(id);
+  }
+
+  /**
+   * Async method to check user permission.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async checkPermissionAsync(userId: number, resource: string, action: string): Promise<boolean> {
+    if (this.authRepo) {
+      const permissions = await this.authRepo.getPermissionsForUser(userId);
+      for (const perm of permissions) {
+        if (perm.resource === resource) {
+          if (action === 'read') return perm.canRead;
+          if (action === 'write') return perm.canWrite;
+        }
+      }
+      return false;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.permissionModel.check(userId, resource as any, action as any);
+  }
+
+  /**
+   * Async method to write an audit log entry.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async auditLogAsync(
+    userId: number | null,
+    action: string,
+    resource: string | null,
+    details: string | null,
+    ipAddress: string
+  ): Promise<void> {
+    if (this.authRepo) {
+      try {
+        await this.authRepo.createAuditLogEntry({
+          userId,
+          action,
+          resource,
+          details,
+          ipAddress,
+          userAgent: null,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        logger.error('[auditLogAsync] Failed to write audit log:', error);
+      }
+      return;
+    }
+    // Fallback to sync for SQLite
+    this.auditLog(userId, action, resource, details, ipAddress);
   }
 }
 

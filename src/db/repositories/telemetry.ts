@@ -433,6 +433,35 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Delete telemetry older than a given timestamp
+   */
+  async deleteOldTelemetry(cutoffTimestamp: number): Promise<number> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const toDelete = await db
+        .select({ id: telemetrySqlite.id })
+        .from(telemetrySqlite)
+        .where(lt(telemetrySqlite.timestamp, cutoffTimestamp));
+
+      for (const record of toDelete) {
+        await db.delete(telemetrySqlite).where(eq(telemetrySqlite.id, record.id));
+      }
+      return toDelete.length;
+    } else {
+      const db = this.getPostgresDb();
+      const toDelete = await db
+        .select({ id: telemetryPostgres.id })
+        .from(telemetryPostgres)
+        .where(lt(telemetryPostgres.timestamp, cutoffTimestamp));
+
+      for (const record of toDelete) {
+        await db.delete(telemetryPostgres).where(eq(telemetryPostgres.id, record.id));
+      }
+      return toDelete.length;
+    }
+  }
+
+  /**
    * Delete all telemetry
    */
   async deleteAllTelemetry(): Promise<number> {

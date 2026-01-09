@@ -11,55 +11,55 @@ import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bi
 export const usersSqlite = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   username: text('username').notNull().unique(),
-  password_hash: text('password_hash'),
+  passwordHash: text('password_hash'),
   email: text('email'),
-  display_name: text('display_name'),
-  auth_provider: text('auth_provider').notNull().default('local'), // 'local' or 'oidc'
-  oidc_subject: text('oidc_subject'),
-  is_admin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
-  is_active: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  password_locked: integer('password_locked', { mode: 'boolean' }).default(false),
-  created_at: integer('created_at').notNull(),
-  last_login_at: integer('last_login_at'),
-  created_by: integer('created_by'),
+  displayName: text('display_name'),
+  authMethod: text('auth_provider').notNull().default('local'), // 'local' or 'oidc'
+  oidcSubject: text('oidc_subject'),
+  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  passwordLocked: integer('password_locked', { mode: 'boolean' }).default(false),
+  createdAt: integer('created_at').notNull(),
+  // Note: SQLite doesn't have updated_at column
+  lastLoginAt: integer('last_login_at'),
 });
 
 export const usersPostgres = pgTable('users', {
   id: pgSerial('id').primaryKey(),
   username: pgText('username').notNull().unique(),
-  password_hash: pgText('password_hash'),
+  passwordHash: pgText('passwordHash'),
   email: pgText('email'),
-  display_name: pgText('display_name'),
-  auth_provider: pgText('auth_provider').notNull().default('local'),
-  oidc_subject: pgText('oidc_subject'),
-  is_admin: pgBoolean('is_admin').notNull().default(false),
-  is_active: pgBoolean('is_active').notNull().default(true),
-  password_locked: pgBoolean('password_locked').default(false),
-  created_at: pgBigint('created_at', { mode: 'number' }).notNull(),
-  last_login_at: pgBigint('last_login_at', { mode: 'number' }),
-  created_by: pgInteger('created_by'),
+  displayName: pgText('displayName'),
+  authMethod: pgText('authMethod').notNull().default('local'),
+  oidcSubject: pgText('oidcSubject').unique(),
+  isAdmin: pgBoolean('isAdmin').notNull().default(false),
+  isActive: pgBoolean('isActive').notNull().default(true),
+  passwordLocked: pgBoolean('passwordLocked').default(false),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  lastLoginAt: pgBigint('lastLoginAt', { mode: 'number' }),
 });
 
 // ============ PERMISSIONS ============
 
 export const permissionsSqlite = sqliteTable('permissions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  user_id: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
   resource: text('resource').notNull(),
-  can_read: integer('can_read', { mode: 'boolean' }).notNull().default(false),
-  can_write: integer('can_write', { mode: 'boolean' }).notNull().default(false),
-  granted_at: integer('granted_at').notNull(),
-  granted_by: integer('granted_by').references(() => usersSqlite.id, { onDelete: 'set null' }),
+  canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
+  canWrite: integer('can_write', { mode: 'boolean' }).notNull().default(false),
+  // Note: SQLite doesn't have can_delete column
+  grantedAt: integer('granted_at').notNull(),
+  grantedBy: integer('granted_by'),
 });
 
 export const permissionsPostgres = pgTable('permissions', {
   id: pgSerial('id').primaryKey(),
-  user_id: pgInteger('user_id').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
   resource: pgText('resource').notNull(),
-  can_read: pgBoolean('can_read').notNull().default(false),
-  can_write: pgBoolean('can_write').notNull().default(false),
-  granted_at: pgBigint('granted_at', { mode: 'number' }).notNull(),
-  granted_by: pgInteger('granted_by').references(() => usersPostgres.id, { onDelete: 'set null' }),
+  canRead: pgBoolean('canRead').notNull().default(false),
+  canWrite: pgBoolean('canWrite').notNull().default(false),
+  canDelete: pgBoolean('canDelete').notNull().default(false),
 });
 
 // ============ SESSIONS ============
@@ -80,25 +80,25 @@ export const sessionsPostgres = pgTable('sessions', {
 
 export const auditLogSqlite = sqliteTable('audit_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  user_id: integer('user_id').references(() => usersSqlite.id, { onDelete: 'set null' }),
+  userId: integer('user_id').references(() => usersSqlite.id, { onDelete: 'set null' }),
+  username: text('username'),
   action: text('action').notNull(),
   resource: text('resource'),
-  resource_id: text('resource_id'),
   details: text('details'),
-  ip_address: text('ip_address'),
-  user_agent: text('user_agent'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
   timestamp: integer('timestamp').notNull(),
 });
 
 export const auditLogPostgres = pgTable('audit_log', {
   id: pgSerial('id').primaryKey(),
-  user_id: pgInteger('user_id').references(() => usersPostgres.id, { onDelete: 'set null' }),
+  userId: pgInteger('userId').references(() => usersPostgres.id, { onDelete: 'set null' }),
+  username: pgText('username'),
   action: pgText('action').notNull(),
   resource: pgText('resource'),
-  resource_id: pgText('resource_id'),
   details: pgText('details'),
-  ip_address: pgText('ip_address'),
-  user_agent: pgText('user_agent'),
+  ipAddress: pgText('ipAddress'),
+  userAgent: pgText('userAgent'),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
 });
 
@@ -106,26 +106,32 @@ export const auditLogPostgres = pgTable('audit_log', {
 
 export const apiTokensSqlite = sqliteTable('api_tokens', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  user_id: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  token_hash: text('token_hash').notNull().unique(),
+  tokenHash: text('token_hash').notNull().unique(),
   prefix: text('prefix').notNull(),
-  is_active: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  created_at: integer('created_at').notNull(),
-  last_used_at: integer('last_used_at'),
-  expires_at: integer('expires_at'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at').notNull(),
+  lastUsedAt: integer('last_used_at'),
+  expiresAt: integer('expires_at'),
+  createdBy: integer('created_by'),
+  revokedAt: integer('revoked_at'),
+  revokedBy: integer('revoked_by'),
 });
 
 export const apiTokensPostgres = pgTable('api_tokens', {
   id: pgSerial('id').primaryKey(),
-  user_id: pgInteger('user_id').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
   name: pgText('name').notNull(),
-  token_hash: pgText('token_hash').notNull().unique(),
+  tokenHash: pgText('tokenHash').notNull().unique(),
   prefix: pgText('prefix').notNull(),
-  is_active: pgBoolean('is_active').notNull().default(true),
-  created_at: pgBigint('created_at', { mode: 'number' }).notNull(),
-  last_used_at: pgBigint('last_used_at', { mode: 'number' }),
-  expires_at: pgBigint('expires_at', { mode: 'number' }),
+  isActive: pgBoolean('isActive').notNull().default(true),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  lastUsedAt: pgBigint('lastUsedAt', { mode: 'number' }),
+  expiresAt: pgBigint('expiresAt', { mode: 'number' }),
+  createdBy: pgInteger('createdBy'),
+  revokedAt: pgBigint('revokedAt', { mode: 'number' }),
+  revokedBy: pgInteger('revokedBy'),
 });
 
 // Type inference
