@@ -401,6 +401,10 @@ class DatabaseService {
     if (dbConfig.type === 'postgres' || dbConfig.type === 'mysql') {
       logger.info(`📦 Using ${dbConfig.type === 'postgres' ? 'PostgreSQL' : 'MySQL'} database - skipping SQLite initialization`);
 
+      // Set drizzleDbType IMMEDIATELY so sync methods know we're using PostgreSQL/MySQL
+      // This is critical for methods like getSetting that check this before the async init completes
+      this.drizzleDbType = dbConfig.type;
+
       // Create a dummy SQLite db object that will throw helpful errors if used
       // This ensures code that accidentally uses this.db will fail fast
       this.db = new Proxy({} as BetterSqlite3Database.Database, {
@@ -2808,7 +2812,17 @@ class DatabaseService {
 
   // Message operations
   insertMessage(messageData: DbMessage): void {
-    // Use INSERT OR IGNORE to silently skip duplicate messages
+    // For PostgreSQL/MySQL, fire-and-forget async insert
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.insertMessage(messageData).catch((error) => {
+          logger.error(`[DatabaseService] Failed to insert message: ${error}`);
+        });
+      }
+      return;
+    }
+
+    // SQLite synchronous path - Use INSERT OR IGNORE to silently skip duplicate messages
     // (mesh networks can retransmit packets or send duplicates during reconnections)
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO messages (
@@ -2880,6 +2894,11 @@ class DatabaseService {
   }
 
   getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): DbMessage[] {
+    // For PostgreSQL/MySQL, messages are not cached - return empty for sync calls
+    // Messages are fetched via API endpoints which can be async
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       WHERE portnum = 1
@@ -2969,6 +2988,12 @@ class DatabaseService {
    */
   updateNodeMobility(nodeId: string): number {
     try {
+      // For PostgreSQL/MySQL, mobility detection requires async telemetry queries
+      // Skip for now - mobility will be detected via API endpoints
+      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+        return 0;
+      }
+
       // Get last 50 position telemetry records for this node
       const positionTelemetry = this.getPositionTelemetryByNode(nodeId, 50);
 
@@ -3492,6 +3517,18 @@ class DatabaseService {
 
   // Telemetry operations
   insertTelemetry(telemetryData: DbTelemetry): void {
+    // For PostgreSQL/MySQL, fire-and-forget async insert
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.telemetryRepo) {
+        this.telemetryRepo.insertTelemetry(telemetryData).catch((error) => {
+          logger.error(`[DatabaseService] Failed to insert telemetry: ${error}`);
+        });
+      }
+      // Invalidate the telemetry types cache since we may have added a new type
+      this.invalidateTelemetryTypesCache();
+      return;
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO telemetry (
         nodeId, nodeNum, telemetryType, timestamp, value, unit, createdAt, packetTimestamp
@@ -3549,6 +3586,12 @@ class DatabaseService {
   // Get only position-related telemetry (latitude, longitude, altitude) for a node
   // This is much more efficient than fetching all telemetry types - reduces data fetched by ~70%
   getPositionTelemetryByNode(nodeId: string, limit: number = 1500, sinceTimestamp?: number): DbTelemetry[] {
+    // For PostgreSQL/MySQL, telemetry is not cached - return empty for sync calls
+    // Position telemetry is fetched via API endpoints which can be async
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     let query = `
       SELECT * FROM telemetry
       WHERE nodeId = ?
@@ -3663,6 +3706,12 @@ class DatabaseService {
     snrTowards: string | null;
     timestamp: number;
   }> {
+    // For PostgreSQL/MySQL, this is typically only needed for migration purposes
+    // Since PostgreSQL starts fresh without historical traceroutes, return empty array
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     const query = `
       SELECT id, fromNodeNum, toNodeNum, route, snrTowards, timestamp
       FROM traceroutes
@@ -4736,6 +4785,13 @@ class DatabaseService {
   }
 
   getLatestTelemetryForType(nodeId: string, telemetryType: string): DbTelemetry | null {
+    // For PostgreSQL/MySQL, telemetry is not cached - return null for sync calls
+    // This is used for checking node capabilities, not critical for operation
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Telemetry queries require async, so return null for sync interface
+      // The actual data will be fetched via API endpoints which can be async
+      return null;
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM telemetry
       WHERE nodeId = ? AND telemetryType = ?
@@ -4748,6 +4804,10 @@ class DatabaseService {
 
   // Get distinct telemetry types per node (efficient for checking capabilities)
   getNodeTelemetryTypes(nodeId: string): string[] {
+    // For PostgreSQL/MySQL, return empty array for sync calls
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
     const stmt = this.db.prepare(`
       SELECT DISTINCT telemetryType FROM telemetry
       WHERE nodeId = ?
@@ -5864,6 +5924,15 @@ class DatabaseService {
 
   // Update message delivery state directly (undefined/delivered/confirmed)
   updateMessageDeliveryState(requestId: number, deliveryState: 'delivered' | 'confirmed' | 'failed'): boolean {
+    // For PostgreSQL/MySQL, fire-and-forget async update
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.updateMessageDeliveryState(requestId, deliveryState).catch((error) => {
+          logger.error(`[DatabaseService] Failed to update message delivery state: ${error}`);
+        });
+      }
+      return true; // Optimistic return
+    }
     const stmt = this.db.prepare(`
       UPDATE messages
       SET deliveryState = ?, ackFailed = ?
@@ -6340,7 +6409,7 @@ class DatabaseService {
       // Create all tables - must match Drizzle schema in src/db/schema/nodes.ts
       await client.query(`
         CREATE TABLE IF NOT EXISTS nodes (
-          "nodeNum" INTEGER PRIMARY KEY,
+          "nodeNum" BIGINT PRIMARY KEY,
           "nodeId" TEXT UNIQUE NOT NULL,
           "longName" TEXT,
           "shortName" TEXT,
@@ -6422,15 +6491,17 @@ class DatabaseService {
 
         CREATE TABLE IF NOT EXISTS telemetry (
           id SERIAL PRIMARY KEY,
-          "nodeNum" BIGINT NOT NULL,
-          "batteryLevel" INTEGER,
-          voltage DOUBLE PRECISION,
-          "channelUtilization" DOUBLE PRECISION,
-          "airUtilTx" DOUBLE PRECISION,
-          temperature DOUBLE PRECISION,
-          "relativeHumidity" DOUBLE PRECISION,
-          "barometricPressure" DOUBLE PRECISION,
-          timestamp BIGINT NOT NULL
+          "nodeId" TEXT NOT NULL,
+          "nodeNum" BIGINT NOT NULL REFERENCES nodes("nodeNum"),
+          "telemetryType" TEXT NOT NULL,
+          timestamp BIGINT NOT NULL,
+          value REAL NOT NULL,
+          unit TEXT,
+          "createdAt" BIGINT NOT NULL,
+          "packetTimestamp" BIGINT,
+          channel INTEGER,
+          "precisionBits" INTEGER,
+          "gpsAccuracy" REAL
         );
 
         CREATE TABLE IF NOT EXISTS traceroutes (
@@ -6668,7 +6739,7 @@ class DatabaseService {
       // Must match Drizzle schema in src/db/schema/nodes.ts
       await connection.query(`
         CREATE TABLE IF NOT EXISTS nodes (
-          nodeNum INT PRIMARY KEY,
+          nodeNum BIGINT PRIMARY KEY,
           nodeId VARCHAR(255) UNIQUE NOT NULL,
           longName TEXT,
           shortName VARCHAR(255),
@@ -6756,15 +6827,18 @@ class DatabaseService {
       await connection.query(`
         CREATE TABLE IF NOT EXISTS telemetry (
           id INT AUTO_INCREMENT PRIMARY KEY,
+          nodeId VARCHAR(255) NOT NULL,
           nodeNum BIGINT NOT NULL,
-          batteryLevel INT,
-          voltage DOUBLE,
-          channelUtilization DOUBLE,
-          airUtilTx DOUBLE,
-          temperature DOUBLE,
-          relativeHumidity DOUBLE,
-          barometricPressure DOUBLE,
-          timestamp BIGINT NOT NULL
+          telemetryType VARCHAR(255) NOT NULL,
+          timestamp BIGINT NOT NULL,
+          value DOUBLE NOT NULL,
+          unit VARCHAR(255),
+          createdAt BIGINT NOT NULL,
+          packetTimestamp BIGINT,
+          channel INT,
+          precisionBits INT,
+          gpsAccuracy DOUBLE,
+          FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 

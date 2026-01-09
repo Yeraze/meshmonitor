@@ -3,7 +3,7 @@
  * Supports both SQLite and PostgreSQL
  */
 import { sqliteTable, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, integer as pgInteger, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { pgTable, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
 import { nodesSqlite, nodesPostgres } from './nodes.js';
 
 // SQLite schema
@@ -20,8 +20,8 @@ export const neighborInfoSqlite = sqliteTable('neighbor_info', {
 // PostgreSQL schema
 export const neighborInfoPostgres = pgTable('neighbor_info', {
   id: pgSerial('id').primaryKey(),
-  nodeNum: pgInteger('nodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
-  neighborNodeNum: pgInteger('neighborNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  neighborNodeNum: pgBigint('neighborNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
   snr: pgReal('snr'),
   lastRxTime: pgBigint('lastRxTime', { mode: 'number' }),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
