@@ -27,7 +27,7 @@ export const telemetrySqlite = sqliteTable('telemetry', {
 export const telemetryPostgres = pgTable('telemetry', {
   id: pgSerial('id').primaryKey(),
   nodeId: pgText('nodeId').notNull(),
-  nodeNum: pgInteger('nodeNum').notNull().references(() => nodesPostgres.nodeNum),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum),
   telemetryType: pgText('telemetryType').notNull(),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   value: pgReal('value').notNull(),

@@ -61,7 +61,7 @@ export const nodesSqlite = sqliteTable('nodes', {
 
 // PostgreSQL schema
 export const nodesPostgres = pgTable('nodes', {
-  nodeNum: pgInteger('nodeNum').primaryKey(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).primaryKey(),
   nodeId: pgText('nodeId').notNull().unique(),
   longName: pgText('longName'),
   shortName: pgText('shortName'),
