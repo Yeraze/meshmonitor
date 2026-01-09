@@ -673,12 +673,12 @@ apiRouter.use('/', scriptContentRoutes);
  * GET /api/nodes
  * Returns all nodes in the mesh
  */
-apiRouter.get('/nodes', optionalAuth(), (req, res) => {
+apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
     const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-    const enhancedNodes = nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions));
+    const enhancedNodes = await Promise.all(nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
     res.json(enhancedNodes);
   } catch (error) {
     logger.error('Error fetching nodes:', error);
@@ -686,13 +686,13 @@ apiRouter.get('/nodes', optionalAuth(), (req, res) => {
   }
 });
 
-apiRouter.get('/nodes/active', optionalAuth(), (req, res) => {
+apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const dbNodes = databaseService.getActiveNodes(days);
-    
+
     // Map raw DB nodes to DeviceInfo format then enhance
-    const maskedNodes = dbNodes.map(node => {
+    const maskedNodes = await Promise.all(dbNodes.map(async node => {
       // Map basic fields
       const deviceInfo: any = {
         nodeNum: node.nodeNum,
@@ -710,7 +710,7 @@ apiRouter.get('/nodes/active', optionalAuth(), (req, res) => {
       }
 
       return enhanceNodeForClient(deviceInfo, (req as any).user);
-    });
+    }));
 
     res.json(maskedNodes);
   } catch (error) {
@@ -720,7 +720,7 @@ apiRouter.get('/nodes/active', optionalAuth(), (req, res) => {
 });
 
 // Get position history for a node (for mobile node visualization)
-apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
+apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -733,7 +733,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
     const node = databaseService.getNode(nodeNum);
     const isPrivate = node?.positionOverrideIsPrivate === 1;
-    const canViewPrivate = !!req.user && hasPermission(req.user, 'nodes_private', 'read');
+    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
     if (isPrivate && !canViewPrivate) {
       res.json([]);
       return;
@@ -1113,7 +1113,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
 });
 
 // Get node position override
-apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), (req, res) => {
+apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -1145,7 +1145,7 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), (req, res) => 
     }
 
     // CRITICAL: Mask coordinates for private overrides if user lacks permission
-    const canViewPrivate = !!req.user && hasPermission(req.user, 'nodes_private', 'read');
+    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
     if (override.isPrivate && !canViewPrivate) {
       const masked = { ...override };
       delete masked.latitude;
@@ -1462,11 +1462,11 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
   }
 });
 
-apiRouter.get('/messages', optionalAuth(), (req, res) => {
+apiRouter.get('/messages', optionalAuth(), async (req, res) => {
   try {
     // Check if user has either any channel permission or messages permission
-    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channel_0', 'read');
-    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+    const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
+    const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
 
     if (!hasChannelsRead && !hasMessagesRead) {
       return res.status(403).json({
@@ -1534,7 +1534,7 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
   };
 }
 
-apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
+apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
     // Validate and clamp limit (1-500) and offset (0-50000) to prevent abuse
@@ -1551,7 +1551,7 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
 
     // Check per-channel read permission
     const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'read')) {
+    if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'read')) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -1590,14 +1590,14 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
 });
 
 // Mark messages as read
-apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
+apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
   try {
     const { messageIds, channelId, nodeId, beforeTimestamp, allDMs } = req.body;
 
     // If marking by channelId, check per-channel read permission
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
       const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'read')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'read')) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -1608,7 +1608,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
 
     // If marking by nodeId (DMs) or allDMs, check messages permission
     if ((nodeId && channelId === -1) || allDMs) {
-      const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+      const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
       if (!hasMessagesRead) {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1654,11 +1654,11 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
 });
 
 // Get unread message counts
-apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
+apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
   try {
     // Check if user has either any channel permission or messages permission
-    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channel_0', 'read');
-    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+    const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
+    const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
 
     if (!hasChannelsRead && !hasMessagesRead) {
       return res.status(403).json({
@@ -2384,7 +2384,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     // Check permissions based on whether this is a DM or channel message
     if (destinationNum) {
       // Direct message - check 'messages' write permission
-      if (!req.user?.isAdmin && !hasPermission(req.user!, 'messages', 'write')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, 'messages', 'write')) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -2394,7 +2394,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     } else {
       // Channel message - check per-channel write permission
       const channelResource = `channel_${meshChannel}` as import('../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'write')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'write')) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -2851,13 +2851,13 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
 });
 
 // Get telemetry data for a node
-apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
+apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
   try {
     // Allow users with info read OR dashboard read (dashboard needs telemetry data)
     if (
       !req.user?.isAdmin &&
-      !hasPermission(req.user!, 'info', 'read') &&
-      !hasPermission(req.user!, 'dashboard', 'read')
+      !await hasPermission(req.user!, 'info', 'read') &&
+      !await hasPermission(req.user!, 'dashboard', 'read')
     ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -2872,7 +2872,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
     const node = databaseService.getNode(nodeNum);
     const isPrivate = node?.positionOverrideIsPrivate === 1;
-    const canViewPrivate = !!req.user && hasPermission(req.user, 'nodes_private', 'read');
+    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
     // Use averaged query for graph data to reduce data points
     // Dynamic bucketing automatically adjusts interval based on time range:
@@ -2897,13 +2897,13 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
 });
 
 // Get packet rate statistics (packets per minute) for a node
-apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), (req, res) => {
+apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
   try {
     // Allow users with info read OR dashboard read
     if (
       !req.user?.isAdmin &&
-      !hasPermission(req.user!, 'info', 'read') &&
-      !hasPermission(req.user!, 'dashboard', 'read')
+      !await hasPermission(req.user!, 'info', 'read') &&
+      !await hasPermission(req.user!, 'dashboard', 'read')
     ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -3098,7 +3098,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       const nodes = meshtasticManager.getAllNodes();
       const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-      result.nodes = nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions));
+      result.nodes = await Promise.all(nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
       result.nodes = [];
@@ -3106,8 +3106,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 3. Messages (requires any channel permission OR messages permission)
     try {
-      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channel_0', 'read');
-      const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+      const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
+      const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
 
       if (hasChannelsRead || hasMessagesRead) {
         let messages = meshtasticManager.getRecentMessages(100);
@@ -3129,7 +3129,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       const userId = req.user?.id ?? null;
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-      const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+      const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
 
       const unreadResult: {
         channels?: { [channelId: number]: number };
@@ -3145,7 +3145,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       for (const [channelIdStr, count] of Object.entries(allUnreadChannels)) {
         const channelId = parseInt(channelIdStr);
         const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
-        const hasChannelRead = req.user?.isAdmin || hasPermission(req.user!, channelResource, 'read');
+        const hasChannelRead = req.user?.isAdmin || await hasPermission(req.user!, channelResource, 'read');
 
         if (hasChannelRead) {
           filteredUnreadChannels[channelId] = count;
@@ -3176,31 +3176,39 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       const allChannels = databaseService.getAllChannels();
 
-      const filteredChannels = allChannels.filter(channel => {
+      // Filter channels async
+      const filteredChannels: typeof allChannels = [];
+      for (const channel of allChannels) {
         // Exclude disabled channels (role === 0)
         if (channel.role === 0) {
-          return false;
+          continue;
         }
 
         // Check per-channel read permission
         const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
-        const hasChannelRead = req.user?.isAdmin || hasPermission(req.user!, channelResource, 'read');
+        const hasChannelRead = req.user?.isAdmin || await hasPermission(req.user!, channelResource, 'read');
 
         if (!hasChannelRead) {
-          return false; // User doesn't have permission to see this channel
+          continue; // User doesn't have permission to see this channel
         }
 
         // Show channel 0 (Primary channel) if user has permission
-        if (channel.id === 0) return true;
+        if (channel.id === 0) {
+          filteredChannels.push(channel);
+          continue;
+        }
 
         // Show channels 1-7 if they have a PSK configured (indicating they're in use)
-        if (channel.id >= 1 && channel.id <= 7 && channel.psk) return true;
+        if (channel.id >= 1 && channel.id <= 7 && channel.psk) {
+          filteredChannels.push(channel);
+          continue;
+        }
 
         // Show channels with a role defined (PRIMARY, SECONDARY)
-        if (channel.role !== null && channel.role !== undefined) return true;
-
-        return false;
-      });
+        if (channel.role !== null && channel.role !== undefined) {
+          filteredChannels.push(channel);
+        }
+      }
 
       // Ensure Primary channel (ID 0) is first in the list
       const primaryIndex = filteredChannels.findIndex(ch => ch.id === 0);
@@ -3216,7 +3224,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 6. Telemetry availability (requires info:read permission)
     try {
-      const hasInfoRead = req.user?.isAdmin || hasPermission(req.user!, 'info', 'read');
+      const hasInfoRead = req.user?.isAdmin || await hasPermission(req.user!, 'info', 'read');
       if (hasInfoRead) {
         const nodes = databaseService.getAllNodes();
         const nodesWithTelemetry: string[] = [];
@@ -3309,7 +3317,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 8. Device config (requires configuration:read permission)
     try {
-      const hasConfigRead = req.user?.isAdmin || hasPermission(req.user!, 'configuration', 'read');
+      const hasConfigRead = req.user?.isAdmin || await hasPermission(req.user!, 'configuration', 'read');
       if (hasConfigRead) {
         const config = await meshtasticManager.getDeviceConfig();
         if (config) {

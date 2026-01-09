@@ -5,11 +5,11 @@ import type { User } from '../../types/auth.js';
 /**
  * Helper to enhance a node with position priority logic and privacy masking
  */
-export function enhanceNodeForClient(
-  node: DeviceInfo, 
-  user: User | null, 
+export async function enhanceNodeForClient(
+  node: DeviceInfo,
+  user: User | null,
   estimatedPositions?: Map<string, { latitude: number; longitude: number }>
-): DeviceInfo & { isMobile: boolean } {
+): Promise<DeviceInfo & { isMobile: boolean }> {
   if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
 
   let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
@@ -17,9 +17,9 @@ export function enhanceNodeForClient(
   // Priority 1: Check for position override
   const hasOverride = node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null;
   const isPrivateOverride = !!node.positionOverrideIsPrivate;
-  
+
   // Check if user has permission to view private positions
-  const canViewPrivate = user ? hasPermission(user, 'nodes_private', 'read') : false;
+  const canViewPrivate = user ? await hasPermission(user, 'nodes_private', 'read') : false;
   const shouldApplyOverride = hasOverride && (!isPrivateOverride || canViewPrivate);
 
   // CRITICAL: Mask sensitive override coordinates if user is not authorized to see them

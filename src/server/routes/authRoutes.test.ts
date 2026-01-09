@@ -73,6 +73,7 @@ describe('Authentication Routes', () => {
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
     (DatabaseService as any).auditLog = () => {};
+    (DatabaseService as any).findUserByIdAsync = async (id: number) => userModel.findById(id);
 
     app.use('/api/auth', authRoutes);
   });
