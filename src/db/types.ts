@@ -114,12 +114,12 @@ export interface DbMessage {
  */
 export interface DbChannel {
   id: number;
-  name: string | null;
-  psk?: string | null;
-  role?: number | null;
-  uplinkEnabled: boolean | null;
-  downlinkEnabled: boolean | null;
-  positionPrecision?: number | null;
+  name: string;
+  psk?: string;
+  role?: number; // 0=Disabled, 1=Primary, 2=Secondary
+  uplinkEnabled: boolean;
+  downlinkEnabled: boolean;
+  positionPrecision?: number; // Location precision bits (0-32)
   createdAt: number;
   updatedAt: number;
 }
