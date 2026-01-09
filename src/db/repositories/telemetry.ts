@@ -481,4 +481,41 @@ export class TelemetryRepository extends BaseRepository {
       return count.length;
     }
   }
+
+  /**
+   * Get all nodes with their telemetry types
+   */
+  async getAllNodesTelemetryTypes(): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const result = await db
+        .selectDistinct({ nodeId: telemetrySqlite.nodeId, type: telemetrySqlite.telemetryType })
+        .from(telemetrySqlite);
+
+      for (const r of result) {
+        const types = map.get(r.nodeId) || [];
+        if (!types.includes(r.type)) {
+          types.push(r.type);
+        }
+        map.set(r.nodeId, types);
+      }
+    } else {
+      const db = this.getPostgresDb();
+      const result = await db
+        .selectDistinct({ nodeId: telemetryPostgres.nodeId, type: telemetryPostgres.telemetryType })
+        .from(telemetryPostgres);
+
+      for (const r of result) {
+        const types = map.get(r.nodeId) || [];
+        if (!types.includes(r.type)) {
+          types.push(r.type);
+        }
+        map.set(r.nodeId, types);
+      }
+    }
+
+    return map;
+  }
 }
