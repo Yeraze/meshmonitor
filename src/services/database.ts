@@ -324,6 +324,7 @@ class DatabaseService {
   private settingsCache: Map<string, string> = new Map();
   private nodesCache: Map<number, DbNode> = new Map();
   private channelsCache: Map<number, DbChannel> = new Map();
+  private _traceroutesCache: DbTraceroute[] = [];
   private cacheInitialized = false;
 
   /**
@@ -3526,8 +3527,20 @@ class DatabaseService {
     // For PostgreSQL/MySQL, fire-and-forget async insert
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
+        // Check if node exists in cache - if not, skip telemetry insert
+        // This prevents foreign key constraint violations during race conditions
+        if (!this.nodesCache.has(telemetryData.nodeNum)) {
+          logger.debug(`[DatabaseService] Skipping telemetry insert - node ${telemetryData.nodeNum} not in cache yet`);
+          return;
+        }
         this.telemetryRepo.insertTelemetry(telemetryData).catch((error) => {
-          logger.error(`[DatabaseService] Failed to insert telemetry: ${error}`);
+          // Ignore foreign key violations - node might not be persisted yet
+          const errorStr = String(error);
+          if (errorStr.includes('foreign key') || errorStr.includes('violates')) {
+            logger.debug(`[DatabaseService] Telemetry insert skipped - node ${telemetryData.nodeNum} not yet persisted`);
+          } else {
+            logger.error(`[DatabaseService] Failed to insert telemetry: ${error}`);
+          }
         });
       }
       // Invalidate the telemetry types cache since we may have added a new type
@@ -4048,6 +4061,27 @@ class DatabaseService {
   }
 
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
+    // For PostgreSQL/MySQL, use cached traceroutes or return empty
+    // Traceroute data is primarily real-time from mesh traffic
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Use traceroutesRepo if available - fire async and return cache
+      if (this.traceroutesRepo) {
+        // Fire async query and update cache in background
+        this.traceroutesRepo.getAllTraceroutes(limit).then(traceroutes => {
+          // Store in internal cache for next sync call (cast to local DbTraceroute type)
+          this._traceroutesCache = traceroutes.map(t => ({
+            ...t,
+            route: t.route || '',
+            routeBack: t.routeBack || '',
+            snrTowards: t.snrTowards || '',
+            snrBack: t.snrBack || '',
+          })) as DbTraceroute[];
+        }).catch(err => logger.debug('Failed to fetch traceroutes:', err));
+      }
+      // Return cached traceroutes or empty array
+      return this._traceroutesCache || [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT * FROM traceroutes
       ORDER BY timestamp DESC
@@ -4841,7 +4875,20 @@ class DatabaseService {
       return this.telemetryTypesCache;
     }
 
-    // Query the database and update cache
+    // For PostgreSQL/MySQL, use async query and cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.telemetryRepo) {
+        // Fire async query and update cache in background
+        this.telemetryRepo.getAllNodesTelemetryTypes().then(map => {
+          this.telemetryTypesCache = map;
+          this.telemetryTypesCacheTime = Date.now();
+        }).catch(err => logger.debug('Failed to fetch telemetry types:', err));
+      }
+      // Return existing cache or empty map
+      return this.telemetryTypesCache || new Map();
+    }
+
+    // SQLite: query the database and update cache
     const stmt = this.db.prepare(`
       SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
       FROM telemetry
@@ -6083,7 +6130,8 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
         this.messagesRepo.updateMessageDeliveryState(requestId, deliveryState).catch((error) => {
-          logger.error(`[DatabaseService] Failed to update message delivery state: ${error}`);
+          // Silently ignore errors - message may not exist (normal for routing acks from external nodes)
+          logger.debug(`[DatabaseService] Message delivery state update skipped for requestId ${requestId}: ${error}`);
         });
       }
       return true; // Optimistic return
@@ -6110,6 +6158,11 @@ class DatabaseService {
   }
 
   getUnreadCountsByChannel(userId: number | null, localNodeId?: string): {[channelId: number]: number} {
+    // For PostgreSQL/MySQL, return empty counts (unread tracking is complex and low priority)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return {};
+    }
+
     // Only count incoming messages (exclude messages sent by our node)
     const excludeOutgoing = localNodeId ? 'AND m.fromNodeId != ?' : '';
     const stmt = this.db.prepare(`
@@ -6142,6 +6195,11 @@ class DatabaseService {
   }
 
   getUnreadDMCount(localNodeId: string, remoteNodeId: string, userId: number | null): number {
+    // For PostgreSQL/MySQL, return 0 (unread tracking is complex and low priority)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
+
     // Only count incoming DMs (messages FROM remote node TO local node)
     // Exclude outgoing messages (messages FROM local node TO remote node)
     const stmt = this.db.prepare(`
@@ -6622,14 +6680,23 @@ class DatabaseService {
           text TEXT NOT NULL,
           channel INTEGER NOT NULL DEFAULT 0,
           portnum INTEGER,
+          "requestId" INTEGER,
           timestamp BIGINT NOT NULL,
           "rxTime" BIGINT,
           "hopStart" INTEGER,
           "hopLimit" INTEGER,
+          "relayNode" INTEGER,
           "replyId" BIGINT,
-          emoji BOOLEAN DEFAULT false,
+          emoji INTEGER,
           "viaMqtt" BOOLEAN DEFAULT false,
-          direct BOOLEAN DEFAULT false
+          "rxSnr" REAL,
+          "rxRssi" REAL,
+          "ackFailed" BOOLEAN,
+          "routingErrorReceived" BOOLEAN,
+          "deliveryState" TEXT,
+          "wantAck" BOOLEAN,
+          "ackFromNode" INTEGER,
+          "createdAt" BIGINT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS channels (
@@ -6959,14 +7026,23 @@ class DatabaseService {
           text TEXT NOT NULL,
           channel INT NOT NULL DEFAULT 0,
           portnum INT,
+          requestId INT,
           timestamp BIGINT NOT NULL,
           rxTime BIGINT,
           hopStart INT,
           hopLimit INT,
+          relayNode INT,
           replyId BIGINT,
-          emoji BOOLEAN DEFAULT false,
+          emoji INT,
           viaMqtt BOOLEAN DEFAULT false,
-          direct BOOLEAN DEFAULT false
+          rxSnr REAL,
+          rxRssi REAL,
+          ackFailed BOOLEAN,
+          routingErrorReceived BOOLEAN,
+          deliveryState VARCHAR(50),
+          wantAck BOOLEAN,
+          ackFromNode INT,
+          createdAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
