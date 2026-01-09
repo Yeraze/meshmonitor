@@ -323,6 +323,7 @@ class DatabaseService {
   // with async databases by caching data loaded at startup
   private settingsCache: Map<string, string> = new Map();
   private nodesCache: Map<number, DbNode> = new Map();
+  private channelsCache: Map<number, DbChannel> = new Map();
   private cacheInitialized = false;
 
   /**
@@ -727,6 +728,16 @@ class DatabaseService {
           this.nodesCache.set(node.nodeNum, localNode);
         }
         logger.info(`[DatabaseService] Loaded ${this.nodesCache.size} nodes into cache`);
+      }
+
+      // Load all channels into cache
+      if (this.channelsRepo) {
+        const channels = await this.channelsRepo.getAllChannels();
+        this.channelsCache.clear();
+        for (const channel of channels) {
+          this.channelsCache.set(channel.id, channel);
+        }
+        logger.info(`[DatabaseService] Loaded ${this.channelsCache.size} channels into cache`);
       }
 
       this.cacheInitialized = true;
@@ -2902,12 +2913,25 @@ class DatabaseService {
   }
 
   getNodeCount(): number {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!this.cacheInitialized) {
+        logger.debug(`getNodeCount() called before cache initialized`);
+        return 0;
+      }
+      return this.nodesCache.size;
+    }
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM nodes');
     const result = stmt.get() as { count: number };
     return Number(result.count);
   }
 
   getTelemetryCount(): number {
+    // For PostgreSQL/MySQL, telemetry is not cached and count is only used for stats
+    // Return 0 as telemetry count is not critical for operation
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM telemetry');
     const result = stmt.get() as { count: number };
     return Number(result.count);
@@ -3250,19 +3274,64 @@ class DatabaseService {
 
     logger.info(`📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`);
 
+    // Channel ID is required - we no longer support name-based lookups
+    // All channels must have a numeric ID for proper indexing
+    if (channelData.id === undefined) {
+      logger.error(`❌ Cannot upsert channel without ID. Name: "${channelData.name}"`);
+      throw new Error('Channel ID is required for upsert operation');
+    }
+
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const existingChannel = this.channelsCache.get(channelData.id);
+      logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
+
+      // Build the updated/new channel object
+      const updatedChannel: DbChannel = {
+        id: channelData.id,
+        name: channelData.name,
+        psk: channelData.psk ?? existingChannel?.psk,
+        role: channelData.role ?? existingChannel?.role,
+        uplinkEnabled: channelData.uplinkEnabled ?? existingChannel?.uplinkEnabled ?? true,
+        downlinkEnabled: channelData.downlinkEnabled ?? existingChannel?.downlinkEnabled ?? true,
+        positionPrecision: channelData.positionPrecision ?? existingChannel?.positionPrecision,
+        createdAt: existingChannel?.createdAt ?? now,
+        updatedAt: now,
+      };
+
+      // Update cache immediately
+      this.channelsCache.set(channelData.id, updatedChannel);
+
+      if (existingChannel) {
+        logger.info(`📝 Updating channel ${existingChannel.id} from "${existingChannel.name}" to "${channelData.name}"`);
+      } else {
+        logger.debug(`📝 Creating new channel with ID: ${channelData.id}`);
+      }
+
+      // Fire and forget async update
+      if (this.channelsRepo) {
+        this.channelsRepo.upsertChannel({
+          id: channelData.id,
+          name: channelData.name,
+          psk: channelData.psk,
+          role: channelData.role,
+          uplinkEnabled: channelData.uplinkEnabled,
+          downlinkEnabled: channelData.downlinkEnabled,
+          positionPrecision: channelData.positionPrecision,
+        }).catch((error) => {
+          logger.error(`[DatabaseService] Failed to upsert channel ${channelData.id}: ${error}`);
+        });
+      }
+      return;
+    }
+
+    // SQLite path
     let existingChannel: DbChannel | null = null;
 
     // If we have an ID, check by ID FIRST
     if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
       logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
-    }
-
-    // Channel ID is required - we no longer support name-based lookups
-    // All channels must have a numeric ID for proper indexing
-    if (channelData.id === undefined) {
-      logger.error(`❌ Cannot upsert channel without ID. Name: "${channelData.name}"`);
-      throw new Error('Channel ID is required for upsert operation');
     }
 
     if (existingChannel) {
@@ -3313,6 +3382,18 @@ class DatabaseService {
   }
 
   getChannelById(id: number): DbChannel | null {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!this.cacheInitialized) {
+        logger.debug(`getChannelById(${id}) called before cache initialized`);
+        return null;
+      }
+      const channel = this.channelsCache.get(id) ?? null;
+      if (id === 0) {
+        logger.info(`🔍 getChannelById(0) - FROM CACHE: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
+      }
+      return channel;
+    }
     const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
     const channel = stmt.get(id) as DbChannel | null;
     if (id === 0) {
@@ -3322,12 +3403,28 @@ class DatabaseService {
   }
 
   getAllChannels(): DbChannel[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!this.cacheInitialized) {
+        logger.debug(`getAllChannels() called before cache initialized`);
+        return [];
+      }
+      return Array.from(this.channelsCache.values()).sort((a, b) => a.id - b.id);
+    }
     const stmt = this.db.prepare('SELECT * FROM channels ORDER BY id ASC');
     const channels = stmt.all() as DbChannel[];
     return channels.map(channel => this.normalizeBigInts(channel));
   }
 
   getChannelCount(): number {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!this.cacheInitialized) {
+        logger.debug(`getChannelCount() called before cache initialized`);
+        return 0;
+      }
+      return this.channelsCache.size;
+    }
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM channels');
     const result = stmt.get() as { count: number };
     return Number(result.count);
@@ -3336,6 +3433,24 @@ class DatabaseService {
   // Clean up invalid channels that shouldn't have been created
   // Meshtastic supports channels 0-7 (8 total channels)
   cleanupInvalidChannels(): number {
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      let count = 0;
+      for (const [id] of this.channelsCache) {
+        if (id < 0 || id > 7) {
+          this.channelsCache.delete(id);
+          count++;
+        }
+      }
+      // Fire and forget async cleanup
+      if (this.channelsRepo) {
+        this.channelsRepo.cleanupInvalidChannels().catch((error) => {
+          logger.error(`[DatabaseService] Failed to cleanup invalid channels: ${error}`);
+        });
+      }
+      logger.debug(`🧹 Cleaned up ${count} invalid channels (outside 0-7 range)`);
+      return count;
+    }
     const stmt = this.db.prepare(`DELETE FROM channels WHERE id < 0 OR id > 7`);
     const result = stmt.run();
     logger.debug(`🧹 Cleaned up ${result.changes} invalid channels (outside 0-7 range)`);
@@ -3346,6 +3461,24 @@ class DatabaseService {
   // Keep channels 0-1 (Primary and typically one active secondary)
   // Remove higher ID channels that have no PSK (not configured)
   cleanupEmptyChannels(): number {
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      let count = 0;
+      for (const [id, channel] of this.channelsCache) {
+        if (id > 1 && channel.psk === null && channel.role === null) {
+          this.channelsCache.delete(id);
+          count++;
+        }
+      }
+      // Fire and forget async cleanup
+      if (this.channelsRepo) {
+        this.channelsRepo.cleanupEmptyChannels().catch((error) => {
+          logger.error(`[DatabaseService] Failed to cleanup empty channels: ${error}`);
+        });
+      }
+      logger.debug(`🧹 Cleaned up ${count} empty channels (ID > 1, no PSK/role)`);
+      return count;
+    }
     const stmt = this.db.prepare(`
       DELETE FROM channels
       WHERE id > 1
@@ -6204,32 +6337,54 @@ class DatabaseService {
 
       logger.info('[PostgreSQL] Creating tables...');
 
-      // Create all tables
+      // Create all tables - must match Drizzle schema in src/db/schema/nodes.ts
       await client.query(`
         CREATE TABLE IF NOT EXISTS nodes (
-          "nodeNum" BIGINT PRIMARY KEY,
+          "nodeNum" INTEGER PRIMARY KEY,
           "nodeId" TEXT UNIQUE NOT NULL,
           "longName" TEXT,
           "shortName" TEXT,
           "hwModel" INTEGER,
           role INTEGER,
           "hopsAway" INTEGER,
+          "lastMessageHops" INTEGER,
+          "viaMqtt" BOOLEAN,
           macaddr TEXT,
-          latitude DOUBLE PRECISION,
-          longitude DOUBLE PRECISION,
-          altitude DOUBLE PRECISION,
+          latitude REAL,
+          longitude REAL,
+          altitude REAL,
           "batteryLevel" INTEGER,
-          voltage DOUBLE PRECISION,
-          "channelUtilization" DOUBLE PRECISION,
-          "airUtilTx" DOUBLE PRECISION,
+          voltage REAL,
+          "channelUtilization" REAL,
+          "airUtilTx" REAL,
           "lastHeard" BIGINT,
-          snr DOUBLE PRECISION,
+          snr REAL,
           rssi INTEGER,
+          "lastTracerouteRequest" BIGINT,
           "firmwareVersion" TEXT,
           channel INTEGER,
           "isFavorite" BOOLEAN DEFAULT false,
           "isIgnored" BOOLEAN DEFAULT false,
-          "viaMqtt" BOOLEAN DEFAULT false,
+          mobile INTEGER DEFAULT 0,
+          "rebootCount" INTEGER,
+          "publicKey" TEXT,
+          "hasPKC" BOOLEAN,
+          "lastPKIPacket" BIGINT,
+          "keyIsLowEntropy" BOOLEAN,
+          "duplicateKeyDetected" BOOLEAN,
+          "keyMismatchDetected" BOOLEAN,
+          "keySecurityIssueDetails" TEXT,
+          "welcomedAt" BIGINT,
+          "positionChannel" INTEGER,
+          "positionPrecisionBits" INTEGER,
+          "positionGpsAccuracy" REAL,
+          "positionHdop" REAL,
+          "positionTimestamp" BIGINT,
+          "positionOverrideEnabled" INTEGER DEFAULT 0,
+          "latitudeOverride" REAL,
+          "longitudeOverride" REAL,
+          "altitudeOverride" REAL,
+          "positionOverrideIsPrivate" INTEGER DEFAULT 0,
           "createdAt" BIGINT NOT NULL,
           "updatedAt" BIGINT NOT NULL
         );
@@ -6255,11 +6410,12 @@ class DatabaseService {
 
         CREATE TABLE IF NOT EXISTS channels (
           id INTEGER PRIMARY KEY,
-          name TEXT,
-          role INTEGER DEFAULT 0,
+          name TEXT NOT NULL,
           psk TEXT,
-          "uplinkEnabled" BOOLEAN DEFAULT false,
-          "downlinkEnabled" BOOLEAN DEFAULT false,
+          role INTEGER,
+          "uplinkEnabled" BOOLEAN NOT NULL DEFAULT true,
+          "downlinkEnabled" BOOLEAN NOT NULL DEFAULT true,
+          "positionPrecision" INTEGER,
           "createdAt" BIGINT NOT NULL,
           "updatedAt" BIGINT NOT NULL
         );
@@ -6378,25 +6534,31 @@ class DatabaseService {
 
         CREATE TABLE IF NOT EXISTS push_subscriptions (
           id SERIAL PRIMARY KEY,
-          "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          "userId" INTEGER REFERENCES users(id) ON DELETE CASCADE,
           endpoint TEXT NOT NULL UNIQUE,
-          keys TEXT NOT NULL,
-          "createdAt" BIGINT NOT NULL
+          "p256dhKey" TEXT NOT NULL,
+          "authKey" TEXT NOT NULL,
+          "userAgent" TEXT,
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL,
+          "lastUsedAt" BIGINT
         );
 
         CREATE TABLE IF NOT EXISTS user_notification_preferences (
-          "userId" INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-          "notifyOnMention" BOOLEAN DEFAULT true,
+          id SERIAL PRIMARY KEY,
+          "userId" INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          "notifyOnMessage" BOOLEAN DEFAULT true,
           "notifyOnDirectMessage" BOOLEAN DEFAULT true,
-          "notifyOnBroadcast" BOOLEAN DEFAULT false,
-          "notifyOnEmoji" BOOLEAN DEFAULT true,
-          "notifyOnNewNode" BOOLEAN DEFAULT false,
+          "notifyOnChannelMessage" BOOLEAN DEFAULT false,
+          "notifyOnEmoji" BOOLEAN DEFAULT false,
           "notifyOnInactiveNode" BOOLEAN DEFAULT false,
           "notifyOnServerEvents" BOOLEAN DEFAULT false,
+          "prefixWithNodeName" BOOLEAN DEFAULT false,
+          "appriseEnabled" BOOLEAN DEFAULT true,
+          "appriseUrls" TEXT,
           "notifyOnMqtt" BOOLEAN DEFAULT true,
-          "prefixWithNodeName" BOOLEAN DEFAULT true,
-          "inactiveNodeThresholdMinutes" INTEGER DEFAULT 60,
-          "appriseUrls" TEXT
+          "createdAt" BIGINT NOT NULL,
+          "updatedAt" BIGINT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS packet_log (
@@ -6503,15 +6665,18 @@ class DatabaseService {
       logger.info('[MySQL] Creating tables...');
 
       // Create all tables - MySQL uses backticks for identifiers
+      // Must match Drizzle schema in src/db/schema/nodes.ts
       await connection.query(`
         CREATE TABLE IF NOT EXISTS nodes (
-          nodeNum BIGINT PRIMARY KEY,
+          nodeNum INT PRIMARY KEY,
           nodeId VARCHAR(255) UNIQUE NOT NULL,
           longName TEXT,
           shortName VARCHAR(255),
           hwModel INT,
           role INT,
           hopsAway INT,
+          lastMessageHops INT,
+          viaMqtt BOOLEAN,
           macaddr VARCHAR(255),
           latitude DOUBLE,
           longitude DOUBLE,
@@ -6523,11 +6688,31 @@ class DatabaseService {
           lastHeard BIGINT,
           snr DOUBLE,
           rssi INT,
+          lastTracerouteRequest BIGINT,
           firmwareVersion VARCHAR(255),
           channel INT,
           isFavorite BOOLEAN DEFAULT false,
           isIgnored BOOLEAN DEFAULT false,
-          viaMqtt BOOLEAN DEFAULT false,
+          mobile INT DEFAULT 0,
+          rebootCount INT,
+          publicKey TEXT,
+          hasPKC BOOLEAN,
+          lastPKIPacket BIGINT,
+          keyIsLowEntropy BOOLEAN,
+          duplicateKeyDetected BOOLEAN,
+          keyMismatchDetected BOOLEAN,
+          keySecurityIssueDetails TEXT,
+          welcomedAt BIGINT,
+          positionChannel INT,
+          positionPrecisionBits INT,
+          positionGpsAccuracy DOUBLE,
+          positionHdop DOUBLE,
+          positionTimestamp BIGINT,
+          positionOverrideEnabled INT DEFAULT 0,
+          latitudeOverride DOUBLE,
+          longitudeOverride DOUBLE,
+          altitudeOverride DOUBLE,
+          positionOverrideIsPrivate INT DEFAULT 0,
           createdAt BIGINT NOT NULL,
           updatedAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -6557,11 +6742,12 @@ class DatabaseService {
       await connection.query(`
         CREATE TABLE IF NOT EXISTS channels (
           id INT PRIMARY KEY,
-          name VARCHAR(255),
-          role INT DEFAULT 0,
+          name VARCHAR(255) NOT NULL,
           psk TEXT,
-          uplinkEnabled BOOLEAN DEFAULT false,
-          downlinkEnabled BOOLEAN DEFAULT false,
+          role INT,
+          uplinkEnabled BOOLEAN NOT NULL DEFAULT true,
+          downlinkEnabled BOOLEAN NOT NULL DEFAULT true,
+          positionPrecision INT,
           createdAt BIGINT NOT NULL,
           updatedAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -6709,28 +6895,35 @@ class DatabaseService {
       await connection.query(`
         CREATE TABLE IF NOT EXISTS push_subscriptions (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          userId INT NOT NULL,
+          userId INT,
           endpoint TEXT NOT NULL,
-          \`keys\` TEXT NOT NULL,
+          p256dhKey TEXT NOT NULL,
+          authKey TEXT NOT NULL,
+          userAgent TEXT,
           createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL,
+          lastUsedAt BIGINT,
+          UNIQUE KEY (endpoint(255)),
           FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
       await connection.query(`
         CREATE TABLE IF NOT EXISTS user_notification_preferences (
-          userId INT PRIMARY KEY,
-          notifyOnMention BOOLEAN DEFAULT true,
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL UNIQUE,
+          notifyOnMessage BOOLEAN DEFAULT true,
           notifyOnDirectMessage BOOLEAN DEFAULT true,
-          notifyOnBroadcast BOOLEAN DEFAULT false,
-          notifyOnEmoji BOOLEAN DEFAULT true,
-          notifyOnNewNode BOOLEAN DEFAULT false,
+          notifyOnChannelMessage BOOLEAN DEFAULT false,
+          notifyOnEmoji BOOLEAN DEFAULT false,
           notifyOnInactiveNode BOOLEAN DEFAULT false,
           notifyOnServerEvents BOOLEAN DEFAULT false,
-          notifyOnMqtt BOOLEAN DEFAULT true,
-          prefixWithNodeName BOOLEAN DEFAULT true,
-          inactiveNodeThresholdMinutes INT DEFAULT 60,
+          prefixWithNodeName BOOLEAN DEFAULT false,
+          appriseEnabled BOOLEAN DEFAULT true,
           appriseUrls TEXT,
+          notifyOnMqtt BOOLEAN DEFAULT true,
+          createdAt BIGINT NOT NULL,
+          updatedAt BIGINT NOT NULL,
           FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);

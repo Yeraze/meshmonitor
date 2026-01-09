@@ -8,11 +8,11 @@ import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bi
 // SQLite schema
 export const channelsSqlite = sqliteTable('channels', {
   id: integer('id').primaryKey(),
-  name: text('name'),
+  name: text('name').notNull(),
   psk: text('psk'),
   role: integer('role'), // 0=Disabled, 1=Primary, 2=Secondary
-  uplinkEnabled: integer('uplinkEnabled', { mode: 'boolean' }).default(true),
-  downlinkEnabled: integer('downlinkEnabled', { mode: 'boolean' }).default(true),
+  uplinkEnabled: integer('uplinkEnabled', { mode: 'boolean' }).notNull().default(true),
+  downlinkEnabled: integer('downlinkEnabled', { mode: 'boolean' }).notNull().default(true),
   positionPrecision: integer('positionPrecision'), // Location precision bits (0-32)
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -21,11 +21,11 @@ export const channelsSqlite = sqliteTable('channels', {
 // PostgreSQL schema
 export const channelsPostgres = pgTable('channels', {
   id: pgInteger('id').primaryKey(),
-  name: pgText('name'),
+  name: pgText('name').notNull(),
   psk: pgText('psk'),
   role: pgInteger('role'), // 0=Disabled, 1=Primary, 2=Secondary
-  uplinkEnabled: pgBoolean('uplinkEnabled').default(true),
-  downlinkEnabled: pgBoolean('downlinkEnabled').default(true),
+  uplinkEnabled: pgBoolean('uplinkEnabled').notNull().default(true),
+  downlinkEnabled: pgBoolean('downlinkEnabled').notNull().default(true),
   positionPrecision: pgInteger('positionPrecision'), // Location precision bits (0-32)
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
