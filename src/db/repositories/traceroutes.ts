@@ -367,4 +367,46 @@ export class TraceroutesRepository extends BaseRepository {
       }
     }
   }
+
+  /**
+   * Delete all traceroutes
+   */
+  async deleteAllTraceroutes(): Promise<number> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const count = await db
+        .select({ id: traceroutesSqlite.id })
+        .from(traceroutesSqlite);
+      await db.delete(traceroutesSqlite);
+      return count.length;
+    } else {
+      const db = this.getPostgresDb();
+      const count = await db
+        .select({ id: traceroutesPostgres.id })
+        .from(traceroutesPostgres);
+      await db.delete(traceroutesPostgres);
+      return count.length;
+    }
+  }
+
+  /**
+   * Delete all route segments
+   */
+  async deleteAllRouteSegments(): Promise<number> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const count = await db
+        .select({ id: routeSegmentsSqlite.id })
+        .from(routeSegmentsSqlite);
+      await db.delete(routeSegmentsSqlite);
+      return count.length;
+    } else {
+      const db = this.getPostgresDb();
+      const count = await db
+        .select({ id: routeSegmentsPostgres.id })
+        .from(routeSegmentsPostgres);
+      await db.delete(routeSegmentsPostgres);
+      return count.length;
+    }
+  }
 }

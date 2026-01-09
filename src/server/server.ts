@@ -6710,9 +6710,9 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
 // ==========================================
 
 // Get VAPID public key and configuration status
-apiRouter.get('/push/vapid-key', optionalAuth(), (_req, res) => {
-  const publicKey = pushNotificationService.getPublicKey();
-  const status = pushNotificationService.getVapidStatus();
+apiRouter.get('/push/vapid-key', optionalAuth(), async (_req, res) => {
+  const publicKey = await pushNotificationService.getPublicKeyAsync();
+  const status = await pushNotificationService.getVapidStatusAsync();
 
   res.json({
     publicKey,
@@ -6721,8 +6721,8 @@ apiRouter.get('/push/vapid-key', optionalAuth(), (_req, res) => {
 });
 
 // Get push notification status
-apiRouter.get('/push/status', optionalAuth(), (_req, res) => {
-  const status = pushNotificationService.getVapidStatus();
+apiRouter.get('/push/status', optionalAuth(), async (_req, res) => {
+  const status = await pushNotificationService.getVapidStatusAsync();
   res.json(status);
 });
 
