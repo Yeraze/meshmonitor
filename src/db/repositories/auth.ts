@@ -5,7 +5,8 @@
  * Includes: users, permissions, sessions, audit_log, api_tokens
  * Supports both SQLite and PostgreSQL through Drizzle ORM.
  */
-import { eq, lt, desc } from 'drizzle-orm';
+import { eq, lt, desc, and } from 'drizzle-orm';
+import bcrypt from 'bcrypt';
 import {
   usersSqlite, usersPostgres,
   permissionsSqlite, permissionsPostgres,
@@ -16,23 +17,25 @@ import {
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
+const TOKEN_PREFIX = 'mm_v1_';
+
 /**
  * User data interface
  */
 export interface DbUser {
   id: number;
   username: string;
-  password_hash: string | null;
+  passwordHash: string | null;
   email: string | null;
-  display_name: string | null;
-  auth_provider: string;
-  oidc_subject: string | null;
-  is_admin: boolean;
-  is_active: boolean;
-  password_locked: boolean | null;
-  created_at: number;
-  last_login_at: number | null;
-  created_by: number | null;
+  displayName: string | null;
+  authMethod: string;
+  oidcSubject: string | null;
+  isAdmin: boolean;
+  isActive: boolean;
+  passwordLocked: boolean | null;
+  createdAt: number;
+  updatedAt?: number; // PostgreSQL only
+  lastLoginAt: number | null;
 }
 
 /**
@@ -40,17 +43,17 @@ export interface DbUser {
  */
 export interface CreateUserInput {
   username: string;
-  password_hash?: string | null;
+  passwordHash?: string | null;
   email?: string | null;
-  display_name?: string | null;
-  auth_provider: string;
-  oidc_subject?: string | null;
-  is_admin?: boolean;
-  is_active?: boolean;
-  password_locked?: boolean;
-  created_at: number;
-  last_login_at?: number | null;
-  created_by?: number | null;
+  displayName?: string | null;
+  authMethod: string;
+  oidcSubject?: string | null;
+  isAdmin?: boolean;
+  isActive?: boolean;
+  passwordLocked?: boolean;
+  createdAt: number;
+  updatedAt?: number; // Required for PostgreSQL, omitted for SQLite
+  lastLoginAt?: number | null;
 }
 
 /**
@@ -58,15 +61,16 @@ export interface CreateUserInput {
  */
 export interface UpdateUserInput {
   username?: string;
-  password_hash?: string | null;
+  passwordHash?: string | null;
   email?: string | null;
-  display_name?: string | null;
-  auth_provider?: string;
-  oidc_subject?: string | null;
-  is_admin?: boolean;
-  is_active?: boolean;
-  password_locked?: boolean;
-  last_login_at?: number | null;
+  displayName?: string | null;
+  authMethod?: string;
+  oidcSubject?: string | null;
+  isAdmin?: boolean;
+  isActive?: boolean;
+  passwordLocked?: boolean;
+  updatedAt?: number;
+  lastLoginAt?: number | null;
 }
 
 /**
@@ -74,24 +78,26 @@ export interface UpdateUserInput {
  */
 export interface DbPermission {
   id: number;
-  user_id: number;
+  userId: number;
   resource: string;
-  can_read: boolean;
-  can_write: boolean;
-  granted_at: number;
-  granted_by: number | null;
+  canRead: boolean;
+  canWrite: boolean;
+  canDelete?: boolean; // PostgreSQL only
+  grantedAt?: number; // SQLite only
+  grantedBy?: number | null; // SQLite only
 }
 
 /**
  * Input for creating a permission
  */
 export interface CreatePermissionInput {
-  user_id: number;
+  userId: number;
   resource: string;
-  can_read?: boolean;
-  can_write?: boolean;
-  granted_at: number;
-  granted_by?: number | null;
+  canRead?: boolean;
+  canWrite?: boolean;
+  canDelete?: boolean; // PostgreSQL only
+  grantedAt?: number; // SQLite only
+  grantedBy?: number | null; // SQLite only
 }
 
 /**
@@ -99,28 +105,32 @@ export interface CreatePermissionInput {
  */
 export interface DbApiToken {
   id: number;
-  user_id: number;
+  userId: number;
   name: string;
-  token_hash: string;
+  tokenHash: string;
   prefix: string;
-  is_active: boolean;
-  created_at: number;
-  last_used_at: number | null;
-  expires_at: number | null;
+  isActive: boolean;
+  createdAt: number;
+  lastUsedAt: number | null;
+  expiresAt: number | null;
+  createdBy: number | null;
+  revokedAt: number | null;
+  revokedBy: number | null;
 }
 
 /**
  * Input for creating an API token
  */
 export interface CreateApiTokenInput {
-  user_id: number;
+  userId: number;
   name: string;
-  token_hash: string;
+  tokenHash: string;
   prefix: string;
-  is_active?: boolean;
-  created_at: number;
-  last_used_at?: number | null;
-  expires_at?: number | null;
+  isActive?: boolean;
+  createdAt: number;
+  lastUsedAt?: number | null;
+  expiresAt?: number | null;
+  createdBy?: number | null;
 }
 
 /**
@@ -128,13 +138,13 @@ export interface CreateApiTokenInput {
  */
 export interface DbAuditLogEntry {
   id?: number;
-  user_id: number | null;
+  userId: number | null;
+  username?: string | null;
   action: string;
   resource: string | null;
-  resource_id: string | null;
   details: string | null;
-  ip_address: string | null;
-  user_agent: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
   timestamp: number;
 }
 
@@ -211,7 +221,7 @@ export class AuthRepository extends BaseRepository {
       const result = await db
         .select()
         .from(usersSqlite)
-        .where(eq(usersSqlite.oidc_subject, oidcSubject))
+        .where(eq(usersSqlite.oidcSubject, oidcSubject))
         .limit(1);
 
       if (result.length === 0) return null;
@@ -221,7 +231,7 @@ export class AuthRepository extends BaseRepository {
       const result = await db
         .select()
         .from(usersPostgres)
-        .where(eq(usersPostgres.oidc_subject, oidcSubject))
+        .where(eq(usersPostgres.oidcSubject, oidcSubject))
         .limit(1);
 
       if (result.length === 0) return null;
@@ -250,11 +260,17 @@ export class AuthRepository extends BaseRepository {
   async createUser(user: CreateUserInput): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.insert(usersSqlite).values(user);
+      // SQLite doesn't have updatedAt column - remove it from the insert
+      const { updatedAt, ...sqliteUser } = user;
+      const result = await db.insert(usersSqlite).values(sqliteUser);
       return Number(result.lastInsertRowid);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.insert(usersPostgres).values(user).returning({ id: usersPostgres.id });
+      // PostgreSQL requires updatedAt
+      if (!user.updatedAt) {
+        user.updatedAt = Date.now();
+      }
+      const result = await db.insert(usersPostgres).values(user as Required<Pick<CreateUserInput, 'updatedAt'>> & CreateUserInput).returning({ id: usersPostgres.id });
       return result[0].id;
     }
   }
@@ -265,9 +281,15 @@ export class AuthRepository extends BaseRepository {
   async updateUser(id: number, updates: UpdateUserInput): Promise<void> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      await db.update(usersSqlite).set(updates).where(eq(usersSqlite.id, id));
+      // SQLite doesn't have updatedAt column - remove it from the update
+      const { updatedAt, ...sqliteUpdates } = updates;
+      await db.update(usersSqlite).set(sqliteUpdates).where(eq(usersSqlite.id, id));
     } else {
       const db = this.getPostgresDb();
+      // Auto-set updatedAt for PostgreSQL if not provided
+      if (!updates.updatedAt) {
+        updates.updatedAt = Date.now();
+      }
       await db.update(usersPostgres).set(updates).where(eq(usersPostgres.id, id));
     }
   }
@@ -317,14 +339,14 @@ export class AuthRepository extends BaseRepository {
       const result = await db
         .select()
         .from(permissionsSqlite)
-        .where(eq(permissionsSqlite.user_id, userId));
+        .where(eq(permissionsSqlite.userId, userId));
       return result.map(p => this.normalizeBigInts(p) as DbPermission);
     } else {
       const db = this.getPostgresDb();
       const result = await db
         .select()
         .from(permissionsPostgres)
-        .where(eq(permissionsPostgres.user_id, userId));
+        .where(eq(permissionsPostgres.userId, userId));
       return result as DbPermission[];
     }
   }
@@ -335,11 +357,19 @@ export class AuthRepository extends BaseRepository {
   async createPermission(permission: CreatePermissionInput): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.insert(permissionsSqlite).values(permission);
+      // SQLite requires grantedAt, doesn't have canDelete
+      const { canDelete, ...rest } = permission;
+      const sqlitePermission = {
+        ...rest,
+        grantedAt: permission.grantedAt ?? Date.now(),
+      };
+      const result = await db.insert(permissionsSqlite).values(sqlitePermission);
       return Number(result.lastInsertRowid);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.insert(permissionsPostgres).values(permission).returning({ id: permissionsPostgres.id });
+      // PostgreSQL doesn't have grantedAt/grantedBy
+      const { grantedAt, grantedBy, ...postgresPermission } = permission;
+      const result = await db.insert(permissionsPostgres).values(postgresPermission).returning({ id: permissionsPostgres.id });
       return result[0].id;
     }
   }
@@ -353,7 +383,7 @@ export class AuthRepository extends BaseRepository {
       const toDelete = await db
         .select({ id: permissionsSqlite.id })
         .from(permissionsSqlite)
-        .where(eq(permissionsSqlite.user_id, userId));
+        .where(eq(permissionsSqlite.userId, userId));
 
       for (const p of toDelete) {
         await db.delete(permissionsSqlite).where(eq(permissionsSqlite.id, p.id));
@@ -364,7 +394,7 @@ export class AuthRepository extends BaseRepository {
       const toDelete = await db
         .select({ id: permissionsPostgres.id })
         .from(permissionsPostgres)
-        .where(eq(permissionsPostgres.user_id, userId));
+        .where(eq(permissionsPostgres.userId, userId));
 
       for (const p of toDelete) {
         await db.delete(permissionsPostgres).where(eq(permissionsPostgres.id, p.id));
@@ -384,7 +414,7 @@ export class AuthRepository extends BaseRepository {
       const result = await db
         .select()
         .from(apiTokensSqlite)
-        .where(eq(apiTokensSqlite.token_hash, tokenHash))
+        .where(eq(apiTokensSqlite.tokenHash, tokenHash))
         .limit(1);
 
       if (result.length === 0) return null;
@@ -394,7 +424,7 @@ export class AuthRepository extends BaseRepository {
       const result = await db
         .select()
         .from(apiTokensPostgres)
-        .where(eq(apiTokensPostgres.token_hash, tokenHash))
+        .where(eq(apiTokensPostgres.tokenHash, tokenHash))
         .limit(1);
 
       if (result.length === 0) return null;
@@ -411,14 +441,14 @@ export class AuthRepository extends BaseRepository {
       const result = await db
         .select()
         .from(apiTokensSqlite)
-        .where(eq(apiTokensSqlite.user_id, userId));
+        .where(eq(apiTokensSqlite.userId, userId));
       return result.map(t => this.normalizeBigInts(t) as DbApiToken);
     } else {
       const db = this.getPostgresDb();
       const result = await db
         .select()
         .from(apiTokensPostgres)
-        .where(eq(apiTokensPostgres.user_id, userId));
+        .where(eq(apiTokensPostgres.userId, userId));
       return result as DbApiToken[];
     }
   }
@@ -445,10 +475,10 @@ export class AuthRepository extends BaseRepository {
     const now = this.now();
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      await db.update(apiTokensSqlite).set({ last_used_at: now }).where(eq(apiTokensSqlite.id, id));
+      await db.update(apiTokensSqlite).set({ lastUsedAt: now }).where(eq(apiTokensSqlite.id, id));
     } else {
       const db = this.getPostgresDb();
-      await db.update(apiTokensPostgres).set({ last_used_at: now }).where(eq(apiTokensPostgres.id, id));
+      await db.update(apiTokensPostgres).set({ lastUsedAt: now }).where(eq(apiTokensPostgres.id, id));
     }
   }
 
@@ -477,6 +507,79 @@ export class AuthRepository extends BaseRepository {
     }
   }
 
+  /**
+   * Validate an API token and return the user if valid.
+   * Also updates lastUsedAt timestamp.
+   * @param token The full token string (e.g., "mm_v1_abc123...")
+   * @returns The user associated with the token, or null if invalid
+   */
+  async validateApiToken(token: string): Promise<DbUser | null> {
+    // Check if token format is valid
+    if (!token || !token.startsWith(TOKEN_PREFIX)) {
+      return null;
+    }
+
+    // Extract prefix (first 12 chars: "mm_v1_" + first 6 chars of random part)
+    const prefix = token.substring(0, 12);
+
+    // Find active tokens with matching prefix
+    let tokenRecord: { id: number; userId: number; tokenHash: string } | null = null;
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const result = await db
+        .select({
+          id: apiTokensSqlite.id,
+          userId: apiTokensSqlite.userId,
+          tokenHash: apiTokensSqlite.tokenHash,
+        })
+        .from(apiTokensSqlite)
+        .where(and(
+          eq(apiTokensSqlite.prefix, prefix),
+          eq(apiTokensSqlite.isActive, true)
+        ))
+        .limit(1);
+
+      if (result.length > 0) {
+        tokenRecord = result[0];
+      }
+    } else {
+      const db = this.getPostgresDb();
+      const result = await db
+        .select({
+          id: apiTokensPostgres.id,
+          userId: apiTokensPostgres.userId,
+          tokenHash: apiTokensPostgres.tokenHash,
+        })
+        .from(apiTokensPostgres)
+        .where(and(
+          eq(apiTokensPostgres.prefix, prefix),
+          eq(apiTokensPostgres.isActive, true)
+        ))
+        .limit(1);
+
+      if (result.length > 0) {
+        tokenRecord = result[0];
+      }
+    }
+
+    if (!tokenRecord) {
+      return null;
+    }
+
+    // Verify token hash using bcrypt
+    const isValid = await bcrypt.compare(token, tokenRecord.tokenHash);
+    if (!isValid) {
+      return null;
+    }
+
+    // Update lastUsedAt
+    await this.updateApiTokenLastUsed(tokenRecord.id);
+
+    // Get and return the user
+    return this.getUserById(tokenRecord.userId);
+  }
+
   // ============ AUDIT LOG ============
 
   /**
@@ -485,11 +588,29 @@ export class AuthRepository extends BaseRepository {
   async createAuditLogEntry(entry: DbAuditLogEntry): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.insert(auditLogSqlite).values(entry);
+      const result = await db.insert(auditLogSqlite).values({
+        userId: entry.userId,
+        username: entry.username,
+        action: entry.action,
+        resource: entry.resource,
+        details: entry.details,
+        ipAddress: entry.ipAddress,
+        userAgent: entry.userAgent,
+        timestamp: entry.timestamp,
+      });
       return Number(result.lastInsertRowid);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.insert(auditLogPostgres).values(entry).returning({ id: auditLogPostgres.id });
+      const result = await db.insert(auditLogPostgres).values({
+        userId: entry.userId,
+        username: entry.username,
+        action: entry.action,
+        resource: entry.resource,
+        details: entry.details,
+        ipAddress: entry.ipAddress,
+        userAgent: entry.userAgent,
+        timestamp: entry.timestamp,
+      }).returning({ id: auditLogPostgres.id });
       return result[0].id;
     }
   }
