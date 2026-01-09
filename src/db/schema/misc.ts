@@ -24,7 +24,7 @@ export const backupHistorySqlite = sqliteTable('backup_history', {
 export const backupHistoryPostgres = pgTable('backup_history', {
   id: pgSerial('id').primaryKey(),
   nodeId: pgText('nodeId'),
-  nodeNum: pgInteger('nodeNum'),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }),
   filename: pgText('filename').notNull(),
   filePath: pgText('filePath').notNull(),
   fileSize: pgInteger('fileSize'),
@@ -161,7 +161,7 @@ export const solarEstimatesSqlite = sqliteTable('solar_estimates', {
 
 export const solarEstimatesPostgres = pgTable('solar_estimates', {
   id: pgSerial('id').primaryKey(),
-  nodeNum: pgInteger('nodeNum').notNull(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull(),
   estimatedWatts: pgReal('estimatedWatts').notNull(),
   calculatedAt: pgBigint('calculatedAt', { mode: 'number' }).notNull(),
   batteryVoltage: pgReal('batteryVoltage'),
@@ -182,7 +182,7 @@ export const autoTracerouteNodesSqlite = sqliteTable('auto_traceroute_nodes', {
 
 export const autoTracerouteNodesPostgres = pgTable('auto_traceroute_nodes', {
   id: pgSerial('id').primaryKey(),
-  nodeNum: pgInteger('nodeNum').notNull().unique(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull().unique(),
   enabled: pgBoolean('enabled').default(true),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });

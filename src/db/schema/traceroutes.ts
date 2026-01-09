@@ -3,7 +3,7 @@
  * Supports both SQLite and PostgreSQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
 import { nodesSqlite, nodesPostgres } from './nodes.js';
 
 // SQLite schemas
@@ -36,8 +36,8 @@ export const routeSegmentsSqlite = sqliteTable('route_segments', {
 // PostgreSQL schemas
 export const traceroutesPostgres = pgTable('traceroutes', {
   id: pgSerial('id').primaryKey(),
-  fromNodeNum: pgInteger('fromNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
-  toNodeNum: pgInteger('toNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  fromNodeNum: pgBigint('fromNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  toNodeNum: pgBigint('toNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
   fromNodeId: pgText('fromNodeId').notNull(),
   toNodeId: pgText('toNodeId').notNull(),
   route: pgText('route'), // JSON string of intermediate nodes
@@ -50,8 +50,8 @@ export const traceroutesPostgres = pgTable('traceroutes', {
 
 export const routeSegmentsPostgres = pgTable('route_segments', {
   id: pgSerial('id').primaryKey(),
-  fromNodeNum: pgInteger('fromNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
-  toNodeNum: pgInteger('toNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  fromNodeNum: pgBigint('fromNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  toNodeNum: pgBigint('toNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
   fromNodeId: pgText('fromNodeId').notNull(),
   toNodeId: pgText('toNodeId').notNull(),
   distanceKm: pgReal('distanceKm').notNull(),

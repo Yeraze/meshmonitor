@@ -19,6 +19,16 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Helper to coerce timestamp values to integers for PostgreSQL BIGINT columns.
+   * PostgreSQL BIGINT does not accept decimal values, so we truncate to integer.
+   */
+  private coerceBigintField(value: number | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    // Truncate to integer - handles both Date.now() (ms) and Date.now()/1000 (s with decimals)
+    return Math.floor(value);
+  }
+
+  /**
    * Get a node by nodeNum
    */
   async getNode(nodeNum: number): Promise<DbNode | null> {
@@ -194,6 +204,7 @@ export class NodesRepository extends BaseRepository {
           })
           .where(eq(nodesSqlite.nodeNum, nodeData.nodeNum));
       } else {
+        // PostgreSQL requires BIGINT fields to be integers (no decimals)
         const db = this.getPostgresDb();
         await db
           .update(nodesPostgres)
@@ -213,7 +224,7 @@ export class NodesRepository extends BaseRepository {
             voltage: nodeData.voltage ?? existingNode.voltage,
             channelUtilization: nodeData.channelUtilization ?? existingNode.channelUtilization,
             airUtilTx: nodeData.airUtilTx ?? existingNode.airUtilTx,
-            lastHeard: nodeData.lastHeard ?? existingNode.lastHeard,
+            lastHeard: this.coerceBigintField(nodeData.lastHeard ?? existingNode.lastHeard),
             snr: nodeData.snr ?? existingNode.snr,
             rssi: nodeData.rssi ?? existingNode.rssi,
             firmwareVersion: nodeData.firmwareVersion ?? existingNode.firmwareVersion,
@@ -222,21 +233,21 @@ export class NodesRepository extends BaseRepository {
             rebootCount: nodeData.rebootCount ?? existingNode.rebootCount,
             publicKey: nodeData.publicKey ?? existingNode.publicKey,
             hasPKC: nodeData.hasPKC ?? existingNode.hasPKC,
-            lastPKIPacket: nodeData.lastPKIPacket ?? existingNode.lastPKIPacket,
-            welcomedAt: nodeData.welcomedAt ?? existingNode.welcomedAt,
+            lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket ?? existingNode.lastPKIPacket),
+            welcomedAt: this.coerceBigintField(nodeData.welcomedAt ?? existingNode.welcomedAt),
             keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode.keyIsLowEntropy,
             duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode.duplicateKeyDetected,
             keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode.keyMismatchDetected,
             keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? existingNode.keySecurityIssueDetails,
             positionChannel: nodeData.positionChannel ?? existingNode.positionChannel,
             positionPrecisionBits: nodeData.positionPrecisionBits ?? existingNode.positionPrecisionBits,
-            positionTimestamp: nodeData.positionTimestamp ?? existingNode.positionTimestamp,
+            positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
             updatedAt: now,
           })
           .where(eq(nodesPostgres.nodeNum, nodeData.nodeNum));
       }
     } else {
-      // Insert new node
+      // Insert new node - coerce BIGINT fields for PostgreSQL
       const newNode = {
         nodeNum: nodeData.nodeNum,
         nodeId: nodeData.nodeId,
@@ -254,7 +265,7 @@ export class NodesRepository extends BaseRepository {
         voltage: nodeData.voltage ?? null,
         channelUtilization: nodeData.channelUtilization ?? null,
         airUtilTx: nodeData.airUtilTx ?? null,
-        lastHeard: nodeData.lastHeard ?? null,
+        lastHeard: this.coerceBigintField(nodeData.lastHeard),
         snr: nodeData.snr ?? null,
         rssi: nodeData.rssi ?? null,
         firmwareVersion: nodeData.firmwareVersion ?? null,
@@ -263,15 +274,15 @@ export class NodesRepository extends BaseRepository {
         rebootCount: nodeData.rebootCount ?? null,
         publicKey: nodeData.publicKey ?? null,
         hasPKC: nodeData.hasPKC ?? null,
-        lastPKIPacket: nodeData.lastPKIPacket ?? null,
-        welcomedAt: nodeData.welcomedAt ?? null,
+        lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket),
+        welcomedAt: this.coerceBigintField(nodeData.welcomedAt),
         keyIsLowEntropy: nodeData.keyIsLowEntropy ?? null,
         duplicateKeyDetected: nodeData.duplicateKeyDetected ?? null,
         keyMismatchDetected: nodeData.keyMismatchDetected ?? null,
         keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? null,
         positionChannel: nodeData.positionChannel ?? null,
         positionPrecisionBits: nodeData.positionPrecisionBits ?? null,
-        positionTimestamp: nodeData.positionTimestamp ?? null,
+        positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
         createdAt: now,
         updatedAt: now,
       };

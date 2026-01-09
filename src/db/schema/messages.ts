@@ -39,8 +39,8 @@ export const messagesSqlite = sqliteTable('messages', {
 // PostgreSQL schema
 export const messagesPostgres = pgTable('messages', {
   id: pgText('id').primaryKey(),
-  fromNodeNum: pgInteger('fromNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
-  toNodeNum: pgInteger('toNodeNum').notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  fromNodeNum: pgBigint('fromNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
+  toNodeNum: pgBigint('toNodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum, { onDelete: 'cascade' }),
   fromNodeId: pgText('fromNodeId').notNull(),
   toNodeId: pgText('toNodeId').notNull(),
   text: pgText('text').notNull(),
