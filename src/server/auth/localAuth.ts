@@ -18,8 +18,8 @@ export async function authenticateLocal(
   try {
     logger.debug(`🔐 Local auth attempt for user: ${username}`);
 
-    // Use the UserModel to authenticate
-    const user = await databaseService.userModel.authenticate(username, password);
+    // Use async authentication method (works with both SQLite and PostgreSQL)
+    const user = await databaseService.authenticateAsync(username, password);
 
     if (!user) {
       logger.debug(`❌ Authentication failed for user: ${username}`);
