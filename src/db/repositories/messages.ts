@@ -469,4 +469,25 @@ export class MessagesRepository extends BaseRepository {
       return true;
     }
   }
+
+  /**
+   * Delete all messages
+   */
+  async deleteAllMessages(): Promise<number> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const count = await db
+        .select({ id: messagesSqlite.id })
+        .from(messagesSqlite);
+      await db.delete(messagesSqlite);
+      return count.length;
+    } else {
+      const db = this.getPostgresDb();
+      const count = await db
+        .select({ id: messagesPostgres.id })
+        .from(messagesPostgres);
+      await db.delete(messagesPostgres);
+      return count.length;
+    }
+  }
 }

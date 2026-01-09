@@ -1,7 +1,7 @@
 /**
  * Drizzle schema definition for notification tables
  * Includes: push_subscriptions, user_notification_preferences, read_messages
- * Supports both SQLite and PostgreSQL
+ * Supports SQLite, PostgreSQL, and MySQL (MySQL uses PostgreSQL schema)
  */
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
