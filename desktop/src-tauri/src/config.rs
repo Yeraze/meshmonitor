@@ -53,7 +53,10 @@ impl Config {
             match serde_json::from_str(&content) {
                 Ok(config) => Ok(config),
                 Err(e) => {
-                    eprintln!("Config file is corrupted ({}), creating default configuration", e);
+                    eprintln!(
+                        "Config file is corrupted ({}), creating default configuration",
+                        e
+                    );
                     let config = Config::default();
                     config.save()?;
                     Ok(config)
