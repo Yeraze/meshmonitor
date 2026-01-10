@@ -39,7 +39,29 @@ impl Config {
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)
                 .map_err(|e| format!("Failed to read config: {}", e))?;
-            serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))
+
+            // Handle empty or whitespace-only config files
+            let trimmed = content.trim();
+            if trimmed.is_empty() {
+                eprintln!("Config file is empty, creating default configuration");
+                let config = Config::default();
+                config.save()?;
+                return Ok(config);
+            }
+
+            // Try to parse, fall back to default if corrupted
+            match serde_json::from_str(&content) {
+                Ok(config) => Ok(config),
+                Err(e) => {
+                    eprintln!(
+                        "Config file is corrupted ({}), creating default configuration",
+                        e
+                    );
+                    let config = Config::default();
+                    config.save()?;
+                    Ok(config)
+                }
+            }
         } else {
             let config = Config::default();
             config.save()?;
