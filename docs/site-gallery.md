@@ -59,6 +59,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Indiana Mesh
+- **URL**: [meshmap.tranziq.net](https://meshmap.tranziq.net/)
+- **Network**: [CIMesh](https://cimesh.net/)
+- **Location**: Indiana, US
+- **Description**: Monitoring the State of Indiana Meshtastic Network with real-time updates and comprehensive coverage.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
