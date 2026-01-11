@@ -1,9 +1,10 @@
 /**
  * Drizzle schema definition for the nodes table
- * Supports both SQLite and PostgreSQL
+ * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
 // SQLite schema
 export const nodesSqlite = sqliteTable('nodes', {
@@ -113,8 +114,64 @@ export const nodesPostgres = pgTable('nodes', {
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });
 
+// MySQL schema
+export const nodesMysql = mysqlTable('nodes', {
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).primaryKey(),
+  nodeId: myVarchar('nodeId', { length: 32 }).notNull().unique(),
+  longName: myVarchar('longName', { length: 255 }),
+  shortName: myVarchar('shortName', { length: 32 }),
+  hwModel: myInt('hwModel'),
+  role: myInt('role'),
+  hopsAway: myInt('hopsAway'),
+  lastMessageHops: myInt('lastMessageHops'),
+  viaMqtt: myBoolean('viaMqtt'),
+  macaddr: myVarchar('macaddr', { length: 32 }),
+  latitude: myDouble('latitude'),
+  longitude: myDouble('longitude'),
+  altitude: myDouble('altitude'),
+  batteryLevel: myInt('batteryLevel'),
+  voltage: myDouble('voltage'),
+  channelUtilization: myDouble('channelUtilization'),
+  airUtilTx: myDouble('airUtilTx'),
+  lastHeard: myBigint('lastHeard', { mode: 'number' }),
+  snr: myDouble('snr'),
+  rssi: myInt('rssi'),
+  lastTracerouteRequest: myBigint('lastTracerouteRequest', { mode: 'number' }),
+  firmwareVersion: myVarchar('firmwareVersion', { length: 64 }),
+  channel: myInt('channel'),
+  isFavorite: myBoolean('isFavorite').default(false),
+  isIgnored: myBoolean('isIgnored').default(false),
+  mobile: myInt('mobile').default(0),
+  rebootCount: myInt('rebootCount'),
+  publicKey: myVarchar('publicKey', { length: 128 }),
+  hasPKC: myBoolean('hasPKC'),
+  lastPKIPacket: myBigint('lastPKIPacket', { mode: 'number' }),
+  keyIsLowEntropy: myBoolean('keyIsLowEntropy'),
+  duplicateKeyDetected: myBoolean('duplicateKeyDetected'),
+  keyMismatchDetected: myBoolean('keyMismatchDetected'),
+  keySecurityIssueDetails: myVarchar('keySecurityIssueDetails', { length: 512 }),
+  welcomedAt: myBigint('welcomedAt', { mode: 'number' }),
+  // Position precision tracking
+  positionChannel: myInt('positionChannel'),
+  positionPrecisionBits: myInt('positionPrecisionBits'),
+  positionGpsAccuracy: myDouble('positionGpsAccuracy'),
+  positionHdop: myDouble('positionHdop'),
+  positionTimestamp: myBigint('positionTimestamp', { mode: 'number' }),
+  // Position override
+  positionOverrideEnabled: myInt('positionOverrideEnabled').default(0),
+  latitudeOverride: myDouble('latitudeOverride'),
+  longitudeOverride: myDouble('longitudeOverride'),
+  altitudeOverride: myDouble('altitudeOverride'),
+  positionOverrideIsPrivate: myInt('positionOverrideIsPrivate').default(0),
+  // Timestamps
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+});
+
 // Type inference
 export type NodeSqlite = typeof nodesSqlite.$inferSelect;
 export type NewNodeSqlite = typeof nodesSqlite.$inferInsert;
 export type NodePostgres = typeof nodesPostgres.$inferSelect;
 export type NewNodePostgres = typeof nodesPostgres.$inferInsert;
+export type NodeMysql = typeof nodesMysql.$inferSelect;
+export type NewNodeMysql = typeof nodesMysql.$inferInsert;

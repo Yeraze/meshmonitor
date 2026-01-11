@@ -82,6 +82,11 @@ class InactiveNodeNotificationService {
    */
   private async checkInactiveNodes(): Promise<void> {
     try {
+      // For PostgreSQL/MySQL, inactive node notifications not yet implemented
+      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+        return;
+      }
+
       // Capture current parameter values at the start of the check to ensure consistency
       // throughout the entire check cycle, even if the service is restarted mid-check
       const thresholdHours = this.currentThresholdHours;

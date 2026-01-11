@@ -2,10 +2,10 @@
  * Settings Repository
  *
  * Handles all settings-related database operations.
- * Supports both SQLite and PostgreSQL through Drizzle ORM.
+ * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq } from 'drizzle-orm';
-import { settingsSqlite, settingsPostgres } from '../schema/settings.js';
+import { settingsSqlite, settingsPostgres, settingsMysql } from '../schema/settings.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -27,6 +27,14 @@ export class SettingsRepository extends BaseRepository {
         .select({ value: settingsSqlite.value })
         .from(settingsSqlite)
         .where(eq(settingsSqlite.key, key))
+        .limit(1);
+      return result.length > 0 ? result[0].value : null;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select({ value: settingsMysql.value })
+        .from(settingsMysql)
+        .where(eq(settingsMysql.key, key))
         .limit(1);
       return result.length > 0 ? result[0].value : null;
     } else {
@@ -51,6 +59,14 @@ export class SettingsRepository extends BaseRepository {
       const rows = await db
         .select({ key: settingsSqlite.key, value: settingsSqlite.value })
         .from(settingsSqlite);
+      rows.forEach(row => {
+        settings[row.key] = row.value;
+      });
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const rows = await db
+        .select({ key: settingsMysql.key, value: settingsMysql.value })
+        .from(settingsMysql);
       rows.forEach(row => {
         settings[row.key] = row.value;
       });
@@ -80,6 +96,14 @@ export class SettingsRepository extends BaseRepository {
         .values({ key, value, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: settingsSqlite.key,
+          set: { value, updatedAt: now },
+        });
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .insert(settingsMysql)
+        .values({ key, value, createdAt: now, updatedAt: now })
+        .onDuplicateKeyUpdate({
           set: { value, updatedAt: now },
         });
     } else {
@@ -116,6 +140,16 @@ export class SettingsRepository extends BaseRepository {
             set: { value, updatedAt: now },
           });
       }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      for (const [key, value] of entries) {
+        await db
+          .insert(settingsMysql)
+          .values({ key, value, createdAt: now, updatedAt: now })
+          .onDuplicateKeyUpdate({
+            set: { value, updatedAt: now },
+          });
+      }
     } else {
       const db = this.getPostgresDb();
       for (const [key, value] of entries) {
@@ -137,6 +171,9 @@ export class SettingsRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.delete(settingsSqlite).where(eq(settingsSqlite.key, key));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.delete(settingsMysql).where(eq(settingsMysql.key, key));
     } else {
       const db = this.getPostgresDb();
       await db.delete(settingsPostgres).where(eq(settingsPostgres.key, key));
@@ -150,6 +187,9 @@ export class SettingsRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.delete(settingsSqlite);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.delete(settingsMysql);
     } else {
       const db = this.getPostgresDb();
       await db.delete(settingsPostgres);

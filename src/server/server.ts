@@ -2874,12 +2874,23 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     const isPrivate = node?.positionOverrideIsPrivate === 1;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
-    // Use averaged query for graph data to reduce data points
-    // Dynamic bucketing automatically adjusts interval based on time range:
-    // - 0-24h: 3-minute intervals (high detail)
-    // - 1-7d: 30-minute intervals (medium detail)
-    // - 7d+: 2-hour intervals (low detail, full coverage)
-    const telemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, undefined, hoursParam);
+    let telemetry: any[];
+    // For PostgreSQL/MySQL, use async repo directly
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.telemetryRepo) {
+        const limit = Math.min(hoursParam * 60, 5000);
+        telemetry = await databaseService.telemetryRepo.getTelemetryByNode(nodeId, limit, cutoffTime);
+      } else {
+        telemetry = [];
+      }
+    } else {
+      // Use averaged query for graph data to reduce data points
+      // Dynamic bucketing automatically adjusts interval based on time range:
+      // - 0-24h: 3-minute intervals (high detail)
+      // - 1-7d: 30-minute intervals (medium detail)
+      // - 7d+: 2-hour intervals (low detail, full coverage)
+      telemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, undefined, hoursParam);
+    }
 
     // Filter out location telemetry if private and unauthorized
     let processedTelemetry = telemetry;
@@ -2925,7 +2936,46 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
       'numTxRelayCanceled',
     ];
 
-    const rates = databaseService.getPacketRates(nodeId, packetTypes, cutoffTime);
+    let rates: Record<string, Array<{ timestamp: number; ratePerMinute: number }>>;
+
+    // For PostgreSQL/MySQL, calculate rates from raw telemetry
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      rates = {};
+      for (const type of packetTypes) {
+        rates[type] = [];
+      }
+
+      if (databaseService.telemetryRepo) {
+        // Fetch telemetry for each packet type and calculate rates
+        for (const type of packetTypes) {
+          const telemetry = await databaseService.telemetryRepo.getTelemetryByNode(
+            nodeId, 5000, cutoffTime, undefined, 0, type
+          );
+
+          // Sort by timestamp ascending for rate calculation
+          telemetry.sort((a, b) => a.timestamp - b.timestamp);
+
+          // Calculate rates from consecutive samples
+          for (let i = 1; i < telemetry.length; i++) {
+            const prev = telemetry[i - 1];
+            const curr = telemetry[i];
+            const timeDiffMs = curr.timestamp - prev.timestamp;
+            const valueDiff = curr.value - prev.value;
+
+            if (timeDiffMs > 0 && valueDiff >= 0) {
+              const timeDiffMinutes = timeDiffMs / 60000;
+              const ratePerMinute = valueDiff / timeDiffMinutes;
+              rates[type].push({
+                timestamp: curr.timestamp,
+                ratePerMinute: Math.round(ratePerMinute * 100) / 100,
+              });
+            }
+          }
+        }
+      }
+    } else {
+      rates = databaseService.getPacketRates(nodeId, packetTypes, cutoffTime);
+    }
 
     res.json(rates);
   } catch (error) {
@@ -4685,6 +4735,11 @@ apiRouter.delete('/settings', requirePermission('settings', 'write'), (req, res)
 // Get user's map preferences
 apiRouter.get('/user/map-preferences', optionalAuth(), (req, res) => {
   try {
+    // For PostgreSQL/MySQL, map preferences not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return res.json({ preferences: null });
+    }
+
     // Anonymous users get null (will fall back to defaults in frontend)
     if (!req.user || req.user.username === 'anonymous') {
       return res.json({ preferences: null });
@@ -4701,6 +4756,11 @@ apiRouter.get('/user/map-preferences', optionalAuth(), (req, res) => {
 // Save user's map preferences
 apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
   try {
+    // For PostgreSQL/MySQL, map preferences not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return res.json({ success: true, message: 'Map preferences not yet implemented for PostgreSQL' });
+    }
+
     // Prevent saving preferences for anonymous user
     if (req.user!.username === 'anonymous') {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });

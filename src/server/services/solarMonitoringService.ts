@@ -161,6 +161,10 @@ class SolarMonitoringService {
    * Get recent solar estimates from database
    */
   getRecentEstimates(limit: number = 100): Array<{ timestamp: number; watt_hours: number; fetched_at: number }> {
+    // For PostgreSQL/MySQL, solar estimates not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return [];
+    }
     try {
       const stmt = databaseService.db.prepare(`
         SELECT timestamp, watt_hours, fetched_at
@@ -179,6 +183,10 @@ class SolarMonitoringService {
    * Get solar estimates for a specific time range
    */
   getEstimatesInRange(startTimestamp: number, endTimestamp: number): Array<{ timestamp: number; watt_hours: number; fetched_at: number }> {
+    // For PostgreSQL/MySQL, solar estimates not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return [];
+    }
     try {
       const stmt = databaseService.db.prepare(`
         SELECT timestamp, watt_hours, fetched_at
