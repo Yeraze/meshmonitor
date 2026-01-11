@@ -1,11 +1,12 @@
 /**
  * Drizzle schema definition for miscellaneous tables
  * Includes: backup_history, system_backup_history, custom_themes, user_map_preferences, upgrade_history
- * Supports both SQLite and PostgreSQL
+ * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { usersSqlite, usersPostgres } from './auth.js';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
 // ============ BACKUP HISTORY ============
 
@@ -187,6 +188,91 @@ export const autoTracerouteNodesPostgres = pgTable('auto_traceroute_nodes', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
+// ============ MYSQL SCHEMAS ============
+
+export const backupHistoryMysql = mysqlTable('backup_history', {
+  id: mySerial('id').primaryKey(),
+  nodeId: myVarchar('nodeId', { length: 32 }),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }),
+  filename: myVarchar('filename', { length: 255 }).notNull(),
+  filePath: myVarchar('filePath', { length: 512 }).notNull(),
+  fileSize: myInt('fileSize'),
+  backupType: myVarchar('backupType', { length: 32 }).notNull(),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
+export const systemBackupHistoryMysql = mysqlTable('system_backup_history', {
+  id: mySerial('id').primaryKey(),
+  backupPath: myVarchar('backupPath', { length: 512 }).notNull(),
+  backupType: myVarchar('backupType', { length: 32 }).notNull(),
+  schemaVersion: myInt('schemaVersion'),
+  appVersion: myVarchar('appVersion', { length: 32 }),
+  totalSize: myInt('totalSize'),
+  tableCount: myInt('tableCount'),
+  rowCount: myInt('rowCount'),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
+export const customThemesMysql = mysqlTable('custom_themes', {
+  id: mySerial('id').primaryKey(),
+  name: myVarchar('name', { length: 128 }).notNull(),
+  slug: myVarchar('slug', { length: 128 }).notNull().unique(),
+  definition: myText('definition').notNull(), // JSON string
+  is_builtin: myBoolean('is_builtin').default(false),
+  created_by: myInt('created_by').references(() => usersMysql.id, { onDelete: 'set null' }),
+  created_at: myBigint('created_at', { mode: 'number' }).notNull(),
+  updated_at: myBigint('updated_at', { mode: 'number' }).notNull(),
+});
+
+export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  centerLat: myDouble('centerLat'),
+  centerLng: myDouble('centerLng'),
+  zoom: myDouble('zoom'),
+  selectedLayer: myVarchar('selectedLayer', { length: 64 }),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+});
+
+export const upgradeHistoryMysql = mysqlTable('upgrade_history', {
+  id: myVarchar('id', { length: 64 }).primaryKey(),
+  fromVersion: myVarchar('fromVersion', { length: 32 }).notNull(),
+  toVersion: myVarchar('toVersion', { length: 32 }).notNull(),
+  deploymentMethod: myVarchar('deploymentMethod', { length: 32 }).notNull(),
+  status: myVarchar('status', { length: 32 }).notNull(),
+  progress: myInt('progress').default(0),
+  currentStep: myVarchar('currentStep', { length: 255 }),
+  logs: myText('logs'),
+  backupPath: myVarchar('backupPath', { length: 512 }),
+  startedAt: myBigint('startedAt', { mode: 'number' }),
+  completedAt: myBigint('completedAt', { mode: 'number' }),
+  initiatedBy: myVarchar('initiatedBy', { length: 255 }),
+  errorMessage: myText('errorMessage'),
+  rollbackAvailable: myBoolean('rollbackAvailable'),
+});
+
+export const solarEstimatesMysql = mysqlTable('solar_estimates', {
+  id: mySerial('id').primaryKey(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
+  estimatedWatts: myDouble('estimatedWatts').notNull(),
+  calculatedAt: myBigint('calculatedAt', { mode: 'number' }).notNull(),
+  batteryVoltage: myDouble('batteryVoltage'),
+  batteryLevel: myInt('batteryLevel'),
+  channelUtilization: myDouble('channelUtilization'),
+  airUtilTx: myDouble('airUtilTx'),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
+export const autoTracerouteNodesMysql = mysqlTable('auto_traceroute_nodes', {
+  id: mySerial('id').primaryKey(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull().unique(),
+  enabled: myBoolean('enabled').default(true),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
 // Type inference exports
 export type BackupHistorySqlite = typeof backupHistorySqlite.$inferSelect;
 export type NewBackupHistorySqlite = typeof backupHistorySqlite.$inferInsert;
@@ -222,3 +308,18 @@ export type AutoTracerouteNodeSqlite = typeof autoTracerouteNodesSqlite.$inferSe
 export type NewAutoTracerouteNodeSqlite = typeof autoTracerouteNodesSqlite.$inferInsert;
 export type AutoTracerouteNodePostgres = typeof autoTracerouteNodesPostgres.$inferSelect;
 export type NewAutoTracerouteNodePostgres = typeof autoTracerouteNodesPostgres.$inferInsert;
+export type AutoTracerouteNodeMysql = typeof autoTracerouteNodesMysql.$inferSelect;
+export type NewAutoTracerouteNodeMysql = typeof autoTracerouteNodesMysql.$inferInsert;
+
+export type BackupHistoryMysql = typeof backupHistoryMysql.$inferSelect;
+export type NewBackupHistoryMysql = typeof backupHistoryMysql.$inferInsert;
+export type SystemBackupHistoryMysql = typeof systemBackupHistoryMysql.$inferSelect;
+export type NewSystemBackupHistoryMysql = typeof systemBackupHistoryMysql.$inferInsert;
+export type CustomThemeMysql = typeof customThemesMysql.$inferSelect;
+export type NewCustomThemeMysql = typeof customThemesMysql.$inferInsert;
+export type UserMapPreferenceMysql = typeof userMapPreferencesMysql.$inferSelect;
+export type NewUserMapPreferenceMysql = typeof userMapPreferencesMysql.$inferInsert;
+export type UpgradeHistoryMysql = typeof upgradeHistoryMysql.$inferSelect;
+export type NewUpgradeHistoryMysql = typeof upgradeHistoryMysql.$inferInsert;
+export type SolarEstimateMysql = typeof solarEstimatesMysql.$inferSelect;
+export type NewSolarEstimateMysql = typeof solarEstimatesMysql.$inferInsert;

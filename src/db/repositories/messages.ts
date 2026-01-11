@@ -2,10 +2,10 @@
  * Messages Repository
  *
  * Handles all message-related database operations.
- * Supports both SQLite and PostgreSQL through Drizzle ORM.
+ * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, and, or, desc, sql } from 'drizzle-orm';
-import { messagesSqlite, messagesPostgres } from '../schema/messages.js';
+import { messagesSqlite, messagesPostgres, messagesMysql } from '../schema/messages.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 
@@ -45,6 +45,7 @@ export class MessagesRepository extends BaseRepository {
       routingErrorReceived: messageData.routingErrorReceived ?? null,
       deliveryState: messageData.deliveryState ?? null,
       wantAck: messageData.wantAck ?? null,
+      ackFromNode: messageData.ackFromNode ?? null,
       createdAt: messageData.createdAt,
     };
 
@@ -54,6 +55,12 @@ export class MessagesRepository extends BaseRepository {
         .insert(messagesSqlite)
         .values(values)
         .onConflictDoNothing();
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .insert(messagesMysql)
+        .values(values)
+        .onDuplicateKeyUpdate({ set: { id: messageData.id } }); // MySQL equivalent of onConflictDoNothing
     } else {
       const db = this.getPostgresDb();
       await db
@@ -77,6 +84,16 @@ export class MessagesRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbMessage;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(messagesMysql)
+        .where(eq(messagesMysql.id, id))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbMessage;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -104,6 +121,16 @@ export class MessagesRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbMessage;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(messagesMysql)
+        .where(eq(messagesMysql.requestId, requestId))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbMessage;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -131,6 +158,16 @@ export class MessagesRepository extends BaseRepository {
         .offset(offset);
 
       return messages.map(m => this.normalizeBigInts(m) as DbMessage);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const messages = await db
+        .select()
+        .from(messagesMysql)
+        .orderBy(desc(sql`COALESCE(${messagesMysql.rxTime}, ${messagesMysql.timestamp})`))
+        .limit(limit)
+        .offset(offset);
+
+      return messages as DbMessage[];
     } else {
       const db = this.getPostgresDb();
       const messages = await db
@@ -159,6 +196,17 @@ export class MessagesRepository extends BaseRepository {
         .offset(offset);
 
       return messages.map(m => this.normalizeBigInts(m) as DbMessage);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const messages = await db
+        .select()
+        .from(messagesMysql)
+        .where(eq(messagesMysql.channel, channel))
+        .orderBy(desc(sql`COALESCE(${messagesMysql.rxTime}, ${messagesMysql.timestamp})`))
+        .limit(limit)
+        .offset(offset);
+
+      return messages as DbMessage[];
     } else {
       const db = this.getPostgresDb();
       const messages = await db
@@ -197,6 +245,26 @@ export class MessagesRepository extends BaseRepository {
         .offset(offset);
 
       return messages.map(m => this.normalizeBigInts(m) as DbMessage);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const messages = await db
+        .select()
+        .from(messagesMysql)
+        .where(
+          and(
+            eq(messagesMysql.portnum, 1),
+            eq(messagesMysql.channel, -1),
+            or(
+              and(eq(messagesMysql.fromNodeId, nodeId1), eq(messagesMysql.toNodeId, nodeId2)),
+              and(eq(messagesMysql.fromNodeId, nodeId2), eq(messagesMysql.toNodeId, nodeId1))
+            )
+          )
+        )
+        .orderBy(desc(sql`COALESCE(${messagesMysql.rxTime}, ${messagesMysql.timestamp})`))
+        .limit(limit)
+        .offset(offset);
+
+      return messages as DbMessage[];
     } else {
       const db = this.getPostgresDb();
       const messages = await db
@@ -233,6 +301,15 @@ export class MessagesRepository extends BaseRepository {
         .orderBy(messagesSqlite.timestamp);
 
       return messages.map(m => this.normalizeBigInts(m) as DbMessage);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const messages = await db
+        .select()
+        .from(messagesMysql)
+        .where(gt(messagesMysql.timestamp, timestamp))
+        .orderBy(messagesMysql.timestamp);
+
+      return messages as DbMessage[];
     } else {
       const db = this.getPostgresDb();
       const messages = await db
@@ -252,6 +329,10 @@ export class MessagesRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       const result = await db.select().from(messagesSqlite);
+      return result.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.select().from(messagesMysql);
       return result.length;
     } else {
       const db = this.getPostgresDb();
@@ -274,6 +355,17 @@ export class MessagesRepository extends BaseRepository {
       if (existing.length === 0) return false;
 
       await db.delete(messagesSqlite).where(eq(messagesSqlite.id, id));
+      return true;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const existing = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(eq(messagesMysql.id, id));
+
+      if (existing.length === 0) return false;
+
+      await db.delete(messagesMysql).where(eq(messagesMysql.id, id));
       return true;
     } else {
       const db = this.getPostgresDb();
@@ -302,6 +394,17 @@ export class MessagesRepository extends BaseRepository {
 
       for (const msg of toDelete) {
         await db.delete(messagesSqlite).where(eq(messagesSqlite.id, msg.id));
+      }
+      return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(eq(messagesMysql.channel, channel));
+
+      for (const msg of toDelete) {
+        await db.delete(messagesMysql).where(eq(messagesMysql.id, msg.id));
       }
       return toDelete.length;
     } else {
@@ -339,6 +442,25 @@ export class MessagesRepository extends BaseRepository {
 
       for (const msg of toDelete) {
         await db.delete(messagesSqlite).where(eq(messagesSqlite.id, msg.id));
+      }
+      return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(
+          and(
+            or(
+              eq(messagesMysql.fromNodeNum, nodeNum),
+              eq(messagesMysql.toNodeNum, nodeNum)
+            ),
+            sql`${messagesMysql.toNodeId} != '!ffffffff'`
+          )
+        );
+
+      for (const msg of toDelete) {
+        await db.delete(messagesMysql).where(eq(messagesMysql.id, msg.id));
       }
       return toDelete.length;
     } else {
@@ -380,6 +502,17 @@ export class MessagesRepository extends BaseRepository {
         await db.delete(messagesSqlite).where(eq(messagesSqlite.id, msg.id));
       }
       return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(lt(messagesMysql.timestamp, cutoff));
+
+      for (const msg of toDelete) {
+        await db.delete(messagesMysql).where(eq(messagesMysql.id, msg.id));
+      }
+      return toDelete.length;
     } else {
       const db = this.getPostgresDb();
       const toDelete = await db
@@ -414,6 +547,23 @@ export class MessagesRepository extends BaseRepository {
           deliveryState: ackFailed ? 'failed' : 'confirmed',
         })
         .where(eq(messagesSqlite.requestId, requestId));
+      return true;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const existing = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(eq(messagesMysql.requestId, requestId));
+
+      if (existing.length === 0) return false;
+
+      await db
+        .update(messagesMysql)
+        .set({
+          ackFailed,
+          deliveryState: ackFailed ? 'failed' : 'confirmed',
+        })
+        .where(eq(messagesMysql.requestId, requestId));
       return true;
     } else {
       const db = this.getPostgresDb();
@@ -453,6 +603,20 @@ export class MessagesRepository extends BaseRepository {
         .set({ deliveryState })
         .where(eq(messagesSqlite.requestId, requestId));
       return true;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const existing = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(eq(messagesMysql.requestId, requestId));
+
+      if (existing.length === 0) return false;
+
+      await db
+        .update(messagesMysql)
+        .set({ deliveryState })
+        .where(eq(messagesMysql.requestId, requestId));
+      return true;
     } else {
       const db = this.getPostgresDb();
       const existing = await db
@@ -480,6 +644,13 @@ export class MessagesRepository extends BaseRepository {
         .select({ id: messagesSqlite.id })
         .from(messagesSqlite);
       await db.delete(messagesSqlite);
+      return count.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const count = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql);
+      await db.delete(messagesMysql);
       return count.length;
     } else {
       const db = this.getPostgresDb();

@@ -2,10 +2,10 @@
  * Neighbors Repository
  *
  * Handles neighbor info database operations.
- * Supports both SQLite and PostgreSQL through Drizzle ORM.
+ * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, desc } from 'drizzle-orm';
-import { neighborInfoSqlite, neighborInfoPostgres } from '../schema/neighbors.js';
+import { neighborInfoSqlite, neighborInfoPostgres, neighborInfoMysql } from '../schema/neighbors.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
@@ -33,6 +33,9 @@ export class NeighborsRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.insert(neighborInfoSqlite).values(values);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.insert(neighborInfoMysql).values(values);
     } else {
       const db = this.getPostgresDb();
       await db.insert(neighborInfoPostgres).values(values);
@@ -52,6 +55,15 @@ export class NeighborsRepository extends BaseRepository {
         .orderBy(desc(neighborInfoSqlite.timestamp));
 
       return result.map(n => this.normalizeBigInts(n) as DbNeighborInfo);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(neighborInfoMysql)
+        .where(eq(neighborInfoMysql.nodeNum, nodeNum))
+        .orderBy(desc(neighborInfoMysql.timestamp));
+
+      return result as DbNeighborInfo[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -76,6 +88,14 @@ export class NeighborsRepository extends BaseRepository {
         .orderBy(desc(neighborInfoSqlite.timestamp));
 
       return result.map(n => this.normalizeBigInts(n) as DbNeighborInfo);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(neighborInfoMysql)
+        .orderBy(desc(neighborInfoMysql.timestamp));
+
+      return result as DbNeighborInfo[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -102,6 +122,17 @@ export class NeighborsRepository extends BaseRepository {
         await db.delete(neighborInfoSqlite).where(eq(neighborInfoSqlite.id, n.id));
       }
       return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: neighborInfoMysql.id })
+        .from(neighborInfoMysql)
+        .where(eq(neighborInfoMysql.nodeNum, nodeNum));
+
+      for (const n of toDelete) {
+        await db.delete(neighborInfoMysql).where(eq(neighborInfoMysql.id, n.id));
+      }
+      return toDelete.length;
     } else {
       const db = this.getPostgresDb();
       const toDelete = await db
@@ -124,6 +155,10 @@ export class NeighborsRepository extends BaseRepository {
       const db = this.getSqliteDb();
       const result = await db.select().from(neighborInfoSqlite);
       return result.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.select().from(neighborInfoMysql);
+      return result.length;
     } else {
       const db = this.getPostgresDb();
       const result = await db.select().from(neighborInfoPostgres);
@@ -139,6 +174,11 @@ export class NeighborsRepository extends BaseRepository {
       const db = this.getSqliteDb();
       const count = await db.select().from(neighborInfoSqlite);
       await db.delete(neighborInfoSqlite);
+      return count.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const count = await db.select().from(neighborInfoMysql);
+      await db.delete(neighborInfoMysql);
       return count.length;
     } else {
       const db = this.getPostgresDb();

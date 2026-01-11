@@ -2,12 +2,12 @@
  * Traceroutes Repository
  *
  * Handles traceroute and route segment database operations.
- * Supports both SQLite and PostgreSQL through Drizzle ORM.
+ * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, desc, lt, or } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull, gte } from 'drizzle-orm';
 import {
-  traceroutesSqlite, traceroutesPostgres,
-  routeSegmentsSqlite, routeSegmentsPostgres,
+  traceroutesSqlite, traceroutesPostgres, traceroutesMysql,
+  routeSegmentsSqlite, routeSegmentsPostgres, routeSegmentsMysql,
 } from '../schema/traceroutes.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment } from '../types.js';
@@ -42,9 +42,191 @@ export class TraceroutesRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.insert(traceroutesSqlite).values(values);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.insert(traceroutesMysql).values(values);
     } else {
       const db = this.getPostgresDb();
       await db.insert(traceroutesPostgres).values(values);
+    }
+  }
+
+  /**
+   * Find a pending traceroute (with null route) within a timeout window
+   */
+  async findPendingTraceroute(fromNodeNum: number, toNodeNum: number, sinceTimestamp: number): Promise<{ id: number } | null> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const result = await db
+        .select({ id: traceroutesSqlite.id })
+        .from(traceroutesSqlite)
+        .where(
+          and(
+            eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
+            eq(traceroutesSqlite.toNodeNum, toNodeNum),
+            isNull(traceroutesSqlite.route),
+            gte(traceroutesSqlite.timestamp, sinceTimestamp)
+          )
+        )
+        .orderBy(desc(traceroutesSqlite.timestamp))
+        .limit(1);
+      return result.length > 0 ? { id: result[0].id } : null;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select({ id: traceroutesMysql.id })
+        .from(traceroutesMysql)
+        .where(
+          and(
+            eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+            eq(traceroutesMysql.toNodeNum, toNodeNum),
+            isNull(traceroutesMysql.route),
+            gte(traceroutesMysql.timestamp, sinceTimestamp)
+          )
+        )
+        .orderBy(desc(traceroutesMysql.timestamp))
+        .limit(1);
+      return result.length > 0 ? { id: result[0].id } : null;
+    } else {
+      const db = this.getPostgresDb();
+      const result = await db
+        .select({ id: traceroutesPostgres.id })
+        .from(traceroutesPostgres)
+        .where(
+          and(
+            eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
+            eq(traceroutesPostgres.toNodeNum, toNodeNum),
+            isNull(traceroutesPostgres.route),
+            gte(traceroutesPostgres.timestamp, sinceTimestamp)
+          )
+        )
+        .orderBy(desc(traceroutesPostgres.timestamp))
+        .limit(1);
+      return result.length > 0 ? { id: result[0].id } : null;
+    }
+  }
+
+  /**
+   * Update a pending traceroute with response data
+   */
+  async updateTracerouteResponse(id: number, route: string | null, routeBack: string | null, snrTowards: string | null, snrBack: string | null, timestamp: number): Promise<void> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db
+        .update(traceroutesSqlite)
+        .set({ route, routeBack, snrTowards, snrBack, timestamp })
+        .where(eq(traceroutesSqlite.id, id));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .update(traceroutesMysql)
+        .set({ route, routeBack, snrTowards, snrBack, timestamp })
+        .where(eq(traceroutesMysql.id, id));
+    } else {
+      const db = this.getPostgresDb();
+      await db
+        .update(traceroutesPostgres)
+        .set({ route, routeBack, snrTowards, snrBack, timestamp })
+        .where(eq(traceroutesPostgres.id, id));
+    }
+  }
+
+  /**
+   * Delete old traceroutes for a node pair, keeping only the most recent N
+   */
+  async cleanupOldTraceroutesForPair(fromNodeNum: number, toNodeNum: number, keepCount: number): Promise<void> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      // Get IDs to keep
+      const toKeep = await db
+        .select({ id: traceroutesSqlite.id })
+        .from(traceroutesSqlite)
+        .where(
+          and(
+            eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
+            eq(traceroutesSqlite.toNodeNum, toNodeNum)
+          )
+        )
+        .orderBy(desc(traceroutesSqlite.timestamp))
+        .limit(keepCount);
+      const keepIds = toKeep.map(r => r.id);
+      if (keepIds.length > 0) {
+        // Delete all except the ones to keep
+        const allForPair = await db
+          .select({ id: traceroutesSqlite.id })
+          .from(traceroutesSqlite)
+          .where(
+            and(
+              eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
+              eq(traceroutesSqlite.toNodeNum, toNodeNum)
+            )
+          );
+        for (const row of allForPair) {
+          if (!keepIds.includes(row.id)) {
+            await db.delete(traceroutesSqlite).where(eq(traceroutesSqlite.id, row.id));
+          }
+        }
+      }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toKeep = await db
+        .select({ id: traceroutesMysql.id })
+        .from(traceroutesMysql)
+        .where(
+          and(
+            eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+            eq(traceroutesMysql.toNodeNum, toNodeNum)
+          )
+        )
+        .orderBy(desc(traceroutesMysql.timestamp))
+        .limit(keepCount);
+      const keepIds = toKeep.map(r => r.id);
+      if (keepIds.length > 0) {
+        const allForPair = await db
+          .select({ id: traceroutesMysql.id })
+          .from(traceroutesMysql)
+          .where(
+            and(
+              eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+              eq(traceroutesMysql.toNodeNum, toNodeNum)
+            )
+          );
+        for (const row of allForPair) {
+          if (!keepIds.includes(row.id)) {
+            await db.delete(traceroutesMysql).where(eq(traceroutesMysql.id, row.id));
+          }
+        }
+      }
+    } else {
+      const db = this.getPostgresDb();
+      const toKeep = await db
+        .select({ id: traceroutesPostgres.id })
+        .from(traceroutesPostgres)
+        .where(
+          and(
+            eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
+            eq(traceroutesPostgres.toNodeNum, toNodeNum)
+          )
+        )
+        .orderBy(desc(traceroutesPostgres.timestamp))
+        .limit(keepCount);
+      const keepIds = toKeep.map(r => r.id);
+      if (keepIds.length > 0) {
+        const allForPair = await db
+          .select({ id: traceroutesPostgres.id })
+          .from(traceroutesPostgres)
+          .where(
+            and(
+              eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
+              eq(traceroutesPostgres.toNodeNum, toNodeNum)
+            )
+          );
+        for (const row of allForPair) {
+          if (!keepIds.includes(row.id)) {
+            await db.delete(traceroutesPostgres).where(eq(traceroutesPostgres.id, row.id));
+          }
+        }
+      }
     }
   }
 
@@ -61,6 +243,15 @@ export class TraceroutesRepository extends BaseRepository {
         .limit(limit);
 
       return result.map(t => this.normalizeBigInts(t) as DbTraceroute);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(traceroutesMysql)
+        .orderBy(desc(traceroutesMysql.timestamp))
+        .limit(limit);
+
+      return result as DbTraceroute[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -92,6 +283,21 @@ export class TraceroutesRepository extends BaseRepository {
         .limit(limit);
 
       return result.map(t => this.normalizeBigInts(t) as DbTraceroute);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(traceroutesMysql)
+        .where(
+          and(
+            eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+            eq(traceroutesMysql.toNodeNum, toNodeNum)
+          )
+        )
+        .orderBy(desc(traceroutesMysql.timestamp))
+        .limit(limit);
+
+      return result as DbTraceroute[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -130,6 +336,22 @@ export class TraceroutesRepository extends BaseRepository {
         await db.delete(traceroutesSqlite).where(eq(traceroutesSqlite.id, tr.id));
       }
       return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: traceroutesMysql.id })
+        .from(traceroutesMysql)
+        .where(
+          or(
+            eq(traceroutesMysql.fromNodeNum, nodeNum),
+            eq(traceroutesMysql.toNodeNum, nodeNum)
+          )
+        );
+
+      for (const tr of toDelete) {
+        await db.delete(traceroutesMysql).where(eq(traceroutesMysql.id, tr.id));
+      }
+      return toDelete.length;
     } else {
       const db = this.getPostgresDb();
       const toDelete = await db
@@ -166,6 +388,17 @@ export class TraceroutesRepository extends BaseRepository {
         await db.delete(traceroutesSqlite).where(eq(traceroutesSqlite.id, tr.id));
       }
       return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: traceroutesMysql.id })
+        .from(traceroutesMysql)
+        .where(lt(traceroutesMysql.timestamp, cutoff));
+
+      for (const tr of toDelete) {
+        await db.delete(traceroutesMysql).where(eq(traceroutesMysql.id, tr.id));
+      }
+      return toDelete.length;
     } else {
       const db = this.getPostgresDb();
       const toDelete = await db
@@ -187,6 +420,10 @@ export class TraceroutesRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       const result = await db.select().from(traceroutesSqlite);
+      return result.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.select().from(traceroutesMysql);
       return result.length;
     } else {
       const db = this.getPostgresDb();
@@ -215,6 +452,9 @@ export class TraceroutesRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.insert(routeSegmentsSqlite).values(values);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.insert(routeSegmentsMysql).values(values);
     } else {
       const db = this.getPostgresDb();
       await db.insert(routeSegmentsPostgres).values(values);
@@ -235,6 +475,16 @@ export class TraceroutesRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbRouteSegment;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(routeSegmentsMysql)
+        .orderBy(desc(routeSegmentsMysql.distanceKm))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbRouteSegment;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -263,6 +513,17 @@ export class TraceroutesRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbRouteSegment;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(routeSegmentsMysql)
+        .where(eq(routeSegmentsMysql.isRecordHolder, true))
+        .orderBy(desc(routeSegmentsMysql.distanceKm))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbRouteSegment;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -297,6 +558,22 @@ export class TraceroutesRepository extends BaseRepository {
         await db.delete(routeSegmentsSqlite).where(eq(routeSegmentsSqlite.id, seg.id));
       }
       return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: routeSegmentsMysql.id })
+        .from(routeSegmentsMysql)
+        .where(
+          or(
+            eq(routeSegmentsMysql.fromNodeNum, nodeNum),
+            eq(routeSegmentsMysql.toNodeNum, nodeNum)
+          )
+        );
+
+      for (const seg of toDelete) {
+        await db.delete(routeSegmentsMysql).where(eq(routeSegmentsMysql.id, seg.id));
+      }
+      return toDelete.length;
     } else {
       const db = this.getPostgresDb();
       const toDelete = await db
@@ -326,6 +603,12 @@ export class TraceroutesRepository extends BaseRepository {
         .update(routeSegmentsSqlite)
         .set({ isRecordHolder })
         .where(eq(routeSegmentsSqlite.id, id));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .update(routeSegmentsMysql)
+        .set({ isRecordHolder })
+        .where(eq(routeSegmentsMysql.id, id));
     } else {
       const db = this.getPostgresDb();
       await db
@@ -351,6 +634,19 @@ export class TraceroutesRepository extends BaseRepository {
           .update(routeSegmentsSqlite)
           .set({ isRecordHolder: false })
           .where(eq(routeSegmentsSqlite.id, h.id));
+      }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const holders = await db
+        .select({ id: routeSegmentsMysql.id })
+        .from(routeSegmentsMysql)
+        .where(eq(routeSegmentsMysql.isRecordHolder, true));
+
+      for (const h of holders) {
+        await db
+          .update(routeSegmentsMysql)
+          .set({ isRecordHolder: false })
+          .where(eq(routeSegmentsMysql.id, h.id));
       }
     } else {
       const db = this.getPostgresDb();
@@ -379,6 +675,13 @@ export class TraceroutesRepository extends BaseRepository {
         .from(traceroutesSqlite);
       await db.delete(traceroutesSqlite);
       return count.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const count = await db
+        .select({ id: traceroutesMysql.id })
+        .from(traceroutesMysql);
+      await db.delete(traceroutesMysql);
+      return count.length;
     } else {
       const db = this.getPostgresDb();
       const count = await db
@@ -399,6 +702,13 @@ export class TraceroutesRepository extends BaseRepository {
         .select({ id: routeSegmentsSqlite.id })
         .from(routeSegmentsSqlite);
       await db.delete(routeSegmentsSqlite);
+      return count.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const count = await db
+        .select({ id: routeSegmentsMysql.id })
+        .from(routeSegmentsMysql);
+      await db.delete(routeSegmentsMysql);
       return count.length;
     } else {
       const db = this.getPostgresDb();

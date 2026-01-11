@@ -148,6 +148,11 @@ export interface DbMessage {
   rxSnr?: number;
   rxRssi?: number;
   createdAt: number;
+  ackFailed?: boolean;
+  deliveryState?: string;
+  wantAck?: boolean;
+  routingErrorReceived?: boolean;
+  ackFromNode?: number;
 }
 
 export interface DbChannel {
@@ -308,7 +313,7 @@ class DatabaseService {
 
   // Drizzle ORM database and repositories (for async operations and PostgreSQL/MySQL support)
   private drizzleDatabase: Database | null = null;
-  private drizzleDbType: DatabaseType = 'sqlite';
+  public drizzleDbType: DatabaseType = 'sqlite';
   private postgresPool: import('pg').Pool | null = null;
   private mysqlPool: import('mysql2/promise').Pool | null = null;
 
@@ -325,6 +330,7 @@ class DatabaseService {
   private nodesCache: Map<number, DbNode> = new Map();
   private channelsCache: Map<number, DbChannel> = new Map();
   private _traceroutesCache: DbTraceroute[] = [];
+  private _traceroutesByNodesCache: Map<string, DbTraceroute[]> = new Map();
   private cacheInitialized = false;
 
   /**
@@ -749,6 +755,20 @@ class DatabaseService {
           this.channelsCache.set(channel.id, channel);
         }
         logger.info(`[DatabaseService] Loaded ${this.channelsCache.size} channels into cache`);
+      }
+
+      // Load recent messages into cache for delivery state updates
+      if (this.messagesRepo) {
+        const messages = await this.messagesRepo.getMessages(500);
+        this._messagesCache = messages.map(m => this.convertRepoMessage(m));
+        logger.info(`[DatabaseService] Loaded ${this._messagesCache.length} messages into cache`);
+      }
+
+      // Load neighbor info into cache
+      if (this.neighborsRepo) {
+        const neighbors = await this.neighborsRepo.getAllNeighborInfo();
+        this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
+        logger.info(`[DatabaseService] Loaded ${this._neighborsCache.length} neighbor records into cache`);
       }
 
       this.cacheInitialized = true;
@@ -2575,6 +2595,18 @@ class DatabaseService {
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!this.cacheInitialized) {
+        logger.debug('getActiveNodes() called before cache initialized');
+        return [];
+      }
+      const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
+      return Array.from(this.nodesCache.values())
+        .filter(node => node.lastHeard !== undefined && node.lastHeard !== null && node.lastHeard > cutoff)
+        .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
+    }
+
     // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
     const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
@@ -2713,6 +2745,17 @@ class DatabaseService {
    * Get all nodes that have public keys (for duplicate detection)
    */
   getNodesWithPublicKeys(): Array<{ nodeNum: number; publicKey: string | null }> {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const result: Array<{ nodeNum: number; publicKey: string | null }> = [];
+      for (const node of this.nodesCache.values()) {
+        if (node.publicKey && node.publicKey !== '') {
+          result.push({ nodeNum: node.nodeNum, publicKey: node.publicKey });
+        }
+      }
+      return result;
+    }
+
     const stmt = this.db.prepare(`
       SELECT nodeNum, publicKey FROM nodes
       WHERE publicKey IS NOT NULL AND publicKey != ''
@@ -2826,6 +2869,12 @@ class DatabaseService {
           logger.error(`[DatabaseService] Failed to insert message: ${error}`);
         });
       }
+      // Also add to cache immediately so delivery state updates can find it
+      this._messagesCache.unshift(messageData);
+      // Keep cache size reasonable
+      if (this._messagesCache.length > 500) {
+        this._messagesCache.pop();
+      }
       return;
     }
 
@@ -2879,7 +2928,89 @@ class DatabaseService {
     return message ? this.normalizeBigInts(message) : null;
   }
 
+  async getMessageByRequestIdAsync(requestId: number): Promise<DbMessage | null> {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        const msg = await this.messagesRepo.getMessageByRequestId(requestId);
+        return msg ? this.convertRepoMessage(msg) : null;
+      }
+      return null;
+    }
+    // For SQLite, use sync method
+    return this.getMessageByRequestId(requestId);
+  }
+
+  // Internal cache for messages (used for PostgreSQL sync compatibility)
+  private _messagesCache: DbMessage[] = [];
+  private _messagesCacheChannel: Map<number, DbMessage[]> = new Map();
+
+  // Helper to convert repo DbMessage to local DbMessage (null -> undefined)
+  private convertRepoMessage(msg: import('../db/types.js').DbMessage): DbMessage {
+    return {
+      id: msg.id,
+      fromNodeNum: msg.fromNodeNum,
+      toNodeNum: msg.toNodeNum,
+      fromNodeId: msg.fromNodeId,
+      toNodeId: msg.toNodeId,
+      text: msg.text,
+      channel: msg.channel,
+      timestamp: msg.timestamp,
+      createdAt: msg.createdAt,
+      portnum: msg.portnum ?? undefined,
+      requestId: msg.requestId ?? undefined,
+      rxTime: msg.rxTime ?? undefined,
+      hopStart: msg.hopStart ?? undefined,
+      hopLimit: msg.hopLimit ?? undefined,
+      relayNode: msg.relayNode ?? undefined,
+      replyId: msg.replyId ?? undefined,
+      emoji: msg.emoji ?? undefined,
+      viaMqtt: msg.viaMqtt ?? undefined,
+      rxSnr: msg.rxSnr ?? undefined,
+      rxRssi: msg.rxRssi ?? undefined,
+      ackFailed: msg.ackFailed ?? undefined,
+      deliveryState: msg.deliveryState ?? undefined,
+      wantAck: msg.wantAck ?? undefined,
+      routingErrorReceived: msg.routingErrorReceived ?? undefined,
+      ackFromNode: msg.ackFromNode ?? undefined,
+    };
+  }
+
   getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
+    // For PostgreSQL/MySQL, use async repo and cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        // Fire async query and update cache in background
+        this.messagesRepo.getMessages(limit, offset).then(messages => {
+          // Build a map of current delivery states to preserve local updates
+          // (async DB update may not have completed yet)
+          const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
+          for (const msg of this._messagesCache) {
+            const requestId = (msg as any).requestId;
+            const deliveryState = (msg as any).deliveryState;
+            // Only preserve non-pending states (they're local updates that may not be in DB yet)
+            if (requestId && deliveryState && deliveryState !== 'pending') {
+              currentDeliveryStates.set(requestId, {
+                deliveryState,
+                ackFailed: (msg as any).ackFailed ?? false
+              });
+            }
+          }
+          // Convert and merge, preserving local delivery state updates
+          this._messagesCache = messages.map(m => {
+            const converted = this.convertRepoMessage(m);
+            const requestId = (converted as any).requestId;
+            const preserved = requestId ? currentDeliveryStates.get(requestId) : undefined;
+            if (preserved && (!(converted as any).deliveryState || (converted as any).deliveryState === 'pending')) {
+              (converted as any).deliveryState = preserved.deliveryState;
+              (converted as any).ackFailed = preserved.ackFailed;
+            }
+            return converted;
+          });
+        }).catch(err => logger.debug('Failed to fetch messages:', err));
+      }
+      return this._messagesCache;
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       ORDER BY COALESCE(rxTime, timestamp) DESC
@@ -2890,6 +3021,40 @@ class DatabaseService {
   }
 
   getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0): DbMessage[] {
+    // For PostgreSQL/MySQL, use async repo and cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        // Fire async query and update cache in background
+        this.messagesRepo.getMessagesByChannel(channel, limit, offset).then(messages => {
+          // Build a map of current delivery states to preserve local updates
+          const currentCache = this._messagesCacheChannel.get(channel) || [];
+          const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
+          for (const msg of currentCache) {
+            const requestId = (msg as any).requestId;
+            const deliveryState = (msg as any).deliveryState;
+            if (requestId && deliveryState && deliveryState !== 'pending') {
+              currentDeliveryStates.set(requestId, {
+                deliveryState,
+                ackFailed: (msg as any).ackFailed ?? false
+              });
+            }
+          }
+          // Convert and merge, preserving local delivery state updates
+          const updatedCache = messages.map(m => {
+            const converted = this.convertRepoMessage(m);
+            const requestId = (converted as any).requestId;
+            const preserved = requestId ? currentDeliveryStates.get(requestId) : undefined;
+            if (preserved && (!(converted as any).deliveryState || (converted as any).deliveryState === 'pending')) {
+              (converted as any).deliveryState = preserved.deliveryState;
+              (converted as any).ackFailed = preserved.ackFailed;
+            }
+            return converted;
+          });
+          this._messagesCacheChannel.set(channel, updatedCache);
+        }).catch(err => logger.debug('Failed to fetch channel messages:', err));
+      }
+      return this._messagesCacheChannel.get(channel) || [];
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       WHERE channel = ?
@@ -2964,6 +3129,11 @@ class DatabaseService {
   }
 
   getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
+    // For PostgreSQL/MySQL, telemetry count is async - return 0 for now
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
+
     let query = 'SELECT COUNT(*) as count FROM telemetry WHERE nodeId = ?';
     const params: any[] = [nodeId];
 
@@ -3047,6 +3217,11 @@ class DatabaseService {
   }
 
   getMessagesByDay(days: number = 7): Array<{ date: string; count: number }> {
+    // For PostgreSQL/MySQL, return empty array - stats are async
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT
         date(timestamp/1000, 'unixepoch') as date,
@@ -3067,6 +3242,16 @@ class DatabaseService {
 
   // Cleanup operations
   cleanupOldMessages(days: number = 30): number {
+    // For PostgreSQL/MySQL, fire-and-forget async cleanup
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.cleanupOldMessages(days).catch(err => {
+          logger.debug('Failed to cleanup old messages:', err);
+        });
+      }
+      return 0;
+    }
+
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM messages WHERE timestamp < ?');
     const result = stmt.run(cutoff);
@@ -3074,6 +3259,17 @@ class DatabaseService {
   }
 
   cleanupInactiveNodes(days: number = 30): number {
+    // For PostgreSQL/MySQL, fire-and-forget async cleanup
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.nodesRepo) {
+        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+        this.nodesRepo.deleteInactiveNodes(cutoff).catch(err => {
+          logger.debug('Failed to cleanup inactive nodes:', err);
+        });
+      }
+      return 0;
+    }
+
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM nodes WHERE lastHeard < ? OR lastHeard IS NULL');
     const result = stmt.run(cutoff);
@@ -3082,18 +3278,48 @@ class DatabaseService {
 
   // Message deletion operations
   deleteMessage(id: string): boolean {
+    // For PostgreSQL/MySQL, fire-and-forget async delete
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.deleteMessage(id).catch(err => {
+          logger.debug('Failed to delete message:', err);
+        });
+      }
+      return true;
+    }
+
     const stmt = this.db.prepare('DELETE FROM messages WHERE id = ?');
     const result = stmt.run(id);
     return Number(result.changes) > 0;
   }
 
   purgeChannelMessages(channel: number): number {
+    // For PostgreSQL/MySQL, fire-and-forget async delete
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.purgeChannelMessages(channel).catch(err => {
+          logger.debug('Failed to purge channel messages:', err);
+        });
+      }
+      return 0;
+    }
+
     const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ?');
     const result = stmt.run(channel);
     return Number(result.changes);
   }
 
   purgeDirectMessages(nodeNum: number): number {
+    // For PostgreSQL/MySQL, fire-and-forget async delete
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.purgeDirectMessages(nodeNum).catch(err => {
+          logger.debug('Failed to purge direct messages:', err);
+        });
+      }
+      return 0;
+    }
+
     // Delete all DMs to/from this node
     // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel
     const stmt = this.db.prepare(`
@@ -3106,6 +3332,16 @@ class DatabaseService {
   }
 
   purgeNodeTraceroutes(nodeNum: number): number {
+    // For PostgreSQL/MySQL, fire-and-forget async delete
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        this.traceroutesRepo.deleteTraceroutesForNode(nodeNum).catch(err => {
+          logger.debug('Failed to purge node traceroutes:', err);
+        });
+      }
+      return 0;
+    }
+
     // Delete all traceroutes involving this node (either as source or destination)
     const stmt = this.db.prepare(`
       DELETE FROM traceroutes
@@ -3116,6 +3352,16 @@ class DatabaseService {
   }
 
   purgeNodeTelemetry(nodeNum: number): number {
+    // For PostgreSQL/MySQL, fire-and-forget async delete
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.telemetryRepo) {
+        this.telemetryRepo.deleteTelemetryByNode(nodeNum).catch(err => {
+          logger.debug('Failed to purge node telemetry:', err);
+        });
+      }
+      return 0;
+    }
+
     // Delete all telemetry data for this node
     const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeNum = ?');
     const result = stmt.run(nodeNum);
@@ -3197,6 +3443,16 @@ class DatabaseService {
   }
 
   deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): boolean {
+    // For PostgreSQL/MySQL, fire-and-forget async delete
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.telemetryRepo) {
+        this.telemetryRepo.deleteTelemetryByNodeAndType(nodeId, telemetryType).catch(err => {
+          logger.debug('Failed to delete telemetry by node and type:', err);
+        });
+      }
+      return true;
+    }
+
     // Delete telemetry data for a specific node and type
     const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeId = ? AND telemetryType = ?');
     const result = stmt.run(nodeId, telemetryType);
@@ -3225,6 +3481,12 @@ class DatabaseService {
   }
 
   close(): void {
+    // For PostgreSQL/MySQL, we don't have a direct close method
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      logger.debug('Closing PostgreSQL/MySQL connection');
+      return;
+    }
+
     if (this.db) {
       this.db.close();
     }
@@ -3239,6 +3501,11 @@ class DatabaseService {
   }
 
   importData(data: { nodes: DbNode[]; messages: DbMessage[] }): void {
+    // For PostgreSQL/MySQL, this method is not supported (use dedicated backup/restore)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('importData is not supported for PostgreSQL/MySQL. Use dedicated backup/restore functionality.');
+    }
+
     const transaction = this.db.transaction(() => {
       // Clear existing data
       this.db.exec('DELETE FROM messages');
@@ -3768,7 +4035,36 @@ class DatabaseService {
     return result.changes;
   }
 
+  // Cache for PostgreSQL telemetry data
+  private _telemetryCache: Map<string, DbTelemetry[]> = new Map();
+
   getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
+    // For PostgreSQL/MySQL, use async repo and cache (no averaging yet)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const cacheKey = `${nodeId}-${sinceTimestamp || 0}-${maxHours || 24}`;
+      if (this.telemetryRepo) {
+        // Calculate limit based on maxHours
+        const limit = Math.min((maxHours || 24) * 60, 5000); // ~1 per minute, max 5000
+        this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp).then(telemetry => {
+          // Convert to local DbTelemetry type
+          this._telemetryCache.set(cacheKey, telemetry.map(t => ({
+            id: t.id,
+            nodeId: t.nodeId,
+            nodeNum: t.nodeNum,
+            telemetryType: t.telemetryType,
+            timestamp: t.timestamp,
+            value: t.value,
+            unit: t.unit ?? undefined,
+            createdAt: t.createdAt,
+            packetTimestamp: t.packetTimestamp ?? undefined,
+            channel: t.channel ?? undefined,
+            precisionBits: t.precisionBits ?? undefined,
+            gpsAccuracy: t.gpsAccuracy ?? undefined,
+          })));
+        }).catch(err => logger.debug('Failed to fetch telemetry:', err));
+      }
+      return this._telemetryCache.get(cacheKey) || [];
+    }
     // Dynamic bucketing: automatically choose interval based on time range
     // This prevents data cutoff for long time periods or chatty nodes
     let actualIntervalMinutes = intervalMinutes;
@@ -3874,6 +4170,14 @@ class DatabaseService {
   ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
     const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
 
+    // For PostgreSQL/MySQL, packet rates not yet implemented - return empty
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      for (const type of types) {
+        result[type] = [];
+      }
+      return result;
+    }
+
     // Initialize result object for each type
     for (const type of types) {
       result[type] = [];
@@ -3960,7 +4264,54 @@ class DatabaseService {
   }
 
   insertTraceroute(tracerouteData: DbTraceroute): void {
-    // Wrap in transaction to prevent race conditions
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        const now = Date.now();
+        const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
+
+        // Fire async operation
+        (async () => {
+          try {
+            // Check for pending traceroute (reversed direction - see note below)
+            // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
+            // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
+            const pendingRecord = await this.traceroutesRepo!.findPendingTraceroute(
+              tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
+              tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
+              pendingTimeoutAgo
+            );
+
+            if (pendingRecord) {
+              // Update existing pending record
+              await this.traceroutesRepo!.updateTracerouteResponse(
+                pendingRecord.id,
+                tracerouteData.route || null,
+                tracerouteData.routeBack || null,
+                tracerouteData.snrTowards || null,
+                tracerouteData.snrBack || null,
+                tracerouteData.timestamp
+              );
+            } else {
+              // Insert new traceroute
+              await this.traceroutesRepo!.insertTraceroute(tracerouteData);
+            }
+
+            // Cleanup old traceroutes
+            await this.traceroutesRepo!.cleanupOldTraceroutesForPair(
+              tracerouteData.fromNodeNum,
+              tracerouteData.toNodeNum,
+              TRACEROUTE_HISTORY_LIMIT
+            );
+          } catch (error) {
+            logger.error('[DatabaseService] Failed to insert traceroute:', error);
+          }
+        })();
+      }
+      return;
+    }
+
+    // SQLite: Wrap in transaction to prevent race conditions
     const transaction = this.db.transaction(() => {
       const now = Date.now();
       const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
@@ -4047,6 +4398,26 @@ class DatabaseService {
   }
 
   getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
+    // For PostgreSQL/MySQL, use async repo with cache pattern
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        // Fire async query and update cache in background
+        const cacheKey = `${fromNodeNum}_${toNodeNum}`;
+        this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit).then(traceroutes => {
+          this._traceroutesByNodesCache.set(cacheKey, traceroutes.map(t => ({
+            ...t,
+            route: t.route || '',
+            routeBack: t.routeBack || '',
+            snrTowards: t.snrTowards || '',
+            snrBack: t.snrBack || '',
+          })) as DbTraceroute[]);
+        }).catch(err => logger.debug('Failed to fetch traceroutes by nodes:', err));
+      }
+      // Return cached result or empty array
+      const cacheKey = `${fromNodeNum}_${toNodeNum}`;
+      return this._traceroutesByNodesCache.get(cacheKey) || [];
+    }
+
     // Search bidirectionally to capture traceroutes initiated from either direction
     // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
     // where the stored direction might be reversed from what's being queried
@@ -4253,6 +4624,49 @@ class DatabaseService {
   recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): void {
     const now = Date.now();
 
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Fire async operations
+      (async () => {
+        try {
+          // Update the nodes table with last request time
+          if (this.nodesRepo) {
+            await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
+          }
+
+          // Insert a pending traceroute record
+          if (this.traceroutesRepo) {
+            const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
+            const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
+
+            await this.traceroutesRepo.insertTraceroute({
+              fromNodeNum,
+              toNodeNum,
+              fromNodeId,
+              toNodeId,
+              route: null,  // null for pending (findPendingTraceroute checks for isNull)
+              routeBack: null,
+              snrTowards: null,
+              snrBack: null,
+              timestamp: now,
+              createdAt: now,
+            });
+
+            // Cleanup old traceroutes
+            await this.traceroutesRepo.cleanupOldTraceroutesForPair(
+              fromNodeNum,
+              toNodeNum,
+              TRACEROUTE_HISTORY_LIMIT
+            );
+          }
+        } catch (error) {
+          logger.error('[DatabaseService] Failed to record traceroute request:', error);
+        }
+      })();
+      return;
+    }
+
+    // SQLite path
     // Update the nodes table with last request time
     const updateStmt = this.db.prepare(`
       UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
@@ -4652,6 +5066,11 @@ class DatabaseService {
     exhausted: boolean;
     startedAt: number;
   } | null {
+    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return null;
+    }
+
     const stmt = this.db.prepare(`
       SELECT nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt
       FROM auto_key_repair_state
@@ -4679,6 +5098,12 @@ class DatabaseService {
     exhausted?: boolean;
     startedAt?: number;
   }): void {
+    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      logger.debug(`setKeyRepairState not yet implemented for PostgreSQL/MySQL`);
+      return;
+    }
+
     const existing = this.getKeyRepairState(nodeNum);
     const now = Date.now();
 
@@ -4712,6 +5137,12 @@ class DatabaseService {
   }
 
   clearKeyRepairState(nodeNum: number): void {
+    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      logger.debug(`clearKeyRepairState not yet implemented for PostgreSQL/MySQL`);
+      return;
+    }
+
     const stmt = this.db.prepare(`
       DELETE FROM auto_key_repair_state
       WHERE nodeNum = ?
@@ -4728,6 +5159,34 @@ class DatabaseService {
     lastAttemptTime: number | null;
     startedAt: number | null;
   }[] {
+    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Return nodes with keyMismatchDetected from cache, without attempt tracking
+      const result: {
+        nodeNum: number;
+        nodeId: string;
+        longName: string | null;
+        shortName: string | null;
+        attemptCount: number;
+        lastAttemptTime: number | null;
+        startedAt: number | null;
+      }[] = [];
+      for (const node of this.nodesCache.values()) {
+        if (node.keyMismatchDetected) {
+          result.push({
+            nodeNum: node.nodeNum,
+            nodeId: node.nodeId,
+            longName: node.longName ?? null,
+            shortName: node.shortName ?? null,
+            attemptCount: 0,
+            lastAttemptTime: null,
+            startedAt: null,
+          });
+        }
+      }
+      return result;
+    }
+
     // Get nodes with keyMismatchDetected=true that are not exhausted
     const stmt = this.db.prepare(`
       SELECT
@@ -4756,6 +5215,12 @@ class DatabaseService {
 
   // Auto key repair log methods
   logKeyRepairAttempt(nodeNum: number, nodeName: string | null, action: string, success: boolean | null = null): number {
+    // For PostgreSQL/MySQL, key repair logging is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      logger.debug(`logKeyRepairAttempt not yet implemented for PostgreSQL/MySQL: ${action} for node ${nodeNum}`);
+      return 0;
+    }
+
     const now = Date.now();
     const stmt = this.db.prepare(`
       INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at)
@@ -4785,6 +5250,11 @@ class DatabaseService {
     action: string;
     success: boolean | null;
   }[] {
+    // For PostgreSQL/MySQL, key repair logging is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT id, timestamp, nodeNum, nodeName, action, success
       FROM auto_key_repair_log
@@ -4807,6 +5277,11 @@ class DatabaseService {
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
+    // For PostgreSQL/MySQL, telemetry is async - return empty for sync calls
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT * FROM telemetry
       WHERE telemetryType = ?
@@ -4818,6 +5293,11 @@ class DatabaseService {
   }
 
   getLatestTelemetryByNode(nodeId: string): DbTelemetry[] {
+    // For PostgreSQL/MySQL, telemetry is async - return empty for sync calls
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT * FROM telemetry t1
       WHERE nodeId = ? AND timestamp = (
@@ -5288,6 +5768,17 @@ class DatabaseService {
 
   // Route segment operations
   insertRouteSegment(segmentData: DbRouteSegment): void {
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        this.traceroutesRepo.insertRouteSegment(segmentData).catch((error) => {
+          logger.error('[DatabaseService] Failed to insert route segment:', error);
+        });
+      }
+      return;
+    }
+
+    // SQLite path
     const stmt = this.db.prepare(`
       INSERT INTO route_segments (
         fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt
@@ -5307,6 +5798,10 @@ class DatabaseService {
   }
 
   getLongestActiveRouteSegment(): DbRouteSegment | null {
+    // For PostgreSQL/MySQL, route segments not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return null;
+    }
     // Get the longest segment from recent traceroutes (within last 7 days)
     const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare(`
@@ -5320,6 +5815,10 @@ class DatabaseService {
   }
 
   getRecordHolderRouteSegment(): DbRouteSegment | null {
+    // For PostgreSQL/MySQL, route segments not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return null;
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM route_segments
       WHERE isRecordHolder = 1
@@ -5331,6 +5830,24 @@ class DatabaseService {
   }
 
   updateRecordHolderSegment(newSegment: DbRouteSegment): void {
+    // For PostgreSQL/MySQL, use async approach
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        this.traceroutesRepo.getRecordHolderRouteSegment().then(currentRecord => {
+          if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
+            this.traceroutesRepo!.clearAllRecordHolders().then(() => {
+              this.traceroutesRepo!.insertRouteSegment({
+                ...newSegment,
+                isRecordHolder: true
+              }).catch(err => logger.debug('Failed to insert record holder segment:', err));
+            }).catch(err => logger.debug('Failed to clear record holder segments:', err));
+            logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
+          }
+        }).catch(err => logger.debug('Failed to get record holder segment:', err));
+      }
+      return;
+    }
+
     const currentRecord = this.getRecordHolderRouteSegment();
 
     // If no current record or new segment is longer, update
@@ -5349,6 +5866,17 @@ class DatabaseService {
   }
 
   clearRecordHolderSegment(): void {
+    // For PostgreSQL/MySQL, use async approach
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        this.traceroutesRepo.clearAllRecordHolders().catch(err =>
+          logger.debug('Failed to clear record holder segments:', err)
+        );
+      }
+      logger.debug('🗑️ Cleared record holder route segment');
+      return;
+    }
+
     this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
     logger.debug('🗑️ Cleared record holder route segment');
   }
@@ -5402,7 +5930,35 @@ class DatabaseService {
     return result?.size ?? 0;
   }
 
+  private _neighborsCache: DbNeighborInfo[] = [];
+  private _neighborsByNodeCache: Map<number, DbNeighborInfo[]> = new Map();
+
   saveNeighborInfo(neighborInfo: Omit<DbNeighborInfo, 'id' | 'createdAt'>): void {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Update local cache immediately
+      const newNeighbor: DbNeighborInfo = {
+        id: 0, // Will be set by DB
+        nodeNum: neighborInfo.nodeNum,
+        neighborNodeNum: neighborInfo.neighborNodeNum,
+        snr: neighborInfo.snr,
+        lastRxTime: neighborInfo.lastRxTime,
+        timestamp: neighborInfo.timestamp,
+        createdAt: Date.now(),
+      };
+      this._neighborsCache.push(newNeighbor);
+
+      if (this.neighborsRepo) {
+        this.neighborsRepo.upsertNeighborInfo({
+          ...neighborInfo,
+          createdAt: Date.now()
+        } as DbNeighborInfo).catch(err =>
+          logger.debug('Failed to save neighbor info:', err)
+        );
+      }
+      return;
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO neighbor_info (nodeNum, neighborNodeNum, snr, lastRxTime, timestamp, createdAt)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -5417,7 +5973,29 @@ class DatabaseService {
     );
   }
 
+  private convertRepoNeighborInfo(n: import('../db/types.js').DbNeighborInfo): DbNeighborInfo {
+    return {
+      id: n.id,
+      nodeNum: n.nodeNum,
+      neighborNodeNum: n.neighborNodeNum,
+      snr: n.snr ?? undefined,
+      lastRxTime: n.lastRxTime ?? undefined,
+      timestamp: n.timestamp,
+      createdAt: n.createdAt,
+    };
+  }
+
   getNeighborsForNode(nodeNum: number): DbNeighborInfo[] {
+    // For PostgreSQL/MySQL, use async repo with cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.neighborsRepo) {
+        this.neighborsRepo.getNeighborsForNode(nodeNum).then(neighbors => {
+          this._neighborsByNodeCache.set(nodeNum, neighbors.map(n => this.convertRepoNeighborInfo(n)));
+        }).catch(err => logger.debug('Failed to get neighbors for node:', err));
+      }
+      return this._neighborsByNodeCache.get(nodeNum) || [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT * FROM neighbor_info
       WHERE nodeNum = ?
@@ -5427,6 +6005,16 @@ class DatabaseService {
   }
 
   getAllNeighborInfo(): DbNeighborInfo[] {
+    // For PostgreSQL/MySQL, use async repo with cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.neighborsRepo) {
+        this.neighborsRepo.getAllNeighborInfo().then(neighbors => {
+          this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
+        }).catch(err => logger.debug('Failed to get all neighbor info:', err));
+      }
+      return this._neighborsCache;
+    }
+
     const stmt = this.db.prepare(`
       SELECT * FROM neighbor_info
       ORDER BY timestamp DESC
@@ -5435,6 +6023,13 @@ class DatabaseService {
   }
 
   getLatestNeighborInfoPerNode(): DbNeighborInfo[] {
+    // For PostgreSQL/MySQL, use the all neighbor info cache (simplified)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Return cached data - getAllNeighborInfo is already ordered by timestamp DESC
+      // For now, just return all (filtering can be done on demand)
+      return this._neighborsCache;
+    }
+
     const stmt = this.db.prepare(`
       SELECT ni.*
       FROM neighbor_info ni
@@ -6028,6 +6623,12 @@ class DatabaseService {
 
   // Read Messages tracking
   markMessageAsRead(messageId: string, userId: number | null): void {
+    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // TODO: Implement read message tracking for PostgreSQL via repository
+      return;
+    }
+
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       VALUES (?, ?, ?)
@@ -6037,6 +6638,12 @@ class DatabaseService {
 
   markMessagesAsRead(messageIds: string[], userId: number | null): void {
     if (messageIds.length === 0) return;
+
+    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // TODO: Implement read message tracking for PostgreSQL via repository
+      return;
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
@@ -6054,6 +6661,10 @@ class DatabaseService {
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
+    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
     let query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
@@ -6073,6 +6684,10 @@ class DatabaseService {
   }
 
   markDMMessagesAsRead(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): number {
+    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
     let query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
@@ -6097,6 +6712,10 @@ class DatabaseService {
    * This marks all direct messages (channel = -1) involving the local node as read
    */
   markAllDMMessagesAsRead(localNodeId: string, userId: number | null): number {
+    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
     const query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
@@ -6113,6 +6732,15 @@ class DatabaseService {
 
   // Update message acknowledgment status by requestId (for tracking routing ACKs)
   updateMessageAckByRequestId(requestId: number, _acknowledged: boolean = true, ackFailed: boolean = false): boolean {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.updateMessageAckByRequestId(requestId, ackFailed).catch((error) => {
+          logger.debug(`[DatabaseService] Message ack update skipped for requestId ${requestId}: ${error}`);
+        });
+      }
+      return true; // Optimistically return true
+    }
     const stmt = this.db.prepare(`
       UPDATE messages
       SET ackFailed = ?, routingErrorReceived = ?, deliveryState = ?
@@ -6133,6 +6761,25 @@ class DatabaseService {
           // Silently ignore errors - message may not exist (normal for routing acks from external nodes)
           logger.debug(`[DatabaseService] Message delivery state update skipped for requestId ${requestId}: ${error}`);
         });
+      }
+      // Also update the cache immediately so poll returns updated state
+      const ackFailed = deliveryState === 'failed';
+      for (const msg of this._messagesCache) {
+        if ((msg as any).requestId === requestId) {
+          (msg as any).deliveryState = deliveryState;
+          (msg as any).ackFailed = ackFailed;
+          break;
+        }
+      }
+      // Update channel-specific caches too
+      for (const [_channel, messages] of this._messagesCacheChannel) {
+        for (const msg of messages) {
+          if ((msg as any).requestId === requestId) {
+            (msg as any).deliveryState = deliveryState;
+            (msg as any).ackFailed = ackFailed;
+            break;
+          }
+        }
       }
       return true; // Optimistic return
     }
@@ -6422,6 +7069,13 @@ class DatabaseService {
   }
 
   cleanupOldPacketLogs(): number {
+    // For PostgreSQL/MySQL, packet log cleanup not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // TODO: Implement packet log cleanup for PostgreSQL via repository
+      logger.debug('🧹 Packet log cleanup skipped (PostgreSQL/MySQL not yet implemented)');
+      return 0;
+    }
+
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
     const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
@@ -6438,6 +7092,10 @@ class DatabaseService {
    * Get all themes (custom only - built-in themes are in CSS)
    */
   getAllCustomThemes(): DbCustomTheme[] {
+    // For PostgreSQL/MySQL, custom themes not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
     try {
       const stmt = this.db.prepare(`
         SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
@@ -6457,6 +7115,10 @@ class DatabaseService {
    * Get a specific theme by slug
    */
   getCustomThemeBySlug(slug: string): DbCustomTheme | undefined {
+    // For PostgreSQL/MySQL, custom themes not yet implemented
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return undefined;
+    }
     try {
       const stmt = this.db.prepare(`
         SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
@@ -6680,7 +7342,7 @@ class DatabaseService {
           text TEXT NOT NULL,
           channel INTEGER NOT NULL DEFAULT 0,
           portnum INTEGER,
-          "requestId" INTEGER,
+          "requestId" BIGINT,
           timestamp BIGINT NOT NULL,
           "rxTime" BIGINT,
           "hopStart" INTEGER,
@@ -6714,7 +7376,7 @@ class DatabaseService {
         CREATE TABLE IF NOT EXISTS telemetry (
           id SERIAL PRIMARY KEY,
           "nodeId" TEXT NOT NULL,
-          "nodeNum" BIGINT NOT NULL REFERENCES nodes("nodeNum"),
+          "nodeNum" BIGINT NOT NULL,
           "telemetryType" TEXT NOT NULL,
           timestamp BIGINT NOT NULL,
           value REAL NOT NULL,
@@ -6728,34 +7390,38 @@ class DatabaseService {
 
         CREATE TABLE IF NOT EXISTS traceroutes (
           id SERIAL PRIMARY KEY,
-          "requestId" TEXT UNIQUE NOT NULL,
           "fromNodeNum" BIGINT NOT NULL,
           "toNodeNum" BIGINT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          "requestedAt" BIGINT NOT NULL,
-          "completedAt" BIGINT,
-          "wantResponse" BOOLEAN DEFAULT true,
-          snr DOUBLE PRECISION,
-          "viaMqtt" BOOLEAN DEFAULT false
+          "fromNodeId" TEXT NOT NULL,
+          "toNodeId" TEXT NOT NULL,
+          route TEXT,
+          "routeBack" TEXT,
+          "snrTowards" TEXT,
+          "snrBack" TEXT,
+          timestamp BIGINT NOT NULL,
+          "createdAt" BIGINT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS route_segments (
           id SERIAL PRIMARY KEY,
-          "tracerouteId" INTEGER NOT NULL REFERENCES traceroutes(id) ON DELETE CASCADE,
-          "nodeNum" BIGINT NOT NULL,
-          "nodeId" TEXT NOT NULL,
-          snr DOUBLE PRECISION,
-          "viaMqtt" BOOLEAN DEFAULT false,
-          "hopIndex" INTEGER NOT NULL,
-          direction TEXT NOT NULL
+          "fromNodeNum" BIGINT NOT NULL,
+          "toNodeNum" BIGINT NOT NULL,
+          "fromNodeId" TEXT NOT NULL,
+          "toNodeId" TEXT NOT NULL,
+          "distanceKm" REAL NOT NULL,
+          "isRecordHolder" BOOLEAN DEFAULT false,
+          timestamp BIGINT NOT NULL,
+          "createdAt" BIGINT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS neighbor_info (
           id SERIAL PRIMARY KEY,
           "nodeNum" BIGINT NOT NULL,
-          "neighborNum" BIGINT NOT NULL,
+          "neighborNodeNum" BIGINT NOT NULL,
           snr DOUBLE PRECISION,
-          "timestamp" BIGINT NOT NULL
+          "lastRxTime" BIGINT,
+          "timestamp" BIGINT NOT NULL,
+          "createdAt" BIGINT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS settings (
@@ -6926,8 +7592,9 @@ class DatabaseService {
         CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
         CREATE INDEX IF NOT EXISTS idx_telemetry_nodenum ON telemetry("nodeNum");
         CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_traceroutes_requestid ON traceroutes("requestId");
-        CREATE INDEX IF NOT EXISTS idx_route_segments_tracerouteid ON route_segments("tracerouteId");
+        CREATE INDEX IF NOT EXISTS idx_traceroutes_from_to ON traceroutes("fromNodeNum", "toNodeNum");
+        CREATE INDEX IF NOT EXISTS idx_traceroutes_timestamp ON traceroutes(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_route_segments_from_to ON route_segments("fromNodeNum", "toNodeNum");
         CREATE INDEX IF NOT EXISTS idx_neighbor_info_nodenum ON neighbor_info("nodeNum");
         CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
         CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
@@ -7026,7 +7693,7 @@ class DatabaseService {
           text TEXT NOT NULL,
           channel INT NOT NULL DEFAULT 0,
           portnum INT,
-          requestId INT,
+          requestId BIGINT,
           timestamp BIGINT NOT NULL,
           rxTime BIGINT,
           hopStart INT,
@@ -7073,8 +7740,7 @@ class DatabaseService {
           packetTimestamp BIGINT,
           channel INT,
           precisionBits INT,
-          gpsAccuracy DOUBLE,
-          FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+          gpsAccuracy DOUBLE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
@@ -7128,29 +7794,30 @@ class DatabaseService {
       await connection.query(`
         CREATE TABLE IF NOT EXISTS traceroutes (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          requestId VARCHAR(255) UNIQUE NOT NULL,
           fromNodeNum BIGINT NOT NULL,
           toNodeNum BIGINT NOT NULL,
-          status VARCHAR(50) NOT NULL DEFAULT 'pending',
-          requestedAt BIGINT NOT NULL,
-          completedAt BIGINT,
-          wantResponse BOOLEAN DEFAULT true,
-          snr DOUBLE,
-          viaMqtt BOOLEAN DEFAULT false
+          fromNodeId VARCHAR(32) NOT NULL,
+          toNodeId VARCHAR(32) NOT NULL,
+          route TEXT,
+          routeBack TEXT,
+          snrTowards TEXT,
+          snrBack TEXT,
+          timestamp BIGINT NOT NULL,
+          createdAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
       await connection.query(`
         CREATE TABLE IF NOT EXISTS route_segments (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          tracerouteId INT NOT NULL,
-          nodeNum BIGINT NOT NULL,
-          nodeId VARCHAR(255) NOT NULL,
-          snr DOUBLE,
-          viaMqtt BOOLEAN DEFAULT false,
-          hopIndex INT NOT NULL,
-          direction VARCHAR(50) NOT NULL,
-          FOREIGN KEY (tracerouteId) REFERENCES traceroutes(id) ON DELETE CASCADE
+          fromNodeNum BIGINT NOT NULL,
+          toNodeNum BIGINT NOT NULL,
+          fromNodeId VARCHAR(32) NOT NULL,
+          toNodeId VARCHAR(32) NOT NULL,
+          distanceKm DOUBLE NOT NULL,
+          isRecordHolder BOOLEAN DEFAULT false,
+          timestamp BIGINT NOT NULL,
+          createdAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
@@ -7158,9 +7825,11 @@ class DatabaseService {
         CREATE TABLE IF NOT EXISTS neighbor_info (
           id INT AUTO_INCREMENT PRIMARY KEY,
           nodeNum BIGINT NOT NULL,
-          neighborNum BIGINT NOT NULL,
+          neighborNodeNum BIGINT NOT NULL,
           snr DOUBLE,
-          timestamp BIGINT NOT NULL
+          lastRxTime BIGINT,
+          timestamp BIGINT NOT NULL,
+          createdAt BIGINT NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
@@ -7319,8 +7988,9 @@ class DatabaseService {
       await connection.query(`CREATE INDEX idx_messages_channel ON messages(channel)`);
       await connection.query(`CREATE INDEX idx_telemetry_nodenum ON telemetry(nodeNum)`);
       await connection.query(`CREATE INDEX idx_telemetry_timestamp ON telemetry(timestamp)`);
-      await connection.query(`CREATE INDEX idx_traceroutes_requestid ON traceroutes(requestId)`);
-      await connection.query(`CREATE INDEX idx_route_segments_tracerouteid ON route_segments(tracerouteId)`);
+      await connection.query(`CREATE INDEX idx_traceroutes_from_to ON traceroutes(fromNodeNum, toNodeNum)`);
+      await connection.query(`CREATE INDEX idx_traceroutes_timestamp ON traceroutes(timestamp)`);
+      await connection.query(`CREATE INDEX idx_route_segments_from_to ON route_segments(fromNodeNum, toNodeNum)`);
       await connection.query(`CREATE INDEX idx_neighbor_info_nodenum ON neighbor_info(nodeNum)`);
       await connection.query(`CREATE INDEX idx_sessions_expire ON sessions(expire)`);
       await connection.query(`CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp)`);
@@ -7529,6 +8199,23 @@ class DatabaseService {
     }
     // Fallback to sync for SQLite
     this.auditLog(userId, action, resource, details, ipAddress);
+  }
+
+  /**
+   * Async method to update user password.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async updatePasswordAsync(userId: number, newPassword: string): Promise<void> {
+    // Import bcrypt dynamically to avoid circular dependencies
+    const bcrypt = await import('bcrypt');
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    if (this.authRepo) {
+      await this.authRepo.updateUser(userId, { passwordHash });
+      return;
+    }
+    // Fallback to sync for SQLite
+    await this.userModel.updatePassword(userId, newPassword);
   }
 }
 

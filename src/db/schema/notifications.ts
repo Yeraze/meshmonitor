@@ -1,11 +1,12 @@
 /**
  * Drizzle schema definition for notification tables
  * Includes: push_subscriptions, user_notification_preferences, read_messages
- * Supports SQLite, PostgreSQL, and MySQL (MySQL uses PostgreSQL schema)
+ * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { usersSqlite, usersPostgres } from './auth.js';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
 // ============ PUSH SUBSCRIPTIONS ============
 
@@ -85,6 +86,44 @@ export const readMessagesPostgres = pgTable('read_messages', {
   readAt: pgBigint('readAt', { mode: 'number' }).notNull(),
 });
 
+// ============ MYSQL SCHEMAS ============
+
+export const pushSubscriptionsMysql = mysqlTable('push_subscriptions', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').references(() => usersMysql.id, { onDelete: 'cascade' }),
+  endpoint: myText('endpoint').notNull(),
+  p256dhKey: myVarchar('p256dhKey', { length: 512 }).notNull(),
+  authKey: myVarchar('authKey', { length: 128 }).notNull(),
+  userAgent: myVarchar('userAgent', { length: 512 }),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  lastUsedAt: myBigint('lastUsedAt', { mode: 'number' }),
+});
+
+export const userNotificationPreferencesMysql = mysqlTable('user_notification_preferences', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  notifyOnMessage: myBoolean('notifyOnMessage').default(true),
+  notifyOnDirectMessage: myBoolean('notifyOnDirectMessage').default(true),
+  notifyOnChannelMessage: myBoolean('notifyOnChannelMessage').default(false),
+  notifyOnEmoji: myBoolean('notifyOnEmoji').default(false),
+  notifyOnInactiveNode: myBoolean('notifyOnInactiveNode').default(false),
+  notifyOnServerEvents: myBoolean('notifyOnServerEvents').default(false),
+  prefixWithNodeName: myBoolean('prefixWithNodeName').default(false),
+  appriseEnabled: myBoolean('appriseEnabled').default(true),
+  appriseUrls: myText('appriseUrls'),
+  notifyOnMqtt: myBoolean('notifyOnMqtt').default(true),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+});
+
+export const readMessagesMysql = mysqlTable('read_messages', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  messageId: myVarchar('messageId', { length: 64 }).notNull(),
+  readAt: myBigint('readAt', { mode: 'number' }).notNull(),
+});
+
 // Type inference
 export type PushSubscriptionSqlite = typeof pushSubscriptionsSqlite.$inferSelect;
 export type NewPushSubscriptionSqlite = typeof pushSubscriptionsSqlite.$inferInsert;
@@ -100,3 +139,10 @@ export type ReadMessageSqlite = typeof readMessagesSqlite.$inferSelect;
 export type NewReadMessageSqlite = typeof readMessagesSqlite.$inferInsert;
 export type ReadMessagePostgres = typeof readMessagesPostgres.$inferSelect;
 export type NewReadMessagePostgres = typeof readMessagesPostgres.$inferInsert;
+export type ReadMessageMysql = typeof readMessagesMysql.$inferSelect;
+export type NewReadMessageMysql = typeof readMessagesMysql.$inferInsert;
+
+export type PushSubscriptionMysql = typeof pushSubscriptionsMysql.$inferSelect;
+export type NewPushSubscriptionMysql = typeof pushSubscriptionsMysql.$inferInsert;
+export type UserNotificationPreferenceMysql = typeof userNotificationPreferencesMysql.$inferSelect;
+export type NewUserNotificationPreferenceMysql = typeof userNotificationPreferencesMysql.$inferInsert;

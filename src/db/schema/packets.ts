@@ -1,9 +1,10 @@
 /**
  * Drizzle schema definition for the packet_log table
- * Supports both SQLite and PostgreSQL
+ * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
 
 // SQLite schema
 export const packetLogSqlite = sqliteTable('packet_log', {
@@ -63,8 +64,39 @@ export const packetLogPostgres = pgTable('packet_log', {
   created_at: pgBigint('created_at', { mode: 'number' }),
 });
 
+// MySQL schema
+export const packetLogMysql = mysqlTable('packet_log', {
+  id: mySerial('id').primaryKey(),
+  packet_id: myInt('packet_id'),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  from_node: myInt('from_node').notNull(),
+  from_node_id: myVarchar('from_node_id', { length: 32 }),
+  from_node_longName: myVarchar('from_node_longName', { length: 255 }),
+  to_node: myInt('to_node'),
+  to_node_id: myVarchar('to_node_id', { length: 32 }),
+  to_node_longName: myVarchar('to_node_longName', { length: 255 }),
+  channel: myInt('channel'),
+  portnum: myInt('portnum').notNull(),
+  portnum_name: myVarchar('portnum_name', { length: 64 }),
+  encrypted: myBoolean('encrypted').notNull(),
+  snr: myDouble('snr'),
+  rssi: myDouble('rssi'),
+  hop_limit: myInt('hop_limit'),
+  hop_start: myInt('hop_start'),
+  relay_node: myInt('relay_node'),
+  payload_size: myInt('payload_size'),
+  want_ack: myBoolean('want_ack'),
+  priority: myInt('priority'),
+  payload_preview: myText('payload_preview'),
+  metadata: myText('metadata'),
+  direction: myVarchar('direction', { length: 8 }), // 'rx' or 'tx'
+  created_at: myBigint('created_at', { mode: 'number' }),
+});
+
 // Type inference
 export type PacketLogSqlite = typeof packetLogSqlite.$inferSelect;
 export type NewPacketLogSqlite = typeof packetLogSqlite.$inferInsert;
 export type PacketLogPostgres = typeof packetLogPostgres.$inferSelect;
 export type NewPacketLogPostgres = typeof packetLogPostgres.$inferInsert;
+export type PacketLogMysql = typeof packetLogMysql.$inferSelect;
+export type NewPacketLogMysql = typeof packetLogMysql.$inferInsert;

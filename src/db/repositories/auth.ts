@@ -3,16 +3,16 @@
  *
  * Handles authentication-related database operations.
  * Includes: users, permissions, sessions, audit_log, api_tokens
- * Supports both SQLite and PostgreSQL through Drizzle ORM.
+ * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, lt, desc, and } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import {
-  usersSqlite, usersPostgres,
-  permissionsSqlite, permissionsPostgres,
-  sessionsSqlite, sessionsPostgres,
-  auditLogSqlite, auditLogPostgres,
-  apiTokensSqlite, apiTokensPostgres,
+  usersSqlite, usersPostgres, usersMysql,
+  permissionsSqlite, permissionsPostgres, permissionsMysql,
+  sessionsSqlite, sessionsPostgres, sessionsMysql,
+  auditLogSqlite, auditLogPostgres, auditLogMysql,
+  apiTokensSqlite, apiTokensPostgres, apiTokensMysql,
 } from '../schema/auth.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
@@ -172,6 +172,16 @@ export class AuthRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbUser;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(usersMysql)
+        .where(eq(usersMysql.id, id))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbUser;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -199,6 +209,16 @@ export class AuthRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbUser;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(usersMysql)
+        .where(eq(usersMysql.username, username))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbUser;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -226,6 +246,16 @@ export class AuthRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbUser;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(usersMysql)
+        .where(eq(usersMysql.oidcSubject, oidcSubject))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbUser;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -247,6 +277,10 @@ export class AuthRepository extends BaseRepository {
       const db = this.getSqliteDb();
       const result = await db.select().from(usersSqlite);
       return result.map(u => this.normalizeBigInts(u) as DbUser);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.select().from(usersMysql);
+      return result as DbUser[];
     } else {
       const db = this.getPostgresDb();
       const result = await db.select().from(usersPostgres);
@@ -264,6 +298,14 @@ export class AuthRepository extends BaseRepository {
       const { updatedAt, ...sqliteUser } = user;
       const result = await db.insert(usersSqlite).values(sqliteUser);
       return Number(result.lastInsertRowid);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      // MySQL requires updatedAt
+      if (!user.updatedAt) {
+        user.updatedAt = Date.now();
+      }
+      const result = await db.insert(usersMysql).values(user as Required<Pick<CreateUserInput, 'updatedAt'>> & CreateUserInput);
+      return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
       // PostgreSQL requires updatedAt
@@ -284,6 +326,13 @@ export class AuthRepository extends BaseRepository {
       // SQLite doesn't have updatedAt column - remove it from the update
       const { updatedAt, ...sqliteUpdates } = updates;
       await db.update(usersSqlite).set(sqliteUpdates).where(eq(usersSqlite.id, id));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      // Auto-set updatedAt for MySQL if not provided
+      if (!updates.updatedAt) {
+        updates.updatedAt = Date.now();
+      }
+      await db.update(usersMysql).set(updates).where(eq(usersMysql.id, id));
     } else {
       const db = this.getPostgresDb();
       // Auto-set updatedAt for PostgreSQL if not provided
@@ -298,16 +347,19 @@ export class AuthRepository extends BaseRepository {
    * Delete user
    */
   async deleteUser(id: number): Promise<boolean> {
+    const existing = await this.getUserById(id);
+    if (!existing) return false;
+
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const existing = await this.getUserById(id);
-      if (!existing) return false;
       await db.delete(usersSqlite).where(eq(usersSqlite.id, id));
+      return true;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.delete(usersMysql).where(eq(usersMysql.id, id));
       return true;
     } else {
       const db = this.getPostgresDb();
-      const existing = await this.getUserById(id);
-      if (!existing) return false;
       await db.delete(usersPostgres).where(eq(usersPostgres.id, id));
       return true;
     }
@@ -320,6 +372,10 @@ export class AuthRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       const result = await db.select().from(usersSqlite);
+      return result.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.select().from(usersMysql);
       return result.length;
     } else {
       const db = this.getPostgresDb();
@@ -341,6 +397,13 @@ export class AuthRepository extends BaseRepository {
         .from(permissionsSqlite)
         .where(eq(permissionsSqlite.userId, userId));
       return result.map(p => this.normalizeBigInts(p) as DbPermission);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(permissionsMysql)
+        .where(eq(permissionsMysql.userId, userId));
+      return result as DbPermission[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -365,6 +428,12 @@ export class AuthRepository extends BaseRepository {
       };
       const result = await db.insert(permissionsSqlite).values(sqlitePermission);
       return Number(result.lastInsertRowid);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      // MySQL doesn't have grantedAt/grantedBy but has canDelete
+      const { grantedAt, grantedBy, ...mysqlPermission } = permission;
+      const result = await db.insert(permissionsMysql).values(mysqlPermission);
+      return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
       // PostgreSQL doesn't have grantedAt/grantedBy
@@ -387,6 +456,17 @@ export class AuthRepository extends BaseRepository {
 
       for (const p of toDelete) {
         await db.delete(permissionsSqlite).where(eq(permissionsSqlite.id, p.id));
+      }
+      return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: permissionsMysql.id })
+        .from(permissionsMysql)
+        .where(eq(permissionsMysql.userId, userId));
+
+      for (const p of toDelete) {
+        await db.delete(permissionsMysql).where(eq(permissionsMysql.id, p.id));
       }
       return toDelete.length;
     } else {
@@ -419,6 +499,16 @@ export class AuthRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as DbApiToken;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(apiTokensMysql)
+        .where(eq(apiTokensMysql.tokenHash, tokenHash))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as DbApiToken;
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -443,6 +533,13 @@ export class AuthRepository extends BaseRepository {
         .from(apiTokensSqlite)
         .where(eq(apiTokensSqlite.userId, userId));
       return result.map(t => this.normalizeBigInts(t) as DbApiToken);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(apiTokensMysql)
+        .where(eq(apiTokensMysql.userId, userId));
+      return result as DbApiToken[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -461,6 +558,10 @@ export class AuthRepository extends BaseRepository {
       const db = this.getSqliteDb();
       const result = await db.insert(apiTokensSqlite).values(token);
       return Number(result.lastInsertRowid);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.insert(apiTokensMysql).values(token);
+      return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
       const result = await db.insert(apiTokensPostgres).values(token).returning({ id: apiTokensPostgres.id });
@@ -476,6 +577,9 @@ export class AuthRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.update(apiTokensSqlite).set({ lastUsedAt: now }).where(eq(apiTokensSqlite.id, id));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.update(apiTokensMysql).set({ lastUsedAt: now }).where(eq(apiTokensMysql.id, id));
     } else {
       const db = this.getPostgresDb();
       await db.update(apiTokensPostgres).set({ lastUsedAt: now }).where(eq(apiTokensPostgres.id, id));
@@ -494,6 +598,15 @@ export class AuthRepository extends BaseRepository {
         .where(eq(apiTokensSqlite.id, id));
       if (existing.length === 0) return false;
       await db.delete(apiTokensSqlite).where(eq(apiTokensSqlite.id, id));
+      return true;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const existing = await db
+        .select({ id: apiTokensMysql.id })
+        .from(apiTokensMysql)
+        .where(eq(apiTokensMysql.id, id));
+      if (existing.length === 0) return false;
+      await db.delete(apiTokensMysql).where(eq(apiTokensMysql.id, id));
       return true;
     } else {
       const db = this.getPostgresDb();
@@ -537,6 +650,24 @@ export class AuthRepository extends BaseRepository {
         .where(and(
           eq(apiTokensSqlite.prefix, prefix),
           eq(apiTokensSqlite.isActive, true)
+        ))
+        .limit(1);
+
+      if (result.length > 0) {
+        tokenRecord = result[0];
+      }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select({
+          id: apiTokensMysql.id,
+          userId: apiTokensMysql.userId,
+          tokenHash: apiTokensMysql.tokenHash,
+        })
+        .from(apiTokensMysql)
+        .where(and(
+          eq(apiTokensMysql.prefix, prefix),
+          eq(apiTokensMysql.isActive, true)
         ))
         .limit(1);
 
@@ -599,6 +730,19 @@ export class AuthRepository extends BaseRepository {
         timestamp: entry.timestamp,
       });
       return Number(result.lastInsertRowid);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db.insert(auditLogMysql).values({
+        userId: entry.userId,
+        username: entry.username,
+        action: entry.action,
+        resource: entry.resource,
+        details: entry.details,
+        ipAddress: entry.ipAddress,
+        userAgent: entry.userAgent,
+        timestamp: entry.timestamp,
+      });
+      return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
       const result = await db.insert(auditLogPostgres).values({
@@ -628,6 +772,15 @@ export class AuthRepository extends BaseRepository {
         .limit(limit)
         .offset(offset);
       return result.map(e => this.normalizeBigInts(e) as DbAuditLogEntry);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(auditLogMysql)
+        .orderBy(desc(auditLogMysql.timestamp))
+        .limit(limit)
+        .offset(offset);
+      return result as DbAuditLogEntry[];
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -655,6 +808,17 @@ export class AuthRepository extends BaseRepository {
 
       for (const entry of toDelete) {
         await db.delete(auditLogSqlite).where(eq(auditLogSqlite.id, entry.id));
+      }
+      return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ id: auditLogMysql.id })
+        .from(auditLogMysql)
+        .where(lt(auditLogMysql.timestamp, cutoff));
+
+      for (const entry of toDelete) {
+        await db.delete(auditLogMysql).where(eq(auditLogMysql.id, entry.id));
       }
       return toDelete.length;
     } else {
@@ -687,6 +851,16 @@ export class AuthRepository extends BaseRepository {
 
       if (result.length === 0) return null;
       return this.normalizeBigInts(result[0]) as { sid: string; sess: string; expire: number };
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select()
+        .from(sessionsMysql)
+        .where(eq(sessionsMysql.sid, sid))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0] as { sid: string; sess: string; expire: number };
     } else {
       const db = this.getPostgresDb();
       const result = await db
@@ -713,6 +887,14 @@ export class AuthRepository extends BaseRepository {
           target: sessionsSqlite.sid,
           set: { sess, expire },
         });
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .insert(sessionsMysql)
+        .values({ sid, sess, expire })
+        .onDuplicateKeyUpdate({
+          set: { sess, expire },
+        });
     } else {
       const db = this.getPostgresDb();
       await db
@@ -732,6 +914,9 @@ export class AuthRepository extends BaseRepository {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db.delete(sessionsSqlite).where(eq(sessionsSqlite.sid, sid));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.delete(sessionsMysql).where(eq(sessionsMysql.sid, sid));
     } else {
       const db = this.getPostgresDb();
       await db.delete(sessionsPostgres).where(eq(sessionsPostgres.sid, sid));
@@ -753,6 +938,17 @@ export class AuthRepository extends BaseRepository {
 
       for (const session of toDelete) {
         await db.delete(sessionsSqlite).where(eq(sessionsSqlite.sid, session.sid));
+      }
+      return toDelete.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const toDelete = await db
+        .select({ sid: sessionsMysql.sid })
+        .from(sessionsMysql)
+        .where(lt(sessionsMysql.expire, now));
+
+      for (const session of toDelete) {
+        await db.delete(sessionsMysql).where(eq(sessionsMysql.sid, session.sid));
       }
       return toDelete.length;
     } else {
