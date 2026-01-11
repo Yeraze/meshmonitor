@@ -16,7 +16,9 @@
     "src/server/**/*",
     "src/services/**/*",
     "src/utils/**/*",
-    "src/types/**/*"
+    "src/types/**/*",
+    "src/cli/**/*",
+    "src/db/**/*"
   ],
   "exclude": [
     "src/**/*.test.ts",

@@ -76,7 +76,96 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
     updated_at: 'updatedAt',
     password_locked: 'passwordLocked',
   },
+  permissions: {
+    user_id: 'userId',
+    can_read: 'canRead',
+    can_write: 'canWrite',
+    can_delete: 'canDelete',
+  },
+  api_tokens: {
+    user_id: 'userId',
+    token_hash: 'tokenHash',
+    is_active: 'isActive',
+    created_at: 'createdAt',
+    last_used_at: 'lastUsedAt',
+    created_by: 'createdBy',
+    revoked_at: 'revokedAt',
+    revoked_by: 'revokedBy',
+    expires_at: 'expiresAt',
+  },
+  read_messages: {
+    message_id: 'messageId',
+    user_id: 'userId',
+    read_at: 'readAt',
+  },
+  push_subscriptions: {
+    user_id: 'userId',
+    p256dh_key: 'p256dhKey',
+    auth_key: 'authKey',
+    user_agent: 'userAgent',
+    created_at: 'createdAt',
+    updated_at: 'updatedAt',
+    last_used_at: 'lastUsedAt',
+  },
+  user_notification_preferences: {
+    user_id: 'userId',
+    notify_on_message: 'notifyOnMessage',
+    notify_on_direct_message: 'notifyOnDirectMessage',
+    notify_on_channel_message: 'notifyOnChannelMessage',
+    notify_on_emoji: 'notifyOnEmoji',
+    notify_on_inactive_node: 'notifyOnInactiveNode',
+    notify_on_server_events: 'notifyOnServerEvents',
+    prefix_with_node_name: 'prefixWithNodeName',
+    apprise_enabled: 'appriseEnabled',
+    apprise_urls: 'appriseUrls',
+    notify_on_mqtt: 'notifyOnMqtt',
+    created_at: 'createdAt',
+    updated_at: 'updatedAt',
+  },
+  packet_log: {
+    packet_id: 'packetId',
+    from_node: 'fromNodeNum',
+    to_node: 'toNodeNum',
+    hop_limit: 'hopLimit',
+    hop_start: 'hopStart',
+    want_ack: 'wantAck',
+    via_mqtt: 'viaMqtt',
+    rx_time: 'rxTime',
+    rx_snr: 'rxSnr',
+    rx_rssi: 'rxRssi',
+    created_at: 'createdAt',
+  },
+  audit_log: {
+    user_id: 'userId',
+    ip_address: 'ipAddress',
+    user_agent: 'userAgent',
+  },
+  sessions: {
+    // Sessions use different column names
+  },
 };
+
+// Columns to skip during migration (removed or incompatible)
+const SKIP_COLUMNS: Record<string, Set<string>> = {
+  users: new Set(['created_by']),
+  permissions: new Set(['granted_at', 'granted_by']),
+  user_notification_preferences: new Set(['enable_web_push', 'enable_apprise', 'enabled_channels', 'enable_direct_messages', 'whitelist', 'blacklist', 'notify_on_new_node', 'notify_on_traceroute', 'monitored_nodes']),
+};
+
+// Tables to skip entirely during migration (incompatible schemas or non-essential)
+const SKIP_TABLES = new Set([
+  'packet_log', // Debug logging - schema incompatible and data is transient
+  'sqlite_sequence', // SQLite internal table
+  'backup_history', // Schema mismatch - null filePath values
+  'upgrade_history', // Schema mismatch - UUID in integer column
+  'auto_traceroute_log', // Non-essential logging
+  'auto_traceroute_nodes', // Non-essential
+  'auto_key_repair_state', // Non-essential
+  'auto_key_repair_log', // Non-essential logging
+  'solar_estimates', // Non-essential
+  'system_backup_history', // Non-essential
+  'user_map_preferences', // Column mapping issues
+]);
 
 // Value transformations needed during migration
 function transformValue(tableName: string, column: string, value: unknown): unknown {
@@ -85,7 +174,13 @@ function transformValue(tableName: string, column: string, value: unknown): unkn
     return 'oidc';
   }
   // Transform SQLite integers (0/1) to booleans for specific columns
-  if (tableName === 'users' && (column === 'isAdmin' || column === 'isActive' || column === 'passwordLocked')) {
+  const booleanColumns = new Set([
+    'isAdmin', 'isActive', 'passwordLocked', 'canRead', 'canWrite', 'canDelete',
+    'wantAck', 'viaMqtt', 'notifyOnMessage', 'notifyOnDirectMessage', 'notifyOnChannelMessage',
+    'notifyOnEmoji', 'notifyOnInactiveNode', 'notifyOnServerEvents', 'prefixWithNodeName',
+    'appriseEnabled', 'notifyOnMqtt',
+  ]);
+  if (booleanColumns.has(column)) {
     return value === 1 || value === '1' || value === true;
   }
   return value;
@@ -95,6 +190,14 @@ function transformValue(tableName: string, column: string, value: unknown): unkn
 const DEFAULT_VALUES: Record<string, Record<string, () => unknown>> = {
   users: {
     updatedAt: () => Date.now(),
+  },
+  permissions: {
+    canDelete: () => false,
+  },
+  user_notification_preferences: {
+    notifyOnMessage: () => true,
+    notifyOnDirectMessage: () => true,
+    notifyOnChannelMessage: () => false,
   },
 };
 
@@ -344,6 +447,7 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
   let inserted = 0;
   let columnTypes: Map<string, string> | null = null;
   const tableMapping = COLUMN_MAPPINGS[table] || {};
+  const skipCols = SKIP_COLUMNS[table] || new Set();
 
   try {
     // Get column types for this table
@@ -360,8 +464,8 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
       const mappedColumns = new Set<string>();
 
       for (const srcCol of sourceColumns) {
-        // Skip columns that were removed (like created_by in users)
-        if (srcCol === 'created_by') continue;
+        // Skip columns that should be excluded
+        if (skipCols.has(srcCol)) continue;
 
         const targetCol = tableMapping[srcCol] || srcCol;
         // Check if target column exists
@@ -761,9 +865,9 @@ async function migrate(options: MigrationOptions): Promise<void> {
     `).all() as Array<{ name: string }>;
     const allTableNames = allTables.map((t) => t.name);
 
-    // Migrate tables in order, then any remaining tables
-    const orderedTables = TABLE_ORDER.filter((t) => allTableNames.includes(t));
-    const remainingTables = allTableNames.filter((t) => !TABLE_ORDER.includes(t));
+    // Migrate tables in order, then any remaining tables (excluding skipped tables)
+    const orderedTables = TABLE_ORDER.filter((t) => allTableNames.includes(t) && !SKIP_TABLES.has(t));
+    const remainingTables = allTableNames.filter((t) => !TABLE_ORDER.includes(t) && !SKIP_TABLES.has(t));
     const tablesToMigrate = [...orderedTables, ...remainingTables];
 
     // Migrate each table
