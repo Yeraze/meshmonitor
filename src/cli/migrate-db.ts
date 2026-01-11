@@ -375,6 +375,45 @@ async function connectMySQL(url: string): Promise<{ db: any; pool: mysql.Pool }>
   return { db, pool };
 }
 
+/**
+ * Reset PostgreSQL sequences to max ID values after migration
+ * This prevents primary key conflicts when new rows are inserted
+ */
+async function resetPostgresSequences(pool: Pool): Promise<void> {
+  console.log('\n🔄 Resetting PostgreSQL sequences...');
+
+  const sequenceTables = [
+    { table: 'audit_log', sequence: 'audit_log_id_seq' },
+    { table: 'telemetry', sequence: 'telemetry_id_seq' },
+    { table: 'traceroutes', sequence: 'traceroutes_id_seq' },
+    { table: 'route_segments', sequence: 'route_segments_id_seq' },
+    { table: 'neighbor_info', sequence: 'neighbor_info_id_seq' },
+    { table: 'users', sequence: 'users_id_seq' },
+    { table: 'permissions', sequence: 'permissions_id_seq' },
+    { table: 'api_tokens', sequence: 'api_tokens_id_seq' },
+    { table: 'push_subscriptions', sequence: 'push_subscriptions_id_seq' },
+    { table: 'user_notification_preferences', sequence: 'user_notification_preferences_id_seq' },
+    { table: 'packet_log', sequence: 'packet_log_id_seq' },
+    { table: 'backup_history', sequence: 'backup_history_id_seq' },
+    { table: 'upgrade_history', sequence: 'upgrade_history_id_seq' },
+    { table: 'custom_themes', sequence: 'custom_themes_id_seq' },
+  ];
+
+  const client = await pool.connect();
+  try {
+    for (const { table, sequence } of sequenceTables) {
+      try {
+        await client.query(`SELECT setval('${sequence}', COALESCE((SELECT MAX(id) FROM ${table}), 1))`);
+      } catch {
+        // Sequence or table may not exist, skip silently
+      }
+    }
+    console.log('  ✅ Sequences reset to match migrated data');
+  } finally {
+    client.release();
+  }
+}
+
 async function getTableCount(rawDb: Database.Database, table: string): Promise<number> {
   try {
     const result = rawDb.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as { count: number };
@@ -912,6 +951,11 @@ async function migrate(options: MigrationOptions): Promise<void> {
         migratedCount,
         duration,
       });
+    }
+
+    // Reset PostgreSQL sequences to prevent primary key conflicts
+    if (isPostgresTarget && targetPgDb && !options.dryRun) {
+      await resetPostgresSequences(targetPgDb.pool);
     }
 
     // Summary
