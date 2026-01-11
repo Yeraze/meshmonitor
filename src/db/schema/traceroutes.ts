@@ -1,10 +1,11 @@
 /**
  * Drizzle schema definition for the traceroutes and route_segments tables
- * Supports both SQLite and PostgreSQL
+ * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { nodesSqlite, nodesPostgres } from './nodes.js';
+import { mysqlTable, varchar as myVarchar, text as myText, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { nodesSqlite, nodesPostgres, nodesMysql } from './nodes.js';
 
 // SQLite schemas
 export const traceroutesSqlite = sqliteTable('traceroutes', {
@@ -60,13 +61,44 @@ export const routeSegmentsPostgres = pgTable('route_segments', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
+// MySQL schemas
+export const traceroutesMysql = mysqlTable('traceroutes', {
+  id: mySerial('id').primaryKey(),
+  fromNodeNum: myBigint('fromNodeNum', { mode: 'number' }).notNull().references(() => nodesMysql.nodeNum, { onDelete: 'cascade' }),
+  toNodeNum: myBigint('toNodeNum', { mode: 'number' }).notNull().references(() => nodesMysql.nodeNum, { onDelete: 'cascade' }),
+  fromNodeId: myVarchar('fromNodeId', { length: 32 }).notNull(),
+  toNodeId: myVarchar('toNodeId', { length: 32 }).notNull(),
+  route: myText('route'), // JSON string of intermediate nodes
+  routeBack: myText('routeBack'), // JSON string of return path
+  snrTowards: myText('snrTowards'), // JSON string of SNR values
+  snrBack: myText('snrBack'), // JSON string of return SNR values
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
+export const routeSegmentsMysql = mysqlTable('route_segments', {
+  id: mySerial('id').primaryKey(),
+  fromNodeNum: myBigint('fromNodeNum', { mode: 'number' }).notNull().references(() => nodesMysql.nodeNum, { onDelete: 'cascade' }),
+  toNodeNum: myBigint('toNodeNum', { mode: 'number' }).notNull().references(() => nodesMysql.nodeNum, { onDelete: 'cascade' }),
+  fromNodeId: myVarchar('fromNodeId', { length: 32 }).notNull(),
+  toNodeId: myVarchar('toNodeId', { length: 32 }).notNull(),
+  distanceKm: myDouble('distanceKm').notNull(),
+  isRecordHolder: myBoolean('isRecordHolder').default(false),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
 // Type inference
 export type TracerouteSqlite = typeof traceroutesSqlite.$inferSelect;
 export type NewTracerouteSqlite = typeof traceroutesSqlite.$inferInsert;
 export type TraceroutePostgres = typeof traceroutesPostgres.$inferSelect;
 export type NewTraceroutePostgres = typeof traceroutesPostgres.$inferInsert;
+export type TracerouteMysql = typeof traceroutesMysql.$inferSelect;
+export type NewTracerouteMysql = typeof traceroutesMysql.$inferInsert;
 
 export type RouteSegmentSqlite = typeof routeSegmentsSqlite.$inferSelect;
 export type NewRouteSegmentSqlite = typeof routeSegmentsSqlite.$inferInsert;
 export type RouteSegmentPostgres = typeof routeSegmentsPostgres.$inferSelect;
 export type NewRouteSegmentPostgres = typeof routeSegmentsPostgres.$inferInsert;
+export type RouteSegmentMysql = typeof routeSegmentsMysql.$inferSelect;
+export type NewRouteSegmentMysql = typeof routeSegmentsMysql.$inferInsert;

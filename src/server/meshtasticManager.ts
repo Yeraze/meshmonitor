@@ -133,8 +133,11 @@ type TextMessage = {
   viaMqtt: boolean; // Capture whether message was received via MQTT bridge
   rxSnr?: number; // SNR of received packet
   rxRssi?: number; // RSSI of received packet
-  wantAck?: number; // Expect ACK for Virtual Node messages
+  wantAck?: boolean; // Expect ACK for Virtual Node messages
   deliveryState?: string; // Track delivery for Virtual Node messages
+  ackFailed?: boolean; // Whether ACK failed
+  routingErrorReceived?: boolean; // Whether a routing error was received
+  ackFromNode?: number; // Node that sent the ACK
   createdAt: number;
 };
 
@@ -2402,7 +2405,7 @@ class MeshtasticManager {
           rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr, // SNR of received packet
           rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi, // RSSI of received packet
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
-          wantAck: context?.virtualNodeRequestId ? 1 : undefined, // Expect ACK for Virtual Node messages
+          wantAck: context?.virtualNodeRequestId ? true : undefined, // Expect ACK for Virtual Node messages
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
           createdAt: Date.now()
         };
@@ -3497,7 +3500,7 @@ class MeshtasticManager {
       // Handle successful ACKs (error_reason = 0 means success)
       if (errorReason === 0 && requestId) {
         // Look up the original message to check if this ACK is from the intended recipient
-        const originalMessage = databaseService.getMessageByRequestId(requestId);
+        const originalMessage = await databaseService.getMessageByRequestIdAsync(requestId);
 
         if (originalMessage) {
           const targetNodeId = originalMessage.toNodeId;
@@ -3551,7 +3554,7 @@ class MeshtasticManager {
       // Detect PKI/encryption errors and flag the target node
       if (isPkiError(errorReason)) {
         // PKI_FAILED or PKI_UNKNOWN_PUBKEY - indicates key mismatch
-        const originalMessage = requestId ? databaseService.getMessageByRequestId(requestId) : null;
+        const originalMessage = requestId ? await databaseService.getMessageByRequestIdAsync(requestId) : null;
         if (originalMessage && originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
           const targetNodeId = originalMessage.toNodeId;
@@ -5484,7 +5487,7 @@ class MeshtasticManager {
           replyId: replyId || undefined,
           emoji: emoji || undefined,
           requestId: messageId, // Save requestId for routing error matching
-          wantAck: 1, // Request acknowledgment for this message
+          wantAck: true, // Request acknowledgment for this message
           deliveryState: 'pending', // Initial delivery state
           createdAt: Date.now()
         };

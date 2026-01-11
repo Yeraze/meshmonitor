@@ -18,6 +18,16 @@ router.use(requirePermission('security', 'read'));
 // Get all nodes with security issues
 router.get('/issues', (_req: Request, res: Response) => {
   try {
+    // For PostgreSQL/MySQL, security scanning not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return res.json({
+        total: 0,
+        lowEntropyCount: 0,
+        duplicateKeyCount: 0,
+        nodes: []
+      });
+    }
+
     const nodesWithIssues = databaseService.getNodesWithKeySecurityIssues();
 
     // Categorize issues
@@ -97,6 +107,20 @@ router.post('/scanner/scan', requirePermission('security', 'write'), async (req:
 router.get('/export', (req: Request, res: Response) => {
   try {
     const format = req.query.format as string || 'csv';
+
+    // For PostgreSQL/MySQL, security scanning not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (format === 'json') {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="security-scan-${Date.now()}.json"`);
+        return res.send(JSON.stringify({ exportDate: new Date().toISOString(), total: 0, lowEntropyCount: 0, duplicateKeyCount: 0, nodes: [] }, null, 2));
+      } else {
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="security-scan-${Date.now()}.csv"`);
+        return res.send('Node ID,Short Name,Long Name,Hardware Model,Last Heard,Low-Entropy Key,Duplicate Key,Issue Details,Key Hash Prefix');
+      }
+    }
+
     const nodesWithIssues = databaseService.getNodesWithKeySecurityIssues();
     const timestamp = new Date().toISOString();
 

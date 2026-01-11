@@ -11,8 +11,10 @@ import { eq, desc } from 'drizzle-orm';
 import {
   pushSubscriptionsSqlite,
   pushSubscriptionsPostgres,
+  pushSubscriptionsMysql,
   userNotificationPreferencesSqlite,
   userNotificationPreferencesPostgres,
+  userNotificationPreferencesMysql,
 } from '../schema/notifications.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPushSubscription } from '../types.js';
@@ -75,8 +77,14 @@ export class NotificationsRepository extends BaseRepository {
           .from(pushSubscriptionsSqlite)
           .orderBy(desc(pushSubscriptionsSqlite.createdAt));
         return rows.map(row => this.mapSubscriptionRow(row));
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        const rows = await db
+          .select()
+          .from(pushSubscriptionsMysql)
+          .orderBy(desc(pushSubscriptionsMysql.createdAt));
+        return rows.map(row => this.mapSubscriptionRow(row));
       } else {
-        // PostgreSQL and MySQL use the same code path
         const db = this.getPostgresDb();
         const rows = await db
           .select()
@@ -108,8 +116,20 @@ export class NotificationsRepository extends BaseRepository {
               .from(pushSubscriptionsSqlite)
               .orderBy(desc(pushSubscriptionsSqlite.createdAt));
         return rows.map(row => this.mapSubscriptionRow(row));
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        const rows = userId
+          ? await db
+              .select()
+              .from(pushSubscriptionsMysql)
+              .where(eq(pushSubscriptionsMysql.userId, userId))
+              .orderBy(desc(pushSubscriptionsMysql.createdAt))
+          : await db
+              .select()
+              .from(pushSubscriptionsMysql)
+              .orderBy(desc(pushSubscriptionsMysql.createdAt));
+        return rows.map(row => this.mapSubscriptionRow(row));
       } else {
-        // PostgreSQL and MySQL use the same code path
         const db = this.getPostgresDb();
         const rows = userId
           ? await db
@@ -160,8 +180,31 @@ export class NotificationsRepository extends BaseRepository {
             lastUsedAt: now,
           },
         });
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .insert(pushSubscriptionsMysql)
+        .values({
+          userId: input.userId ?? null,
+          endpoint: input.endpoint,
+          p256dhKey: input.p256dhKey,
+          authKey: input.authKey,
+          userAgent: input.userAgent ?? null,
+          createdAt: now,
+          updatedAt: now,
+          lastUsedAt: now,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            userId: input.userId ?? null,
+            p256dhKey: input.p256dhKey,
+            authKey: input.authKey,
+            userAgent: input.userAgent ?? null,
+            updatedAt: now,
+            lastUsedAt: now,
+          },
+        });
     } else {
-      // PostgreSQL and MySQL use the same code path
       const db = this.getPostgresDb();
       await db
         .insert(pushSubscriptionsPostgres)
@@ -198,8 +241,12 @@ export class NotificationsRepository extends BaseRepository {
       await db
         .delete(pushSubscriptionsSqlite)
         .where(eq(pushSubscriptionsSqlite.endpoint, endpoint));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .delete(pushSubscriptionsMysql)
+        .where(eq(pushSubscriptionsMysql.endpoint, endpoint));
     } else {
-      // PostgreSQL and MySQL use the same code path
       const db = this.getPostgresDb();
       await db
         .delete(pushSubscriptionsPostgres)
@@ -219,8 +266,13 @@ export class NotificationsRepository extends BaseRepository {
         .update(pushSubscriptionsSqlite)
         .set({ lastUsedAt: now })
         .where(eq(pushSubscriptionsSqlite.endpoint, endpoint));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .update(pushSubscriptionsMysql)
+        .set({ lastUsedAt: now })
+        .where(eq(pushSubscriptionsMysql.endpoint, endpoint));
     } else {
-      // PostgreSQL and MySQL use the same code path
       const db = this.getPostgresDb();
       await db
         .update(pushSubscriptionsPostgres)
@@ -254,8 +306,20 @@ export class NotificationsRepository extends BaseRepository {
         }
 
         return this.mapPreferencesRow(rows[0]);
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        const rows = await db
+          .select()
+          .from(userNotificationPreferencesMysql)
+          .where(eq(userNotificationPreferencesMysql.userId, userId))
+          .limit(1);
+
+        if (rows.length === 0) {
+          return null;
+        }
+
+        return this.mapPreferencesRow(rows[0]);
       } else {
-        // PostgreSQL and MySQL use the same code path
         const db = this.getPostgresDb();
         const rows = await db
           .select()
@@ -322,8 +386,41 @@ export class NotificationsRepository extends BaseRepository {
             },
           });
         return true;
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        await db
+          .insert(userNotificationPreferencesMysql)
+          .values({
+            userId,
+            notifyOnMessage: prefs.enableWebPush,
+            notifyOnDirectMessage: prefs.enableDirectMessages,
+            notifyOnChannelMessage: false,
+            notifyOnEmoji: prefs.notifyOnEmoji,
+            notifyOnInactiveNode: prefs.notifyOnInactiveNode,
+            notifyOnServerEvents: prefs.notifyOnServerEvents,
+            prefixWithNodeName: prefs.prefixWithNodeName,
+            appriseEnabled: prefs.enableApprise,
+            appriseUrls: JSON.stringify(prefs.appriseUrls),
+            notifyOnMqtt: prefs.notifyOnMqtt,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onDuplicateKeyUpdate({
+            set: {
+              notifyOnMessage: prefs.enableWebPush,
+              notifyOnDirectMessage: prefs.enableDirectMessages,
+              notifyOnEmoji: prefs.notifyOnEmoji,
+              notifyOnInactiveNode: prefs.notifyOnInactiveNode,
+              notifyOnServerEvents: prefs.notifyOnServerEvents,
+              prefixWithNodeName: prefs.prefixWithNodeName,
+              appriseEnabled: prefs.enableApprise,
+              appriseUrls: JSON.stringify(prefs.appriseUrls),
+              notifyOnMqtt: prefs.notifyOnMqtt,
+              updatedAt: now,
+            },
+          });
+        return true;
       } else {
-        // PostgreSQL and MySQL use the same code path
         const db = this.getPostgresDb();
         await db
           .insert(userNotificationPreferencesPostgres)
@@ -382,8 +479,19 @@ export class NotificationsRepository extends BaseRepository {
           .where(eq(column, true));
 
         return rows.map(row => row.userId);
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        const column = service === 'web_push'
+          ? userNotificationPreferencesMysql.notifyOnMessage
+          : userNotificationPreferencesMysql.appriseEnabled;
+
+        const rows = await db
+          .select({ userId: userNotificationPreferencesMysql.userId })
+          .from(userNotificationPreferencesMysql)
+          .where(eq(column, true));
+
+        return rows.map(row => row.userId);
       } else {
-        // PostgreSQL and MySQL use the same code path
         const db = this.getPostgresDb();
         const column = service === 'web_push'
           ? userNotificationPreferencesPostgres.notifyOnMessage

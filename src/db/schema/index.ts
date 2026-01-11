@@ -1,6 +1,6 @@
 /**
  * Drizzle Schema Index
- * Re-exports all schema definitions for SQLite and PostgreSQL
+ * Re-exports all schema definitions for SQLite, PostgreSQL, and MySQL
  */
 
 // Core tables

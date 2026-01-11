@@ -1,10 +1,11 @@
 /**
  * Drizzle schema definition for authentication tables
  * Includes: users, permissions, sessions, audit_log, api_tokens
- * Supports both SQLite and PostgreSQL
+ * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
 
 // ============ USERS ============
 
@@ -134,6 +135,66 @@ export const apiTokensPostgres = pgTable('api_tokens', {
   revokedBy: pgInteger('revokedBy'),
 });
 
+// ============ MYSQL SCHEMAS ============
+
+export const usersMysql = mysqlTable('users', {
+  id: mySerial('id').primaryKey(),
+  username: myVarchar('username', { length: 255 }).notNull().unique(),
+  passwordHash: myVarchar('passwordHash', { length: 255 }),
+  email: myVarchar('email', { length: 255 }),
+  displayName: myVarchar('displayName', { length: 255 }),
+  authMethod: myVarchar('authMethod', { length: 32 }).notNull().default('local'),
+  oidcSubject: myVarchar('oidcSubject', { length: 255 }).unique(),
+  isAdmin: myBoolean('isAdmin').notNull().default(false),
+  isActive: myBoolean('isActive').notNull().default(true),
+  passwordLocked: myBoolean('passwordLocked').default(false),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  lastLoginAt: myBigint('lastLoginAt', { mode: 'number' }),
+});
+
+export const permissionsMysql = mysqlTable('permissions', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  resource: myVarchar('resource', { length: 64 }).notNull(),
+  canRead: myBoolean('canRead').notNull().default(false),
+  canWrite: myBoolean('canWrite').notNull().default(false),
+  canDelete: myBoolean('canDelete').notNull().default(false),
+});
+
+export const sessionsMysql = mysqlTable('sessions', {
+  sid: myVarchar('sid', { length: 255 }).primaryKey(),
+  sess: myText('sess').notNull(),
+  expire: myBigint('expire', { mode: 'number' }).notNull(),
+});
+
+export const auditLogMysql = mysqlTable('audit_log', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').references(() => usersMysql.id, { onDelete: 'set null' }),
+  username: myVarchar('username', { length: 255 }),
+  action: myVarchar('action', { length: 128 }).notNull(),
+  resource: myVarchar('resource', { length: 64 }),
+  details: myText('details'),
+  ipAddress: myVarchar('ipAddress', { length: 64 }),
+  userAgent: myVarchar('userAgent', { length: 512 }),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+});
+
+export const apiTokensMysql = mysqlTable('api_tokens', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  name: myVarchar('name', { length: 255 }).notNull(),
+  tokenHash: myVarchar('tokenHash', { length: 255 }).notNull().unique(),
+  prefix: myVarchar('prefix', { length: 32 }).notNull(),
+  isActive: myBoolean('isActive').notNull().default(true),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  lastUsedAt: myBigint('lastUsedAt', { mode: 'number' }),
+  expiresAt: myBigint('expiresAt', { mode: 'number' }),
+  createdBy: myInt('createdBy'),
+  revokedAt: myBigint('revokedAt', { mode: 'number' }),
+  revokedBy: myInt('revokedBy'),
+});
+
 // Type inference
 export type UserSqlite = typeof usersSqlite.$inferSelect;
 export type NewUserSqlite = typeof usersSqlite.$inferInsert;
@@ -159,3 +220,14 @@ export type ApiTokenSqlite = typeof apiTokensSqlite.$inferSelect;
 export type NewApiTokenSqlite = typeof apiTokensSqlite.$inferInsert;
 export type ApiTokenPostgres = typeof apiTokensPostgres.$inferSelect;
 export type NewApiTokenPostgres = typeof apiTokensPostgres.$inferInsert;
+export type ApiTokenMysql = typeof apiTokensMysql.$inferSelect;
+export type NewApiTokenMysql = typeof apiTokensMysql.$inferInsert;
+
+export type UserMysql = typeof usersMysql.$inferSelect;
+export type NewUserMysql = typeof usersMysql.$inferInsert;
+export type PermissionMysql = typeof permissionsMysql.$inferSelect;
+export type NewPermissionMysql = typeof permissionsMysql.$inferInsert;
+export type SessionMysql = typeof sessionsMysql.$inferSelect;
+export type NewSessionMysql = typeof sessionsMysql.$inferInsert;
+export type AuditLogMysql = typeof auditLogMysql.$inferSelect;
+export type NewAuditLogMysql = typeof auditLogMysql.$inferInsert;
