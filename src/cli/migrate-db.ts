@@ -61,6 +61,43 @@ const TABLE_ORDER = [
   'system_backup_history',
 ];
 
+// Column name mappings from SQLite (snake_case) to PostgreSQL (camelCase)
+// Only needed for tables where SQLite uses different naming conventions
+const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
+  users: {
+    password_hash: 'passwordHash',
+    display_name: 'displayName',
+    auth_provider: 'authMethod',
+    oidc_subject: 'oidcSubject',
+    is_admin: 'isAdmin',
+    is_active: 'isActive',
+    created_at: 'createdAt',
+    last_login_at: 'lastLoginAt',
+    updated_at: 'updatedAt',
+    password_locked: 'passwordLocked',
+  },
+};
+
+// Value transformations needed during migration
+function transformValue(tableName: string, column: string, value: unknown): unknown {
+  // Transform auth_provider 'local' to authMethod 'local', 'oidc' to 'oidc'
+  if (tableName === 'users' && column === 'authMethod' && value === 'oidc') {
+    return 'oidc';
+  }
+  // Transform SQLite integers (0/1) to booleans for specific columns
+  if (tableName === 'users' && (column === 'isAdmin' || column === 'isActive' || column === 'passwordLocked')) {
+    return value === 1 || value === '1' || value === true;
+  }
+  return value;
+}
+
+// Default values for required columns that may not exist in source
+const DEFAULT_VALUES: Record<string, Record<string, () => unknown>> = {
+  users: {
+    updatedAt: () => Date.now(),
+  },
+};
+
 interface MigrationOptions {
   from: string;
   to: string;
@@ -306,6 +343,7 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
   const client = await pool.connect();
   let inserted = 0;
   let columnTypes: Map<string, string> | null = null;
+  const tableMapping = COLUMN_MAPPINGS[table] || {};
 
   try {
     // Get column types for this table
@@ -315,17 +353,44 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
 
     for (const row of rows) {
       const obj = row as Record<string, unknown>;
-      const columns = Object.keys(obj);
+      const sourceColumns = Object.keys(obj);
 
-      // Sanitize values based on PostgreSQL column types
-      const values = columns.map((col) => {
-        const pgType = columnTypes?.get(col) || 'text';
-        return sanitizeValue(obj[col], pgType);
-      });
+      // Map column names and filter out columns that don't exist in target
+      const mappedData: Array<{ targetCol: string; value: unknown }> = [];
+      const mappedColumns = new Set<string>();
 
-      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-      // Quote column names for PostgreSQL (case-sensitive)
-      const quotedColumns = columns.map((c) => `"${c}"`).join(', ');
+      for (const srcCol of sourceColumns) {
+        // Skip columns that were removed (like created_by in users)
+        if (srcCol === 'created_by') continue;
+
+        const targetCol = tableMapping[srcCol] || srcCol;
+        // Check if target column exists
+        if (!columnTypes?.has(targetCol)) {
+          continue; // Skip columns that don't exist in target schema
+        }
+
+        const pgType = columnTypes.get(targetCol) || 'text';
+        let value = sanitizeValue(obj[srcCol], pgType);
+        value = transformValue(table, targetCol, value);
+        mappedData.push({ targetCol, value });
+        mappedColumns.add(targetCol);
+      }
+
+      // Add default values for required columns that are missing from source
+      const tableDefaults = DEFAULT_VALUES[table];
+      if (tableDefaults) {
+        for (const [col, defaultFn] of Object.entries(tableDefaults)) {
+          if (!mappedColumns.has(col) && columnTypes?.has(col)) {
+            mappedData.push({ targetCol: col, value: defaultFn() });
+          }
+        }
+      }
+
+      if (mappedData.length === 0) continue;
+
+      const placeholders = mappedData.map((_, i) => `$${i + 1}`).join(', ');
+      const quotedColumns = mappedData.map((d) => `"${d.targetCol}"`).join(', ');
+      const values = mappedData.map((d) => d.value);
 
       const query = `INSERT INTO "${table}" (${quotedColumns}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`;
 
@@ -444,140 +509,19 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
   return inserted;
 }
 
-/**
- * Convert SQLite type to PostgreSQL type
- */
-function sqliteToPostgresType(sqliteType: string): string {
-  const type = sqliteType.toUpperCase();
-  if (type.includes('INTEGER') || type.includes('INT')) return 'BIGINT';
-  if (type.includes('REAL') || type.includes('FLOAT') || type.includes('DOUBLE')) return 'DOUBLE PRECISION';
-  if (type.includes('TEXT') || type.includes('VARCHAR') || type.includes('CHAR')) return 'TEXT';
-  if (type.includes('BLOB')) return 'BYTEA';
-  if (type.includes('BOOLEAN') || type.includes('BOOL')) return 'BOOLEAN';
-  return 'TEXT'; // Default
-}
+async function createPostgresSchemaFromApp(pool: Pool): Promise<void> {
+  console.log('📋 Creating PostgreSQL schema from application definitions...');
 
-/**
- * Parse SQLite CREATE TABLE statement and convert to PostgreSQL
- */
-function convertCreateTable(sqliteSchema: string): string {
-  // Extract table name
-  const tableMatch = sqliteSchema.match(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?["']?(\w+)["']?\s*\(/i);
-  if (!tableMatch) return '';
-
-  const tableName = tableMatch[1];
-
-  // Skip sqlite internal tables
-  if (tableName === 'sqlite_sequence') return '';
-
-  // Extract column definitions - handle multi-line
-  const columnsStart = sqliteSchema.indexOf('(') + 1;
-  const columnsEnd = sqliteSchema.lastIndexOf(')');
-  const columnsStr = sqliteSchema.substring(columnsStart, columnsEnd);
-
-  // Parse columns
-  const columns: string[] = [];
-  let currentCol = '';
-  let parenDepth = 0;
-
-  for (const char of columnsStr) {
-    if (char === '(') parenDepth++;
-    else if (char === ')') parenDepth--;
-
-    if (char === ',' && parenDepth === 0) {
-      if (currentCol.trim()) columns.push(currentCol.trim());
-      currentCol = '';
-    } else {
-      currentCol += char;
-    }
-  }
-  if (currentCol.trim()) columns.push(currentCol.trim());
-
-  // Convert each column
-  const pgColumns: string[] = [];
-  const constraints: string[] = [];
-
-  for (const col of columns) {
-    const trimmed = col.trim();
-
-    // Skip constraints for now (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
-    if (/^(PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|CONSTRAINT)/i.test(trimmed)) {
-      // Convert constraint if it's a simple UNIQUE constraint
-      if (/^UNIQUE\s*\(/i.test(trimmed)) {
-        constraints.push(trimmed);
-      }
-      continue;
-    }
-
-    // Parse column: name type [constraints]
-    const colMatch = trimmed.match(/^["']?(\w+)["']?\s+(\w+)(.*)$/i);
-    if (!colMatch) continue;
-
-    const [, colName, colType, rest] = colMatch;
-    const pgType = sqliteToPostgresType(colType);
-
-    let pgCol = `"${colName}" ${pgType}`;
-
-    // Handle constraints in column definition
-    if (/PRIMARY KEY/i.test(rest)) {
-      pgCol += ' PRIMARY KEY';
-    }
-    if (/NOT NULL/i.test(rest)) {
-      pgCol += ' NOT NULL';
-    }
-    if (/UNIQUE/i.test(rest) && !/PRIMARY KEY/i.test(rest)) {
-      pgCol += ' UNIQUE';
-    }
-    if (/DEFAULT/i.test(rest)) {
-      const defaultMatch = rest.match(/DEFAULT\s+(\S+)/i);
-      if (defaultMatch) {
-        let defaultVal = defaultMatch[1];
-        // Convert SQLite boolean defaults
-        if (defaultVal === '0' && pgType === 'BOOLEAN') defaultVal = 'false';
-        else if (defaultVal === '1' && pgType === 'BOOLEAN') defaultVal = 'true';
-        pgCol += ` DEFAULT ${defaultVal}`;
-      }
-    }
-
-    pgColumns.push(pgCol);
-  }
-
-  if (pgColumns.length === 0) return '';
-
-  let createSql = `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${pgColumns.join(',\n  ')}`;
-  if (constraints.length > 0) {
-    createSql += ',\n  ' + constraints.join(',\n  ');
-  }
-  createSql += '\n);';
-
-  return createSql;
-}
-
-async function createPostgresSchemaFromSqlite(pool: Pool, sqliteDb: Database.Database): Promise<void> {
-  console.log('📋 Creating PostgreSQL schema from SQLite...');
+  // Dynamically import to avoid circular dependencies at module load time
+  const { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } = await import('../db/schema/postgres-create.js');
 
   const client = await pool.connect();
 
   try {
-    // Get all table schemas from SQLite
-    const tables = sqliteDb.prepare(`
-      SELECT name, sql FROM sqlite_master
-      WHERE type='table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name
-    `).all() as Array<{ name: string; sql: string }>;
+    await client.query(POSTGRES_SCHEMA_SQL);
 
-    for (const table of tables) {
-      if (!table.sql) continue;
-
-      const pgSql = convertCreateTable(table.sql);
-      if (pgSql) {
-        try {
-          await client.query(pgSql);
-          console.log(`  ✅ Created table: ${table.name}`);
-        } catch (err) {
-          console.warn(`  ⚠️  Failed to create table ${table.name}: ${(err as Error).message}`);
-        }
-      }
+    for (const tableName of POSTGRES_TABLE_NAMES) {
+      console.log(`  ✅ Created table: ${tableName}`);
     }
 
     console.log('✅ PostgreSQL schema created');
@@ -799,10 +743,10 @@ async function migrate(options: MigrationOptions): Promise<void> {
 
     console.log('✅ Connected to both databases\n');
 
-    // Create schema from SQLite schema
+    // Create schema using application definitions (ensures all columns exist)
     if (!options.dryRun) {
       if (isPostgresTarget && targetPgDb) {
-        await createPostgresSchemaFromSqlite(targetPgDb.pool, sourceDb.rawDb);
+        await createPostgresSchemaFromApp(targetPgDb.pool);
       } else if (isMySQLTarget && targetMySQLDb) {
         await createMySQLSchemaFromSqlite(targetMySQLDb.pool, sourceDb.rawDb);
       }
