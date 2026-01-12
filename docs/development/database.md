@@ -637,6 +637,82 @@ innodb_flush_log_at_trx_commit = 2
 # query_cache_type = 1
 ```
 
+## Development Guidelines
+
+When contributing to MeshMonitor's database code, follow these patterns:
+
+### Adding New Database Methods
+
+1. **Create repository method** in `src/db/repositories/`:
+```typescript
+// src/db/repositories/nodes.ts
+async getNodeByIdAsync(nodeId: string): Promise<DbNode | undefined> {
+  const result = await this.db.select().from(nodes).where(eq(nodes.nodeId, nodeId));
+  return result[0];
+}
+```
+
+2. **Expose through DatabaseService** with `Async` suffix:
+```typescript
+// src/services/database.ts
+async getNodeByIdAsync(nodeId: string): Promise<DbNode | undefined> {
+  return this.nodesRepository.getNodeByIdAsync(nodeId);
+}
+```
+
+3. **Use await at all call sites**:
+```typescript
+const node = await databaseService.getNodeByIdAsync(nodeId);
+```
+
+### Type Coercion for BIGINT
+
+PostgreSQL returns BIGINT as strings, MySQL as BigInt objects. Always coerce:
+
+```typescript
+// ❌ Wrong - fails on PostgreSQL
+if (row.nodeNum === searchNodeNum)
+
+// ✅ Correct - works on all databases
+if (Number(row.nodeNum) === Number(searchNodeNum))
+```
+
+### Test Mocking
+
+When testing routes that use auth middleware, mock async database methods:
+
+```typescript
+vi.mock('../../services/database.js', () => ({
+  default: {
+    drizzleDbType: 'sqlite',
+    findUserByIdAsync: vi.fn(),
+    findUserByUsernameAsync: vi.fn(),
+    checkPermissionAsync: vi.fn(),
+    getUserPermissionSetAsync: vi.fn(),
+    // ... your route-specific mocks
+  }
+}));
+```
+
+### Database-Specific Code
+
+When you need database-specific behavior:
+
+```typescript
+if (this.drizzleDbType === 'sqlite') {
+  // SQLite-specific: PRAGMA, VACUUM
+} else if (this.drizzleDbType === 'postgres') {
+  // PostgreSQL-specific: sequences, BIGINT casts
+} else if (this.drizzleDbType === 'mysql') {
+  // MySQL-specific: AUTO_INCREMENT
+}
+```
+
+### Reference Documentation
+
+- [Architecture Lessons](/ARCHITECTURE_LESSONS#multi-database-architecture) - Detailed patterns and lessons learned
+- [Drizzle ORM Docs](https://orm.drizzle.team/) - Query building and schema definition
+
 ## Need Help?
 
 - Check [Frequently Asked Questions](/faq)
