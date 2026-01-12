@@ -250,21 +250,28 @@ export const POSTGRES_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS packet_log (
     id SERIAL PRIMARY KEY,
-    "packetId" BIGINT NOT NULL,
-    "fromNodeNum" BIGINT,
-    "toNodeNum" BIGINT,
+    packet_id BIGINT,
+    timestamp BIGINT NOT NULL,
+    from_node BIGINT NOT NULL,
+    from_node_id TEXT,
+    to_node BIGINT,
+    to_node_id TEXT,
     channel INTEGER,
-    portnum INTEGER,
-    "hopLimit" INTEGER,
-    "hopStart" INTEGER,
-    "wantAck" BOOLEAN,
-    "viaMqtt" BOOLEAN DEFAULT false,
-    "rxTime" BIGINT,
-    "rxSnr" DOUBLE PRECISION,
-    "rxRssi" INTEGER,
-    decoded TEXT,
-    raw TEXT,
-    "createdAt" BIGINT NOT NULL
+    portnum INTEGER NOT NULL,
+    portnum_name TEXT,
+    encrypted BOOLEAN NOT NULL,
+    snr REAL,
+    rssi REAL,
+    hop_limit INTEGER,
+    hop_start INTEGER,
+    relay_node BIGINT,
+    payload_size INTEGER,
+    want_ack BOOLEAN,
+    priority INTEGER,
+    payload_preview TEXT,
+    metadata TEXT,
+    direction TEXT,
+    created_at BIGINT
   );
 
   CREATE TABLE IF NOT EXISTS backup_history (
@@ -309,6 +316,44 @@ export const POSTGRES_SCHEMA_SQL = `
     "updatedAt" BIGINT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS solar_estimates (
+    id SERIAL PRIMARY KEY,
+    timestamp BIGINT NOT NULL UNIQUE,
+    watt_hours DOUBLE PRECISION NOT NULL,
+    fetched_at BIGINT NOT NULL,
+    created_at BIGINT
+  );
+
+  CREATE TABLE IF NOT EXISTS auto_traceroute_log (
+    id SERIAL PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    to_node_num BIGINT NOT NULL,
+    to_node_name TEXT,
+    success INTEGER DEFAULT NULL,
+    created_at BIGINT
+  );
+
+  CREATE TABLE IF NOT EXISTS auto_key_repair_state (
+    "nodeNum" BIGINT PRIMARY KEY,
+    "attemptCount" INTEGER DEFAULT 0,
+    "lastAttemptTime" BIGINT,
+    exhausted INTEGER DEFAULT 0,
+    "startedAt" BIGINT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS auto_key_repair_log (
+    id SERIAL PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    "nodeNum" BIGINT NOT NULL,
+    "nodeName" TEXT,
+    action TEXT NOT NULL,
+    success INTEGER DEFAULT NULL,
+    created_at BIGINT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_auto_traceroute_timestamp ON auto_traceroute_log(timestamp DESC);
+  CREATE INDEX IF NOT EXISTS idx_auto_key_repair_log_timestamp ON auto_key_repair_log(timestamp DESC);
+
   CREATE INDEX IF NOT EXISTS idx_nodes_nodeid ON nodes("nodeId");
   CREATE INDEX IF NOT EXISTS idx_nodes_lastheard ON nodes("lastHeard");
   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
@@ -346,4 +391,8 @@ export const POSTGRES_TABLE_NAMES = [
   'upgrade_history',
   'custom_themes',
   'user_map_preferences',
+  'solar_estimates',
+  'auto_traceroute_log',
+  'auto_key_repair_state',
+  'auto_key_repair_log',
 ];

@@ -31,8 +31,11 @@ router.get('/', async (_req: Request, res: Response) => {
       users = databaseService.userModel.findAll();
     }
 
-    // Remove password hashes
-    const usersWithoutPasswords = users.map(({ passwordHash, ...user }) => user);
+    // Remove password hashes and normalize field names (authMethod -> authProvider for frontend)
+    const usersWithoutPasswords = users.map(({ passwordHash, authMethod, ...user }) => ({
+      ...user,
+      authProvider: authMethod || user.authProvider || 'local'
+    }));
 
     return res.json({ users: usersWithoutPasswords });
   } catch (error) {
@@ -57,10 +60,15 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Remove password hash
-    const { passwordHash, ...userWithoutPassword } = user;
+    // Remove password hash and normalize field names (authMethod -> authProvider for frontend)
+    const { passwordHash, authMethod, ...userWithoutPassword } = user;
 
-    return res.json({ user: userWithoutPassword });
+    return res.json({
+      user: {
+        ...userWithoutPassword,
+        authProvider: authMethod || user.authProvider || 'local'
+      }
+    });
   } catch (error) {
     logger.error('Error getting user:', error);
     return res.status(500).json({ error: 'Failed to get user' });

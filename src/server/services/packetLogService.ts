@@ -66,6 +66,22 @@ class PacketLogService {
   }
 
   /**
+   * Get packet logs with optional filters - async version for PostgreSQL/MySQL
+   */
+  async getPacketsAsync(options: {
+    offset?: number;
+    limit?: number;
+    portnum?: number;
+    from_node?: number;
+    to_node?: number;
+    channel?: number;
+    encrypted?: boolean;
+    since?: number;
+  }): Promise<DbPacketLog[]> {
+    return databaseService.getPacketLogsAsync(options);
+  }
+
+  /**
    * Get single packet by ID
    */
   getPacketById(id: number): DbPacketLog | null {
@@ -84,6 +100,20 @@ class PacketLogService {
     since?: number;
   }): number {
     return databaseService.getPacketLogCount(options || {});
+  }
+
+  /**
+   * Get total packet count with optional filters - async version for PostgreSQL/MySQL
+   */
+  async getPacketCountAsync(options?: {
+    portnum?: number;
+    from_node?: number;
+    to_node?: number;
+    channel?: number;
+    encrypted?: boolean;
+    since?: number;
+  }): Promise<number> {
+    return databaseService.getPacketLogCountAsync(options || {});
   }
 
   /**

@@ -294,6 +294,13 @@ class DatabaseMaintenanceService {
   }
 
   /**
+   * Get the current database size in bytes - async version for PostgreSQL/MySQL
+   */
+  async getDatabaseSizeAsync(): Promise<number> {
+    return databaseService.getDatabaseSizeAsync();
+  }
+
+  /**
    * Format bytes to human-readable string (exposed for external use)
    */
   formatBytes(bytes: number): string {

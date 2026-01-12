@@ -3918,9 +3918,9 @@ apiRouter.get('/maintenance/status', requirePermission('configuration', 'read'),
 });
 
 // Get current database size
-apiRouter.get('/maintenance/size', requirePermission('configuration', 'read'), (_req, res) => {
+apiRouter.get('/maintenance/size', requirePermission('configuration', 'read'), async (_req, res) => {
   try {
-    const size = databaseMaintenanceService.getDatabaseSize();
+    const size = await databaseMaintenanceService.getDatabaseSizeAsync();
     res.json({
       size,
       formatted: databaseMaintenanceService.formatBytes(size),
@@ -4165,9 +4165,9 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
 });
 
 // Get auto-traceroute log (recent auto-traceroute attempts with success/fail status)
-apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'), (_req, res) => {
+apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'), async (_req, res) => {
   try {
-    const log = databaseService.getAutoTracerouteLog(10);
+    const log = await databaseService.getAutoTracerouteLogAsync(10);
     res.json({
       success: true,
       log,

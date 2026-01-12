@@ -377,8 +377,47 @@ export class NodesRepository extends BaseRepository {
         const db = this.getMysqlDb();
         await db.insert(nodesMysql).values(newNode);
       } else {
+        // PostgreSQL - use ON CONFLICT DO UPDATE for atomic upsert to prevent race conditions
         const db = this.getPostgresDb();
-        await db.insert(nodesPostgres).values(newNode);
+        await db.insert(nodesPostgres).values(newNode).onConflictDoUpdate({
+          target: nodesPostgres.nodeNum,
+          set: {
+            nodeId: nodeData.nodeId,
+            longName: nodeData.longName ?? null,
+            shortName: nodeData.shortName ?? null,
+            hwModel: nodeData.hwModel ?? null,
+            role: nodeData.role ?? null,
+            hopsAway: nodeData.hopsAway ?? null,
+            viaMqtt: nodeData.viaMqtt ?? null,
+            macaddr: nodeData.macaddr ?? null,
+            latitude: nodeData.latitude ?? null,
+            longitude: nodeData.longitude ?? null,
+            altitude: nodeData.altitude ?? null,
+            batteryLevel: nodeData.batteryLevel ?? null,
+            voltage: nodeData.voltage ?? null,
+            channelUtilization: nodeData.channelUtilization ?? null,
+            airUtilTx: nodeData.airUtilTx ?? null,
+            lastHeard: this.coerceBigintField(nodeData.lastHeard),
+            snr: nodeData.snr ?? null,
+            rssi: nodeData.rssi ?? null,
+            firmwareVersion: nodeData.firmwareVersion ?? null,
+            channel: nodeData.channel ?? null,
+            isFavorite: nodeData.isFavorite ?? false,
+            rebootCount: nodeData.rebootCount ?? null,
+            publicKey: nodeData.publicKey ?? null,
+            hasPKC: nodeData.hasPKC ?? null,
+            lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket),
+            welcomedAt: this.coerceBigintField(nodeData.welcomedAt),
+            keyIsLowEntropy: nodeData.keyIsLowEntropy ?? null,
+            duplicateKeyDetected: nodeData.duplicateKeyDetected ?? null,
+            keyMismatchDetected: nodeData.keyMismatchDetected ?? null,
+            keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? null,
+            positionChannel: nodeData.positionChannel ?? null,
+            positionPrecisionBits: nodeData.positionPrecisionBits ?? null,
+            positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
+            updatedAt: now,
+          },
+        });
       }
     }
   }
