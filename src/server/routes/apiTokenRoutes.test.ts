@@ -15,7 +15,13 @@ vi.mock('../../services/database.js', () => ({
     userModel: {
       findById: vi.fn()
     },
-    auditLog: vi.fn()
+    auditLog: vi.fn(),
+    // Async methods required by authMiddleware
+    drizzleDbType: 'sqlite',
+    findUserByIdAsync: vi.fn(),
+    findUserByUsernameAsync: vi.fn(),
+    checkPermissionAsync: vi.fn(),
+    getUserPermissionSetAsync: vi.fn()
   }
 }));
 
@@ -29,6 +35,11 @@ const mockDatabase = databaseService as unknown as {
     findById: ReturnType<typeof vi.fn>;
   };
   auditLog: ReturnType<typeof vi.fn>;
+  // Async methods
+  findUserByIdAsync: ReturnType<typeof vi.fn>;
+  findUserByUsernameAsync: ReturnType<typeof vi.fn>;
+  checkPermissionAsync: ReturnType<typeof vi.fn>;
+  getUserPermissionSetAsync: ReturnType<typeof vi.fn>;
 };
 
 const defaultUser = {
@@ -69,6 +80,14 @@ describe('API Token Routes', () => {
     vi.clearAllMocks();
     mockDatabase.userModel.findById.mockReturnValue(defaultUser);
     mockDatabase.apiTokenModel.getUserToken.mockReturnValue(null);
+    // Configure async mocks for authMiddleware
+    mockDatabase.findUserByIdAsync.mockResolvedValue(defaultUser);
+    mockDatabase.findUserByUsernameAsync.mockResolvedValue(null);
+    mockDatabase.checkPermissionAsync.mockResolvedValue(true);
+    mockDatabase.getUserPermissionSetAsync.mockResolvedValue({
+      resources: {},
+      isAdmin: false
+    });
   });
 
   it('requires authentication for token endpoints', async () => {
