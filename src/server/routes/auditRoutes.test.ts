@@ -216,6 +216,24 @@ describe('Audit Log Routes', () => {
       return result.changes;
     };
 
+    // Add async method mocks for authMiddleware compatibility
+    (DatabaseService as any).drizzleDbType = 'sqlite';
+    (DatabaseService as any).findUserByIdAsync = async (id: number) => {
+      return userModel.findById(id);
+    };
+    (DatabaseService as any).findUserByUsernameAsync = async (username: string) => {
+      return userModel.findByUsername(username);
+    };
+    (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
+      return permissionModel.check(userId, resource, action);
+    };
+    (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
+      return permissionModel.getUserPermissionSet(userId);
+    };
+    (DatabaseService as any).authenticateAsync = async (username: string, password: string) => {
+      return userModel.authenticate(username, password);
+    };
+
     // Add test middleware to inject sessions for testing
     // This must come AFTER session middleware but BEFORE routes
     app.use((req, _res, next) => {

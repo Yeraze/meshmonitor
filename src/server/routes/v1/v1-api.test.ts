@@ -108,11 +108,18 @@ vi.mock('../../../services/database.js', () => {
       getMessages: vi.fn(() => testMessages),
       getMessagesByChannel: vi.fn(() => testMessages),
       getMessagesAfterTimestamp: vi.fn(() => testMessages),
-      // Telemetry methods
+      // Telemetry methods (sync - legacy)
       getTelemetryByNode: vi.fn(() => testTelemetry),
       getTelemetryCountByNode: vi.fn(() => testTelemetry.length),
       getTelemetryByType: vi.fn(() => testTelemetry),
       getTelemetryCount: vi.fn(() => testTelemetry.length),
+      // Telemetry methods (async)
+      getTelemetryByNodeAsync: vi.fn(async () => testTelemetry),
+      getTelemetryCountByNodeAsync: vi.fn(async () => testTelemetry.length),
+      getTelemetryByTypeAsync: vi.fn(async () => testTelemetry),
+      getTelemetryCountAsync: vi.fn(async () => testTelemetry.length),
+      // Nodes async method
+      getAllNodesAsync: vi.fn(async () => testNodes),
       // Traceroutes methods
       getAllTraceroutes: vi.fn(() => testTraceroutes)
     }
