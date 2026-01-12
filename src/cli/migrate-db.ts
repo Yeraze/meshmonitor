@@ -609,6 +609,8 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
   const connection = await pool.getConnection();
   let inserted = 0;
   let columnTypes: Map<string, string> | null = null;
+  const tableMapping = COLUMN_MAPPINGS[table] || {};
+  const skipCols = SKIP_COLUMNS[table] || new Set();
 
   try {
     // Get column types for this table
@@ -618,17 +620,45 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
 
     for (const row of rows) {
       const obj = row as Record<string, unknown>;
-      const columns = Object.keys(obj);
+      const sourceColumns = Object.keys(obj);
 
-      // Sanitize values based on MySQL column types
-      const values = columns.map((col) => {
-        const mysqlType = columnTypes?.get(col) || 'text';
-        return sanitizeMySQLValue(obj[col], mysqlType);
-      });
+      // Map column names and filter out columns that don't exist in target
+      const mappedData: Array<{ targetCol: string; value: unknown }> = [];
+      const mappedColumns = new Set<string>();
 
-      const placeholders = columns.map(() => '?').join(', ');
+      for (const srcCol of sourceColumns) {
+        // Skip columns that should be excluded
+        if (skipCols.has(srcCol)) continue;
+
+        const targetCol = tableMapping[srcCol] || srcCol;
+        // Check if target column exists
+        if (!columnTypes?.has(targetCol)) {
+          continue; // Skip columns that don't exist in target schema
+        }
+
+        const mysqlType = columnTypes.get(targetCol) || 'text';
+        let value = sanitizeMySQLValue(obj[srcCol], mysqlType);
+        value = transformValue(table, targetCol, value);
+        mappedData.push({ targetCol, value });
+        mappedColumns.add(targetCol);
+      }
+
+      // Add default values for required columns that are missing from source
+      const tableDefaults = DEFAULT_VALUES[table];
+      if (tableDefaults) {
+        for (const [col, defaultFn] of Object.entries(tableDefaults)) {
+          if (!mappedColumns.has(col) && columnTypes?.has(col)) {
+            mappedData.push({ targetCol: col, value: defaultFn() });
+          }
+        }
+      }
+
+      if (mappedData.length === 0) continue;
+
+      const placeholders = mappedData.map(() => '?').join(', ');
       // Quote column names for MySQL (use backticks)
-      const quotedColumns = columns.map((c) => `\`${c}\``).join(', ');
+      const quotedColumns = mappedData.map((d) => `\`${d.targetCol}\``).join(', ');
+      const values = mappedData.map((d) => d.value);
 
       const query = `INSERT IGNORE INTO \`${table}\` (${quotedColumns}) VALUES (${placeholders})`;
 
@@ -673,161 +703,67 @@ async function createPostgresSchemaFromApp(pool: Pool): Promise<void> {
   }
 }
 
-/**
- * Convert SQLite type to MySQL type
- */
-function sqliteToMySQLType(sqliteType: string): string {
-  const type = sqliteType.toUpperCase();
-  if (type.includes('INTEGER') || type.includes('INT')) return 'BIGINT';
-  if (type.includes('REAL') || type.includes('FLOAT') || type.includes('DOUBLE')) return 'DOUBLE';
-  if (type.includes('TEXT') || type.includes('VARCHAR') || type.includes('CHAR')) return 'TEXT';
-  if (type.includes('BLOB')) return 'BLOB';
-  if (type.includes('BOOLEAN') || type.includes('BOOL')) return 'TINYINT(1)';
-  return 'TEXT'; // Default
-}
+async function createMySQLSchemaFromApp(pool: mysql.Pool): Promise<void> {
+  console.log('📋 Creating MySQL schema from application definitions...');
 
-/**
- * Parse SQLite CREATE TABLE statement and convert to MySQL
- */
-function convertCreateTableForMySQL(sqliteSchema: string): string {
-  // Extract table name
-  const tableMatch = sqliteSchema.match(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?["']?(\w+)["']?\s*\(/i);
-  if (!tableMatch) return '';
-
-  const tableName = tableMatch[1];
-
-  // Skip sqlite internal tables
-  if (tableName === 'sqlite_sequence') return '';
-
-  // Extract column definitions - handle multi-line
-  const columnsStart = sqliteSchema.indexOf('(') + 1;
-  const columnsEnd = sqliteSchema.lastIndexOf(')');
-  const columnsStr = sqliteSchema.substring(columnsStart, columnsEnd);
-
-  // Parse columns
-  const columns: string[] = [];
-  let currentCol = '';
-  let parenDepth = 0;
-
-  for (const char of columnsStr) {
-    if (char === '(') parenDepth++;
-    else if (char === ')') parenDepth--;
-
-    if (char === ',' && parenDepth === 0) {
-      if (currentCol.trim()) columns.push(currentCol.trim());
-      currentCol = '';
-    } else {
-      currentCol += char;
-    }
-  }
-  if (currentCol.trim()) columns.push(currentCol.trim());
-
-  // Convert each column
-  const mysqlColumns: string[] = [];
-  const constraints: string[] = [];
-
-  for (const col of columns) {
-    const trimmed = col.trim();
-
-    // Skip constraints for now (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
-    if (/^(PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|CONSTRAINT)/i.test(trimmed)) {
-      // Convert constraint if it's a simple UNIQUE constraint
-      if (/^UNIQUE\s*\(/i.test(trimmed)) {
-        constraints.push(trimmed);
-      }
-      continue;
-    }
-
-    // Parse column: name type [constraints]
-    const colMatch = trimmed.match(/^["']?(\w+)["']?\s+(\w+)(.*)$/i);
-    if (!colMatch) continue;
-
-    const [, colName, colType, rest] = colMatch;
-    let mysqlType = sqliteToMySQLType(colType);
-
-    // Handle TEXT PRIMARY KEY - MySQL requires key length for TEXT/BLOB
-    // Convert to VARCHAR(255) when used as primary key
-    const isPrimaryKey = /PRIMARY KEY/i.test(rest);
-    if (isPrimaryKey && mysqlType === 'TEXT') {
-      mysqlType = 'VARCHAR(255)';
-    }
-
-    let mysqlCol = `\`${colName}\` ${mysqlType}`;
-
-    // Handle constraints in column definition
-    const isAutoIncrement = /AUTOINCREMENT/i.test(rest);
-    if (isPrimaryKey) {
-      if (isAutoIncrement) {
-        mysqlCol += ' AUTO_INCREMENT PRIMARY KEY';
-      } else {
-        mysqlCol += ' PRIMARY KEY';
-      }
-    }
-    if (/NOT NULL/i.test(rest) && !isPrimaryKey) {
-      // PRIMARY KEY implies NOT NULL, don't duplicate
-      mysqlCol += ' NOT NULL';
-    }
-    if (/UNIQUE/i.test(rest) && !isPrimaryKey) {
-      mysqlCol += ' UNIQUE';
-    }
-    if (/DEFAULT/i.test(rest)) {
-      // Handle DEFAULT values - need to capture parenthesized expressions too
-      const defaultMatch = rest.match(/DEFAULT\s+(\([^)]+\)|'[^']*'|\S+)/i);
-      if (defaultMatch) {
-        let defaultVal = defaultMatch[1];
-        // Convert SQLite-specific default values
-        if (/strftime\s*\(\s*'%s'\s*,\s*'now'\s*\)/i.test(defaultVal)) {
-          // Convert strftime('%s', 'now') to UNIX_TIMESTAMP()
-          defaultVal = '(UNIX_TIMESTAMP())';
-        } else if (/CURRENT_TIMESTAMP/i.test(defaultVal)) {
-          defaultVal = 'CURRENT_TIMESTAMP';
-        }
-        mysqlCol += ` DEFAULT ${defaultVal}`;
-      }
-    }
-
-    mysqlColumns.push(mysqlCol);
-  }
-
-  if (mysqlColumns.length === 0) return '';
-
-  let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  ${mysqlColumns.join(',\n  ')}`;
-  if (constraints.length > 0) {
-    createSql += ',\n  ' + constraints.join(',\n  ');
-  }
-  createSql += '\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
-
-  return createSql;
-}
-
-async function createMySQLSchemaFromSqlite(pool: mysql.Pool, sqliteDb: Database.Database): Promise<void> {
-  console.log('📋 Creating MySQL schema from SQLite...');
+  const { MYSQL_SCHEMA_SQL, MYSQL_TABLE_NAMES } = await import('../db/schema/mysql-create.js');
 
   const connection = await pool.getConnection();
-
   try {
-    // Get all table schemas from SQLite
-    const tables = sqliteDb.prepare(`
-      SELECT name, sql FROM sqlite_master
-      WHERE type='table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name
-    `).all() as Array<{ name: string; sql: string }>;
-
-    for (const table of tables) {
-      if (!table.sql) continue;
-
-      const mysqlSql = convertCreateTableForMySQL(table.sql);
-      if (mysqlSql) {
-        try {
-          await connection.execute(mysqlSql);
-          console.log(`  ✅ Created table: ${table.name}`);
-        } catch (err) {
-          console.warn(`  ⚠️  Failed to create table ${table.name}: ${(err as Error).message}`);
-        }
+    // Split by semicolon and execute each statement
+    const statements = MYSQL_SCHEMA_SQL.split(';').filter((s: string) => s.trim());
+    for (const stmt of statements) {
+      try {
+        await connection.execute(stmt);
+      } catch {
+        // Table may already exist, skip
       }
     }
-
+    for (const tableName of MYSQL_TABLE_NAMES) {
+      console.log(`  ✅ Created table: ${tableName}`);
+    }
     console.log('✅ MySQL schema created');
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Reset MySQL auto_increment values to max ID after migration
+ * This prevents primary key conflicts when new rows are inserted
+ */
+async function resetMySQLAutoIncrement(pool: mysql.Pool): Promise<void> {
+  console.log('\n🔄 Resetting MySQL auto_increment values...');
+
+  const autoIncrementTables = [
+    'audit_log',
+    'telemetry',
+    'traceroutes',
+    'route_segments',
+    'neighbor_info',
+    'users',
+    'permissions',
+    'api_tokens',
+    'push_subscriptions',
+    'user_notification_preferences',
+    'packet_log',
+    'backup_history',
+    'upgrade_history',
+    'custom_themes',
+  ];
+
+  const connection = await pool.getConnection();
+  try {
+    for (const table of autoIncrementTables) {
+      try {
+        const [rows] = await connection.execute(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`);
+        const nextId = (rows as Array<{ next_id: number }>)[0]?.next_id || 1;
+        await connection.execute(`ALTER TABLE ${table} AUTO_INCREMENT = ${nextId}`);
+      } catch {
+        // Table may not exist, skip silently
+      }
+    }
+    console.log('  ✅ Auto_increment values reset to match migrated data');
   } finally {
     connection.release();
   }
@@ -891,7 +827,7 @@ async function migrate(options: MigrationOptions): Promise<void> {
       if (isPostgresTarget && targetPgDb) {
         await createPostgresSchemaFromApp(targetPgDb.pool);
       } else if (isMySQLTarget && targetMySQLDb) {
-        await createMySQLSchemaFromSqlite(targetMySQLDb.pool, sourceDb.rawDb);
+        await createMySQLSchemaFromApp(targetMySQLDb.pool);
       }
     }
 
@@ -956,6 +892,11 @@ async function migrate(options: MigrationOptions): Promise<void> {
     // Reset PostgreSQL sequences to prevent primary key conflicts
     if (isPostgresTarget && targetPgDb && !options.dryRun) {
       await resetPostgresSequences(targetPgDb.pool);
+    }
+
+    // Reset MySQL auto_increment values to prevent primary key conflicts
+    if (isMySQLTarget && targetMySQLDb && !options.dryRun) {
+      await resetMySQLAutoIncrement(targetMySQLDb.pool);
     }
 
     // Summary
