@@ -63,6 +63,14 @@ export const SystemStatusModal: React.FC<SystemStatusModalProps> = ({
               <strong>{t('system_status.memory_rss', 'Memory (RSS)')}:</strong>
               <span>{systemStatus.memoryUsage.rss}</span>
             </div>
+            {systemStatus.database && (
+              <div className="status-item">
+                <strong>{t('system_status.database', 'Database')}:</strong>
+                <span>
+                  {systemStatus.database.type} {systemStatus.database.version}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
