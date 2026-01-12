@@ -76,7 +76,26 @@ vi.mock('../../../services/database.js', () => {
           return true;
         })
       },
+      // Async methods for PostgreSQL/MySQL support
+      validateApiTokenAsync: vi.fn(async (token: string) => {
+        if (token === VALID_TEST_TOKEN) {
+          return { id: TEST_USER_ID, username: 'test-api-user', isActive: true, isAdmin: false };
+        }
+        return null;
+      }),
+      findUserByIdAsync: vi.fn(async (id: number) => {
+        if (id === TEST_USER_ID) {
+          return { id: TEST_USER_ID, username: 'test-api-user', isActive: true, isAdmin: false };
+        }
+        return null;
+      }),
+      checkPermissionAsync: vi.fn(async (userId: number, resource: string, action: string) => {
+        // Grant all permissions for test user by default
+        return true;
+      }),
+      updateApiTokenLastUsedAsync: vi.fn(async () => {}),
       auditLog: vi.fn(),
+      auditLogAsync: vi.fn(async () => {}),
       getSetting: vi.fn((key: string) => {
         if (key === 'localNodeNum') return '2715451348';
         if (key === 'localNodeId') return '!a1b2c3d4';
@@ -687,10 +706,10 @@ describe('POST /api/v1/messages', () => {
 
 describe('POST /api/v1/messages - Permission Tests', () => {
   it('should reject channel message without channel permission', async () => {
-    // Override permissionModel.check to deny channel_0:write
+    // Override checkPermissionAsync to deny channel_0:write
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.permissionModel.check).mockImplementation(
-      (userId: number, resource: string, action: string) => {
+    vi.mocked(databaseService.default.checkPermissionAsync).mockImplementation(
+      async (userId: number, resource: string, action: string) => {
         if (resource === 'channel_0' && action === 'write') return false;
         return true;
       }
@@ -713,10 +732,10 @@ describe('POST /api/v1/messages - Permission Tests', () => {
   });
 
   it('should reject direct message without messages permission', async () => {
-    // Override permissionModel.check to deny messages:write
+    // Override checkPermissionAsync to deny messages:write
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.permissionModel.check).mockImplementation(
-      (userId: number, resource: string, action: string) => {
+    vi.mocked(databaseService.default.checkPermissionAsync).mockImplementation(
+      async (userId: number, resource: string, action: string) => {
         if (resource === 'messages' && action === 'write') return false;
         return true;
       }
