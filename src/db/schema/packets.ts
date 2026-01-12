@@ -7,16 +7,15 @@ import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean 
 import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
 
 // SQLite schema
+// Note: from_node_longName and to_node_longName are computed via JOIN on read, not stored
 export const packetLogSqlite = sqliteTable('packet_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   packet_id: integer('packet_id'),
   timestamp: integer('timestamp').notNull(),
   from_node: integer('from_node').notNull(),
   from_node_id: text('from_node_id'),
-  from_node_longName: text('from_node_longName'),
   to_node: integer('to_node'),
   to_node_id: text('to_node_id'),
-  to_node_longName: text('to_node_longName'),
   channel: integer('channel'),
   portnum: integer('portnum').notNull(),
   portnum_name: text('portnum_name'),
@@ -36,16 +35,17 @@ export const packetLogSqlite = sqliteTable('packet_log', {
 });
 
 // PostgreSQL schema
+// Note: from_node_longName and to_node_longName are computed via JOIN on read, not stored
+// Note: packet_id, from_node, to_node, relay_node use BIGINT because Meshtastic node IDs
+// are unsigned 32-bit integers (0 to 4,294,967,295) which exceed PostgreSQL's signed INTEGER max
 export const packetLogPostgres = pgTable('packet_log', {
   id: pgSerial('id').primaryKey(),
-  packet_id: pgInteger('packet_id'),
+  packet_id: pgBigint('packet_id', { mode: 'number' }),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
-  from_node: pgInteger('from_node').notNull(),
+  from_node: pgBigint('from_node', { mode: 'number' }).notNull(),
   from_node_id: pgText('from_node_id'),
-  from_node_longName: pgText('from_node_longName'),
-  to_node: pgInteger('to_node'),
+  to_node: pgBigint('to_node', { mode: 'number' }),
   to_node_id: pgText('to_node_id'),
-  to_node_longName: pgText('to_node_longName'),
   channel: pgInteger('channel'),
   portnum: pgInteger('portnum').notNull(),
   portnum_name: pgText('portnum_name'),
@@ -54,7 +54,7 @@ export const packetLogPostgres = pgTable('packet_log', {
   rssi: pgReal('rssi'),
   hop_limit: pgInteger('hop_limit'),
   hop_start: pgInteger('hop_start'),
-  relay_node: pgInteger('relay_node'),
+  relay_node: pgBigint('relay_node', { mode: 'number' }),
   payload_size: pgInteger('payload_size'),
   want_ack: pgBoolean('want_ack'),
   priority: pgInteger('priority'),
@@ -65,16 +65,17 @@ export const packetLogPostgres = pgTable('packet_log', {
 });
 
 // MySQL schema
+// Note: from_node_longName and to_node_longName are computed via JOIN on read, not stored
+// Note: packet_id, from_node, to_node, relay_node use BIGINT because Meshtastic node IDs
+// are unsigned 32-bit integers (0 to 4,294,967,295) which exceed MySQL's signed INT max
 export const packetLogMysql = mysqlTable('packet_log', {
   id: mySerial('id').primaryKey(),
-  packet_id: myInt('packet_id'),
+  packet_id: myBigint('packet_id', { mode: 'number' }),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
-  from_node: myInt('from_node').notNull(),
+  from_node: myBigint('from_node', { mode: 'number' }).notNull(),
   from_node_id: myVarchar('from_node_id', { length: 32 }),
-  from_node_longName: myVarchar('from_node_longName', { length: 255 }),
-  to_node: myInt('to_node'),
+  to_node: myBigint('to_node', { mode: 'number' }),
   to_node_id: myVarchar('to_node_id', { length: 32 }),
-  to_node_longName: myVarchar('to_node_longName', { length: 255 }),
   channel: myInt('channel'),
   portnum: myInt('portnum').notNull(),
   portnum_name: myVarchar('portnum_name', { length: 64 }),
@@ -83,7 +84,7 @@ export const packetLogMysql = mysqlTable('packet_log', {
   rssi: myDouble('rssi'),
   hop_limit: myInt('hop_limit'),
   hop_start: myInt('hop_start'),
-  relay_node: myInt('relay_node'),
+  relay_node: myBigint('relay_node', { mode: 'number' }),
   payload_size: myInt('payload_size'),
   want_ack: myBoolean('want_ack'),
   priority: myInt('priority'),

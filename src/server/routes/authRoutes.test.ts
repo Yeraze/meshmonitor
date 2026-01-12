@@ -74,6 +74,10 @@ describe('Authentication Routes', () => {
     (DatabaseService as any).permissionModel = permissionModel;
     (DatabaseService as any).auditLog = () => {};
     (DatabaseService as any).findUserByIdAsync = async (id: number) => userModel.findById(id);
+    (DatabaseService as any).findUserByUsernameAsync = async (username: string) => userModel.findByUsername(username);
+    (DatabaseService as any).authenticateAsync = async (username: string, password: string) => userModel.authenticate(username, password);
+    (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => permissionModel.getUserPermissionSet(userId);
+    (DatabaseService as any).updatePasswordAsync = async (userId: number, newPassword: string) => userModel.updatePassword(userId, newPassword);
 
     app.use('/api/auth', authRoutes);
   });

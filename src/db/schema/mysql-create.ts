@@ -270,22 +270,29 @@ export const MYSQL_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS packet_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    packetId BIGINT NOT NULL,
-    fromNodeNum BIGINT,
-    toNodeNum BIGINT,
+    packet_id BIGINT,
+    timestamp BIGINT NOT NULL,
+    from_node BIGINT NOT NULL,
+    from_node_id VARCHAR(32),
+    to_node BIGINT,
+    to_node_id VARCHAR(32),
     channel INT,
-    portnum INT,
-    hopLimit INT,
-    hopStart INT,
-    wantAck BOOLEAN,
-    viaMqtt BOOLEAN DEFAULT false,
-    rxTime BIGINT,
-    rxSnr DOUBLE,
-    rxRssi INT,
-    decoded TEXT,
-    raw TEXT,
-    createdAt BIGINT NOT NULL,
-    INDEX idx_packet_log_createdat (createdAt)
+    portnum INT NOT NULL,
+    portnum_name VARCHAR(64),
+    encrypted BOOLEAN NOT NULL,
+    snr DOUBLE,
+    rssi DOUBLE,
+    hop_limit INT,
+    hop_start INT,
+    relay_node BIGINT,
+    payload_size INT,
+    want_ack BOOLEAN,
+    priority INT,
+    payload_preview TEXT,
+    metadata TEXT,
+    direction VARCHAR(8),
+    created_at BIGINT,
+    INDEX idx_packet_log_createdat (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS backup_history (
@@ -332,6 +339,45 @@ export const MYSQL_SCHEMA_SQL = `
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+  CREATE TABLE IF NOT EXISTS solar_estimates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    timestamp BIGINT NOT NULL UNIQUE,
+    watt_hours DOUBLE NOT NULL,
+    fetched_at BIGINT NOT NULL,
+    created_at BIGINT,
+    INDEX idx_solar_timestamp (timestamp),
+    INDEX idx_solar_fetched_at (fetched_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS auto_traceroute_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    to_node_num BIGINT NOT NULL,
+    to_node_name TEXT,
+    success INT DEFAULT NULL,
+    created_at BIGINT,
+    INDEX idx_auto_traceroute_timestamp (timestamp)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS auto_key_repair_state (
+    nodeNum BIGINT PRIMARY KEY,
+    attemptCount INT DEFAULT 0,
+    lastAttemptTime BIGINT,
+    exhausted INT DEFAULT 0,
+    startedAt BIGINT NOT NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS auto_key_repair_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    nodeNum BIGINT NOT NULL,
+    nodeName TEXT,
+    action TEXT NOT NULL,
+    success INT DEFAULT NULL,
+    created_at BIGINT,
+    INDEX idx_auto_key_repair_log_timestamp (timestamp)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
   CREATE INDEX IF NOT EXISTS idx_nodes_nodeid ON nodes(nodeId);
   CREATE INDEX IF NOT EXISTS idx_nodes_lastheard ON nodes(lastHeard);
 `;
@@ -358,4 +404,8 @@ export const MYSQL_TABLE_NAMES = [
   'upgrade_history',
   'custom_themes',
   'user_map_preferences',
+  'solar_estimates',
+  'auto_traceroute_log',
+  'auto_key_repair_state',
+  'auto_key_repair_log',
 ];

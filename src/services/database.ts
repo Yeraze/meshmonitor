@@ -70,6 +70,7 @@ import {
   NotificationsRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType } from '../db/types.js';
+import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -2594,6 +2595,18 @@ class DatabaseService {
     return nodes.map(node => this.normalizeBigInts(node));
   }
 
+  /**
+   * Async version of getAllNodes - works with all database backends
+   */
+  async getAllNodesAsync(): Promise<DbNode[]> {
+    if (this.nodesRepo) {
+      // Cast to local DbNode type (they have compatible structure)
+      return this.nodesRepo.getAllNodes() as unknown as DbNode[];
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getAllNodes();
+  }
+
   getActiveNodes(sinceDays: number = 7): DbNode[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -3155,6 +3168,22 @@ class DatabaseService {
     const stmt = this.db.prepare(query);
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
+  }
+
+  /**
+   * Async version of getTelemetryCountByNode - works with all database backends
+   */
+  async getTelemetryCountByNodeAsync(
+    nodeId: string,
+    sinceTimestamp?: number,
+    beforeTimestamp?: number,
+    telemetryType?: string
+  ): Promise<number> {
+    if (this.telemetryRepo) {
+      return this.telemetryRepo.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
   /**
@@ -3836,6 +3865,19 @@ class DatabaseService {
     this.invalidateTelemetryTypesCache();
   }
 
+  /**
+   * Async version of insertTelemetry - works with all database backends
+   */
+  async insertTelemetryAsync(telemetryData: DbTelemetry): Promise<void> {
+    if (this.telemetryRepo) {
+      await this.telemetryRepo.insertTelemetry(telemetryData);
+      this.invalidateTelemetryTypesCache();
+      return;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    this.insertTelemetry(telemetryData);
+  }
+
   getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
     let query = `
       SELECT * FROM telemetry
@@ -3867,6 +3909,25 @@ class DatabaseService {
     const stmt = this.db.prepare(query);
     const telemetry = stmt.all(...params) as DbTelemetry[];
     return telemetry.map(t => this.normalizeBigInts(t));
+  }
+
+  /**
+   * Async version of getTelemetryByNode - works with all database backends
+   */
+  async getTelemetryByNodeAsync(
+    nodeId: string,
+    limit: number = 100,
+    sinceTimestamp?: number,
+    beforeTimestamp?: number,
+    offset: number = 0,
+    telemetryType?: string
+  ): Promise<DbTelemetry[]> {
+    if (this.telemetryRepo) {
+      // Cast to local DbTelemetry type (they have compatible structure)
+      return this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType);
   }
 
   // Get only position-related telemetry (latitude, longitude, altitude) for a node
@@ -5038,6 +5099,11 @@ class DatabaseService {
     toNodeName: string | null;
     success: boolean | null;
   }[] {
+    // For PostgreSQL/MySQL, use async version
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
       FROM auto_traceroute_log
@@ -5056,6 +5122,51 @@ class DatabaseService {
       ...r,
       success: r.success === null ? null : r.success === 1
     }));
+  }
+
+  /**
+   * Async version of getAutoTracerouteLog - works with all database backends
+   */
+  async getAutoTracerouteLogAsync(limit: number = 10): Promise<{
+    id: number;
+    timestamp: number;
+    toNodeNum: number;
+    toNodeName: string | null;
+    success: boolean | null;
+  }[]> {
+    if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
+      // Fallback to sync for SQLite
+      return this.getAutoTracerouteLog(limit);
+    }
+
+    try {
+      let results: any[] = [];
+
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query(
+          `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT $1`,
+          [limit]
+        );
+        results = result.rows || [];
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [rows] = await this.mysqlPool.query(
+          `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT ?`,
+          [limit]
+        );
+        results = rows as any[] || [];
+      }
+
+      return results.map((r: any) => ({
+        id: Number(r.id),
+        timestamp: Number(r.timestamp),
+        toNodeNum: Number(r.to_node_num),
+        toNodeName: r.to_node_name,
+        success: r.success === null ? null : Boolean(r.success)
+      }));
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to get auto traceroute log async: ${error}`);
+      return [];
+    }
   }
 
   // Auto key repair state methods
@@ -5290,6 +5401,18 @@ class DatabaseService {
     `);
     const telemetry = stmt.all(telemetryType, limit) as DbTelemetry[];
     return telemetry.map(t => this.normalizeBigInts(t));
+  }
+
+  /**
+   * Async version of getTelemetryByType - works with all database backends
+   */
+  async getTelemetryByTypeAsync(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
+    if (this.telemetryRepo) {
+      // Cast to local DbTelemetry type (they have compatible structure)
+      return this.telemetryRepo.getTelemetryByType(telemetryType, limit) as unknown as DbTelemetry[];
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getTelemetryByType(telemetryType, limit);
   }
 
   getLatestTelemetryByNode(nodeId: string): DbTelemetry[] {
@@ -6884,6 +7007,14 @@ class DatabaseService {
       return 0;
     }
 
+    // For PostgreSQL/MySQL, use async method
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      this.insertPacketLogAsync(packet).catch((error) => {
+        logger.error(`[DatabaseService] Failed to insert packet log: ${error}`);
+      });
+      return 0;
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
@@ -6944,6 +7075,66 @@ class DatabaseService {
       `);
       deleteStmt.run(deleteCount);
       logger.debug(`🧹 Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
+    }
+  }
+
+  /**
+   * Async version of insertPacketLog - works with all database backends
+   */
+  async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
+    // Check if packet logging is enabled
+    const enabled = await this.getSettingAsync('packet_log_enabled');
+    if (enabled !== '1') {
+      return 0;
+    }
+
+    if (!this.drizzleDatabase) {
+      // Fallback to sync for SQLite if drizzle not ready
+      return this.insertPacketLog(packet);
+    }
+
+    try {
+      const values = {
+        packet_id: packet.packet_id ?? null,
+        timestamp: packet.timestamp,
+        from_node: packet.from_node,
+        from_node_id: packet.from_node_id ?? null,
+        to_node: packet.to_node ?? null,
+        to_node_id: packet.to_node_id ?? null,
+        channel: packet.channel ?? null,
+        portnum: packet.portnum,
+        portnum_name: packet.portnum_name ?? null,
+        encrypted: packet.encrypted,
+        snr: packet.snr ?? null,
+        rssi: packet.rssi ?? null,
+        hop_limit: packet.hop_limit ?? null,
+        hop_start: packet.hop_start ?? null,
+        relay_node: packet.relay_node ?? null,
+        payload_size: packet.payload_size ?? null,
+        want_ack: packet.want_ack ?? false,
+        priority: packet.priority ?? null,
+        payload_preview: packet.payload_preview ?? null,
+        metadata: packet.metadata ?? null,
+        direction: packet.direction ?? 'rx',
+        created_at: Date.now(),
+      };
+
+      // Use type assertion to avoid complex type narrowing
+      // The drizzleDatabase is the raw Drizzle ORM database instance
+      const db = this.drizzleDatabase as any;
+      if (this.drizzleDbType === 'postgres') {
+        await db.insert(packetLogPostgres).values(values);
+      } else if (this.drizzleDbType === 'mysql') {
+        await db.insert(packetLogMysql).values(values);
+      } else {
+        await db.insert(packetLogSqlite).values(values);
+      }
+
+      // TODO: Enforce max count for async version
+      return 0;
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to insert packet log async: ${error}`);
+      return 0;
     }
   }
 
@@ -7066,6 +7257,248 @@ class DatabaseService {
     const result = stmt.run();
     logger.debug(`🧹 Cleared ${result.changes} packet log entries`);
     return Number(result.changes);
+  }
+
+  /**
+   * Get packet log count - async version for PostgreSQL/MySQL
+   */
+  async getPacketLogCountAsync(options: {
+    portnum?: number;
+    from_node?: number;
+    to_node?: number;
+    channel?: number;
+    encrypted?: boolean;
+    since?: number;
+  } = {}): Promise<number> {
+    const { portnum, from_node, to_node, channel, encrypted, since } = options;
+
+    // For PostgreSQL, use pool.query with parameterized query
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const params: any[] = [];
+        let paramIndex = 1;
+        let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
+
+        if (portnum !== undefined) {
+          query += ` AND portnum = $${paramIndex++}`;
+          params.push(portnum);
+        }
+        if (from_node !== undefined) {
+          query += ` AND from_node = $${paramIndex++}`;
+          params.push(from_node);
+        }
+        if (to_node !== undefined) {
+          query += ` AND to_node = $${paramIndex++}`;
+          params.push(to_node);
+        }
+        if (channel !== undefined) {
+          query += ` AND channel = $${paramIndex++}`;
+          params.push(channel);
+        }
+        if (encrypted !== undefined) {
+          query += ` AND encrypted = $${paramIndex++}`;
+          params.push(encrypted);
+        }
+        if (since !== undefined) {
+          query += ` AND timestamp >= $${paramIndex++}`;
+          params.push(since);
+        }
+
+        const result = await this.postgresPool.query(query, params);
+        return Number(result.rows?.[0]?.count ?? 0);
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet log count:', error);
+        return 0;
+      }
+    }
+
+    // For MySQL, use pool.query with parameterized query
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const params: any[] = [];
+        let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
+
+        if (portnum !== undefined) {
+          query += ' AND portnum = ?';
+          params.push(portnum);
+        }
+        if (from_node !== undefined) {
+          query += ' AND from_node = ?';
+          params.push(from_node);
+        }
+        if (to_node !== undefined) {
+          query += ' AND to_node = ?';
+          params.push(to_node);
+        }
+        if (channel !== undefined) {
+          query += ' AND channel = ?';
+          params.push(channel);
+        }
+        if (encrypted !== undefined) {
+          query += ' AND encrypted = ?';
+          params.push(encrypted);
+        }
+        if (since !== undefined) {
+          query += ' AND timestamp >= ?';
+          params.push(since);
+        }
+
+        const [rows] = await this.mysqlPool.query(query, params);
+        return Number((rows as any[])?.[0]?.count ?? 0);
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet log count:', error);
+        return 0;
+      }
+    }
+
+    // For SQLite, use sync method
+    return this.getPacketLogCount(options);
+  }
+
+  /**
+   * Get packet logs - async version for PostgreSQL/MySQL
+   */
+  async getPacketLogsAsync(options: {
+    offset?: number;
+    limit?: number;
+    portnum?: number;
+    from_node?: number;
+    to_node?: number;
+    channel?: number;
+    encrypted?: boolean;
+    since?: number;
+  }): Promise<DbPacketLog[]> {
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
+
+    // For PostgreSQL, use pool.query with parameterized query
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const params: any[] = [];
+        let paramIndex = 1;
+
+        let query = `
+          SELECT
+            pl.*,
+            from_nodes."longName" as "from_node_longName",
+            to_nodes."longName" as "to_node_longName"
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
+          WHERE 1=1
+        `;
+
+        if (portnum !== undefined) {
+          query += ` AND pl.portnum = $${paramIndex++}`;
+          params.push(portnum);
+        }
+        if (from_node !== undefined) {
+          query += ` AND pl.from_node = $${paramIndex++}`;
+          params.push(from_node);
+        }
+        if (to_node !== undefined) {
+          query += ` AND pl.to_node = $${paramIndex++}`;
+          params.push(to_node);
+        }
+        if (channel !== undefined) {
+          query += ` AND pl.channel = $${paramIndex++}`;
+          params.push(channel);
+        }
+        if (encrypted !== undefined) {
+          query += ` AND pl.encrypted = $${paramIndex++}`;
+          params.push(encrypted);
+        }
+        if (since !== undefined) {
+          query += ` AND pl.timestamp >= $${paramIndex++}`;
+          params.push(since);
+        }
+
+        query += ` ORDER BY pl.timestamp DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+        params.push(limit, offset);
+
+        const result = await this.postgresPool.query(query, params);
+        // Convert BIGINT fields from strings to numbers (PostgreSQL returns BIGINT as strings)
+        return (result.rows ?? []).map((row: any) => ({
+          ...row,
+          id: row.id != null ? Number(row.id) : row.id,
+          packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
+          timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
+          from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
+          to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
+          relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
+          created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
+        })) as DbPacketLog[];
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet logs:', error);
+        return [];
+      }
+    }
+    // For MySQL, use pool.query with parameterized query
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const params: any[] = [];
+
+        let query = `
+          SELECT
+            pl.*,
+            from_nodes.longName as from_node_longName,
+            to_nodes.longName as to_node_longName
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
+          WHERE 1=1
+        `;
+
+        if (portnum !== undefined) {
+          query += ` AND pl.portnum = ?`;
+          params.push(portnum);
+        }
+        if (from_node !== undefined) {
+          query += ` AND pl.from_node = ?`;
+          params.push(from_node);
+        }
+        if (to_node !== undefined) {
+          query += ` AND pl.to_node = ?`;
+          params.push(to_node);
+        }
+        if (channel !== undefined) {
+          query += ` AND pl.channel = ?`;
+          params.push(channel);
+        }
+        if (encrypted !== undefined) {
+          query += ` AND pl.encrypted = ?`;
+          params.push(encrypted);
+        }
+        if (since !== undefined) {
+          query += ` AND pl.timestamp >= ?`;
+          params.push(since);
+        }
+
+        query += ` ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?`;
+        params.push(limit, offset);
+
+        const [rows] = await this.mysqlPool.query(query, params);
+        return (rows ?? []) as DbPacketLog[];
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet logs:', error);
+        return [];
+      }
+    }
+    // For SQLite, use sync method
+    return this.getPacketLogs(options);
+  }
+
+  /**
+   * Get database size - async version for PostgreSQL/MySQL
+   * Note: PostgreSQL uses pg_database_size() which requires different permissions
+   * Returns 0 for PostgreSQL/MySQL as exact size calculation differs
+   */
+  async getDatabaseSizeAsync(): Promise<number> {
+    // For PostgreSQL/MySQL, return 0 (size calculation is different)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return 0;
+    }
+    // For SQLite, use sync method
+    return this.getDatabaseSize();
   }
 
   cleanupOldPacketLogs(): number {
@@ -7527,21 +7960,28 @@ class DatabaseService {
 
         CREATE TABLE IF NOT EXISTS packet_log (
           id SERIAL PRIMARY KEY,
-          "packetId" BIGINT NOT NULL,
-          "fromNodeNum" BIGINT,
-          "toNodeNum" BIGINT,
+          packet_id BIGINT,
+          timestamp BIGINT NOT NULL,
+          from_node BIGINT NOT NULL,
+          from_node_id TEXT,
+          to_node BIGINT,
+          to_node_id TEXT,
           channel INTEGER,
-          portnum INTEGER,
-          "hopLimit" INTEGER,
-          "hopStart" INTEGER,
-          "wantAck" BOOLEAN,
-          "viaMqtt" BOOLEAN DEFAULT false,
-          "rxTime" BIGINT,
-          "rxSnr" DOUBLE PRECISION,
-          "rxRssi" INTEGER,
-          decoded TEXT,
-          raw TEXT,
-          "createdAt" BIGINT NOT NULL
+          portnum INTEGER NOT NULL,
+          portnum_name TEXT,
+          encrypted BOOLEAN NOT NULL,
+          snr REAL,
+          rssi REAL,
+          hop_limit INTEGER,
+          hop_start INTEGER,
+          relay_node BIGINT,
+          payload_size INTEGER,
+          want_ack BOOLEAN,
+          priority INTEGER,
+          payload_preview TEXT,
+          metadata TEXT,
+          direction TEXT,
+          created_at BIGINT
         );
 
         CREATE TABLE IF NOT EXISTS backup_history (
@@ -7598,7 +8038,7 @@ class DatabaseService {
         CREATE INDEX IF NOT EXISTS idx_neighbor_info_nodenum ON neighbor_info("nodeNum");
         CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
         CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log("createdAt");
+        CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log(created_at);
       `);
 
       logger.info('[PostgreSQL] Schema created successfully');
@@ -7911,21 +8351,28 @@ class DatabaseService {
       await connection.query(`
         CREATE TABLE IF NOT EXISTS packet_log (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          packetId BIGINT NOT NULL,
-          fromNodeNum BIGINT,
-          toNodeNum BIGINT,
+          packet_id BIGINT,
+          timestamp BIGINT NOT NULL,
+          from_node BIGINT NOT NULL,
+          from_node_id VARCHAR(32),
+          to_node BIGINT,
+          to_node_id VARCHAR(32),
           channel INT,
-          portnum INT,
-          hopLimit INT,
-          hopStart INT,
-          wantAck BOOLEAN,
-          viaMqtt BOOLEAN DEFAULT false,
-          rxTime BIGINT,
-          rxSnr DOUBLE,
-          rxRssi INT,
-          decoded TEXT,
-          raw TEXT,
-          createdAt BIGINT NOT NULL
+          portnum INT NOT NULL,
+          portnum_name VARCHAR(64),
+          encrypted BOOLEAN NOT NULL,
+          snr DOUBLE,
+          rssi DOUBLE,
+          hop_limit INT,
+          hop_start INT,
+          relay_node BIGINT,
+          payload_size INT,
+          want_ack BOOLEAN,
+          priority INT,
+          payload_preview TEXT,
+          metadata TEXT,
+          direction VARCHAR(8),
+          created_at BIGINT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
@@ -7994,7 +8441,7 @@ class DatabaseService {
       await connection.query(`CREATE INDEX idx_neighbor_info_nodenum ON neighbor_info(nodeNum)`);
       await connection.query(`CREATE INDEX idx_sessions_expire ON sessions(expire)`);
       await connection.query(`CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp)`);
-      await connection.query(`CREATE INDEX idx_packet_log_createdat ON packet_log(createdAt)`);
+      await connection.query(`CREATE INDEX idx_packet_log_createdat ON packet_log(created_at)`);
 
       logger.info('[MySQL] Schema created successfully');
     } finally {

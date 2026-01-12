@@ -9,43 +9,48 @@ const router = express.Router();
 /**
  * Permission middleware - require BOTH channels:read AND messages:read
  */
-const requirePacketPermissions: RequestHandler = (req, res, next) => {
-  const user = (req as any).user;
-  const userId = user?.id ?? null;
+const requirePacketPermissions: RequestHandler = async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
 
-  // Get user permissions (works for both authenticated and anonymous users)
-  const permissions = userId !== null
-    ? databaseService.permissionModel.getUserPermissionSet(userId)
-    : {};
+    // Get user permissions (works for both authenticated and anonymous users)
+    const permissions = userId !== null
+      ? await databaseService.getUserPermissionSetAsync(userId)
+      : {};
 
-  // Check if user is admin (admins have all permissions)
-  const isAdmin = user?.isAdmin ?? false;
+    // Check if user is admin (admins have all permissions)
+    const isAdmin = user?.isAdmin ?? false;
 
-  if (isAdmin) {
-    // Admins have all permissions
-    return next();
+    if (isAdmin) {
+      // Admins have all permissions
+      return next();
+    }
+
+    // Check both channel_0:read and messages:read (minimum required)
+    const hasChannelsRead = permissions.channel_0?.read === true;
+    const hasMessagesRead = permissions.messages?.read === true;
+
+    if (!hasChannelsRead || !hasMessagesRead) {
+      logger.warn(`❌ Permission denied for packet access - channel_0:read=${hasChannelsRead}, messages:read=${hasMessagesRead}`);
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You need both channel_0:read and messages:read permissions to access packet logs'
+      });
+    }
+
+    next();
+  } catch (error) {
+    logger.error('Error checking packet permissions:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  // Check both channel_0:read and messages:read (minimum required)
-  const hasChannelsRead = permissions.channel_0?.read === true;
-  const hasMessagesRead = permissions.messages?.read === true;
-
-  if (!hasChannelsRead || !hasMessagesRead) {
-    logger.warn(`❌ Permission denied for packet access - channel_0:read=${hasChannelsRead}, messages:read=${hasMessagesRead}`);
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'You need both channel_0:read and messages:read permissions to access packet logs'
-    });
-  }
-
-  next();
 };
 
 /**
  * GET /api/packets
  * Get packet logs with optional filtering
  */
-router.get('/', requirePacketPermissions, (req, res) => {
+router.get('/', requirePacketPermissions, async (req, res) => {
   try {
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
     let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
@@ -69,7 +74,7 @@ router.get('/', requirePacketPermissions, (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
 
-    const packets = packetLogService.getPackets({
+    const packets = await packetLogService.getPacketsAsync({
       offset,
       limit,
       portnum,
@@ -80,7 +85,7 @@ router.get('/', requirePacketPermissions, (req, res) => {
       since
     });
 
-    const total = packetLogService.getPacketCount({
+    const total = await packetLogService.getPacketCountAsync({
       portnum,
       from_node,
       to_node,
@@ -107,11 +112,11 @@ router.get('/', requirePacketPermissions, (req, res) => {
  * GET /api/packets/stats
  * Get packet statistics
  */
-router.get('/stats', requirePacketPermissions, (_req, res) => {
+router.get('/stats', requirePacketPermissions, async (_req, res) => {
   try {
-    const total = packetLogService.getPacketCount();
-    const encrypted = packetLogService.getPacketCount({ encrypted: true });
-    const decoded = packetLogService.getPacketCount({ encrypted: false });
+    const total = await packetLogService.getPacketCountAsync();
+    const encrypted = await packetLogService.getPacketCountAsync({ encrypted: true });
+    const decoded = await packetLogService.getPacketCountAsync({ encrypted: false });
 
     res.json({
       total,
