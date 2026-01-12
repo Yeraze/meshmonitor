@@ -366,7 +366,7 @@ export const POSTGRES_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_neighbor_info_nodenum ON neighbor_info("nodeNum");
   CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
   CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
-  CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log("createdAt");
+  CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log(created_at);
 `;
 
 export const POSTGRES_TABLE_NAMES = [
