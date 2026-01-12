@@ -11,7 +11,7 @@ MeshMonitor 3.x supports three database backends:
 
 ## Prerequisites
 
-- MeshMonitor 3.x Docker image (v3.0.0-beta5 or later)
+- MeshMonitor 3.x Docker image (v3.0.0-beta7 or later)
 - Access to your existing SQLite database file
 - PostgreSQL or MySQL server (can be a Docker container)
 
@@ -103,7 +103,7 @@ Start MeshMonitor temporarily to create the database schema:
 # Add to your docker-compose.yml
 services:
   meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:3.0.0-beta5
+    image: ghcr.io/yeraze/meshmonitor:3.0.0-beta7
     container_name: meshmonitor
     environment:
       # For PostgreSQL:
