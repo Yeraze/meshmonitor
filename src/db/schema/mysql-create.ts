@@ -3,6 +3,9 @@
  *
  * This is the canonical MySQL schema for MeshMonitor.
  * Used by both the database service and migration script.
+ *
+ * IMPORTANT: This schema MUST match what createMySQLSchema() creates in database.ts
+ * to ensure consistency between migration and fresh installations.
  */
 
 export const MYSQL_SCHEMA_SQL = `
@@ -10,48 +13,48 @@ export const MYSQL_SCHEMA_SQL = `
     nodeNum BIGINT PRIMARY KEY,
     nodeId VARCHAR(255) UNIQUE NOT NULL,
     longName TEXT,
-    shortName TEXT,
-    hwModel INTEGER,
-    role INTEGER,
-    hopsAway INTEGER,
-    lastMessageHops INTEGER,
-    viaMqtt TINYINT(1),
-    macaddr TEXT,
-    latitude FLOAT,
-    longitude FLOAT,
-    altitude FLOAT,
-    batteryLevel INTEGER,
-    voltage FLOAT,
-    channelUtilization FLOAT,
-    airUtilTx FLOAT,
+    shortName VARCHAR(255),
+    hwModel INT,
+    role INT,
+    hopsAway INT,
+    lastMessageHops INT,
+    viaMqtt BOOLEAN,
+    macaddr VARCHAR(255),
+    latitude DOUBLE,
+    longitude DOUBLE,
+    altitude DOUBLE,
+    batteryLevel INT,
+    voltage DOUBLE,
+    channelUtilization DOUBLE,
+    airUtilTx DOUBLE,
     lastHeard BIGINT,
-    snr FLOAT,
-    rssi INTEGER,
+    snr DOUBLE,
+    rssi INT,
     lastTracerouteRequest BIGINT,
-    firmwareVersion TEXT,
-    channel INTEGER,
-    isFavorite TINYINT(1) DEFAULT 0,
-    isIgnored TINYINT(1) DEFAULT 0,
-    mobile INTEGER DEFAULT 0,
-    rebootCount INTEGER,
+    firmwareVersion VARCHAR(255),
+    channel INT,
+    isFavorite BOOLEAN DEFAULT false,
+    isIgnored BOOLEAN DEFAULT false,
+    mobile INT DEFAULT 0,
+    rebootCount INT,
     publicKey TEXT,
-    hasPKC TINYINT(1),
+    hasPKC BOOLEAN,
     lastPKIPacket BIGINT,
-    keyIsLowEntropy TINYINT(1),
-    duplicateKeyDetected TINYINT(1),
-    keyMismatchDetected TINYINT(1),
+    keyIsLowEntropy BOOLEAN,
+    duplicateKeyDetected BOOLEAN,
+    keyMismatchDetected BOOLEAN,
     keySecurityIssueDetails TEXT,
     welcomedAt BIGINT,
-    positionChannel INTEGER,
-    positionPrecisionBits INTEGER,
-    positionGpsAccuracy FLOAT,
-    positionHdop FLOAT,
+    positionChannel INT,
+    positionPrecisionBits INT,
+    positionGpsAccuracy DOUBLE,
+    positionHdop DOUBLE,
     positionTimestamp BIGINT,
-    positionOverrideEnabled INTEGER DEFAULT 0,
-    latitudeOverride FLOAT,
-    longitudeOverride FLOAT,
-    altitudeOverride FLOAT,
-    positionOverrideIsPrivate INTEGER DEFAULT 0,
+    positionOverrideEnabled INT DEFAULT 0,
+    latitudeOverride DOUBLE,
+    longitudeOverride DOUBLE,
+    altitudeOverride DOUBLE,
+    positionOverrideIsPrivate INT DEFAULT 0,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -63,64 +66,104 @@ export const MYSQL_SCHEMA_SQL = `
     fromNodeId VARCHAR(255) NOT NULL,
     toNodeId VARCHAR(255) NOT NULL,
     text TEXT NOT NULL,
-    channel INTEGER NOT NULL DEFAULT 0,
-    portnum INTEGER,
+    channel INT NOT NULL DEFAULT 0,
+    portnum INT,
     requestId BIGINT,
     timestamp BIGINT NOT NULL,
     rxTime BIGINT,
-    hopStart INTEGER,
-    hopLimit INTEGER,
-    relayNode INTEGER,
+    hopStart INT,
+    hopLimit INT,
+    relayNode INT,
     replyId BIGINT,
-    emoji INTEGER,
-    viaMqtt TINYINT(1) DEFAULT 0,
-    rxSnr FLOAT,
-    rxRssi FLOAT,
-    ackFailed TINYINT(1),
-    routingErrorReceived TINYINT(1),
-    deliveryState TEXT,
-    wantAck TINYINT(1),
-    ackFromNode INTEGER,
+    emoji INT,
+    viaMqtt BOOLEAN DEFAULT false,
+    rxSnr REAL,
+    rxRssi REAL,
+    ackFailed BOOLEAN,
+    routingErrorReceived BOOLEAN,
+    deliveryState VARCHAR(50),
+    wantAck BOOLEAN,
+    ackFromNode INT,
     createdAt BIGINT NOT NULL,
     INDEX idx_messages_timestamp (timestamp),
     INDEX idx_messages_channel (channel)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS channels (
-    id INTEGER PRIMARY KEY,
+    id INT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     psk TEXT,
-    role INTEGER,
-    uplinkEnabled TINYINT(1) NOT NULL DEFAULT 1,
-    downlinkEnabled TINYINT(1) NOT NULL DEFAULT 1,
-    positionPrecision INTEGER,
+    role INT,
+    uplinkEnabled BOOLEAN NOT NULL DEFAULT true,
+    downlinkEnabled BOOLEAN NOT NULL DEFAULT true,
+    positionPrecision INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS telemetry (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     nodeId VARCHAR(255) NOT NULL,
     nodeNum BIGINT NOT NULL,
     telemetryType VARCHAR(255) NOT NULL,
     timestamp BIGINT NOT NULL,
-    value FLOAT NOT NULL,
-    unit TEXT,
+    value DOUBLE NOT NULL,
+    unit VARCHAR(255),
     createdAt BIGINT NOT NULL,
     packetTimestamp BIGINT,
-    channel INTEGER,
-    precisionBits INTEGER,
-    gpsAccuracy FLOAT,
+    channel INT,
+    precisionBits INT,
+    gpsAccuracy DOUBLE,
     INDEX idx_telemetry_nodenum (nodeNum),
     INDEX idx_telemetry_timestamp (timestamp)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+  CREATE TABLE IF NOT EXISTS settings (
+    \`key\` VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    createdAt BIGINT NOT NULL,
+    updatedAt BIGINT NOT NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255),
+    displayName VARCHAR(255),
+    passwordHash TEXT,
+    authMethod VARCHAR(50) NOT NULL DEFAULT 'local',
+    oidcSubject VARCHAR(255) UNIQUE,
+    isAdmin BOOLEAN NOT NULL DEFAULT false,
+    isActive BOOLEAN NOT NULL DEFAULT true,
+    passwordLocked BOOLEAN NOT NULL DEFAULT false,
+    createdAt BIGINT NOT NULL,
+    updatedAt BIGINT NOT NULL,
+    lastLoginAt BIGINT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS permissions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT NOT NULL,
+    resource VARCHAR(255) NOT NULL,
+    canRead BOOLEAN NOT NULL DEFAULT false,
+    canWrite BOOLEAN NOT NULL DEFAULT false,
+    canDelete BOOLEAN NOT NULL DEFAULT false,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid VARCHAR(255) PRIMARY KEY,
+    sess TEXT NOT NULL,
+    expire BIGINT NOT NULL,
+    INDEX idx_sessions_expire (expire)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
   CREATE TABLE IF NOT EXISTS traceroutes (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     fromNodeNum BIGINT NOT NULL,
     toNodeNum BIGINT NOT NULL,
-    fromNodeId VARCHAR(255) NOT NULL,
-    toNodeId VARCHAR(255) NOT NULL,
+    fromNodeId VARCHAR(32) NOT NULL,
+    toNodeId VARCHAR(32) NOT NULL,
     route TEXT,
     routeBack TEXT,
     snrTowards TEXT,
@@ -132,20 +175,20 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS route_segments (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     fromNodeNum BIGINT NOT NULL,
     toNodeNum BIGINT NOT NULL,
-    fromNodeId VARCHAR(255) NOT NULL,
-    toNodeId VARCHAR(255) NOT NULL,
-    distanceKm FLOAT NOT NULL,
-    isRecordHolder TINYINT(1) DEFAULT 0,
+    fromNodeId VARCHAR(32) NOT NULL,
+    toNodeId VARCHAR(32) NOT NULL,
+    distanceKm DOUBLE NOT NULL,
+    isRecordHolder BOOLEAN DEFAULT false,
     timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL,
     INDEX idx_route_segments_from_to (fromNodeNum, toNodeNum)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS neighbor_info (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     nodeNum BIGINT NOT NULL,
     neighborNodeNum BIGINT NOT NULL,
     snr DOUBLE,
@@ -155,54 +198,14 @@ export const MYSQL_SCHEMA_SQL = `
     INDEX idx_neighbor_info_nodenum (nodeNum)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-  CREATE TABLE IF NOT EXISTS settings (
-    \`key\` VARCHAR(255) PRIMARY KEY,
-    value TEXT NOT NULL,
-    createdAt BIGINT NOT NULL,
-    updatedAt BIGINT NOT NULL
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-  CREATE TABLE IF NOT EXISTS users (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    email TEXT,
-    displayName TEXT,
-    passwordHash TEXT,
-    authMethod VARCHAR(255) NOT NULL,
-    oidcSubject VARCHAR(255) UNIQUE,
-    isAdmin TINYINT(1) NOT NULL DEFAULT 0,
-    isActive TINYINT(1) NOT NULL DEFAULT 1,
-    passwordLocked TINYINT(1) NOT NULL DEFAULT 0,
-    createdAt BIGINT NOT NULL,
-    updatedAt BIGINT NOT NULL,
-    lastLoginAt BIGINT
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-  CREATE TABLE IF NOT EXISTS permissions (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    userId BIGINT NOT NULL,
-    resource VARCHAR(255) NOT NULL,
-    canRead TINYINT(1) NOT NULL DEFAULT 0,
-    canWrite TINYINT(1) NOT NULL DEFAULT 0,
-    canDelete TINYINT(1) NOT NULL DEFAULT 0,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-  CREATE TABLE IF NOT EXISTS sessions (
-    sid VARCHAR(255) PRIMARY KEY,
-    sess TEXT NOT NULL,
-    expire BIGINT NOT NULL,
-    INDEX idx_sessions_expire (expire)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
   CREATE TABLE IF NOT EXISTS audit_log (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    userId BIGINT,
-    username TEXT,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT,
+    username VARCHAR(255),
     action VARCHAR(255) NOT NULL,
-    resource TEXT,
+    resource VARCHAR(255),
     details TEXT,
-    ipAddress TEXT,
+    ipAddress VARCHAR(255),
     userAgent TEXT,
     timestamp BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL,
@@ -210,32 +213,33 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS api_tokens (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    userId BIGINT NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT NOT NULL,
     name VARCHAR(255) NOT NULL,
-    tokenHash VARCHAR(255) NOT NULL UNIQUE,
+    tokenHash TEXT NOT NULL,
     prefix VARCHAR(255) NOT NULL,
-    isActive TINYINT(1) NOT NULL DEFAULT 1,
+    isActive BOOLEAN NOT NULL DEFAULT true,
     createdAt BIGINT NOT NULL,
     lastUsedAt BIGINT,
     expiresAt BIGINT,
-    createdBy BIGINT,
+    createdBy INT,
     revokedAt BIGINT,
-    revokedBy BIGINT,
+    revokedBy INT,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS read_messages (
     messageId VARCHAR(255) NOT NULL,
-    userId BIGINT NOT NULL,
+    visitorKey VARCHAR(255) NOT NULL,
+    userId INT,
     readAt BIGINT NOT NULL,
-    PRIMARY KEY (messageId, userId),
+    PRIMARY KEY (messageId, visitorKey),
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS push_subscriptions (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    userId BIGINT,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT,
     endpoint TEXT NOT NULL,
     p256dhKey TEXT NOT NULL,
     authKey TEXT NOT NULL,
@@ -247,37 +251,37 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS user_notification_preferences (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    userId BIGINT NOT NULL UNIQUE,
-    notifyOnMessage TINYINT(1) DEFAULT 1,
-    notifyOnDirectMessage TINYINT(1) DEFAULT 1,
-    notifyOnChannelMessage TINYINT(1) DEFAULT 0,
-    notifyOnEmoji TINYINT(1) DEFAULT 0,
-    notifyOnInactiveNode TINYINT(1) DEFAULT 0,
-    notifyOnServerEvents TINYINT(1) DEFAULT 0,
-    prefixWithNodeName TINYINT(1) DEFAULT 0,
-    appriseEnabled TINYINT(1) DEFAULT 1,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT NOT NULL UNIQUE,
+    notifyOnMessage BOOLEAN DEFAULT true,
+    notifyOnDirectMessage BOOLEAN DEFAULT true,
+    notifyOnChannelMessage BOOLEAN DEFAULT false,
+    notifyOnEmoji BOOLEAN DEFAULT false,
+    notifyOnInactiveNode BOOLEAN DEFAULT false,
+    notifyOnServerEvents BOOLEAN DEFAULT false,
+    prefixWithNodeName BOOLEAN DEFAULT false,
+    appriseEnabled BOOLEAN DEFAULT true,
     appriseUrls TEXT,
-    notifyOnMqtt TINYINT(1) DEFAULT 1,
+    notifyOnMqtt BOOLEAN DEFAULT true,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS packet_log (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     packetId BIGINT NOT NULL,
     fromNodeNum BIGINT,
     toNodeNum BIGINT,
-    channel INTEGER,
-    portnum INTEGER,
-    hopLimit INTEGER,
-    hopStart INTEGER,
-    wantAck TINYINT(1),
-    viaMqtt TINYINT(1) DEFAULT 0,
+    channel INT,
+    portnum INT,
+    hopLimit INT,
+    hopStart INT,
+    wantAck BOOLEAN,
+    viaMqtt BOOLEAN DEFAULT false,
     rxTime BIGINT,
     rxSnr DOUBLE,
-    rxRssi INTEGER,
+    rxRssi INT,
     decoded TEXT,
     raw TEXT,
     createdAt BIGINT NOT NULL,
@@ -285,20 +289,20 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS backup_history (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     filename VARCHAR(255) NOT NULL,
     filePath TEXT NOT NULL,
     sizeBytes BIGINT NOT NULL,
-    schemaVersion INTEGER NOT NULL,
-    nodeCount INTEGER,
-    messageCount INTEGER,
+    schemaVersion INT NOT NULL,
+    nodeCount INT,
+    messageCount INT,
     createdAt BIGINT NOT NULL,
     createdBy TEXT,
     notes TEXT
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS upgrade_history (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     fromVersion VARCHAR(255) NOT NULL,
     toVersion VARCHAR(255) NOT NULL,
     upgradeType VARCHAR(255) NOT NULL,
@@ -309,20 +313,20 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS custom_themes (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     definition TEXT NOT NULL,
-    createdBy BIGINT,
+    createdBy INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS user_map_preferences (
-    userId BIGINT PRIMARY KEY,
+    userId INT PRIMARY KEY,
     centerLat DOUBLE,
     centerLng DOUBLE,
-    zoom INTEGER,
+    zoom INT,
     selectedNodeNum BIGINT,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
@@ -337,13 +341,13 @@ export const MYSQL_TABLE_NAMES = [
   'messages',
   'channels',
   'telemetry',
-  'traceroutes',
-  'route_segments',
-  'neighbor_info',
   'settings',
   'users',
   'permissions',
   'sessions',
+  'traceroutes',
+  'route_segments',
+  'neighbor_info',
   'audit_log',
   'api_tokens',
   'read_messages',
