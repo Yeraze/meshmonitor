@@ -363,6 +363,31 @@ class DatabaseService {
   }
 
   /**
+   * Get database version string
+   */
+  async getDatabaseVersion(): Promise<string> {
+    try {
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query('SELECT version()');
+        const fullVersion = result.rows?.[0]?.version || 'Unknown';
+        // Extract just the version number from "PostgreSQL 16.2 (Debian 16.2-1.pgdg120+2) on x86_64-pc-linux-gnu..."
+        const match = fullVersion.match(/PostgreSQL\s+([\d.]+)/);
+        return match ? match[1] : fullVersion.split(' ').slice(0, 2).join(' ');
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [rows] = await this.mysqlPool.query('SELECT version() as version');
+        return (rows as any[])?.[0]?.version || 'Unknown';
+      } else if (this.db) {
+        const result = this.db.prepare('SELECT sqlite_version() as version').get() as { version: string } | undefined;
+        return result?.version || 'Unknown';
+      }
+      return 'Unknown';
+    } catch (error) {
+      logger.error('[DatabaseService] Failed to get database version:', error);
+      return 'Unknown';
+    }
+  }
+
+  /**
    * Wait for the database to be fully initialized
    * For SQLite, this resolves immediately
    * For PostgreSQL/MySQL, this waits for async schema creation and repo initialization

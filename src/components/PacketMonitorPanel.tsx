@@ -444,7 +444,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
                     <th style={{ width: '120px' }}>{t('packet_monitor.column.type')}</th>
-                    <th style={{ width: '70px' }}>{t('packet_monitor.column.slot')}</th>
+                    <th style={{ width: '110px' }}>{t('packet_monitor.column.slot')}</th>
                     <th style={{ width: '60px' }}>{t('packet_monitor.column.snr')}</th>
                     <th style={{ width: '60px' }}>{t('packet_monitor.column.hops')}</th>
                     <th style={{ width: '60px' }}>{t('packet_monitor.column.size')}</th>
@@ -569,7 +569,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           >
                             {packet.portnum_name || packet.portnum}
                           </td>
-                          <td className="channel" style={{ width: '70px' }} title={packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `Encrypted channel (hash: ${packet.channel})` : undefined}>
+                          <td className="channel" style={{ width: '110px' }} title={packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `Encrypted channel (hash: ${packet.channel})` : undefined}>
                             {packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `?? (ch: ${packet.channel})` : (packet.channel ?? t('common.na'))}
                           </td>
                           <td className="snr" style={{ width: '60px' }}>

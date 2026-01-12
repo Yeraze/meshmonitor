@@ -6466,7 +6466,7 @@ function isRunningInDocker(): boolean {
 }
 
 // System status endpoint
-apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, res) => {
+apiRouter.get('/system/status', requirePermission('dashboard', 'read'), async (_req, res) => {
   const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
   const days = Math.floor(uptimeSeconds / 86400);
   const hours = Math.floor((uptimeSeconds % 86400) / 3600);
@@ -6478,6 +6478,10 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, r
   if (hours > 0 || days > 0) uptimeString += `${hours}h `;
   if (minutes > 0 || hours > 0 || days > 0) uptimeString += `${minutes}m `;
   uptimeString += `${seconds}s`;
+
+  // Get database info
+  const databaseType = databaseService.getDatabaseType();
+  const databaseVersion = await databaseService.getDatabaseVersion();
 
   res.json({
     version: packageJson.version,
@@ -6492,6 +6496,10 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, r
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
       heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
       rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB',
+    },
+    database: {
+      type: databaseType.charAt(0).toUpperCase() + databaseType.slice(1), // Capitalize
+      version: databaseVersion,
     },
   });
 });

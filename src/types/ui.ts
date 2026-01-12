@@ -62,6 +62,10 @@ export interface SystemStatus {
     heapTotal: string;
     rss: string;
   };
+  database?: {
+    type: string;
+    version: string;
+  };
 }
 
 /**
