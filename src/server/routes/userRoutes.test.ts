@@ -73,6 +73,27 @@ describe('User Management Routes', () => {
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
     (DatabaseService as any).auditLog = () => {};
+    (DatabaseService as any).drizzleDbType = 'sqlite';
+
+    // Add async method mocks that delegate to sync methods
+    (DatabaseService as any).findUserByIdAsync = async (id: number) => {
+      return userModel.findById(id);
+    };
+    (DatabaseService as any).findUserByUsernameAsync = async (username: string) => {
+      return userModel.findByUsername(username);
+    };
+    (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
+      return permissionModel.check(userId, resource, action);
+    };
+    (DatabaseService as any).authenticateAsync = async (username: string, password: string) => {
+      return userModel.authenticate(username, password);
+    };
+    (DatabaseService as any).updatePasswordAsync = async (userId: number, newPassword: string) => {
+      return userModel.updatePassword(userId, newPassword);
+    };
+    (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
+      return permissionModel.getUserPermissionSet(userId);
+    };
 
     app.use('/api/auth', authRoutes);
     app.use('/api/users', userRoutes);
