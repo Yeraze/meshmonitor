@@ -1001,7 +1001,7 @@
   "packet_monitor.column.from": "From",
   "packet_monitor.column.to": "To",
   "packet_monitor.column.type": "Type",
-  "packet_monitor.column.ch": "Ch",
+  "packet_monitor.column.slot": "Slot",
   "packet_monitor.column.snr": "SNR",
   "packet_monitor.column.hops": "Hops",
   "packet_monitor.column.size": "Size",
