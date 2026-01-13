@@ -2775,6 +2775,17 @@ class DatabaseService {
    * Get nodes with key security issues (low-entropy or duplicate keys)
    */
   getNodesWithKeySecurityIssues(): DbNode[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!this.cacheInitialized) {
+        logger.debug('getNodesWithKeySecurityIssues() called before cache initialized');
+        return [];
+      }
+      return Array.from(this.nodesCache.values())
+        .filter(node => node.keyIsLowEntropy || node.duplicateKeyDetected)
+        .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
+    }
+
     const stmt = this.db.prepare(`
       SELECT * FROM nodes
       WHERE keyIsLowEntropy = 1 OR duplicateKeyDetected = 1
@@ -2973,12 +2984,20 @@ class DatabaseService {
   }
 
   getMessage(id: string): DbMessage | null {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return this._messagesCache.find(m => m.id === id) ?? null;
+    }
     const stmt = this.db.prepare('SELECT * FROM messages WHERE id = ?');
     const message = stmt.get(id) as DbMessage | null;
     return message ? this.normalizeBigInts(message) : null;
   }
 
   getMessageByRequestId(requestId: number): DbMessage | null {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return this._messagesCache.find(m => m.requestId === requestId) ?? null;
+    }
     const stmt = this.db.prepare('SELECT * FROM messages WHERE requestId = ?');
     const message = stmt.get(requestId) as DbMessage | null;
     return message ? this.normalizeBigInts(message) : null;
@@ -3143,6 +3162,12 @@ class DatabaseService {
   }
 
   getMessagesAfterTimestamp(timestamp: number): DbMessage[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return this._messagesCache
+        .filter(m => m.timestamp > timestamp)
+        .sort((a, b) => a.timestamp - b.timestamp);
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       WHERE timestamp > ?
@@ -3154,6 +3179,10 @@ class DatabaseService {
 
   // Statistics
   getMessageCount(): number {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      return this._messagesCache.length;
+    }
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM messages');
     const result = stmt.get() as { count: number };
     return Number(result.count);
