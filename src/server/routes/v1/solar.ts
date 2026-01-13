@@ -17,10 +17,10 @@ const router = express.Router();
  * Query parameters:
  * - limit: number - Max number of records to return (default: 100, max: 1000)
  */
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
-    const estimates = solarMonitoringService.getRecentEstimates(limit);
+    const estimates = await solarMonitoringService.getRecentEstimates(limit);
 
     res.json({
       success: true,
@@ -50,7 +50,7 @@ router.get('/', (req: Request, res: Response) => {
  * - start: number - Start timestamp (unix seconds)
  * - end: number - End timestamp (unix seconds)
  */
-router.get('/range', (req: Request, res: Response) => {
+router.get('/range', async (req: Request, res: Response) => {
   try {
     const start = parseInt(req.query.start as string);
     const end = parseInt(req.query.end as string);
@@ -71,7 +71,7 @@ router.get('/range', (req: Request, res: Response) => {
       });
     }
 
-    const estimates = solarMonitoringService.getEstimatesInRange(start, end);
+    const estimates = await solarMonitoringService.getEstimatesInRange(start, end);
 
     res.json({
       success: true,

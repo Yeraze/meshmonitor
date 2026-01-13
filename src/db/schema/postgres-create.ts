@@ -324,6 +324,13 @@ export const POSTGRES_SCHEMA_SQL = `
     created_at BIGINT
   );
 
+  CREATE TABLE IF NOT EXISTS auto_traceroute_nodes (
+    id SERIAL PRIMARY KEY,
+    "nodeNum" BIGINT NOT NULL UNIQUE,
+    enabled BOOLEAN DEFAULT true,
+    "createdAt" BIGINT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS auto_traceroute_log (
     id SERIAL PRIMARY KEY,
     timestamp BIGINT NOT NULL,
@@ -392,6 +399,7 @@ export const POSTGRES_TABLE_NAMES = [
   'custom_themes',
   'user_map_preferences',
   'solar_estimates',
+  'auto_traceroute_nodes',
   'auto_traceroute_log',
   'auto_key_repair_state',
   'auto_key_repair_log',

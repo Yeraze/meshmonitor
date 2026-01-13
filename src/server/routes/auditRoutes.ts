@@ -39,21 +39,8 @@ router.get('/', async (req: Request, res: Response) => {
       search: search as string | undefined
     };
 
-    // For PostgreSQL/MySQL, use async repo (no filtering yet)
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        const logs = await databaseService.authRepo.getAuditLogEntries(options.limit, options.offset);
-        return res.json({
-          logs,
-          total: logs.length,
-          offset: options.offset,
-          limit: options.limit
-        });
-      }
-      return res.json({ logs: [], total: 0, offset: 0, limit: options.limit });
-    }
-
-    const result = databaseService.getAuditLogs(options);
+    // Use async method which works with all database backends
+    const result = await databaseService.getAuditLogsAsync(options);
 
     return res.json({
       logs: result.logs,

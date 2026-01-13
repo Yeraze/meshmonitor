@@ -169,6 +169,11 @@ describe('Audit Log Routes', () => {
       return { logs, total: count };
     };
 
+    // Add async version for new unified API
+    (DatabaseService as any).getAuditLogsAsync = async (options: any = {}) => {
+      return (DatabaseService as any).getAuditLogs(options);
+    };
+
     (DatabaseService as any).getAuditStats = (days: number = 30) => {
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 

@@ -404,6 +404,33 @@ export async function getUserNotificationPreferencesAsync(userId: number): Promi
 }
 
 /**
+ * Save notification preferences for a user to the database (async version)
+ * Uses the notifications repository for database-agnostic queries
+ */
+export async function saveUserNotificationPreferencesAsync(
+  userId: number,
+  preferences: NotificationPreferences
+): Promise<boolean> {
+  // Validate userId
+  if (!Number.isInteger(userId) || userId <= 0) {
+    logger.error(`❌ Invalid userId: ${userId}`);
+    return false;
+  }
+
+  try {
+    if (!databaseService.notificationsRepo) {
+      logger.error('Notifications repository not initialized');
+      return false;
+    }
+
+    return await databaseService.notificationsRepo.saveUserPreferences(userId, preferences);
+  } catch (error) {
+    logger.error(`Failed to save preferences for user ${userId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Get users who have a specific notification service enabled (async version)
  */
 export async function getUsersWithServiceEnabledAsync(service: 'web_push' | 'apprise'): Promise<number[]> {

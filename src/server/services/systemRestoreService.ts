@@ -37,6 +37,55 @@ interface RestoreResult {
 
 class SystemRestoreService {
   /**
+   * Promise that resolves when restore is complete (or immediately if no restore needed)
+   * Other services (like database.ts) should await this before creating default users
+   */
+  private restoreCompletePromise: Promise<void>;
+  private restoreCompleteResolve!: () => void;
+  private restoreInProgress = false;
+
+  constructor() {
+    // Initialize the promise - will be resolved after restore check completes
+    this.restoreCompletePromise = new Promise<void>((resolve) => {
+      this.restoreCompleteResolve = resolve;
+    });
+  }
+
+  /**
+   * Mark that restore has started - called from server.ts before restore begins
+   */
+  markRestoreStarted(): void {
+    this.restoreInProgress = true;
+    logger.debug('[RestoreService] Restore marked as started');
+  }
+
+  /**
+   * Mark that restore is complete (or was skipped) - called from server.ts
+   * This resolves the promise that other services are waiting on
+   */
+  markRestoreComplete(): void {
+    this.restoreInProgress = false;
+    this.restoreCompleteResolve();
+    logger.debug('[RestoreService] Restore marked as complete');
+  }
+
+  /**
+   * Wait for any pending restore to complete
+   * Other services (like database.ts createAdminIfNeeded) should call this
+   * to ensure they don't race with the restore process
+   */
+  async waitForRestoreComplete(): Promise<void> {
+    return this.restoreCompletePromise;
+  }
+
+  /**
+   * Check if restore is currently in progress
+   */
+  isRestoreInProgress(): boolean {
+    return this.restoreInProgress;
+  }
+
+  /**
    * Restore system from backup directory
    * This should ONLY be called during bootstrap (before services start)
    */
