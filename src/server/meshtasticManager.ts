@@ -644,7 +644,7 @@ class MeshtasticManager {
             logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetName} (${targetNode.nodeId}) on channel ${channel}`);
 
             // Log the auto-traceroute attempt to database
-            databaseService.logAutoTracerouteAttempt(targetNode.nodeNum, targetName);
+            await databaseService.logAutoTracerouteAttemptAsync(targetNode.nodeNum, targetName);
             this.pendingAutoTraceroutes.add(targetNode.nodeNum);
 
             await this.sendTraceroute(targetNode.nodeNum, channel);
@@ -3410,7 +3410,7 @@ class MeshtasticManager {
 
       // If this was an auto-traceroute, mark it as successful in the log
       if (this.pendingAutoTraceroutes.has(fromNum)) {
-        databaseService.updateAutoTracerouteResultByNode(fromNum, true);
+        await databaseService.updateAutoTracerouteResultByNodeAsync(fromNum, true);
         this.pendingAutoTraceroutes.delete(fromNum);
         logger.debug(`🗺️ Auto-traceroute to ${fromNodeId} marked as successful`);
       }
