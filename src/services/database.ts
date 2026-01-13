@@ -5377,6 +5377,106 @@ class DatabaseService {
     }
   }
 
+  /**
+   * Async version of logAutoTracerouteAttempt - works with all database backends
+   */
+  async logAutoTracerouteAttemptAsync(toNodeNum: number, toNodeName: string | null): Promise<number> {
+    if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
+      // Fallback to sync for SQLite
+      return this.logAutoTracerouteAttempt(toNodeNum, toNodeName);
+    }
+
+    const now = Date.now();
+
+    try {
+      let insertedId = 0;
+
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query(
+          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at)
+           VALUES ($1, $2, $3, NULL, $4) RETURNING id`,
+          [now, toNodeNum, toNodeName, now]
+        );
+        insertedId = result.rows[0]?.id || 0;
+
+        // Clean up old entries (keep last 100)
+        await this.postgresPool.query(`
+          DELETE FROM auto_traceroute_log
+          WHERE id NOT IN (
+            SELECT id FROM auto_traceroute_log
+            ORDER BY timestamp DESC
+            LIMIT 100
+          )
+        `);
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [result] = await this.mysqlPool.query(
+          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at)
+           VALUES (?, ?, ?, NULL, ?)`,
+          [now, toNodeNum, toNodeName, now]
+        ) as any;
+        insertedId = result.insertId || 0;
+
+        // Clean up old entries (keep last 100)
+        await this.mysqlPool.query(`
+          DELETE FROM auto_traceroute_log
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id FROM auto_traceroute_log
+              ORDER BY timestamp DESC
+              LIMIT 100
+            ) AS keep_ids
+          )
+        `);
+      }
+
+      return insertedId;
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to log auto traceroute attempt async: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Async version of updateAutoTracerouteResultByNode - works with all database backends
+   */
+  async updateAutoTracerouteResultByNodeAsync(toNodeNum: number, success: boolean): Promise<void> {
+    if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
+      // Fallback to sync for SQLite
+      this.updateAutoTracerouteResultByNode(toNodeNum, success);
+      return;
+    }
+
+    try {
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        await this.postgresPool.query(`
+          UPDATE auto_traceroute_log
+          SET success = $1
+          WHERE id = (
+            SELECT id FROM auto_traceroute_log
+            WHERE to_node_num = $2 AND success IS NULL
+            ORDER BY timestamp DESC
+            LIMIT 1
+          )
+        `, [success, toNodeNum]);
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        await this.mysqlPool.query(`
+          UPDATE auto_traceroute_log
+          SET success = ?
+          WHERE id = (
+            SELECT id FROM (
+              SELECT id FROM auto_traceroute_log
+              WHERE to_node_num = ? AND success IS NULL
+              ORDER BY timestamp DESC
+              LIMIT 1
+            ) AS subq
+          )
+        `, [success ? 1 : 0, toNodeNum]);
+      }
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to update auto traceroute result async: ${error}`);
+    }
+  }
+
   // Auto key repair state methods
   getKeyRepairState(nodeNum: number): {
     nodeNum: number;
@@ -6971,6 +7071,162 @@ class DatabaseService {
     const logs = stmt.all(...params, limit, offset) as any[];
 
     return { logs, total };
+  }
+
+  /**
+   * Async version of getAuditLogs - works with all database backends
+   */
+  async getAuditLogsAsync(options: {
+    limit?: number;
+    offset?: number;
+    userId?: number;
+    action?: string;
+    resource?: string;
+    startDate?: number;
+    endDate?: number;
+    search?: string;
+  } = {}): Promise<{ logs: any[]; total: number }> {
+    if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
+      // Fallback to sync for SQLite
+      return this.getAuditLogs(options);
+    }
+
+    const {
+      limit = 100,
+      offset = 0,
+      userId,
+      action,
+      resource,
+      startDate,
+      endDate,
+      search
+    } = options;
+
+    try {
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        // Build WHERE clause dynamically for PostgreSQL
+        // Note: PostgreSQL schema uses camelCase column names (userId, ipAddress, etc.)
+        // and username is stored directly in audit_log, not joined from users
+        const conditions: string[] = [];
+        const params: any[] = [];
+        let paramIndex = 1;
+
+        if (userId !== undefined) {
+          conditions.push(`"userId" = $${paramIndex++}`);
+          params.push(userId);
+        }
+
+        if (action) {
+          conditions.push(`action = $${paramIndex++}`);
+          params.push(action);
+        }
+
+        if (resource) {
+          conditions.push(`resource = $${paramIndex++}`);
+          params.push(resource);
+        }
+
+        if (startDate !== undefined) {
+          conditions.push(`timestamp >= $${paramIndex++}`);
+          params.push(startDate);
+        }
+
+        if (endDate !== undefined) {
+          conditions.push(`timestamp <= $${paramIndex++}`);
+          params.push(endDate);
+        }
+
+        if (search) {
+          conditions.push(`(details ILIKE $${paramIndex} OR username ILIKE $${paramIndex + 1})`);
+          params.push(`%${search}%`, `%${search}%`);
+          paramIndex += 2;
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        // Get total count
+        const countResult = await this.postgresPool.query(
+          `SELECT COUNT(*) as count FROM audit_log ${whereClause}`,
+          params
+        );
+        const total = parseInt(countResult.rows[0]?.count || '0', 10);
+
+        // Get paginated results
+        const result = await this.postgresPool.query(
+          `SELECT id, "userId", username, action, resource, details, "ipAddress", timestamp
+           FROM audit_log
+           ${whereClause}
+           ORDER BY timestamp DESC
+           LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+          [...params, limit, offset]
+        );
+
+        return { logs: result.rows || [], total };
+
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        // Build WHERE clause dynamically for MySQL
+        // Note: MySQL schema uses camelCase column names (userId, ipAddress, etc.)
+        // and username is stored directly in audit_log, not joined from users
+        const conditions: string[] = [];
+        const params: any[] = [];
+
+        if (userId !== undefined) {
+          conditions.push('userId = ?');
+          params.push(userId);
+        }
+
+        if (action) {
+          conditions.push('action = ?');
+          params.push(action);
+        }
+
+        if (resource) {
+          conditions.push('resource = ?');
+          params.push(resource);
+        }
+
+        if (startDate !== undefined) {
+          conditions.push('timestamp >= ?');
+          params.push(startDate);
+        }
+
+        if (endDate !== undefined) {
+          conditions.push('timestamp <= ?');
+          params.push(endDate);
+        }
+
+        if (search) {
+          conditions.push('(details LIKE ? OR username LIKE ?)');
+          params.push(`%${search}%`, `%${search}%`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        // Get total count
+        const [countRows] = await this.mysqlPool.query(
+          `SELECT COUNT(*) as count FROM audit_log ${whereClause}`,
+          params
+        ) as any;
+        const total = parseInt(countRows[0]?.count || '0', 10);
+
+        // Get paginated results
+        const [rows] = await this.mysqlPool.query(
+          `SELECT id, userId, username, action, resource, details, ipAddress, timestamp
+           FROM audit_log
+           ${whereClause}
+           ORDER BY timestamp DESC
+           LIMIT ? OFFSET ?`,
+          [...params, limit, offset]
+        ) as any;
+
+        return { logs: rows || [], total };
+      }
+
+      return { logs: [], total: 0 };
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to get audit logs async: ${error}`);
+      return { logs: [], total: 0 };
+    }
   }
 
   // Get audit log statistics
