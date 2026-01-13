@@ -7540,6 +7540,32 @@ class MeshtasticManager {
   }
 
   /**
+   * Get session passkey status for a node
+   * @param nodeNum Node number
+   * @returns Status object with hasPasskey, expiresAt timestamp, and remainingSeconds
+   */
+  getSessionPasskeyStatus(nodeNum: number): { hasPasskey: boolean; expiresAt: number | null; remainingSeconds: number | null } {
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+
+    if (nodeNum === 0 || nodeNum === localNodeNum) {
+      // Local node
+      if (this.sessionPasskey && this.sessionPasskeyExpiry && Date.now() < this.sessionPasskeyExpiry) {
+        const remainingSeconds = Math.max(0, Math.floor((this.sessionPasskeyExpiry - Date.now()) / 1000));
+        return { hasPasskey: true, expiresAt: this.sessionPasskeyExpiry, remainingSeconds };
+      }
+      return { hasPasskey: false, expiresAt: null, remainingSeconds: null };
+    } else {
+      // Remote node
+      const stored = this.remoteSessionPasskeys.get(nodeNum);
+      if (stored && Date.now() < stored.expiry) {
+        const remainingSeconds = Math.max(0, Math.floor((stored.expiry - Date.now()) / 1000));
+        return { hasPasskey: true, expiresAt: stored.expiry, remainingSeconds };
+      }
+      return { hasPasskey: false, expiresAt: null, remainingSeconds: null };
+    }
+  }
+
+  /**
    * Request session passkey from the device (local node)
    */
   async requestSessionPasskey(): Promise<void> {
