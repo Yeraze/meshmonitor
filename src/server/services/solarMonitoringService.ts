@@ -71,17 +71,17 @@ class SolarMonitoringService {
   private async fetchAndStoreSolarEstimates(): Promise<void> {
     try {
       // Check if solar monitoring is enabled
-      const enabled = databaseService.getSetting('solarMonitoringEnabled');
+      const enabled = await databaseService.getSettingAsync('solarMonitoringEnabled');
       if (enabled !== '1' && enabled !== 'true') {
         logger.debug('☀️  Solar monitoring is disabled, skipping fetch');
         return;
       }
 
       // Get configuration from settings
-      const latitude = parseFloat(databaseService.getSetting('solarMonitoringLatitude') || '0');
-      const longitude = parseFloat(databaseService.getSetting('solarMonitoringLongitude') || '0');
-      const declination = parseFloat(databaseService.getSetting('solarMonitoringDeclination') || '0');
-      const azimuth = parseFloat(databaseService.getSetting('solarMonitoringAzimuth') || '0');
+      const latitude = parseFloat(await databaseService.getSettingAsync('solarMonitoringLatitude') || '0');
+      const longitude = parseFloat(await databaseService.getSettingAsync('solarMonitoringLongitude') || '0');
+      const declination = parseFloat(await databaseService.getSettingAsync('solarMonitoringDeclination') || '0');
+      const azimuth = parseFloat(await databaseService.getSettingAsync('solarMonitoringAzimuth') || '0');
 
       // Validate coordinates
       if (latitude === 0 && longitude === 0) {
@@ -115,18 +115,14 @@ class SolarMonitoringService {
         return;
       }
 
-      // Store estimates in database using upsert (INSERT OR REPLACE)
+      // Store estimates in database using async method
       const fetchedAt = Math.floor(Date.now() / 1000); // Unix timestamp
-      const stmt = databaseService.db.prepare(`
-        INSERT OR REPLACE INTO solar_estimates (timestamp, watt_hours, fetched_at)
-        VALUES (?, ?, ?)
-      `);
 
       let count = 0;
       for (const [timestampStr, wattHours] of Object.entries(estimates)) {
         // Parse timestamp (format: "2024-11-05 14:00:00")
         const timestamp = Math.floor(new Date(timestampStr).getTime() / 1000);
-        stmt.run(timestamp, wattHours, fetchedAt);
+        await databaseService.upsertSolarEstimateAsync(timestamp, wattHours, fetchedAt);
         count++;
       }
 
@@ -160,19 +156,9 @@ class SolarMonitoringService {
   /**
    * Get recent solar estimates from database
    */
-  getRecentEstimates(limit: number = 100): Array<{ timestamp: number; watt_hours: number; fetched_at: number }> {
-    // For PostgreSQL/MySQL, solar estimates not yet implemented
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      return [];
-    }
+  async getRecentEstimates(limit: number = 100): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
     try {
-      const stmt = databaseService.db.prepare(`
-        SELECT timestamp, watt_hours, fetched_at
-        FROM solar_estimates
-        ORDER BY timestamp DESC
-        LIMIT ?
-      `);
-      return stmt.all(limit) as Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
+      return await databaseService.getRecentSolarEstimatesAsync(limit);
     } catch (error) {
       logger.error('❌ Error retrieving solar estimates:', error);
       return [];
@@ -182,19 +168,9 @@ class SolarMonitoringService {
   /**
    * Get solar estimates for a specific time range
    */
-  getEstimatesInRange(startTimestamp: number, endTimestamp: number): Array<{ timestamp: number; watt_hours: number; fetched_at: number }> {
-    // For PostgreSQL/MySQL, solar estimates not yet implemented
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      return [];
-    }
+  async getEstimatesInRange(startTimestamp: number, endTimestamp: number): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
     try {
-      const stmt = databaseService.db.prepare(`
-        SELECT timestamp, watt_hours, fetched_at
-        FROM solar_estimates
-        WHERE timestamp >= ? AND timestamp <= ?
-        ORDER BY timestamp ASC
-      `);
-      return stmt.all(startTimestamp, endTimestamp) as Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
+      return await databaseService.getSolarEstimatesInRangeAsync(startTimestamp, endTimestamp);
     } catch (error) {
       logger.error('❌ Error retrieving solar estimates in range:', error);
       return [];

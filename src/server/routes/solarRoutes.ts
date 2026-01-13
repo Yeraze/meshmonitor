@@ -16,10 +16,10 @@ const router = Router();
  * Query params:
  *   - limit: number of estimates to return (default 100, max 1000)
  */
-router.get('/estimates', (_req: Request, res: Response) => {
+router.get('/estimates', async (_req: Request, res: Response) => {
   try {
     const limit = Math.min(parseInt(_req.query.limit as string) || 100, 1000);
-    const estimates = solarMonitoringService.getRecentEstimates(limit);
+    const estimates = await solarMonitoringService.getRecentEstimates(limit);
 
     return res.json({
       count: estimates.length,
@@ -44,7 +44,7 @@ router.get('/estimates', (_req: Request, res: Response) => {
  *   - start: start timestamp (unix seconds)
  *   - end: end timestamp (unix seconds)
  */
-router.get('/estimates/range', (_req: Request, res: Response) => {
+router.get('/estimates/range', async (_req: Request, res: Response) => {
   try {
     const start = parseInt(_req.query.start as string);
     const end = parseInt(_req.query.end as string);
@@ -57,7 +57,7 @@ router.get('/estimates/range', (_req: Request, res: Response) => {
       return res.status(400).json({ error: 'Start timestamp must be before end timestamp' });
     }
 
-    const estimates = solarMonitoringService.getEstimatesInRange(start, end);
+    const estimates = await solarMonitoringService.getEstimatesInRange(start, end);
 
     return res.json({
       count: estimates.length,

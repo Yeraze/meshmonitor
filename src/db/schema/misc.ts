@@ -4,7 +4,7 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, doublePrecision as pgDoublePrecision } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
 import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
@@ -147,29 +147,22 @@ export const upgradeHistoryPostgres = pgTable('upgrade_history', {
 });
 
 // ============ SOLAR ESTIMATES ============
+// Stores forecast data from forecast.solar API
 
 export const solarEstimatesSqlite = sqliteTable('solar_estimates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  nodeNum: integer('nodeNum').notNull(),
-  estimatedWatts: real('estimatedWatts').notNull(),
-  calculatedAt: integer('calculatedAt').notNull(),
-  batteryVoltage: real('batteryVoltage'),
-  batteryLevel: integer('batteryLevel'),
-  channelUtilization: real('channelUtilization'),
-  airUtilTx: real('airUtilTx'),
-  createdAt: integer('createdAt').notNull(),
+  timestamp: integer('timestamp').notNull().unique(),
+  watt_hours: real('watt_hours').notNull(),
+  fetched_at: integer('fetched_at').notNull(),
+  created_at: integer('created_at'),
 });
 
 export const solarEstimatesPostgres = pgTable('solar_estimates', {
   id: pgSerial('id').primaryKey(),
-  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull(),
-  estimatedWatts: pgReal('estimatedWatts').notNull(),
-  calculatedAt: pgBigint('calculatedAt', { mode: 'number' }).notNull(),
-  batteryVoltage: pgReal('batteryVoltage'),
-  batteryLevel: pgInteger('batteryLevel'),
-  channelUtilization: pgReal('channelUtilization'),
-  airUtilTx: pgReal('airUtilTx'),
-  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull().unique(),
+  watt_hours: pgDoublePrecision('watt_hours').notNull(),
+  fetched_at: pgBigint('fetched_at', { mode: 'number' }).notNull(),
+  created_at: pgBigint('created_at', { mode: 'number' }),
 });
 
 // ============ AUTO TRACEROUTE NODES ============
@@ -256,14 +249,10 @@ export const upgradeHistoryMysql = mysqlTable('upgrade_history', {
 
 export const solarEstimatesMysql = mysqlTable('solar_estimates', {
   id: mySerial('id').primaryKey(),
-  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
-  estimatedWatts: myDouble('estimatedWatts').notNull(),
-  calculatedAt: myBigint('calculatedAt', { mode: 'number' }).notNull(),
-  batteryVoltage: myDouble('batteryVoltage'),
-  batteryLevel: myInt('batteryLevel'),
-  channelUtilization: myDouble('channelUtilization'),
-  airUtilTx: myDouble('airUtilTx'),
-  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull().unique(),
+  watt_hours: myDouble('watt_hours').notNull(),
+  fetched_at: myBigint('fetched_at', { mode: 'number' }).notNull(),
+  created_at: myBigint('created_at', { mode: 'number' }),
 });
 
 export const autoTracerouteNodesMysql = mysqlTable('auto_traceroute_nodes', {

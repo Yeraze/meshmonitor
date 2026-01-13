@@ -26,3 +26,5 @@ export type {
   NotificationPreferences,
   PushSubscriptionInput,
 } from './notifications.js';
+export { MiscRepository } from './misc.js';
+export type { SolarEstimate, AutoTracerouteNode } from './misc.js';

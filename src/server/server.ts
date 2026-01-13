@@ -35,7 +35,7 @@ import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerSe
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
-import { getUserNotificationPreferences, saveUserNotificationPreferences, applyNodeNamePrefix } from './utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefix } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
@@ -283,6 +283,9 @@ meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeSer
 // ========== Bootstrap Restore Logic ==========
 // Check for RESTORE_FROM_BACKUP environment variable and restore if set
 // This MUST happen before services start (per ARCHITECTURE_LESSONS.md)
+// IMPORTANT: We mark restore as started immediately to prevent race conditions
+// with createAdminIfNeeded() in database.ts
+systemRestoreService.markRestoreStarted();
 (async () => {
   try {
     const restoreFromBackup = systemRestoreService.shouldRestore();
@@ -296,6 +299,7 @@ meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeSer
       if (!validation.can) {
         logger.error(`❌ Cannot restore from backup: ${validation.reason}`);
         logger.error('⚠️  Container will start normally without restore');
+        systemRestoreService.markRestoreComplete();
         return;
       }
 
@@ -338,6 +342,10 @@ meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeSer
   } catch (error) {
     logger.error('❌ Fatal error during bootstrap restore:', error);
     logger.error('⚠️  Container will start normally with existing database');
+  } finally {
+    // CRITICAL: Always mark restore as complete, regardless of outcome
+    // This allows createAdminIfNeeded() to proceed
+    systemRestoreService.markRestoreComplete();
   }
 })();
 
@@ -4024,9 +4032,9 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
 });
 
 // Get auto-traceroute node filter settings
-apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), (_req, res) => {
+apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), async (_req, res) => {
   try {
-    const settings = databaseService.getTracerouteFilterSettings();
+    const settings = await databaseService.getTracerouteFilterSettingsAsync();
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching auto-traceroute node filter:', error);
@@ -4035,7 +4043,7 @@ apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'
 });
 
 // Update auto-traceroute node filter settings
-apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'write'), (req, res) => {
+apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'write'), async (req, res) => {
   try {
     const {
       enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
@@ -4135,7 +4143,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
     }
 
     // Update all settings
-    databaseService.setTracerouteFilterSettings({
+    await databaseService.setTracerouteFilterSettingsAsync({
       enabled,
       nodeNums,
       filterChannels: validatedChannels,
@@ -4152,7 +4160,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
     });
 
     // Get the updated settings to return (includes resolved default values)
-    const updatedSettings = databaseService.getTracerouteFilterSettings();
+    const updatedSettings = await databaseService.getTracerouteFilterSettingsAsync();
 
     res.json({
       success: true,
@@ -6864,7 +6872,7 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const prefs = getUserNotificationPreferences(userId);
+    const prefs = await getUserNotificationPreferencesAsync(userId);
 
     if (prefs) {
       res.json(prefs);
@@ -6975,7 +6983,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       appriseUrls: appriseUrls ?? [],
     };
 
-    const success = saveUserNotificationPreferences(userId, prefs);
+    const success = await saveUserNotificationPreferencesAsync(userId, prefs);
 
     if (success) {
       logger.info(
@@ -7019,7 +7027,7 @@ apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
     }
 
     // Get user's Apprise URLs from their preferences
-    const prefs = getUserNotificationPreferences(userId);
+    const prefs = await getUserNotificationPreferencesAsync(userId);
     if (!prefs || !prefs.appriseUrls || prefs.appriseUrls.length === 0) {
       return res.json({
         success: false,
