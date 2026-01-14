@@ -103,6 +103,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
   const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
 
+  // Session passkey status for remote nodes
+  const [passkeyStatus, setPasskeyStatus] = useState<{
+    hasPasskey: boolean;
+    remainingSeconds: number | null;
+  } | null>(null);
+
   // Collapsible sections state - persist to localStorage
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const stored = localStorage.getItem('adminCommandsExpandedSections');
@@ -259,7 +265,65 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setRemoteNodeStatus(new Map());
     // Also clear node management selection when switching target nodes
     setNodeManagementNodeNum(null);
+    // Clear passkey status when switching nodes
+    setPasskeyStatus(null);
   }, [selectedNodeNum]);
+
+  // Fetch and update passkey status for remote nodes
+  const fetchPasskeyStatus = useCallback(async () => {
+    if (selectedNodeNum === null) return;
+
+    const selectedNode = nodeOptions.find(n => n.nodeNum === selectedNodeNum);
+    if (selectedNode?.isLocal) {
+      setPasskeyStatus(null);
+      return;
+    }
+
+    try {
+      const response = await apiService.post<{
+        success: boolean;
+        isLocalNode: boolean;
+        hasPasskey: boolean;
+        remainingSeconds: number | null;
+      }>('/api/admin/session-passkey-status', { nodeNum: selectedNodeNum });
+
+      if (response.isLocalNode) {
+        setPasskeyStatus(null);
+      } else {
+        setPasskeyStatus({
+          hasPasskey: response.hasPasskey,
+          remainingSeconds: response.remainingSeconds
+        });
+      }
+    } catch {
+      // Silently fail - passkey status is informational
+    }
+  }, [selectedNodeNum, nodeOptions]);
+
+  // Poll passkey status when a remote node is selected
+  useEffect(() => {
+    const selectedNode = nodeOptions.find(n => n.nodeNum === selectedNodeNum);
+    if (!selectedNode || selectedNode.isLocal) {
+      return;
+    }
+
+    // Initial fetch
+    fetchPasskeyStatus();
+
+    // Set up interval to update countdown
+    const interval = setInterval(() => {
+      setPasskeyStatus(prev => {
+        if (!prev || prev.remainingSeconds === null) return prev;
+        const newRemaining = prev.remainingSeconds - 1;
+        if (newRemaining <= 0) {
+          return { hasPasskey: false, remainingSeconds: null };
+        }
+        return { ...prev, remainingSeconds: newRemaining };
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [selectedNodeNum, nodeOptions, fetchPasskeyStatus]);
 
   const handleNodeSelect = useCallback((nodeNum: number) => {
     setSelectedNodeNum(nodeNum);
@@ -511,13 +575,24 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           
           // First, ensure we have a session passkey
           try {
-            await apiService.post('/api/admin/ensure-session-passkey', {
+            const passkeyResponse = await apiService.post<{
+              success: boolean;
+              hasPasskey: boolean;
+              remainingSeconds: number | null;
+            }>('/api/admin/ensure-session-passkey', {
               nodeNum: selectedNodeNum
             });
+            // Update passkey status display
+            if (passkeyResponse.hasPasskey) {
+              setPasskeyStatus({
+                hasPasskey: true,
+                remainingSeconds: passkeyResponse.remainingSeconds
+              });
+            }
           } catch (error: any) {
             throw new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
           }
-          
+
           // Send all requests in parallel
           const channelRequests = Array.from({ length: 8 }, (_, index) => 
             apiService.post<{ channel?: any }>('/api/admin/get-channel', {
@@ -674,9 +749,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       // Note: This is done once before retries since the passkey persists
       if (isRemoteNode) {
         try {
-          await apiService.post('/api/admin/ensure-session-passkey', {
+          const passkeyResponse = await apiService.post<{
+            success: boolean;
+            hasPasskey: boolean;
+            remainingSeconds: number | null;
+          }>('/api/admin/ensure-session-passkey', {
             nodeNum: selectedNodeNum
           });
+          // Update passkey status display
+          if (passkeyResponse.hasPasskey) {
+            setPasskeyStatus({
+              hasPasskey: true,
+              remainingSeconds: passkeyResponse.remainingSeconds
+            });
+          }
         } catch (error: any) {
           throw new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
         }
@@ -917,16 +1003,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         
         // First, ensure we have a session passkey (prevents conflicts from parallel requests)
         try {
-          await apiService.post('/api/admin/ensure-session-passkey', {
+          const passkeyResponse = await apiService.post<{
+            success: boolean;
+            hasPasskey: boolean;
+            remainingSeconds: number | null;
+          }>('/api/admin/ensure-session-passkey', {
             nodeNum: selectedNodeNum
           });
+          // Update passkey status display
+          if (passkeyResponse.hasPasskey) {
+            setPasskeyStatus({
+              hasPasskey: true,
+              remainingSeconds: passkeyResponse.remainingSeconds
+            });
+          }
         } catch (error: any) {
           const err = new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
           showToast(err.message, 'error');
           setIsLoadingChannels(false);
           throw err; // Re-throw so Promise.all() can catch it
         }
-        
+
         // Send all requests in parallel (now they can all use the same session passkey)
         const channelRequests = Array.from({ length: 8 }, (_, index) => 
           apiService.post<{ channel?: any }>('/api/admin/get-channel', {
@@ -1996,6 +2093,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
               {selectedNode.isLocal ? (
                 <span>{t('admin_commands.local_node_no_passkey')}</span>
+              ) : passkeyStatus?.hasPasskey && passkeyStatus.remainingSeconds !== null ? (
+                <span style={{ color: 'var(--ctp-green)' }}>
+                  {t('admin_commands.remote_node_passkey_acquired', { seconds: passkeyStatus.remainingSeconds })}
+                </span>
               ) : (
                 <span>{t('admin_commands.remote_node_passkey')}</span>
               )}

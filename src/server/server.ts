@@ -5733,10 +5733,44 @@ apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res)
       }
     }
 
-    return res.json({ success: true, message: 'Session passkey available' });
+    // Return status with expiry info
+    const status = meshtasticManager.getSessionPasskeyStatus(destinationNodeNum);
+    return res.json({
+      success: true,
+      message: 'Session passkey available',
+      ...status
+    });
   } catch (error: any) {
     logger.error('Error ensuring session passkey:', error);
     res.status(500).json({ error: error.message || 'Failed to ensure session passkey' });
+  }
+});
+
+// Admin get session passkey status - requires admin role
+// This just checks the status without triggering a new request
+apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum } = req.body;
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    if (isLocalNode) {
+      return res.json({
+        success: true,
+        isLocalNode: true,
+        hasPasskey: true,
+        expiresAt: null,
+        remainingSeconds: null
+      });
+    }
+
+    const status = meshtasticManager.getSessionPasskeyStatus(destinationNodeNum);
+    return res.json({ success: true, isLocalNode: false, ...status });
+  } catch (error: any) {
+    logger.error('Error getting session passkey status:', error);
+    res.status(500).json({ error: error.message || 'Failed to get session passkey status' });
   }
 });
 

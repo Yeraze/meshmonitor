@@ -2807,6 +2807,7 @@
   "admin_commands.local_node_indicator": "Local",
   "admin_commands.local_node_no_passkey": "✓ Local node - no session passkey required",
   "admin_commands.remote_node_passkey": "✓ Remote node - session passkey will be requested automatically",
+  "admin_commands.remote_node_passkey_acquired": "✓ Remote node - session passkey acquired ({{seconds}}s remaining)",
   "admin_commands.please_select_node": "Please select a node",
 
   "admin_commands.set_owner": "Set Owner",
