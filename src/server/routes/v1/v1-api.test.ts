@@ -94,6 +94,13 @@ vi.mock('../../../services/database.js', () => {
       getTelemetryCountByNode: vi.fn(() => testTelemetry.length),
       getTelemetryByType: vi.fn(() => testTelemetry),
       getTelemetryCount: vi.fn(() => testTelemetry.length),
+      getLatestTelemetryForType: vi.fn((nodeId: string, type: string) => {
+        // Return mock uptime data for test nodes
+        if (type === 'uptimeSeconds') {
+          return { value: 86400 }; // 1 day uptime
+        }
+        return null;
+      }),
       // Traceroutes methods
       getAllTraceroutes: vi.fn(() => testTraceroutes)
     }
