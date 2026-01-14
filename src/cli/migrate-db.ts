@@ -109,14 +109,18 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
   },
   user_notification_preferences: {
     user_id: 'userId',
-    notify_on_message: 'notifyOnMessage',
-    notify_on_direct_message: 'notifyOnDirectMessage',
-    notify_on_channel_message: 'notifyOnChannelMessage',
+    // Old SQLite column names → New PostgreSQL column names
+    enable_web_push: 'notifyOnMessage',           // Old: enable_web_push → New: notifyOnMessage
+    enable_direct_messages: 'notifyOnDirectMessage', // Old: enable_direct_messages → New: notifyOnDirectMessage
+    // enabled_channels is handled specially in transformValue (JSON array → boolean)
+    enabled_channels: 'notifyOnChannelMessage',   // Old: enabled_channels (JSON) → New: notifyOnChannelMessage (bool)
     notify_on_emoji: 'notifyOnEmoji',
+    notify_on_new_node: 'notifyOnNewNode',        // Old: notify_on_new_node → New: notifyOnNewNode
+    notify_on_traceroute: 'notifyOnTraceroute',   // Old: notify_on_traceroute → New: notifyOnTraceroute
     notify_on_inactive_node: 'notifyOnInactiveNode',
     notify_on_server_events: 'notifyOnServerEvents',
     prefix_with_node_name: 'prefixWithNodeName',
-    enable_apprise: 'appriseEnabled', // Fixed: SQLite uses enable_apprise, not apprise_enabled
+    enable_apprise: 'appriseEnabled',             // Old: enable_apprise → New: appriseEnabled
     apprise_urls: 'appriseUrls',
     notify_on_mqtt: 'notifyOnMqtt',
     created_at: 'createdAt',
@@ -147,23 +151,21 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
 
 // Columns to skip during migration (removed or incompatible)
 // NOTE: Be careful not to skip columns that should be migrated!
-// user_notification_preferences columns were previously skipped but should be migrated:
-// - enable_apprise -> appriseEnabled (controls whether Apprise is enabled per user)
-// - apprise_urls -> appriseUrls (per-user Apprise URLs)
+// user_notification_preferences columns were previously skipped but are now migrated via COLUMN_MAPPINGS:
+// - enable_web_push -> notifyOnMessage
+// - enable_direct_messages -> notifyOnDirectMessage
+// - enabled_channels -> notifyOnChannelMessage (JSON array transformed to boolean)
+// - enable_apprise -> appriseEnabled
+// - apprise_urls -> appriseUrls
 const SKIP_COLUMNS: Record<string, Set<string>> = {
   users: new Set(['created_by']),
   permissions: new Set(['granted_at', 'granted_by']),
-  // Removed most notification columns from skip list - they should be migrated
   // Only skip columns that don't have PostgreSQL equivalents
   user_notification_preferences: new Set([
-    'enable_web_push', // Deprecated - use notifyOnMessage instead
-    'enabled_channels', // Different schema - JSON format differs
-    'enable_direct_messages', // Deprecated - use notifyOnDirectMessage instead
-    'whitelist', // Different schema - JSON format differs
-    'blacklist', // Different schema - JSON format differs
-    'notify_on_new_node', // PostgreSQL has different default handling
-    'notify_on_traceroute', // PostgreSQL has different default handling
-    'monitored_nodes', // Different schema - JSON format differs
+    'whitelist', // Different schema - JSON format differs, not supported in new schema
+    'blacklist', // Different schema - JSON format differs, not supported in new schema
+    'monitored_nodes', // Different schema - JSON format differs, not supported in new schema
+    // notify_on_new_node and notify_on_traceroute are now migrated via COLUMN_MAPPINGS
   ]),
 };
 
@@ -188,6 +190,24 @@ function transformValue(tableName: string, column: string, value: unknown): unkn
   if (tableName === 'users' && column === 'authMethod' && value === 'oidc') {
     return 'oidc';
   }
+
+  // Transform enabled_channels JSON array to notifyOnChannelMessage boolean
+  // If the array has any channels, notifications are enabled for channels
+  if (tableName === 'user_notification_preferences' && column === 'notifyOnChannelMessage') {
+    if (typeof value === 'string') {
+      try {
+        const channels = JSON.parse(value);
+        return Array.isArray(channels) && channels.length > 0;
+      } catch {
+        return false;
+      }
+    }
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    return false;
+  }
+
   // Transform SQLite integers (0/1) to booleans for specific columns
   const booleanColumns = new Set([
     'isAdmin', 'isActive', 'passwordLocked', 'canRead', 'canWrite', 'canDelete',
@@ -529,6 +549,31 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
       console.log(`  📊 Nodes with welcomedAt set: ${nodesWithWelcome.length} / ${rows.length}`);
     }
 
+    // Log column diagnostics for user_notification_preferences table
+    if (table === 'user_notification_preferences' && rows.length > 0) {
+      const sampleRow = rows[0] as Record<string, unknown>;
+      const sourceColumns = Object.keys(sampleRow);
+      const targetColumns = Array.from(columnTypes.keys());
+      console.log(`  📊 Source columns: ${sourceColumns.join(', ')}`);
+      console.log(`  📊 Target columns: ${targetColumns.join(', ')}`);
+
+      // Show what mappings will be applied
+      const appliedMappings: string[] = [];
+      for (const srcCol of sourceColumns) {
+        if (skipCols.has(srcCol)) continue;
+        const targetCol = tableMapping[srcCol] || srcCol;
+        if (srcCol !== targetCol) {
+          appliedMappings.push(`${srcCol} → ${targetCol}`);
+        }
+      }
+      if (appliedMappings.length > 0) {
+        console.log(`  📊 Column mappings: ${appliedMappings.join(', ')}`);
+      }
+
+      // Show sample data for first row
+      console.log(`  📊 Sample row: enable_web_push=${sampleRow.enable_web_push}, enable_direct_messages=${sampleRow.enable_direct_messages}, enabled_channels=${sampleRow.enabled_channels}, enable_apprise=${sampleRow.enable_apprise}`);
+    }
+
     await client.query('BEGIN');
 
     for (const row of rows) {
@@ -550,8 +595,10 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
         }
 
         const pgType = columnTypes.get(targetCol) || 'text';
-        let value = sanitizeValue(obj[srcCol], pgType);
-        value = transformValue(table, targetCol, value);
+        // Transform first (handles special cases like JSON array → boolean)
+        // Then sanitize based on target type
+        let value = transformValue(table, targetCol, obj[srcCol]);
+        value = sanitizeValue(value, pgType);
         mappedData.push({ targetCol, value });
         mappedColumns.add(targetCol);
       }
@@ -674,8 +721,10 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
         }
 
         const mysqlType = columnTypes.get(targetCol) || 'text';
-        let value = sanitizeMySQLValue(obj[srcCol], mysqlType);
-        value = transformValue(table, targetCol, value);
+        // Transform first (handles special cases like JSON array → boolean)
+        // Then sanitize based on target type
+        let value = transformValue(table, targetCol, obj[srcCol]);
+        value = sanitizeMySQLValue(value, mysqlType);
         mappedData.push({ targetCol, value });
         mappedColumns.add(targetCol);
       }
@@ -934,6 +983,39 @@ async function migrate(options: MigrationOptions): Promise<void> {
     // Reset MySQL auto_increment values to prevent primary key conflicts
     if (isMySQLTarget && targetMySQLDb && !options.dryRun) {
       await resetMySQLAutoIncrement(targetMySQLDb.pool);
+    }
+
+    // Ensure auto_welcome_first_enabled setting exists to prevent mass re-welcoming
+    // The app checks this setting on startup - if missing, it assumes auto-welcome was
+    // never enabled and marks all nodes without welcomedAt as welcomed (thundering herd prevention)
+    // For migrated databases, we want to preserve the existing welcomedAt values
+    if (!options.dryRun) {
+      console.log('\n🔧 Adding migration-specific settings...');
+      const now = Date.now();
+      if (isPostgresTarget && targetPgDb) {
+        const client = await targetPgDb.pool.connect();
+        try {
+          await client.query(`
+            INSERT INTO settings (key, value, "createdAt", "updatedAt")
+            VALUES ('auto_welcome_first_enabled', 'completed', $1, $1)
+            ON CONFLICT (key) DO NOTHING
+          `, [now]);
+          console.log('  ✅ Added auto_welcome_first_enabled setting (prevents mass re-welcoming)');
+        } finally {
+          client.release();
+        }
+      } else if (isMySQLTarget && targetMySQLDb) {
+        const connection = await targetMySQLDb.pool.getConnection();
+        try {
+          await connection.execute(`
+            INSERT IGNORE INTO settings (\`key\`, value, createdAt, updatedAt)
+            VALUES ('auto_welcome_first_enabled', 'completed', ?, ?)
+          `, [now, now]);
+          console.log('  ✅ Added auto_welcome_first_enabled setting (prevents mass re-welcoming)');
+        } finally {
+          connection.release();
+        }
+      }
     }
 
     // Summary

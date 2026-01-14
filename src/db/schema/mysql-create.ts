@@ -257,6 +257,8 @@ export const MYSQL_SCHEMA_SQL = `
     notifyOnDirectMessage BOOLEAN DEFAULT true,
     notifyOnChannelMessage BOOLEAN DEFAULT false,
     notifyOnEmoji BOOLEAN DEFAULT false,
+    notifyOnNewNode BOOLEAN DEFAULT true,
+    notifyOnTraceroute BOOLEAN DEFAULT true,
     notifyOnInactiveNode BOOLEAN DEFAULT false,
     notifyOnServerEvents BOOLEAN DEFAULT false,
     prefixWithNodeName BOOLEAN DEFAULT false,
