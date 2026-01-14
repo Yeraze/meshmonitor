@@ -73,6 +73,9 @@ COPY scripts/upgrade-watchdog.sh /app/scripts/upgrade-watchdog.sh
 COPY scripts/test-docker-socket.sh /app/scripts/test-docker-socket.sh
 RUN chmod +x /app/scripts/upgrade-watchdog.sh /app/scripts/test-docker-socket.sh
 
+# Copy admin password reset script
+COPY reset-admin.mjs /app/reset-admin.mjs
+
 # Create data directory for SQLite database and Apprise configs
 RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
 
