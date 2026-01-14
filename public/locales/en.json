@@ -3060,6 +3060,8 @@
   "admin_commands.downlink_enabled_description": "Allow this channel to receive messages from MQTT",
   "admin_commands.position_precision": "Location Precision (bits)",
   "admin_commands.position_precision_description": "Number of bits for position data (0-32). Higher = more precise. 32 = full precision.",
+  "admin_commands.edit_channel": "Edit Channel {{slot}}",
+  "admin_commands.save_channel": "Save Channel",
   "admin_commands.please_select_node_export": "Please select a node",
   "admin_commands.reboot_delay_label": "Reboot delay (seconds)",
   "admin_commands.reboot_device": "Reboot Device",
