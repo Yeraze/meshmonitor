@@ -5,10 +5,21 @@
  */
 
 import express, { Request, Response } from 'express';
-import databaseService from '../../../services/database.js';
+import databaseService, { DbNode } from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 
 const router = express.Router();
+
+/**
+ * Enrich node data with latest uptime from telemetry
+ */
+function enrichNodeWithUptime(node: DbNode): DbNode & { uptimeSeconds?: number } {
+  const uptimeTelemetry = databaseService.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
+  return {
+    ...node,
+    uptimeSeconds: uptimeTelemetry?.value
+  };
+}
 
 /**
  * GET /api/v1/nodes
@@ -30,10 +41,13 @@ router.get('/', (req: Request, res: Response) => {
       nodes = databaseService.getAllNodes();
     }
 
+    // Enrich nodes with uptime data from telemetry
+    const enrichedNodes = nodes.map(enrichNodeWithUptime);
+
     res.json({
       success: true,
-      count: nodes.length,
-      data: nodes
+      count: enrichedNodes.length,
+      data: enrichedNodes
     });
   } catch (error) {
     logger.error('Error getting nodes:', error);
@@ -63,9 +77,12 @@ router.get('/:nodeId', (req: Request, res: Response) => {
       });
     }
 
+    // Enrich with uptime data from telemetry
+    const enrichedNode = enrichNodeWithUptime(node);
+
     res.json({
       success: true,
-      data: node
+      data: enrichedNode
     });
   } catch (error) {
     logger.error('Error getting node:', error);
