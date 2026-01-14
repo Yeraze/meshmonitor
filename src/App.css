@@ -763,29 +763,21 @@ body {
 }
 
 .dm-conversation-panel {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Content determines height - parent nodes-main-content handles scrolling */
 }
 
-/* Desktop: messages container fills remaining space */
+/* Desktop: messages container displays all messages, no internal scroll */
 .dm-conversation-panel .messages-container {
-  flex: 1;
+  flex: none; /* Override flex: 1 - don't stretch, use natural height */
+  overflow-y: visible; /* Override overflow-y: auto - no internal scroll */
   min-height: 100px;
-  overflow-y: auto;
 }
 
-/* DM Resize Handle - for resizing between messages and send section */
+/* DM Resize Handle - hidden since page scrolls naturally now */
 .dm-resize-handle {
-  height: 8px;
-  cursor: ns-resize;
-  background: transparent;
-  transition: background 0.2s ease;
-  flex-shrink: 0;
-  position: relative;
-  margin: 0 -1rem;
-  padding: 0 1rem;
+  display: none;
 }
 
 .dm-resize-handle:hover,
@@ -814,9 +806,10 @@ body {
 /* DM Send Section - wrapper for send form and info below */
 .dm-send-section {
   flex-shrink: 0;
-  overflow-y: auto;
+  overflow-y: visible; /* No internal scroll - page scrolls */
   display: flex;
   flex-direction: column;
+  height: auto !important; /* Override inline JS height for page scroll */
 }
 
 .dm-send-section.resizing {
