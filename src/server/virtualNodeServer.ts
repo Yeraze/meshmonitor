@@ -562,6 +562,14 @@ export class VirtualNodeServer extends EventEmitter {
   private async sendInitialConfig(clientId: string, configId?: number): Promise<void> {
     logger.info(`Virtual node: Starting to send initial config to ${clientId}${configId ? ` (ID: ${configId})` : ''}`);
     try {
+      // Check if config capture is complete before sending anything
+      // This prevents sending partial/incomplete config when the radio is restarting
+      if (!this.config.meshtasticManager.isInitConfigCaptureComplete()) {
+        logger.warn(`Virtual node: Config capture not yet complete, cannot send config to ${clientId}`);
+        logger.warn(`Virtual node: Physical node may be restarting - client should retry after initialization completes`);
+        return;
+      }
+
       // Get cached init config with type metadata from meshtasticManager
       const cachedMessages = this.config.meshtasticManager.getCachedInitConfig();
 
