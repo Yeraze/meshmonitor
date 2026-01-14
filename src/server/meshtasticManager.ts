@@ -234,7 +234,7 @@ class MeshtasticManager {
    * Check if estimated position recalculation is needed and perform it.
    * This is triggered by migration 038 which deletes old estimates and sets a flag.
    */
-  private checkAndRecalculatePositions(): void {
+  private async checkAndRecalculatePositions(): Promise<void> {
     try {
       const recalculateFlag = databaseService.getSetting('recalculate_estimated_positions');
       if (recalculateFlag !== 'pending') {
@@ -269,7 +269,7 @@ class MeshtasticManager {
           }
 
           // Process the traceroute for position estimation
-          this.estimateIntermediatePositions(fullRoute, traceroute.timestamp, snrArray);
+          await this.estimateIntermediatePositions(fullRoute, traceroute.timestamp, snrArray);
           processedCount++;
         } catch (err) {
           logger.debug(`Skipping traceroute ${traceroute.id} due to error: ${err}`);
@@ -3469,12 +3469,12 @@ class MeshtasticManager {
 
         // Estimate positions for intermediate nodes without GPS
         // Process forward route (responder -> requester) with SNR weighting
-        this.estimateIntermediatePositions(fullRoute, timestamp, snrTowards);
+        await this.estimateIntermediatePositions(fullRoute, timestamp, snrTowards);
 
         // Process return route if it exists (requester -> responder) with SNR weighting
         if (routeBack.length > 0) {
           const fullReturnRoute = [toNum, ...routeBack, fromNum];
-          this.estimateIntermediatePositions(fullReturnRoute, timestamp, snrBack);
+          await this.estimateIntermediatePositions(fullReturnRoute, timestamp, snrBack);
         }
       } catch (error) {
         logger.error('❌ Error calculating route segment distances:', error);
@@ -3610,7 +3610,7 @@ class MeshtasticManager {
    * @param timestamp - Timestamp for the telemetry record
    * @param snrArray - Optional array of SNR values (raw, divide by 4 to get dB) for each hop
    */
-  private estimateIntermediatePositions(routePath: number[], timestamp: number, snrArray?: number[]): void {
+  private async estimateIntermediatePositions(routePath: number[], timestamp: number, snrArray?: number[]): Promise<void> {
     // Time decay constant: half-life of 24 hours (in milliseconds)
     // After 24 hours, an old estimate has half the weight of a new one
     const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
@@ -3691,7 +3691,7 @@ class MeshtasticManager {
         }
 
         // Get previous estimates for time-weighted averaging
-        const previousEstimates = databaseService.getRecentEstimatedPositions(nodeNum, 10);
+        const previousEstimates = await databaseService.getRecentEstimatedPositionsAsync(nodeNum, 10);
         const now = Date.now();
 
         let finalLat: number;

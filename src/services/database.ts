@@ -4098,25 +4098,12 @@ class DatabaseService {
    * @param limit - Maximum number of estimates to return (default 10)
    * @returns Array of { latitude, longitude, timestamp } sorted by timestamp descending
    */
-  getRecentEstimatedPositions(nodeNum: number, limit: number = 10): Array<{ latitude: number; longitude: number; timestamp: number }> {
+  async getRecentEstimatedPositionsAsync(nodeNum: number, limit: number = 10): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
     const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-
-    // Get the most recent estimated positions by pairing lat/lon with matching timestamps
-    const query = `
-      SELECT lat.value as latitude, lon.value as longitude, lat.timestamp as timestamp
-      FROM telemetry lat
-      INNER JOIN telemetry lon ON lat.nodeId = lon.nodeId AND lat.timestamp = lon.timestamp
-      WHERE lat.nodeId = ?
-        AND lat.telemetryType = 'estimated_latitude'
-        AND lon.telemetryType = 'estimated_longitude'
-      ORDER BY lat.timestamp DESC
-      LIMIT ?
-    `;
-
-    const stmt = this.db.prepare(query);
-    const results = stmt.all(nodeId, limit) as Array<{ latitude: number; longitude: number; timestamp: number }>;
-
-    return results;
+    if (!this.telemetryRepo) {
+      return [];
+    }
+    return this.telemetryRepo.getRecentEstimatedPositions(nodeId, limit);
   }
 
   /**

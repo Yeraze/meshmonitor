@@ -684,6 +684,68 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Get recent estimated positions for a node.
+   * Returns position estimates by pairing estimated_latitude and estimated_longitude
+   * telemetry records with matching timestamps.
+   */
+  async getRecentEstimatedPositions(
+    nodeId: string,
+    limit: number = 10
+  ): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
+    // Get estimated_latitude records
+    const latRecords = await this.getTelemetryByNode(
+      nodeId,
+      limit * 2, // Get extra to account for potential unmatched records
+      undefined,
+      undefined,
+      0,
+      'estimated_latitude'
+    );
+
+    if (latRecords.length === 0) {
+      return [];
+    }
+
+    // Get estimated_longitude records
+    const lonRecords = await this.getTelemetryByNode(
+      nodeId,
+      limit * 2,
+      undefined,
+      undefined,
+      0,
+      'estimated_longitude'
+    );
+
+    if (lonRecords.length === 0) {
+      return [];
+    }
+
+    // Create a map of longitude records by timestamp for efficient lookup
+    const lonByTimestamp = new Map<number, number>();
+    for (const lon of lonRecords) {
+      lonByTimestamp.set(lon.timestamp, lon.value);
+    }
+
+    // Pair latitude records with longitude records that have matching timestamps
+    const results: Array<{ latitude: number; longitude: number; timestamp: number }> = [];
+    for (const lat of latRecords) {
+      const lon = lonByTimestamp.get(lat.timestamp);
+      if (lon !== undefined) {
+        results.push({
+          latitude: lat.value,
+          longitude: lon,
+          timestamp: lat.timestamp,
+        });
+        if (results.length >= limit) {
+          break;
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
    * Get all nodes with their telemetry types
    */
   async getAllNodesTelemetryTypes(): Promise<Map<string, string[]>> {
