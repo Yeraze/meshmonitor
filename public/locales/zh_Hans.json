@@ -3160,5 +3160,9 @@
     "security_config.is_managed": "管理设备",
     "security_config.debug_log_api_enabled": "启用调试日志 API",
     "security_config.debug_log_api_enabled_description": "通过串口或蓝牙输出实时调试日志。默认在有 API 客户端连接时关闭日志。",
-    "security_config.save_button": "保存安全配置"
+    "security_config.save_button": "保存安全配置",
+    "automation.auto_key_management.action_exhausted": "",
+    "node_popup.node_fallback": "",
+    "node_popup.id": "",
+    "admin_commands.remote_node_passkey_acquired": ""
 }

@@ -3149,5 +3149,20 @@
     "security_config.save_button": "Сохранить конфигурацию безопасности",
     "security_config.copy_private_key_confirm": "Вы уверены, что хотите скопировать свой приватный ключ в буфер обмена? Никогда никому не передавайте этот ключ!",
     "security_config.invalid_base64": "Неверный формат. Пожалуйста, введите действительный ключ в кодировке base64.",
-    "security_config.fix_invalid_keys": "Пожалуйста, исправьте неверные ключи администратора перед сохранением"
+    "security_config.fix_invalid_keys": "Пожалуйста, исправьте неверные ключи администратора перед сохранением",
+    "config.security_failed": "",
+    "automation.auto_key_management.action_exhausted": "",
+    "automation.auto_key_management.no_activity": "",
+    "settings.node_hops_nodeinfo": "",
+    "security_config.is_managed": "",
+    "packet_monitor.column.slot": "",
+    "admin_commands.channel_name_placeholder": "",
+    "security_config.title": "",
+    "admin_commands.position_precision_description": "",
+    "admin_commands.uplink_enabled": "",
+    "admin_commands.remote_node_passkey_acquired": "",
+    "admin_commands.channel_name": "",
+    "security_config.view_docs": "",
+    "admin_commands.position_precision": "",
+    "admin_commands.downlink_enabled": ""
 }
