@@ -116,7 +116,7 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
     notify_on_inactive_node: 'notifyOnInactiveNode',
     notify_on_server_events: 'notifyOnServerEvents',
     prefix_with_node_name: 'prefixWithNodeName',
-    apprise_enabled: 'appriseEnabled',
+    enable_apprise: 'appriseEnabled', // Fixed: SQLite uses enable_apprise, not apprise_enabled
     apprise_urls: 'appriseUrls',
     notify_on_mqtt: 'notifyOnMqtt',
     created_at: 'createdAt',
@@ -146,10 +146,25 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
 };
 
 // Columns to skip during migration (removed or incompatible)
+// NOTE: Be careful not to skip columns that should be migrated!
+// user_notification_preferences columns were previously skipped but should be migrated:
+// - enable_apprise -> appriseEnabled (controls whether Apprise is enabled per user)
+// - apprise_urls -> appriseUrls (per-user Apprise URLs)
 const SKIP_COLUMNS: Record<string, Set<string>> = {
   users: new Set(['created_by']),
   permissions: new Set(['granted_at', 'granted_by']),
-  user_notification_preferences: new Set(['enable_web_push', 'enable_apprise', 'enabled_channels', 'enable_direct_messages', 'whitelist', 'blacklist', 'notify_on_new_node', 'notify_on_traceroute', 'monitored_nodes']),
+  // Removed most notification columns from skip list - they should be migrated
+  // Only skip columns that don't have PostgreSQL equivalents
+  user_notification_preferences: new Set([
+    'enable_web_push', // Deprecated - use notifyOnMessage instead
+    'enabled_channels', // Different schema - JSON format differs
+    'enable_direct_messages', // Deprecated - use notifyOnDirectMessage instead
+    'whitelist', // Different schema - JSON format differs
+    'blacklist', // Different schema - JSON format differs
+    'notify_on_new_node', // PostgreSQL has different default handling
+    'notify_on_traceroute', // PostgreSQL has different default handling
+    'monitored_nodes', // Different schema - JSON format differs
+  ]),
 };
 
 // Tables to skip entirely during migration (incompatible schemas or non-essential)
@@ -162,7 +177,7 @@ const SKIP_TABLES = new Set([
   'auto_traceroute_nodes', // Non-essential
   'auto_key_repair_state', // Non-essential
   'auto_key_repair_log', // Non-essential logging
-  'solar_estimates', // Non-essential
+  // solar_estimates - REMOVED: Users want historical solar data preserved
   'system_backup_history', // Non-essential
   'user_map_preferences', // Column mapping issues
 ]);
@@ -435,10 +450,11 @@ async function getTableData(rawDb: Database.Database, table: string): Promise<un
  * Get column types for a PostgreSQL table
  */
 async function getPostgresColumnTypes(client: import('pg').PoolClient, table: string): Promise<Map<string, string>> {
+  // Query with schema qualification to avoid ambiguity
   const result = await client.query(`
     SELECT column_name, data_type
     FROM information_schema.columns
-    WHERE table_name = $1
+    WHERE table_schema = 'public' AND table_name = $1
   `, [table]);
 
   const typeMap = new Map<string, string>();
@@ -491,6 +507,27 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
   try {
     // Get column types for this table
     columnTypes = await getPostgresColumnTypes(client, table);
+
+    // Log column diagnostics for nodes table (helps debug welcomedAt migration issues)
+    if (table === 'nodes' && rows.length > 0) {
+      const sampleRow = rows[0] as Record<string, unknown>;
+      const sourceColumns = Object.keys(sampleRow);
+      const targetColumns = Array.from(columnTypes.keys());
+      const missingInTarget = sourceColumns.filter(col => !columnTypes!.has(col) && !skipCols.has(col));
+
+      if (missingInTarget.length > 0) {
+        console.log(`  ⚠️  Nodes table: ${missingInTarget.length} source columns not found in target: ${missingInTarget.join(', ')}`);
+      }
+
+      // Specifically check for welcomedAt
+      const hasWelcomedAtSource = sourceColumns.includes('welcomedAt');
+      const hasWelcomedAtTarget = targetColumns.includes('welcomedAt');
+      console.log(`  📊 welcomedAt: source=${hasWelcomedAtSource}, target=${hasWelcomedAtTarget}`);
+
+      // Count how many nodes have welcomedAt set
+      const nodesWithWelcome = rows.filter((r: any) => r.welcomedAt !== null && r.welcomedAt !== undefined);
+      console.log(`  📊 Nodes with welcomedAt set: ${nodesWithWelcome.length} / ${rows.length}`);
+    }
 
     await client.query('BEGIN');
 
