@@ -768,11 +768,12 @@ body {
   /* Content determines height - parent nodes-main-content handles scrolling */
 }
 
-/* Desktop: messages container displays all messages, no internal scroll */
+/* Desktop: messages container scrolls internally with default height */
 .dm-conversation-panel .messages-container {
-  flex: none; /* Override flex: 1 - don't stretch, use natural height */
-  overflow-y: visible; /* Override overflow-y: auto - no internal scroll */
-  min-height: 100px;
+  flex: none; /* Don't stretch, use fixed height */
+  overflow-y: auto; /* Enable internal scrolling for lengthy conversations */
+  min-height: 200px;
+  height: 400px; /* Default height for messages area */
 }
 
 /* DM Resize Handle - hidden since page scrolls naturally now */
