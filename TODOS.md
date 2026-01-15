@@ -2,6 +2,31 @@
 
 ## Current Sprint
 
+### PostgreSQL Read Tracking Fix
+
+**Completed:**
+- [x] Add mark-as-read methods to NotificationsRepository (markChannelMessagesAsRead, markDMMessagesAsRead, markAllDMMessagesAsRead, markMessagesAsReadByIds)
+- [x] Update database.ts to call async repo methods for PostgreSQL/MySQL instead of returning 0
+- [x] Build and deploy to Docker container
+
+**Summary:**
+Fixed a bug where unread message indicators wouldn't clear when viewing channels/DMs on PostgreSQL databases. The mark-as-read functions were returning 0 immediately for PostgreSQL/MySQL with "not yet implemented" comments. Added proper implementations using raw SQL for efficient INSERT...SELECT operations with ON CONFLICT DO NOTHING.
+
+---
+
+### Server Start Notification Timing Fix
+
+**Completed:**
+- [x] Identified timing bug: server start notification sent before PostgreSQL database fully initialized
+- [x] Added `await databaseService.waitForReady()` before sending server start notification
+- [x] Wrapped notification code in async IIFE with error handling
+- [x] Build and deploy to Docker container
+
+**Summary:**
+Fixed a bug where server start notifications (via Apprise/Pushover) weren't being sent to PostgreSQL users. The notification was being sent before the database was fully initialized, so the query for users with `notifyOnServerEvents` enabled returned 0 results. Now the notification waits for the database to be ready.
+
+---
+
 ### Remote Admin LoRa Config Missing txEnabled Fields (#1328)
 
 **Completed:**

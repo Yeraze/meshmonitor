@@ -8131,18 +8131,28 @@ const server = app.listen(PORT, () => {
   // Initialize WebSocket server for real-time updates
   initializeWebSocket(server, sessionMiddleware);
 
-  // Send server start notification
-  const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
-  if (env.oidcEnabled) enabledFeatures.push('OIDC');
-  if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
-  if (env.accessLogEnabled) enabledFeatures.push('Access Logging');
-  if (pushNotificationService.isAvailable()) enabledFeatures.push('Web Push');
-  if (appriseNotificationService.isAvailable()) enabledFeatures.push('Apprise');
+  // Send server start notification after database is ready
+  // This ensures PostgreSQL users with server event notifications are found
+  (async () => {
+    try {
+      // Wait for database initialization to complete (important for PostgreSQL)
+      await databaseService.waitForReady();
 
-  serverEventNotificationService.notifyServerStart({
-    version: packageJson.version,
-    features: enabledFeatures,
-  });
+      const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
+      if (env.oidcEnabled) enabledFeatures.push('OIDC');
+      if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
+      if (env.accessLogEnabled) enabledFeatures.push('Access Logging');
+      if (pushNotificationService.isAvailable()) enabledFeatures.push('Web Push');
+      if (appriseNotificationService.isAvailable()) enabledFeatures.push('Apprise');
+
+      serverEventNotificationService.notifyServerStart({
+        version: packageJson.version,
+        features: enabledFeatures,
+      });
+    } catch (error) {
+      logger.error('Failed to send server start notification:', error);
+    }
+  })();
 
   // Log environment variable sources in development
   if (env.isDevelopment) {

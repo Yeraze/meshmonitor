@@ -7362,9 +7362,14 @@ class DatabaseService {
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
-    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
+      if (this.notificationsRepo) {
+        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp).catch((error) => {
+          logger.debug(`[DatabaseService] Mark channel messages as read failed: ${error}`);
+        });
+      }
+      return 0; // Return 0 since we don't wait for the async result
     }
     let query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
@@ -7385,9 +7390,14 @@ class DatabaseService {
   }
 
   markDMMessagesAsRead(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): number {
-    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
+      if (this.notificationsRepo) {
+        this.notificationsRepo.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp).catch((error) => {
+          logger.debug(`[DatabaseService] Mark DM messages as read failed: ${error}`);
+        });
+      }
+      return 0; // Return 0 since we don't wait for the async result
     }
     let query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
@@ -7413,9 +7423,14 @@ class DatabaseService {
    * This marks all direct messages (channel = -1) involving the local node as read
    */
   markAllDMMessagesAsRead(localNodeId: string, userId: number | null): number {
-    // For PostgreSQL/MySQL, read tracking is not yet implemented
+    // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
+      if (this.notificationsRepo) {
+        this.notificationsRepo.markAllDMMessagesAsRead(localNodeId, userId).catch((error) => {
+          logger.debug(`[DatabaseService] Mark all DM messages as read failed: ${error}`);
+        });
+      }
+      return 0; // Return 0 since we don't wait for the async result
     }
     const query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)

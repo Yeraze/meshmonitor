@@ -7,7 +7,7 @@
  *
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql, and, or, lte } from 'drizzle-orm';
 import {
   pushSubscriptionsSqlite,
   pushSubscriptionsPostgres,
@@ -15,7 +15,11 @@ import {
   userNotificationPreferencesSqlite,
   userNotificationPreferencesPostgres,
   userNotificationPreferencesMysql,
+  readMessagesSqlite,
 } from '../schema/notifications.js';
+import {
+  messagesSqlite,
+} from '../schema/messages.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPushSubscription } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -523,6 +527,365 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getUsersWithAppriseEnabled(): Promise<number[]> {
     return this.getUsersWithServiceEnabled('apprise');
+  }
+
+  // ============ READ MESSAGE TRACKING ============
+
+  /**
+   * Mark channel messages as read for a user
+   * Uses INSERT...SELECT to efficiently mark all messages in a channel as read
+   */
+  async markChannelMessagesAsRead(
+    channelId: number,
+    userId: number | null,
+    beforeTimestamp?: number
+  ): Promise<number> {
+    const now = this.now();
+    const effectiveUserId = userId ?? 0;
+
+    try {
+      if (this.isSQLite()) {
+        const db = this.getSqliteDb();
+        // Get message IDs for the channel
+        let query = db
+          .select({ id: messagesSqlite.id })
+          .from(messagesSqlite)
+          .where(
+            and(
+              eq(messagesSqlite.channel, channelId),
+              eq(messagesSqlite.portnum, 1)
+            )
+          );
+
+        if (beforeTimestamp !== undefined) {
+          query = db
+            .select({ id: messagesSqlite.id })
+            .from(messagesSqlite)
+            .where(
+              and(
+                eq(messagesSqlite.channel, channelId),
+                eq(messagesSqlite.portnum, 1),
+                lte(messagesSqlite.timestamp, beforeTimestamp)
+              )
+            );
+        }
+
+        const messages = await query;
+        if (messages.length === 0) return 0;
+
+        // Insert read records (ignoring conflicts)
+        let inserted = 0;
+        for (const msg of messages) {
+          try {
+            await db.insert(readMessagesSqlite).values({
+              userId: effectiveUserId,
+              messageId: msg.id,
+              readAt: now,
+            }).onConflictDoNothing();
+            inserted++;
+          } catch {
+            // Ignore duplicates
+          }
+        }
+        return inserted;
+      } else if (this.isPostgres()) {
+        const db = this.getPostgresDb();
+        // Use raw SQL for INSERT...SELECT with ON CONFLICT DO NOTHING
+        let result;
+        if (beforeTimestamp !== undefined) {
+          result = await db.execute(sql`
+            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE channel = ${channelId}
+              AND portnum = 1
+              AND timestamp <= ${beforeTimestamp}
+            ON CONFLICT ("messageId", "userId") DO NOTHING
+          `);
+        } else {
+          result = await db.execute(sql`
+            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE channel = ${channelId}
+              AND portnum = 1
+            ON CONFLICT ("messageId", "userId") DO NOTHING
+          `);
+        }
+        return Number(result.rowCount ?? 0);
+      } else {
+        // MySQL
+        const db = this.getMysqlDb();
+        // MySQL uses INSERT IGNORE for upsert behavior
+        if (beforeTimestamp !== undefined) {
+          const [result] = await db.execute(sql`
+            INSERT IGNORE INTO read_messages (messageId, userId, readAt)
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE channel = ${channelId}
+              AND portnum = 1
+              AND timestamp <= ${beforeTimestamp}
+          `);
+          return Number((result as any).affectedRows ?? 0);
+        } else {
+          const [result] = await db.execute(sql`
+            INSERT IGNORE INTO read_messages (messageId, userId, readAt)
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE channel = ${channelId}
+              AND portnum = 1
+          `);
+          return Number((result as any).affectedRows ?? 0);
+        }
+      }
+    } catch (error) {
+      logger.error(`❌ Failed to mark channel ${channelId} messages as read:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Mark DM messages as read between two nodes for a user
+   */
+  async markDMMessagesAsRead(
+    localNodeId: string,
+    remoteNodeId: string,
+    userId: number | null,
+    beforeTimestamp?: number
+  ): Promise<number> {
+    const now = this.now();
+    const effectiveUserId = userId ?? 0;
+
+    try {
+      if (this.isSQLite()) {
+        const db = this.getSqliteDb();
+        // Get message IDs for the DM conversation
+        let baseCondition = and(
+          or(
+            and(
+              eq(messagesSqlite.fromNodeId, localNodeId),
+              eq(messagesSqlite.toNodeId, remoteNodeId)
+            ),
+            and(
+              eq(messagesSqlite.fromNodeId, remoteNodeId),
+              eq(messagesSqlite.toNodeId, localNodeId)
+            )
+          ),
+          eq(messagesSqlite.portnum, 1),
+          eq(messagesSqlite.channel, -1)
+        );
+
+        let query = db
+          .select({ id: messagesSqlite.id })
+          .from(messagesSqlite)
+          .where(baseCondition);
+
+        if (beforeTimestamp !== undefined) {
+          query = db
+            .select({ id: messagesSqlite.id })
+            .from(messagesSqlite)
+            .where(
+              and(
+                baseCondition,
+                lte(messagesSqlite.timestamp, beforeTimestamp)
+              )
+            );
+        }
+
+        const messages = await query;
+        if (messages.length === 0) return 0;
+
+        // Insert read records
+        let inserted = 0;
+        for (const msg of messages) {
+          try {
+            await db.insert(readMessagesSqlite).values({
+              userId: effectiveUserId,
+              messageId: msg.id,
+              readAt: now,
+            }).onConflictDoNothing();
+            inserted++;
+          } catch {
+            // Ignore duplicates
+          }
+        }
+        return inserted;
+      } else if (this.isPostgres()) {
+        const db = this.getPostgresDb();
+        let result;
+        if (beforeTimestamp !== undefined) {
+          result = await db.execute(sql`
+            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE (("fromNodeId" = ${localNodeId} AND "toNodeId" = ${remoteNodeId})
+                OR ("fromNodeId" = ${remoteNodeId} AND "toNodeId" = ${localNodeId}))
+              AND portnum = 1
+              AND channel = -1
+              AND timestamp <= ${beforeTimestamp}
+            ON CONFLICT ("messageId", "userId") DO NOTHING
+          `);
+        } else {
+          result = await db.execute(sql`
+            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE (("fromNodeId" = ${localNodeId} AND "toNodeId" = ${remoteNodeId})
+                OR ("fromNodeId" = ${remoteNodeId} AND "toNodeId" = ${localNodeId}))
+              AND portnum = 1
+              AND channel = -1
+            ON CONFLICT ("messageId", "userId") DO NOTHING
+          `);
+        }
+        return Number(result.rowCount ?? 0);
+      } else {
+        // MySQL
+        const db = this.getMysqlDb();
+        if (beforeTimestamp !== undefined) {
+          const [result] = await db.execute(sql`
+            INSERT IGNORE INTO read_messages (messageId, userId, readAt)
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE ((fromNodeId = ${localNodeId} AND toNodeId = ${remoteNodeId})
+                OR (fromNodeId = ${remoteNodeId} AND toNodeId = ${localNodeId}))
+              AND portnum = 1
+              AND channel = -1
+              AND timestamp <= ${beforeTimestamp}
+          `);
+          return Number((result as any).affectedRows ?? 0);
+        } else {
+          const [result] = await db.execute(sql`
+            INSERT IGNORE INTO read_messages (messageId, userId, readAt)
+            SELECT id, ${effectiveUserId}, ${now} FROM messages
+            WHERE ((fromNodeId = ${localNodeId} AND toNodeId = ${remoteNodeId})
+                OR (fromNodeId = ${remoteNodeId} AND toNodeId = ${localNodeId}))
+              AND portnum = 1
+              AND channel = -1
+          `);
+          return Number((result as any).affectedRows ?? 0);
+        }
+      }
+    } catch (error) {
+      logger.error(`❌ Failed to mark DM messages as read:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Mark all DM messages as read for the local node
+   */
+  async markAllDMMessagesAsRead(
+    localNodeId: string,
+    userId: number | null
+  ): Promise<number> {
+    const now = this.now();
+    const effectiveUserId = userId ?? 0;
+
+    try {
+      if (this.isSQLite()) {
+        const db = this.getSqliteDb();
+        // Get all DM message IDs involving the local node
+        const messages = await db
+          .select({ id: messagesSqlite.id })
+          .from(messagesSqlite)
+          .where(
+            and(
+              or(
+                eq(messagesSqlite.fromNodeId, localNodeId),
+                eq(messagesSqlite.toNodeId, localNodeId)
+              ),
+              eq(messagesSqlite.portnum, 1),
+              eq(messagesSqlite.channel, -1)
+            )
+          );
+
+        if (messages.length === 0) return 0;
+
+        // Insert read records
+        let inserted = 0;
+        for (const msg of messages) {
+          try {
+            await db.insert(readMessagesSqlite).values({
+              userId: effectiveUserId,
+              messageId: msg.id,
+              readAt: now,
+            }).onConflictDoNothing();
+            inserted++;
+          } catch {
+            // Ignore duplicates
+          }
+        }
+        return inserted;
+      } else if (this.isPostgres()) {
+        const db = this.getPostgresDb();
+        const result = await db.execute(sql`
+          INSERT INTO read_messages ("messageId", "userId", "readAt")
+          SELECT id, ${effectiveUserId}, ${now} FROM messages
+          WHERE ("fromNodeId" = ${localNodeId} OR "toNodeId" = ${localNodeId})
+            AND portnum = 1
+            AND channel = -1
+          ON CONFLICT ("messageId", "userId") DO NOTHING
+        `);
+        return Number(result.rowCount ?? 0);
+      } else {
+        // MySQL
+        const db = this.getMysqlDb();
+        const [result] = await db.execute(sql`
+          INSERT IGNORE INTO read_messages (messageId, userId, readAt)
+          SELECT id, ${effectiveUserId}, ${now} FROM messages
+          WHERE (fromNodeId = ${localNodeId} OR toNodeId = ${localNodeId})
+            AND portnum = 1
+            AND channel = -1
+        `);
+        return Number((result as any).affectedRows ?? 0);
+      }
+    } catch (error) {
+      logger.error(`❌ Failed to mark all DM messages as read:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Mark specific messages as read by their IDs
+   */
+  async markMessagesAsReadByIds(
+    messageIds: string[],
+    userId: number | null
+  ): Promise<void> {
+    if (messageIds.length === 0) return;
+
+    const now = this.now();
+    const effectiveUserId = userId ?? 0;
+
+    try {
+      if (this.isSQLite()) {
+        const db = this.getSqliteDb();
+        for (const messageId of messageIds) {
+          try {
+            await db.insert(readMessagesSqlite).values({
+              userId: effectiveUserId,
+              messageId,
+              readAt: now,
+            }).onConflictDoNothing();
+          } catch {
+            // Ignore duplicates
+          }
+        }
+      } else if (this.isPostgres()) {
+        const db = this.getPostgresDb();
+        for (const messageId of messageIds) {
+          await db.execute(sql`
+            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            VALUES (${messageId}, ${effectiveUserId}, ${now})
+            ON CONFLICT ("messageId", "userId") DO NOTHING
+          `);
+        }
+      } else {
+        // MySQL
+        const db = this.getMysqlDb();
+        for (const messageId of messageIds) {
+          await db.execute(sql`
+            INSERT IGNORE INTO read_messages (messageId, userId, readAt)
+            VALUES (${messageId}, ${effectiveUserId}, ${now})
+          `);
+        }
+      }
+    } catch (error) {
+      logger.error(`❌ Failed to mark messages as read by IDs:`, error);
+    }
   }
 
   // ============ PRIVATE HELPERS ============
