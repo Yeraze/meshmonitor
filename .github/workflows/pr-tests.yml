@@ -39,7 +39,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm ci --prefer-offline --no-audit --legacy-peer-deps
+          npm install --prefer-offline --no-audit --legacy-peer-deps
 
       - name: Check formatting
         run: |
@@ -128,7 +128,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm install --prefer-offline --no-audit --legacy-peer-deps
 
       - name: Test backend changes
         if: needs.changed-files.outputs.backend == 'true'
@@ -170,7 +170,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm install --prefer-offline --no-audit --legacy-peer-deps
 
       - name: Build documentation
         run: |
