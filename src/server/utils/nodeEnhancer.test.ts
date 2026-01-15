@@ -17,10 +17,10 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
     nodeNum: 1,
     user: { id: '!00000001' },
     position: { latitude: 10, longitude: 20 },
-    positionOverrideEnabled: 1,
+    positionOverrideEnabled: true,
     latitudeOverride: 30,
     longitudeOverride: 40,
-    positionOverrideIsPrivate: 1
+    positionOverrideIsPrivate: true
   } as any;
 
   const adminUser = { username: 'admin' };
@@ -62,7 +62,7 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
   });
 
   it('should show public override for everyone', async () => {
-    const publicNode = { ...mockNode, positionOverrideIsPrivate: 0 };
+    const publicNode = { ...mockNode, positionOverrideIsPrivate: false };
 
     const anonResult = await enhanceNodeForClient(publicNode, anonymousUser);
     expect(anonResult.position.latitude).toBe(30);
@@ -76,7 +76,7 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
     const nodeWithoutPos = {
       ...mockNode,
       position: null,
-      positionOverrideEnabled: 0
+      positionOverrideEnabled: false
     };
 
     const estimatedPositions = new Map();

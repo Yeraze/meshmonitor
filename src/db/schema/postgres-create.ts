@@ -47,11 +47,11 @@ export const POSTGRES_SCHEMA_SQL = `
     "positionGpsAccuracy" REAL,
     "positionHdop" REAL,
     "positionTimestamp" BIGINT,
-    "positionOverrideEnabled" INTEGER DEFAULT 0,
+    "positionOverrideEnabled" BOOLEAN DEFAULT false,
     "latitudeOverride" REAL,
     "longitudeOverride" REAL,
     "altitudeOverride" REAL,
-    "positionOverrideIsPrivate" INTEGER DEFAULT 0,
+    "positionOverrideIsPrivate" BOOLEAN DEFAULT false,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL
   );

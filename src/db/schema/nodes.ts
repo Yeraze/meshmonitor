@@ -50,11 +50,11 @@ export const nodesSqlite = sqliteTable('nodes', {
   positionHdop: real('positionHdop'),
   positionTimestamp: integer('positionTimestamp'),
   // Position override
-  positionOverrideEnabled: integer('positionOverrideEnabled').default(0),
+  positionOverrideEnabled: integer('positionOverrideEnabled', { mode: 'boolean' }).default(false),
   latitudeOverride: real('latitudeOverride'),
   longitudeOverride: real('longitudeOverride'),
   altitudeOverride: real('altitudeOverride'),
-  positionOverrideIsPrivate: integer('positionOverrideIsPrivate').default(0),
+  positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -104,11 +104,11 @@ export const nodesPostgres = pgTable('nodes', {
   positionHdop: pgReal('positionHdop'),
   positionTimestamp: pgBigint('positionTimestamp', { mode: 'number' }),
   // Position override
-  positionOverrideEnabled: pgInteger('positionOverrideEnabled').default(0),
+  positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: pgReal('latitudeOverride'),
   longitudeOverride: pgReal('longitudeOverride'),
   altitudeOverride: pgReal('altitudeOverride'),
-  positionOverrideIsPrivate: pgInteger('positionOverrideIsPrivate').default(0),
+  positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -158,11 +158,11 @@ export const nodesMysql = mysqlTable('nodes', {
   positionHdop: myDouble('positionHdop'),
   positionTimestamp: myBigint('positionTimestamp', { mode: 'number' }),
   // Position override
-  positionOverrideEnabled: myInt('positionOverrideEnabled').default(0),
+  positionOverrideEnabled: myBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: myDouble('latitudeOverride'),
   longitudeOverride: myDouble('longitudeOverride'),
   altitudeOverride: myDouble('altitudeOverride'),
-  positionOverrideIsPrivate: myInt('positionOverrideIsPrivate').default(0),
+  positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

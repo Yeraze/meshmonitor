@@ -15,9 +15,9 @@
 
 ### Schema & Type Safety
 
-- [ ] **Boolean type consistency** - Fix `positionOverrideEnabled` in nodes.ts using `pgInteger` instead of `pgBoolean`, breaks boolean abstraction pattern - `src/db/schema/nodes.ts:107`
-- [ ] **BIGINT coercion type guards** - `normalizeBigInts` doesn't preserve prototype chains, could cause issues with Date objects - `src/db/repositories/base.ts:110`
-- [ ] **Dynamic sequence names** - Hardcoded sequence names in migration could get out of sync with schema changes - `src/cli/migrate-db.ts:428`
+- [x] **Boolean type consistency** - Fixed `positionOverrideEnabled` and `positionOverrideIsPrivate` to use proper boolean types across all schemas (SQLite mode:'boolean', PostgreSQL pgBoolean, MySQL myBoolean). Added migration 047 to convert existing INTEGER columns to BOOLEAN.
+- [x] **BIGINT coercion type guards** - Fixed `normalizeBigInts` to preserve prototype chains for Date objects and other special types using `Object.getPrototypeOf()` and `Object.create()`.
+- [x] **Dynamic sequence names** - Replaced hardcoded sequence list with dynamic discovery using `pg_get_serial_sequence()` to find all sequences owned by table columns.
 
 ### Security
 

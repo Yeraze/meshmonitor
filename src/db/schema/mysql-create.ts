@@ -50,11 +50,11 @@ export const MYSQL_SCHEMA_SQL = `
     positionGpsAccuracy DOUBLE,
     positionHdop DOUBLE,
     positionTimestamp BIGINT,
-    positionOverrideEnabled INT DEFAULT 0,
+    positionOverrideEnabled BOOLEAN DEFAULT false,
     latitudeOverride DOUBLE,
     longitudeOverride DOUBLE,
     altitudeOverride DOUBLE,
-    positionOverrideIsPrivate INT DEFAULT 0,
+    positionOverrideIsPrivate BOOLEAN DEFAULT false,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -388,8 +388,8 @@ export const MYSQL_SCHEMA_SQL = `
     INDEX idx_auto_key_repair_log_timestamp (timestamp)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-  CREATE INDEX IF NOT EXISTS idx_nodes_nodeid ON nodes(nodeId);
-  CREATE INDEX IF NOT EXISTS idx_nodes_lastheard ON nodes(lastHeard);
+  CREATE INDEX idx_nodes_nodeid ON nodes(nodeId);
+  CREATE INDEX idx_nodes_lastheard ON nodes(lastHeard);
 `;
 
 export const MYSQL_TABLE_NAMES = [

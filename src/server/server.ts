@@ -706,11 +706,11 @@ apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
         nodeNum: node.nodeNum,
         user: { id: node.nodeId, longName: node.longName, shortName: node.shortName },
         mobile: node.mobile,
-        positionOverrideEnabled: node.positionOverrideEnabled,
+        positionOverrideEnabled: Boolean(node.positionOverrideEnabled),
         latitudeOverride: node.latitudeOverride,
         longitudeOverride: node.longitudeOverride,
         altitudeOverride: node.altitudeOverride,
-        positionOverrideIsPrivate: node.positionOverrideIsPrivate === 1
+        positionOverrideIsPrivate: Boolean(node.positionOverrideIsPrivate)
       };
 
       if (node.latitude && node.longitude) {
@@ -740,7 +740,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
     // Check privacy for position history
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
     const node = databaseService.getNode(nodeNum);
-    const isPrivate = node?.positionOverrideIsPrivate === 1;
+    const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
     if (isPrivate && !canViewPrivate) {
       res.json([]);
@@ -2775,7 +2775,7 @@ const getEffectivePosition = (node: ReturnType<typeof databaseService.getNode>) 
   if (!node) return { latitude: undefined, longitude: undefined };
 
   // Check for position override first
-  if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
+  if (node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null) {
     return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
   }
 
@@ -2879,7 +2879,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     // Check if node has private position override
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
     const node = databaseService.getNode(nodeNum);
-    const isPrivate = node?.positionOverrideIsPrivate === 1;
+    const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
     let telemetry: any[];
