@@ -10,8 +10,9 @@ COPY package*.json ./
 # Use npm install instead of npm ci to avoid optional dependency bug
 # better-sqlite3 will download pre-built binaries for the target platform
 # Use cache mount to speed up repeated builds
+# --legacy-peer-deps needed for vitest peer dependency conflicts
 RUN --mount=type=cache,target=/root/.npm \
-    npm install
+    npm install --legacy-peer-deps
 
 # Verify protobufs are present (fail fast if git submodule wasn't initialized)
 # Copy protobufs first as they rarely change
