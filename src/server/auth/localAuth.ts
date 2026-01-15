@@ -18,8 +18,8 @@ export async function authenticateLocal(
   try {
     logger.debug(`🔐 Local auth attempt for user: ${username}`);
 
-    // Use the UserModel to authenticate
-    const user = await databaseService.userModel.authenticate(username, password);
+    // Use async authentication method (works with both SQLite and PostgreSQL)
+    const user = await databaseService.authenticateAsync(username, password);
 
     if (!user) {
       logger.debug(`❌ Authentication failed for user: ${username}`);
@@ -56,25 +56,76 @@ export async function createLocalUser(
       throw new Error('Password must be at least 8 characters long');
     }
 
-    // Check if username already exists
-    const existing = databaseService.userModel.findByUsername(username);
+    // Check if username already exists - use async method for PostgreSQL
+    const existing = await databaseService.findUserByUsernameAsync(username);
     if (existing) {
       throw new Error('Username already exists');
     }
 
-    // Create user
-    const user = await databaseService.userModel.create({
-      username,
-      password,
-      email,
-      displayName,
-      authProvider: 'local',
-      isAdmin,
-      createdBy
-    });
+    let user: User;
 
-    // Grant default permissions
-    databaseService.permissionModel.grantDefaultPermissions(user.id, isAdmin, createdBy);
+    // Create user
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        const bcrypt = await import('bcrypt');
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        const userId = await databaseService.authRepo.createUser({
+          username,
+          email: email || null,
+          displayName: displayName || null,
+          authMethod: 'local',
+          isAdmin,
+          isActive: true,
+          passwordHash,
+          passwordLocked: false,
+          createdAt: Date.now()
+        });
+        user = await databaseService.findUserByIdAsync(userId) as User;
+
+        // Grant default permissions
+        const defaultResources = ['nodes', 'messages', 'telemetry', 'traceroutes', 'channels', 'map', 'settings'];
+        for (const resource of defaultResources) {
+          await databaseService.authRepo.createPermission({
+            userId,
+            resource,
+            canRead: true,
+            canWrite: isAdmin,
+            grantedBy: createdBy || null,
+            grantedAt: Date.now()
+          });
+        }
+        // Admin gets additional permissions
+        if (isAdmin) {
+          const adminResources = ['users', 'permissions', 'audit', 'security', 'connection', 'backup'];
+          for (const resource of adminResources) {
+            await databaseService.authRepo.createPermission({
+              userId,
+              resource,
+              canRead: true,
+              canWrite: true,
+              grantedBy: createdBy || null,
+              grantedAt: Date.now()
+            });
+          }
+        }
+      } else {
+        throw new Error('Database not ready');
+      }
+    } else {
+      user = await databaseService.userModel.create({
+        username,
+        password,
+        email,
+        displayName,
+        authProvider: 'local',
+        isAdmin,
+        createdBy
+      });
+
+      // Grant default permissions
+      databaseService.permissionModel.grantDefaultPermissions(user.id, isAdmin, createdBy);
+    }
 
     logger.debug(`✅ Created new local user: ${username} (admin: ${isAdmin})`);
 
@@ -103,7 +154,8 @@ export async function changePassword(
   newPassword: string
 ): Promise<void> {
   try {
-    const user = databaseService.userModel.findById(userId);
+    // Use async method that works with both SQLite and PostgreSQL
+    const user = await databaseService.findUserByIdAsync(userId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -131,8 +183,8 @@ export async function changePassword(
       throw new Error('New password must be at least 8 characters long');
     }
 
-    // Update password
-    await databaseService.userModel.updatePassword(userId, newPassword);
+    // Update password - use async method for PostgreSQL
+    await databaseService.updatePasswordAsync(userId, newPassword);
 
     logger.debug(`✅ Password changed for user: ${user.username}`);
 
@@ -158,7 +210,8 @@ export async function resetUserPassword(
   adminUserId: number
 ): Promise<string> {
   try {
-    const user = databaseService.userModel.findById(userId);
+    // Use async method that works with both SQLite and PostgreSQL
+    const user = await databaseService.findUserByIdAsync(userId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -174,8 +227,8 @@ export async function resetUserPassword(
     // Generate random password
     const newPassword = generateRandomPassword();
 
-    // Update password
-    await databaseService.userModel.updatePassword(userId, newPassword);
+    // Update password - use async method for PostgreSQL
+    await databaseService.updatePasswordAsync(userId, newPassword);
 
     logger.debug(`✅ Password reset for user: ${user.username}`);
 
@@ -204,7 +257,8 @@ export async function setUserPassword(
   adminUserId: number
 ): Promise<void> {
   try {
-    const user = databaseService.userModel.findById(userId);
+    // Use async method that works with both SQLite and PostgreSQL
+    const user = await databaseService.findUserByIdAsync(userId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -222,8 +276,8 @@ export async function setUserPassword(
       throw new Error('Password must be at least 8 characters');
     }
 
-    // Update password
-    await databaseService.userModel.updatePassword(userId, newPassword);
+    // Update password - use async method for PostgreSQL
+    await databaseService.updatePasswordAsync(userId, newPassword);
 
     logger.debug(`✅ Password set for user: ${user.username}`);
 

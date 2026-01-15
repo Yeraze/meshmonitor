@@ -1,9 +1,13 @@
 import webpush from 'web-push';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
-import databaseService, { DbPushSubscription } from '../../services/database.js';
-import { getUserNotificationPreferences, shouldFilterNotification as shouldFilterNotificationUtil, applyNodeNamePrefix } from '../utils/notificationFiltering.js';
+import databaseService from '../../services/database.js';
+import type { DbPushSubscription } from '../../db/types.js';
+import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync } from '../utils/notificationFiltering.js';
 import meshtasticManager from '../meshtasticManager.js';
+
+// Re-export DbPushSubscription for backward compatibility
+export type { DbPushSubscription } from '../../db/types.js';
 
 export interface PushNotificationPayload {
   title: string;
@@ -18,12 +22,17 @@ export interface PushNotificationPayload {
 
 class PushNotificationService {
   private isConfigured = false;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    // Start async initialization - it will wait for the database to be ready
+    this.initPromise = this.initializeAsync();
   }
 
-  private initialize(): void {
+  /**
+   * Async initialization that waits for the database to be ready
+   */
+  private async initializeAsync(): Promise<void> {
     // Try to load from environment first (for backward compatibility)
     const config = getEnvironmentConfig();
     let publicKey = config.vapidPublicKey;
@@ -32,29 +41,39 @@ class PushNotificationService {
 
     // If not in environment, check database and auto-generate if needed
     if (!publicKey || !privateKey) {
-      const storedPublicKey = databaseService.getSetting('vapid_public_key');
-      const storedPrivateKey = databaseService.getSetting('vapid_private_key');
-      const storedSubject = databaseService.getSetting('vapid_subject');
+      // Wait for the database to be ready before accessing settings
+      try {
+        await databaseService.waitForReady();
 
-      if (!storedPublicKey || !storedPrivateKey) {
-        // Auto-generate VAPID keys on first run
-        logger.info('🔑 No VAPID keys found, generating new keys...');
-        const vapidKeys = webpush.generateVAPIDKeys();
+        const storedPublicKey = await databaseService.getSettingAsync('vapid_public_key');
+        const storedPrivateKey = await databaseService.getSettingAsync('vapid_private_key');
+        const storedSubject = await databaseService.getSettingAsync('vapid_subject');
 
-        databaseService.setSetting('vapid_public_key', vapidKeys.publicKey);
-        databaseService.setSetting('vapid_private_key', vapidKeys.privateKey);
-        databaseService.setSetting('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
+        if (!storedPublicKey || !storedPrivateKey) {
+          // Auto-generate VAPID keys on first run
+          logger.info('🔑 No VAPID keys found, generating new keys...');
+          const vapidKeys = webpush.generateVAPIDKeys();
 
-        publicKey = vapidKeys.publicKey;
-        privateKey = vapidKeys.privateKey;
-        subject = storedSubject || 'mailto:admin@meshmonitor.local';
+          await databaseService.setSettingAsync('vapid_public_key', vapidKeys.publicKey);
+          await databaseService.setSettingAsync('vapid_private_key', vapidKeys.privateKey);
+          await databaseService.setSettingAsync('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
 
-        logger.info('✅ Generated and saved new VAPID keys to database');
-      } else {
-        publicKey = storedPublicKey;
-        privateKey = storedPrivateKey;
-        subject = storedSubject || 'mailto:admin@meshmonitor.local';
-        logger.info('✅ Loaded VAPID keys from database');
+          publicKey = vapidKeys.publicKey;
+          privateKey = vapidKeys.privateKey;
+          subject = storedSubject || 'mailto:admin@meshmonitor.local';
+
+          logger.info('✅ Generated and saved new VAPID keys to database');
+        } else {
+          publicKey = storedPublicKey;
+          privateKey = storedPrivateKey;
+          subject = storedSubject || 'mailto:admin@meshmonitor.local';
+          logger.info('✅ Loaded VAPID keys from database');
+        }
+      } catch (error) {
+        // Database not ready or settings table doesn't exist (e.g., during tests)
+        logger.debug('⚠️ Could not load VAPID keys from database, push notifications disabled:', error);
+        this.isConfigured = false;
+        return;
       }
     }
 
@@ -73,12 +92,21 @@ class PushNotificationService {
       this.isConfigured = true;
 
       // Log TTL configuration for visibility
-      const config = getEnvironmentConfig();
-      const ttlMinutes = Math.round(config.pushNotificationTtl / 60);
-      logger.info(`✅ Push notification service configured with VAPID keys (TTL: ${config.pushNotificationTtl}s / ${ttlMinutes}min)`);
+      const envConfig = getEnvironmentConfig();
+      const ttlMinutes = Math.round(envConfig.pushNotificationTtl / 60);
+      logger.info(`✅ Push notification service configured with VAPID keys (TTL: ${envConfig.pushNotificationTtl}s / ${ttlMinutes}min)`);
     } catch (error) {
       logger.error('❌ Failed to configure push notification service:', error);
       this.isConfigured = false;
+    }
+  }
+
+  /**
+   * Wait for initialization to complete
+   */
+  async waitForInit(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
     }
   }
 
@@ -92,26 +120,26 @@ class PushNotificationService {
   /**
    * Get the public VAPID key for client-side subscription
    */
-  public getPublicKey(): string | null {
+  public async getPublicKeyAsync(): Promise<string | null> {
     const config = getEnvironmentConfig();
     if (config.vapidPublicKey) {
       return config.vapidPublicKey;
     }
-    return databaseService.getSetting('vapid_public_key');
+    return databaseService.getSettingAsync('vapid_public_key');
   }
 
   /**
    * Get VAPID configuration status
    */
-  public getVapidStatus(): {
+  public async getVapidStatusAsync(): Promise<{
     configured: boolean;
     publicKey: string | null;
     subject: string | null;
     subscriptionCount: number;
-  } {
-    const publicKey = this.getPublicKey();
-    const subject = databaseService.getSetting('vapid_subject');
-    const subscriptions = this.getAllSubscriptions();
+  }> {
+    const publicKey = await this.getPublicKeyAsync();
+    const subject = await databaseService.getSettingAsync('vapid_subject');
+    const subscriptions = await this.getAllSubscriptionsAsync();
 
     return {
       configured: this.isConfigured,
@@ -124,14 +152,14 @@ class PushNotificationService {
   /**
    * Update VAPID subject (contact email)
    */
-  public updateVapidSubject(subject: string): void {
+  public async updateVapidSubject(subject: string): Promise<void> {
     if (!subject.startsWith('mailto:')) {
       throw new Error('VAPID subject must start with mailto:');
     }
-    databaseService.setSetting('vapid_subject', subject);
+    await databaseService.setSettingAsync('vapid_subject', subject);
     logger.info(`✅ Updated VAPID subject to: ${subject}`);
     // Reinitialize to apply new subject
-    this.initialize();
+    await this.initializeAsync();
   }
 
   /**
@@ -148,23 +176,17 @@ class PushNotificationService {
         throw new Error('Invalid subscription: missing keys');
       }
 
-      const now = Date.now();
-      const stmt = databaseService.db.prepare(`
-        INSERT OR REPLACE INTO push_subscriptions
-        (user_id, endpoint, p256dh_key, auth_key, user_agent, created_at, updated_at, last_used_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+      if (!databaseService.notificationsRepo) {
+        throw new Error('Notifications repository not initialized');
+      }
 
-      stmt.run(
-        userId || null,
-        subscription.endpoint,
-        keys.p256dh,
-        keys.auth,
-        userAgent || null,
-        now,
-        now,
-        now
-      );
+      await databaseService.notificationsRepo.saveSubscription({
+        userId: userId ?? null,
+        endpoint: subscription.endpoint,
+        p256dhKey: keys.p256dh,
+        authKey: keys.auth,
+        userAgent: userAgent ?? null,
+      });
 
       logger.info(`✅ Saved push subscription for ${userId ? `user ${userId}` : 'anonymous user'}`);
     } catch (error) {
@@ -178,10 +200,11 @@ class PushNotificationService {
    */
   public async removeSubscription(endpoint: string): Promise<void> {
     try {
-      const stmt = databaseService.db.prepare(`
-        DELETE FROM push_subscriptions WHERE endpoint = ?
-      `);
-      stmt.run(endpoint);
+      if (!databaseService.notificationsRepo) {
+        throw new Error('Notifications repository not initialized');
+      }
+
+      await databaseService.notificationsRepo.removeSubscription(endpoint);
       logger.info('✅ Removed push subscription');
     } catch (error) {
       logger.error('❌ Failed to remove push subscription:', error);
@@ -190,28 +213,16 @@ class PushNotificationService {
   }
 
   /**
-   * Get all subscriptions for a user
+   * Get all subscriptions for a user (async)
    */
-  public getUserSubscriptions(userId?: number): DbPushSubscription[] {
+  public async getUserSubscriptionsAsync(userId?: number): Promise<DbPushSubscription[]> {
     try {
-      const stmt = databaseService.db.prepare(`
-        SELECT * FROM push_subscriptions
-        WHERE user_id = ? OR (user_id IS NULL AND ? IS NULL)
-        ORDER BY created_at DESC
-      `);
-      const rows = stmt.all(userId || null, userId || null) as any[];
-      // Map snake_case database columns to camelCase
-      return rows.map(row => ({
-        id: row.id,
-        userId: row.user_id,
-        endpoint: row.endpoint,
-        p256dhKey: row.p256dh_key,
-        authKey: row.auth_key,
-        userAgent: row.user_agent,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        lastUsedAt: row.last_used_at
-      }));
+      if (!databaseService.notificationsRepo) {
+        logger.debug('Notifications repository not initialized');
+        return [];
+      }
+
+      return databaseService.notificationsRepo.getUserSubscriptions(userId);
     } catch (error) {
       logger.error('❌ Failed to get user subscriptions:', error);
       return [];
@@ -219,27 +230,16 @@ class PushNotificationService {
   }
 
   /**
-   * Get all active subscriptions
+   * Get all active subscriptions (async)
    */
-  public getAllSubscriptions(): DbPushSubscription[] {
+  public async getAllSubscriptionsAsync(): Promise<DbPushSubscription[]> {
     try {
-      const stmt = databaseService.db.prepare(`
-        SELECT * FROM push_subscriptions
-        ORDER BY created_at DESC
-      `);
-      const rows = stmt.all() as any[];
-      // Map snake_case database columns to camelCase
-      return rows.map(row => ({
-        id: row.id,
-        userId: row.user_id,
-        endpoint: row.endpoint,
-        p256dhKey: row.p256dh_key,
-        authKey: row.auth_key,
-        userAgent: row.user_agent,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        lastUsedAt: row.last_used_at
-      }));
+      if (!databaseService.notificationsRepo) {
+        logger.debug('Notifications repository not initialized');
+        return [];
+      }
+
+      return databaseService.notificationsRepo.getAllSubscriptions();
     } catch (error) {
       logger.error('❌ Failed to get all subscriptions:', error);
       return [];
@@ -281,12 +281,9 @@ class PushNotificationService {
       );
 
       // Update last_used_at
-      const stmt = databaseService.db.prepare(`
-        UPDATE push_subscriptions
-        SET last_used_at = ?
-        WHERE endpoint = ?
-      `);
-      stmt.run(Date.now(), subscription.endpoint);
+      if (databaseService.notificationsRepo) {
+        await databaseService.notificationsRepo.updateSubscriptionLastUsed(subscription.endpoint);
+      }
 
       logger.debug(`✅ Sent push notification to subscription ${subscription.id}`);
       return true;
@@ -330,7 +327,7 @@ class PushNotificationService {
     userId: number | undefined,
     payload: PushNotificationPayload
   ): Promise<{ sent: number; failed: number }> {
-    const subscriptions = this.getUserSubscriptions(userId);
+    const subscriptions = await this.getUserSubscriptionsAsync(userId);
     let sent = 0;
     let failed = 0;
 
@@ -350,7 +347,7 @@ class PushNotificationService {
    * Broadcast a push notification to all subscriptions
    */
   public async broadcast(payload: PushNotificationPayload): Promise<{ sent: number; failed: number }> {
-    const subscriptions = this.getAllSubscriptions();
+    const subscriptions = await this.getAllSubscriptionsAsync();
     let sent = 0;
     let failed = 0;
 
@@ -381,7 +378,7 @@ class PushNotificationService {
       viaMqtt?: boolean;
     }
   ): Promise<{ sent: number; failed: number; filtered: number }> {
-    const subscriptions = this.getAllSubscriptions();
+    const subscriptions = await this.getAllSubscriptionsAsync();
     let sent = 0;
     let failed = 0;
     let filtered = 0;
@@ -397,14 +394,14 @@ class PushNotificationService {
       const userId = subscription.userId;
 
       // Skip if user should be filtered
-      if (this.shouldFilterNotification(userId, filterContext)) {
+      if (await this.shouldFilterNotificationAsync(userId, filterContext)) {
         logger.debug(`🔇 Filtered notification for user ${userId || 'anonymous'}: ${filterContext.messageText.substring(0, 30)}...`);
         filtered++;
         continue;
       }
 
       // Apply node name prefix if user has it enabled
-      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
       const notificationPayload = prefixedBody !== payload.body
         ? { ...payload, body: prefixedBody }
         : payload;
@@ -430,7 +427,7 @@ class PushNotificationService {
    * 3. MeshMonitor is typically for private mesh networks (trusted environment)
    * 4. Users can unsubscribe at any time or set up authentication + preferences
    */
-  private shouldFilterNotification(
+  private async shouldFilterNotificationAsync(
     userId: number | null | undefined,
     filterContext: {
       messageText: string;
@@ -438,7 +435,7 @@ class PushNotificationService {
       isDirectMessage: boolean;
       viaMqtt?: boolean;
     }
-  ): boolean {
+  ): Promise<boolean> {
     // Anonymous users get all notifications (no filtering) - they've opted in by subscribing
     if (!userId) {
       logger.debug('Anonymous user - no filtering applied (user opted in by subscribing)');
@@ -446,14 +443,14 @@ class PushNotificationService {
     }
 
     // Check if user has web push enabled
-    const prefs = getUserNotificationPreferences(userId);
+    const prefs = await getUserNotificationPreferencesAsync(userId);
     if (prefs && !prefs.enableWebPush) {
       logger.debug(`🔇 Web Push disabled for user ${userId}`);
       return true; // Filter - user has disabled web push
     }
 
     // Use shared filtering utility
-    return shouldFilterNotificationUtil(userId, filterContext);
+    return shouldFilterNotificationAsync(userId, filterContext);
   }
 
   /**
@@ -465,7 +462,7 @@ class PushNotificationService {
     payload: PushNotificationPayload,
     targetUserId?: number
   ): Promise<{ sent: number; failed: number; filtered: number }> {
-    const subscriptions = this.getAllSubscriptions();
+    const subscriptions = await this.getAllSubscriptionsAsync();
     let sent = 0;
     let failed = 0;
     let filtered = 0;
@@ -480,10 +477,10 @@ class PushNotificationService {
       localNodeName = localNodeInfo.longName;
     } else {
       // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      const localNodeNumStr = await databaseService.getSettingAsync('localNodeNum');
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
-        const localNode = databaseService.getNode(localNodeNum);
+        const localNode = await databaseService.nodesRepo?.getNode(localNodeNum);
         if (localNode?.longName) {
           localNodeName = localNode.longName;
           logger.debug(`📢 Using node name from database for prefix: ${localNodeName}`);
@@ -507,14 +504,14 @@ class PushNotificationService {
       }
 
       // Check if user has this preference enabled
-      const prefs = getUserNotificationPreferences(userId);
+      const prefs = await getUserNotificationPreferencesAsync(userId);
       if (!prefs || !prefs.enableWebPush || !prefs[preferenceKey]) {
         filtered++;
         continue;
       }
 
       // Apply node name prefix if user has it enabled
-      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
       const notificationPayload = prefixedBody !== payload.body
         ? { ...payload, body: prefixedBody }
         : payload;

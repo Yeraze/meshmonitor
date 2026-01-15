@@ -133,8 +133,11 @@ type TextMessage = {
   viaMqtt: boolean; // Capture whether message was received via MQTT bridge
   rxSnr?: number; // SNR of received packet
   rxRssi?: number; // RSSI of received packet
-  wantAck?: number; // Expect ACK for Virtual Node messages
+  wantAck?: boolean; // Expect ACK for Virtual Node messages
   deliveryState?: string; // Track delivery for Virtual Node messages
+  ackFailed?: boolean; // Whether ACK failed
+  routingErrorReceived?: boolean; // Whether a routing error was received
+  ackFromNode?: number; // Node that sent the ACK
   createdAt: number;
 };
 
@@ -231,7 +234,7 @@ class MeshtasticManager {
    * Check if estimated position recalculation is needed and perform it.
    * This is triggered by migration 038 which deletes old estimates and sets a flag.
    */
-  private checkAndRecalculatePositions(): void {
+  private async checkAndRecalculatePositions(): Promise<void> {
     try {
       const recalculateFlag = databaseService.getSetting('recalculate_estimated_positions');
       if (recalculateFlag !== 'pending') {
@@ -266,7 +269,7 @@ class MeshtasticManager {
           }
 
           // Process the traceroute for position estimation
-          this.estimateIntermediatePositions(fullRoute, traceroute.timestamp, snrArray);
+          await this.estimateIntermediatePositions(fullRoute, traceroute.timestamp, snrArray);
           processedCount++;
         } catch (err) {
           logger.debug(`Skipping traceroute ${traceroute.id} due to error: ${err}`);
@@ -641,7 +644,7 @@ class MeshtasticManager {
             logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetName} (${targetNode.nodeId}) on channel ${channel}`);
 
             // Log the auto-traceroute attempt to database
-            databaseService.logAutoTracerouteAttempt(targetNode.nodeNum, targetName);
+            await databaseService.logAutoTracerouteAttemptAsync(targetNode.nodeNum, targetName);
             this.pendingAutoTraceroutes.add(targetNode.nodeNum);
 
             await this.sendTraceroute(targetNode.nodeNum, channel);
@@ -2402,7 +2405,7 @@ class MeshtasticManager {
           rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr, // SNR of received packet
           rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi, // RSSI of received packet
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
-          wantAck: context?.virtualNodeRequestId ? 1 : undefined, // Expect ACK for Virtual Node messages
+          wantAck: context?.virtualNodeRequestId ? true : undefined, // Expect ACK for Virtual Node messages
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
           createdAt: Date.now()
         };
@@ -3407,7 +3410,7 @@ class MeshtasticManager {
 
       // If this was an auto-traceroute, mark it as successful in the log
       if (this.pendingAutoTraceroutes.has(fromNum)) {
-        databaseService.updateAutoTracerouteResultByNode(fromNum, true);
+        await databaseService.updateAutoTracerouteResultByNodeAsync(fromNum, true);
         this.pendingAutoTraceroutes.delete(fromNum);
         logger.debug(`🗺️ Auto-traceroute to ${fromNodeId} marked as successful`);
       }
@@ -3466,12 +3469,12 @@ class MeshtasticManager {
 
         // Estimate positions for intermediate nodes without GPS
         // Process forward route (responder -> requester) with SNR weighting
-        this.estimateIntermediatePositions(fullRoute, timestamp, snrTowards);
+        await this.estimateIntermediatePositions(fullRoute, timestamp, snrTowards);
 
         // Process return route if it exists (requester -> responder) with SNR weighting
         if (routeBack.length > 0) {
           const fullReturnRoute = [toNum, ...routeBack, fromNum];
-          this.estimateIntermediatePositions(fullReturnRoute, timestamp, snrBack);
+          await this.estimateIntermediatePositions(fullReturnRoute, timestamp, snrBack);
         }
       } catch (error) {
         logger.error('❌ Error calculating route segment distances:', error);
@@ -3497,7 +3500,7 @@ class MeshtasticManager {
       // Handle successful ACKs (error_reason = 0 means success)
       if (errorReason === 0 && requestId) {
         // Look up the original message to check if this ACK is from the intended recipient
-        const originalMessage = databaseService.getMessageByRequestId(requestId);
+        const originalMessage = await databaseService.getMessageByRequestIdAsync(requestId);
 
         if (originalMessage) {
           const targetNodeId = originalMessage.toNodeId;
@@ -3551,7 +3554,7 @@ class MeshtasticManager {
       // Detect PKI/encryption errors and flag the target node
       if (isPkiError(errorReason)) {
         // PKI_FAILED or PKI_UNKNOWN_PUBKEY - indicates key mismatch
-        const originalMessage = requestId ? databaseService.getMessageByRequestId(requestId) : null;
+        const originalMessage = requestId ? await databaseService.getMessageByRequestIdAsync(requestId) : null;
         if (originalMessage && originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
           const targetNodeId = originalMessage.toNodeId;
@@ -3607,7 +3610,7 @@ class MeshtasticManager {
    * @param timestamp - Timestamp for the telemetry record
    * @param snrArray - Optional array of SNR values (raw, divide by 4 to get dB) for each hop
    */
-  private estimateIntermediatePositions(routePath: number[], timestamp: number, snrArray?: number[]): void {
+  private async estimateIntermediatePositions(routePath: number[], timestamp: number, snrArray?: number[]): Promise<void> {
     // Time decay constant: half-life of 24 hours (in milliseconds)
     // After 24 hours, an old estimate has half the weight of a new one
     const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
@@ -3688,7 +3691,7 @@ class MeshtasticManager {
         }
 
         // Get previous estimates for time-weighted averaging
-        const previousEstimates = databaseService.getRecentEstimatedPositions(nodeNum, 10);
+        const previousEstimates = await databaseService.getRecentEstimatedPositionsAsync(nodeNum, 10);
         const now = Date.now();
 
         let finalLat: number;
@@ -5484,7 +5487,7 @@ class MeshtasticManager {
           replyId: replyId || undefined,
           emoji: emoji || undefined,
           requestId: messageId, // Save requestId for routing error matching
-          wantAck: 1, // Request acknowledgment for this message
+          wantAck: true, // Request acknowledgment for this message
           deliveryState: 'pending', // Initial delivery state
           createdAt: Date.now()
         };
@@ -6882,6 +6885,9 @@ class MeshtasticManager {
         logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed at ${new Date(node.welcomedAt).toISOString()}`);
         return;
       }
+
+      // Log diagnostic info for nodes being considered for welcome
+      logger.info(`👋 Auto-welcome check for ${nodeId}: welcomedAt=${node.welcomedAt} (${typeof node.welcomedAt}), longName=${node.longName}, createdAt=${node.createdAt ? new Date(node.createdAt).toISOString() : 'null'}`);
 
       // Check all conditions BEFORE acquiring the lock
       // This allows subsequent calls to re-evaluate conditions if they change

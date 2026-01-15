@@ -4,15 +4,15 @@ This document provides a detailed overview of the MeshMonitor application archit
 
 ## Overview
 
-MeshMonitor is a full-stack web application designed to monitor and interact with Meshtastic mesh networks. The application follows a three-tier architecture with a React frontend, Express.js backend, and SQLite database.
+MeshMonitor is a full-stack web application designed to monitor and interact with Meshtastic mesh networks. The application follows a three-tier architecture with a React frontend, Express.js backend, and flexible database backend supporting SQLite (default), PostgreSQL, and MySQL/MariaDB.
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Browser       │    │   Express.js    │    │   SQLite        │
-│   (React SPA)   │◄──►│   (API Server)  │◄──►│   (Database)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐
+│   Browser       │    │   Express.js    │    │   Database (Drizzle)    │
+│   (React SPA)   │◄──►│   (API Server)  │◄──►│   • SQLite (default)    │
+└─────────────────┘    └─────────────────┘    │   • PostgreSQL          │
+                                │             │   • MySQL/MariaDB       │
+                                ▼             └─────────────────────────┘
                        ┌─────────────────┐
                        │  Meshtastic     │
                        │  Node (HTTP)    │
@@ -69,7 +69,8 @@ Optimistic UI ←─────────────────────
 ### Technology Stack
 - **Node.js** with **Express.js** framework
 - **TypeScript** for type safety and better developer experience
-- **better-sqlite3** for high-performance SQLite operations
+- **Drizzle ORM** for type-safe, database-agnostic queries
+- **Database Drivers**: better-sqlite3 (SQLite), pg (PostgreSQL), mysql2 (MySQL)
 - **CORS** enabled for cross-origin requests
 
 ### Core Services
@@ -114,12 +115,28 @@ Channel Management:
 #### DatabaseService
 **Location**: `src/services/database.ts`
 
-Manages all SQLite database operations:
+Manages all database operations with support for multiple backends:
+- **Multi-database support**: SQLite (default), PostgreSQL, MySQL/MariaDB
+- **Async-first design**: All methods use async/await for database-agnostic operation
+- **Drizzle ORM**: Type-safe queries that work across all database backends
+- **Repository pattern**: Domain-specific repositories in `src/db/repositories/`
 - **Node management** (create, read, update, delete)
 - **Message persistence** with deduplication
 - **Channel configuration** storage
 - **Data cleanup utilities**
 - **Export/import functionality**
+
+Database Selection:
+```bash
+# SQLite (default - no configuration needed)
+DATABASE_PATH=/data/meshmonitor.db
+
+# PostgreSQL
+DATABASE_URL=postgres://user:password@host:5432/meshmonitor
+
+# MySQL/MariaDB
+DATABASE_URL=mysql://user:password@host:3306/meshmonitor
+```
 
 Database Schema:
 ```sql
@@ -213,19 +230,54 @@ CREATE TABLE traceroutes (
 
 ## Data Layer
 
-### SQLite Database Design
+### Multi-Database Architecture
 
-#### Performance Optimizations
+MeshMonitor uses Drizzle ORM to provide a consistent API across SQLite, PostgreSQL, and MySQL:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DatabaseService                          │
+│              (async facade, caching layer)                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     Repositories                             │
+│     (nodes, messages, telemetry, auth, settings, etc.)      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Drizzle ORM                             │
+│            (type-safe, database-agnostic queries)           │
+└─────────────────────────────────────────────────────────────┘
+          │                   │                   │
+          ▼                   ▼                   ▼
+    ┌──────────┐       ┌──────────┐       ┌──────────┐
+    │  SQLite  │       │ PostgreSQL│       │  MySQL   │
+    │(default) │       │(enterprise)│       │(optional)│
+    └──────────┘       └──────────┘       └──────────┘
+```
+
+**Key Files**:
+- `src/services/database.ts` - Main service facade
+- `src/db/schema/` - Drizzle schema definitions
+- `src/db/repositories/` - Domain-specific data access
+- `src/db/drivers/` - Database-specific connection handling
+
+### Performance Optimizations
 - **Indexes** on frequently queried columns (nodeId, timestamp, channel)
-- **WAL mode** for better concurrent access
+- **WAL mode** for SQLite concurrent access
+- **Connection pooling** for PostgreSQL/MySQL
 - **Foreign key constraints** for data integrity
 - **Prepared statements** for SQL injection prevention
 
-#### Data Integrity
+### Data Integrity
 - **UPSERT operations** for node data to handle duplicates
 - **Timestamp-based sorting** for chronological message ordering
 - **Node relationship validation** via foreign keys
 - **Channel name normalization** and validation
+- **BIGINT handling** for large node IDs across databases
 
 ## Meshtastic Integration
 
@@ -436,7 +488,7 @@ The MeshMonitor application includes an intelligent traceroute scheduler that au
 7. **Advanced Traceroute Analytics** - Network path optimization and analysis
 
 ### Scalability Considerations
-- **Database migration** to PostgreSQL for larger deployments
+- **Database flexibility** - PostgreSQL/MySQL support already implemented for larger deployments
 - **Horizontal scaling** with load balancers
 - **Caching layer** with Redis for improved performance
 - **Microservices architecture** for complex deployments

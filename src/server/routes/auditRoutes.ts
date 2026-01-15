@@ -15,7 +15,7 @@ const router = Router();
 router.use(requirePermission('audit', 'read'));
 
 // Get audit logs with filtering
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const {
       limit = '100',
@@ -39,7 +39,8 @@ router.get('/', (req: Request, res: Response) => {
       search: search as string | undefined
     };
 
-    const result = databaseService.getAuditLogs(options);
+    // Use async method which works with all database backends
+    const result = await databaseService.getAuditLogsAsync(options);
 
     return res.json({
       logs: result.logs,
@@ -53,34 +54,22 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
-// Get specific audit log entry
-router.get('/:id', (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-
-    if (isNaN(id)) {
-      return res.status(400).json({ error: 'Invalid audit log ID' });
-    }
-
-    // Use getAuditLogs with no filters but get all to find specific ID
-    // This is inefficient but works for now
-    const result = databaseService.getAuditLogs({ limit: 10000 });
-    const log = result.logs.find((l: any) => l.id === id);
-
-    if (!log) {
-      return res.status(404).json({ error: 'Audit log entry not found' });
-    }
-
-    return res.json({ log });
-  } catch (error) {
-    logger.error('Error getting audit log entry:', error);
-    return res.status(500).json({ error: 'Failed to get audit log entry' });
-  }
-});
-
-// Get audit log statistics
+// Get audit log statistics (must be before /:id to avoid route conflict)
 router.get('/stats/summary', (req: Request, res: Response) => {
   try {
+    // For PostgreSQL/MySQL, audit stats not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return res.json({
+        stats: {
+          actionStats: [],
+          userStats: [],
+          dailyStats: [],
+          totalEvents: 0
+        },
+        days: parseInt(req.query.days as string, 10) || 30
+      });
+    }
+
     const daysParam = req.query.days as string;
 
     // Validate days parameter if provided
@@ -104,6 +93,44 @@ router.get('/stats/summary', (req: Request, res: Response) => {
   }
 });
 
+// Get specific audit log entry
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid audit log ID' });
+    }
+
+    // For PostgreSQL/MySQL, fetch all and find (not implemented efficiently yet)
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        const logs = await databaseService.authRepo.getAuditLogEntries(10000, 0);
+        const log = logs.find((l: any) => l.id === id);
+        if (!log) {
+          return res.status(404).json({ error: 'Audit log entry not found' });
+        }
+        return res.json({ log });
+      }
+      return res.status(404).json({ error: 'Audit log entry not found' });
+    }
+
+    // Use getAuditLogs with no filters but get all to find specific ID
+    // This is inefficient but works for now
+    const result = databaseService.getAuditLogs({ limit: 10000 });
+    const log = result.logs.find((l: any) => l.id === id);
+
+    if (!log) {
+      return res.status(404).json({ error: 'Audit log entry not found' });
+    }
+
+    return res.json({ log });
+  } catch (error) {
+    logger.error('Error getting audit log entry:', error);
+    return res.status(500).json({ error: 'Failed to get audit log entry' });
+  }
+});
+
 // Cleanup old audit logs (admin only)
 router.post('/cleanup', requirePermission('audit', 'write'), (req: Request, res: Response) => {
   try {
@@ -119,6 +146,13 @@ router.post('/cleanup', requirePermission('audit', 'write'), (req: Request, res:
     if (!days || typeof days !== 'number' || days < 1) {
       return res.status(400).json({
         error: 'days must be a positive number'
+      });
+    }
+
+    // For PostgreSQL/MySQL, cleanup not yet implemented
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      return res.status(501).json({
+        error: 'Audit log cleanup not yet implemented for PostgreSQL/MySQL'
       });
     }
 

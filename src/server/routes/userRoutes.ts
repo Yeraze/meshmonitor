@@ -17,12 +17,25 @@ const router = Router();
 router.use(requireAdmin());
 
 // List all users
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
-    const users = databaseService.userModel.findAll();
+    let users: any[];
+    // For PostgreSQL/MySQL, use async repo
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        users = await databaseService.authRepo.getAllUsers();
+      } else {
+        users = [];
+      }
+    } else {
+      users = databaseService.userModel.findAll();
+    }
 
-    // Remove password hashes
-    const usersWithoutPasswords = users.map(({ passwordHash, ...user }) => user);
+    // Remove password hashes and normalize field names (authMethod -> authProvider for frontend)
+    const usersWithoutPasswords = users.map(({ passwordHash, authMethod, ...user }) => ({
+      ...user,
+      authProvider: authMethod || user.authProvider || 'local'
+    }));
 
     return res.json({ users: usersWithoutPasswords });
   } catch (error) {
@@ -32,7 +45,7 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 // Get user by ID
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -40,16 +53,22 @@ router.get('/:id', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    const user = databaseService.userModel.findById(userId);
+    // Use async method that works with both SQLite and PostgreSQL
+    const user = await databaseService.findUserByIdAsync(userId);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Remove password hash
-    const { passwordHash, ...userWithoutPassword } = user;
+    // Remove password hash and normalize field names (authMethod -> authProvider for frontend)
+    const { passwordHash, authMethod, ...userWithoutPassword } = user;
 
-    return res.json({ user: userWithoutPassword });
+    return res.json({
+      user: {
+        ...userWithoutPassword,
+        authProvider: authMethod || user.authProvider || 'local'
+      }
+    });
   } catch (error) {
     logger.error('Error getting user:', error);
     return res.status(500).json({ error: 'Failed to get user' });
@@ -92,7 +111,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Update user
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -102,12 +121,26 @@ router.put('/:id', (req: Request, res: Response) => {
 
     const { email, displayName, isActive, passwordLocked } = req.body;
 
-    const user = databaseService.userModel.update(userId, {
-      email,
-      displayName,
-      isActive,
-      passwordLocked
-    });
+    let user;
+    // For PostgreSQL/MySQL, use async repo
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        await databaseService.authRepo.updateUser(userId, {
+          email,
+          displayName,
+          isActive,
+          passwordLocked
+        });
+        user = await databaseService.findUserByIdAsync(userId);
+      }
+    } else {
+      user = databaseService.userModel.update(userId, {
+        email,
+        displayName,
+        isActive,
+        passwordLocked
+      });
+    }
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -136,7 +169,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // Delete/deactivate user
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -151,14 +184,20 @@ router.delete('/:id', (req: Request, res: Response) => {
       });
     }
 
-    const user = databaseService.userModel.findById(userId);
+    const user = await databaseService.findUserByIdAsync(userId);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // Deactivate user
-    databaseService.userModel.delete(userId);
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        await databaseService.authRepo.updateUser(userId, { isActive: false });
+      }
+    } else {
+      databaseService.userModel.delete(userId);
+    }
 
     // Audit log
     databaseService.auditLog(
@@ -180,7 +219,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 });
 
 // Permanently delete user (removes from database entirely)
-router.delete('/:id/permanent', (req: Request, res: Response) => {
+router.delete('/:id/permanent', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -195,7 +234,7 @@ router.delete('/:id/permanent', (req: Request, res: Response) => {
       });
     }
 
-    const user = databaseService.userModel.findById(userId);
+    const user = await databaseService.findUserByIdAsync(userId);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -210,7 +249,12 @@ router.delete('/:id/permanent', (req: Request, res: Response) => {
 
     // Check if this is the last admin
     if (user.isAdmin) {
-      const allUsers = databaseService.userModel.findAll();
+      let allUsers: any[];
+      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+        allUsers = databaseService.authRepo ? await databaseService.authRepo.getAllUsers() : [];
+      } else {
+        allUsers = databaseService.userModel.findAll();
+      }
       const adminCount = allUsers.filter(u => u.isAdmin && u.isActive && u.id !== userId).length;
       if (adminCount === 0) {
         return res.status(400).json({
@@ -220,7 +264,13 @@ router.delete('/:id/permanent', (req: Request, res: Response) => {
     }
 
     // Permanently delete user (cascades to permissions, preferences, subscriptions, etc.)
-    databaseService.userModel.hardDelete(userId);
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        await databaseService.authRepo.deleteUser(userId);
+      }
+    } else {
+      databaseService.userModel.hardDelete(userId);
+    }
 
     // Audit log
     databaseService.auditLog(
@@ -242,7 +292,7 @@ router.delete('/:id/permanent', (req: Request, res: Response) => {
 });
 
 // Update admin status
-router.put('/:id/admin', (req: Request, res: Response) => {
+router.put('/:id/admin', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -265,7 +315,15 @@ router.put('/:id/admin', (req: Request, res: Response) => {
       });
     }
 
-    const user = databaseService.userModel.updateAdminStatus(userId, isAdmin);
+    let user;
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        await databaseService.authRepo.updateUser(userId, { isAdmin });
+        user = await databaseService.findUserByIdAsync(userId);
+      }
+    } else {
+      user = databaseService.userModel.updateAdminStatus(userId, isAdmin);
+    }
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -343,7 +401,7 @@ router.post('/:id/set-password', async (req: Request, res: Response) => {
 });
 
 // Get user permissions
-router.get('/:id/permissions', (req: Request, res: Response) => {
+router.get('/:id/permissions', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -351,7 +409,8 @@ router.get('/:id/permissions', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    const permissions = databaseService.permissionModel.getUserPermissionSet(userId);
+    // Use async method that works with both SQLite and PostgreSQL
+    const permissions = await databaseService.getUserPermissionSetAsync(userId);
 
     return res.json({ permissions });
   } catch (error) {
@@ -361,7 +420,7 @@ router.get('/:id/permissions', (req: Request, res: Response) => {
 });
 
 // Update user permissions
-router.put('/:id/permissions', (req: Request, res: Response) => {
+router.put('/:id/permissions', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
 
@@ -378,11 +437,28 @@ router.put('/:id/permissions', (req: Request, res: Response) => {
     }
 
     // Update permissions
-    databaseService.permissionModel.updateUserPermissions(
-      userId,
-      permissions,
-      req.user!.id
-    );
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        // Delete existing permissions and create new ones
+        await databaseService.authRepo.deletePermissionsForUser(userId);
+        for (const [resource, perms] of Object.entries(permissions)) {
+          await databaseService.authRepo.createPermission({
+            userId,
+            resource,
+            canRead: perms.read,
+            canWrite: perms.write,
+            grantedBy: req.user!.id,
+            grantedAt: Date.now()
+          });
+        }
+      }
+    } else {
+      databaseService.permissionModel.updateUserPermissions(
+        userId,
+        permissions,
+        req.user!.id
+      );
+    }
 
     // Audit log
     databaseService.auditLog(

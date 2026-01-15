@@ -194,7 +194,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
     // Permission checks
     if (destinationNum) {
       // Direct message - check messages:write permission
-      if (!req.user?.isAdmin && !hasPermission(req.user!, 'messages', 'write')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, 'messages', 'write')) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',
@@ -206,7 +206,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       // Channel message - check per-channel write permission
       const channelNum = parseInt(channel);
       const channelResource = `channel_${channelNum}` as ResourceType;
-      if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'write')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'write')) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',

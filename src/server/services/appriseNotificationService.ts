@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferences, getUsersWithServiceEnabled, shouldFilterNotification as shouldFilterNotificationUtil, applyNodeNamePrefix } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync } from '../utils/notificationFiltering.js';
 import meshtasticManager from '../meshtasticManager.js';
 
 export interface AppriseNotificationPayload {
@@ -16,33 +16,60 @@ interface AppriseConfig {
 
 class AppriseNotificationService {
   private config: AppriseConfig | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    // Start async initialization - it will wait for the database to be ready
+    this.initPromise = this.initializeAsync();
   }
 
-  private initialize(): void {
-    // Default to internal Apprise API (bundled in container)
-    const appriseUrl = databaseService.getSetting('apprise_url') || 'http://localhost:8000';
-    const enabledSetting = databaseService.getSetting('apprise_enabled');
+  /**
+   * Async initialization that waits for the database to be ready
+   */
+  private async initializeAsync(): Promise<void> {
+    try {
+      // Wait for the database to be ready before accessing settings
+      await databaseService.waitForReady();
 
-    // Default to enabled if not explicitly set (backward compatibility)
-    const enabled = enabledSetting !== 'false';
+      // Default to internal Apprise API (bundled in container)
+      const appriseUrl = await databaseService.getSettingAsync('apprise_url') || 'http://localhost:8000';
+      const enabledSetting = await databaseService.getSettingAsync('apprise_enabled');
 
-    // If not set, initialize it to 'true'
-    if (enabledSetting === null || enabledSetting === undefined) {
-      databaseService.setSetting('apprise_enabled', 'true');
+      // Default to enabled if not explicitly set (backward compatibility)
+      const enabled = enabledSetting !== 'false';
+
+      // If not set, initialize it to 'true'
+      if (enabledSetting === null || enabledSetting === undefined) {
+        await databaseService.setSettingAsync('apprise_enabled', 'true');
+      }
+
+      this.config = {
+        url: appriseUrl,
+        enabled
+      };
+
+      if (enabled) {
+        logger.info(`✅ Apprise notification service configured at ${appriseUrl}`);
+      } else {
+        logger.debug('ℹ️  Apprise notifications disabled');
+      }
+    } catch (error) {
+      // Database not ready or settings table doesn't exist (e.g., during tests)
+      logger.debug('⚠️ Could not initialize Apprise notification service:', error);
+      // Default to disabled state
+      this.config = {
+        url: 'http://localhost:8000',
+        enabled: false
+      };
     }
+  }
 
-    this.config = {
-      url: appriseUrl,
-      enabled
-    };
-
-    if (enabled) {
-      logger.info(`✅ Apprise notification service configured at ${appriseUrl}`);
-    } else {
-      logger.debug('ℹ️  Apprise notifications disabled');
+  /**
+   * Wait for initialization to complete
+   */
+  async waitForInit(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
     }
   }
 
@@ -256,7 +283,7 @@ class AppriseNotificationService {
     }
 
     // Get users who have Apprise enabled
-    const users = this.getUsersWithAppriseEnabled();
+    const users = await this.getUsersWithAppriseEnabledAsync();
 
     let sent = 0;
     let failed = 0;
@@ -276,7 +303,7 @@ class AppriseNotificationService {
     // Per-user filtering and sending to user-specific URLs
     for (const userId of users) {
       // Import and use shared filter logic
-      const shouldFilter = this.shouldFilterNotification(userId, filterContext);
+      const shouldFilter = await this.shouldFilterNotificationAsync(userId, filterContext);
       if (shouldFilter) {
         logger.debug(`🔇 Filtered Apprise notification for user ${userId}`);
         filtered++;
@@ -284,7 +311,7 @@ class AppriseNotificationService {
       }
 
       // Get user's preferences to get their Apprise URLs
-      const prefs = getUserNotificationPreferences(userId);
+      const prefs = await getUserNotificationPreferencesAsync(userId);
       if (!prefs || !prefs.appriseUrls || prefs.appriseUrls.length === 0) {
         logger.debug(`⚠️  No Apprise URLs configured for user ${userId}, skipping`);
         filtered++;
@@ -292,7 +319,7 @@ class AppriseNotificationService {
       }
 
       // Apply node name prefix if user has it enabled
-      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
       const notificationPayload = prefixedBody !== payload.body
         ? { ...payload, body: prefixedBody }
         : payload;
@@ -311,17 +338,16 @@ class AppriseNotificationService {
   }
 
   /**
-   * Get users who have Apprise notifications enabled
+   * Get users who have Apprise notifications enabled (async)
    */
-  private getUsersWithAppriseEnabled(): number[] {
+  private async getUsersWithAppriseEnabledAsync(): Promise<number[]> {
     try {
-      const stmt = databaseService.db.prepare(`
-        SELECT user_id
-        FROM user_notification_preferences
-        WHERE enable_apprise = 1
-      `);
-      const rows = stmt.all() as any[];
-      return rows.map(row => row.user_id);
+      if (!databaseService.notificationsRepo) {
+        logger.debug('Notifications repository not initialized');
+        return [];
+      }
+
+      return databaseService.notificationsRepo.getUsersWithAppriseEnabled();
     } catch (error) {
       logger.debug('No user_notification_preferences table yet (or query error), returning empty array');
       return [];
@@ -329,10 +355,10 @@ class AppriseNotificationService {
   }
 
   /**
-   * Check if notification should be filtered
+   * Check if notification should be filtered (async)
    * Reuses the same filtering logic as push notifications
    */
-  private shouldFilterNotification(
+  private async shouldFilterNotificationAsync(
     userId: number,
     filterContext: {
       messageText: string;
@@ -340,16 +366,16 @@ class AppriseNotificationService {
       isDirectMessage: boolean;
       viaMqtt?: boolean;
     }
-  ): boolean {
+  ): Promise<boolean> {
     // Check if user has Apprise enabled
-    const prefs = getUserNotificationPreferences(userId);
+    const prefs = await getUserNotificationPreferencesAsync(userId);
     if (prefs && !prefs.enableApprise) {
       logger.debug(`🔇 Apprise disabled for user ${userId}`);
       return true; // Filter - user has disabled Apprise
     }
 
     // Use shared filtering utility
-    return shouldFilterNotificationUtil(userId, filterContext);
+    return shouldFilterNotificationAsync(userId, filterContext);
   }
 
   /**
@@ -366,7 +392,7 @@ class AppriseNotificationService {
     let filtered = 0;
 
     // Get all users with Apprise enabled and this preference enabled
-    const users = getUsersWithServiceEnabled('apprise');
+    const users = await getUsersWithServiceEnabledAsync('apprise');
     logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     // Get local node name for prefix
@@ -377,10 +403,10 @@ class AppriseNotificationService {
       localNodeName = localNodeInfo.longName;
     } else {
       // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      const localNodeNumStr = await databaseService.getSettingAsync('localNodeNum');
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
-        const localNode = databaseService.getNode(localNodeNum);
+        const localNode = await databaseService.nodesRepo?.getNode(localNodeNum);
         if (localNode?.longName) {
           localNodeName = localNode.longName;
           logger.debug(`📢 Using node name from database for Apprise prefix: ${localNodeName}`);
@@ -396,7 +422,7 @@ class AppriseNotificationService {
       }
 
       // Check if user has this preference enabled and has URLs configured
-      const prefs = getUserNotificationPreferences(userId);
+      const prefs = await getUserNotificationPreferencesAsync(userId);
       if (!prefs || !prefs.enableApprise || !prefs[preferenceKey]) {
         filtered++;
         continue;
@@ -410,7 +436,7 @@ class AppriseNotificationService {
       }
 
       // Apply node name prefix if user has it enabled
-      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
       const notificationPayload = prefixedBody !== payload.body
         ? { ...payload, body: prefixedBody }
         : payload;

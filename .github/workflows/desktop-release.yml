@@ -42,7 +42,7 @@ jobs:
           workspaces: 'desktop/src-tauri'
 
       - name: Install main project dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build main project (frontend)
         run: npm run build
@@ -251,7 +251,7 @@ jobs:
           chmod 600 ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
 
       - name: Install main project dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build main project (frontend)
         run: npm run build
@@ -523,7 +523,7 @@ jobs:
           chmod 600 ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
 
       - name: Install main project dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build main project (frontend)
         run: npm run build

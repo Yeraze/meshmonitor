@@ -387,6 +387,11 @@ class UpgradeService {
     startedAt: number;
   } | null> {
     try {
+      // For PostgreSQL/MySQL, upgrade history not yet implemented
+      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+        return null;
+      }
+
       const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
       const staleThreshold = Date.now() - STALE_TIMEOUT_MS;
 

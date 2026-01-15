@@ -1,6 +1,7 @@
 /**
  * System Backup Service
  * Exports complete database to JSON format for disaster recovery and migration
+ * Supports SQLite, PostgreSQL, and MySQL backends
  */
 
 import * as fs from 'fs';
@@ -105,7 +106,7 @@ class SystemBackupService {
 
       for (const tableName of BACKUP_TABLES) {
         const tableFile = path.join(backupPath, `${tableName}.json`);
-        const data = this.exportTable(tableName);
+        const data = await this.exportTable(tableName);
         const json = JSON.stringify(data, null, 2);
 
         fs.writeFileSync(tableFile, json, 'utf8');
@@ -140,22 +141,14 @@ class SystemBackupService {
       totalSize += metadataStats.size;
 
       // Record in database
-      const db = databaseService.db;
-      const stmt = db.prepare(`
-        INSERT INTO system_backup_history
-        (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      stmt.run(
+      await this.recordBackupInDatabase(
         dirname,
         now.getTime(),
         type,
         totalSize,
         BACKUP_TABLES.length,
         meshmonitorVersion,
-        schemaVersion,
-        Date.now()
+        schemaVersion
       );
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -173,28 +166,169 @@ class SystemBackupService {
 
   /**
    * Export a single table to array of objects
+   * Supports SQLite, PostgreSQL, and MySQL
    */
-  private exportTable(tableName: string): any[] {
+  private async exportTable(tableName: string): Promise<any[]> {
     try {
-      const db = databaseService.db;
-      const stmt = db.prepare(`SELECT * FROM ${tableName}`);
-      const rows = stmt.all();
+      const dbType = databaseService.getDatabaseType();
 
-      // Normalize BigInt values to regular numbers for JSON serialization
-      return rows.map((row: any) => {
-        const normalized: any = {};
-        for (const [key, value] of Object.entries(row)) {
-          if (typeof value === 'bigint') {
-            normalized[key] = Number(value);
-          } else {
-            normalized[key] = value;
-          }
-        }
-        return normalized;
-      });
+      if (dbType === 'postgres') {
+        // PostgreSQL: Use async query via pool
+        const pool = databaseService.getPostgresPool();
+        if (!pool) throw new Error('PostgreSQL pool not initialized');
+        const result = await pool.query(`SELECT * FROM "${tableName}"`);
+        return this.normalizeRows(result.rows);
+      } else if (dbType === 'mysql') {
+        // MySQL: Use async query via pool
+        const pool = databaseService.getMySQLPool();
+        if (!pool) throw new Error('MySQL pool not initialized');
+        const [rows] = await pool.query(`SELECT * FROM \`${tableName}\``);
+        return this.normalizeRows(rows as any[]);
+      } else {
+        // SQLite: Use synchronous query
+        const db = databaseService.db;
+        const stmt = db.prepare(`SELECT * FROM ${tableName}`);
+        const rows = stmt.all();
+        return this.normalizeRows(rows);
+      }
     } catch (error) {
       logger.error(`❌ Failed to export table ${tableName}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Normalize row values for JSON serialization
+   */
+  private normalizeRows(rows: any[]): any[] {
+    return rows.map((row: any) => {
+      const normalized: any = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (typeof value === 'bigint') {
+          normalized[key] = Number(value);
+        } else {
+          normalized[key] = value;
+        }
+      }
+      return normalized;
+    });
+  }
+
+  /**
+   * Record a backup in the database
+   * Supports SQLite, PostgreSQL, and MySQL
+   */
+  private async recordBackupInDatabase(
+    dirname: string,
+    timestamp: number,
+    type: string,
+    size: number,
+    tableCount: number,
+    meshmonitorVersion: string,
+    schemaVersion: number
+  ): Promise<void> {
+    const dbType = databaseService.getDatabaseType();
+
+    if (dbType === 'postgres') {
+      const pool = databaseService.getPostgresPool();
+      if (!pool) throw new Error('PostgreSQL pool not initialized');
+      await pool.query(
+        `INSERT INTO system_backup_history
+         (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, "createdAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now()]
+      );
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      await pool.execute(
+        `INSERT INTO system_backup_history
+         (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now()]
+      );
+    } else {
+      const db = databaseService.db;
+      const stmt = db.prepare(`
+        INSERT INTO system_backup_history
+        (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now());
+    }
+  }
+
+  /**
+   * Execute a query and return rows
+   * Supports SQLite, PostgreSQL, and MySQL
+   */
+  private async queryRows(sql: string, params: any[] = []): Promise<any[]> {
+    const dbType = databaseService.getDatabaseType();
+
+    if (dbType === 'postgres') {
+      const pool = databaseService.getPostgresPool();
+      if (!pool) throw new Error('PostgreSQL pool not initialized');
+      const result = await pool.query(sql, params);
+      return result.rows;
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      const [rows] = await pool.execute(sql, params);
+      return rows as any[];
+    } else {
+      const db = databaseService.db;
+      const stmt = db.prepare(sql);
+      return params.length > 0 ? stmt.all(...params) : stmt.all();
+    }
+  }
+
+  /**
+   * Execute a query that returns a single row
+   * Supports SQLite, PostgreSQL, and MySQL
+   */
+  private async queryOne(sql: string, params: any[] = []): Promise<any> {
+    const dbType = databaseService.getDatabaseType();
+
+    if (dbType === 'postgres') {
+      const pool = databaseService.getPostgresPool();
+      if (!pool) throw new Error('PostgreSQL pool not initialized');
+      const result = await pool.query(sql, params);
+      return result.rows[0] || null;
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      const [rows] = await pool.execute(sql, params);
+      return (rows as any[])[0] || null;
+    } else {
+      const db = databaseService.db;
+      const stmt = db.prepare(sql);
+      return params.length > 0 ? stmt.get(...params) : stmt.get();
+    }
+  }
+
+  /**
+   * Execute a statement (INSERT, UPDATE, DELETE)
+   * Supports SQLite, PostgreSQL, and MySQL
+   */
+  private async executeStatement(sql: string, params: any[] = []): Promise<void> {
+    const dbType = databaseService.getDatabaseType();
+
+    if (dbType === 'postgres') {
+      const pool = databaseService.getPostgresPool();
+      if (!pool) throw new Error('PostgreSQL pool not initialized');
+      await pool.query(sql, params);
+    } else if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      await pool.execute(sql, params);
+    } else {
+      const db = databaseService.db;
+      const stmt = db.prepare(sql);
+      if (params.length > 0) {
+        stmt.run(...params);
+      } else {
+        stmt.run();
+      }
     }
   }
 
@@ -223,17 +357,15 @@ class SystemBackupService {
 
   /**
    * List all system backups
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async listBackups(): Promise<SystemBackupInfo[]> {
     try {
-      const db = databaseService.db;
-      const stmt = db.prepare(`
+      const rows = await this.queryRows(`
         SELECT dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version
         FROM system_backup_history
         ORDER BY timestamp DESC
       `);
-
-      const rows = stmt.all() as any[];
 
       return rows.map(row => ({
         dirname: row.dirname,
@@ -321,28 +453,41 @@ class SystemBackupService {
 
   /**
    * Delete a specific backup
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async deleteBackup(dirname: string): Promise<void> {
     try {
-      const db = databaseService.db;
+      const dbType = databaseService.getDatabaseType();
+      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
 
-      // Check if backup exists in database
-      const stmt = db.prepare('SELECT dirname FROM system_backup_history WHERE dirname = ?');
-      const row = stmt.get(dirname) as any;
+      // Check if backup exists either in database or on disk
+      const row = await this.queryOne(
+        dbType === 'postgres'
+          ? 'SELECT dirname FROM system_backup_history WHERE dirname = $1'
+          : 'SELECT dirname FROM system_backup_history WHERE dirname = ?',
+        [dirname]
+      );
 
-      if (!row) {
+      const existsOnDisk = fs.existsSync(backupPath);
+
+      if (!row && !existsOnDisk) {
         throw new Error('Backup not found');
       }
 
       // Delete directory from disk
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
-      if (fs.existsSync(backupPath)) {
+      if (existsOnDisk) {
         fs.rmSync(backupPath, { recursive: true, force: true });
       }
 
-      // Delete from database
-      const deleteStmt = db.prepare('DELETE FROM system_backup_history WHERE dirname = ?');
-      deleteStmt.run(dirname);
+      // Delete from database if record exists
+      if (row) {
+        await this.executeStatement(
+          dbType === 'postgres'
+            ? 'DELETE FROM system_backup_history WHERE dirname = $1'
+            : 'DELETE FROM system_backup_history WHERE dirname = ?',
+          [dirname]
+        );
+      }
 
       logger.info(`🗑️  Deleted system backup: ${dirname}`);
     } catch (error) {
@@ -353,6 +498,7 @@ class SystemBackupService {
 
   /**
    * Purge old backups based on max backups setting
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async purgeOldBackups(): Promise<void> {
     try {
@@ -366,12 +512,11 @@ class SystemBackupService {
         return;
       }
 
-      const db = databaseService.db;
+      const dbType = databaseService.getDatabaseType();
 
       // Get count of backups
-      const countStmt = db.prepare('SELECT COUNT(*) as count FROM system_backup_history');
-      const countRow = countStmt.get() as any;
-      const totalBackups = countRow.count;
+      const countRow = await this.queryOne('SELECT COUNT(*) as count FROM system_backup_history');
+      const totalBackups = parseInt(countRow.count, 10);
 
       if (totalBackups <= limit) {
         return; // Under the limit
@@ -379,14 +524,12 @@ class SystemBackupService {
 
       // Get oldest backups to delete
       const toDelete = totalBackups - limit;
-      const oldBackupsStmt = db.prepare(`
-        SELECT dirname
-        FROM system_backup_history
-        ORDER BY timestamp ASC
-        LIMIT ?
-      `);
-
-      const oldBackups = oldBackupsStmt.all(toDelete) as any[];
+      const oldBackups = await this.queryRows(
+        dbType === 'postgres'
+          ? 'SELECT dirname FROM system_backup_history ORDER BY timestamp ASC LIMIT $1'
+          : 'SELECT dirname FROM system_backup_history ORDER BY timestamp ASC LIMIT ?',
+        [toDelete]
+      );
 
       logger.info(`🧹 Purging ${oldBackups.length} old system backups (max: ${limit})...`);
 
@@ -398,8 +541,12 @@ class SystemBackupService {
         }
 
         // Delete from database
-        const deleteStmt = db.prepare('DELETE FROM system_backup_history WHERE dirname = ?');
-        deleteStmt.run(backup.dirname);
+        await this.executeStatement(
+          dbType === 'postgres'
+            ? 'DELETE FROM system_backup_history WHERE dirname = $1'
+            : 'DELETE FROM system_backup_history WHERE dirname = ?',
+          [backup.dirname]
+        );
 
         logger.debug(`  🗑️  Purged: ${backup.dirname}`);
       }
@@ -428,6 +575,7 @@ class SystemBackupService {
 
   /**
    * Get backup statistics
+   * Supports SQLite, PostgreSQL, and MySQL
    */
   async getBackupStats(): Promise<{
     count: number;
@@ -436,24 +584,22 @@ class SystemBackupService {
     newestBackup: string | null;
   }> {
     try {
-      const db = databaseService.db;
+      const dbType = databaseService.getDatabaseType();
 
-      const statsStmt = db.prepare(`
+      const stats = await this.queryOne(`
         SELECT
           COUNT(*) as count,
-          SUM(size) as totalSize,
-          MIN(timestamp) as oldestTimestamp,
-          MAX(timestamp) as newestTimestamp
+          ${dbType === 'sqlite' ? 'SUM(size)' : 'COALESCE(SUM(size), 0)'} as "totalSize",
+          MIN(timestamp) as "oldestTimestamp",
+          MAX(timestamp) as "newestTimestamp"
         FROM system_backup_history
       `);
 
-      const stats = statsStmt.get() as any;
-
       return {
-        count: stats.count || 0,
-        totalSize: stats.totalSize || 0,
-        oldestBackup: stats.oldestTimestamp ? new Date(stats.oldestTimestamp).toISOString() : null,
-        newestBackup: stats.newestTimestamp ? new Date(stats.newestTimestamp).toISOString() : null
+        count: parseInt(stats.count, 10) || 0,
+        totalSize: parseInt(stats.totalSize, 10) || 0,
+        oldestBackup: stats.oldestTimestamp ? new Date(parseInt(stats.oldestTimestamp, 10)).toISOString() : null,
+        newestBackup: stats.newestTimestamp ? new Date(parseInt(stats.newestTimestamp, 10)).toISOString() : null
       };
     } catch (error) {
       logger.error('❌ Failed to get system backup stats:', error);

@@ -169,6 +169,11 @@ describe('Audit Log Routes', () => {
       return { logs, total: count };
     };
 
+    // Add async version for new unified API
+    (DatabaseService as any).getAuditLogsAsync = async (options: any = {}) => {
+      return (DatabaseService as any).getAuditLogs(options);
+    };
+
     (DatabaseService as any).getAuditStats = (days: number = 30) => {
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 
@@ -214,6 +219,24 @@ describe('Audit Log Routes', () => {
         DELETE FROM audit_log WHERE timestamp < ?
       `).run(cutoff);
       return result.changes;
+    };
+
+    // Add async method mocks for authMiddleware compatibility
+    (DatabaseService as any).drizzleDbType = 'sqlite';
+    (DatabaseService as any).findUserByIdAsync = async (id: number) => {
+      return userModel.findById(id);
+    };
+    (DatabaseService as any).findUserByUsernameAsync = async (username: string) => {
+      return userModel.findByUsername(username);
+    };
+    (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
+      return permissionModel.check(userId, resource, action);
+    };
+    (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
+      return permissionModel.getUserPermissionSet(userId);
+    };
+    (DatabaseService as any).authenticateAsync = async (username: string, password: string) => {
+      return userModel.authenticate(username, password);
     };
 
     // Add test middleware to inject sessions for testing

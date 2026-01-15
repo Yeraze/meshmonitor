@@ -223,9 +223,167 @@
       </div>
     </section>
 
+    <!-- Database Configuration -->
+    <section class="config-section">
+      <h3>{{ config.deploymentMode === 'production-proxy' ? '7' : '6' }}. Database</h3>
+      <p class="help-text">Choose your database backend</p>
+
+      <div class="radio-group">
+        <label class="radio-option" :class="{ selected: config.databaseType === 'sqlite' }">
+          <input type="radio" v-model="config.databaseType" value="sqlite" />
+          <div class="option-content">
+            <strong>SQLite (Default)</strong>
+            <span class="option-desc">Simple file-based database, no additional setup required</span>
+          </div>
+        </label>
+
+        <label class="radio-option" :class="{ selected: config.databaseType === 'postgres' }">
+          <input type="radio" v-model="config.databaseType" value="postgres" />
+          <div class="option-content">
+            <strong>PostgreSQL</strong>
+            <span class="option-desc">Scalable database for larger deployments, requires PostgreSQL server</span>
+          </div>
+        </label>
+
+        <label class="radio-option" :class="{ selected: config.databaseType === 'mysql' }">
+          <input type="radio" v-model="config.databaseType" value="mysql" />
+          <div class="option-content">
+            <strong>MySQL / MariaDB</strong>
+            <span class="option-desc">Alternative scalable database, supports MySQL 8.x and MariaDB 10.x</span>
+          </div>
+        </label>
+      </div>
+
+      <div v-if="config.databaseType === 'postgres'" class="form-group">
+        <div class="checkbox-group">
+          <label class="checkbox-option">
+            <input type="checkbox" v-model="config.includePostgresContainer" />
+            <div class="option-content">
+              <strong>Include PostgreSQL Container</strong>
+              <span class="option-desc">Add a PostgreSQL container to the stack (or uncheck to use external PostgreSQL)</span>
+            </div>
+          </label>
+        </div>
+
+        <div v-if="!config.includePostgresContainer" class="form-group">
+          <label for="postgresHost">PostgreSQL Host</label>
+          <input
+            id="postgresHost"
+            v-model="config.postgresHost"
+            type="text"
+            placeholder="postgres.example.com"
+            class="text-input"
+          />
+          <p class="field-help">Hostname or IP of your PostgreSQL server</p>
+
+          <label for="postgresPort">PostgreSQL Port</label>
+          <input
+            id="postgresPort"
+            v-model="config.postgresPort"
+            type="number"
+            placeholder="5432"
+            class="text-input"
+          />
+          <p class="field-help">Default is 5432</p>
+        </div>
+
+        <label for="postgresDb">Database Name</label>
+        <input
+          id="postgresDb"
+          v-model="config.postgresDb"
+          type="text"
+          placeholder="meshmonitor"
+          class="text-input"
+        />
+        <p class="field-help">Name of the PostgreSQL database</p>
+
+        <label for="postgresUser">Database User</label>
+        <input
+          id="postgresUser"
+          v-model="config.postgresUser"
+          type="text"
+          placeholder="meshmonitor"
+          class="text-input"
+        />
+        <p class="field-help">PostgreSQL username</p>
+
+        <div class="info-box">
+          <strong>🐘 PostgreSQL Notes:</strong>
+          <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
+            <li>PostgreSQL password should be set in the .env file (see generated output)</li>
+            <li>For existing SQLite installations, see the <a href="/development/database#migrating-from-sqlite-to-postgresql">migration guide</a></li>
+            <li>PostgreSQL is recommended for deployments with 1000+ nodes or high message volume</li>
+          </ul>
+        </div>
+      </div>
+
+      <div v-if="config.databaseType === 'mysql'" class="form-group">
+        <div class="checkbox-group">
+          <label class="checkbox-option">
+            <input type="checkbox" v-model="config.includeMySQLContainer" />
+            <div class="option-content">
+              <strong>Include MySQL Container</strong>
+              <span class="option-desc">Add a MySQL container to the stack (or uncheck to use external MySQL/MariaDB)</span>
+            </div>
+          </label>
+        </div>
+
+        <div v-if="!config.includeMySQLContainer" class="form-group">
+          <label for="mysqlHost">MySQL Host</label>
+          <input
+            id="mysqlHost"
+            v-model="config.mysqlHost"
+            type="text"
+            placeholder="mysql.example.com"
+            class="text-input"
+          />
+          <p class="field-help">Hostname or IP of your MySQL/MariaDB server</p>
+
+          <label for="mysqlPort">MySQL Port</label>
+          <input
+            id="mysqlPort"
+            v-model="config.mysqlPort"
+            type="number"
+            placeholder="3306"
+            class="text-input"
+          />
+          <p class="field-help">Default is 3306</p>
+        </div>
+
+        <label for="mysqlDb">Database Name</label>
+        <input
+          id="mysqlDb"
+          v-model="config.mysqlDb"
+          type="text"
+          placeholder="meshmonitor"
+          class="text-input"
+        />
+        <p class="field-help">Name of the MySQL database</p>
+
+        <label for="mysqlUser">Database User</label>
+        <input
+          id="mysqlUser"
+          v-model="config.mysqlUser"
+          type="text"
+          placeholder="meshmonitor"
+          class="text-input"
+        />
+        <p class="field-help">MySQL username</p>
+
+        <div class="info-box">
+          <strong>🐬 MySQL / MariaDB Notes:</strong>
+          <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
+            <li>MySQL password should be set in the .env file (see generated output)</li>
+            <li>For existing SQLite installations, see the <a href="/development/database#migrating-from-sqlite-to-mysql">migration guide</a></li>
+            <li>Supports MySQL 8.x and MariaDB 10.x or newer</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <!-- Additional Settings -->
     <section class="config-section">
-      <h3>{{ config.deploymentMode === 'production-proxy' ? '7' : '6' }}. Additional Settings</h3>
+      <h3>{{ config.deploymentMode === 'production-proxy' ? '8' : '7' }}. Additional Settings</h3>
 
       <div class="form-group">
         <label for="timezone">Timezone</label>
@@ -353,7 +511,7 @@
 
     <!-- Generated Files -->
     <section class="config-section results">
-      <h3>{{ config.deploymentMode === 'production-proxy' ? '8' : '7' }}. Generated Configuration</h3>
+      <h3>{{ config.deploymentMode === 'production-proxy' ? '9' : '8' }}. Generated Configuration</h3>
 
       <div class="file-output">
         <div class="file-header">
@@ -409,6 +567,17 @@ const config = ref({
   virtualNodePort: 4404,
   allowVirtualNodeAdminCommands: false,
   disableAnonymous: false,
+  databaseType: 'sqlite',
+  includePostgresContainer: true,
+  postgresHost: 'postgres.example.com',
+  postgresPort: 5432,
+  postgresDb: 'meshmonitor',
+  postgresUser: 'meshmonitor',
+  includeMySQLContainer: true,
+  mysqlHost: 'mysql.example.com',
+  mysqlPort: 3306,
+  mysqlDb: 'meshmonitor',
+  mysqlUser: 'meshmonitor',
   timezone: 'America/New_York',
   enableAutoUpgrade: false,
   enableOfflineMaps: false,
@@ -437,6 +606,51 @@ const accessUrl = computed(() => {
 
 const dockerComposeYaml = computed(() => {
   const lines = ['services:']
+
+  // Add PostgreSQL service if needed
+  if (config.value.databaseType === 'postgres' && config.value.includePostgresContainer) {
+    lines.push('  postgres:')
+    lines.push('    image: postgres:16-alpine')
+    lines.push('    container_name: meshmonitor-postgres')
+    lines.push('    restart: unless-stopped')
+    lines.push('    volumes:')
+    lines.push('      - postgres-data:/var/lib/postgresql/data')
+    lines.push('    environment:')
+    lines.push(`      - POSTGRES_DB=${config.value.postgresDb}`)
+    lines.push(`      - POSTGRES_USER=${config.value.postgresUser}`)
+    lines.push('      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}')
+    lines.push(`      - TZ=${config.value.timezone}`)
+    lines.push('    healthcheck:')
+    lines.push(`      test: ["CMD-SHELL", "pg_isready -U ${config.value.postgresUser} -d ${config.value.postgresDb}"]`)
+    lines.push('      interval: 5s')
+    lines.push('      timeout: 5s')
+    lines.push('      retries: 10')
+    lines.push('      start_period: 10s')
+    lines.push('')
+  }
+
+  // Add MySQL service if needed
+  if (config.value.databaseType === 'mysql' && config.value.includeMySQLContainer) {
+    lines.push('  mysql:')
+    lines.push('    image: mysql:8.0')
+    lines.push('    container_name: meshmonitor-mysql')
+    lines.push('    restart: unless-stopped')
+    lines.push('    volumes:')
+    lines.push('      - mysql-data:/var/lib/mysql')
+    lines.push('    environment:')
+    lines.push(`      - MYSQL_DATABASE=${config.value.mysqlDb}`)
+    lines.push(`      - MYSQL_USER=${config.value.mysqlUser}`)
+    lines.push('      - MYSQL_PASSWORD=${MYSQL_PASSWORD}')
+    lines.push('      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}')
+    lines.push(`      - TZ=${config.value.timezone}`)
+    lines.push('    healthcheck:')
+    lines.push('      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]')
+    lines.push('      interval: 5s')
+    lines.push('      timeout: 5s')
+    lines.push('      retries: 10')
+    lines.push('      start_period: 15s')
+    lines.push('')
+  }
 
   // Add bridge services if needed
   if (config.value.connectionType === 'ble') {
@@ -550,14 +764,42 @@ const dockerComposeYaml = computed(() => {
     lines.push('      - AUTO_UPGRADE_ENABLED=true')
   }
 
+  // Database configuration
+  if (config.value.databaseType === 'postgres') {
+    if (config.value.includePostgresContainer) {
+      lines.push(`      - DATABASE_URL=postgres://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@postgres:5432/${config.value.postgresDb}`)
+    } else {
+      lines.push(`      - DATABASE_URL=postgres://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@${config.value.postgresHost}:${config.value.postgresPort}/${config.value.postgresDb}`)
+    }
+  } else if (config.value.databaseType === 'mysql') {
+    if (config.value.includeMySQLContainer) {
+      lines.push(`      - DATABASE_URL=mysql://\${MYSQL_USER}:\${MYSQL_PASSWORD}@mysql:3306/${config.value.mysqlDb}`)
+    } else {
+      lines.push(`      - DATABASE_URL=mysql://\${MYSQL_USER}:\${MYSQL_PASSWORD}@${config.value.mysqlHost}:${config.value.mysqlPort}/${config.value.mysqlDb}`)
+    }
+  }
+
   // Dependencies
-  if (config.value.connectionType === 'ble') {
+  const hasDeps = config.value.connectionType === 'ble' || config.value.connectionType === 'serial' ||
+                  (config.value.databaseType === 'postgres' && config.value.includePostgresContainer) ||
+                  (config.value.databaseType === 'mysql' && config.value.includeMySQLContainer)
+
+  if (hasDeps) {
     lines.push('    depends_on:')
-    lines.push('      ble-bridge:')
-    lines.push('        condition: service_healthy')
-  } else if (config.value.connectionType === 'serial') {
-    lines.push('    depends_on:')
-    lines.push('      - serial-bridge')
+    if (config.value.connectionType === 'ble') {
+      lines.push('      ble-bridge:')
+      lines.push('        condition: service_healthy')
+    } else if (config.value.connectionType === 'serial') {
+      lines.push('      - serial-bridge')
+    }
+    if (config.value.databaseType === 'postgres' && config.value.includePostgresContainer) {
+      lines.push('      postgres:')
+      lines.push('        condition: service_healthy')
+    }
+    if (config.value.databaseType === 'mysql' && config.value.includeMySQLContainer) {
+      lines.push('      mysql:')
+      lines.push('        condition: service_healthy')
+    }
   }
 
   // Add upgrader sidecar if auto-upgrade is enabled
@@ -642,6 +884,14 @@ const dockerComposeYaml = computed(() => {
   lines.push('volumes:')
   lines.push('  meshmonitor-data:')
   lines.push('    driver: local')
+  if (config.value.databaseType === 'postgres' && config.value.includePostgresContainer) {
+    lines.push('  postgres-data:')
+    lines.push('    driver: local')
+  }
+  if (config.value.databaseType === 'mysql' && config.value.includeMySQLContainer) {
+    lines.push('  mysql-data:')
+    lines.push('    driver: local')
+  }
 
   return lines.join('\n')
 })
@@ -663,6 +913,27 @@ const envFile = computed(() => {
     lines.push('# IMPORTANT: Generate a secure session secret!')
     lines.push('# Run: openssl rand -base64 32')
     lines.push('SESSION_SECRET=REPLACE_WITH_SECURE_RANDOM_STRING')
+    lines.push('')
+  }
+
+  // PostgreSQL credentials
+  if (config.value.databaseType === 'postgres') {
+    lines.push('# PostgreSQL Configuration')
+    lines.push(`POSTGRES_USER=${config.value.postgresUser}`)
+    lines.push('# IMPORTANT: Set a secure password for PostgreSQL!')
+    lines.push('# Run: openssl rand -base64 24')
+    lines.push('POSTGRES_PASSWORD=REPLACE_WITH_SECURE_PASSWORD')
+    lines.push('')
+  }
+
+  // MySQL credentials
+  if (config.value.databaseType === 'mysql') {
+    lines.push('# MySQL Configuration')
+    lines.push(`MYSQL_USER=${config.value.mysqlUser}`)
+    lines.push('# IMPORTANT: Set secure passwords for MySQL!')
+    lines.push('# Run: openssl rand -base64 24')
+    lines.push('MYSQL_PASSWORD=REPLACE_WITH_SECURE_PASSWORD')
+    lines.push('MYSQL_ROOT_PASSWORD=REPLACE_WITH_SECURE_ROOT_PASSWORD')
     lines.push('')
   }
 

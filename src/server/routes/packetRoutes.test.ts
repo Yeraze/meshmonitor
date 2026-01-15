@@ -199,6 +199,15 @@ describe('Packet Routes', () => {
       return result.count;
     };
 
+    // Async versions that wrap the sync methods
+    (DatabaseService as any).getPacketLogsAsync = async (options: any) => {
+      return (DatabaseService as any).getPacketLogs(options);
+    };
+
+    (DatabaseService as any).getPacketLogCountAsync = async (options: any = {}) => {
+      return (DatabaseService as any).getPacketLogCount(options);
+    };
+
     (DatabaseService as any).clearPacketLogs = () => {
       const result = db.prepare('DELETE FROM packet_log').run();
       return result.changes;
@@ -210,6 +219,21 @@ describe('Packet Routes', () => {
       const cutoffTime = Math.floor(Date.now() / 1000) - (hours * 60 * 60);
       const result = db.prepare('DELETE FROM packet_log WHERE timestamp < ?').run(cutoffTime);
       return result.changes;
+    };
+
+    // Add async method mocks for authMiddleware compatibility
+    (DatabaseService as any).drizzleDbType = 'sqlite';
+    (DatabaseService as any).findUserByIdAsync = async (id: number) => {
+      return userModel.findById(id);
+    };
+    (DatabaseService as any).findUserByUsernameAsync = async (username: string) => {
+      return userModel.findByUsername(username);
+    };
+    (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
+      return permissionModel.check(userId, resource, action);
+    };
+    (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
+      return permissionModel.getUserPermissionSet(userId);
     };
 
     // Mock req.user for permission checking

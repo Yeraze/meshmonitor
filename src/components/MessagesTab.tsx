@@ -1163,7 +1163,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     // Check if traceroute failed (both directions have no valid data)
                     const forwardFailed = !recentTrace.route || recentTrace.route === 'null';
                     const returnFailed = !recentTrace.routeBack || recentTrace.routeBack === 'null';
-                    const isFailed = forwardFailed && returnFailed;
+                    const noData = forwardFailed && returnFailed;
+                    const isPending = noData && age < 1; // Less than 1 minute old
+                    const isFailed = noData && !isPending;
 
                     return (
                       <div className="traceroute-info" style={{ marginTop: '1rem' }}>
@@ -1191,6 +1193,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         </div>
                         <div className="traceroute-age">
                           {t('messages.last_traced', { time: ageStr })}
+                          {isPending && (
+                            <span className="traceroute-pending-badge" style={{
+                              marginLeft: '0.5rem',
+                              color: 'var(--ctp-yellow)',
+                              fontWeight: 'bold'
+                            }}>
+                              ({t('messages.traceroute_pending', 'Pending')})
+                            </span>
+                          )}
                           {isFailed && (
                             <span className="traceroute-failed-badge" style={{
                               marginLeft: '0.5rem',

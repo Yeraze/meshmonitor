@@ -10,6 +10,29 @@ services:
     environment:
       - TZ=America/New_York
 
+  # PostgreSQL service for testing dual-database support
+  # Start with: docker compose -f docker-compose.dev.yml --profile postgres up -d
+  postgres:
+    image: postgres:16-alpine
+    container_name: meshmonitor-postgres
+    profiles:
+      - postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=meshmonitor
+      - POSTGRES_USER=meshmonitor
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-meshmonitor_dev}
+      - TZ=America/New_York
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meshmonitor -d meshmonitor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   meshmonitor:
     build:
       context: .
@@ -21,6 +44,11 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     container_name: meshmonitor
+    profiles:
+      - postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8081:3001"  # Changed to 8081 to avoid conflict with devcontainer
       - "4405:4404"  # Virtual Node Server on unique external port
@@ -31,7 +59,9 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
-      - DATABASE_PATH=/data/meshmonitor.db
+      # SQLite (default): - DATABASE_PATH=/data/meshmonitor.db
+      # PostgreSQL: Enabled for testing
+      - DATABASE_URL=postgres://meshmonitor:meshmonitor_dev@postgres:5432/meshmonitor
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
@@ -49,6 +79,73 @@ services:
       - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}  # Re-enabled on port 4405
       - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
 
+  # MySQL service for testing dual-database support
+  # Start with: docker compose -f docker-compose.dev.yml --profile mysql up -d
+  mysql:
+    image: mysql:8
+    container_name: meshmonitor-mysql
+    profiles:
+      - mysql
+    ports:
+      - "3307:3306"
+    restart: unless-stopped
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      - MYSQL_DATABASE=meshmonitor
+      - MYSQL_USER=meshmonitor
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-meshmonitor_dev}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_dev}
+      - TZ=America/New_York
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meshmonitor-mysql:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - meshmonitor:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: meshmonitor-mysql-app
+    profiles:
+      - mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8083:3001"
+      - "4406:4404"
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-mysql-data:/data
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://meshmonitor:meshmonitor_dev@mysql:3306/meshmonitor
+      - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
+      - BASE_URL=/meshmonitor
+      - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:8083,http://localhost:8080
+      - TRUST_PROXY=1
+      - COOKIE_SECURE=false
+      - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}
+      - ACCESS_LOG_ENABLED=true
+      - ACCESS_LOG_PATH=/data/logs/access.log
+      - ACCESS_LOG_FORMAT=combined
+      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
+      - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
+
 volumes:
   meshmonitor-data:
+    driver: local
+  postgres-data:
+    driver: local
+  mysql-data:
+    driver: local
+  meshmonitor-mysql-data:
     driver: local

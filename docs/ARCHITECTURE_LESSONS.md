@@ -12,6 +12,7 @@ This document captures critical insights learned during MeshMonitor development.
 5. [Backup & Restore](#backup--restore)
 6. [Testing Strategy](#testing-strategy)
 7. [Background Task Management](#background-task-management)
+8. [Multi-Database Architecture](#multi-database-architecture)
 
 ---
 
@@ -486,9 +487,200 @@ class BackgroundTask {
 
 ---
 
+## Multi-Database Architecture
+
+### Overview
+
+MeshMonitor v3.0+ supports three database backends: SQLite, PostgreSQL, and MySQL/MariaDB. This flexibility requires careful attention to database-agnostic patterns.
+
+**Why Multiple Databases?**
+- **SQLite**: Zero-config default, perfect for home users and Raspberry Pi
+- **PostgreSQL**: Enterprise-grade for high-volume deployments (1000+ nodes)
+- **MySQL/MariaDB**: Alternative for existing MySQL infrastructure
+
+### Database Abstraction with Drizzle ORM
+
+**Lesson**: Raw SQL queries break when switching databases.
+
+**Solution**: Use Drizzle ORM for type-safe, database-agnostic queries.
+
+**Architecture**:
+```
+DatabaseService (facade)
+    ↓
+Repositories (domain logic)
+    ↓
+Drizzle ORM (query building)
+    ↓
+Database Drivers (sqlite/postgres/mysql)
+```
+
+**Location**: `src/db/schema/`, `src/db/repositories/`, `src/services/database.ts`
+
+### Async-First Pattern
+
+**Problem**: SQLite with better-sqlite3 is synchronous, but PostgreSQL/MySQL are async.
+
+**Solution**: ALL DatabaseService methods are async, regardless of backend.
+
+**Pattern**:
+```typescript
+// ❌ DON'T: Synchronous methods
+getNode(nodeNum: number): DbNode | undefined
+
+// ✅ DO: Async methods with Async suffix
+async getNodeAsync(nodeNum: number): Promise<DbNode | undefined>
+```
+
+**Critical**: When adding new database methods:
+1. Name them with `Async` suffix
+2. Return Promises
+3. Use `await` at all call sites
+4. Update tests to mock async versions
+
+### Type Coercion Pitfalls
+
+**Problem**: PostgreSQL BIGINT returns strings, MySQL returns BigInt objects, SQLite returns numbers.
+
+**Lesson Learned**: Node IDs (which are large integers like `4294967295`) can cause type mismatches.
+
+**Solution**: Always coerce to Number when comparing:
+```typescript
+// ❌ DON'T: Direct comparison
+if (row.nodeNum === nodeNum)
+
+// ✅ DO: Coerce to Number
+if (Number(row.nodeNum) === Number(nodeNum))
+```
+
+**Location**: See `src/server/routes/packetRoutes.ts` for examples of BIGINT handling.
+
+### Boolean Column Differences
+
+**Problem**: SQLite stores booleans as 0/1, PostgreSQL uses true/false.
+
+**Solution**: Drizzle handles this automatically when using schema-defined boolean columns.
+
+**Pattern**:
+```typescript
+// Schema definition (Drizzle handles conversion)
+isActive: integer('is_active', { mode: 'boolean' }).default(true)
+
+// Query result is always JavaScript boolean
+if (user.isActive) { ... }
+```
+
+### Database-Specific SQL
+
+**Problem**: Some operations require different SQL syntax per database.
+
+**Pattern**: Check `drizzleDbType` for database-specific code paths:
+```typescript
+if (this.drizzleDbType === 'sqlite') {
+  // SQLite-specific: VACUUM, PRAGMA, etc.
+} else if (this.drizzleDbType === 'postgres') {
+  // PostgreSQL-specific: BIGINT casting, sequences
+} else if (this.drizzleDbType === 'mysql') {
+  // MySQL-specific: AUTO_INCREMENT, LIMIT syntax
+}
+```
+
+**Common Differences**:
+| Feature | SQLite | PostgreSQL | MySQL |
+|---------|--------|------------|-------|
+| Auto-increment | `AUTOINCREMENT` | `SERIAL` | `AUTO_INCREMENT` |
+| Boolean | `INTEGER (0/1)` | `BOOLEAN` | `TINYINT(1)` |
+| Upsert | `ON CONFLICT` | `ON CONFLICT` | `ON DUPLICATE KEY` |
+| Case sensitivity | Case-insensitive | Case-sensitive | Configurable |
+
+### Schema Definition Strategy
+
+**Lesson**: Maintain a single source of truth for schema that works across all databases.
+
+**Pattern**: Define schema in `src/db/schema/` using Drizzle's database-agnostic types:
+```typescript
+// src/db/schema/nodes.ts
+import { sqliteTable, integer, text } from 'drizzle-orm/sqlite-core';
+// OR for PostgreSQL: import from 'drizzle-orm/pg-core';
+// OR for MySQL: import from 'drizzle-orm/mysql-core';
+
+export const nodes = sqliteTable('nodes', {
+  nodeNum: integer('nodeNum').primaryKey(),
+  nodeId: text('nodeId').notNull().unique(),
+  // ...
+});
+```
+
+**Note**: Currently schema files are per-database-type. Future work may unify to single schema.
+
+### Cache Synchronization
+
+**Problem**: In-memory caches must stay in sync with database across all backends.
+
+**Solution**: Every database write that affects cached data must update the cache.
+
+**Pattern**:
+```typescript
+async updateNodeAsync(nodeNum: number, data: Partial<DbNode>): Promise<void> {
+  // 1. Update database
+  await this.nodesRepository.update(nodeNum, data);
+
+  // 2. Invalidate/update cache
+  this.nodeCache.delete(nodeNum);
+  // OR: this.nodeCache.set(nodeNum, { ...existing, ...data });
+}
+```
+
+**Location**: See `src/services/database.ts` for cache sync patterns.
+
+### Migration Between Databases
+
+**Lesson**: Users need to migrate existing SQLite data to PostgreSQL/MySQL.
+
+**Solution**: Migration CLI tool that handles schema and data transfer.
+
+**Location**: `src/cli/migrate-db.ts`
+
+**Key Considerations**:
+- Schema must be created fresh on target (don't copy SQLite schema)
+- Handle auto-increment sequence reset after bulk insert
+- Validate data integrity with row counts
+- Provide verbose logging for troubleshooting
+
+### Test Mocking for Multi-Database
+
+**Problem**: Tests that mock DatabaseService fail when auth middleware calls async methods.
+
+**Lesson Learned**: Auth middleware uses `findUserByIdAsync`, `checkPermissionAsync`, etc.
+
+**Solution**: All test files mocking DatabaseService must include async method mocks:
+```typescript
+vi.mock('../../services/database.js', () => ({
+  default: {
+    // ... other mocks ...
+    // REQUIRED for auth middleware
+    drizzleDbType: 'sqlite',
+    findUserByIdAsync: vi.fn(),
+    findUserByUsernameAsync: vi.fn(),
+    checkPermissionAsync: vi.fn(),
+    getUserPermissionSetAsync: vi.fn(),
+  }
+}));
+
+beforeEach(() => {
+  mockDatabase.findUserByIdAsync.mockResolvedValue(testUser);
+  mockDatabase.checkPermissionAsync.mockResolvedValue(true);
+  // ...
+});
+```
+
+**Reference**: PR #1436 - async test mock fixes
+
+---
+
 ## Summary: Critical Design Principles
 
-1. **Assume Async**: Everything involving nodes is asynchronous. Plan for it.
+1. **Assume Async**: Everything involving nodes AND databases is asynchronous. Plan for it.
 
 2. **Queue Everything**: Serial command processing prevents conflicts and race conditions.
 
@@ -508,6 +700,10 @@ class BackgroundTask {
 
 10. **Log Everything**: You can't debug what you can't see.
 
+11. **Database Agnostic**: Use Drizzle ORM, async methods, and type coercion for multi-database support.
+
+12. **Test Mock Completeness**: Mock ALL async database methods that auth middleware needs.
+
 ---
 
 ## When to Reference This Document
@@ -518,8 +714,11 @@ class BackgroundTask {
 - When troubleshooting timeout or ACK issues
 - During architectural reviews
 - When onboarding new developers
+- **Before adding or modifying database methods**
+- **When tests fail with async/mock issues**
+- **Before adding PostgreSQL/MySQL specific features**
 
 ---
 
-**Last Updated**: 2026-01-02
-**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants)
+**Last Updated**: 2026-01-12
+**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes)

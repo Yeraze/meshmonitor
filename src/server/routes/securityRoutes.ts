@@ -16,9 +16,9 @@ const router = Router();
 router.use(requirePermission('security', 'read'));
 
 // Get all nodes with security issues
-router.get('/issues', (_req: Request, res: Response) => {
+router.get('/issues', async (_req: Request, res: Response) => {
   try {
-    const nodesWithIssues = databaseService.getNodesWithKeySecurityIssues();
+    const nodesWithIssues = await databaseService.getNodesWithKeySecurityIssuesAsync();
 
     // Categorize issues
     const lowEntropyNodes = nodesWithIssues.filter(node => node.keyIsLowEntropy);
@@ -94,10 +94,11 @@ router.post('/scanner/scan', requirePermission('security', 'write'), async (req:
 });
 
 // Export security issues
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', async (req: Request, res: Response) => {
   try {
     const format = req.query.format as string || 'csv';
-    const nodesWithIssues = databaseService.getNodesWithKeySecurityIssues();
+
+    const nodesWithIssues = await databaseService.getNodesWithKeySecurityIssuesAsync();
     const timestamp = new Date().toISOString();
 
     // Log the export action
