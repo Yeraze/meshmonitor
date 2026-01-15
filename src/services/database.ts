@@ -775,7 +775,9 @@ class DatabaseService {
           };
           this.nodesCache.set(node.nodeNum, localNode);
         }
-        logger.info(`[DatabaseService] Loaded ${this.nodesCache.size} nodes into cache`);
+        // Count nodes with welcomedAt set for auto-welcome diagnostics
+        const nodesWithWelcome = Array.from(this.nodesCache.values()).filter(n => n.welcomedAt !== null && n.welcomedAt !== undefined);
+        logger.info(`[DatabaseService] Loaded ${this.nodesCache.size} nodes into cache (${nodesWithWelcome.length} previously welcomed)`);
       }
 
       // Load all channels into cache
@@ -2450,8 +2452,9 @@ class DatabaseService {
         };
         this.nodesCache.set(nodeData.nodeNum, updatedNode);
 
-        // Fire and forget async version
-        this.nodesRepo.upsertNode(nodeData).catch(err => {
+        // Fire and forget async version - pass the full merged node to avoid race conditions
+        // where a subsequent update (like welcomedAt) could be overwritten
+        this.nodesRepo.upsertNode(updatedNode).catch(err => {
           logger.error('Failed to upsert node:', err);
         });
 
@@ -2741,11 +2744,15 @@ class DatabaseService {
       if (cachedNode && cachedNode.nodeId === nodeId && (cachedNode.welcomedAt === undefined || cachedNode.welcomedAt === null)) {
         cachedNode.welcomedAt = now;
         cachedNode.updatedAt = now;
-        // Fire and forget async update
+        // Persist to database and log result
         if (this.nodesRepo) {
-          this.nodesRepo.updateNode(nodeNum, { welcomedAt: now, updatedAt: now }).catch((err: Error) => {
-            logger.error('Failed to mark node as welcomed:', err);
-          });
+          this.nodesRepo.updateNode(nodeNum, { welcomedAt: now, updatedAt: now })
+            .then(() => {
+              logger.info(`✅ Persisted welcomedAt=${now} to database for node ${nodeId}`);
+            })
+            .catch((err: Error) => {
+              logger.error(`❌ Failed to persist welcomedAt for node ${nodeId}:`, err);
+            });
         }
         return true;
       }
@@ -7499,8 +7506,9 @@ class DatabaseService {
   }
 
   getUnreadCountsByChannel(userId: number | null, localNodeId?: string): {[channelId: number]: number} {
-    // For PostgreSQL/MySQL, return empty counts (unread tracking is complex and low priority)
+    // For PostgreSQL/MySQL, use async method via cache or return empty for sync call
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Sync method can't do async DB query - return empty and let caller use async version
       return {};
     }
 
@@ -7560,6 +7568,125 @@ class DatabaseService {
 
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
+  }
+
+  /**
+   * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL
+   */
+  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string): Promise<{[channelId: number]: number}> {
+    // For SQLite, use sync version
+    if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
+      return this.getUnreadCountsByChannel(userId, localNodeId);
+    }
+
+    // PostgreSQL implementation using postgresPool
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        let query: string;
+        let params: any[];
+
+        if (userId === null) {
+          // Anonymous user - check for messages not in read_messages at all
+          query = `
+            SELECT m.channel, COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm."messageId"
+            WHERE rm."messageId" IS NULL
+              AND m.channel != -1
+              AND m.portnum = 1
+              ${localNodeId ? 'AND m."fromNodeId" != $1' : ''}
+            GROUP BY m.channel
+          `;
+          params = localNodeId ? [localNodeId] : [];
+        } else {
+          // Authenticated user - check for messages not read by this user
+          query = `
+            SELECT m.channel, COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm."messageId" AND rm."userId" = $1
+            WHERE rm."messageId" IS NULL
+              AND m.channel != -1
+              AND m.portnum = 1
+              ${localNodeId ? 'AND m."fromNodeId" != $2' : ''}
+            GROUP BY m.channel
+          `;
+          params = localNodeId ? [userId, localNodeId] : [userId];
+        }
+
+        const result = await this.postgresPool.query(query, params);
+        const counts: {[channelId: number]: number} = {};
+
+        result.rows.forEach((row: any) => {
+          counts[Number(row.channel)] = Number(row.count);
+        });
+
+        return counts;
+      } catch (error) {
+        logger.error('Error getting unread counts by channel:', error);
+        return {};
+      }
+    }
+
+    // MySQL not yet implemented, return empty
+    return {};
+  }
+
+  /**
+   * Async version of getUnreadDMCount for PostgreSQL/MySQL
+   */
+  async getUnreadDMCountAsync(localNodeId: string, remoteNodeId: string, userId: number | null): Promise<number> {
+    // For SQLite, use sync version
+    if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
+      return this.getUnreadDMCount(localNodeId, remoteNodeId, userId);
+    }
+
+    // PostgreSQL implementation using postgresPool
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        let query: string;
+        let params: any[];
+
+        if (userId === null) {
+          query = `
+            SELECT COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm."messageId"
+            WHERE rm."messageId" IS NULL
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m."fromNodeId" = $1
+              AND m."toNodeId" = $2
+          `;
+          params = [remoteNodeId, localNodeId];
+        } else {
+          query = `
+            SELECT COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm."messageId" AND rm."userId" = $1
+            WHERE rm."messageId" IS NULL
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m."fromNodeId" = $2
+              AND m."toNodeId" = $3
+          `;
+          params = [userId, remoteNodeId, localNodeId];
+        }
+
+        const result = await this.postgresPool.query(query, params);
+
+        if (result.rows.length > 0) {
+          return Number(result.rows[0].count);
+        }
+
+        return 0;
+      } catch (error) {
+        logger.error('Error getting unread DM count:', error);
+        return 0;
+      }
+    }
+
+    // MySQL not yet implemented, return 0
+    return 0;
   }
 
   cleanupOldReadMessages(days: number): number {

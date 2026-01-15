@@ -1687,7 +1687,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get channel unread counts if user has channels permission
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      result.channels = databaseService.getUnreadCountsByChannel(userId, localNodeInfo?.nodeId);
+      result.channels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
     }
 
     // Get DM unread counts if user has messages permission
@@ -1697,7 +1697,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
       const allNodes = meshtasticManager.getAllNodes();
       for (const node of allNodes) {
         if (node.user?.id) {
-          const count = databaseService.getUnreadDMCount(localNodeInfo.nodeId, node.user.id, userId);
+          const count = await databaseService.getUnreadDMCountAsync(localNodeInfo.nodeId, node.user.id, userId);
           if (count > 0) {
             directMessages[node.user.id] = count;
           }
@@ -3196,7 +3196,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
       // Get unread counts for all channels first
       // Only count incoming messages (exclude messages sent by our node)
-      const allUnreadChannels = databaseService.getUnreadCountsByChannel(userId, localNodeInfo?.nodeId);
+      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
 
       // Filter channels based on per-channel read permission
       const filteredUnreadChannels: { [channelId: number]: number } = {};
@@ -3216,7 +3216,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const allNodes = meshtasticManager.getAllNodes();
         for (const node of allNodes) {
           if (node.user?.id) {
-            const count = databaseService.getUnreadDMCount(localNodeInfo.nodeId, node.user.id, userId);
+            const count = await databaseService.getUnreadDMCountAsync(localNodeInfo.nodeId, node.user.id, userId);
             if (count > 0) {
               directMessages[node.user.id] = count;
             }
@@ -4707,6 +4707,30 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
   } catch (error) {
     logger.error('Error saving settings:', error);
     res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// Mark all nodes as welcomed (for auto-welcome feature)
+apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const count = databaseService.markAllNodesAsWelcomed();
+    logger.info(`👋 Manually marked ${count} nodes as welcomed via API`);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'mark_all_welcomed',
+      'nodes',
+      `Marked ${count} nodes as welcomed`,
+      req.ip || null,
+      null,
+      JSON.stringify({ count })
+    );
+
+    res.json({ success: true, count, message: `Marked ${count} nodes as welcomed` });
+  } catch (error) {
+    logger.error('Error marking all nodes as welcomed:', error);
+    res.status(500).json({ error: 'Failed to mark nodes as welcomed' });
   }
 });
 

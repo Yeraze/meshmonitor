@@ -6886,6 +6886,9 @@ class MeshtasticManager {
         return;
       }
 
+      // Log diagnostic info for nodes being considered for welcome
+      logger.info(`👋 Auto-welcome check for ${nodeId}: welcomedAt=${node.welcomedAt} (${typeof node.welcomedAt}), longName=${node.longName}, createdAt=${node.createdAt ? new Date(node.createdAt).toISOString() : 'null'}`);
+
       // Check all conditions BEFORE acquiring the lock
       // This allows subsequent calls to re-evaluate conditions if they change
       // Check if we should wait for name

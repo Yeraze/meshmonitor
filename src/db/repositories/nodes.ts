@@ -233,7 +233,8 @@ export class NodesRepository extends BaseRepository {
             publicKey: nodeData.publicKey ?? existingNode.publicKey,
             hasPKC: nodeData.hasPKC ?? existingNode.hasPKC,
             lastPKIPacket: nodeData.lastPKIPacket ?? existingNode.lastPKIPacket,
-            welcomedAt: nodeData.welcomedAt ?? existingNode.welcomedAt,
+            // Don't update welcomedAt here - it's managed by markNodeAsWelcomedIfNotAlready
+            // to avoid race conditions where this upsert overwrites a concurrent welcome update
             keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode.keyIsLowEntropy,
             duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode.duplicateKeyDetected,
             keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode.keyMismatchDetected,
@@ -275,7 +276,8 @@ export class NodesRepository extends BaseRepository {
             publicKey: nodeData.publicKey ?? existingNode.publicKey,
             hasPKC: nodeData.hasPKC ?? existingNode.hasPKC,
             lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket ?? existingNode.lastPKIPacket),
-            welcomedAt: this.coerceBigintField(nodeData.welcomedAt ?? existingNode.welcomedAt),
+            // Don't update welcomedAt here - it's managed by markNodeAsWelcomedIfNotAlready
+            // to avoid race conditions where this upsert overwrites a concurrent welcome update
             keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode.keyIsLowEntropy,
             duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode.duplicateKeyDetected,
             keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode.keyMismatchDetected,
@@ -317,7 +319,8 @@ export class NodesRepository extends BaseRepository {
             publicKey: nodeData.publicKey ?? existingNode.publicKey,
             hasPKC: nodeData.hasPKC ?? existingNode.hasPKC,
             lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket ?? existingNode.lastPKIPacket),
-            welcomedAt: this.coerceBigintField(nodeData.welcomedAt ?? existingNode.welcomedAt),
+            // Don't update welcomedAt here - it's managed by markNodeAsWelcomedIfNotAlready
+            // to avoid race conditions where this upsert overwrites a concurrent welcome update
             keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode.keyIsLowEntropy,
             duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode.duplicateKeyDetected,
             keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode.keyMismatchDetected,

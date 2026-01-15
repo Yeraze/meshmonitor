@@ -46,6 +46,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   const [localMaxHops, setLocalMaxHops] = useState(maxHops || 5);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isMarkingWelcomed, setIsMarkingWelcomed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Update local state when props change
@@ -67,6 +68,32 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
       localMaxHops !== maxHops;
     setHasChanges(changed);
   }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, enabled, message, target, waitForName, maxHops]);
+
+  const handleMarkAllWelcomed = async () => {
+    setIsMarkingWelcomed(true);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/settings/mark-all-welcomed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          showToast(t('automation.insufficient_permissions'), 'error');
+          return;
+        }
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      showToast(t('automation.auto_welcome.marked_all_welcomed', { count: data.count }), 'success');
+    } catch (error) {
+      console.error('Failed to mark all nodes as welcomed:', error);
+      showToast(t('automation.auto_welcome.mark_welcomed_failed'), 'error');
+    } finally {
+      setIsMarkingWelcomed(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -181,6 +208,19 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
           </a>
         </h2>
         <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={handleMarkAllWelcomed}
+            disabled={isMarkingWelcomed}
+            className="btn-secondary"
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '14px',
+              cursor: isMarkingWelcomed ? 'not-allowed' : 'pointer'
+            }}
+            title={t('automation.auto_welcome.mark_all_welcomed_tooltip')}
+          >
+            {isMarkingWelcomed ? t('automation.auto_welcome.marking') : t('automation.auto_welcome.mark_all_welcomed')}
+          </button>
           <button
             onClick={handleSave}
             disabled={!hasChanges || isSaving}
