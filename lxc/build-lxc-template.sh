@@ -139,7 +139,7 @@ echo "Step 6: Building MeshMonitor application..."
 cd "$PROJECT_ROOT"
 
 echo "Installing npm dependencies..."
-npm install
+npm install --legacy-peer-deps
 
 echo "Building React frontend..."
 npm run build
