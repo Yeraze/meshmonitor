@@ -1130,9 +1130,9 @@ class ApiService {
     debugLogApiEnabled: boolean;
     adminChannelEnabled: boolean;
   }): Promise<{ success: boolean }> {
-    return this.post('/api/admin-command', {
+    return this.post('/api/admin/commands', {
       command: 'setSecurityConfig',
-      params: { config }
+      config
     });
   }
 
