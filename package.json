@@ -34,7 +34,7 @@
     "@types/pbf": "^3.0.5",
     "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.4.6",
+    "better-sqlite3": "^12.6.0",
     "better-sqlite3-session-store": "^0.1.0",
     "cors": "^2.8.5",
     "cron-validator": "^1.4.0",
