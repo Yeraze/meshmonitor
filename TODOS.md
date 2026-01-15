@@ -1,5 +1,37 @@
 # TODO List
 
+## Future Work (from v3.0 PR Review)
+
+### Database Performance & Configuration
+
+- [ ] **Connection pool configuration** - Make pool size configurable via environment variables (default 10 may be too low for high-traffic deployments) - `src/db/drivers/postgres.ts:43`, `src/db/drivers/mysql.ts:48`
+- [ ] **Large migration batching** - Add batch processing for large tables (e.g., 1000 rows at a time) to prevent memory issues - `src/cli/migrate-db.ts:579`
+- [ ] **Database index strategy** - Document and add indexes for commonly queried columns (nodeNum, messageId, etc.) for PostgreSQL/MySQL performance
+
+### Error Handling & Recovery
+
+- [ ] **Database driver reconnection** - Implement reconnection logic for transient failures (current pool error handlers only log) - `src/db/drivers/postgres.ts:74`, `src/db/drivers/mysql.ts:82`
+- [ ] **Migration rollback mechanism** - Add transaction support or backup verification before migration to handle partial failures - `src/cli/migrate-db.ts`
+
+### Schema & Type Safety
+
+- [ ] **Boolean type consistency** - Fix `positionOverrideEnabled` in nodes.ts using `pgInteger` instead of `pgBoolean`, breaks boolean abstraction pattern - `src/db/schema/nodes.ts:107`
+- [ ] **BIGINT coercion type guards** - `normalizeBigInts` doesn't preserve prototype chains, could cause issues with Date objects - `src/db/repositories/base.ts:110`
+- [ ] **Dynamic sequence names** - Hardcoded sequence names in migration could get out of sync with schema changes - `src/cli/migrate-db.ts:428`
+
+### Security
+
+- [ ] **CLI credential handling** - Support environment variable or config file input for database credentials (command line args visible in process lists) - `src/cli/migrate-db.ts:314`
+
+### Testing
+
+- [ ] **Integration tests** - Add integration tests for actual PostgreSQL/MySQL connections
+- [ ] **Migration error scenarios** - Add comprehensive error scenario testing for migration tool
+- [ ] **Performance testing** - Add performance testing for large dataset scenarios
+- [ ] **Database benchmarking** - Create performance benchmarking for different database backends
+
+---
+
 ## Current Sprint
 
 ### PostgreSQL Read Tracking Fix
