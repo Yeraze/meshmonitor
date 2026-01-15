@@ -69,11 +69,11 @@ export interface DbNode {
   positionGpsAccuracy?: number | null;
   positionHdop?: number | null;
   positionTimestamp?: number | null;
-  positionOverrideEnabled?: number | null;
+  positionOverrideEnabled?: boolean | null;
   latitudeOverride?: number | null;
   longitudeOverride?: number | null;
   altitudeOverride?: number | null;
-  positionOverrideIsPrivate?: number | null;
+  positionOverrideIsPrivate?: boolean | null;
   createdAt: number;
   updatedAt: number;
 }

@@ -62,7 +62,7 @@ export interface DeviceInfo {
   // Position precision fields
   positionGpsAccuracy?: number; // GPS accuracy in meters
   // Position override fields
-  positionOverrideEnabled?: number;
+  positionOverrideEnabled?: boolean;
   latitudeOverride?: number;
   longitudeOverride?: number;
   altitudeOverride?: number;
@@ -8805,7 +8805,7 @@ class MeshtasticManager {
 
       // Add position override fields
       if (node.positionOverrideEnabled !== null && node.positionOverrideEnabled !== undefined) {
-        deviceInfo.positionOverrideEnabled = node.positionOverrideEnabled;
+        deviceInfo.positionOverrideEnabled = Boolean(node.positionOverrideEnabled);
       }
       if (node.latitudeOverride !== null && node.latitudeOverride !== undefined) {
         deviceInfo.latitudeOverride = node.latitudeOverride;

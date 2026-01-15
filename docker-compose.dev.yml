@@ -118,8 +118,8 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - "8083:3001"
-      - "4406:4404"
+      - "8081:3001"
+      - "4405:4404"
     restart: unless-stopped
     volumes:
       - meshmonitor-mysql-data:/data
@@ -130,7 +130,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8083,http://localhost:8080
+      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:8080
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}

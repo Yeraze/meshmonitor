@@ -14,7 +14,7 @@ const mockNodes: Record<number, any> = {
     longitude: -75.0,
     latitudeOverride: 41.0,   // Override position
     longitudeOverride: -76.0,
-    positionOverrideEnabled: 1,
+    positionOverrideEnabled: true,
     lastHeard: Math.floor(Date.now() / 1000)
   },
   // Node without position override
@@ -27,7 +27,7 @@ const mockNodes: Record<number, any> = {
     longitude: -77.0,
     latitudeOverride: null,
     longitudeOverride: null,
-    positionOverrideEnabled: 0,
+    positionOverrideEnabled: false,
     lastHeard: Math.floor(Date.now() / 1000)
   },
   // Node with override enabled but null override values (should fall back to GPS)
@@ -40,7 +40,7 @@ const mockNodes: Record<number, any> = {
     longitude: -78.0,
     latitudeOverride: null,
     longitudeOverride: null,
-    positionOverrideEnabled: 1,
+    positionOverrideEnabled: true,
     lastHeard: Math.floor(Date.now() / 1000)
   }
 };
@@ -76,7 +76,7 @@ const getEffectivePosition = (node: typeof mockNodes[number] | null) => {
   if (!node) return { latitude: undefined, longitude: undefined };
 
   // Check for position override first
-  if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
+  if (node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null) {
     return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
   }
 

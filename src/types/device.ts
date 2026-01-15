@@ -39,11 +39,12 @@ export interface DeviceInfo {
   // Position precision fields
   positionPrecisionBits?: number; // Position precision (0-32 bits, higher = more precise)
   positionGpsAccuracy?: number; // GPS accuracy in meters
-  // Position override fields (positionOverrideEnabled is 0 or 1 from database)
-  positionOverrideEnabled?: number;
+  // Position override fields
+  positionOverrideEnabled?: boolean;
   latitudeOverride?: number;
   longitudeOverride?: number;
   altitudeOverride?: number;
+  positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
 }
 
@@ -130,8 +131,9 @@ export interface DbNode extends Partial<DeviceInfo> {
   updatedAt?: number;
   lastTracerouteRequest?: number;
   // Position override fields (stored in database)
-  positionOverrideEnabled?: number; // 0 or 1 in SQLite
+  positionOverrideEnabled?: boolean;
   latitudeOverride?: number;
   longitudeOverride?: number;
   altitudeOverride?: number;
+  positionOverrideIsPrivate?: boolean;
 }

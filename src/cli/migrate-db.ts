@@ -413,37 +413,50 @@ async function connectMySQL(url: string): Promise<{ db: any; pool: mysql.Pool }>
 /**
  * Reset PostgreSQL sequences to max ID values after migration
  * This prevents primary key conflicts when new rows are inserted
+ * Dynamically discovers sequences from database catalog rather than hardcoding
  */
 async function resetPostgresSequences(pool: Pool): Promise<void> {
   console.log('\n🔄 Resetting PostgreSQL sequences...');
 
-  const sequenceTables = [
-    { table: 'audit_log', sequence: 'audit_log_id_seq' },
-    { table: 'telemetry', sequence: 'telemetry_id_seq' },
-    { table: 'traceroutes', sequence: 'traceroutes_id_seq' },
-    { table: 'route_segments', sequence: 'route_segments_id_seq' },
-    { table: 'neighbor_info', sequence: 'neighbor_info_id_seq' },
-    { table: 'users', sequence: 'users_id_seq' },
-    { table: 'permissions', sequence: 'permissions_id_seq' },
-    { table: 'api_tokens', sequence: 'api_tokens_id_seq' },
-    { table: 'push_subscriptions', sequence: 'push_subscriptions_id_seq' },
-    { table: 'user_notification_preferences', sequence: 'user_notification_preferences_id_seq' },
-    { table: 'packet_log', sequence: 'packet_log_id_seq' },
-    { table: 'backup_history', sequence: 'backup_history_id_seq' },
-    { table: 'upgrade_history', sequence: 'upgrade_history_id_seq' },
-    { table: 'custom_themes', sequence: 'custom_themes_id_seq' },
-  ];
-
   const client = await pool.connect();
   try {
-    for (const { table, sequence } of sequenceTables) {
+    // Dynamically find all tables with serial/identity columns
+    // This query finds sequences owned by table columns (created by SERIAL or IDENTITY)
+    const sequenceResult = await client.query(`
+      SELECT
+        t.relname as table_name,
+        a.attname as column_name,
+        pg_get_serial_sequence(t.relname::text, a.attname::text) as sequence_name
+      FROM pg_class t
+      JOIN pg_attribute a ON a.attrelid = t.oid
+      JOIN pg_namespace n ON t.relnamespace = n.oid
+      WHERE n.nspname = 'public'
+        AND t.relkind = 'r'
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        AND pg_get_serial_sequence(t.relname::text, a.attname::text) IS NOT NULL
+    `);
+
+    let resetCount = 0;
+    for (const row of sequenceResult.rows) {
+      const { table_name, column_name, sequence_name } = row;
       try {
-        await client.query(`SELECT setval('${sequence}', COALESCE((SELECT MAX(id) FROM ${table}), 1))`);
-      } catch {
-        // Sequence or table may not exist, skip silently
+        await client.query(
+          `SELECT setval($1, COALESCE((SELECT MAX("${column_name}") FROM "${table_name}"), 1))`,
+          [sequence_name]
+        );
+        resetCount++;
+      } catch (err) {
+        // Log but continue - some sequences may have special constraints
+        console.log(`  ⚠️ Could not reset sequence ${sequence_name}: ${(err as Error).message}`);
       }
     }
-    console.log('  ✅ Sequences reset to match migrated data');
+
+    if (resetCount > 0) {
+      console.log(`  ✅ Reset ${resetCount} sequences to match migrated data`);
+    } else {
+      console.log('  ℹ️ No sequences found to reset');
+    }
   } finally {
     client.release();
   }

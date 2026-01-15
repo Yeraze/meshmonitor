@@ -108,6 +108,7 @@ export abstract class BaseRepository {
 
   /**
    * Normalize BigInt values to numbers (SQLite returns BigInt for large integers)
+   * Preserves prototype chains for Date objects and other special types
    */
   protected normalizeBigInts<T>(obj: T): T {
     if (obj === null || obj === undefined) return obj;
@@ -117,11 +118,18 @@ export abstract class BaseRepository {
     }
 
     if (typeof obj === 'object') {
+      // Preserve Date objects and other built-in types
+      if (obj instanceof Date) {
+        return obj;
+      }
+
       if (Array.isArray(obj)) {
         return obj.map(item => this.normalizeBigInts(item)) as unknown as T;
       }
 
-      const normalized: Record<string, unknown> = {};
+      // For plain objects, create a new object with the same prototype
+      const prototype = Object.getPrototypeOf(obj);
+      const normalized = Object.create(prototype) as Record<string, unknown>;
       for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
           normalized[key] = this.normalizeBigInts((obj as Record<string, unknown>)[key]);

@@ -15,8 +15,8 @@ export async function enhanceNodeForClient(
   let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
 
   // Priority 1: Check for position override
-  const hasOverride = node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null;
-  const isPrivateOverride = !!node.positionOverrideIsPrivate;
+  const hasOverride = node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null;
+  const isPrivateOverride = node.positionOverrideIsPrivate === true;
 
   // Check if user has permission to view private positions
   const canViewPrivate = user ? await hasPermission(user, 'nodes_private', 'read') : false;

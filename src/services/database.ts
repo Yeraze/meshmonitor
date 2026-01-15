@@ -49,6 +49,7 @@ import { migration as positionOverridePrivacyMigration } from '../server/migrati
 import { migration as nodesPrivatePermissionMigration } from '../server/migrations/044_add_nodes_private_permission.js';
 import { migration as packetDirectionMigration } from '../server/migrations/045_add_packet_direction.js';
 import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
+import { migration as positionOverrideBooleanMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_fix_position_override_boolean_types.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -121,12 +122,12 @@ export interface DbNode {
   positionGpsAccuracy?: number; // GPS accuracy in meters
   positionHdop?: number; // Horizontal Dilution of Precision
   positionTimestamp?: number; // When this position was received (for upgrade/downgrade logic)
-  // Position override (Migration 040)
-  positionOverrideEnabled?: number; // 0 = disabled, 1 = enabled
+  // Position override (Migration 040, updated in Migration 047 to boolean)
+  positionOverrideEnabled?: boolean; // false = disabled, true = enabled
   latitudeOverride?: number; // Override latitude
   longitudeOverride?: number; // Override longitude
-  altitudeOverride?: number; // Override altitude  
-  positionOverrideIsPrivate?: number; // Override privacy (0 = public, 1 = private)
+  altitudeOverride?: number; // Override altitude
+  positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
   createdAt: number;
   updatedAt: number;
 }
@@ -863,6 +864,7 @@ class DatabaseService {
     this.runAutoTracerouteLogMigration();
     this.runRelayNodePacketLogMigration();
     this.runAutoKeyRepairMigration();
+    this.runPositionOverrideBooleanMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1766,6 +1768,27 @@ class DatabaseService {
       logger.debug('✅ Auto key repair migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run auto key repair migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionOverrideBooleanMigration(): void {
+    logger.debug('Running position override boolean migration...');
+    try {
+      const migrationKey = 'migration_047_position_override_boolean';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position override boolean migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 047: Fix position override boolean types...');
+      positionOverrideBooleanMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position override boolean migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position override boolean migration:', error);
       throw error;
     }
   }
@@ -6705,11 +6728,11 @@ class DatabaseService {
       WHERE nodeNum = ?
     `);
     const row = stmt.get(nodeNum) as {
-      positionOverrideEnabled: number | null;
+      positionOverrideEnabled: number | boolean | null;
       latitudeOverride: number | null;
       longitudeOverride: number | null;
       altitudeOverride: number | null;
-      positionOverrideIsPrivate: number | null;
+      positionOverrideIsPrivate: number | boolean | null;
     } | undefined;
 
     if (!row) {
@@ -6717,11 +6740,11 @@ class DatabaseService {
     }
 
     return {
-      enabled: row.positionOverrideEnabled === 1,
+      enabled: row.positionOverrideEnabled === true || row.positionOverrideEnabled === 1,
       latitude: row.latitudeOverride ?? undefined,
       longitude: row.longitudeOverride ?? undefined,
       altitude: row.altitudeOverride ?? undefined,
-      isPrivate: row.positionOverrideIsPrivate === 1,
+      isPrivate: row.positionOverrideIsPrivate === true || row.positionOverrideIsPrivate === 1,
     };
   }
 
@@ -8418,6 +8441,9 @@ class DatabaseService {
       // (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
       await client.query(POSTGRES_SCHEMA_SQL);
 
+      // Run migration 047: Convert position override columns to BOOLEAN
+      await runMigration047Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -8469,6 +8495,9 @@ class DatabaseService {
       }
 
       logger.debug(`[MySQL] Executed ${executed} schema statements`);
+
+      // Run migration 047: Convert position override columns to BOOLEAN
+      await runMigration047Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
