@@ -102,7 +102,8 @@ export interface MeshtasticMessage {
 
 /**
  * Convert a dotted-decimal IP address string to a 32-bit unsigned integer
- * e.g., "192.168.1.100" -> 3232235876
+ * Meshtastic stores IP addresses in little-endian format (first octet in LSB)
+ * e.g., "192.168.1.100" -> octets stored as [192, 168, 1, 100] in little-endian
  */
 export function ipStringToUint32(ip: string): number {
   if (!ip || typeof ip !== 'string') return 0;
@@ -112,22 +113,25 @@ export function ipStringToUint32(ip: string): number {
   const octets = parts.map(p => parseInt(p, 10));
   if (octets.some(o => isNaN(o) || o < 0 || o > 255)) return 0;
 
-  return ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
+  // Little-endian: first octet goes in LSB position
+  return (octets[0] | (octets[1] << 8) | (octets[2] << 16) | (octets[3] << 24)) >>> 0;
 }
 
 /**
  * Convert a 32-bit unsigned integer to a dotted-decimal IP address string
- * e.g., 3232235876 -> "192.168.1.100"
+ * Meshtastic stores IP addresses in little-endian format (first octet in LSB)
+ * e.g., uint32 with first octet in LSB -> "192.168.1.100"
  */
 export function uint32ToIpString(num: number): string {
   if (num === undefined || num === null || num === 0) return '';
   // Ensure we're working with an unsigned 32-bit integer
   const unsigned = num >>> 0;
+  // Little-endian: extract first octet from LSB
   return [
-    (unsigned >>> 24) & 0xFF,
-    (unsigned >>> 16) & 0xFF,
+    unsigned & 0xFF,
     (unsigned >>> 8) & 0xFF,
-    unsigned & 0xFF
+    (unsigned >>> 16) & 0xFF,
+    (unsigned >>> 24) & 0xFF
   ].join('.');
 }
 
