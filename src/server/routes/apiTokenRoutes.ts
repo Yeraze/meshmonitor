@@ -18,7 +18,32 @@ const router = express.Router();
 router.get('/', requireAuth(), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const tokenInfo = databaseService.apiTokenModel.getUserToken(userId);
+
+    let tokenInfo: {
+      id: number;
+      prefix: string;
+      isActive: boolean;
+      createdAt: number;
+      lastUsedAt: number | null;
+    } | null = null;
+
+    // Use repository for PostgreSQL/MySQL, model for SQLite
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (databaseService.authRepo) {
+        tokenInfo = await databaseService.authRepo.getUserActiveApiToken(userId);
+      }
+    } else {
+      const modelToken = databaseService.apiTokenModel.getUserToken(userId);
+      if (modelToken) {
+        tokenInfo = {
+          id: modelToken.id,
+          prefix: modelToken.prefix,
+          isActive: modelToken.isActive,
+          createdAt: modelToken.createdAt,
+          lastUsedAt: modelToken.lastUsedAt,
+        };
+      }
+    }
 
     if (!tokenInfo) {
       return res.json({
@@ -56,11 +81,38 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const createdBy = req.user!.id;
 
-    // Generate new token (automatically revokes old one)
-    const { token, tokenInfo } = await databaseService.apiTokenModel.create({
-      userId,
-      createdBy
-    });
+    let token: string;
+    let tokenInfo: {
+      id: number;
+      prefix: string;
+      isActive: boolean;
+      createdAt: number;
+      lastUsedAt: number | null;
+    };
+
+    // Use repository for PostgreSQL/MySQL, model for SQLite
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (!databaseService.authRepo) {
+        throw new Error('Auth repository not initialized');
+      }
+      const result = await databaseService.authRepo.generateAndCreateApiToken(userId, createdBy);
+      token = result.token;
+      tokenInfo = result.tokenInfo;
+    } else {
+      // Generate new token using SQLite model (automatically revokes old one)
+      const result = await databaseService.apiTokenModel.create({
+        userId,
+        createdBy
+      });
+      token = result.token;
+      tokenInfo = {
+        id: result.tokenInfo.id,
+        prefix: result.tokenInfo.prefix,
+        isActive: result.tokenInfo.isActive,
+        createdAt: result.tokenInfo.createdAt,
+        lastUsedAt: result.tokenInfo.lastUsedAt,
+      };
+    }
 
     // Audit log
     databaseService.auditLog(
@@ -100,17 +152,39 @@ router.delete('/', requireAuth(), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
-    // Get current token
-    const tokenInfo = databaseService.apiTokenModel.getUserToken(userId);
-    if (!tokenInfo) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'No active API token found'
-      });
+    let tokenInfo: {
+      id: number;
+      prefix: string;
+    } | null = null;
+    let revoked = false;
+
+    // Use repository for PostgreSQL/MySQL, model for SQLite
+    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (!databaseService.authRepo) {
+        throw new Error('Auth repository not initialized');
+      }
+      const activeToken = await databaseService.authRepo.getUserActiveApiToken(userId);
+      if (!activeToken) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: 'No active API token found'
+        });
+      }
+      tokenInfo = { id: activeToken.id, prefix: activeToken.prefix };
+      revoked = await databaseService.authRepo.revokeApiToken(activeToken.id, userId);
+    } else {
+      // Get current token using SQLite model
+      const modelToken = databaseService.apiTokenModel.getUserToken(userId);
+      if (!modelToken) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: 'No active API token found'
+        });
+      }
+      tokenInfo = { id: modelToken.id, prefix: modelToken.prefix };
+      revoked = databaseService.apiTokenModel.revoke(modelToken.id, userId);
     }
 
-    // Revoke token
-    const revoked = databaseService.apiTokenModel.revoke(tokenInfo.id, userId);
     if (!revoked) {
       return res.status(404).json({
         error: 'Not Found',
