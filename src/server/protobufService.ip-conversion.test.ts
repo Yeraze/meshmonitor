@@ -7,11 +7,14 @@ import {
 } from './protobufService.js';
 
 describe('IP Address Conversion Functions', () => {
+  // Note: Meshtastic stores IP addresses in little-endian format
+  // First octet is in the LSB position of the uint32
+
   describe('ipStringToUint32', () => {
-    it('should convert 192.168.1.100 to correct uint32', () => {
-      // 192.168.1.100 = (192 << 24) | (168 << 16) | (1 << 8) | 100
-      // = 3232235876
-      expect(ipStringToUint32('192.168.1.100')).toBe(3232235876);
+    it('should convert 192.168.1.100 to correct uint32 (little-endian)', () => {
+      // 192.168.1.100 in little-endian = 192 | (168 << 8) | (1 << 16) | (100 << 24)
+      // = 1677830336
+      expect(ipStringToUint32('192.168.1.100')).toBe(1677830336);
     });
 
     it('should convert 0.0.0.0 to 0', () => {
@@ -22,16 +25,16 @@ describe('IP Address Conversion Functions', () => {
       expect(ipStringToUint32('255.255.255.255')).toBe(4294967295);
     });
 
-    it('should convert 10.0.0.1 correctly', () => {
-      // 10.0.0.1 = (10 << 24) | (0 << 16) | (0 << 8) | 1
-      // = 167772161
-      expect(ipStringToUint32('10.0.0.1')).toBe(167772161);
+    it('should convert 10.0.0.1 correctly (little-endian)', () => {
+      // 10.0.0.1 in little-endian = 10 | (0 << 8) | (0 << 16) | (1 << 24)
+      // = 16777226
+      expect(ipStringToUint32('10.0.0.1')).toBe(16777226);
     });
 
-    it('should convert 172.16.0.1 correctly', () => {
-      // 172.16.0.1 = (172 << 24) | (16 << 16) | (0 << 8) | 1
-      // = 2886729729
-      expect(ipStringToUint32('172.16.0.1')).toBe(2886729729);
+    it('should convert 172.16.0.1 correctly (little-endian)', () => {
+      // 172.16.0.1 in little-endian = 172 | (16 << 8) | (0 << 16) | (1 << 24)
+      // = 16781484
+      expect(ipStringToUint32('172.16.0.1')).toBe(16781484);
     });
 
     it('should return 0 for invalid IP strings', () => {
@@ -50,8 +53,8 @@ describe('IP Address Conversion Functions', () => {
   });
 
   describe('uint32ToIpString', () => {
-    it('should convert 3232235876 to 192.168.1.100', () => {
-      expect(uint32ToIpString(3232235876)).toBe('192.168.1.100');
+    it('should convert 1677830336 to 192.168.1.100 (little-endian)', () => {
+      expect(uint32ToIpString(1677830336)).toBe('192.168.1.100');
     });
 
     it('should return empty string for 0', () => {
@@ -62,12 +65,12 @@ describe('IP Address Conversion Functions', () => {
       expect(uint32ToIpString(4294967295)).toBe('255.255.255.255');
     });
 
-    it('should convert 167772161 to 10.0.0.1', () => {
-      expect(uint32ToIpString(167772161)).toBe('10.0.0.1');
+    it('should convert 16777226 to 10.0.0.1 (little-endian)', () => {
+      expect(uint32ToIpString(16777226)).toBe('10.0.0.1');
     });
 
-    it('should convert 2886729729 to 172.16.0.1', () => {
-      expect(uint32ToIpString(2886729729)).toBe('172.16.0.1');
+    it('should convert 16781484 to 172.16.0.1 (little-endian)', () => {
+      expect(uint32ToIpString(16781484)).toBe('172.16.0.1');
     });
 
     it('should return empty string for null/undefined', () => {
@@ -102,12 +105,13 @@ describe('IP Address Conversion Functions', () => {
   });
 
   describe('convertIpv4ConfigToStrings', () => {
-    it('should convert all IP fields from uint32 to strings', () => {
+    it('should convert all IP fields from uint32 to strings (little-endian)', () => {
+      // Little-endian values for Meshtastic compatibility
       const config = {
-        ip: 3232235876,       // 192.168.1.100
-        gateway: 3232235777,  // 192.168.1.1
-        subnet: 4294967040,   // 255.255.255.0
-        dns: 134744072        // 8.8.8.8
+        ip: 1677830336,       // 192.168.1.100 in little-endian
+        gateway: 16885952,    // 192.168.1.1 in little-endian
+        subnet: 16777215,     // 255.255.255.0 in little-endian
+        dns: 134744072        // 8.8.8.8 in little-endian
       };
 
       const result = convertIpv4ConfigToStrings(config);
@@ -141,7 +145,7 @@ describe('IP Address Conversion Functions', () => {
   });
 
   describe('convertIpv4ConfigToUint32', () => {
-    it('should convert all IP fields from strings to uint32', () => {
+    it('should convert all IP fields from strings to uint32 (little-endian)', () => {
       const config = {
         ip: '192.168.1.100',
         gateway: '192.168.1.1',
@@ -151,9 +155,10 @@ describe('IP Address Conversion Functions', () => {
 
       const result = convertIpv4ConfigToUint32(config);
 
-      expect(result.ip).toBe(3232235876);
-      expect(result.gateway).toBe(3232235777);
-      expect(result.subnet).toBe(4294967040);
+      // Little-endian values for Meshtastic compatibility
+      expect(result.ip).toBe(1677830336);
+      expect(result.gateway).toBe(16885952);
+      expect(result.subnet).toBe(16777215);
       expect(result.dns).toBe(134744072);
     });
 
