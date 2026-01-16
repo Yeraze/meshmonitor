@@ -7,6 +7,7 @@
  */
 import { eq, lt, desc, and } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import {
   usersSqlite, usersPostgres, usersMysql,
   permissionsSqlite, permissionsPostgres, permissionsMysql,
@@ -18,6 +19,8 @@ import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
 const TOKEN_PREFIX = 'mm_v1_';
+const TOKEN_LENGTH = 32; // characters after prefix
+const SALT_ROUNDS = 12;
 
 /**
  * User data interface
@@ -709,6 +712,222 @@ export class AuthRepository extends BaseRepository {
 
     // Get and return the user
     return this.getUserById(tokenRecord.userId);
+  }
+
+  /**
+   * Get a user's active API token info (without sensitive hash)
+   */
+  async getUserActiveApiToken(userId: number): Promise<{
+    id: number;
+    prefix: string;
+    isActive: boolean;
+    createdAt: number;
+    lastUsedAt: number | null;
+  } | null> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const result = await db
+        .select({
+          id: apiTokensSqlite.id,
+          prefix: apiTokensSqlite.prefix,
+          isActive: apiTokensSqlite.isActive,
+          createdAt: apiTokensSqlite.createdAt,
+          lastUsedAt: apiTokensSqlite.lastUsedAt,
+        })
+        .from(apiTokensSqlite)
+        .where(and(
+          eq(apiTokensSqlite.userId, userId),
+          eq(apiTokensSqlite.isActive, true)
+        ))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      const r = this.normalizeBigInts(result[0]);
+      return {
+        id: r.id as number,
+        prefix: r.prefix as string,
+        isActive: Boolean(r.isActive),
+        createdAt: r.createdAt as number,
+        lastUsedAt: r.lastUsedAt as number | null,
+      };
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .select({
+          id: apiTokensMysql.id,
+          prefix: apiTokensMysql.prefix,
+          isActive: apiTokensMysql.isActive,
+          createdAt: apiTokensMysql.createdAt,
+          lastUsedAt: apiTokensMysql.lastUsedAt,
+        })
+        .from(apiTokensMysql)
+        .where(and(
+          eq(apiTokensMysql.userId, userId),
+          eq(apiTokensMysql.isActive, true)
+        ))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return {
+        id: result[0].id,
+        prefix: result[0].prefix,
+        isActive: Boolean(result[0].isActive),
+        createdAt: result[0].createdAt,
+        lastUsedAt: result[0].lastUsedAt,
+      };
+    } else {
+      const db = this.getPostgresDb();
+      const result = await db
+        .select({
+          id: apiTokensPostgres.id,
+          prefix: apiTokensPostgres.prefix,
+          isActive: apiTokensPostgres.isActive,
+          createdAt: apiTokensPostgres.createdAt,
+          lastUsedAt: apiTokensPostgres.lastUsedAt,
+        })
+        .from(apiTokensPostgres)
+        .where(and(
+          eq(apiTokensPostgres.userId, userId),
+          eq(apiTokensPostgres.isActive, true)
+        ))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return {
+        id: result[0].id,
+        prefix: result[0].prefix,
+        isActive: Boolean(result[0].isActive),
+        createdAt: result[0].createdAt,
+        lastUsedAt: result[0].lastUsedAt,
+      };
+    }
+  }
+
+  /**
+   * Revoke an API token by ID
+   */
+  async revokeApiToken(tokenId: number, revokedBy: number): Promise<boolean> {
+    const now = this.now();
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const result = await db
+        .update(apiTokensSqlite)
+        .set({ isActive: false, revokedAt: now, revokedBy })
+        .where(and(
+          eq(apiTokensSqlite.id, tokenId),
+          eq(apiTokensSqlite.isActive, true)
+        ));
+      return (result.changes ?? 0) > 0;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .update(apiTokensMysql)
+        .set({ isActive: false, revokedAt: now, revokedBy })
+        .where(and(
+          eq(apiTokensMysql.id, tokenId),
+          eq(apiTokensMysql.isActive, true)
+        ));
+      return (result[0].affectedRows ?? 0) > 0;
+    } else {
+      const db = this.getPostgresDb();
+      const result = await db
+        .update(apiTokensPostgres)
+        .set({ isActive: false, revokedAt: now, revokedBy })
+        .where(and(
+          eq(apiTokensPostgres.id, tokenId),
+          eq(apiTokensPostgres.isActive, true)
+        ))
+        .returning({ id: apiTokensPostgres.id });
+      return result.length > 0;
+    }
+  }
+
+  /**
+   * Revoke all active API tokens for a user
+   */
+  async revokeAllUserApiTokens(userId: number, revokedBy: number): Promise<number> {
+    const now = this.now();
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const result = await db
+        .update(apiTokensSqlite)
+        .set({ isActive: false, revokedAt: now, revokedBy })
+        .where(and(
+          eq(apiTokensSqlite.userId, userId),
+          eq(apiTokensSqlite.isActive, true)
+        ));
+      return result.changes ?? 0;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const result = await db
+        .update(apiTokensMysql)
+        .set({ isActive: false, revokedAt: now, revokedBy })
+        .where(and(
+          eq(apiTokensMysql.userId, userId),
+          eq(apiTokensMysql.isActive, true)
+        ));
+      return result[0].affectedRows ?? 0;
+    } else {
+      const db = this.getPostgresDb();
+      const result = await db
+        .update(apiTokensPostgres)
+        .set({ isActive: false, revokedAt: now, revokedBy })
+        .where(and(
+          eq(apiTokensPostgres.userId, userId),
+          eq(apiTokensPostgres.isActive, true)
+        ))
+        .returning({ id: apiTokensPostgres.id });
+      return result.length;
+    }
+  }
+
+  /**
+   * Generate and create a new API token for a user.
+   * Automatically revokes any existing active token.
+   * Returns the full token (shown once) and token info.
+   */
+  async generateAndCreateApiToken(userId: number, createdBy: number): Promise<{
+    token: string;
+    tokenInfo: {
+      id: number;
+      prefix: string;
+      isActive: boolean;
+      createdAt: number;
+      lastUsedAt: number | null;
+    };
+  }> {
+    // Generate cryptographically secure random token
+    const randomBytes = crypto.randomBytes(TOKEN_LENGTH / 2); // 16 bytes = 32 hex chars
+    const randomString = randomBytes.toString('hex');
+    const token = `${TOKEN_PREFIX}${randomString}`;
+    const prefix = token.substring(0, 12); // "mm_v1_" + first 6 chars of random part
+    const tokenHash = await bcrypt.hash(token, SALT_ROUNDS);
+    const now = this.now();
+
+    // Revoke any existing active tokens for this user
+    await this.revokeAllUserApiTokens(userId, createdBy);
+
+    // Create new token
+    const tokenId = await this.createApiToken({
+      userId,
+      name: 'API Token',
+      tokenHash,
+      prefix,
+      isActive: true,
+      createdAt: now,
+      createdBy,
+    });
+
+    return {
+      token,
+      tokenInfo: {
+        id: tokenId,
+        prefix,
+        isActive: true,
+        createdAt: now,
+        lastUsedAt: null,
+      },
+    };
   }
 
   // ============ AUDIT LOG ============
