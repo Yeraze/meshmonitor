@@ -1486,7 +1486,7 @@
   "config.reboot_sent_toast": "Reboot command sent!",
   "config.reboot_failed": "Failed to reboot device",
 
-  "config.purge_confirm": "Are you sure you want to purge the node database?\n\nThis will PERMANENTLY DELETE all stored node information from the device.\nThis action CANNOT be undone!\n\nThe device will automatically rebuild the database as it hears from nodes on the mesh.",
+  "config.purge_confirm": "Are you sure you want to purge the node database?\n\nThis will PERMANENTLY DELETE all stored node information from BOTH the device AND the local MeshMonitor database.\nThis action CANNOT be undone!\n\nThe device will automatically rebuild the database as it hears from nodes on the mesh.",
   "config.purge_success": "Node database purged successfully!",
   "config.purge_failed": "Failed to purge node database",
 
