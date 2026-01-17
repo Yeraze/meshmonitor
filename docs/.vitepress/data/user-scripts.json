@@ -314,5 +314,51 @@
       "Privacy-safe (only reports requester's position)",
       "Persistent identity storage in JSON"
     ]
+  },
+  {
+    "name": "WX (Weather Alerts)",
+    "filename": "mm_wx.py",
+    "icon": "⛈️",
+    "description": "Automatically broadcasts NOAA/NWS weather alerts for a configured location using Timer Triggers. Posts bulletins for NEW, UPDATED, and CLEARED alerts with smart deduplication to prevent mesh spam. Supports on-demand commands for weather summaries and detailed alert info.",
+    "language": "Python",
+    "tags": ["Weather", "NOAA", "NWS", "Alerts", "Automation", "Timer Trigger"],
+    "githubPath": "maxhayim/meshmonitor-mx-weather-alerts/mm_wx.py",
+    "exampleTrigger": "!wx, !wx detail 1, !wx help",
+    "requirements": [
+      "Python 3.8+",
+      "Internet access to api.weather.gov",
+      "Configure WX_LAT/WX_LON in script"
+    ],
+    "author": "maxhayim",
+    "features": [
+      "Automatic alerts via Timer Triggers",
+      "Smart deduplication (NEW, UPDATED, CLEARED only)",
+      "On-demand weather summary queries",
+      "Lightweight messages optimized for LoRa",
+      "No external dependencies"
+    ]
+  },
+  {
+    "name": "Carrier Outage Monitor",
+    "filename": "index.js",
+    "icon": "📡",
+    "description": "Monitors health of mobile carriers, ISPs, and cloud/CDN/DNS infrastructure. Uses conservative detection logic with confidence scoring to identify provider-level outages while avoiding false positives.",
+    "language": "JavaScript",
+    "tags": ["Carrier", "Outage", "ISP", "Monitoring", "Network", "Infrastructure"],
+    "githubPath": "maxhayim/meshmonitor-carrier-outage/index.js",
+    "exampleTrigger": "Timer-based (runs every 1-5 minutes)",
+    "requirements": [
+      "Node.js 18+",
+      "Optional: mqtt package for MQTT publishing"
+    ],
+    "author": "maxhayim",
+    "features": [
+      "Multi-provider monitoring (mobile, ISP, cloud)",
+      "Conservative detection with control probe validation",
+      "State tracking (OK, DEGRADED, MAJOR_OUTAGE, RECOVERED)",
+      "Confidence scoring for detected issues",
+      "Optional MQTT publishing",
+      "Customizable provider lists via JSON config"
+    ]
   }
 ]
