@@ -170,4 +170,53 @@ router.get('/export', async (req: Request, res: Response) => {
   }
 });
 
+// Clear security issues for a specific node (requires write permission)
+router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), async (req: Request, res: Response) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'Invalid node number' });
+    }
+
+    const node = databaseService.getNode(nodeNum);
+    if (!node) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+
+    const nodeName = node.shortName || node.longName || `Node ${nodeNum}`;
+
+    // Clear all security flags
+    databaseService.upsertNode({
+      nodeNum,
+      nodeId: node.nodeId,
+      keyIsLowEntropy: false,
+      duplicateKeyDetected: false,
+      keyMismatchDetected: false,
+      keySecurityIssueDetails: undefined, // This will now properly clear the field
+    });
+
+    // Log the action
+    databaseService.auditLog(
+      req.user!.id,
+      'security_issues_cleared',
+      'security',
+      `Cleared security issues for ${nodeName} (${nodeNum})`,
+      req.ip || null
+    );
+
+    logger.info(`🔐 Security issues cleared for ${nodeName} (${nodeNum}) by user ${req.user!.username}`);
+
+    return res.json({
+      success: true,
+      message: `Security issues cleared for ${nodeName}`,
+      nodeNum,
+      nodeName
+    });
+  } catch (error) {
+    logger.error('Error clearing security issues:', error);
+    return res.status(500).json({ error: 'Failed to clear security issues' });
+  }
+});
+
 export default router;
