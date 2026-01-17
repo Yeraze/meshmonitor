@@ -117,6 +117,7 @@ interface InfoTabProps {
   nodes: DeviceInfo[];
   channels: Channel[];
   messages: MeshMessage[];
+  channelMessages?: { [key: number]: MeshMessage[] };
   currentNodeId: string;
   temperatureUnit: TemperatureUnit;
   telemetryHours: number;
@@ -136,6 +137,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   nodes,
   channels,
   messages,
+  channelMessages = {},
   currentNodeId,
   temperatureUnit,
   telemetryHours,
@@ -601,7 +603,18 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
         <div className="info-section">
           <h3>{t('info.recent_activity')}</h3>
-          <p><strong>{t('info.last_message')}</strong> {messages.length > 0 ? formatDateTime(messages[0].timestamp, timeFormat, dateFormat) : t('common.none')}</p>
+          <p><strong>{t('info.last_message')}</strong> {(() => {
+            // Combine all messages from DMs and all channels
+            const allMessages = [
+              ...messages,
+              ...Object.values(channelMessages).flat()
+            ];
+            if (allMessages.length === 0) return t('common.none');
+            const mostRecent = allMessages.reduce((latest, msg) =>
+              msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest
+            );
+            return formatDateTime(mostRecent.timestamp, timeFormat, dateFormat);
+          })()}</p>
           <p><strong>{t('info.most_active_node')}</strong> {
             nodes.length > 0 ?
             nodes.reduce((prev, current) =>

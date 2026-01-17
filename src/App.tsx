@@ -4106,6 +4106,7 @@ function App() {
             nodes={nodes}
             channels={channels}
             messages={messages}
+            channelMessages={channelMessages}
             currentNodeId={currentNodeId}
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
