@@ -62,6 +62,12 @@ export async function runMigration047Postgres(client: import('pg').PoolClient): 
       if (data_type === 'integer' || data_type === 'bigint') {
         logger.debug(`Converting ${column_name} from ${data_type} to BOOLEAN`);
 
+        // First, drop the default constraint (required before type change in PostgreSQL)
+        await client.query(`
+          ALTER TABLE nodes
+          ALTER COLUMN "${column_name}" DROP DEFAULT
+        `);
+
         // PostgreSQL can cast integer to boolean (0 = false, non-zero = true)
         await client.query(`
           ALTER TABLE nodes
