@@ -2458,7 +2458,10 @@ class DatabaseService {
           keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode?.keyIsLowEntropy,
           duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode?.duplicateKeyDetected,
           keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode?.keyMismatchDetected,
-          keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? existingNode?.keySecurityIssueDetails,
+          // For keySecurityIssueDetails, allow explicit clearing by checking if property was set
+          keySecurityIssueDetails: 'keySecurityIssueDetails' in nodeData
+            ? (nodeData.keySecurityIssueDetails || undefined)
+            : existingNode?.keySecurityIssueDetails,
           welcomedAt: nodeData.welcomedAt ?? existingNode?.welcomedAt,
           positionChannel: nodeData.positionChannel ?? existingNode?.positionChannel,
           positionPrecisionBits: nodeData.positionPrecisionBits ?? existingNode?.positionPrecisionBits,
@@ -2568,7 +2571,9 @@ class DatabaseService {
         nodeData.keyIsLowEntropy !== undefined ? (nodeData.keyIsLowEntropy ? 1 : 0) : null,
         nodeData.duplicateKeyDetected !== undefined ? (nodeData.duplicateKeyDetected ? 1 : 0) : null,
         nodeData.keyMismatchDetected !== undefined ? (nodeData.keyMismatchDetected ? 1 : 0) : null,
-        nodeData.keySecurityIssueDetails || null,
+        // For keySecurityIssueDetails, use empty string to explicitly clear (COALESCE will keep old value for null)
+        // If explicitly set to undefined, pass empty string to clear; if set to a value, use it; if not provided, pass null
+        'keySecurityIssueDetails' in nodeData ? (nodeData.keySecurityIssueDetails || '') : null,
         nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
         nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
         nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,

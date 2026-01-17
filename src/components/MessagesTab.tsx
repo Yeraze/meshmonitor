@@ -1395,6 +1395,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {selectedNode.keySecurityIssueDetails}
                           </div>
                         )}
+                        {/* Fallback: show raw details if no specific flag is set but details exist */}
+                        {!selectedNode.keyIsLowEntropy && !selectedNode.duplicateKeyDetected && !selectedNode.keyMismatchDetected && selectedNode.keySecurityIssueDetails && (
+                          <div>{selectedNode.keySecurityIssueDetails}</div>
+                        )}
                       </div>
                     </div>
                   </div>
