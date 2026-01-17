@@ -5455,8 +5455,25 @@ class MeshtasticManager {
     }
 
     try {
+      // For DMs, look up the recipient's public key for PKI encryption
+      let recipientPublicKey: Uint8Array | undefined;
+      if (destination) {
+        const targetNode = databaseService.getNode(destination);
+        if (targetNode?.publicKey) {
+          // Decode base64 public key to Uint8Array
+          try {
+            recipientPublicKey = Buffer.from(targetNode.publicKey, 'base64');
+            logger.info(`🔐 Found public key for DM recipient ${destination.toString(16)}: ${targetNode.publicKey.substring(0, 20)}...`);
+          } catch (e) {
+            logger.warn(`⚠️ Failed to decode public key for node ${destination.toString(16)}: ${e}`);
+          }
+        } else {
+          logger.warn(`⚠️ No public key found for DM recipient ${destination.toString(16)} - using channel encryption`);
+        }
+      }
+
       // Use the new protobuf service to create a proper text message
-      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji);
+      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, recipientPublicKey);
 
       await this.transport.send(textMessageData);
 

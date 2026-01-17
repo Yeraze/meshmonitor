@@ -394,7 +394,7 @@ export class MeshtasticProtobufService {
   /**
    * Create a text message ToRadio using proper protobuf encoding
    */
-  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {
+  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number, recipientPublicKey?: Uint8Array): { data: Uint8Array; messageId: number } {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -418,15 +418,27 @@ export class MeshtasticProtobufService {
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
       // Ensure channel is valid (0-7) for Meshtastic, default to 0 if invalid
       const validChannel = (channel !== undefined && channel >= 0 && channel <= 7) ? channel : 0;
-      const meshPacket = MeshPacket.create({
+
+      // Build packet options
+      const packetOptions: any = {
         id: messageId,
         to: destination || 0xFFFFFFFF, // Broadcast if no destination
         channel: validChannel,
         decoded: dataMessage,
         wantAck: true
-      });
+      };
 
-      logger.debug(`📤 Creating MeshPacket - ID: ${messageId}, to: ${(meshPacket as any).to.toString(16)}, channel: ${validChannel}, wantAck: ${(meshPacket as any).wantAck}`);
+      // For DMs with a known public key, enable PKI encryption
+      // This tells the firmware to use public key cryptography instead of channel encryption
+      if (destination && recipientPublicKey && recipientPublicKey.length > 0) {
+        packetOptions.pkiEncrypted = true;
+        packetOptions.publicKey = recipientPublicKey;
+        logger.info(`🔐 Enabling PKI encryption for DM to ${destination.toString(16)}`);
+      }
+
+      const meshPacket = MeshPacket.create(packetOptions);
+
+      logger.debug(`📤 Creating MeshPacket - ID: ${messageId}, to: ${(meshPacket as any).to.toString(16)}, channel: ${validChannel}, wantAck: ${(meshPacket as any).wantAck}, pki: ${packetOptions.pkiEncrypted || false}`);
 
       // Create the ToRadio message
       const ToRadio = root.lookupType('meshtastic.ToRadio');
