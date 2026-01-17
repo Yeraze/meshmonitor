@@ -8138,21 +8138,32 @@ function migrateAutoResponderTriggers() {
 // Run migration on startup
 migrateAutoResponderTriggers();
 
-const server = app.listen(PORT, () => {
-  logger.debug(`MeshMonitor server running on port ${PORT}`);
-  logger.debug(`Environment: ${env.nodeEnv}`);
+// Module-level server variable for graceful shutdown
+let server: ReturnType<typeof app.listen>;
 
-  // Initialize WebSocket server for real-time updates
-  initializeWebSocket(server, sessionMiddleware);
+// Wrap server startup in async IIFE to wait for database before accepting requests
+(async () => {
+  try {
+    // Wait for database initialization to complete BEFORE starting server
+    // This is critical for PostgreSQL/MySQL where Drizzle repositories are initialized async
+    await databaseService.waitForReady();
+    logger.info('✅ Database ready, starting HTTP server...');
+  } catch (error) {
+    logger.error('❌ Database initialization failed:', error);
+    process.exit(1);
+  }
 
-  // Send server start notification after database is ready
-  // This ensures PostgreSQL users with server event notifications are found
-  (async () => {
-    try {
-      // Wait for database initialization to complete (important for PostgreSQL)
-      await databaseService.waitForReady();
+  server = app.listen(PORT, () => {
+    logger.debug(`MeshMonitor server running on port ${PORT}`);
+    logger.debug(`Environment: ${env.nodeEnv}`);
 
-      const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
+    // Initialize WebSocket server for real-time updates
+    initializeWebSocket(server, sessionMiddleware);
+
+    // Send server start notification
+    (async () => {
+      try {
+        const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
       if (env.oidcEnabled) enabledFeatures.push('OIDC');
       if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
       if (env.accessLogEnabled) enabledFeatures.push('Access Logging');
@@ -8202,9 +8213,10 @@ const server = app.listen(PORT, () => {
       logger.warn(`   Could not read scripts directory: ${error}`);
     }
   }
-});
+  });
 
-// Configure server timeouts to prevent hanging requests
-server.setTimeout(30000); // 30 seconds
-server.keepAliveTimeout = 65000; // 65 seconds (must be > setTimeout)
-server.headersTimeout = 66000; // 66 seconds (must be > keepAliveTimeout)
+  // Configure server timeouts to prevent hanging requests
+  server.setTimeout(30000); // 30 seconds
+  server.keepAliveTimeout = 65000; // 65 seconds (must be > setTimeout)
+  server.headersTimeout = 66000; // 66 seconds (must be > keepAliveTimeout)
+})();
