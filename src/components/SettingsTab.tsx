@@ -18,6 +18,7 @@ import { type Theme, type NodeHopsCalculation, useSettings } from '../contexts/S
 import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
+import TapbackEmojiSettings from './TapbackEmojiSettings';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -652,6 +653,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-language', label: t('settings.language') },
         { id: 'settings-node-display', label: t('settings.node_display') },
         { id: 'settings-display-prefs', label: t('settings.display_prefs') },
+        { id: 'settings-tapback-emojis', label: t('settings.tapback_emojis', 'Tapback Emojis') },
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
@@ -978,6 +980,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="settings-section">
           <CustomThemeManagement />
         </div>
+
+        <TapbackEmojiSettings />
 
         <div className="settings-section">
           <h3>{t('settings.reset_ui_positions')}</h3>

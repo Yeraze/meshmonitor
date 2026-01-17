@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { useCsrf } from './CsrfContext';
 import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
 import i18n from '../config/i18n';
+import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
@@ -67,6 +68,7 @@ interface SettingsContextType {
   nodeDimmingStartHours: number;
   nodeDimmingMinOpacity: number;
   nodeHopsCalculation: NodeHopsCalculation;
+  tapbackEmojis: TapbackEmoji[];
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
@@ -101,6 +103,7 @@ interface SettingsContextType {
   setNodeDimmingStartHours: (hours: number) => void;
   setNodeDimmingMinOpacity: (opacity: number) => void;
   setNodeHopsCalculation: (calculation: NodeHopsCalculation) => void;
+  setTapbackEmojis: (emojis: TapbackEmoji[]) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -251,6 +254,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   });
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
+
+  // Tapback emojis state (database-only, defaults to built-in emojis)
+  const [tapbackEmojis, setTapbackEmojisState] = useState<TapbackEmoji[]>(DEFAULT_TAPBACK_EMOJIS);
 
   // Custom themes state
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
@@ -559,6 +565,35 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   };
 
   /**
+   * Set tapback emojis and save to database
+   */
+  const setTapbackEmojis = React.useCallback(async (emojis: TapbackEmoji[]) => {
+    setTapbackEmojisState(emojis);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          customTapbackEmojis: JSON.stringify(emojis)
+        })
+      });
+
+      logger.debug(`✅ Tapback emojis saved (${emojis.length} emojis)`);
+    } catch (error) {
+      logger.error('Failed to save tapback emojis:', error);
+      throw error;
+    }
+  }, [baseUrl, getCsrfToken]);
+
+  /**
    * Add a new custom tileset
    */
   const addCustomTileset = React.useCallback(async (tileset: Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -838,6 +873,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          // Load custom tapback emojis (database-only, no localStorage)
+          if (settings.customTapbackEmojis) {
+            try {
+              const emojis = JSON.parse(settings.customTapbackEmojis);
+              if (Array.isArray(emojis) && emojis.length > 0) {
+                setTapbackEmojisState(emojis);
+                logger.debug(`✅ Loaded ${emojis.length} custom tapback emojis`);
+              }
+            } catch (error) {
+              logger.error('Failed to parse custom tapback emojis:', error);
+            }
+          }
+
           logger.debug('✅ Settings loaded from server and applied to state');
 
           // Load user-specific map preferences (overrides global settings)
@@ -925,6 +973,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
     nodeHopsCalculation,
+    tapbackEmojis,
     temporaryTileset,
     setTemporaryTileset,
     isLoading,
@@ -959,6 +1008,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNodeDimmingStartHours,
     setNodeDimmingMinOpacity,
     setNodeHopsCalculation,
+    setTapbackEmojis,
   };
 
   return (
