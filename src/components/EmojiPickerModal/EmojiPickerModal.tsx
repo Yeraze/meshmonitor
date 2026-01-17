@@ -4,9 +4,17 @@ import type { MeshMessage } from '../../types/message';
 import './EmojiPickerModal.css';
 
 /**
- * Tapback emoji options - compatible with Meshtastic OLED displays
+ * Tapback emoji type
  */
-export const TAPBACK_EMOJIS = [
+export interface TapbackEmoji {
+  emoji: string;
+  title: string;
+}
+
+/**
+ * Default tapback emoji options - compatible with Meshtastic OLED displays
+ */
+export const DEFAULT_TAPBACK_EMOJIS: TapbackEmoji[] = [
   // Common reactions (compatible with Meshtastic OLED displays)
   { emoji: '👍', title: 'Thumbs up' },
   { emoji: '👎', title: 'Thumbs down' },
@@ -45,22 +53,27 @@ export const TAPBACK_EMOJIS = [
   { emoji: '❌', title: 'X' },
   { emoji: '🔥', title: 'Fire' },
   { emoji: '💯', title: '100' },
-] as const;
+];
 
 interface EmojiPickerModalProps {
   message: MeshMessage | null;
   onSelectEmoji: (emoji: string, message: MeshMessage) => void;
   onClose: () => void;
+  customEmojis?: TapbackEmoji[];
 }
 
 export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
   message,
   onSelectEmoji,
   onClose,
+  customEmojis,
 }) => {
   const { t } = useTranslation();
 
   if (!message) return null;
+
+  // Use custom emojis if provided, otherwise use defaults
+  const emojis = customEmojis && customEmojis.length > 0 ? customEmojis : DEFAULT_TAPBACK_EMOJIS;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -72,7 +85,7 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
           </button>
         </div>
         <div className="emoji-picker-grid">
-          {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+          {emojis.map(({ emoji, title }) => (
             <button
               key={emoji}
               className="emoji-picker-item"

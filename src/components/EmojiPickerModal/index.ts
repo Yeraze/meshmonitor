@@ -1,1 +1,1 @@
-export { EmojiPickerModal, TAPBACK_EMOJIS } from './EmojiPickerModal';
+export { EmojiPickerModal, DEFAULT_TAPBACK_EMOJIS, type TapbackEmoji } from './EmojiPickerModal';
