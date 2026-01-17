@@ -4,7 +4,7 @@
  * Handles all node-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, isNull, or, desc, and, isNotNull, ne } from 'drizzle-orm';
+import { eq, gt, lt, isNull, or, desc, and, isNotNull, ne, sql } from 'drizzle-orm';
 import { nodesSqlite, nodesPostgres, nodesMysql } from '../schema/nodes.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
@@ -1100,5 +1100,117 @@ export class NodesRepository extends BaseRepository {
         .set({ lastTracerouteRequest: timestamp })
         .where(eq(nodesPostgres.nodeNum, nodeNum));
     }
+  }
+
+  /**
+   * Get nodes eligible for auto-traceroute
+   * Returns nodes that haven't been traced recently based on:
+   * - Category 1: No traceroute exists, retry every 3 hours
+   * - Category 2: Traceroute exists, retry every expirationHours
+   */
+  async getEligibleNodesForTraceroute(
+    localNodeNum: number,
+    activeNodeCutoffSeconds: number,
+    threeHoursAgoMs: number,
+    expirationMsAgo: number
+  ): Promise<DbNode[]> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      // SQLite uses raw SQL for the complex subquery
+      const results = await db.all<DbNode>(sql`
+        SELECT n.*
+        FROM nodes n
+        WHERE n.nodeNum != ${localNodeNum}
+          AND n.lastHeard > ${activeNodeCutoffSeconds}
+          AND (
+            -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) = 0
+              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${threeHoursAgoMs})
+            )
+            OR
+            -- Category 2: Traceroute exists, and (never requested OR requested > expiration hours ago)
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) > 0
+              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${expirationMsAgo})
+            )
+          )
+        ORDER BY n.lastHeard DESC
+      `);
+      return results.map(r => this.normalizeNode(r));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const results = await db.execute(sql`
+        SELECT n.*
+        FROM nodes n
+        WHERE n.nodeNum != ${localNodeNum}
+          AND n.lastHeard > ${activeNodeCutoffSeconds}
+          AND (
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) = 0
+              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${threeHoursAgoMs})
+            )
+            OR
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) > 0
+              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${expirationMsAgo})
+            )
+          )
+        ORDER BY n.lastHeard DESC
+      `);
+      // MySQL returns [rows, fields] tuple
+      const rows = (results as unknown as [unknown[], unknown])[0] as DbNode[];
+      return rows.map(r => this.normalizeNode(r));
+    } else {
+      // PostgreSQL
+      const db = this.getPostgresDb();
+      const results = await db.execute(sql`
+        SELECT n.*
+        FROM nodes n
+        WHERE n."nodeNum" != ${localNodeNum}
+          AND n."lastHeard" > ${activeNodeCutoffSeconds}
+          AND (
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t."fromNodeNum" = ${localNodeNum} AND t."toNodeNum" = n."nodeNum") = 0
+              AND (n."lastTracerouteRequest" IS NULL OR n."lastTracerouteRequest" < ${threeHoursAgoMs})
+            )
+            OR
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t."fromNodeNum" = ${localNodeNum} AND t."toNodeNum" = n."nodeNum") > 0
+              AND (n."lastTracerouteRequest" IS NULL OR n."lastTracerouteRequest" < ${expirationMsAgo})
+            )
+          )
+        ORDER BY n."lastHeard" DESC
+      `);
+      // PostgreSQL returns { rows: [...] }
+      const rows = (results as unknown as { rows: unknown[] }).rows as DbNode[];
+      return rows.map(r => this.normalizeNode(r));
+    }
+  }
+
+  /**
+   * Normalize node data, converting BigInt to Number where needed
+   */
+  private normalizeNode(node: DbNode): DbNode {
+    return {
+      ...node,
+      nodeNum: Number(node.nodeNum),
+      lastHeard: node.lastHeard != null ? Number(node.lastHeard) : null,
+      lastTracerouteRequest: node.lastTracerouteRequest != null ? Number(node.lastTracerouteRequest) : null,
+      latitude: node.latitude != null ? Number(node.latitude) : null,
+      longitude: node.longitude != null ? Number(node.longitude) : null,
+      altitude: node.altitude != null ? Number(node.altitude) : null,
+      snr: node.snr != null ? Number(node.snr) : null,
+      hopsAway: node.hopsAway != null ? Number(node.hopsAway) : null,
+      channel: node.channel != null ? Number(node.channel) : null,
+      role: node.role != null ? Number(node.role) : null,
+      hwModel: node.hwModel != null ? Number(node.hwModel) : null,
+    };
   }
 }

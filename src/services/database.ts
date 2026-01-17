@@ -50,6 +50,7 @@ import { migration as nodesPrivatePermissionMigration } from '../server/migratio
 import { migration as packetDirectionMigration } from '../server/migrations/045_add_packet_direction.js';
 import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
 import { migration as positionOverrideBooleanMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_fix_position_override_boolean_types.js';
+import { migration as autoTracerouteColumnMigration } from '../server/migrations/048_fix_auto_traceroute_column_name.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -865,6 +866,7 @@ class DatabaseService {
     this.runRelayNodePacketLogMigration();
     this.runAutoKeyRepairMigration();
     this.runPositionOverrideBooleanMigration();
+    this.runAutoTracerouteColumnMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1789,6 +1791,27 @@ class DatabaseService {
       logger.debug('✅ Position override boolean migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run position override boolean migration:', error);
+      throw error;
+    }
+  }
+
+  private runAutoTracerouteColumnMigration(): void {
+    logger.debug('Running auto traceroute column name migration...');
+    try {
+      const migrationKey = 'migration_048_auto_traceroute_column';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Auto traceroute column migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 048: Fix auto_traceroute_nodes column name...');
+      autoTracerouteColumnMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Auto traceroute column migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run auto traceroute column migration:', error);
       throw error;
     }
   }
@@ -4801,6 +4824,145 @@ class DatabaseService {
     return this.normalizeBigInts(eligibleNodes[randomIndex]);
   }
 
+  /**
+   * Async version of getNodeNeedingTraceroute - works with all database backends
+   * Returns a node that needs a traceroute based on configured filters and timing
+   */
+  async getNodeNeedingTracerouteAsync(localNodeNum: number): Promise<DbNode | null> {
+    const now = Date.now();
+    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    const expirationHours = this.getTracerouteExpirationHours();
+    const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
+
+    // Get maxNodeAgeHours setting to filter only active nodes
+    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
+    const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+    const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
+
+    // For SQLite, fallback to sync method
+    if (this.drizzleDbType === 'sqlite' || !this.nodesRepo) {
+      return this.getNodeNeedingTraceroute(localNodeNum);
+    }
+
+    try {
+      // Get eligible nodes from repository
+      let eligibleNodes = await this.nodesRepo.getEligibleNodesForTraceroute(
+        localNodeNum,
+        activeNodeCutoff,
+        now - THREE_HOURS_MS,
+        now - EXPIRATION_MS
+      );
+
+      // Check if node filter is enabled
+      const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
+
+      if (filterEnabled) {
+        // Get all filter settings (use async for specificNodes)
+        const specificNodes = await this.getAutoTracerouteNodesAsync();
+        const filterChannels = this.getTracerouteFilterChannels();
+        const filterRoles = this.getTracerouteFilterRoles();
+        const filterHwModels = this.getTracerouteFilterHwModels();
+        const filterNameRegex = this.getTracerouteFilterNameRegex();
+
+        // Get individual filter enabled flags
+        const filterNodesEnabled = this.isTracerouteFilterNodesEnabled();
+        const filterChannelsEnabled = this.isTracerouteFilterChannelsEnabled();
+        const filterRolesEnabled = this.isTracerouteFilterRolesEnabled();
+        const filterHwModelsEnabled = this.isTracerouteFilterHwModelsEnabled();
+        const filterRegexEnabled = this.isTracerouteFilterRegexEnabled();
+
+        // Build regex matcher if enabled
+        let regexMatcher: RegExp | null = null;
+        if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
+          try {
+            regexMatcher = new RegExp(filterNameRegex, 'i');
+          } catch (e) {
+            logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
+          }
+        }
+
+        // Check if ANY filter is actually configured
+        const hasAnyFilter =
+          (filterNodesEnabled && specificNodes.length > 0) ||
+          (filterChannelsEnabled && filterChannels.length > 0) ||
+          (filterRolesEnabled && filterRoles.length > 0) ||
+          (filterHwModelsEnabled && filterHwModels.length > 0) ||
+          (filterRegexEnabled && regexMatcher !== null);
+
+        // Only filter if at least one filter is configured
+        if (hasAnyFilter) {
+          eligibleNodes = eligibleNodes.filter(node => {
+            // UNION logic: node passes if it matches ANY enabled filter
+            // Check specific nodes filter
+            if (filterNodesEnabled && specificNodes.length > 0) {
+              if (specificNodes.includes(node.nodeNum)) {
+                return true;
+              }
+            }
+
+            // Check channel filter
+            if (filterChannelsEnabled && filterChannels.length > 0) {
+              if (node.channel != null && filterChannels.includes(node.channel)) {
+                return true;
+              }
+            }
+
+            // Check role filter
+            if (filterRolesEnabled && filterRoles.length > 0) {
+              if (node.role != null && filterRoles.includes(node.role)) {
+                return true;
+              }
+            }
+
+            // Check hardware model filter
+            if (filterHwModelsEnabled && filterHwModels.length > 0) {
+              if (node.hwModel != null && filterHwModels.includes(node.hwModel)) {
+                return true;
+              }
+            }
+
+            // Check regex name filter
+            if (filterRegexEnabled && regexMatcher !== null) {
+              const name = node.longName || node.shortName || node.nodeId || '';
+              if (regexMatcher.test(name)) {
+                return true;
+              }
+            }
+
+            // Node didn't match any enabled filter
+            return false;
+          });
+        }
+        // If hasAnyFilter is false, all nodes pass (no filtering applied)
+      }
+
+      if (eligibleNodes.length === 0) {
+        return null;
+      }
+
+      // Check if sort by hops is enabled
+      const sortByHops = this.isTracerouteSortByHopsEnabled();
+
+      if (sortByHops) {
+        // Sort by hopsAway ascending (closer nodes first), with undefined hops at the end
+        eligibleNodes.sort((a, b) => {
+          const hopsA = a.hopsAway ?? Infinity;
+          const hopsB = b.hopsAway ?? Infinity;
+          return hopsA - hopsB;
+        });
+        // Take the first (closest) node
+        return this.normalizeBigInts(eligibleNodes[0]);
+      }
+
+      // Randomly select one node from the eligible nodes
+      const randomIndex = Math.floor(Math.random() * eligibleNodes.length);
+      return this.normalizeBigInts(eligibleNodes[randomIndex]);
+    } catch (error) {
+      logger.error('Error in getNodeNeedingTracerouteAsync:', error);
+      return null;
+    }
+  }
+
   recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): void {
     const now = Date.now();
 
@@ -4897,7 +5059,7 @@ class DatabaseService {
     }
     const stmt = this.db.prepare(`
       SELECT nodeNum FROM auto_traceroute_nodes
-      ORDER BY addedAt ASC
+      ORDER BY createdAt ASC
     `);
     const nodes = stmt.all() as { nodeNum: number }[];
     return nodes.map(n => Number(n.nodeNum));
@@ -4920,7 +5082,7 @@ class DatabaseService {
     // Use a transaction for atomic operation
     const deleteStmt = this.db.prepare('DELETE FROM auto_traceroute_nodes');
     const insertStmt = this.db.prepare(`
-      INSERT INTO auto_traceroute_nodes (nodeNum, addedAt)
+      INSERT INTO auto_traceroute_nodes (nodeNum, createdAt)
       VALUES (?, ?)
     `);
 
