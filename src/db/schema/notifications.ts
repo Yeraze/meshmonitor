@@ -12,14 +12,14 @@ import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
 export const pushSubscriptionsSqlite = sqliteTable('push_subscriptions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('userId').references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => usersSqlite.id, { onDelete: 'cascade' }),
   endpoint: text('endpoint').notNull(),
-  p256dhKey: text('p256dhKey').notNull(),
-  authKey: text('authKey').notNull(),
-  userAgent: text('userAgent'),
-  createdAt: integer('createdAt').notNull(),
-  updatedAt: integer('updatedAt').notNull(),
-  lastUsedAt: integer('lastUsedAt'),
+  p256dhKey: text('p256dh_key').notNull(),
+  authKey: text('auth_key').notNull(),
+  userAgent: text('user_agent'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  lastUsedAt: integer('last_used_at'),
 });
 
 export const pushSubscriptionsPostgres = pgTable('push_subscriptions', {
