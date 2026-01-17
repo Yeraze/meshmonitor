@@ -2383,6 +2383,19 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     // Map channel to mesh network
     // Channel must be 0-7 for Meshtastic. If undefined or invalid, default to 0 (Primary)
     let meshChannel = channel !== undefined && channel >= 0 && channel <= 7 ? channel : 0;
+
+    // For DMs, use the channel we last heard the target node on (from NodeInfo)
+    // This ensures we send on a channel the target node has configured
+    if (destinationNum) {
+      const targetNode = databaseService.getNode(destinationNum);
+      if (targetNode && targetNode.channel !== undefined && targetNode.channel !== null) {
+        meshChannel = targetNode.channel;
+        logger.info(`📨 DM to ${destination} - Using target node's channel: ${meshChannel}`);
+      } else {
+        logger.info(`📨 DM to ${destination} - Target node channel unknown, using default channel: ${meshChannel}`);
+      }
+    }
+
     logger.info(
       `📨 Sending message - Received channel: ${channel}, Using meshChannel: ${meshChannel}, Text: "${text.substring(
         0,

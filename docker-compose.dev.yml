@@ -79,6 +79,43 @@ services:
       - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}  # Re-enabled on port 4405
       - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
 
+  # SQLite service (default database)
+  # Start with: docker compose -f docker-compose.dev.yml --profile sqlite up -d
+  meshmonitor-sqlite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - meshmonitor:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: meshmonitor-sqlite
+    profiles:
+      - sqlite
+    ports:
+      - "8081:3001"
+      - "4405:4404"
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-sqlite-data:/data
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      # SQLite is the default - no DATABASE_URL needed
+      - DATABASE_PATH=/data/meshmonitor.db
+      - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
+      - BASE_URL=/meshmonitor
+      - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:8080,http://sentry.yeraze.online:8081,https://meshdev.yeraze.online
+      - TRUST_PROXY=1
+      - COOKIE_SECURE=false
+      - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}
+      - ACCESS_LOG_ENABLED=true
+      - ACCESS_LOG_PATH=/data/logs/access.log
+      - ACCESS_LOG_FORMAT=combined
+      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
+      - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
+
   # MySQL service for testing dual-database support
   # Start with: docker compose -f docker-compose.dev.yml --profile mysql up -d
   mysql:
@@ -142,6 +179,8 @@ services:
 
 volumes:
   meshmonitor-data:
+    driver: local
+  meshmonitor-sqlite-data:
     driver: local
   postgres-data:
     driver: local

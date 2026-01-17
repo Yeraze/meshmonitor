@@ -221,8 +221,11 @@ class MeshtasticManager {
         // Channel message - send to channel, no specific destination
         return await this.sendTextMessage(text, channel, undefined, replyId);
       } else {
-        // DM - send to specific node (channel 0)
-        return await this.sendTextMessage(text, 0, destination, replyId);
+        // DM - use the channel we last heard the target node on
+        const targetNode = databaseService.getNode(destination);
+        const dmChannel = (targetNode?.channel !== undefined && targetNode?.channel !== null) ? targetNode.channel : 0;
+        logger.debug(`📨 Queue DM to ${destination} - Using channel: ${dmChannel}`);
+        return await this.sendTextMessage(text, dmChannel, destination, replyId);
       }
     });
 
