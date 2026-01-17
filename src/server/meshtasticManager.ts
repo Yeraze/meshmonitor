@@ -221,8 +221,11 @@ class MeshtasticManager {
         // Channel message - send to channel, no specific destination
         return await this.sendTextMessage(text, channel, undefined, replyId);
       } else {
-        // DM - send to specific node (channel 0)
-        return await this.sendTextMessage(text, 0, destination, replyId);
+        // DM - use the channel we last heard the target node on
+        const targetNode = databaseService.getNode(destination);
+        const dmChannel = (targetNode?.channel !== undefined && targetNode?.channel !== null) ? targetNode.channel : 0;
+        logger.debug(`📨 Queue DM to ${destination} - Using channel: ${dmChannel}`);
+        return await this.sendTextMessage(text, dmChannel, destination, replyId);
       }
     });
 
@@ -3551,13 +3554,24 @@ class MeshtasticManager {
         route: routing.route || []
       });
 
+      // Look up the original message once for all error handling
+      const originalMessage = requestId ? await databaseService.getMessageByRequestIdAsync(requestId) : null;
+      if (!originalMessage) {
+        // No original message found - this is likely an external routing packet we didn't send
+        logger.debug(`⚠️  Routing error for unknown requestId ${requestId} (not our message)`);
+        return;
+      }
+
+      const targetNodeId = originalMessage.toNodeId;
+      const localNodeId = databaseService.getSetting('localNodeId');
+      const isDM = originalMessage.channel === -1;
+
       // Detect PKI/encryption errors and flag the target node
-      if (isPkiError(errorReason)) {
+      // Only flag if the error is from our local radio (we couldn't encrypt to target)
+      if (isPkiError(errorReason) && fromNodeId === localNodeId) {
         // PKI_FAILED or PKI_UNKNOWN_PUBKEY - indicates key mismatch
-        const originalMessage = requestId ? await databaseService.getMessageByRequestIdAsync(requestId) : null;
-        if (originalMessage && originalMessage.toNodeNum) {
+        if (originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
-          const targetNodeId = originalMessage.toNodeId;
           const errorDescription = errorReason === RoutingError.PKI_FAILED
             ? 'PKI encryption failed - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
             : 'Remote node missing public key - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
@@ -3577,15 +3591,21 @@ class MeshtasticManager {
         }
       }
 
-      // Update message in database to mark delivery as failed
-      if (requestId) {
-        logger.info(`❌ Marking message ${requestId} as failed due to routing error: ${errorName}`);
-        databaseService.updateMessageDeliveryState(requestId, 'failed');
-        // Emit WebSocket event for real-time delivery failure update
-        dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName });
-        // Notify message queue service of failure
-        messageQueueService.handleFailure(requestId, errorName);
+      // For DMs, only mark as failed if the routing error comes from the target node
+      // Intermediate nodes may report errors (e.g., NO_CHANNEL) but the message might have
+      // reached the target via a different route
+      if (isDM && fromNodeId !== targetNodeId) {
+        logger.debug(`⚠️  Ignoring routing error from intermediate node ${fromNodeId} for DM to ${targetNodeId}`);
+        return;
       }
+
+      // Update message in database to mark delivery as failed
+      logger.info(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
+      databaseService.updateMessageDeliveryState(requestId, 'failed');
+      // Emit WebSocket event for real-time delivery failure update
+      dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName });
+      // Notify message queue service of failure
+      messageQueueService.handleFailure(requestId, errorName);
     } catch (error) {
       logger.error('❌ Error processing routing error message:', error);
     }
@@ -5436,6 +5456,7 @@ class MeshtasticManager {
 
     try {
       // Use the new protobuf service to create a proper text message
+      // Note: PKI encryption is handled automatically by the firmware if it has the recipient's public key
       const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji);
 
       await this.transport.send(textMessageData);

@@ -470,10 +470,6 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Get node name for logging
-    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
-    const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
-
     // Get the meshtasticManager instance
     const meshtasticManager = (global as any).meshtasticManager;
     if (!meshtasticManager) {
@@ -482,6 +478,19 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
         message: 'Meshtastic manager not available'
       });
     }
+
+    // Prevent purging the local node
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum;
+    if (localNodeNum && nodeNum === localNodeNum) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Cannot purge the local node from itself'
+      });
+    }
+
+    // Get node name for logging
+    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
     try {
       // Send admin message to remove node from device
