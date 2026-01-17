@@ -7385,12 +7385,19 @@ class DatabaseService {
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
+    logger.info(`[DatabaseService] markChannelMessagesAsRead called: channel=${channelId}, userId=${userId}, dbType=${this.drizzleDbType}`);
     // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.notificationsRepo) {
-        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp).catch((error) => {
-          logger.debug(`[DatabaseService] Mark channel messages as read failed: ${error}`);
-        });
+        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp)
+          .then((count) => {
+            logger.info(`[DatabaseService] Marked ${count} channel ${channelId} messages as read for user ${userId}`);
+          })
+          .catch((error) => {
+            logger.error(`[DatabaseService] Mark channel messages as read failed: ${error}`);
+          });
+      } else {
+        logger.warn(`[DatabaseService] notificationsRepo is null, cannot mark messages as read`);
       }
       return 0; // Return 0 since we don't wait for the async result
     }
@@ -7413,12 +7420,19 @@ class DatabaseService {
   }
 
   markDMMessagesAsRead(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): number {
+    logger.info(`[DatabaseService] markDMMessagesAsRead called: local=${localNodeId}, remote=${remoteNodeId}, userId=${userId}`);
     // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.notificationsRepo) {
-        this.notificationsRepo.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp).catch((error) => {
-          logger.debug(`[DatabaseService] Mark DM messages as read failed: ${error}`);
-        });
+        this.notificationsRepo.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp)
+          .then((count) => {
+            logger.info(`[DatabaseService] Marked ${count} DM messages as read for user ${userId}`);
+          })
+          .catch((error) => {
+            logger.error(`[DatabaseService] Mark DM messages as read failed: ${error}`);
+          });
+      } else {
+        logger.warn(`[DatabaseService] notificationsRepo is null, cannot mark DM messages as read`);
       }
       return 0; // Return 0 since we don't wait for the async result
     }
