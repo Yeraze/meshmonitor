@@ -399,6 +399,25 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         paxcounterWifi: 'Paxcounter WiFi',
         paxcounterBle: 'Paxcounter BLE',
         paxcounterUptime: 'Paxcounter Uptime',
+        // LocalStats metrics (from connected Meshtastic device)
+        uptimeSeconds: 'Device Uptime',
+        numOnlineNodes: 'Online Nodes (Device)',
+        numTotalNodes: 'Total Nodes (Device)',
+        numPacketsTx: 'Packets TX (Device)',
+        numPacketsRx: 'Packets RX (Device)',
+        numPacketsRxBad: 'Bad Packets RX (Device)',
+        numRxDupe: 'Duplicate Packets (Device)',
+        numTxRelay: 'Relayed TX (Device)',
+        numTxRelayCanceled: 'Canceled Relay TX (Device)',
+        numTxDropped: 'Dropped TX (Device)',
+        heapTotalBytes: 'Heap Total (Device)',
+        heapFreeBytes: 'Heap Free (Device)',
+        // HostMetrics (for Linux devices)
+        hostUptimeSeconds: 'Host Uptime',
+        hostFreememBytes: 'Host Free Memory',
+        hostLoad1: 'Host Load (1 min)',
+        hostLoad5: 'Host Load (5 min)',
+        hostLoad15: 'Host Load (15 min)',
       };
       return labels[type] || type;
     };

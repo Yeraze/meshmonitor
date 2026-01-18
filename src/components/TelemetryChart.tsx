@@ -77,6 +77,19 @@ const TELEMETRY_LABELS: Record<string, string> = {
   paxcounterWifi: 'Paxcounter WiFi',
   paxcounterBle: 'Paxcounter BLE',
   paxcounterUptime: 'Paxcounter Uptime',
+  // LocalStats metrics (from connected Meshtastic device)
+  uptimeSeconds: 'Device Uptime',
+  numOnlineNodes: 'Online Nodes (Device)',
+  numTotalNodes: 'Total Nodes (Device)',
+  numPacketsTx: 'Packets TX (Device)',
+  numPacketsRx: 'Packets RX (Device)',
+  numPacketsRxBad: 'Bad Packets RX (Device)',
+  numRxDupe: 'Duplicate Packets (Device)',
+  numTxRelay: 'Relayed TX (Device)',
+  numTxRelayCanceled: 'Canceled Relay TX (Device)',
+  numTxDropped: 'Dropped TX (Device)',
+  heapTotalBytes: 'Heap Total (Device)',
+  heapFreeBytes: 'Heap Free (Device)',
 };
 
 // Export for external use (returns English labels for sorting/filtering compatibility)
