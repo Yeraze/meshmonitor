@@ -120,6 +120,73 @@ Hello Alice! You sent: hello Alice
 ✅ **Timeout:** Complete within 10 seconds
 ✅ **Executable:** Have execute permissions (`chmod +x`)
 
+### Script Metadata (mm_meta)
+
+Scripts can include optional metadata that enhances their display in the MeshMonitor UI. When present, scripts show their name and emoji in dropdowns instead of just the file path, and Timer triggers can auto-fill their name from the script metadata.
+
+**Format:**
+
+Add a `mm_meta:` block near the top of your script as comments:
+
+**Python/Shell:**
+```python
+#!/usr/bin/env python3
+# mm_meta:
+#   name: Weather Lookup
+#   emoji: 🌤️
+#   language: Python
+```
+
+**JavaScript/Node.js:**
+```javascript
+#!/usr/bin/env node
+// mm_meta:
+//   name: Hello World
+//   emoji: 👋
+//   language: JavaScript
+```
+
+**Available Fields:**
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `name` | Human-readable script name | `Weather Lookup` |
+| `emoji` | Icon/emoji for visual identification | `🌤️`, `📏`, `🔋` |
+| `language` | Programming language | `Python`, `JavaScript`, `Shell` |
+
+**Benefits:**
+
+1. **Enhanced UI Display**: Scripts appear as "🌤️ Weather Lookup" instead of "/data/scripts/weather.py"
+2. **Timer Name Autofill**: When selecting a script with metadata for a Timer trigger, the Timer Name field automatically fills with the script's name
+3. **Better Organization**: Easily identify scripts at a glance in dropdowns and management lists
+
+**Example Scripts with Metadata:**
+
+```python
+#!/usr/bin/env python3
+# mm_meta:
+#   name: Distance Calculator
+#   emoji: 📏
+#   language: Python
+"""
+Calculates distance between sender and MeshMonitor node.
+"""
+import os
+import json
+# ... rest of script
+```
+
+```bash
+#!/bin/sh
+# mm_meta:
+#   name: System Info
+#   emoji: ℹ️
+#   language: Shell
+# Returns system uptime information
+```
+
+**Note:** The `mm_meta:` block must appear within the first 1KB of the script file. Language is auto-detected from file extension if not specified.
+
 ### JSON Output Format
 
 Scripts must print JSON to stdout:
@@ -953,14 +1020,40 @@ Complete example scripts are available in the MeshMonitor repository:
 ```json
 {
   "scripts": [
-    "/data/scripts/hello.js",
-    "/data/scripts/info.sh",
-    "/data/scripts/weather.py"
+    {
+      "path": "/data/scripts/weather.py",
+      "filename": "weather.py",
+      "name": "Weather Lookup",
+      "emoji": "🌤️",
+      "language": "Python"
+    },
+    {
+      "path": "/data/scripts/info.sh",
+      "filename": "info.sh",
+      "name": "System Info",
+      "emoji": "ℹ️",
+      "language": "Shell"
+    },
+    {
+      "path": "/data/scripts/hello.js",
+      "filename": "hello.js",
+      "language": "JavaScript"
+    }
   ]
 }
 ```
 
-This endpoint is called automatically by the Auto Responder UI to populate the script dropdown.
+**Response Fields:**
+
+| Field | Description | Always Present |
+|-------|-------------|----------------|
+| `path` | Full path to the script | Yes |
+| `filename` | Script filename | Yes |
+| `name` | Script name from mm_meta | No (only if mm_meta present) |
+| `emoji` | Script emoji from mm_meta | No (only if mm_meta present) |
+| `language` | Script language (from mm_meta or auto-detected from extension) | Yes |
+
+This endpoint is called automatically by the Auto Responder UI to populate the script dropdown. Scripts with metadata display enhanced information in the UI.
 
 ## Version Compatibility
 

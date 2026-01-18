@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: API Query Example
+#   emoji: 🔌
+#   language: Python
 """
 API Query Script - Demonstrates using MeshMonitor's v1 API from scripts.
 

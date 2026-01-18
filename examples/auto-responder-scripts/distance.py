@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: Distance Calculator
+#   emoji: 📏
+#   language: Python
 """
 Distance Calculator Script - Uses location environment variables.
 

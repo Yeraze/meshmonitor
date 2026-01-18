@@ -1,11 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isValidCron } from 'cron-validator';
-import { TimerTrigger, TimerResponseType } from './auto-responder/types';
+import { TimerTrigger, TimerResponseType, ScriptMetadata } from './auto-responder/types';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
-import { getFileIcon } from './auto-responder/utils';
 import { Channel } from '../types/device';
+
+/**
+ * Get language emoji for display
+ */
+const getLanguageEmoji = (language: string): string => {
+  switch (language.toLowerCase()) {
+    case 'python': return '🐍';
+    case 'javascript': return '📘';
+    case 'shell': return '💻';
+    default: return '📄';
+  }
+};
+
+/**
+ * Format script for dropdown display
+ * Returns: "emoji | name | filename | language" or "langEmoji filename" if no metadata
+ */
+const formatScriptDisplay = (script: ScriptMetadata): string => {
+  const langEmoji = getLanguageEmoji(script.language);
+  if (script.name) {
+    const emoji = script.emoji || langEmoji;
+    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+  }
+  return `${langEmoji} ${script.filename}`;
+};
 
 // Available tokens for text message expansion (same as auto-announce)
 const AVAILABLE_TOKENS = [
@@ -36,11 +60,12 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   const [localTriggers, setLocalTriggers] = useState<TimerTrigger[]>(triggers);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [availableScripts, setAvailableScripts] = useState<string[]>([]);
+  const [availableScripts, setAvailableScripts] = useState<ScriptMetadata[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // New trigger form state
   const [newName, setNewName] = useState('');
+  const [newNameManuallyEdited, setNewNameManuallyEdited] = useState(false);
   const [newCronExpression, setNewCronExpression] = useState('0 */6 * * *');
   const [newResponseType, setNewResponseType] = useState<TimerResponseType>('script');
   const [newScriptPath, setNewScriptPath] = useState('');
@@ -59,14 +84,25 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     setHasChanges(changed);
   }, [localTriggers, triggers]);
 
-  // Fetch available scripts
+  // Fetch available scripts with metadata
   useEffect(() => {
     const fetchScripts = async () => {
       try {
         const response = await fetch(`${baseUrl}/api/scripts`);
         if (response.ok) {
           const data = await response.json();
-          setAvailableScripts(data.scripts || []);
+          // Handle both new metadata format and legacy string array format
+          const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
+            if (typeof script === 'string') {
+              // Legacy format - convert to metadata object
+              const filename = script.split('/').pop() || script;
+              const ext = filename.split('.').pop()?.toLowerCase() || '';
+              const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
+              return { path: script, filename, language };
+            }
+            return script;
+          });
+          setAvailableScripts(scripts);
         }
       } catch (error) {
         console.error('Failed to fetch available scripts:', error);
@@ -74,6 +110,27 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     };
     fetchScripts();
   }, [baseUrl]);
+
+  // Handle script selection with autofill
+  const handleScriptSelect = useCallback((scriptPath: string) => {
+    setNewScriptPath(scriptPath);
+
+    // Autofill timer name if not manually edited
+    if (!newNameManuallyEdited && scriptPath) {
+      const script = availableScripts.find(s => s.path === scriptPath);
+      if (script?.name) {
+        setNewName(script.name);
+      }
+    }
+  }, [availableScripts, newNameManuallyEdited]);
+
+  // Handle manual name edit
+  const handleNameChange = useCallback((value: string) => {
+    setNewName(value);
+    if (value.trim()) {
+      setNewNameManuallyEdited(true);
+    }
+  }, []);
 
   // Validate cron expression
   useEffect(() => {
@@ -148,6 +205,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
 
     setLocalTriggers([...localTriggers, newTrigger]);
     setNewName('');
+    setNewNameManuallyEdited(false);
     setNewCronExpression('0 */6 * * *');
     setNewResponseType('script');
     setNewScriptPath('');
@@ -244,7 +302,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               <input
                 type="text"
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 className="setting-input"
                 style={{ flex: 1 }}
                 placeholder={t('automation.timer_triggers.name_placeholder', 'e.g., Daily Report')}
@@ -323,24 +381,20 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 </label>
                 <select
                   value={newScriptPath}
-                  onChange={(e) => setNewScriptPath(e.target.value)}
+                  onChange={(e) => handleScriptSelect(e.target.value)}
                   className="setting-input"
-                  style={{ flex: 1, fontFamily: 'monospace' }}
+                  style={{ flex: 1 }}
                 >
                   <option value="">
                     {availableScripts.length === 0
                       ? t('automation.timer_triggers.no_scripts', 'No scripts found in /data/scripts/')
                       : t('automation.timer_triggers.select_script', 'Select a script...')}
                   </option>
-                  {availableScripts.map((script) => {
-                    const filename = script.split('/').pop() || script;
-                    const icon = getFileIcon(filename);
-                    return (
-                      <option key={script} value={script}>
-                        {icon} {filename}
-                      </option>
-                    );
-                  })}
+                  {availableScripts.map((script) => (
+                    <option key={script.path} value={script.path}>
+                      {formatScriptDisplay(script)}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -496,7 +550,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
 interface TimerTriggerItemProps {
   trigger: TimerTrigger;
   isEditing: boolean;
-  availableScripts: string[];
+  availableScripts: ScriptMetadata[];
   channels: Channel[];
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -566,6 +620,11 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
 
   const responseType = trigger.responseType || 'script';
   const filename = trigger.scriptPath ? (trigger.scriptPath.split('/').pop() || trigger.scriptPath) : '';
+
+  // Find script metadata for display
+  const scriptMeta = trigger.scriptPath ? availableScripts.find(s => s.path === trigger.scriptPath) : undefined;
+  const scriptEmoji = scriptMeta?.emoji || getLanguageEmoji(scriptMeta?.language || '');
+  const scriptDisplayName = scriptMeta?.name || filename;
 
   return (
     <div
@@ -648,17 +707,13 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                   value={editScriptPath}
                   onChange={(e) => setEditScriptPath(e.target.value)}
                   className="setting-input"
-                  style={{ flex: 1, fontFamily: 'monospace' }}
+                  style={{ flex: 1 }}
                 >
-                  {availableScripts.map((script) => {
-                    const fn = script.split('/').pop() || script;
-                    const icon = getFileIcon(fn);
-                    return (
-                      <option key={script} value={script}>
-                        {icon} {fn}
-                      </option>
-                    );
-                  })}
+                  {availableScripts.map((script) => (
+                    <option key={script.path} value={script.path}>
+                      {formatScriptDisplay(script)}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -745,7 +800,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
               {responseType === 'script' ? (
-                <>{getFileIcon(filename)} {filename}</>
+                <>{scriptEmoji} {scriptDisplayName}</>
               ) : (
                 <>💬 {trigger.response && trigger.response.length > 40 ? trigger.response.substring(0, 40) + '...' : trigger.response}</>
               )}

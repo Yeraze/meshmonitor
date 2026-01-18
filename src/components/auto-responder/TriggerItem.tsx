@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TriggerItemProps, ResponseType } from './types';
-import { getFileIcon, splitTriggerPatterns, formatTriggerPatterns } from './utils';
+import { TriggerItemProps, ResponseType, ScriptMetadata } from './types';
+import { splitTriggerPatterns, formatTriggerPatterns } from './utils';
+
+/**
+ * Format script for dropdown display
+ */
+const formatScriptDisplay = (script: ScriptMetadata): string => {
+  const langEmoji = script.language === 'Python' ? '🐍' : script.language === 'JavaScript' ? '📘' : script.language === 'Shell' ? '💻' : '📄';
+  if (script.name) {
+    const emoji = script.emoji || langEmoji;
+    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+  }
+  return `${langEmoji} ${script.filename}`;
+};
 
 const TriggerItem: React.FC<TriggerItemProps> = ({
   trigger,
@@ -213,15 +225,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     <option value="">
                       {availableScripts.length === 0 ? 'No scripts found in /data/scripts/' : 'Select a script...'}
                     </option>
-                    {availableScripts.map((script) => {
-                      const filename = script.split('/').pop() || script;
-                      const icon = getFileIcon(filename);
-                      return (
-                        <option key={script} value={script}>
-                          {icon} {filename}
-                        </option>
-                      );
-                    })}
+                    {availableScripts.map((script) => (
+                      <option key={script.path} value={script.path}>
+                        {formatScriptDisplay(script)}
+                      </option>
+                    ))}
                   </select>
                 ) : (
                   <input

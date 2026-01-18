@@ -1,4 +1,8 @@
 #!/bin/sh
+# mm_meta:
+#   name: Lorem Ipsum (Multi-Message)
+#   emoji: 📜
+#   language: Shell
 
 # Lorem Ipsum Multi-Message Example (Shell)
 #

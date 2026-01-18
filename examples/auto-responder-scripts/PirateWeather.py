@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: Pirate Weather
+#   emoji: 🏴‍☠️
+#   language: Python
 """
 Weather script for MeshMonitor auto-responder using Pirate Weather API.
 Supports any location format using OpenStreetMap's free Nominatim geocoding service.

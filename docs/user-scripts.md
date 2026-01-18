@@ -39,9 +39,23 @@ When submitting a script for the gallery, please provide:
 6. **Example Trigger**: The trigger pattern(s) used with the script
 7. **Requirements**: Any dependencies, API keys, or environment variables needed (can be a list)
 8. **Code**: The complete script code (via GitHub link, Gist, or paste)
-9. **Source Location**: 
+9. **Source Location**:
    - If in main repo: Script will be added to `examples/auto-responder-scripts/`
    - If in external repo: Provide GitHub path in format `USERNAME/repo/path/to/script.py` or `USERNAME/repo/branch/path/to/script.py`
+
+### Script Metadata (mm_meta)
+
+We recommend including a `mm_meta:` block in your script for enhanced display in the MeshMonitor UI:
+
+```python
+#!/usr/bin/env python3
+# mm_meta:
+#   name: My Script Name
+#   emoji: 🔧
+#   language: Python
+```
+
+Scripts with metadata display their name and emoji in dropdowns instead of just the file path. See the [Auto Responder Scripting Guide](/developers/auto-responder-scripting#script-metadata-mm-meta) for details.
 
 ### Script Requirements
 

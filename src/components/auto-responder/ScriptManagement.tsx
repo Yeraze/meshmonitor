@@ -1,8 +1,33 @@
 import React, { useState } from 'react';
-import { getFileIcon } from './utils';
+import { ScriptMetadata } from './types';
+
+/**
+ * Get language emoji for display
+ */
+const getLanguageEmoji = (language: string): string => {
+  switch (language.toLowerCase()) {
+    case 'python': return '🐍';
+    case 'javascript': return '📘';
+    case 'shell': return '💻';
+    default: return '📄';
+  }
+};
+
+/**
+ * Format script for list display
+ * Returns: "emoji name | filename | language" or "langEmoji filename" if no metadata
+ */
+const formatScriptListDisplay = (script: ScriptMetadata): string => {
+  const langEmoji = getLanguageEmoji(script.language);
+  if (script.name) {
+    const emoji = script.emoji || langEmoji;
+    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+  }
+  return `${langEmoji} ${script.filename}`;
+};
 
 interface ScriptManagementProps {
-  availableScripts: string[];
+  availableScripts: ScriptMetadata[];
   selectedScripts: Set<string>;
   isImporting: boolean;
   isExporting: boolean;
@@ -160,11 +185,10 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {availableScripts.map((script) => {
-                const filename = script.replace('/data/scripts/', '');
-                const isSelected = selectedScripts.has(script);
+                const isSelected = selectedScripts.has(script.path);
                 return (
                   <div
-                    key={script}
+                    key={script.path}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -178,27 +202,27 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => onToggleSelection(script)}
+                      onChange={() => onToggleSelection(script.path)}
                       style={{ cursor: 'pointer' }}
                     />
-                    <span style={{ flex: '1', fontFamily: 'monospace', fontSize: '0.9rem' }}>
-                      {getFileIcon(filename)} {filename}
+                    <span style={{ flex: '1', fontSize: '0.9rem' }}>
+                      {formatScriptListDisplay(script)}
                     </span>
                     <button
-                      onClick={() => onDeleteClick(filename)}
-                      disabled={isDeleting === filename}
+                      onClick={() => onDeleteClick(script.filename)}
+                      disabled={isDeleting === script.filename}
                       style={{
                         padding: '0.25rem 0.75rem',
                         fontSize: '0.75rem',
-                        background: isDeleting === filename ? 'var(--ctp-surface2)' : 'var(--ctp-red)',
-                        color: isDeleting === filename ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                        background: isDeleting === script.filename ? 'var(--ctp-surface2)' : 'var(--ctp-red)',
+                        color: isDeleting === script.filename ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
                         border: 'none',
                         borderRadius: '3px',
-                        cursor: isDeleting === filename ? 'not-allowed' : 'pointer',
+                        cursor: isDeleting === script.filename ? 'not-allowed' : 'pointer',
                         fontWeight: 'bold'
                       }}
                     >
-                      {isDeleting === filename ? 'Deleting...' : '🗑️ Delete'}
+                      {isDeleting === script.filename ? 'Deleting...' : '🗑️ Delete'}
                     </button>
                   </div>
                 );
