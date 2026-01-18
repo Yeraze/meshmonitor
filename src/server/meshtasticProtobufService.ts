@@ -1003,13 +1003,13 @@ export class MeshtasticProtobufService {
       const DeviceMetrics = root.lookupType('meshtastic.DeviceMetrics');
       const FromRadio = root.lookupType('meshtastic.FromRadio');
 
-      // Convert hex string publicKey to Uint8Array if present
+      // Convert base64 publicKey to Uint8Array if present
+      // Note: Public keys are stored as base64 in the database
       let publicKeyBytes: Uint8Array | undefined;
       if (info.user.publicKey && info.user.publicKey.length > 0) {
         try {
-          // Remove any whitespace and convert hex string to bytes
-          const hexStr = info.user.publicKey.replace(/\s/g, '');
-          publicKeyBytes = new Uint8Array(hexStr.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+          // Decode base64 string to bytes
+          publicKeyBytes = new Uint8Array(Buffer.from(info.user.publicKey, 'base64'));
         } catch (error) {
           logger.warn(`Failed to convert publicKey to bytes for node ${info.user.id}:`, error);
         }
