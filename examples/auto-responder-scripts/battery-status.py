@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: Battery Status Monitor
+#   emoji: 🔋
+#   language: Python
 """
 Battery Status Monitor for Auto Responder
 

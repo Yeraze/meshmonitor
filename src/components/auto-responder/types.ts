@@ -1,5 +1,16 @@
 import { Channel } from '../../types/device';
 
+/**
+ * Script metadata from the API
+ */
+export interface ScriptMetadata {
+  path: string;           // Full path like /data/scripts/filename.py
+  filename: string;       // Just the filename
+  name?: string;          // Human-readable name from mm_meta
+  emoji?: string;         // Emoji icon from mm_meta
+  language: string;       // Inferred from extension or mm_meta
+}
+
 export type ResponseType = 'text' | 'http' | 'script';
 
 export interface AutoResponderTrigger {
@@ -43,7 +54,7 @@ export interface TriggerItemProps {
   trigger: AutoResponderTrigger;
   isEditing: boolean;
   localEnabled: boolean;
-  availableScripts: string[];
+  availableScripts: ScriptMetadata[];
   channels: Channel[];
   onStartEdit: () => void;
   onCancelEdit: () => void;

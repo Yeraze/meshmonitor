@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
-import { 
-  AutoResponderTrigger, 
-  AutoResponderSectionProps, 
-  ResponseType 
+import {
+  AutoResponderTrigger,
+  AutoResponderSectionProps,
+  ResponseType,
+  ScriptMetadata
 } from './auto-responder/types';
 import { 
   getFileIcon, 
@@ -47,7 +48,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newChannel, setNewChannel] = useState<number | 'dm'>('dm');
   const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [availableScripts, setAvailableScripts] = useState<string[]>([]);
+  const [availableScripts, setAvailableScripts] = useState<ScriptMetadata[]>([]);
   const [newTriggerValidation, setNewTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
   const [currentTestLine, setCurrentTestLine] = useState<string>('');
   const [quickTestResult, setQuickTestResult] = useState<{ loading: boolean; result: string | null; error?: string } | null>(null);
@@ -96,7 +97,18 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         const response = await fetch(`${baseUrl}/api/scripts`);
         if (response.ok) {
           const data = await response.json();
-          setAvailableScripts(data.scripts || []);
+          // Handle both new metadata format and legacy string array format
+          const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
+            if (typeof script === 'string') {
+              // Legacy format - convert to metadata object
+              const filename = script.split('/').pop() || script;
+              const ext = filename.split('.').pop()?.toLowerCase() || '';
+              const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
+              return { path: script, filename, language };
+            }
+            return script;
+          });
+          setAvailableScripts(scripts);
         }
       } catch (error) {
         console.error('Failed to fetch available scripts:', error);
@@ -220,7 +232,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   };
 
   const selectAllScripts = () => {
-    setSelectedScripts(new Set(availableScripts));
+    setSelectedScripts(new Set(availableScripts.map(s => s.path)));
   };
 
   const deselectAllScripts = () => {
@@ -687,10 +699,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     {availableScripts.length === 0 ? t('auto_responder.no_scripts_found') : t('auto_responder.select_script')}
                   </option>
                   {availableScripts.map((script) => {
-                    const filename = script.replace('/data/scripts/', '');
+                    const langEmoji = script.language === 'Python' ? '🐍' : script.language === 'JavaScript' ? '📘' : script.language === 'Shell' ? '💻' : '📄';
+                    const display = script.name
+                      ? `${script.emoji || langEmoji} ${script.name} | ${script.filename} | ${script.language}`
+                      : `${langEmoji} ${script.filename}`;
                     return (
-                    <option key={script} value={script}>
-                        {getFileIcon(filename)} {filename}
+                    <option key={script.path} value={script.path}>
+                        {display}
                     </option>
                     );
                   })}

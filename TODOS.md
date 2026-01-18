@@ -34,6 +34,46 @@
 
 ## Current Sprint
 
+### Script Metadata Enhancement (#1490)
+
+**Completed:**
+- [x] Add script metadata parsing to /api/scripts endpoint
+  - Parse `mm_meta:` blocks from script files
+  - Extract name, emoji, and language fields
+  - Auto-detect language from file extension as fallback
+- [x] Update TimerTriggersSection dropdown with enhanced display
+  - Show "emoji | name | filename | language" format
+- [x] Add Timer Name autofill on script selection
+  - Autofill Timer Name from script metadata when selecting a script
+  - Only autofill if user hasn't manually edited the name
+- [x] Update ScriptManagement list with enhanced display
+- [x] Update TriggerItem component with enhanced script display
+- [x] Add mm_meta blocks to all example scripts
+  - weather.py, battery-status.py, distance.py, lorem.py, api-query.py, PirateWeather.py
+  - lorem.sh, info.sh
+- [x] Update documentation
+  - Added Script Metadata section to developers/auto-responder-scripting.md
+  - Updated API Reference with new response format
+  - Added mm_meta section to user-scripts.md submission guidelines
+
+---
+
+### Auto Traceroute Settings Column Mismatch Fix
+
+**Completed:**
+- [x] Identified column name mismatch causing 500 error on `/api/settings/traceroute-nodes`
+  - SQLite migration 015 created `auto_traceroute_nodes` table with `addedAt` column
+  - Drizzle schema and PostgreSQL/MySQL used `createdAt` column
+  - Caused async repo queries to fail for SQLite
+- [x] Added migration 048 to rename `addedAt` to `createdAt` in SQLite
+- [x] Updated sync methods in `database.ts` to use `createdAt` instead of `addedAt`
+- [x] Build successful
+
+**Summary:**
+Fixed a bug where Auto Traceroute settings page returned 500 error because of a column name mismatch between the SQLite migration (`addedAt`) and the Drizzle schema (`createdAt`). This prevented the UI from loading initial settings, so the "Save Changes" button never became enabled.
+
+---
+
 ### PostgreSQL Read Tracking Fix
 
 **Completed:**

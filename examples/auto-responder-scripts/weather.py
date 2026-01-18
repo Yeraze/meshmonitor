@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: Weather Lookup
+#   emoji: 🌤️
+#   language: Python
 """
 Weather lookup script for Auto Responder
 

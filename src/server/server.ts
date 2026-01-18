@@ -7422,6 +7422,70 @@ apiRouter.put('/apprise/enabled', requireAdmin(), (req, res) => {
 // Serve static files from the React app build
 const buildPath = path.join(__dirname, '../../dist');
 
+/**
+ * Script metadata interface for enhanced script display
+ */
+interface ScriptMetadata {
+  path: string;           // Full path like /data/scripts/filename.py
+  filename: string;       // Just the filename
+  name?: string;          // Human-readable name from mm_meta
+  emoji?: string;         // Emoji icon from mm_meta
+  language: string;       // Inferred from extension or mm_meta
+}
+
+/**
+ * Parse mm_meta block from script content
+ * Format:
+ * # mm_meta:
+ * #   name: Script Display Name
+ * #   emoji: 📡
+ * #   language: Python
+ */
+const parseScriptMetadata = (content: string, _filename: string): Partial<ScriptMetadata> => {
+  const metadata: Partial<ScriptMetadata> = {};
+
+  // Look for mm_meta block - supports both # and // comment styles
+  const metaMatch = content.match(/^[#\/]{1,2}\s*mm_meta:\s*\n((?:[#\/]{1,2}\s+\w+:.*\n?)+)/m);
+
+  if (metaMatch) {
+    const metaBlock = metaMatch[1];
+
+    // Parse name
+    const nameMatch = metaBlock.match(/^[#\/]{1,2}\s+name:\s*(.+)$/m);
+    if (nameMatch) {
+      metadata.name = nameMatch[1].trim();
+    }
+
+    // Parse emoji
+    const emojiMatch = metaBlock.match(/^[#\/]{1,2}\s+emoji:\s*(.+)$/m);
+    if (emojiMatch) {
+      metadata.emoji = emojiMatch[1].trim();
+    }
+
+    // Parse language (override extension-based detection)
+    const langMatch = metaBlock.match(/^[#\/]{1,2}\s+language:\s*(.+)$/m);
+    if (langMatch) {
+      metadata.language = langMatch[1].trim();
+    }
+  }
+
+  return metadata;
+};
+
+/**
+ * Get language display name from file extension
+ */
+const getLanguageFromExtension = (filename: string): string => {
+  const ext = path.extname(filename).toLowerCase();
+  switch (ext) {
+    case '.py': return 'Python';
+    case '.js': return 'JavaScript';
+    case '.mjs': return 'JavaScript';
+    case '.sh': return 'Shell';
+    default: return 'Script';
+  }
+};
+
 // Public endpoint to list available scripts (no CSRF or auth required)
 const scriptsEndpoint = (_req: any, res: any) => {
   try {
@@ -7437,14 +7501,47 @@ const scriptsEndpoint = (_req: any, res: any) => {
     const files = fs.readdirSync(scriptsDir);
     const validExtensions = ['.js', '.mjs', '.py', '.sh'];
 
-    const scripts = files
+    const scriptFiles = files
       .filter(file => {
         const ext = path.extname(file).toLowerCase();
         return validExtensions.includes(ext);
       })
       .filter(file => file !== 'upgrade-watchdog.sh') // Exclude system scripts
-      .map(file => `/data/scripts/${file}`) // Always return /data/scripts/... format for API consistency
       .sort();
+
+    // Build script metadata for each file
+    const scripts: ScriptMetadata[] = scriptFiles.map(file => {
+      const filePath = path.join(scriptsDir, file);
+      const scriptPath = `/data/scripts/${file}`;
+
+      // Start with defaults
+      const script: ScriptMetadata = {
+        path: scriptPath,
+        filename: file,
+        language: getLanguageFromExtension(file),
+      };
+
+      // Try to read and parse metadata from file
+      try {
+        // Only read first 1KB to find metadata block (performance optimization)
+        const fd = fs.openSync(filePath, 'r');
+        const buffer = Buffer.alloc(1024);
+        const bytesRead = fs.readSync(fd, buffer, 0, 1024, 0);
+        fs.closeSync(fd);
+
+        const content = buffer.toString('utf8', 0, bytesRead);
+        const metadata = parseScriptMetadata(content, file);
+
+        if (metadata.name) script.name = metadata.name;
+        if (metadata.emoji) script.emoji = metadata.emoji;
+        if (metadata.language) script.language = metadata.language;
+      } catch (readError) {
+        // Silently ignore read errors - script will just use defaults
+        logger.debug(`📜 Could not read metadata from ${file}: ${readError}`);
+      }
+
+      return script;
+    });
 
     if (env.isDevelopment && scripts.length > 0) {
       logger.debug(`📜 Found ${scripts.length} script(s) in ${scriptsDir}`);

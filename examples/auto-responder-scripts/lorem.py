@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-
+# mm_meta:
+#   name: Lorem Ipsum (Multi-Message)
+#   emoji: 📜
+#   language: Python
 """
 Lorem Ipsum Multi-Message Example (Python)
 

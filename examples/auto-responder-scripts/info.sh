@@ -1,4 +1,8 @@
 #!/bin/sh
+# mm_meta:
+#   name: System Info
+#   emoji: ℹ️
+#   language: Shell
 # System info script for Auto Responder
 #
 # Environment variables available:
