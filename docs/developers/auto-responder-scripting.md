@@ -185,7 +185,7 @@ import json
 # Returns system uptime information
 ```
 
-**Note:** The `mm_meta:` block must appear within the first 50 lines of the script. Language is auto-detected from file extension if not specified.
+**Note:** The `mm_meta:` block must appear within the first 1KB of the script file. Language is auto-detected from file extension if not specified.
 
 ### JSON Output Format
 

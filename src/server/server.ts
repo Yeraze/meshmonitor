@@ -7434,6 +7434,17 @@ interface ScriptMetadata {
 }
 
 /**
+ * Sanitize metadata value to prevent XSS
+ * Strips HTML tags and limits length
+ */
+const sanitizeMetadataValue = (value: string, maxLength: number = 100): string => {
+  // Strip HTML tags
+  const stripped = value.replace(/<[^>]*>/g, '');
+  // Limit length
+  return stripped.substring(0, maxLength).trim();
+};
+
+/**
  * Parse mm_meta block from script content
  * Format:
  * # mm_meta:
@@ -7450,22 +7461,22 @@ const parseScriptMetadata = (content: string, _filename: string): Partial<Script
   if (metaMatch) {
     const metaBlock = metaMatch[1];
 
-    // Parse name
+    // Parse name (sanitize to prevent XSS, max 100 chars)
     const nameMatch = metaBlock.match(/^[#\/]{1,2}\s+name:\s*(.+)$/m);
     if (nameMatch) {
-      metadata.name = nameMatch[1].trim();
+      metadata.name = sanitizeMetadataValue(nameMatch[1], 100);
     }
 
-    // Parse emoji
+    // Parse emoji (sanitize, limit to 10 chars for emoji sequences)
     const emojiMatch = metaBlock.match(/^[#\/]{1,2}\s+emoji:\s*(.+)$/m);
     if (emojiMatch) {
-      metadata.emoji = emojiMatch[1].trim();
+      metadata.emoji = sanitizeMetadataValue(emojiMatch[1], 10);
     }
 
-    // Parse language (override extension-based detection)
+    // Parse language (sanitize, max 20 chars)
     const langMatch = metaBlock.match(/^[#\/]{1,2}\s+language:\s*(.+)$/m);
     if (langMatch) {
-      metadata.language = langMatch[1].trim();
+      metadata.language = sanitizeMetadataValue(langMatch[1], 20);
     }
   }
 
