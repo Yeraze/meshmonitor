@@ -640,7 +640,8 @@ class MeshtasticManager {
     this.tracerouteInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
-          const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
+          // Use async version which supports PostgreSQL/MySQL
+          const targetNode = await databaseService.getNodeNeedingTracerouteAsync(this.localNodeInfo.nodeNum);
           if (targetNode) {
             const channel = targetNode.channel ?? 0; // Use node's channel, default to 0
             const targetName = targetNode.longName || targetNode.nodeId;
