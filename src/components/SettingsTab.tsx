@@ -171,7 +171,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
-  const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql'>('sqlite');
+  const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -192,13 +192,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     fetchSystemStatus();
   }, [baseUrl]);
 
-  // Fetch database type to determine which settings to show
+  // Fetch database type from health endpoint (public, no auth required)
   useEffect(() => {
     const fetchDatabaseType = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/maintenance/status`, {
-          credentials: 'include'
-        });
+        const response = await fetch(`${baseUrl}/api/health`);
         if (response.ok) {
           const data = await response.json();
           if (data.databaseType) {

@@ -57,12 +57,34 @@ const DatabaseMaintenanceSection: React.FC = () => {
   const [databaseSize, setDatabaseSize] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
 
-  // Load status and settings on mount
+  // Fetch database type from health endpoint (public, no auth required)
   useEffect(() => {
-    loadStatus();
-    loadDatabaseSize();
+    const fetchDatabaseType = async () => {
+      try {
+        const baseUrl = await apiService.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/health`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.databaseType) {
+            setDatabaseType(data.databaseType);
+          }
+        }
+      } catch (error) {
+        logger.error('Error fetching database type:', error);
+      }
+    };
+    fetchDatabaseType();
   }, []);
+
+  // Load status and settings on mount (only if SQLite)
+  useEffect(() => {
+    if (databaseType === 'sqlite') {
+      loadStatus();
+      loadDatabaseSize();
+    }
+  }, [databaseType]);
 
   const loadStatus = async () => {
     try {
@@ -207,7 +229,8 @@ const DatabaseMaintenanceSection: React.FC = () => {
   };
 
   // Hide the entire section for PostgreSQL/MySQL - maintenance features are SQLite-specific
-  if (status && status.databaseType !== 'sqlite') {
+  // Also hide if we can't determine the database type yet
+  if (databaseType !== 'sqlite') {
     return null;
   }
 
