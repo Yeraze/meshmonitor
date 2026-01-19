@@ -3892,6 +3892,28 @@ class DatabaseService {
     return channels.map(channel => this.normalizeBigInts(channel));
   }
 
+  /**
+   * Async version of getAllChannels - works with all database backends
+   */
+  async getAllChannelsAsync(): Promise<DbChannel[]> {
+    if (this.channelsRepo) {
+      return this.channelsRepo.getAllChannels() as unknown as DbChannel[];
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getAllChannels();
+  }
+
+  /**
+   * Async version of getChannelById - works with all database backends
+   */
+  async getChannelByIdAsync(id: number): Promise<DbChannel | null> {
+    if (this.channelsRepo) {
+      return this.channelsRepo.getChannelById(id) as unknown as DbChannel | null;
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getChannelById(id);
+  }
+
   getChannelCount(): number {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {

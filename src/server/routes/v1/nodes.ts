@@ -67,7 +67,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (active) {
       nodes = databaseService.getActiveNodes(sinceDays);
     } else {
-      nodes = databaseService.getAllNodes();
+      nodes = await databaseService.getAllNodesAsync();
     }
 
     // Enrich nodes with uptime data from telemetry
@@ -110,7 +110,7 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     }
 
     const { nodeId } = req.params;
-    const allNodes = databaseService.getAllNodes();
+    const allNodes = await databaseService.getAllNodesAsync();
     const node = allNodes.find(n => n.nodeId === nodeId);
 
     if (!node) {
