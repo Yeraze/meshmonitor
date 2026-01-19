@@ -94,6 +94,18 @@ vi.mock('../../../services/database.js', () => {
         return true;
       }),
       updateApiTokenLastUsedAsync: vi.fn(async () => {}),
+      getUserPermissionSetAsync: vi.fn(async () => ({
+        nodes: { read: true, write: false },
+        messages: { read: true, write: true },
+        channel_0: { read: true, write: true },
+        channel_1: { read: true, write: true },
+        channel_2: { read: true, write: true },
+        channel_3: { read: true, write: true },
+        channel_4: { read: true, write: true },
+        channel_5: { read: true, write: true },
+        channel_6: { read: true, write: true },
+        channel_7: { read: true, write: true }
+      })),
       auditLog: vi.fn(),
       auditLogAsync: vi.fn(async () => {}),
       getSetting: vi.fn((key: string) => {
@@ -104,6 +116,25 @@ vi.mock('../../../services/database.js', () => {
       // Nodes methods
       getAllNodes: vi.fn(() => testNodes),
       getActiveNodes: vi.fn(() => testNodes.slice(0, 2)),
+      // Channels methods
+      getAllChannels: vi.fn(() => [
+        { id: 0, name: 'Primary', role: 1 },
+        { id: 1, name: 'Secondary', role: 2 }
+      ]),
+      getChannelById: vi.fn((id: number) => {
+        if (id === 0) return { id: 0, name: 'Primary', role: 1 };
+        if (id === 1) return { id: 1, name: 'Secondary', role: 2 };
+        return null;
+      }),
+      getAllChannelsAsync: vi.fn(async () => [
+        { id: 0, name: 'Primary', role: 1 },
+        { id: 1, name: 'Secondary', role: 2 }
+      ]),
+      getChannelByIdAsync: vi.fn(async (id: number) => {
+        if (id === 0) return { id: 0, name: 'Primary', role: 1 };
+        if (id === 1) return { id: 1, name: 'Secondary', role: 2 };
+        return null;
+      }),
       // Messages methods
       getMessages: vi.fn(() => testMessages),
       getMessagesByChannel: vi.fn(() => testMessages),
