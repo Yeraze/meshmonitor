@@ -182,7 +182,7 @@ This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICE
 
 ## Community & Support
 
-- **Discord**: [Join our Discord](https://discord.gg/aeeQbKN5) - Chat with the community and get help
+- **Discord**: [Join our Discord](https://discord.gg/JVR3VBETQE) - Chat with the community and get help
 - **GitHub Issues**: Report bugs and request features
 - **Documentation**: [meshmonitor.org](https://meshmonitor.org/)
 
