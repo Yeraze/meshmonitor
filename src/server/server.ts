@@ -614,6 +614,7 @@ apiRouter.get('/health', (_req, res) => {
     status: 'ok',
     version: packageJson.version,
     uptime: Date.now() - serverStartTime,
+    databaseType: databaseService.drizzleDbType,
   });
 });
 

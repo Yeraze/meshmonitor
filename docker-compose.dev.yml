@@ -167,7 +167,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:8080
+      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:8080,http://sentry.yeraze.online:8081,https://meshdev.yeraze.online
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}

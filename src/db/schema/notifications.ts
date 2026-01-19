@@ -38,19 +38,20 @@ export const pushSubscriptionsPostgres = pgTable('push_subscriptions', {
 
 export const userNotificationPreferencesSqlite = sqliteTable('user_notification_preferences', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('userId').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
-  notifyOnMessage: integer('notifyOnMessage', { mode: 'boolean' }).default(true),
-  notifyOnDirectMessage: integer('notifyOnDirectMessage', { mode: 'boolean' }).default(true),
-  notifyOnChannelMessage: integer('notifyOnChannelMessage', { mode: 'boolean' }).default(false),
-  notifyOnEmoji: integer('notifyOnEmoji', { mode: 'boolean' }).default(false),
-  notifyOnInactiveNode: integer('notifyOnInactiveNode', { mode: 'boolean' }).default(false),
-  notifyOnServerEvents: integer('notifyOnServerEvents', { mode: 'boolean' }).default(false),
-  prefixWithNodeName: integer('prefixWithNodeName', { mode: 'boolean' }).default(false),
-  appriseEnabled: integer('appriseEnabled', { mode: 'boolean' }).default(true),
-  appriseUrls: text('appriseUrls'),
-  notifyOnMqtt: integer('notifyOnMqtt', { mode: 'boolean' }).default(true),
-  createdAt: integer('createdAt').notNull(),
-  updatedAt: integer('updatedAt').notNull(),
+  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  notifyOnMessage: integer('enable_web_push', { mode: 'boolean' }).default(true),
+  notifyOnDirectMessage: integer('enable_direct_messages', { mode: 'boolean' }).default(true),
+  notifyOnEmoji: integer('notify_on_emoji', { mode: 'boolean' }).default(false),
+  notifyOnNewNode: integer('notify_on_new_node', { mode: 'boolean' }).default(true),
+  notifyOnTraceroute: integer('notify_on_traceroute', { mode: 'boolean' }).default(true),
+  notifyOnInactiveNode: integer('notify_on_inactive_node', { mode: 'boolean' }).default(false),
+  notifyOnServerEvents: integer('notify_on_server_events', { mode: 'boolean' }).default(false),
+  prefixWithNodeName: integer('prefix_with_node_name', { mode: 'boolean' }).default(false),
+  appriseEnabled: integer('enable_apprise', { mode: 'boolean' }).default(true),
+  appriseUrls: text('apprise_urls'),
+  notifyOnMqtt: integer('notify_on_mqtt', { mode: 'boolean' }).default(true),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
 });
 
 export const userNotificationPreferencesPostgres = pgTable('user_notification_preferences', {
@@ -75,10 +76,9 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
 // ============ READ MESSAGES ============
 
 export const readMessagesSqlite = sqliteTable('read_messages', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('userId').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
-  messageId: text('messageId').notNull(),
-  readAt: integer('readAt').notNull(),
+  messageId: text('message_id').notNull().primaryKey(),
+  userId: integer('user_id').references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  readAt: integer('read_at').notNull(),
 });
 
 export const readMessagesPostgres = pgTable('read_messages', {
