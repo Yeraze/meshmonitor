@@ -117,9 +117,30 @@ EOF
     echo -e "${GREEN}✓${NC} Container started"
     echo ""
 
-    # Wait for container to be ready
-    echo "Waiting for container to be ready..."
-    sleep 5
+    # Wait for container to be ready (API must respond before checking logs)
+    echo "Waiting for API to be ready..."
+
+    COUNTER=0
+    MAX_WAIT=60
+    while [ $COUNTER -lt $MAX_WAIT ]; do
+        # Check if API is responding (poll endpoint returns JSON with "connection" field)
+        POLL_RESPONSE=$(curl -s "http://localhost:$TEST_PORT/api/poll" 2>/dev/null || echo "{}")
+        if echo "$POLL_RESPONSE" | grep -q '"connection"'; then
+            echo -e "${GREEN}✓${NC} API is ready"
+            break
+        fi
+        COUNTER=$((COUNTER + 1))
+        if [ $COUNTER -eq $MAX_WAIT ]; then
+            echo -e "${RED}✗ FAIL${NC}: API did not become ready within $MAX_WAIT seconds"
+            echo "Container logs:"
+            docker logs "$CONTAINER_NAME" 2>&1 | tail -30
+            exit 1
+        fi
+        sleep 1
+    done
+
+    # Give a moment for admin user to be created after API is ready
+    sleep 2
 fi
 
 # Only run container checks if we are in Container Mode

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConfigIssue } from '../../hooks/useSecurityCheck';
 import './AppBanners.css';
@@ -33,6 +33,16 @@ export const AppBanners: React.FC<AppBannersProps> = ({
   onDismissUpdate,
 }) => {
   const { t } = useTranslation();
+
+  // Auto-dismiss update banner after 5 seconds (unless upgrade is in progress)
+  useEffect(() => {
+    if (updateAvailable && !upgradeInProgress) {
+      const timer = setTimeout(() => {
+        onDismissUpdate();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [updateAvailable, upgradeInProgress, onDismissUpdate]);
 
   return (
     <>

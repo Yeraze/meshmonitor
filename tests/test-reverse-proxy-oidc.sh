@@ -131,9 +131,30 @@ docker compose -f "$COMPOSE_FILE" up -d
 echo -e "${GREEN}✓${NC} Containers started"
 echo ""
 
-# Wait for services to be ready
-echo "Waiting for services to be ready..."
-sleep 10
+# Wait for MeshMonitor API to be ready
+echo "Waiting for MeshMonitor API to be ready..."
+
+COUNTER=0
+MAX_WAIT=60
+while [ $COUNTER -lt $MAX_WAIT ]; do
+    # Check if API is responding (poll endpoint returns JSON with "connection" field)
+    POLL_RESPONSE=$(curl -s "http://localhost:$TEST_PORT/api/poll" 2>/dev/null || echo "{}")
+    if echo "$POLL_RESPONSE" | grep -q '"connection"'; then
+        echo -e "${GREEN}✓${NC} MeshMonitor API is ready"
+        break
+    fi
+    COUNTER=$((COUNTER + 1))
+    if [ $COUNTER -eq $MAX_WAIT ]; then
+        echo -e "${RED}✗ FAIL${NC}: MeshMonitor API did not become ready within $MAX_WAIT seconds"
+        echo "Container logs:"
+        docker logs "$MESHMONITOR_CONTAINER" 2>&1 | tail -30
+        exit 1
+    fi
+    sleep 1
+done
+
+# Give a moment for admin user to be created after API is ready
+sleep 2
 
 # Test 1: Check mock OIDC provider is running
 echo "Test 1: Mock OIDC provider is running"

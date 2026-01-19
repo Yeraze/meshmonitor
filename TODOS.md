@@ -34,6 +34,22 @@
 
 ## Current Sprint
 
+### v3.0.0 "MultiDatabase" Release
+
+**Completed:**
+- [x] Version bump: Update package.json, Chart.yaml, tauri.conf.json to 3.0.0
+- [x] Run npm install to regenerate package-lock.json
+- [x] Add auto-dismiss timer (5 seconds) to upgrade banner in AppBanners.tsx
+- [x] Update FAQ last modified date to 2026-01-19
+- [x] Write comprehensive RELEASE_NOTES.md for 3.0.0 with ~50 PRs documented
+- [x] Create test-db-migration.sh script for PostgreSQL/MySQL migration testing
+- [x] Integrate migration tests into system-tests.sh
+
+**Summary:**
+v3.0.0 introduces multi-database support (PostgreSQL, MySQL in addition to SQLite), customizable tapback reactions, script metadata for enhanced UI, and numerous bug fixes. The upgrade banner now auto-dismisses after 5 seconds.
+
+---
+
 ### Script Metadata Enhancement (#1490)
 
 **Completed:**
