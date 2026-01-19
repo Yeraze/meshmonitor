@@ -274,6 +274,7 @@ jobs:
           cp "node-${NODE_VERSION}-darwin-arm64/bin/node" desktop/resources/binaries/node
 
       # Sign the bundled Node.js binary so it passes notarization
+      # Uses entitlements file to allow JIT compilation (required for V8)
       - name: Sign bundled Node.js binary
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -285,10 +286,13 @@ jobs:
 
           echo "Signing Node.js binary with identity: $APPLE_SIGNING_IDENTITY"
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements desktop/src-tauri/node.entitlements \
             --timestamp desktop/resources/binaries/node
 
           echo "Verifying signature..."
           codesign --verify --verbose=2 desktop/resources/binaries/node
+          echo "Displaying entitlements..."
+          codesign -d --entitlements - desktop/resources/binaries/node
 
       - name: Copy server files to Tauri resources
         run: |
@@ -325,6 +329,7 @@ jobs:
           cp -r node_modules desktop/resources/dist/
 
       # Sign all native binaries in node_modules for notarization
+      # Native addons with JIT also need the entitlements
       - name: Sign native binaries in node_modules
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -336,16 +341,18 @@ jobs:
 
           echo "Finding and signing native binaries in node_modules..."
 
-          # Find all .node files (native Node.js addons)
+          # Find all .node files (native Node.js addons) - these may need JIT entitlements
           find desktop/resources/dist/node_modules -name "*.node" -type f | while read -r file; do
             echo "Signing: $file"
-            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+              --entitlements desktop/src-tauri/node.entitlements --timestamp "$file" || true
           done
 
           # Find all .bare files (bare modules)
           find desktop/resources/dist/node_modules -name "*.bare" -type f | while read -r file; do
             echo "Signing: $file"
-            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+              --entitlements desktop/src-tauri/node.entitlements --timestamp "$file" || true
           done
 
           # Find esbuild binaries
@@ -547,6 +554,7 @@ jobs:
           cp "node-${NODE_VERSION}-darwin-x64/bin/node" desktop/resources/binaries/node
 
       # Sign the bundled Node.js binary so it passes notarization
+      # Uses entitlements file to allow JIT compilation (required for V8)
       - name: Sign bundled Node.js binary
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -558,10 +566,13 @@ jobs:
 
           echo "Signing Node.js binary with identity: $APPLE_SIGNING_IDENTITY"
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements desktop/src-tauri/node.entitlements \
             --timestamp desktop/resources/binaries/node
 
           echo "Verifying signature..."
           codesign --verify --verbose=2 desktop/resources/binaries/node
+          echo "Displaying entitlements..."
+          codesign -d --entitlements - desktop/resources/binaries/node
 
       - name: Copy server files to Tauri resources
         run: |
@@ -598,6 +609,7 @@ jobs:
           cp -r node_modules desktop/resources/dist/
 
       # Sign all native binaries in node_modules for notarization
+      # Native addons with JIT also need the entitlements
       - name: Sign native binaries in node_modules
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -609,16 +621,18 @@ jobs:
 
           echo "Finding and signing native binaries in node_modules..."
 
-          # Find all .node files (native Node.js addons)
+          # Find all .node files (native Node.js addons) - these may need JIT entitlements
           find desktop/resources/dist/node_modules -name "*.node" -type f | while read -r file; do
             echo "Signing: $file"
-            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+              --entitlements desktop/src-tauri/node.entitlements --timestamp "$file" || true
           done
 
           # Find all .bare files (bare modules)
           find desktop/resources/dist/node_modules -name "*.bare" -type f | while read -r file; do
             echo "Signing: $file"
-            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+              --entitlements desktop/src-tauri/node.entitlements --timestamp "$file" || true
           done
 
           # Find esbuild binaries
