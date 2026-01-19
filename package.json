@@ -90,7 +90,7 @@
     "@types/leaflet": "^1.9.21",
     "@types/morgan": "^1.9.10",
     "@types/mysql": "^2.15.27",
-    "@types/node": "^25.0.3",
+    "@types/node": "^25.0.9",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.16.0",
     "@types/qrcode": "^1.5.6",
