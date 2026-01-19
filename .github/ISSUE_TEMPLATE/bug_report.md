@@ -32,6 +32,7 @@ If applicable, add screenshots to help explain your problem.
   * If NPM, which commit?
 * Any networking customizations (Reverse proxies, Cloudflare tunnels, Tailscale, etc)
   * docker-compose files are very helpful for networking-related issues.
+* Database backend: SQLite, PostGreSQL, or MySQL
 
 **Additional context**
 Add any other context about the problem here.  Console Logs, Container Logs, or Screenshots.
