@@ -1200,7 +1200,7 @@ body {
 
 .message-time {
   color: var(--ctp-overlay2);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   margin-left: auto;
   font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 }
@@ -2280,7 +2280,7 @@ body {
 }
 
 .message-bubble .message-time {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   margin-top: 0.25rem;
   opacity: 0.7;
   text-align: right;
@@ -3839,7 +3839,7 @@ body {
 }
 
 .hop-count {
-  font-size: 11px;
+  font-size: 0.85rem;
   color: var(--ctp-overlay1);
   font-style: italic;
   white-space: nowrap;
