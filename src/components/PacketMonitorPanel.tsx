@@ -58,6 +58,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [relayModalOpen, setRelayModalOpen] = useState(false);
   const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
+  const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
+  const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -149,6 +151,29 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     localStorage.setItem('packetMonitor.autoScroll', JSON.stringify(autoScroll));
   }, [autoScroll]);
 
+  // Fetch direct neighbor stats on mount for relay estimation
+  useEffect(() => {
+    if (!canView) return;
+
+    const fetchNeighborStats = async () => {
+      try {
+        const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setDirectNeighborStats(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch direct neighbor stats:', error);
+      }
+    };
+
+    fetchNeighborStats();
+  }, [canView]);
+
   // Helper function to truncate long names
   const truncateLongName = (longName: string | undefined, maxLength: number = 20): string | undefined => {
     if (!longName) return undefined;
@@ -184,24 +209,45 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   };
 
   // Handle relay node click - opens modal to show potential relay nodes
-  const handleRelayClick = (packet: PacketLog, event: React.MouseEvent) => {
+  const handleRelayClick = async (packet: PacketLog, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent row click
-    if (packet.relay_node !== undefined && packet.relay_node !== null) {
-      setSelectedRelayNode(packet.relay_node);
-      setSelectedRxTime(new Date(packet.timestamp * 1000));
-      setRelayModalOpen(true);
+    // Set relay node to 0 if undefined/null (triggers "unknown relay" mode in modal)
+    setSelectedRelayNode(packet.relay_node ?? 0);
+    setSelectedRxTime(new Date(packet.timestamp * 1000));
+    setSelectedMessageRssi(packet.rssi ?? undefined);
+
+    // Fetch direct neighbor stats (refresh to ensure up-to-date data)
+    try {
+      const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setDirectNeighborStats(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch direct neighbor stats:', error);
     }
+
+    setRelayModalOpen(true);
   };
 
   // Map nodes to the format expected by RelayNodeModal
-  const mappedNodes = nodes.map(node => ({
-    nodeNum: node.nodeNum,
-    nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
-    longName: node.user?.longName || `Node ${node.nodeNum}`,
-    shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
-    hopsAway: node.hopsAway,
-    role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
-  }));
+  const mappedNodes = nodes.map(node => {
+    const stats = directNeighborStats[node.nodeNum];
+    return {
+      nodeNum: node.nodeNum,
+      nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
+      longName: node.user?.longName || `Node ${node.nodeNum}`,
+      shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
+      hopsAway: node.hopsAway,
+      role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
+      avgDirectRssi: stats?.avgRssi,
+      heardDirectly: stats !== undefined,
+    };
+  });
 
   // Get port number color
   const getPortnumColor = (portnum: number): string => {
@@ -262,6 +308,72 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       return packet.hop_start - packet.hop_limit;
     }
     return null;
+  };
+
+  // Get the most likely relay node name for a packet
+  // Uses RSSI proximity to estimate the relay when there are multiple candidates or unknown relay byte
+  const getMostLikelyRelayName = (relayNode: number | undefined | null, packetRssi: number | undefined | null): string | null => {
+    // CLIENT_MUTE role doesn't relay
+    const CLIENT_MUTE = 4;
+    const relayCapableNodes = nodes.filter(node => {
+      const role = typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role;
+      return role !== CLIENT_MUTE;
+    });
+
+    // Helper to find the node with closest RSSI to the packet
+    const findClosestByRssi = (candidates: typeof nodes): typeof nodes[0] | null => {
+      if (candidates.length === 0) return null;
+      if (candidates.length === 1) return candidates[0];
+      if (packetRssi === undefined || packetRssi === null) return candidates[0];
+
+      let closest = candidates[0];
+      let closestDiff = Infinity;
+
+      for (const node of candidates) {
+        const stats = directNeighborStats[node.nodeNum];
+        if (stats?.avgRssi !== undefined) {
+          const diff = Math.abs(stats.avgRssi - packetRssi);
+          if (diff < closestDiff) {
+            closestDiff = diff;
+            closest = node;
+          }
+        }
+      }
+      return closest;
+    };
+
+    // If relay_node is 0, undefined, or null - estimate from all direct neighbors
+    if (relayNode === undefined || relayNode === null || relayNode === 0) {
+      // Get all relay-capable nodes we've heard directly
+      const directNeighbors = relayCapableNodes.filter(node => directNeighborStats[node.nodeNum] !== undefined);
+      const closest = findClosestByRssi(directNeighbors);
+      if (closest) {
+        return closest.user?.shortName || `!${closest.nodeNum.toString(16).padStart(8, '0')}`;
+      }
+      return null;
+    }
+
+    // Try exact match first
+    const exactMatch = relayCapableNodes.find(node => node.nodeNum === relayNode);
+    if (exactMatch) {
+      return exactMatch.user?.shortName || `!${relayNode.toString(16).padStart(8, '0')}`;
+    }
+
+    // Fall back to matching just the lowest byte
+    const byteMatches = relayCapableNodes.filter(node => (node.nodeNum & 0xFF) === relayNode);
+    if (byteMatches.length === 1) {
+      return byteMatches[0].user?.shortName || `!${byteMatches[0].nodeNum.toString(16).padStart(8, '0')}`;
+    }
+    if (byteMatches.length > 1) {
+      // Multiple matches - pick the one with closest RSSI
+      const closest = findClosestByRssi(byteMatches);
+      if (closest) {
+        return closest.user?.shortName || `!${closest.nodeNum.toString(16).padStart(8, '0')}`;
+      }
+    }
+
+    // No matches found - return hex byte as fallback
+    return `0x${relayNode.toString(16).padStart(2, '0').toUpperCase()}`;
   };
 
   // Export packets to JSONL (server-side)
@@ -430,9 +542,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                   <col style={{ width: '140px' }} />
                   <col style={{ width: '140px' }} />
                   <col style={{ width: '120px' }} />
-                  <col style={{ width: '50px' }} />
+                  <col style={{ width: '110px' }} />
                   <col style={{ width: '60px' }} />
                   <col style={{ width: '60px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ width: '80px' }} />
                   <col style={{ width: '60px' }} />
                   <col style={{ minWidth: '200px' }} />
                 </colgroup>
@@ -446,7 +560,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <th style={{ width: '120px' }}>{t('packet_monitor.column.type')}</th>
                     <th style={{ width: '110px' }}>{t('packet_monitor.column.slot')}</th>
                     <th style={{ width: '60px' }}>{t('packet_monitor.column.snr')}</th>
+                    <th style={{ width: '60px' }}>{t('packet_monitor.column.rssi')}</th>
                     <th style={{ width: '60px' }}>{t('packet_monitor.column.hops')}</th>
+                    <th style={{ width: '80px' }}>{t('packet_monitor.column.last_hop')}</th>
                     <th style={{ width: '60px' }}>{t('packet_monitor.column.size')}</th>
                     <th style={{ minWidth: '200px' }}>{t('packet_monitor.column.content')}</th>
                   </tr>
@@ -467,9 +583,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <col style={{ width: '140px' }} />
                     <col style={{ width: '140px' }} />
                     <col style={{ width: '120px' }} />
-                    <col style={{ width: '50px' }} />
+                    <col style={{ width: '110px' }} />
                     <col style={{ width: '60px' }} />
                     <col style={{ width: '60px' }} />
+                    <col style={{ width: '60px' }} />
+                    <col style={{ width: '80px' }} />
                     <col style={{ width: '60px' }} />
                     <col style={{ minWidth: '200px' }} />
                   </colgroup>
@@ -493,7 +611,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               tableLayout: 'fixed',
                             }}
                           >
-                            <td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                               {t('packet_monitor.loading_more')}
                             </td>
                           </tr>
@@ -575,6 +693,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           <td className="snr" style={{ width: '60px' }}>
                             {packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : t('common.na')}
                           </td>
+                          <td className="rssi" style={{ width: '60px' }}>
+                            {packet.rssi !== null && packet.rssi !== undefined ? `${packet.rssi.toFixed(0)}` : t('common.na')}
+                          </td>
                           <td className="hops" style={{ width: '60px' }}>
                             {hops !== null ? (
                               packet.relay_node !== undefined && packet.relay_node !== null ? (
@@ -591,6 +712,29 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             ) : (
                               t('common.na')
                             )}
+                          </td>
+                          <td className="last-hop" style={{ width: '80px' }}>
+                            {(() => {
+                              if (hops === 0) {
+                                // Direct packet (0 hops)
+                                return t('packet_monitor.direct');
+                              } else if (hops !== null && hops > 0) {
+                                // Relayed packet - show most likely relay name
+                                const relayName = getMostLikelyRelayName(packet.relay_node, packet.rssi);
+                                const isEstimate = packet.relay_node === 0 || packet.relay_node === undefined || packet.relay_node === null;
+                                return (
+                                  <span
+                                    className={`relay-link ${isEstimate ? 'estimated' : ''}`}
+                                    onClick={(e) => handleRelayClick(packet, e)}
+                                    title={isEstimate ? t('packet_monitor.estimated_relay') : t('packet_monitor.click_for_relay')}
+                                  >
+                                    {relayName || '?'}
+                                  </span>
+                                );
+                              } else {
+                                return t('common.na');
+                              }
+                            })()}
                           </td>
                           <td className="size" style={{ width: '60px' }}>
                             {packet.payload_size ?? t('common.na')}
@@ -696,6 +840,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           relayNode={selectedRelayNode}
           rxTime={selectedRxTime}
           nodes={mappedNodes}
+          messageRssi={selectedMessageRssi}
           onNodeClick={(nodeId) => {
             setRelayModalOpen(false);
             setSelectedRelayNode(null);
