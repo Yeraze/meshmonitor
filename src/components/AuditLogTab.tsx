@@ -160,16 +160,19 @@ const AuditLogTab: React.FC = () => {
         // Header
         ['Timestamp', 'User', 'Action', 'Resource', 'Details', 'IP Address'].join(','),
         // Data rows
-        ...logs.map(log =>
-          [
-            new Date(log.timestamp).toISOString(),
+        ...logs.map(log => {
+          // PostgreSQL returns BIGINT as string, so ensure it's a number
+          const ts = typeof log.timestamp === 'string' ? parseInt(log.timestamp, 10) : log.timestamp;
+          const dateStr = (!ts || isNaN(ts)) ? 'Unknown' : new Date(ts).toISOString();
+          return [
+            dateStr,
             log.username || 'System',
             log.action,
             log.resource || '',
             (log.details || '').replace(/,/g, ';'), // Escape commas
             log.ipAddress || ''
-          ].join(',')
-        )
+          ].join(',');
+        })
       ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -187,8 +190,19 @@ const AuditLogTab: React.FC = () => {
     }
   };
 
-  const formatTimestamp = (timestamp: number) => {
-    const date = new Date(timestamp);
+  const formatTimestamp = (timestamp: number | string | null | undefined) => {
+    if (timestamp === null || timestamp === undefined) {
+      return t('common.unknown');
+    }
+    // PostgreSQL returns BIGINT as string, so ensure it's a number
+    const ts = typeof timestamp === 'string' ? parseInt(timestamp, 10) : timestamp;
+    if (isNaN(ts)) {
+      return t('common.unknown');
+    }
+    const date = new Date(ts);
+    if (isNaN(date.getTime())) {
+      return t('common.unknown');
+    }
     return date.toLocaleString();
   };
 

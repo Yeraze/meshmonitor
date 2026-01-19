@@ -23,6 +23,7 @@ interface MaintenanceStatus {
   lastRunTime: number | null;
   lastRunStats: MaintenanceStats | null;
   nextScheduledRun: string | null;
+  databaseType: 'sqlite' | 'postgres' | 'mysql';
   settings: {
     messageRetentionDays: number;
     tracerouteRetentionDays: number;
@@ -204,6 +205,11 @@ const DatabaseMaintenanceSection: React.FC = () => {
     }
     return new Date(status.nextScheduledRun).toLocaleString();
   };
+
+  // Hide the entire section for PostgreSQL/MySQL - maintenance features are SQLite-specific
+  if (status && status.databaseType !== 'sqlite') {
+    return null;
+  }
 
   return (
     <div id="settings-maintenance" className="settings-section" style={{ marginTop: '2rem' }}>
