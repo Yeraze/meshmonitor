@@ -103,7 +103,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'discord', link: 'https://discord.gg/SdMfbmTGH' },
+      { icon: 'discord', link: 'https://discord.gg/JVR3VBETQE' },
       { icon: 'github', link: 'https://github.com/yeraze/meshmonitor' }
     ],
 
