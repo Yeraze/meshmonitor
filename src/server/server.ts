@@ -2873,6 +2873,24 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
   }
 });
 
+// Get direct neighbor RSSI statistics from zero-hop packets
+// This helps identify which nodes we've heard directly (no relays)
+apiRouter.get('/direct-neighbors', requirePermission('info', 'read'), async (req, res) => {
+  try {
+    const hoursBack = parseInt(req.query.hours as string) || 24;
+    const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack);
+
+    res.json({
+      success: true,
+      data: stats,
+      count: Object.keys(stats).length
+    });
+  } catch (error) {
+    logger.error('Error getting direct neighbor stats:', error);
+    res.status(500).json({ error: 'Failed to fetch direct neighbor statistics' });
+  }
+});
+
 // Get telemetry data for a node
 apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
   try {

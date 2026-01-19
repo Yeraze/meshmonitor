@@ -262,10 +262,40 @@
 }
 
 .packet-table .snr,
+.packet-table .rssi,
 .packet-table .hops,
 .packet-table .size {
   text-align: right;
   font-family: 'Courier New', monospace;
+}
+
+.packet-table .last-hop {
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.relay-link {
+  color: var(--primary-color);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  transition: all 0.2s;
+}
+
+.relay-link:hover {
+  color: var(--primary-color-hover, #3d8fff);
+  text-decoration-style: solid;
+}
+
+.relay-link.estimated {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.relay-link.estimated::before {
+  content: '~';
+  margin-right: 1px;
 }
 
 .packet-table .content {
