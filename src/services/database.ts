@@ -6765,6 +6765,34 @@ class DatabaseService {
     return stmt.all() as DbNeighborInfo[];
   }
 
+  /**
+   * Get direct neighbor RSSI statistics from zero-hop packets
+   *
+   * Queries packet_log for packets received directly (hop_start == hop_limit),
+   * aggregating RSSI values to help identify likely relay nodes.
+   *
+   * @param hoursBack Number of hours to look back (default 24)
+   * @returns Record mapping nodeNum to stats {avgRssi, packetCount, lastHeard}
+   */
+  async getDirectNeighborStatsAsync(hoursBack: number = 24): Promise<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>> {
+    if (!this.neighborsRepo) {
+      return {};
+    }
+
+    const stats = await this.neighborsRepo.getDirectNeighborRssiAsync(hoursBack);
+    const result: Record<number, { avgRssi: number; packetCount: number; lastHeard: number }> = {};
+
+    for (const [nodeNum, stat] of stats) {
+      result[nodeNum] = {
+        avgRssi: stat.avgRssi,
+        packetCount: stat.packetCount,
+        lastHeard: stat.lastHeard,
+      };
+    }
+
+    return result;
+  }
+
   // Favorite operations
   setNodeFavorite(nodeNum: number, isFavorite: boolean): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget

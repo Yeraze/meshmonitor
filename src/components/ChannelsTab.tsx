@@ -158,23 +158,47 @@ export default function ChannelsTab({
   const [relayModalOpen, setRelayModalOpen] = useState(false);
   const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
+  const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
+  const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
 
   // Map nodes to the format expected by RelayNodeModal
-  const mappedNodes = nodes.map(node => ({
-    nodeNum: node.nodeNum,
-    nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
-    longName: node.user?.longName || `Node ${node.nodeNum}`,
-    shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
-    hopsAway: node.hopsAway,
-    role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
-  }));
+  const mappedNodes = nodes.map(node => {
+    const stats = directNeighborStats[node.nodeNum];
+    return {
+      nodeNum: node.nodeNum,
+      nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
+      longName: node.user?.longName || `Node ${node.nodeNum}`,
+      shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
+      hopsAway: node.hopsAway,
+      role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
+      avgDirectRssi: stats?.avgRssi,
+      heardDirectly: stats !== undefined,
+    };
+  });
 
   // Handle relay node click - opens modal to show potential relay nodes
   const handleRelayClick = useCallback(
-    (msg: MeshMessage) => {
+    async (msg: MeshMessage) => {
       if (msg.relayNode !== undefined && msg.relayNode !== null) {
         setSelectedRelayNode(msg.relayNode);
         setSelectedRxTime(msg.timestamp);
+        setSelectedMessageRssi(msg.rxRssi ?? undefined);
+
+        // Fetch direct neighbor stats
+        try {
+          const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
+            credentials: 'include'
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setDirectNeighborStats(data.data);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch direct neighbor stats:', error);
+        }
+
         setRelayModalOpen(true);
       }
     },
@@ -894,6 +918,7 @@ export default function ChannelsTab({
           relayNode={selectedRelayNode}
           rxTime={selectedRxTime}
           nodes={mappedNodes}
+          messageRssi={selectedMessageRssi}
           onNodeClick={(nodeId) => {
             setRelayModalOpen(false);
             setSelectedRelayNode(null);

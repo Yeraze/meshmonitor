@@ -42,6 +42,31 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/network/direct-neighbors
+ * Get direct neighbor statistics based on zero-hop packets
+ * This helps identify which nodes we've heard directly (no relays)
+ */
+router.get('/direct-neighbors', async (req: Request, res: Response) => {
+  try {
+    const hoursBack = parseInt(req.query.hours as string) || 24;
+    const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack);
+
+    res.json({
+      success: true,
+      data: stats,
+      count: Object.keys(stats).length
+    });
+  } catch (error) {
+    logger.error('Error getting direct neighbor stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to retrieve direct neighbor statistics'
+    });
+  }
+});
+
+/**
  * GET /api/v1/network/topology
  * Get network topology data (nodes and their connections)
  */
