@@ -1606,7 +1606,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* Draw uncertainty circles for estimated positions */}
               {showEstimatedPositions && nodesWithPosition
-                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id))
+                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)))
                 .map(node => {
                   // Calculate radius based on precision bits (higher precision = smaller circle)
                   // Meshtastic uses precision_bits to reduce coordinate precision
@@ -1639,7 +1639,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* Draw position accuracy circles for all nodes with precision data */}
               {showAccuracyCircles && nodesWithPosition
-                .filter(node => node.positionPrecisionBits !== undefined && node.positionPrecisionBits !== null && node.positionPrecisionBits > 0 && node.positionPrecisionBits < 32)
+                .filter(node => node.positionPrecisionBits !== undefined && node.positionPrecisionBits !== null && node.positionPrecisionBits > 0 && node.positionPrecisionBits < 32 && (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)))
                 .map(node => {
                   // Convert precision_bits to radius in meters
                   // precision_bits indicates how many bits of lat/lon are valid
