@@ -2,11 +2,13 @@
  * v1 API - Channels Endpoint
  *
  * Provides read-only access to mesh network channel configuration
+ * Respects user permissions - only returns channels the user has read access to
  */
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
+import { ResourceType } from '../../../types/permission.js';
 
 const router = express.Router();
 
@@ -44,15 +46,41 @@ function transformChannel(channel: any) {
 /**
  * GET /api/v1/channels
  * Get all channels in the mesh network
+ * Only returns channels the user has read permission for
  */
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const channels = databaseService.getAllChannels();
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    // Get all channels
+    const allChannels = await databaseService.getAllChannelsAsync();
+
+    // If admin, return all channels
+    if (isAdmin) {
+      return res.json({
+        success: true,
+        count: allChannels.length,
+        data: allChannels.map(transformChannel)
+      });
+    }
+
+    // Get user permissions
+    const permissions = userId !== null
+      ? await databaseService.getUserPermissionSetAsync(userId)
+      : {};
+
+    // Filter channels by read permission
+    const accessibleChannels = allChannels.filter(channel => {
+      const channelResource = `channel_${channel.id}` as ResourceType;
+      return permissions[channelResource]?.read === true;
+    });
 
     res.json({
       success: true,
-      count: channels.length,
-      data: channels.map(transformChannel)
+      count: accessibleChannels.length,
+      data: accessibleChannels.map(transformChannel)
     });
   } catch (error) {
     logger.error('Error getting channels:', error);
@@ -67,8 +95,9 @@ router.get('/', (_req: Request, res: Response) => {
 /**
  * GET /api/v1/channels/:channelId
  * Get a specific channel by ID (0-7)
+ * Requires read permission for the specific channel
  */
-router.get('/:channelId', (req: Request, res: Response) => {
+router.get('/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
 
@@ -81,7 +110,28 @@ router.get('/:channelId', (req: Request, res: Response) => {
       });
     }
 
-    const channel = databaseService.getChannelById(channelId);
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    // Check permission (unless admin)
+    if (!isAdmin) {
+      const permissions = userId !== null
+        ? await databaseService.getUserPermissionSetAsync(userId)
+        : {};
+
+      const channelResource = `channel_${channelId}` as ResourceType;
+      if (permissions[channelResource]?.read !== true) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          message: 'Insufficient permissions',
+          required: { resource: channelResource, action: 'read' }
+        });
+      }
+    }
+
+    const channel = await databaseService.getChannelByIdAsync(channelId);
 
     if (!channel) {
       return res.status(404).json({

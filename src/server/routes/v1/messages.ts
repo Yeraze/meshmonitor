@@ -2,6 +2,7 @@
  * v1 API - Messages Endpoint
  *
  * Provides access to mesh network messages, including sending new messages
+ * Respects user permissions - only returns messages from channels the user has read access to
  */
 
 import express, { Request, Response } from 'express';
@@ -12,11 +13,44 @@ import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
 
+/**
+ * Get set of channel IDs the user has read access to
+ */
+async function getAccessibleChannels(userId: number | null, isAdmin: boolean): Promise<Set<number> | null> {
+  // Admins can access all channels
+  if (isAdmin) {
+    return null; // null means all channels
+  }
+
+  // Get user permissions
+  const permissions = userId !== null
+    ? await databaseService.getUserPermissionSetAsync(userId)
+    : {};
+
+  // Build set of accessible channel IDs
+  const accessibleChannels = new Set<number>();
+  for (let i = 0; i <= 7; i++) {
+    const channelResource = `channel_${i}` as ResourceType;
+    if (permissions[channelResource]?.read === true) {
+      accessibleChannels.add(i);
+    }
+  }
+
+  // Also check if user has messages:read permission (for DMs)
+  const hasMessagesRead = permissions.messages?.read === true;
+  if (hasMessagesRead) {
+    accessibleChannels.add(-1); // -1 represents DMs
+  }
+
+  return accessibleChannels;
+}
+
 const router = express.Router();
 
 /**
  * GET /api/v1/messages
  * Get messages from the mesh network
+ * Only returns messages from channels the user has read permission for
  *
  * Query parameters:
  * - channel: number - Filter by channel number
@@ -25,13 +59,32 @@ const router = express.Router();
  * - since: number - Unix timestamp to filter messages after this time
  * - limit: number - Max number of records to return (default: 100)
  */
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
     const { channel, fromNodeId, toNodeId, since, limit } = req.query;
 
     const maxLimit = parseInt(limit as string) || 100;
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
     const channelNum = channel ? parseInt(channel as string) : undefined;
+
+    // Get accessible channels for this user
+    const accessibleChannels = await getAccessibleChannels(userId, isAdmin);
+
+    // If requesting a specific channel, check permission first
+    if (channelNum !== undefined && accessibleChannels !== null) {
+      if (!accessibleChannels.has(channelNum)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          message: 'Insufficient permissions',
+          required: { resource: `channel_${channelNum}`, action: 'read' }
+        });
+      }
+    }
 
     let messages;
 
@@ -42,6 +95,14 @@ router.get('/', (req: Request, res: Response) => {
       messages = messages.slice(0, maxLimit);
     } else {
       messages = databaseService.getMessages(maxLimit);
+    }
+
+    // Filter messages by accessible channels (unless admin)
+    if (accessibleChannels !== null) {
+      messages = messages.filter(m => {
+        const msgChannel = m.channel ?? -1; // DMs have channel -1 or undefined
+        return accessibleChannels.has(msgChannel);
+      });
     }
 
     // Apply additional filters
@@ -70,9 +131,14 @@ router.get('/', (req: Request, res: Response) => {
 /**
  * GET /api/v1/messages/:messageId
  * Get a specific message by ID
+ * Requires read permission for the message's channel
  */
-router.get('/:messageId', (req: Request, res: Response) => {
+router.get('/:messageId', async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
     const { messageId } = req.params;
     const allMessages = databaseService.getMessages(10000); // Get recent messages
     const message = allMessages.find(m => m.id === messageId);
@@ -83,6 +149,22 @@ router.get('/:messageId', (req: Request, res: Response) => {
         error: 'Not Found',
         message: `Message ${messageId} not found`
       });
+    }
+
+    // Check permission for the message's channel (unless admin)
+    if (!isAdmin) {
+      const accessibleChannels = await getAccessibleChannels(userId, isAdmin);
+      const msgChannel = message.channel ?? -1; // DMs have channel -1 or undefined
+
+      if (accessibleChannels !== null && !accessibleChannels.has(msgChannel)) {
+        const resource = msgChannel === -1 ? 'messages' : `channel_${msgChannel}`;
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          message: 'Insufficient permissions',
+          required: { resource, action: 'read' }
+        });
+      }
     }
 
     res.json({
