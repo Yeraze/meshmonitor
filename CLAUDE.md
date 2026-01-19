@@ -3,6 +3,7 @@ library/API documentation. This means you should automatically use the Context7 
 tools to resolve library id and get library docs without me having to explicitly ask.
 - IMPORTANT: Review docs/ARCHITECTURE_LESSONS.md before implementing node communication, state management, backup/restore, asynchronous operations, or database changes. These patterns prevent common mistakes.
 - Only the backend talks to the Node. the Frontend never talks directly to the node.
+- Default admin account is username 'admin' and password 'changeme' . Sometime the password is 'changeme1'
 
 ## Multi-Database Architecture (SQLite/PostgreSQL/MySQL)
 
