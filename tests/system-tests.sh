@@ -52,6 +52,14 @@ cleanup() {
     docker volume rm meshmonitor-backup-source-test-data 2>/dev/null || true
     docker volume rm meshmonitor-restore-test-data 2>/dev/null || true
 
+    # Cleanup database migration test artifacts
+    docker stop meshmonitor-postgres-test 2>/dev/null || true
+    docker rm meshmonitor-postgres-test 2>/dev/null || true
+    docker stop meshmonitor-mysql-test 2>/dev/null || true
+    docker rm meshmonitor-mysql-test 2>/dev/null || true
+    docker compose -f docker-compose.migration-source-test.yml down -v 2>/dev/null || true
+    docker volume rm meshmonitor_meshmonitor-migration-source-test-data 2>/dev/null || true
+
     # Remove any temporary compose files
     rm -f docker-compose.quick-start-test.yml 2>/dev/null || true
     rm -f docker-compose.reverse-proxy-test.yml 2>/dev/null || true
@@ -59,6 +67,7 @@ cleanup() {
     rm -f docker-compose.virtual-node-cli-test.yml 2>/dev/null || true
     rm -f docker-compose.backup-source-test.yml 2>/dev/null || true
     rm -f docker-compose.restore-test.yml 2>/dev/null || true
+    rm -f docker-compose.migration-source-test.yml 2>/dev/null || true
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
@@ -70,6 +79,10 @@ cleanup() {
     rm -f /tmp/meshmonitor-api-test-*.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-api-test-*.json 2>/dev/null || true
     rm -f /tmp/vn-test-client.py 2>/dev/null || true
+    rm -f /tmp/meshmonitor-migration-cookies.txt 2>/dev/null || true
+    rm -f /tmp/test-migration-source.db 2>/dev/null || true
+    rm -f /tmp/pg-migration.log 2>/dev/null || true
+    rm -f /tmp/mysql-migration.log 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Cleanup complete"
 }
@@ -137,6 +150,7 @@ else
     OIDC_RESULT="SKIPPED"
     VIRTUAL_NODE_RESULT="SKIPPED"
     BACKUP_RESTORE_RESULT="SKIPPED"
+    DB_MIGRATION_RESULT="SKIPPED"
     # Skip to results
     echo ""
     echo "=========================================="
@@ -151,6 +165,7 @@ else
     echo -e "Reverse Proxy + OIDC:     ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Virtual Node CLI Test:    ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Backup & Restore Test:    ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "Database Migration Test:  ${YELLOW}⊘ SKIPPED${NC}"
     echo ""
     echo -e "${RED}===========================================${NC}"
     echo -e "${RED}✗ SYSTEM TESTS FAILED${NC}"
@@ -271,6 +286,23 @@ else
 fi
 echo ""
 
+echo "=========================================="
+echo -e "${BLUE}Running Database Migration Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run Database Migration test (PostgreSQL and MySQL)
+if bash "$SCRIPT_DIR/test-db-migration.sh"; then
+    DB_MIGRATION_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ Database Migration test PASSED${NC}"
+else
+    DB_MIGRATION_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ Database Migration test FAILED${NC}"
+fi
+echo ""
+
 # Summary
 echo "=========================================="
 echo "System Test Results"
@@ -325,6 +357,12 @@ if [ "$BACKUP_RESTORE_RESULT" = "PASSED" ]; then
     echo -e "Backup & Restore Test:    ${GREEN}✓ PASSED${NC}"
 else
     echo -e "Backup & Restore Test:    ${RED}✗ FAILED${NC}"
+fi
+
+if [ "$DB_MIGRATION_RESULT" = "PASSED" ]; then
+    echo -e "Database Migration Test:  ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "Database Migration Test:  ${RED}✗ FAILED${NC}"
 fi
 
 echo ""
@@ -390,11 +428,17 @@ else
     echo "| Backup & Restore Test | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$DB_MIGRATION_RESULT" = "PASSED" ]; then
+    echo "| Database Migration Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Database Migration Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ] || [ "$DB_MIGRATION_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -462,6 +506,12 @@ if [ "$REQUIRED_TESTS_PASSED" = true ]; then
     echo "- Data integrity verified (node count, message count, settings)" >> "$REPORT_FILE"
     echo "- Restore event logged in audit log" >> "$REPORT_FILE"
     echo "- Dev container unaffected by restore test" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Database Migration Test:**" >> "$REPORT_FILE"
+    echo "- SQLite to PostgreSQL migration verified" >> "$REPORT_FILE"
+    echo "- SQLite to MySQL migration verified" >> "$REPORT_FILE"
+    echo "- Data integrity confirmed for both target databases" >> "$REPORT_FILE"
+    echo "- Row counts match between source and target" >> "$REPORT_FILE"
 
     echo -e "${GREEN}=========================================="
     echo "✓ ALL SYSTEM TESTS PASSED"
@@ -503,6 +553,9 @@ else
     fi
     if [ "$BACKUP_RESTORE_RESULT" != "PASSED" ]; then
         echo "- **Backup & Restore Test:** System backup and restore verification test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$DB_MIGRATION_RESULT" != "PASSED" ]; then
+        echo "- **Database Migration Test:** PostgreSQL/MySQL migration test failed" >> "$REPORT_FILE"
     fi
 
     echo -e "${RED}=========================================="
