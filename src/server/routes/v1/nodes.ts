@@ -2,6 +2,7 @@
  * v1 API - Nodes Endpoint
  *
  * Provides read-only access to mesh network node information
+ * Respects user permissions - requires nodes:read permission
  */
 
 import express, { Request, Response } from 'express';
@@ -9,6 +10,19 @@ import databaseService, { DbNode } from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 
 const router = express.Router();
+
+/**
+ * Check if user has nodes:read permission
+ */
+async function hasNodesReadPermission(userId: number | null, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+
+  const permissions = userId !== null
+    ? await databaseService.getUserPermissionSetAsync(userId)
+    : {};
+
+  return permissions.nodes?.read === true;
+}
 
 /**
  * Enrich node data with latest uptime from telemetry
@@ -24,13 +38,28 @@ function enrichNodeWithUptime(node: DbNode): DbNode & { uptimeSeconds?: number }
 /**
  * GET /api/v1/nodes
  * Get all nodes in the mesh network
+ * Requires nodes:read permission
  *
  * Query parameters:
  * - active: boolean - Only return nodes active within last 7 days
  * - sinceDays: number - Override default 7 day activity window
  */
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    // Check permission
+    if (!await hasNodesReadPermission(userId, isAdmin)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient permissions',
+        required: { resource: 'nodes', action: 'read' }
+      });
+    }
+
     const active = req.query.active === 'true';
     const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 7;
 
@@ -62,9 +91,24 @@ router.get('/', (req: Request, res: Response) => {
 /**
  * GET /api/v1/nodes/:nodeId
  * Get a specific node by node ID
+ * Requires nodes:read permission
  */
-router.get('/:nodeId', (req: Request, res: Response) => {
+router.get('/:nodeId', async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    // Check permission
+    if (!await hasNodesReadPermission(userId, isAdmin)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient permissions',
+        required: { resource: 'nodes', action: 'read' }
+      });
+    }
+
     const { nodeId } = req.params;
     const allNodes = databaseService.getAllNodes();
     const node = allNodes.find(n => n.nodeId === nodeId);
