@@ -46,9 +46,21 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           const response = await apiService.getRetroactiveDecryptionProgress();
           if (response.progress) {
             setDecryptionProgress(response.progress);
-            if (response.progress.status === 'completed' || response.progress.status === 'failed') {
+            if (response.progress.status === 'completed') {
               // Refresh channels to show updated decrypted counts
               fetchChannels();
+              showToast(
+                t('channel_database.toast_decryption_completed', {
+                  decrypted: response.progress.decrypted,
+                  total: response.progress.total
+                }),
+                'success'
+              );
+            } else if (response.progress.status === 'failed') {
+              // Refresh channels and show error
+              fetchChannels();
+              const errorMsg = response.progress.error || t('channel_database.toast_decryption_failed');
+              showToast(errorMsg, 'error');
             }
           } else if (!response.isRunning) {
             setDecryptionProgress(null);

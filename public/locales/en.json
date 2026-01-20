@@ -3459,6 +3459,7 @@
   "channel_database.toast_import_failed": "Failed to import channels",
   "channel_database.toast_decryption_started": "Retroactive decryption started",
   "channel_database.toast_decryption_failed": "Failed to start retroactive decryption",
+  "channel_database.toast_decryption_completed": "Decryption completed: {{decrypted}} of {{total}} packets decrypted",
 
   "common.never": "Never",
   "common.importing": "Importing...",

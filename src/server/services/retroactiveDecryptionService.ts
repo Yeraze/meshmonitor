@@ -9,6 +9,18 @@ import databaseService from '../../services/database.js';
 import { channelDecryptionService } from './channelDecryptionService.js';
 import { logger } from '../../utils/logger.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
+import { DEFAULT_RETROACTIVE_BATCH_SIZE } from '../constants/meshtastic.js';
+import { getEnvironmentConfig } from '../config/environment.js';
+
+// Get batch size from environment or use default
+const getBatchSize = (): number => {
+  const env = getEnvironmentConfig();
+  const envBatchSize = (env as any).retroactiveDecryptionBatchSize;
+  if (envBatchSize && !isNaN(Number(envBatchSize))) {
+    return Number(envBatchSize);
+  }
+  return DEFAULT_RETROACTIVE_BATCH_SIZE;
+};
 
 export interface ProcessingProgress {
   channelDatabaseId: number;
@@ -130,9 +142,10 @@ class RetroactiveDecryptionService {
    */
   private async getEncryptedPackets(): Promise<EncryptedPacketInfo[]> {
     // Get encrypted packets from the packet log
+    const batchSize = getBatchSize();
     const packets = await databaseService.getPacketLogsAsync({
       encrypted: true,
-      limit: 10000, // Reasonable limit to prevent memory issues
+      limit: batchSize,
     });
 
     // Filter to only those that have encrypted_payload in metadata and no decrypted_by

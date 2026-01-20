@@ -16,7 +16,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -36,8 +36,9 @@ export interface ProcessingContext {
   decryptedChannelId?: number; // Channel Database entry ID for server-decrypted messages
 }
 
-// Offset for Channel Database channels - device channels are 0-7, database channels start at 100
-export const CHANNEL_DB_OFFSET = 100;
+// CHANNEL_DB_OFFSET is imported from './constants/meshtastic.js'
+// Re-export for consumers who import from meshtasticManager
+export { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
 export interface DeviceInfo {
   nodeNum: number;

@@ -25,8 +25,9 @@ import { useNodes } from '../hooks/useServerData';
 // Default PSK value (publicly known key - not truly secure)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
 
-// Offset for Channel Database channels - must match server's CHANNEL_DB_OFFSET
-// Device channels are 0-7, database channels start at 100
+// Offset for Channel Database channels
+// IMPORTANT: This value must match CHANNEL_DB_OFFSET in src/server/constants/meshtastic.ts
+// Device channels use indices 0-7, database channels start at 100
 const CHANNEL_DB_OFFSET = 100;
 
 // Encryption status types

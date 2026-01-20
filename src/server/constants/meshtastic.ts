@@ -108,3 +108,30 @@ export function isInternalPortNum(portnum: number): boolean {
 export function isPkiError(errorReason: number): boolean {
   return errorReason === RoutingError.PKI_FAILED || errorReason === RoutingError.PKI_UNKNOWN_PUBKEY;
 }
+
+/**
+ * Channel Database Constants
+ *
+ * These constants are used for server-side decryption of encrypted packets
+ * using stored channel configurations.
+ */
+
+/**
+ * Offset for Channel Database channels.
+ * Device channels use indices 0-7, so database channels start at 100
+ * to avoid any potential conflicts.
+ * Channel number = CHANNEL_DB_OFFSET + channelDatabaseId
+ */
+export const CHANNEL_DB_OFFSET = 100;
+
+/**
+ * Maximum number of packets to process in a single retroactive decryption batch.
+ * This can be overridden via environment variable RETROACTIVE_DECRYPTION_BATCH_SIZE.
+ */
+export const DEFAULT_RETROACTIVE_BATCH_SIZE = 10000;
+
+/**
+ * Cache TTL for channel database entries in milliseconds.
+ * Default: 1 minute
+ */
+export const CHANNEL_CACHE_TTL_MS = 60000;

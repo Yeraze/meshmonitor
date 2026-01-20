@@ -180,8 +180,9 @@ export class ChannelDatabaseRepository extends BaseRepository {
         updatedAt: now,
       }).returning({ id: channelDatabaseSqlite.id });
 
-      logger.debug(`Created channel database entry: ${data.name} (ID: ${result[0].id})`);
-      return result[0].id;
+      const insertId = Number(result[0].id);
+      logger.debug(`Created channel database entry: ${data.name} (ID: ${insertId})`);
+      return insertId;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
       const result = await db.insert(channelDatabaseMysql).values({
@@ -216,8 +217,9 @@ export class ChannelDatabaseRepository extends BaseRepository {
         updatedAt: now,
       }).returning({ id: channelDatabasePostgres.id });
 
-      logger.debug(`Created channel database entry: ${data.name} (ID: ${result[0].id})`);
-      return result[0].id;
+      const insertId = Number(result[0].id);
+      logger.debug(`Created channel database entry: ${data.name} (ID: ${insertId})`);
+      return insertId;
     }
   }
 

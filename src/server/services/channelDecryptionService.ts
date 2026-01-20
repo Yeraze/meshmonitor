@@ -13,6 +13,7 @@ import { createDecipheriv } from 'crypto';
 import { getProtobufRoot } from '../protobufLoader.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { CHANNEL_CACHE_TTL_MS } from '../constants/meshtastic.js';
 
 export interface DecryptionResult {
   success: boolean;
@@ -35,7 +36,7 @@ class ChannelDecryptionService {
   private enabled: boolean = true;
   private maxDecryptionAttempts: number = 20;
   private lastCacheRefresh: number = 0;
-  private readonly CACHE_TTL_MS = 60000; // 1 minute cache TTL
+  private readonly CACHE_TTL_MS = CHANNEL_CACHE_TTL_MS;
 
   constructor() {
     // Cache will be loaded lazily on first use
