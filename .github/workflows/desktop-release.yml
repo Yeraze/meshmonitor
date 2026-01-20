@@ -376,18 +376,86 @@ jobs:
         working-directory: desktop
         run: npm install
 
-      # Build the Tauri app with signing and notarization if credentials are available
+      # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
       - name: Build Tauri app (release)
         working-directory: desktop
         env:
-          # Code signing - Tauri will use these if present
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Notarization credentials
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri:build -- --bundles app
+
+      # Re-sign node binary inside the app bundle with JIT entitlements
+      # Tauri's signing strips our entitlements, so we need to re-apply them
+      - name: Re-sign node binary with JIT entitlements
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set, skipping re-signing"
+            exit 0
+          fi
+
+          APP_PATH=$(find desktop/src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Could not find .app bundle"
+            exit 1
+          fi
+          echo "Found app bundle: $APP_PATH"
+
+          NODE_PATH="$APP_PATH/Contents/Resources/binaries/node"
+          if [ ! -f "$NODE_PATH" ]; then
+            echo "ERROR: Node binary not found at $NODE_PATH"
+            exit 1
+          fi
+
+          echo "Re-signing node binary with JIT entitlements..."
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements desktop/src-tauri/node.entitlements \
+            --timestamp "$NODE_PATH"
+
+          echo "Verifying node entitlements..."
+          codesign -d --entitlements - "$NODE_PATH"
+
+          echo "Re-signing app bundle to update signature..."
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp "$APP_PATH"
+
+          echo "Verifying app signature..."
+          codesign --verify --verbose=2 "$APP_PATH"
+
+      # Create DMG from the re-signed app
+      - name: Create DMG
+        run: |
+          APP_PATH=$(find desktop/src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          APP_NAME=$(basename "$APP_PATH" .app)
+          DMG_DIR="desktop/src-tauri/target/release/bundle/dmg"
+          mkdir -p "$DMG_DIR"
+
+          echo "Creating DMG from $APP_PATH..."
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" \
+            -ov -format UDZO "$DMG_DIR/$APP_NAME.dmg"
+
+      # Notarize the DMG
+      - name: Notarize DMG
+        env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: npm run tauri:build -- --bundles dmg
+        run: |
+          if [ -z "$APPLE_API_KEY" ]; then
+            echo "APPLE_API_KEY not set, skipping notarization"
+            exit 0
+          fi
+
+          DMG_PATH=$(find desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          echo "Notarizing $DMG_PATH..."
+
+          xcrun notarytool submit "$DMG_PATH" \
+            --key ~/private_keys/AuthKey_${APPLE_API_KEY}.p8 \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$DMG_PATH"
 
       - name: Get version from tag
         id: get_version
@@ -656,18 +724,86 @@ jobs:
         working-directory: desktop
         run: npm install
 
-      # Build the Tauri app with signing and notarization if credentials are available
+      # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
       - name: Build Tauri app (release)
         working-directory: desktop
         env:
-          # Code signing - Tauri will use these if present
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Notarization credentials
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri:build -- --bundles app
+
+      # Re-sign node binary inside the app bundle with JIT entitlements
+      # Tauri's signing strips our entitlements, so we need to re-apply them
+      - name: Re-sign node binary with JIT entitlements
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set, skipping re-signing"
+            exit 0
+          fi
+
+          APP_PATH=$(find desktop/src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Could not find .app bundle"
+            exit 1
+          fi
+          echo "Found app bundle: $APP_PATH"
+
+          NODE_PATH="$APP_PATH/Contents/Resources/binaries/node"
+          if [ ! -f "$NODE_PATH" ]; then
+            echo "ERROR: Node binary not found at $NODE_PATH"
+            exit 1
+          fi
+
+          echo "Re-signing node binary with JIT entitlements..."
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements desktop/src-tauri/node.entitlements \
+            --timestamp "$NODE_PATH"
+
+          echo "Verifying node entitlements..."
+          codesign -d --entitlements - "$NODE_PATH"
+
+          echo "Re-signing app bundle to update signature..."
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp "$APP_PATH"
+
+          echo "Verifying app signature..."
+          codesign --verify --verbose=2 "$APP_PATH"
+
+      # Create DMG from the re-signed app
+      - name: Create DMG
+        run: |
+          APP_PATH=$(find desktop/src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          APP_NAME=$(basename "$APP_PATH" .app)
+          DMG_DIR="desktop/src-tauri/target/release/bundle/dmg"
+          mkdir -p "$DMG_DIR"
+
+          echo "Creating DMG from $APP_PATH..."
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" \
+            -ov -format UDZO "$DMG_DIR/$APP_NAME.dmg"
+
+      # Notarize the DMG
+      - name: Notarize DMG
+        env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: npm run tauri:build -- --bundles dmg
+        run: |
+          if [ -z "$APPLE_API_KEY" ]; then
+            echo "APPLE_API_KEY not set, skipping notarization"
+            exit 0
+          fi
+
+          DMG_PATH=$(find desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          echo "Notarizing $DMG_PATH..."
+
+          xcrun notarytool submit "$DMG_PATH" \
+            --key ~/private_keys/AuthKey_${APPLE_API_KEY}.p8 \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$DMG_PATH"
 
       - name: Get version from tag
         id: get_version
