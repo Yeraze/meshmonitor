@@ -4422,6 +4422,29 @@ body {
   font-weight: 500;
 }
 
+/* Dismiss traceroute button */
+.dismiss-traceroute-btn {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  margin: 0.25rem 0;
+}
+
+.dismiss-traceroute-btn:hover {
+  background: var(--ctp-surface2);
+  border-color: var(--ctp-mauve);
+}
+
+.dismiss-traceroute-btn:active {
+  background: var(--ctp-overlay0);
+}
+
 /* Map controls title */
 .map-controls-header {
   position: relative;
