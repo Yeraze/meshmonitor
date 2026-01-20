@@ -484,6 +484,33 @@ function App() {
     setShowIncompleteNodes,
   } = useUI();
 
+  // Check tab permissions and redirect if unauthorized
+  // This prevents users from accessing protected tabs via direct URL navigation
+  useEffect(() => {
+    const isAdmin = authStatus?.user?.isAdmin || false;
+    const isAuthenticated = authStatus?.authenticated || false;
+
+    // Define permission requirements for each protected tab
+    const tabPermissions: Record<string, () => boolean> = {
+      settings: () => hasPermission('settings', 'read'),
+      automation: () => hasPermission('automation', 'read'),
+      configuration: () => hasPermission('configuration', 'read'),
+      notifications: () => isAuthenticated,
+      users: () => isAdmin,
+      admin: () => isAdmin,
+      audit: () => hasPermission('audit', 'read'),
+      security: () => hasPermission('security', 'read'),
+    };
+
+    // Check if current tab requires permission
+    const permissionCheck = tabPermissions[activeTab];
+    if (permissionCheck && !permissionCheck()) {
+      // User doesn't have permission - redirect to nodes tab
+      logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
+      setActiveTab('nodes');
+    }
+  }, [activeTab, authStatus, hasPermission, setActiveTab]);
+
   // Helper function to safely parse node IDs to node numbers
   const parseNodeId = useCallback((nodeId: string): number => {
     try {
