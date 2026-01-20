@@ -479,6 +479,11 @@ class MeshtasticManager {
     this.localNodeInfo = null;
     // Clear favorites support cache on disconnect
     this.favoritesSupportCache = null;
+    // Clear device/module config cache on disconnect
+    // This ensures fresh config is fetched on reconnect (prevents stale data after reboot)
+    this.actualDeviceConfig = null;
+    this.actualModuleConfig = null;
+    logger.debug('📸 Cleared device and module config cache on disconnect');
     // Clear init config cache - will be repopulated on reconnect
     // This ensures virtual node clients get fresh data if a different node reconnects
     this.initConfigCache = [];
