@@ -44,6 +44,7 @@ export default defineConfig({
             { text: 'Admin Commands', link: '/features/admin-commands' },
             { text: 'Push Notifications', link: '/features/notifications' },
             { text: 'Packet Monitor', link: '/features/packet-monitor' },
+            { text: 'Channel Database', link: '/features/channel-database' },
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
             { text: '🌐 Site Gallery', link: '/site-gallery' },
