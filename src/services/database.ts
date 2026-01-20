@@ -51,6 +51,7 @@ import { migration as packetDirectionMigration } from '../server/migrations/045_
 import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
 import { migration as positionOverrideBooleanMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_fix_position_override_boolean_types.js';
 import { migration as autoTracerouteColumnMigration } from '../server/migrations/048_fix_auto_traceroute_column_name.js';
+import { migration as notificationChannelSettingsMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_add_notification_channel_settings.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -867,6 +868,7 @@ class DatabaseService {
     this.runAutoKeyRepairMigration();
     this.runPositionOverrideBooleanMigration();
     this.runAutoTracerouteColumnMigration();
+    this.runNotificationChannelSettingsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1812,6 +1814,27 @@ class DatabaseService {
       logger.debug('✅ Auto traceroute column migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run auto traceroute column migration:', error);
+      throw error;
+    }
+  }
+
+  private runNotificationChannelSettingsMigration(): void {
+    logger.debug('Running notification channel settings migration...');
+    try {
+      const migrationKey = 'migration_049_notification_channel_settings';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Notification channel settings migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 049: Add notification channel settings columns...');
+      notificationChannelSettingsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Notification channel settings migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run notification channel settings migration:', error);
       throw error;
     }
   }
@@ -8705,6 +8728,9 @@ class DatabaseService {
       // Run migration 047: Convert position override columns to BOOLEAN
       await runMigration047Postgres(client);
 
+      // Run migration 049: Add missing notification channel settings columns
+      await runMigration049Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -8759,6 +8785,9 @@ class DatabaseService {
 
       // Run migration 047: Convert position override columns to BOOLEAN
       await runMigration047Mysql(pool);
+
+      // Run migration 049: Add missing notification channel settings columns
+      await runMigration049Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
