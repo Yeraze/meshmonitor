@@ -433,185 +433,88 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Delete telemetry by node and type
+   * Delete telemetry by node and type.
+   * Uses direct DELETE WHERE for optimal performance.
    */
   async deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): Promise<boolean> {
+    const condition = (schema: { nodeId: any; telemetryType: any }) =>
+      and(eq(schema.nodeId, nodeId), eq(schema.telemetryType, telemetryType));
+
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: telemetrySqlite.id })
-        .from(telemetrySqlite)
-        .where(
-          and(
-            eq(telemetrySqlite.nodeId, nodeId),
-            eq(telemetrySqlite.telemetryType, telemetryType)
-          )
-        );
-
-      if (toDelete.length === 0) return false;
-
-      for (const record of toDelete) {
-        await db.delete(telemetrySqlite).where(eq(telemetrySqlite.id, record.id));
-      }
-      return true;
+      const deleted = await db
+        .delete(telemetrySqlite)
+        .where(condition(telemetrySqlite))
+        .returning({ id: telemetrySqlite.id });
+      return deleted.length > 0;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
         .select({ id: telemetryMysql.id })
         .from(telemetryMysql)
-        .where(
-          and(
-            eq(telemetryMysql.nodeId, nodeId),
-            eq(telemetryMysql.telemetryType, telemetryType)
-          )
-        );
-
-      if (toDelete.length === 0) return false;
-
-      for (const record of toDelete) {
-        await db.delete(telemetryMysql).where(eq(telemetryMysql.id, record.id));
-      }
+        .where(condition(telemetryMysql));
+      if (countResult.length === 0) return false;
+      await db.delete(telemetryMysql).where(condition(telemetryMysql));
       return true;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: telemetryPostgres.id })
-        .from(telemetryPostgres)
-        .where(
-          and(
-            eq(telemetryPostgres.nodeId, nodeId),
-            eq(telemetryPostgres.telemetryType, telemetryType)
-          )
-        );
-
-      if (toDelete.length === 0) return false;
-
-      for (const record of toDelete) {
-        await db.delete(telemetryPostgres).where(eq(telemetryPostgres.id, record.id));
-      }
-      return true;
+      const deleted = await db
+        .delete(telemetryPostgres)
+        .where(condition(telemetryPostgres))
+        .returning({ id: telemetryPostgres.id });
+      return deleted.length > 0;
     }
   }
 
   /**
-   * Purge telemetry for a node
+   * Purge telemetry for a node.
+   * Delegates to deleteTelemetryByNode.
    */
   async purgeNodeTelemetry(nodeNum: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: telemetrySqlite.id })
-        .from(telemetrySqlite)
-        .where(eq(telemetrySqlite.nodeNum, nodeNum));
-
-      for (const record of toDelete) {
-        await db.delete(telemetrySqlite).where(eq(telemetrySqlite.id, record.id));
-      }
-      return toDelete.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(eq(telemetryMysql.nodeNum, nodeNum));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryMysql).where(eq(telemetryMysql.id, record.id));
-      }
-      return toDelete.length;
-    } else {
-      const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: telemetryPostgres.id })
-        .from(telemetryPostgres)
-        .where(eq(telemetryPostgres.nodeNum, nodeNum));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryPostgres).where(eq(telemetryPostgres.id, record.id));
-      }
-      return toDelete.length;
-    }
+    return this.deleteTelemetryByNode(nodeNum);
   }
 
   /**
-   * Cleanup old telemetry data
+   * Cleanup old telemetry data.
+   * Delegates to deleteOldTelemetry with calculated cutoff timestamp.
    */
   async cleanupOldTelemetry(days: number = 30): Promise<number> {
     const cutoff = this.now() - (days * 24 * 60 * 60 * 1000);
-
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: telemetrySqlite.id })
-        .from(telemetrySqlite)
-        .where(lt(telemetrySqlite.timestamp, cutoff));
-
-      for (const record of toDelete) {
-        await db.delete(telemetrySqlite).where(eq(telemetrySqlite.id, record.id));
-      }
-      return toDelete.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(lt(telemetryMysql.timestamp, cutoff));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryMysql).where(eq(telemetryMysql.id, record.id));
-      }
-      return toDelete.length;
-    } else {
-      const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: telemetryPostgres.id })
-        .from(telemetryPostgres)
-        .where(lt(telemetryPostgres.timestamp, cutoff));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryPostgres).where(eq(telemetryPostgres.id, record.id));
-      }
-      return toDelete.length;
-    }
+    return this.deleteOldTelemetry(cutoff);
   }
 
   /**
-   * Delete telemetry older than a given timestamp
+   * Delete telemetry older than a given timestamp.
+   * Uses direct DELETE WHERE for optimal performance.
    */
   async deleteOldTelemetry(cutoffTimestamp: number): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: telemetrySqlite.id })
-        .from(telemetrySqlite)
-        .where(lt(telemetrySqlite.timestamp, cutoffTimestamp));
-
-      for (const record of toDelete) {
-        await db.delete(telemetrySqlite).where(eq(telemetrySqlite.id, record.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(telemetrySqlite)
+        .where(lt(telemetrySqlite.timestamp, cutoffTimestamp))
+        .returning({ id: telemetrySqlite.id });
+      return deleted.length;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
         .select({ id: telemetryMysql.id })
         .from(telemetryMysql)
         .where(lt(telemetryMysql.timestamp, cutoffTimestamp));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryMysql).where(eq(telemetryMysql.id, record.id));
-      }
-      return toDelete.length;
+      const count = countResult.length;
+      await db
+        .delete(telemetryMysql)
+        .where(lt(telemetryMysql.timestamp, cutoffTimestamp));
+      return count;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: telemetryPostgres.id })
-        .from(telemetryPostgres)
-        .where(lt(telemetryPostgres.timestamp, cutoffTimestamp));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryPostgres).where(eq(telemetryPostgres.id, record.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(telemetryPostgres)
+        .where(lt(telemetryPostgres.timestamp, cutoffTimestamp))
+        .returning({ id: telemetryPostgres.id });
+      return deleted.length;
     }
   }
 
@@ -730,42 +633,34 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Delete all telemetry for a specific node
+   * Delete all telemetry for a specific node.
+   * Uses direct DELETE WHERE for optimal performance.
    */
   async deleteTelemetryByNode(nodeNum: number): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: telemetrySqlite.id })
-        .from(telemetrySqlite)
-        .where(eq(telemetrySqlite.nodeNum, nodeNum));
-
-      for (const record of toDelete) {
-        await db.delete(telemetrySqlite).where(eq(telemetrySqlite.id, record.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(telemetrySqlite)
+        .where(eq(telemetrySqlite.nodeNum, nodeNum))
+        .returning({ id: telemetrySqlite.id });
+      return deleted.length;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
         .select({ id: telemetryMysql.id })
         .from(telemetryMysql)
         .where(eq(telemetryMysql.nodeNum, nodeNum));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryMysql).where(eq(telemetryMysql.id, record.id));
-      }
-      return toDelete.length;
+      const count = countResult.length;
+      await db.delete(telemetryMysql).where(eq(telemetryMysql.nodeNum, nodeNum));
+      return count;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: telemetryPostgres.id })
-        .from(telemetryPostgres)
-        .where(eq(telemetryPostgres.nodeNum, nodeNum));
-
-      for (const record of toDelete) {
-        await db.delete(telemetryPostgres).where(eq(telemetryPostgres.id, record.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(telemetryPostgres)
+        .where(eq(telemetryPostgres.nodeNum, nodeNum))
+        .returning({ id: telemetryPostgres.id });
+      return deleted.length;
     }
   }
 
