@@ -296,14 +296,20 @@ export const POSTGRES_SCHEMA_SQL = `
   );
 
   CREATE TABLE IF NOT EXISTS upgrade_history (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     "fromVersion" TEXT NOT NULL,
     "toVersion" TEXT NOT NULL,
-    "upgradeType" TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    "startedAt" BIGINT NOT NULL,
+    "deploymentMethod" TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    "currentStep" TEXT,
+    logs TEXT,
+    "backupPath" TEXT,
+    "startedAt" BIGINT,
     "completedAt" BIGINT,
-    error TEXT
+    "initiatedBy" TEXT,
+    "errorMessage" TEXT,
+    "rollbackAvailable" BOOLEAN
   );
 
   CREATE TABLE IF NOT EXISTS custom_themes (

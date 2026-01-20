@@ -55,6 +55,7 @@ import { migration as autoTracerouteColumnMigration } from '../server/migrations
 import { migration as notificationChannelSettingsMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_add_notification_channel_settings.js';
 import { migration as channelDatabaseMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_add_channel_database.js';
 import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
+import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -880,6 +881,7 @@ class DatabaseService {
     this.runNotificationChannelSettingsMigration();
     this.runChannelDatabaseMigration();
     this.runDecryptedByMessagesMigration();
+    this.runUpgradeHistorySchemaMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1888,6 +1890,26 @@ class DatabaseService {
       logger.debug('✅ Decrypted_by messages migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run decrypted_by messages migration:', error);
+      throw error;
+    }
+  }
+
+  private runUpgradeHistorySchemaMigration(): void {
+    try {
+      const migrationKey = 'migration_052_upgrade_history_schema';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Upgrade history schema migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 052: Fix upgrade_history schema...');
+      upgradeHistorySchemaMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Upgrade history schema migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run upgrade history schema migration:', error);
       throw error;
     }
   }
@@ -5787,7 +5809,7 @@ class DatabaseService {
             ORDER BY timestamp DESC
             LIMIT 1
           )
-        `, [success, toNodeNum]);
+        `, [success ? 1 : 0, toNodeNum]);
       } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
         await this.mysqlPool.query(`
           UPDATE auto_traceroute_log
@@ -8839,6 +8861,9 @@ class DatabaseService {
       // Run migration 051: Add decrypted_by column to messages
       await runMigration051Postgres(client);
 
+      // Run migration 052: Fix upgrade_history schema
+      await runMigration052Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -8902,6 +8927,9 @@ class DatabaseService {
 
       // Run migration 051: Add decrypted_by column to messages
       await runMigration051Mysql(pool);
+
+      // Run migration 052: Fix upgrade_history schema
+      await runMigration052Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
