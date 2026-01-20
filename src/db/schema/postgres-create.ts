@@ -245,6 +245,10 @@ export const POSTGRES_SCHEMA_SQL = `
     "prefixWithNodeName" BOOLEAN DEFAULT false,
     "appriseEnabled" BOOLEAN DEFAULT true,
     "appriseUrls" TEXT,
+    "enabledChannels" TEXT,
+    "monitoredNodes" TEXT,
+    whitelist TEXT,
+    blacklist TEXT,
     "notifyOnMqtt" BOOLEAN DEFAULT true,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL
