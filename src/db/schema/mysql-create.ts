@@ -317,14 +317,20 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS upgrade_history (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    fromVersion VARCHAR(255) NOT NULL,
-    toVersion VARCHAR(255) NOT NULL,
-    upgradeType VARCHAR(255) NOT NULL,
-    status VARCHAR(255) NOT NULL,
-    startedAt BIGINT NOT NULL,
+    id VARCHAR(64) PRIMARY KEY,
+    fromVersion VARCHAR(32) NOT NULL,
+    toVersion VARCHAR(32) NOT NULL,
+    deploymentMethod VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    progress INT DEFAULT 0,
+    currentStep VARCHAR(255),
+    logs TEXT,
+    backupPath VARCHAR(512),
+    startedAt BIGINT,
     completedAt BIGINT,
-    error TEXT
+    initiatedBy VARCHAR(255),
+    errorMessage TEXT,
+    rollbackAvailable BOOLEAN
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS custom_themes (
