@@ -57,6 +57,7 @@ export interface TracerouteDigest {
 export interface ThemeColors {
   mauve: string;
   red: string;
+  blue: string; // For forward traceroute path
   overlay0: string; // For MQTT segments (muted color)
 }
 
@@ -94,6 +95,10 @@ export interface UseTraceroutePathsResult {
   traceroutePathsElements: React.ReactElement[] | null;
   /** Selected node traceroute elements (specific route when showRoute is true) */
   selectedNodeTraceroute: React.ReactElement[] | null;
+  /** Set of node numbers involved in the selected traceroute (for filtering map markers) */
+  tracerouteNodeNums: Set<number> | null;
+  /** Bounding box of the selected traceroute for zoom-to-fit [[minLat, minLng], [maxLat, maxLng]] */
+  tracerouteBounds: [[number, number], [number, number]] | null;
 }
 
 const BROADCAST_ADDR = 4294967295;
@@ -698,7 +703,7 @@ export function useTraceroutePaths({
                <Polyline
                  key={`selected-traceroute-forward-seg-${i}`}
                  positions={segmentPoints}
-                 color={themeColors.red}
+                 color={themeColors.blue}
                  weight={weight}
                  opacity={0.9}
                  dashArray="10, 5"
@@ -737,11 +742,11 @@ export function useTraceroutePaths({
 
           // Generate arrow markers for forward path
           const forwardArrows = generateCurvedArrowMarkers(
-            forwardPositions, 
-            'forward', 
-            themeColors.red, 
+            forwardPositions,
+            'forward',
+            themeColors.blue,
             forwardSegmentSnrs,
-            0.2, 
+            0.2,
             true
           );
           allElements.push(...forwardArrows);
@@ -864,10 +869,93 @@ export function useTraceroutePaths({
     }
 
     return allElements.length > 0 ? allElements : null;
-  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red]);
+  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red, themeColors.blue]);
+
+  // Compute the set of node numbers involved in the selected traceroute
+  // Used for filtering map markers to only show nodes in the active traceroute
+  const tracerouteNodeNums = useMemo(() => {
+    // Only compute when showRoute is enabled and there's a selected node
+    if (!showRoute || !selectedNodeId || selectedNodeId === currentNodeId) return null;
+
+    const selectedTrace = traceroutesDigest.find(
+      tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
+    );
+
+    if (!selectedTrace) return null;
+
+    // Skip if the traceroute has null or invalid route data
+    if (
+      !selectedTrace.route ||
+      selectedTrace.route === 'null' ||
+      selectedTrace.route === '' ||
+      !selectedTrace.routeBack ||
+      selectedTrace.routeBack === 'null' ||
+      selectedTrace.routeBack === ''
+    ) {
+      return null;
+    }
+
+    try {
+      const nodeNums = new Set<number>();
+
+      // Add the endpoints
+      nodeNums.add(selectedTrace.fromNodeNum);
+      nodeNums.add(selectedTrace.toNodeNum);
+
+      // Add intermediate nodes from forward route
+      const rawRouteForward = JSON.parse(selectedTrace.route);
+      const routeForward = rawRouteForward.filter(isValidRouteNode);
+      routeForward.forEach((num: number) => nodeNums.add(num));
+
+      // Add intermediate nodes from back route
+      const rawRouteBack = JSON.parse(selectedTrace.routeBack);
+      const routeBack = rawRouteBack.filter(isValidRouteNode);
+      routeBack.forEach((num: number) => nodeNums.add(num));
+
+      return nodeNums.size > 0 ? nodeNums : null;
+    } catch (error) {
+      logger.error('Error computing traceroute node numbers:', error);
+      return null;
+    }
+  }, [showRoute, selectedNodeId, currentNodeId, traceroutesDigest]);
+
+  // Compute bounding box of the selected traceroute for zoom-to-fit
+  const tracerouteBounds = useMemo((): [[number, number], [number, number]] | null => {
+    if (!tracerouteNodeNums || tracerouteNodeNums.size === 0) return null;
+
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    let hasValidPositions = false;
+
+    tracerouteNodeNums.forEach(nodeNum => {
+      const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
+      if (node?.position?.latitude != null && node?.position?.longitude != null) {
+        hasValidPositions = true;
+        minLat = Math.min(minLat, node.position.latitude);
+        maxLat = Math.max(maxLat, node.position.latitude);
+        minLng = Math.min(minLng, node.position.longitude);
+        maxLng = Math.max(maxLng, node.position.longitude);
+      }
+    });
+
+    if (!hasValidPositions) return null;
+
+    // Add some padding to the bounds (approximately 10% on each side)
+    const latPadding = (maxLat - minLat) * 0.1 || 0.01;
+    const lngPadding = (maxLng - minLng) * 0.1 || 0.01;
+
+    return [
+      [minLat - latPadding, minLng - lngPadding],
+      [maxLat + latPadding, maxLng + lngPadding]
+    ];
+  }, [tracerouteNodeNums, nodesPositionDigest]);
 
   return {
     traceroutePathsElements,
     selectedNodeTraceroute,
+    tracerouteNodeNums,
+    tracerouteBounds,
   };
 }
