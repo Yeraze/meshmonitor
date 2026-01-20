@@ -28,4 +28,4 @@ export type {
   PushSubscriptionInput,
 } from './notifications.js';
 export { MiscRepository } from './misc.js';
-export type { SolarEstimate, AutoTracerouteNode } from './misc.js';
+export type { SolarEstimate, AutoTracerouteNode, UpgradeHistoryRecord, NewUpgradeHistory } from './misc.js';
