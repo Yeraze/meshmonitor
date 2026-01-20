@@ -825,7 +825,7 @@ const dockerComposeYaml = computed(() => {
     lines.push('      - CHECK_INTERVAL=5')
     lines.push('      - COMPOSE_PROJECT_DIR=/compose')
     lines.push('      - COMPOSE_PROJECT_NAME=meshmonitor')
-    lines.push('    command: /data/scripts/upgrade-watchdog.sh')
+    lines.push('    command: /data/.meshmonitor-internal/upgrade-watchdog.sh')
     lines.push('    depends_on:')
     lines.push('      - meshmonitor')
     lines.push('    logging:')

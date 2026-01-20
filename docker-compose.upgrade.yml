@@ -8,8 +8,8 @@
 # and automatically pulls new images and restarts the main container when
 # an upgrade is requested through the MeshMonitor UI.
 #
-# Note: The upgrade-watchdog.sh script is automatically deployed to the shared
-# /data/scripts directory by the meshmonitor container on startup.
+# Note: The upgrade-watchdog.sh script is automatically deployed to
+# /data/.meshmonitor-internal directory by the meshmonitor container on startup.
 
 services:
   meshmonitor:
@@ -37,7 +37,7 @@ services:
       - CHECK_INTERVAL=5
       - COMPOSE_PROJECT_DIR=/compose
       - COMPOSE_PROJECT_NAME=meshmonitor
-    command: /data/scripts/upgrade-watchdog.sh
+    command: /data/.meshmonitor-internal/upgrade-watchdog.sh
     depends_on:
       - meshmonitor
     networks:

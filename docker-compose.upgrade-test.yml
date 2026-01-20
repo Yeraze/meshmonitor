@@ -33,7 +33,7 @@ services:
       - STATUS_FILE=/data/.upgrade-status
       - CHECK_INTERVAL=5
       - COMPOSE_PROJECT_DIR=/compose
-    command: /data/scripts/upgrade-watchdog.sh
+    command: /data/.meshmonitor-internal/upgrade-watchdog.sh
     depends_on:
       - meshmonitor
     networks:

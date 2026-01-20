@@ -66,26 +66,29 @@ elif [ "$NEW_GID" != "$CURRENT_GID" ]; then
     sed -i "s/^node:x:$CURRENT_UID:$CURRENT_GID:/node:x:$CURRENT_UID:$NEW_GID:/" /etc/passwd
 fi
 
-# Copy upgrade-related scripts to shared data volume
+# Copy upgrade-related scripts to internal directory (separate from user scripts)
+# User scripts go in /data/scripts (may be bind-mounted)
+# Internal MeshMonitor scripts go in /data/.meshmonitor-internal (never bind-mounted)
 SCRIPTS_SOURCE_DIR="/app/scripts"
-SCRIPTS_DEST_DIR="/data/scripts"
+INTERNAL_SCRIPTS_DIR="/data/.meshmonitor-internal"
 AUDIT_LOG="/data/logs/audit.log"
 
 # Create directories first (as root), then chown after
-mkdir -p /data/scripts /data/logs /data/apprise-config
+# Note: /data/scripts is for USER scripts and may be bind-mounted - we don't create it here
+mkdir -p "$INTERNAL_SCRIPTS_DIR" /data/logs /data/apprise-config
 
 # Fix ownership of data directory and app dist
 echo "Setting ownership of /data and /app/dist to node ($PUID:$PGID)..."
 chown -R node:node /data /app/dist
 
 if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
-    echo "Deploying scripts to /data/scripts/..."
+    echo "Deploying internal scripts to $INTERNAL_SCRIPTS_DIR/..."
 
     # Copy upgrade watchdog script
     if [ -f "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" ]; then
         SCRIPT_HASH=$(sha256sum "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" | cut -d' ' -f1 | cut -c1-8)
-        cp "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" "$SCRIPTS_DEST_DIR/upgrade-watchdog.sh"
-        chmod +x "$SCRIPTS_DEST_DIR/upgrade-watchdog.sh"
+        cp "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" "$INTERNAL_SCRIPTS_DIR/upgrade-watchdog.sh"
+        chmod +x "$INTERNAL_SCRIPTS_DIR/upgrade-watchdog.sh"
         echo "✓ Upgrade watchdog script deployed"
 
         # Audit log the deployment
@@ -96,8 +99,8 @@ if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
 
     # Copy Docker socket test script
     if [ -f "$SCRIPTS_SOURCE_DIR/test-docker-socket.sh" ]; then
-        cp "$SCRIPTS_SOURCE_DIR/test-docker-socket.sh" "$SCRIPTS_DEST_DIR/test-docker-socket.sh"
-        chmod +x "$SCRIPTS_DEST_DIR/test-docker-socket.sh"
+        cp "$SCRIPTS_SOURCE_DIR/test-docker-socket.sh" "$INTERNAL_SCRIPTS_DIR/test-docker-socket.sh"
+        chmod +x "$INTERNAL_SCRIPTS_DIR/test-docker-socket.sh"
         echo "✓ Docker socket test script deployed"
     fi
 fi

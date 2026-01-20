@@ -13,7 +13,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-meshmonitor}"
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/yeraze/meshmonitor}"
 COMPOSE_PROJECT_DIR="${COMPOSE_PROJECT_DIR:-/compose}"
 DOCKER_SOCKET_TEST_REQUEST="${DOCKER_SOCKET_TEST_REQUEST:-/data/.docker-socket-test-request}"
-DOCKER_SOCKET_TEST_SCRIPT="${DOCKER_SOCKET_TEST_SCRIPT:-/data/scripts/test-docker-socket.sh}"
+DOCKER_SOCKET_TEST_SCRIPT="${DOCKER_SOCKET_TEST_SCRIPT:-/data/.meshmonitor-internal/test-docker-socket.sh}"
 
 # Colors for output
 RED='\033[0;31m'
