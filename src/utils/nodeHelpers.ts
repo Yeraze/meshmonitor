@@ -51,6 +51,61 @@ export const hasValidPosition = (node: DeviceInfo): boolean => {
   );
 };
 
+/**
+ * Position data returned by getEffectivePosition
+ */
+export interface EffectivePosition {
+  latitude: number | undefined;
+  longitude: number | undefined;
+  altitude: number | undefined;
+}
+
+/**
+ * Get the effective position for a node, respecting position overrides.
+ * If position override is enabled and has valid coordinates, use override values.
+ * Otherwise, fall back to regular GPS position.
+ *
+ * This mirrors the backend getEffectivePosition logic in server.ts.
+ *
+ * @param node - The device node to get position from
+ * @returns The effective position (override if enabled, otherwise GPS position)
+ */
+export const getEffectivePosition = (node: DeviceInfo | null | undefined): EffectivePosition => {
+  if (!node) {
+    return { latitude: undefined, longitude: undefined, altitude: undefined };
+  }
+
+  // Check for position override first
+  if (
+    node.positionOverrideEnabled === true &&
+    node.latitudeOverride != null &&
+    node.longitudeOverride != null
+  ) {
+    return {
+      latitude: node.latitudeOverride,
+      longitude: node.longitudeOverride,
+      altitude: node.altitudeOverride,
+    };
+  }
+
+  // Fall back to regular position
+  return {
+    latitude: node.position?.latitude,
+    longitude: node.position?.longitude,
+    altitude: node.position?.altitude,
+  };
+};
+
+/**
+ * Check if a node has a valid effective position (accounting for overrides).
+ * @param node - The device node to check
+ * @returns true if the node has valid effective position coordinates
+ */
+export const hasValidEffectivePosition = (node: DeviceInfo): boolean => {
+  const pos = getEffectivePosition(node);
+  return pos.latitude != null && pos.longitude != null;
+};
+
 export const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role) : role;

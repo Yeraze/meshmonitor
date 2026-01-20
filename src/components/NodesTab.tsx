@@ -7,7 +7,7 @@ import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
-import { getHardwareModelName, getRoleName, isNodeComplete, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
+import { getEffectivePosition, getHardwareModelName, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { formatTime, formatDateTime, formatRelativeTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
@@ -868,22 +868,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     });
   }, [sortField, sortDirection, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
-  // Calculate nodes with position
-  const nodesWithPosition = processedNodes.filter(node =>
-    node.position &&
-    node.position.latitude != null &&
-    node.position.longitude != null
-  );
+  // Calculate nodes with position - uses effective position (respects position overrides, Issue #1526)
+  const nodesWithPosition = processedNodes.filter(node => hasValidEffectivePosition(node));
 
   // Memoize node positions to prevent React-Leaflet from resetting marker positions
   // Creating new [lat, lng] arrays causes React-Leaflet to move markers, destroying spiderfier state
+  // Uses getEffectivePosition to respect position overrides (Issue #1526)
   const nodePositions = React.useMemo(() => {
     const posMap = new Map<number, [number, number]>();
     nodesWithPosition.forEach(node => {
-      posMap.set(node.nodeNum, [node.position!.latitude, node.position!.longitude]);
+      const effectivePos = getEffectivePosition(node);
+      if (effectivePos.latitude != null && effectivePos.longitude != null) {
+        posMap.set(node.nodeNum, [effectivePos.latitude, effectivePos.longitude]);
+      }
     });
     return posMap;
-  }, [nodesWithPosition.map(n => `${n.nodeNum}-${n.position!.latitude}-${n.position!.longitude}`).join(',')]);
+  }, [nodesWithPosition.map(n => {
+    const pos = getEffectivePosition(n);
+    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
+  }).join(',')]);
 
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
@@ -899,16 +902,26 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }
 
     // Prioritize the locally connected node's position for first-time visitors
+    // Uses effective position to respect position overrides (Issue #1526)
     if (currentNodeId) {
       const localNode = nodesWithPosition.find(node => node.user?.id === currentNodeId);
-      if (localNode && localNode.position) {
-        return [localNode.position.latitude, localNode.position.longitude];
+      if (localNode) {
+        const effectivePos = getEffectivePosition(localNode);
+        if (effectivePos.latitude != null && effectivePos.longitude != null) {
+          return [effectivePos.latitude, effectivePos.longitude];
+        }
       }
     }
 
-    // Fall back to average position of all nodes
-    const avgLat = nodesWithPosition.reduce((sum, node) => sum + node.position!.latitude, 0) / nodesWithPosition.length;
-    const avgLng = nodesWithPosition.reduce((sum, node) => sum + node.position!.longitude, 0) / nodesWithPosition.length;
+    // Fall back to average position of all nodes (using effective positions)
+    const avgLat = nodesWithPosition.reduce((sum, node) => {
+      const pos = getEffectivePosition(node);
+      return sum + (pos.latitude ?? 0);
+    }, 0) / nodesWithPosition.length;
+    const avgLng = nodesWithPosition.reduce((sum, node) => {
+      const pos = getEffectivePosition(node);
+      return sum + (pos.longitude ?? 0);
+    }, 0) / nodesWithPosition.length;
     return [avgLat, avgLng];
   };
 
