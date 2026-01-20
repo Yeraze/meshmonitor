@@ -47,7 +47,7 @@ import { ResourceType } from './types/permission';
 import api from './services/api';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
-import { isNodeComplete } from './utils/nodeHelpers';
+import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
 import Sidebar from './components/Sidebar';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
@@ -3729,24 +3729,31 @@ function App() {
 
   // Create stable digests of nodes and traceroutes that only change when relevant data changes
   // This prevents unnecessary recalculation of traceroutePathsElements
+  // Uses getEffectivePosition to respect position overrides (Issue #1526)
   const nodesPositionDigest = useMemo(() => {
-    return nodes.map(n => ({
-      nodeNum: n.nodeNum,
-      position: n.position
-        ? {
-            latitude: n.position.latitude,
-            longitude: n.position.longitude,
-          }
-        : undefined,
-      user: n.user
-        ? {
-            longName: n.user.longName,
-            shortName: n.user.shortName,
-            id: n.user.id,
-          }
-        : undefined,
-    }));
-  }, [nodes.map(n => `${n.nodeNum}-${n.position?.latitude}-${n.position?.longitude}`).join(',')]);
+    return nodes.map(n => {
+      const effectivePos = getEffectivePosition(n);
+      return {
+        nodeNum: n.nodeNum,
+        position: effectivePos.latitude != null && effectivePos.longitude != null
+          ? {
+              latitude: effectivePos.latitude,
+              longitude: effectivePos.longitude,
+            }
+          : undefined,
+        user: n.user
+          ? {
+              longName: n.user.longName,
+              shortName: n.user.shortName,
+              id: n.user.id,
+            }
+          : undefined,
+      };
+    });
+  }, [nodes.map(n => {
+    const pos = getEffectivePosition(n);
+    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
+  }).join(',')]);
 
   const traceroutesDigest = useMemo(() => {
     return traceroutes.map(tr => ({

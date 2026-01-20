@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getRoleName, getHardwareModelName, getNodeName, getNodeShortName, isNodeComplete } from './nodeHelpers';
+import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete } from './nodeHelpers';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
 
@@ -448,6 +448,165 @@ describe('Node Helpers', () => {
         };
         expect(isNodeComplete(broadcastNode)).toBe(true);
       });
+    });
+  });
+
+  describe('getEffectivePosition', () => {
+    it('should return undefined for null or undefined node', () => {
+      const result1 = getEffectivePosition(null);
+      expect(result1.latitude).toBeUndefined();
+      expect(result1.longitude).toBeUndefined();
+      expect(result1.altitude).toBeUndefined();
+
+      const result2 = getEffectivePosition(undefined);
+      expect(result2.latitude).toBeUndefined();
+      expect(result2.longitude).toBeUndefined();
+      expect(result2.altitude).toBeUndefined();
+    });
+
+    it('should return GPS position when override is disabled', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0, altitude: 100 },
+        positionOverrideEnabled: false,
+        latitudeOverride: 41.0,
+        longitudeOverride: -76.0,
+        altitudeOverride: 200
+      };
+      const result = getEffectivePosition(node);
+      expect(result.latitude).toBe(40.0);
+      expect(result.longitude).toBe(-75.0);
+      expect(result.altitude).toBe(100);
+    });
+
+    it('should return override position when override is enabled with valid values', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0, altitude: 100 },
+        positionOverrideEnabled: true,
+        latitudeOverride: 41.0,
+        longitudeOverride: -76.0,
+        altitudeOverride: 200
+      };
+      const result = getEffectivePosition(node);
+      expect(result.latitude).toBe(41.0);
+      expect(result.longitude).toBe(-76.0);
+      expect(result.altitude).toBe(200);
+    });
+
+    it('should return GPS position when override is enabled but override values are null', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0, altitude: 100 },
+        positionOverrideEnabled: true,
+        latitudeOverride: undefined,
+        longitudeOverride: undefined
+      };
+      const result = getEffectivePosition(node);
+      expect(result.latitude).toBe(40.0);
+      expect(result.longitude).toBe(-75.0);
+    });
+
+    it('should return GPS position when override is enabled but only lat is set', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0 },
+        positionOverrideEnabled: true,
+        latitudeOverride: 41.0,
+        longitudeOverride: undefined
+      };
+      const result = getEffectivePosition(node);
+      expect(result.latitude).toBe(40.0);
+      expect(result.longitude).toBe(-75.0);
+    });
+
+    it('should return undefined when no position data exists', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789
+      };
+      const result = getEffectivePosition(node);
+      expect(result.latitude).toBeUndefined();
+      expect(result.longitude).toBeUndefined();
+    });
+
+    it('should handle node with only position data (no override fields)', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0, altitude: 100 }
+      };
+      const result = getEffectivePosition(node);
+      expect(result.latitude).toBe(40.0);
+      expect(result.longitude).toBe(-75.0);
+      expect(result.altitude).toBe(100);
+    });
+
+    it('should return override altitude when override is enabled', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0, altitude: 100 },
+        positionOverrideEnabled: true,
+        latitudeOverride: 41.0,
+        longitudeOverride: -76.0,
+        altitudeOverride: 500
+      };
+      const result = getEffectivePosition(node);
+      expect(result.altitude).toBe(500);
+    });
+  });
+
+  describe('hasValidEffectivePosition', () => {
+    it('should return true for node with valid GPS position', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0 }
+      };
+      expect(hasValidEffectivePosition(node)).toBe(true);
+    });
+
+    it('should return true for node with valid override position', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        positionOverrideEnabled: true,
+        latitudeOverride: 41.0,
+        longitudeOverride: -76.0
+      };
+      expect(hasValidEffectivePosition(node)).toBe(true);
+    });
+
+    it('should return false for node without any position', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789
+      };
+      expect(hasValidEffectivePosition(node)).toBe(false);
+    });
+
+    it('should return false for node with only latitude', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0 } as any
+      };
+      expect(hasValidEffectivePosition(node)).toBe(false);
+    });
+
+    it('should return false for node with enabled override but incomplete coordinates', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        positionOverrideEnabled: true,
+        latitudeOverride: 41.0
+        // longitude override missing
+      };
+      expect(hasValidEffectivePosition(node)).toBe(false);
+    });
+
+    it('should use GPS position when override is disabled even if override values exist', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456789,
+        position: { latitude: 40.0, longitude: -75.0 },
+        positionOverrideEnabled: false,
+        latitudeOverride: 41.0,
+        longitudeOverride: -76.0
+      };
+      expect(hasValidEffectivePosition(node)).toBe(true);
     });
   });
 });
