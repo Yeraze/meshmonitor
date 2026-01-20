@@ -48,6 +48,7 @@ WORKDIR /app
 RUN apk add --no-cache \
     python3 \
     py3-pip \
+    py3-requests \
     supervisor \
     su-exec \
     && ln -sf /usr/bin/python3 /usr/bin/python \
