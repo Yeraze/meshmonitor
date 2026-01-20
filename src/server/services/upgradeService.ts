@@ -172,23 +172,26 @@ class UpgradeService {
       const upgradeId = uuidv4();
       const now = Date.now();
 
-      databaseService.db.prepare(
-        `INSERT INTO upgrade_history
-        (id, fromVersion, toVersion, deploymentMethod, status, progress, currentStep, logs, startedAt, initiatedBy, rollbackAvailable)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        upgradeId,
-        currentVersion,
-        targetVersion,
-        this.DEPLOYMENT_METHOD,
-        'pending',
-        0,
-        'Preparing upgrade',
-        JSON.stringify(['Upgrade initiated']),
-        now,
+      if (!databaseService.miscRepo) {
+        return {
+          success: false,
+          message: 'Database repository not initialized'
+        };
+      }
+
+      await databaseService.miscRepo.createUpgradeHistory({
+        id: upgradeId,
+        fromVersion: currentVersion,
+        toVersion: targetVersion,
+        deploymentMethod: this.DEPLOYMENT_METHOD,
+        status: 'pending',
+        progress: 0,
+        currentStep: 'Preparing upgrade',
+        logs: JSON.stringify(['Upgrade initiated']),
+        startedAt: now,
         initiatedBy,
-        1
-      );
+        rollbackAvailable: true,
+      });
 
       // Write trigger file for watchdog (using atomic write to prevent race conditions)
       const triggerData = {
@@ -220,9 +223,12 @@ class UpgradeService {
    */
   async getUpgradeStatus(upgradeId: string): Promise<UpgradeStatus | null> {
     try {
-      const row = databaseService.db.prepare(
-        `SELECT * FROM upgrade_history WHERE id = ? ORDER BY startedAt DESC LIMIT 1`
-      ).get(upgradeId) as any;
+      if (!databaseService.miscRepo) {
+        logger.error('❌ Database repository not initialized');
+        return null;
+      }
+
+      const row = await databaseService.miscRepo.getUpgradeById(upgradeId);
 
       if (!row) {
         return null;
@@ -242,13 +248,13 @@ class UpgradeService {
 
       return {
         upgradeId: row.id,
-        status: row.status,
+        status: row.status as UpgradeStatus['status'],
         progress: row.progress || 0,
         currentStep: row.currentStep || '',
         logs,
-        startedAt: new Date(row.startedAt).toISOString(),
+        startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : new Date().toISOString(),
         completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : undefined,
-        error: row.errorMessage,
+        error: row.errorMessage ?? undefined,
         fromVersion: row.fromVersion,
         toVersion: row.toVersion
       };
@@ -279,9 +285,12 @@ class UpgradeService {
    */
   async getUpgradeHistory(limit: number = 10): Promise<UpgradeStatus[]> {
     try {
-      const rows = databaseService.db.prepare(
-        `SELECT * FROM upgrade_history ORDER BY startedAt DESC LIMIT ?`
-      ).all(limit) as any[];
+      if (!databaseService.miscRepo) {
+        logger.error('❌ Database repository not initialized');
+        return [];
+      }
+
+      const rows = await databaseService.miscRepo.getUpgradeHistoryList(limit);
 
       return rows.map(row => {
         // Safely parse logs JSON
@@ -298,13 +307,13 @@ class UpgradeService {
 
         return {
           upgradeId: row.id,
-          status: row.status,
+          status: row.status as UpgradeStatus['status'],
           progress: row.progress || 0,
           currentStep: row.currentStep || '',
           logs,
-          startedAt: new Date(row.startedAt).toISOString(),
+          startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : new Date().toISOString(),
           completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : undefined,
-          error: row.errorMessage,
+          error: row.errorMessage ?? undefined,
           fromVersion: row.fromVersion,
           toVersion: row.toVersion
         };
@@ -322,32 +331,27 @@ class UpgradeService {
    */
   async isUpgradeInProgress(): Promise<boolean> {
     try {
+      if (!databaseService.miscRepo) {
+        logger.error('❌ Database repository not initialized');
+        return false;
+      }
+
       // First, clean up any stale upgrades (stuck for more than 30 minutes)
       const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
       const staleThreshold = Date.now() - STALE_TIMEOUT_MS;
 
-      const staleUpgrades = databaseService.db.prepare(
-        `SELECT id, startedAt, currentStep FROM upgrade_history
-         WHERE status IN ('pending', 'backing_up', 'downloading', 'restarting', 'health_check')
-         AND startedAt < ?`
-      ).all(staleThreshold) as any[];
+      const staleUpgrades = await databaseService.miscRepo.findStaleUpgrades(staleThreshold);
 
       if (staleUpgrades.length > 0) {
         logger.warn(`⚠️ Found ${staleUpgrades.length} stale upgrade(s), marking as failed`);
 
         for (const staleUpgrade of staleUpgrades) {
-          const minutesStuck = Math.round((Date.now() - staleUpgrade.startedAt) / 60000);
+          const minutesStuck = Math.round((Date.now() - (staleUpgrade.startedAt || 0)) / 60000);
           logger.warn(`⚠️ Upgrade ${staleUpgrade.id} stuck at "${staleUpgrade.currentStep}" for ${minutesStuck} minutes`);
 
-          databaseService.db.prepare(
-            `UPDATE upgrade_history
-             SET status = ?, completedAt = ?, errorMessage = ?
-             WHERE id = ?`
-          ).run(
-            'failed',
-            Date.now(),
-            `Upgrade timed out after ${minutesStuck} minutes (stuck at: ${staleUpgrade.currentStep})`,
-            staleUpgrade.id
+          await databaseService.miscRepo.markUpgradeFailed(
+            staleUpgrade.id,
+            `Upgrade timed out after ${minutesStuck} minutes (stuck at: ${staleUpgrade.currentStep})`
           );
 
           // Also remove trigger file if it exists
@@ -359,13 +363,9 @@ class UpgradeService {
       }
 
       // Now check if any non-stale upgrades are in progress
-      const row = databaseService.db.prepare(
-        `SELECT COUNT(*) as count FROM upgrade_history
-         WHERE status IN ('pending', 'backing_up', 'downloading', 'restarting', 'health_check')
-         AND startedAt >= ?`
-      ).get(staleThreshold) as any;
+      const count = await databaseService.miscRepo.countInProgressUpgrades(staleThreshold);
 
-      return row.count > 0;
+      return count > 0;
     } catch (error) {
       logger.error('❌ Failed to check upgrade progress:', error);
       return false;
@@ -387,22 +387,15 @@ class UpgradeService {
     startedAt: number;
   } | null> {
     try {
-      // For PostgreSQL/MySQL, upgrade history not yet implemented
-      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
+      if (!databaseService.miscRepo) {
+        logger.error('❌ Database repository not initialized');
         return null;
       }
 
       const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
       const staleThreshold = Date.now() - STALE_TIMEOUT_MS;
 
-      const row = databaseService.db.prepare(
-        `SELECT id, status, progress, currentStep, fromVersion, toVersion, startedAt
-         FROM upgrade_history
-         WHERE status IN ('pending', 'backing_up', 'downloading', 'restarting', 'health_check')
-         AND startedAt >= ?
-         ORDER BY startedAt DESC
-         LIMIT 1`
-      ).get(staleThreshold) as any;
+      const row = await databaseService.miscRepo.findActiveUpgrade(staleThreshold);
 
       if (!row) {
         return null;
@@ -419,11 +412,7 @@ class UpgradeService {
           // If the watchdog has marked the upgrade complete or ready, sync to database
           if (fileStatus === 'complete' || fileStatus === 'ready') {
             logger.info(`🔄 Syncing upgrade status from file: ${row.status} -> complete`);
-            databaseService.db.prepare(
-              `UPDATE upgrade_history
-               SET status = ?, completedAt = ?, currentStep = ?
-               WHERE id = ?`
-            ).run('complete', Date.now(), 'Upgrade complete', row.id);
+            await databaseService.miscRepo.markUpgradeComplete(row.id);
 
             // No active upgrade anymore
             return null;
@@ -432,11 +421,10 @@ class UpgradeService {
           // If the watchdog has marked it failed, sync to database
           if (fileStatus === 'failed') {
             logger.info(`🔄 Syncing upgrade status from file: ${row.status} -> failed`);
-            databaseService.db.prepare(
-              `UPDATE upgrade_history
-               SET status = ?, completedAt = ?, errorMessage = ?
-               WHERE id = ?`
-            ).run('failed', Date.now(), 'Upgrade failed (detected from watchdog status)', row.id);
+            await databaseService.miscRepo.markUpgradeFailed(
+              row.id,
+              'Upgrade failed (detected from watchdog status)'
+            );
 
             // No active upgrade anymore
             return null;
@@ -454,7 +442,7 @@ class UpgradeService {
         currentStep: row.currentStep || 'Starting...',
         fromVersion: row.fromVersion,
         toVersion: row.toVersion,
-        startedAt: row.startedAt,
+        startedAt: row.startedAt || Date.now(),
       };
     } catch (error) {
       logger.error('❌ Failed to get active upgrade:', error);
@@ -495,13 +483,13 @@ class UpgradeService {
       }
 
       // Check if previous upgrade failed
-      const lastUpgrade = databaseService.db.prepare(
-        `SELECT * FROM upgrade_history ORDER BY startedAt DESC LIMIT 1`
-      ).get() as any;
+      if (databaseService.miscRepo) {
+        const lastUpgrade = await databaseService.miscRepo.getLastUpgrade();
 
-      if (lastUpgrade && lastUpgrade.status === 'failed') {
-        logger.warn('⚠️ Previous upgrade failed, but allowing new upgrade attempt');
-        // Don't block, but log warning
+        if (lastUpgrade && lastUpgrade.status === 'failed') {
+          logger.warn('⚠️ Previous upgrade failed, but allowing new upgrade attempt');
+          // Don't block, but log warning
+        }
       }
 
       // Verify trigger file is writable
@@ -534,9 +522,14 @@ class UpgradeService {
       }
 
       // Update database status
-      databaseService.db.prepare(
-        `UPDATE upgrade_history SET status = ?, completedAt = ?, errorMessage = ? WHERE id = ?`
-      ).run('failed', Date.now(), 'Cancelled by user', upgradeId);
+      if (!databaseService.miscRepo) {
+        return {
+          success: false,
+          message: 'Database repository not initialized'
+        };
+      }
+
+      await databaseService.miscRepo.markUpgradeFailed(upgradeId, 'Cancelled by user');
 
       logger.info(`⚠️ Upgrade cancelled: ${upgradeId}`);
 
