@@ -199,9 +199,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       });
 
       // MySQL returns insertId from mysql2
-      const insertId = Number((result as any)[0].insertId);
-      logger.debug(`Created channel database entry: ${data.name} (ID: ${insertId})`);
-      return insertId;
+      return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
       const result = await db.insert(channelDatabasePostgres).values({
