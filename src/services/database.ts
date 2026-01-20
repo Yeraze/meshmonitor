@@ -6115,14 +6115,44 @@ class DatabaseService {
   purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
     // PostgreSQL/MySQL: Use async telemetry repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Fire-and-forget async deletion for PostgreSQL
       const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+
       if (this.telemetryRepo) {
-        this.telemetryRepo.deleteOldTelemetry(regularCutoffTime).then(count => {
-          logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
-        }).catch(error => {
-          logger.error('Error purging old telemetry:', error);
-        });
+        // If no favorite days specified, use simple deletion
+        if (!favoriteDaysToKeep) {
+          this.telemetryRepo.deleteOldTelemetry(regularCutoffTime).then(count => {
+            logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
+          }).catch(error => {
+            logger.error('Error purging old telemetry:', error);
+          });
+        } else {
+          // Get favorites and use favorites-aware deletion
+          const favoritesStr = this.getSetting('telemetryFavorites');
+          let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
+          if (favoritesStr) {
+            try {
+              favorites = JSON.parse(favoritesStr);
+            } catch (error) {
+              logger.error('Failed to parse telemetryFavorites from settings:', error);
+            }
+          }
+
+          const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+
+          this.telemetryRepo.deleteOldTelemetryWithFavorites(
+            regularCutoffTime,
+            favoriteCutoffTime,
+            favorites
+          ).then(({ nonFavoritesDeleted, favoritesDeleted }) => {
+            logger.debug(
+              `🧹 Purged ${nonFavoritesDeleted + favoritesDeleted} old telemetry records ` +
+              `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+              `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
+            );
+          }).catch(error => {
+            logger.error('Error purging old telemetry:', error);
+          });
+        }
       }
       return 0; // Cannot return sync count for async operation
     }

@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, gte, and, desc, inArray } from 'drizzle-orm';
+import { eq, lt, gte, and, desc, inArray, or, not, SQL } from 'drizzle-orm';
 import { telemetrySqlite, telemetryPostgres, telemetryMysql } from '../schema/telemetry.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
@@ -613,6 +613,120 @@ export class TelemetryRepository extends BaseRepository {
       }
       return toDelete.length;
     }
+  }
+
+  /**
+   * Build a SQL condition that matches any of the favorited (nodeId, telemetryType) pairs.
+   * Returns null if favorites array is empty.
+   */
+  private buildFavoritesCondition<T extends { nodeId: any; telemetryType: any }>(
+    schema: T,
+    favorites: Array<{ nodeId: string; telemetryType: string }>
+  ): SQL | null {
+    if (favorites.length === 0) return null;
+
+    const conditions = favorites.map(f =>
+      and(eq(schema.nodeId, f.nodeId), eq(schema.telemetryType, f.telemetryType))
+    );
+
+    return conditions.length === 1 ? conditions[0]! : or(...conditions)!;
+  }
+
+  /**
+   * Delete old telemetry with special handling for favorites.
+   * Non-favorited telemetry is deleted if older than regularCutoff.
+   * Favorited telemetry is deleted if older than favoriteCutoff.
+   *
+   * Uses database-level filtering and batch deletes for optimal performance.
+   *
+   * @param regularCutoffTimestamp - Cutoff for non-favorited telemetry (shorter retention)
+   * @param favoriteCutoffTimestamp - Cutoff for favorited telemetry (longer retention, should be <= regularCutoff)
+   * @param favorites - Array of { nodeId, telemetryType } that are favorited
+   * @returns Number of deleted records for each category
+   */
+  async deleteOldTelemetryWithFavorites(
+    regularCutoffTimestamp: number,
+    favoriteCutoffTimestamp: number,
+    favorites: Array<{ nodeId: string; telemetryType: string }>
+  ): Promise<{ nonFavoritesDeleted: number; favoritesDeleted: number }> {
+    // If no favorites, just delete everything older than regularCutoff
+    if (favorites.length === 0) {
+      const count = await this.deleteOldTelemetry(regularCutoffTimestamp);
+      return { nonFavoritesDeleted: count, favoritesDeleted: 0 };
+    }
+
+    // Validate: favoriteCutoff should be <= regularCutoff (earlier timestamp = longer retention)
+    // If misconfigured, use the more conservative (earlier) cutoff for favorites
+    const effectiveFavoriteCutoff = Math.min(favoriteCutoffTimestamp, regularCutoffTimestamp);
+
+    let nonFavoritesDeleted = 0;
+    let favoritesDeleted = 0;
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const favoritesCondition = this.buildFavoritesCondition(telemetrySqlite, favorites);
+
+      // Delete non-favorited telemetry older than regularCutoff using direct DELETE WHERE
+      // Uses .returning() to get count of deleted rows (SQLite supports this)
+      const deletedNonFavorites = await db
+        .delete(telemetrySqlite)
+        .where(and(lt(telemetrySqlite.timestamp, regularCutoffTimestamp), not(favoritesCondition!)))
+        .returning({ id: telemetrySqlite.id });
+      nonFavoritesDeleted = deletedNonFavorites.length;
+
+      // Delete favorited telemetry older than favoriteCutoff
+      const deletedFavorites = await db
+        .delete(telemetrySqlite)
+        .where(and(lt(telemetrySqlite.timestamp, effectiveFavoriteCutoff), favoritesCondition!))
+        .returning({ id: telemetrySqlite.id });
+      favoritesDeleted = deletedFavorites.length;
+
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const favoritesCondition = this.buildFavoritesCondition(telemetryMysql, favorites);
+
+      // MySQL doesn't support .returning(), so count before deleting
+      const nonFavoritesCount = await db
+        .select({ id: telemetryMysql.id })
+        .from(telemetryMysql)
+        .where(and(lt(telemetryMysql.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
+      nonFavoritesDeleted = nonFavoritesCount.length;
+
+      await db
+        .delete(telemetryMysql)
+        .where(and(lt(telemetryMysql.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
+
+      const favoritesCount = await db
+        .select({ id: telemetryMysql.id })
+        .from(telemetryMysql)
+        .where(and(lt(telemetryMysql.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
+      favoritesDeleted = favoritesCount.length;
+
+      await db
+        .delete(telemetryMysql)
+        .where(and(lt(telemetryMysql.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
+
+    } else {
+      const db = this.getPostgresDb();
+      const favoritesCondition = this.buildFavoritesCondition(telemetryPostgres, favorites);
+
+      // Delete non-favorited telemetry older than regularCutoff using direct DELETE WHERE
+      // Uses .returning() to get count of deleted rows (PostgreSQL supports this)
+      const deletedNonFavorites = await db
+        .delete(telemetryPostgres)
+        .where(and(lt(telemetryPostgres.timestamp, regularCutoffTimestamp), not(favoritesCondition!)))
+        .returning({ id: telemetryPostgres.id });
+      nonFavoritesDeleted = deletedNonFavorites.length;
+
+      // Delete favorited telemetry older than favoriteCutoff
+      const deletedFavorites = await db
+        .delete(telemetryPostgres)
+        .where(and(lt(telemetryPostgres.timestamp, effectiveFavoriteCutoff), favoritesCondition!))
+        .returning({ id: telemetryPostgres.id });
+      favoritesDeleted = deletedFavorites.length;
+    }
+
+    return { nonFavoritesDeleted, favoritesDeleted };
   }
 
   /**
