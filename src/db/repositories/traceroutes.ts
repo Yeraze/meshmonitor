@@ -4,7 +4,7 @@
  * Handles traceroute and route segment database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, desc, lt, or, isNull, gte } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull, gte, notInArray } from 'drizzle-orm';
 import {
   traceroutesSqlite, traceroutesPostgres, traceroutesMysql,
   routeSegmentsSqlite, routeSegmentsPostgres, routeSegmentsMysql,
@@ -132,100 +132,68 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Delete old traceroutes for a node pair, keeping only the most recent N
+   * Delete old traceroutes for a node pair, keeping only the most recent N.
+   * Uses direct DELETE WHERE with notInArray for optimal performance.
    */
   async cleanupOldTraceroutesForPair(fromNodeNum: number, toNodeNum: number, keepCount: number): Promise<void> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      // Get IDs to keep
+      // Get IDs to keep (most recent N)
       const toKeep = await db
         .select({ id: traceroutesSqlite.id })
         .from(traceroutesSqlite)
-        .where(
-          and(
-            eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
-            eq(traceroutesSqlite.toNodeNum, toNodeNum)
-          )
-        )
+        .where(and(
+          eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
+          eq(traceroutesSqlite.toNodeNum, toNodeNum)
+        ))
         .orderBy(desc(traceroutesSqlite.timestamp))
         .limit(keepCount);
       const keepIds = toKeep.map(r => r.id);
       if (keepIds.length > 0) {
-        // Delete all except the ones to keep
-        const allForPair = await db
-          .select({ id: traceroutesSqlite.id })
-          .from(traceroutesSqlite)
-          .where(
-            and(
-              eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
-              eq(traceroutesSqlite.toNodeNum, toNodeNum)
-            )
-          );
-        for (const row of allForPair) {
-          if (!keepIds.includes(row.id)) {
-            await db.delete(traceroutesSqlite).where(eq(traceroutesSqlite.id, row.id));
-          }
-        }
+        // Delete all except the ones to keep in a single statement
+        await db.delete(traceroutesSqlite).where(and(
+          eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
+          eq(traceroutesSqlite.toNodeNum, toNodeNum),
+          notInArray(traceroutesSqlite.id, keepIds)
+        ));
       }
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
       const toKeep = await db
         .select({ id: traceroutesMysql.id })
         .from(traceroutesMysql)
-        .where(
-          and(
-            eq(traceroutesMysql.fromNodeNum, fromNodeNum),
-            eq(traceroutesMysql.toNodeNum, toNodeNum)
-          )
-        )
+        .where(and(
+          eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+          eq(traceroutesMysql.toNodeNum, toNodeNum)
+        ))
         .orderBy(desc(traceroutesMysql.timestamp))
         .limit(keepCount);
       const keepIds = toKeep.map(r => r.id);
       if (keepIds.length > 0) {
-        const allForPair = await db
-          .select({ id: traceroutesMysql.id })
-          .from(traceroutesMysql)
-          .where(
-            and(
-              eq(traceroutesMysql.fromNodeNum, fromNodeNum),
-              eq(traceroutesMysql.toNodeNum, toNodeNum)
-            )
-          );
-        for (const row of allForPair) {
-          if (!keepIds.includes(row.id)) {
-            await db.delete(traceroutesMysql).where(eq(traceroutesMysql.id, row.id));
-          }
-        }
+        await db.delete(traceroutesMysql).where(and(
+          eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+          eq(traceroutesMysql.toNodeNum, toNodeNum),
+          notInArray(traceroutesMysql.id, keepIds)
+        ));
       }
     } else {
       const db = this.getPostgresDb();
       const toKeep = await db
         .select({ id: traceroutesPostgres.id })
         .from(traceroutesPostgres)
-        .where(
-          and(
-            eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
-            eq(traceroutesPostgres.toNodeNum, toNodeNum)
-          )
-        )
+        .where(and(
+          eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
+          eq(traceroutesPostgres.toNodeNum, toNodeNum)
+        ))
         .orderBy(desc(traceroutesPostgres.timestamp))
         .limit(keepCount);
       const keepIds = toKeep.map(r => r.id);
       if (keepIds.length > 0) {
-        const allForPair = await db
-          .select({ id: traceroutesPostgres.id })
-          .from(traceroutesPostgres)
-          .where(
-            and(
-              eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
-              eq(traceroutesPostgres.toNodeNum, toNodeNum)
-            )
-          );
-        for (const row of allForPair) {
-          if (!keepIds.includes(row.id)) {
-            await db.delete(traceroutesPostgres).where(eq(traceroutesPostgres.id, row.id));
-          }
-        }
+        await db.delete(traceroutesPostgres).where(and(
+          eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
+          eq(traceroutesPostgres.toNodeNum, toNodeNum),
+          notInArray(traceroutesPostgres.id, keepIds)
+        ));
       }
     }
   }
@@ -317,99 +285,71 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Delete traceroutes for a node
+   * Delete traceroutes for a node.
+   * Uses direct DELETE WHERE for optimal performance.
    */
   async deleteTraceroutesForNode(nodeNum: number): Promise<number> {
+    const condition = (schema: { fromNodeNum: any; toNodeNum: any }) =>
+      or(eq(schema.fromNodeNum, nodeNum), eq(schema.toNodeNum, nodeNum));
+
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: traceroutesSqlite.id })
-        .from(traceroutesSqlite)
-        .where(
-          or(
-            eq(traceroutesSqlite.fromNodeNum, nodeNum),
-            eq(traceroutesSqlite.toNodeNum, nodeNum)
-          )
-        );
-
-      for (const tr of toDelete) {
-        await db.delete(traceroutesSqlite).where(eq(traceroutesSqlite.id, tr.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(traceroutesSqlite)
+        .where(condition(traceroutesSqlite))
+        .returning({ id: traceroutesSqlite.id });
+      return deleted.length;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
         .select({ id: traceroutesMysql.id })
         .from(traceroutesMysql)
-        .where(
-          or(
-            eq(traceroutesMysql.fromNodeNum, nodeNum),
-            eq(traceroutesMysql.toNodeNum, nodeNum)
-          )
-        );
-
-      for (const tr of toDelete) {
-        await db.delete(traceroutesMysql).where(eq(traceroutesMysql.id, tr.id));
-      }
-      return toDelete.length;
+        .where(condition(traceroutesMysql));
+      const count = countResult.length;
+      await db.delete(traceroutesMysql).where(condition(traceroutesMysql));
+      return count;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: traceroutesPostgres.id })
-        .from(traceroutesPostgres)
-        .where(
-          or(
-            eq(traceroutesPostgres.fromNodeNum, nodeNum),
-            eq(traceroutesPostgres.toNodeNum, nodeNum)
-          )
-        );
-
-      for (const tr of toDelete) {
-        await db.delete(traceroutesPostgres).where(eq(traceroutesPostgres.id, tr.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(traceroutesPostgres)
+        .where(condition(traceroutesPostgres))
+        .returning({ id: traceroutesPostgres.id });
+      return deleted.length;
     }
   }
 
   /**
-   * Cleanup old traceroutes
+   * Cleanup old traceroutes.
+   * Uses direct DELETE WHERE for optimal performance.
    */
   async cleanupOldTraceroutes(hours: number = 24): Promise<number> {
     const cutoff = this.now() - (hours * 60 * 60 * 1000);
 
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: traceroutesSqlite.id })
-        .from(traceroutesSqlite)
-        .where(lt(traceroutesSqlite.timestamp, cutoff));
-
-      for (const tr of toDelete) {
-        await db.delete(traceroutesSqlite).where(eq(traceroutesSqlite.id, tr.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(traceroutesSqlite)
+        .where(lt(traceroutesSqlite.timestamp, cutoff))
+        .returning({ id: traceroutesSqlite.id });
+      return deleted.length;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
         .select({ id: traceroutesMysql.id })
         .from(traceroutesMysql)
         .where(lt(traceroutesMysql.timestamp, cutoff));
-
-      for (const tr of toDelete) {
-        await db.delete(traceroutesMysql).where(eq(traceroutesMysql.id, tr.id));
-      }
-      return toDelete.length;
+      const count = countResult.length;
+      await db.delete(traceroutesMysql).where(lt(traceroutesMysql.timestamp, cutoff));
+      return count;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: traceroutesPostgres.id })
-        .from(traceroutesPostgres)
-        .where(lt(traceroutesPostgres.timestamp, cutoff));
-
-      for (const tr of toDelete) {
-        await db.delete(traceroutesPostgres).where(eq(traceroutesPostgres.id, tr.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(traceroutesPostgres)
+        .where(lt(traceroutesPostgres.timestamp, cutoff))
+        .returning({ id: traceroutesPostgres.id });
+      return deleted.length;
     }
   }
 
@@ -539,57 +479,37 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Delete route segments for a node
+   * Delete route segments for a node.
+   * Uses direct DELETE WHERE for optimal performance.
    */
   async deleteRouteSegmentsForNode(nodeNum: number): Promise<number> {
+    const condition = (schema: { fromNodeNum: any; toNodeNum: any }) =>
+      or(eq(schema.fromNodeNum, nodeNum), eq(schema.toNodeNum, nodeNum));
+
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: routeSegmentsSqlite.id })
-        .from(routeSegmentsSqlite)
-        .where(
-          or(
-            eq(routeSegmentsSqlite.fromNodeNum, nodeNum),
-            eq(routeSegmentsSqlite.toNodeNum, nodeNum)
-          )
-        );
-
-      for (const seg of toDelete) {
-        await db.delete(routeSegmentsSqlite).where(eq(routeSegmentsSqlite.id, seg.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(routeSegmentsSqlite)
+        .where(condition(routeSegmentsSqlite))
+        .returning({ id: routeSegmentsSqlite.id });
+      return deleted.length;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
         .select({ id: routeSegmentsMysql.id })
         .from(routeSegmentsMysql)
-        .where(
-          or(
-            eq(routeSegmentsMysql.fromNodeNum, nodeNum),
-            eq(routeSegmentsMysql.toNodeNum, nodeNum)
-          )
-        );
-
-      for (const seg of toDelete) {
-        await db.delete(routeSegmentsMysql).where(eq(routeSegmentsMysql.id, seg.id));
-      }
-      return toDelete.length;
+        .where(condition(routeSegmentsMysql));
+      const count = countResult.length;
+      await db.delete(routeSegmentsMysql).where(condition(routeSegmentsMysql));
+      return count;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: routeSegmentsPostgres.id })
-        .from(routeSegmentsPostgres)
-        .where(
-          or(
-            eq(routeSegmentsPostgres.fromNodeNum, nodeNum),
-            eq(routeSegmentsPostgres.toNodeNum, nodeNum)
-          )
-        );
-
-      for (const seg of toDelete) {
-        await db.delete(routeSegmentsPostgres).where(eq(routeSegmentsPostgres.id, seg.id));
-      }
-      return toDelete.length;
+      const deleted = await db
+        .delete(routeSegmentsPostgres)
+        .where(condition(routeSegmentsPostgres))
+        .returning({ id: routeSegmentsPostgres.id });
+      return deleted.length;
     }
   }
 
