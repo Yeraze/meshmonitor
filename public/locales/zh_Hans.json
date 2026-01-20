@@ -3162,7 +3162,7 @@
     "security_config.debug_log_api_enabled_description": "通过串口或蓝牙输出实时调试日志。默认在有 API 客户端连接时关闭日志。",
     "security_config.save_button": "保存安全配置",
     "automation.auto_key_management.action_exhausted": "",
-    "node_popup.node_fallback": "",
+    "node_popup.node_fallback": "节点 {{nodeNum}}",
     "node_popup.id": "",
     "admin_commands.remote_node_passkey_acquired": "",
     "nodes.hop": "跳",
@@ -3182,5 +3182,6 @@
     "packet_monitor.direct": "直频",
     "settings.tapback_save_failed": "无法保存更改",
     "settings.tapback_confirm_reset": "将回复表情重置为默认表情？此操作将替换您所有的自定义表情。",
-    "settings.tapback_reset_success": "表情符号重置为默认设置"
+    "settings.tapback_reset_success": "表情符号重置为默认设置",
+    "settings.tapback_emoji_placeholder": "Emoji"
 }
