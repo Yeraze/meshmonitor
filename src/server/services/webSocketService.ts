@@ -50,6 +50,7 @@ function transformMessageForClient(msg: DbMessage): unknown {
         : (msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed'
         ? true
         : undefined,
+    decryptedBy: msg.decryptedBy ?? (msg as any).decrypted_by ?? null,
   };
 }
 

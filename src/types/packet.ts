@@ -28,6 +28,8 @@ export interface PacketLog {
   metadata?: string;
   direction?: 'rx' | 'tx';
   created_at?: number;
+  decrypted_by?: 'node' | 'server' | null;
+  decrypted_channel_id?: number | null;
 }
 
 export interface PacketLogResponse {

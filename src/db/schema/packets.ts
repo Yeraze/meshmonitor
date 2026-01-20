@@ -32,6 +32,8 @@ export const packetLogSqlite = sqliteTable('packet_log', {
   metadata: text('metadata'),
   direction: text('direction'), // 'rx' or 'tx'
   created_at: integer('created_at'),
+  decrypted_by: text('decrypted_by'), // 'node' | 'server' | null
+  decrypted_channel_id: integer('decrypted_channel_id'), // FK to channel_database.id
 });
 
 // PostgreSQL schema
@@ -62,6 +64,8 @@ export const packetLogPostgres = pgTable('packet_log', {
   metadata: pgText('metadata'),
   direction: pgText('direction'), // 'rx' or 'tx'
   created_at: pgBigint('created_at', { mode: 'number' }),
+  decrypted_by: pgText('decrypted_by'), // 'node' | 'server' | null
+  decrypted_channel_id: pgInteger('decrypted_channel_id'), // FK to channel_database.id
 });
 
 // MySQL schema
@@ -92,6 +96,8 @@ export const packetLogMysql = mysqlTable('packet_log', {
   metadata: myText('metadata'),
   direction: myVarchar('direction', { length: 8 }), // 'rx' or 'tx'
   created_at: myBigint('created_at', { mode: 'number' }),
+  decrypted_by: myVarchar('decrypted_by', { length: 16 }), // 'node' | 'server' | null
+  decrypted_channel_id: myInt('decrypted_channel_id'), // FK to channel_database.id
 });
 
 // Type inference

@@ -29,3 +29,4 @@ export type {
 } from './notifications.js';
 export { MiscRepository } from './misc.js';
 export type { SolarEstimate, AutoTracerouteNode, UpgradeHistoryRecord, NewUpgradeHistory } from './misc.js';
+export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatabaseUpdate, type ChannelDatabasePermissionInput } from './channelDatabase.js';

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
+import { useAuth } from '../contexts/AuthContext';
 import type { DeviceInfo, Channel } from '../types/device';
 import { logger } from '../utils/logger';
 import NodeIdentitySection from './configuration/NodeIdentitySection';
@@ -26,6 +27,7 @@ import SerialConfigSection from './configuration/SerialConfigSection';
 import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
 import SecurityConfigSection from './configuration/SecurityConfigSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
+import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -46,6 +48,7 @@ interface ConfigurationTabProps {
 const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated, refreshTrigger }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { authStatus } = useAuth();
 
   // Device Config State
   const [longName, setLongName] = useState('');
@@ -1696,6 +1699,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting') },
         { id: 'config-security', label: t('security_config.title', 'Security') },
         { id: 'config-channels', label: t('config.channels', 'Channels') },
+        { id: 'config-channel-database', label: t('channel_database.title', 'Channel Database') },
         { id: 'config-backup', label: t('config.backup_management', 'Backup') },
       ]} />
 
@@ -2373,6 +2377,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           <ChannelsConfigSection
             channels={channels}
             onChannelsUpdated={onChannelsUpdated}
+          />
+        </div>
+
+        <div id="config-channel-database">
+          <ChannelDatabaseSection
+            isAdmin={authStatus?.user?.isAdmin ?? false}
           />
         </div>
 

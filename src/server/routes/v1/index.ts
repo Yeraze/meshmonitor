@@ -9,6 +9,7 @@ import express from 'express';
 import { requireAPIToken } from '../../auth/authMiddleware.js';
 import nodesRouter from './nodes.js';
 import channelsRouter from './channels.js';
+import channelDatabaseRouter from './channelDatabase.js';
 import telemetryRouter from './telemetry.js';
 import traceroutesRouter from './traceroutes.js';
 import messagesRouter from './messages.js';
@@ -34,6 +35,7 @@ router.get('/', (_req, res) => {
     endpoints: {
       nodes: '/api/v1/nodes',
       channels: '/api/v1/channels',
+      channelDatabase: '/api/v1/channel-database',
       telemetry: '/api/v1/telemetry',
       traceroutes: '/api/v1/traceroutes',
       messages: '/api/v1/messages',
@@ -47,6 +49,7 @@ router.get('/', (_req, res) => {
 // Mount resource routers
 router.use('/nodes', nodesRouter);
 router.use('/channels', channelsRouter);
+router.use('/channel-database', channelDatabaseRouter);
 router.use('/telemetry', telemetryRouter);
 router.use('/traceroutes', traceroutesRouter);
 router.use('/messages', messagesRouter);

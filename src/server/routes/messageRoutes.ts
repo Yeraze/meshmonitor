@@ -8,13 +8,13 @@ const router = express.Router();
 /**
  * Permission middleware - require messages:write for DM deletions
  */
-const requireMessagesWrite: RequestHandler = (req, res, next) => {
+const requireMessagesWrite: RequestHandler = async (req, res, next) => {
   const user = (req as any).user;
   const userId = user?.id ?? null;
 
-  // Get user permissions
+  // Get user permissions (async for multi-database support)
   const permissions = userId !== null
-    ? databaseService.permissionModel.getUserPermissionSet(userId)
+    ? await databaseService.getUserPermissionSetAsync(userId)
     : {};
 
   // Check if user is admin
@@ -41,14 +41,14 @@ const requireMessagesWrite: RequestHandler = (req, res, next) => {
 /**
  * Permission middleware - require specific channel write permission for channel message deletions
  */
-const requireChannelsWrite: RequestHandler = (req, res, next) => {
+const requireChannelsWrite: RequestHandler = async (req, res, next) => {
   const user = (req as any).user;
   const userId = user?.id ?? null;
   const channelId = parseInt(req.params.channelId, 10);
 
-  // Get user permissions
+  // Get user permissions (async for multi-database support)
   const permissions = userId !== null
-    ? databaseService.permissionModel.getUserPermissionSet(userId)
+    ? await databaseService.getUserPermissionSetAsync(userId)
     : {};
 
   // Check if user is admin
@@ -78,7 +78,7 @@ const requireChannelsWrite: RequestHandler = (req, res, next) => {
  * Delete a single message by ID
  * Note: Permission check is done inside the handler based on message type
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const messageId = req.params.id;
     const user = (req as any).user;
@@ -87,7 +87,7 @@ router.delete('/:id', (req, res) => {
 
     // Get permissions first (before checking message existence for security)
     const permissions = userId !== null
-      ? databaseService.permissionModel.getUserPermissionSet(userId)
+      ? await databaseService.getUserPermissionSetAsync(userId)
       : {};
 
     // Check if user has any write permission at all (messages or any channel)
@@ -104,8 +104,8 @@ router.delete('/:id', (req, res) => {
       });
     }
 
-    // Now check if message exists
-    const message = databaseService.getMessage(messageId);
+    // Now check if message exists (async for multi-database support)
+    const message = await databaseService.getMessageAsync(messageId);
     if (!message) {
       return res.status(404).json({
         error: 'Not found',
@@ -138,7 +138,7 @@ router.delete('/:id', (req, res) => {
       }
     }
 
-    const deleted = databaseService.deleteMessage(messageId);
+    const deleted = await databaseService.deleteMessageAsync(messageId);
 
     if (!deleted) {
       return res.status(404).json({
@@ -149,14 +149,14 @@ router.delete('/:id', (req, res) => {
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} deleted message ${messageId} (channel: ${message.channel})`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (userId) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         userId,
         'message_deleted',
         'messages',
         `Deleted message ${messageId} from ${isChannelMessage ? 'channel ' + message.channel : 'direct messages'}`,
-        req.ip || null
+        req.ip || ''
       );
     }
 
@@ -184,7 +184,7 @@ router.delete('/:id', (req, res) => {
  * DELETE /api/channels/:channelId/messages
  * Purge all messages from a specific channel
  */
-router.delete('/channels/:channelId', requireChannelsWrite, (req, res) => {
+router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => {
   try {
     const channelId = parseInt(req.params.channelId, 10);
     const user = (req as any).user;
@@ -196,18 +196,18 @@ router.delete('/channels/:channelId', requireChannelsWrite, (req, res) => {
       });
     }
 
-    const deletedCount = databaseService.purgeChannelMessages(channelId);
+    const deletedCount = await databaseService.purgeChannelMessagesAsync(channelId);
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} messages from channel ${channelId}`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (user?.id) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         user.id,
         'channel_messages_purged',
         'messages',
         `Purged ${deletedCount} messages from channel ${channelId}`,
-        req.ip || null
+        req.ip || ''
       );
     }
 
@@ -236,7 +236,7 @@ router.delete('/channels/:channelId', requireChannelsWrite, (req, res) => {
  * DELETE /api/direct-messages/:nodeNum/messages
  * Purge all direct messages with a specific node
  */
-router.delete('/direct-messages/:nodeNum', requireMessagesWrite, (req, res) => {
+router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
     const user = (req as any).user;
@@ -248,18 +248,18 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, (req, res) => {
       });
     }
 
-    const deletedCount = databaseService.purgeDirectMessages(nodeNum);
+    const deletedCount = await databaseService.purgeDirectMessagesAsync(nodeNum);
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} direct messages with node ${nodeNum}`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (user?.id) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         user.id,
         'dm_messages_purged',
         'messages',
         `Purged ${deletedCount} direct messages with node ${nodeNum}`,
-        req.ip || null
+        req.ip || ''
       );
     }
 
@@ -288,7 +288,7 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, (req, res) => {
  * DELETE /api/nodes/:nodeNum/traceroutes
  * Purge all traceroutes for a specific node
  */
-router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, (req, res) => {
+router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
     const user = (req as any).user;
@@ -300,18 +300,18 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, (req, res) =>
       });
     }
 
-    const deletedCount = databaseService.purgeNodeTraceroutes(nodeNum);
+    const deletedCount = await databaseService.purgeNodeTraceroutesAsync(nodeNum);
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} traceroutes for node ${nodeNum}`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (user?.id) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         user.id,
         'node_traceroutes_purged',
         'traceroutes',
         `Purged ${deletedCount} traceroutes for node ${nodeNum}`,
-        req.ip || null
+        req.ip || ''
       );
     }
 
@@ -340,7 +340,7 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, (req, res) =>
  * DELETE /api/nodes/:nodeNum/telemetry
  * Purge all telemetry data for a specific node
  */
-router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, (req, res) => {
+router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
     const user = (req as any).user;
@@ -352,18 +352,18 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, (req, res) => {
       });
     }
 
-    const deletedCount = databaseService.purgeNodeTelemetry(nodeNum);
+    const deletedCount = await databaseService.purgeNodeTelemetryAsync(nodeNum);
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} telemetry records for node ${nodeNum}`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (user?.id) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         user.id,
         'node_telemetry_purged',
         'telemetry',
         `Purged ${deletedCount} telemetry records for node ${nodeNum}`,
-        req.ip || null
+        req.ip || ''
       );
     }
 
@@ -392,7 +392,7 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, (req, res) => {
  * DELETE /api/nodes/:nodeNum
  * Delete a node and all associated data from the local database
  */
-router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
+router.delete('/nodes/:nodeNum', requireMessagesWrite, async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
     const user = (req as any).user;
@@ -404,11 +404,12 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
       });
     }
 
-    // Get node name for logging
-    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    // Get node name for logging (async for multi-database support)
+    const nodes = await databaseService.getAllNodesAsync();
+    const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
-    const result = databaseService.deleteNode(nodeNum);
+    const result = await databaseService.deleteNodeAsync(nodeNum);
 
     if (!result.nodeDeleted) {
       return res.status(404).json({
@@ -419,14 +420,14 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} deleted ${nodeName} (${nodeNum}) and all associated data`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (user?.id) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         user.id,
         'node_deleted',
         'nodes',
         `Deleted ${nodeName} (${nodeNum}) - ${result.messagesDeleted} messages, ${result.traceroutesDeleted} traceroutes, ${result.telemetryDeleted} telemetry records`,
-        req.ip || null
+        req.ip || ''
       );
     }
 
@@ -488,8 +489,9 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Get node name for logging
-    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    // Get node name for logging (async for multi-database support)
+    const nodes = await databaseService.getAllNodesAsync();
+    const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
     try {
@@ -504,8 +506,8 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Also delete from local database
-    const result = databaseService.deleteNode(nodeNum);
+    // Also delete from local database (async for multi-database support)
+    const result = await databaseService.deleteNodeAsync(nodeNum);
 
     if (!result.nodeDeleted) {
       logger.warn(`⚠️ Node ${nodeNum} was removed from device but not found in local database`);
@@ -513,14 +515,14 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${nodeName} (${nodeNum}) from device and local database`);
 
-    // Log to audit log
+    // Log to audit log (async for multi-database support)
     if (user?.id) {
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         user.id,
         'node_purged_from_device',
         'nodes',
         `Purged ${nodeName} (${nodeNum}) from device NodeDB and local database - ${result.messagesDeleted} messages, ${result.traceroutesDeleted} traceroutes, ${result.telemetryDeleted} telemetry records`,
-        req.ip || null
+        req.ip || ''
       );
     }
 

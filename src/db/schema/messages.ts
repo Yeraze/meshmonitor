@@ -35,6 +35,8 @@ export const messagesSqlite = sqliteTable('messages', {
   wantAck: integer('wantAck', { mode: 'boolean' }),
   ackFromNode: integer('ackFromNode'),
   createdAt: integer('createdAt').notNull(),
+  // Decryption source - 'node' or 'server' (server = read-only)
+  decryptedBy: text('decrypted_by'),
 });
 
 // PostgreSQL schema
@@ -65,6 +67,8 @@ export const messagesPostgres = pgTable('messages', {
   wantAck: pgBoolean('wantAck'),
   ackFromNode: pgInteger('ackFromNode'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  // Decryption source - 'node' or 'server' (server = read-only)
+  decryptedBy: pgText('decrypted_by'),
 });
 
 // MySQL schema
@@ -95,6 +99,8 @@ export const messagesMysql = mysqlTable('messages', {
   wantAck: myBoolean('wantAck'),
   ackFromNode: myInt('ackFromNode'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  // Decryption source - 'node' or 'server' (server = read-only)
+  decryptedBy: myVarchar('decrypted_by', { length: 16 }),
 });
 
 // Type inference

@@ -11,6 +11,7 @@ import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
+import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
@@ -31,7 +32,12 @@ export interface MeshtasticConfig {
 export interface ProcessingContext {
   skipVirtualNodeBroadcast?: boolean;
   virtualNodeRequestId?: number; // Packet ID from Virtual Node client for ACK matching
+  decryptedBy?: 'node' | 'server' | null; // How the packet was decrypted
+  decryptedChannelId?: number; // Channel Database entry ID for server-decrypted messages
 }
+
+// Offset for Channel Database channels - device channels are 0-7, database channels start at 100
+export const CHANNEL_DB_OFFSET = 100;
 
 export interface DeviceInfo {
   nodeNum: number;
@@ -139,6 +145,7 @@ type TextMessage = {
   routingErrorReceived?: boolean; // Whether a routing error was received
   ackFromNode?: number; // Node that sent the ACK
   createdAt: number;
+  decryptedBy?: 'node' | 'server' | null; // Decryption source - 'server' means read-only
 };
 
 /**
@@ -2076,6 +2083,42 @@ class MeshtasticManager {
   private async processMeshPacket(meshPacket: any, context?: ProcessingContext): Promise<void> {
     logger.debug(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
 
+    // Track decryption metadata for packet logging
+    let decryptedBy: 'node' | 'server' | null = null;
+    let decryptedChannelId: number | null = null;
+
+    // Server-side decryption: Try to decrypt encrypted packets using database channels
+    if (!meshPacket.decoded && meshPacket.encrypted && channelDecryptionService.isEnabled()) {
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      const packetId = meshPacket.id ?? 0;
+
+      try {
+        const decryptionResult = await channelDecryptionService.tryDecrypt(
+          meshPacket.encrypted,
+          packetId,
+          fromNum
+        );
+
+        if (decryptionResult.success) {
+          // Create synthetic decoded field with decrypted data
+          meshPacket.decoded = {
+            portnum: decryptionResult.portnum,
+            payload: decryptionResult.payload,
+          };
+          decryptedBy = 'server';
+          decryptedChannelId = decryptionResult.channelDatabaseId ?? null;
+          logger.info(
+            `🔓 Server decrypted packet ${packetId} from ${fromNum} using channel "${decryptionResult.channelName}" (portnum=${decryptionResult.portnum})`
+          );
+        }
+      } catch (err) {
+        logger.debug(`Server decryption attempt failed for packet ${packetId}:`, err);
+      }
+    } else if (meshPacket.decoded) {
+      // Packet was decrypted by the node
+      decryptedBy = 'node';
+    }
+
     // Log packet to packet log (if enabled)
     try {
       if (packetLogService.isEnabled()) {
@@ -2213,7 +2256,9 @@ class MeshtasticManager {
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
           metadata: JSON.stringify(metadata),
-          direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx'
+          direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx',
+          decrypted_by: decryptedBy ?? undefined,
+          decrypted_channel_id: decryptedChannelId ?? undefined,
         });
         } // end else (not internal packet)
       }
@@ -2279,7 +2324,12 @@ class MeshtasticManager {
 
         switch (normalizedPortNum) {
           case PortNum.TEXT_MESSAGE_APP:
-            await this.processTextMessageProtobuf(meshPacket, processedPayload as string, context);
+            // Pass decryptedBy and decryptedChannelId in context so messages can track their decryption source
+            await this.processTextMessageProtobuf(meshPacket, processedPayload as string, {
+              ...context,
+              decryptedBy,
+              decryptedChannelId: decryptedChannelId ?? undefined,
+            });
             break;
           case PortNum.POSITION_APP:
             await this.processPositionMessageProtobuf(meshPacket, processedPayload as any);
@@ -2367,7 +2417,17 @@ class MeshtasticManager {
         // Determine if this is a direct message or a channel message
         // Direct messages (not broadcast) should use channel -1
         const isDirectMessage = toNum !== 4294967295;
-        const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
+        // For server-decrypted messages, use Channel Database ID + offset as the channel number
+        // This allows frontend to look up the channel name from Channel Database entries
+        let channelIndex: number;
+        if (isDirectMessage) {
+          channelIndex = -1;
+        } else if (context?.decryptedBy === 'server' && context?.decryptedChannelId !== undefined) {
+          // Use Channel Database ID + offset for server-decrypted messages
+          channelIndex = CHANNEL_DB_OFFSET + context.decryptedChannelId;
+        } else {
+          channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+        }
 
         // Ensure channel 0 exists if this message uses it
         if (!isDirectMessage && channelIndex === 0) {
@@ -2416,7 +2476,8 @@ class MeshtasticManager {
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
           wantAck: context?.virtualNodeRequestId ? true : undefined, // Expect ACK for Virtual Node messages
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
         };
         databaseService.insertMessage(message);
 

@@ -1,4 +1,5 @@
 import BetterSqlite3Database from 'better-sqlite3';
+import { sql } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
@@ -52,6 +53,8 @@ import { migration as autoKeyRepairMigration } from '../server/migrations/046_ad
 import { migration as positionOverrideBooleanMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_fix_position_override_boolean_types.js';
 import { migration as autoTracerouteColumnMigration } from '../server/migrations/048_fix_auto_traceroute_column_name.js';
 import { migration as notificationChannelSettingsMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_add_notification_channel_settings.js';
+import { migration as channelDatabaseMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_add_channel_database.js';
+import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -72,6 +75,7 @@ import {
   NeighborsRepository,
   NotificationsRepository,
   MiscRepository,
+  ChannelDatabaseRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType } from '../db/types.js';
 import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
@@ -160,6 +164,7 @@ export interface DbMessage {
   wantAck?: boolean;
   routingErrorReceived?: boolean;
   ackFromNode?: number;
+  decryptedBy?: 'node' | 'server' | null;
 }
 
 export interface DbChannel {
@@ -264,6 +269,8 @@ export interface DbPacketLog {
   metadata?: string;
   direction?: 'rx' | 'tx';
   created_at?: number;
+  decrypted_by?: 'node' | 'server' | null;
+  decrypted_channel_id?: number | null;
 }
 
 export interface DbCustomTheme {
@@ -423,6 +430,7 @@ class DatabaseService {
   public neighborsRepo: NeighborsRepository | null = null;
   public notificationsRepo: NotificationsRepository | null = null;
   public miscRepo: MiscRepository | null = null;
+  public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -687,6 +695,7 @@ class DatabaseService {
       this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
       this.miscRepo = new MiscRepository(drizzleDb, this.drizzleDbType);
+      this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -869,6 +878,8 @@ class DatabaseService {
     this.runPositionOverrideBooleanMigration();
     this.runAutoTracerouteColumnMigration();
     this.runNotificationChannelSettingsMigration();
+    this.runChannelDatabaseMigration();
+    this.runDecryptedByMessagesMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1835,6 +1846,48 @@ class DatabaseService {
       logger.debug('✅ Notification channel settings migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run notification channel settings migration:', error);
+      throw error;
+    }
+  }
+
+  private runChannelDatabaseMigration(): void {
+    logger.debug('Running channel database migration...');
+    try {
+      const migrationKey = 'migration_050_channel_database';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channel database migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 050: Add channel database tables...');
+      channelDatabaseMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channel database migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run channel database migration:', error);
+      throw error;
+    }
+  }
+
+  private runDecryptedByMessagesMigration(): void {
+    logger.debug('Running decrypted_by messages migration...');
+    try {
+      const migrationKey = 'migration_051_decrypted_by_messages';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Decrypted_by messages migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 051: Add decrypted_by column to messages...');
+      decryptedByMessagesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Decrypted_by messages migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run decrypted_by messages migration:', error);
       throw error;
     }
   }
@@ -3050,8 +3103,8 @@ class DatabaseService {
       INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
         text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, relayNode, replyId, emoji,
-        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, rxSnr, rxRssi, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, rxSnr, rxRssi, createdAt, decrypted_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -3078,7 +3131,8 @@ class DatabaseService {
       messageData.viaMqtt ? 1 : 0,
       messageData.rxSnr ?? null,
       messageData.rxRssi ?? null,
-      messageData.createdAt
+      messageData.createdAt,
+      messageData.decryptedBy ?? null
     );
   }
 
@@ -8508,6 +8562,54 @@ class DatabaseService {
   }
 
   /**
+   * Update packet log entry with decryption results (for retroactive decryption)
+   * Updates the decrypted_by, decrypted_channel_id, portnum, and metadata fields
+   */
+  async updatePacketLogDecryptionAsync(
+    id: number,
+    decryptedBy: 'server' | 'node',
+    decryptedChannelId: number | null,
+    portnum: number,
+    metadata: string
+  ): Promise<void> {
+    if (this.drizzleDbType === 'postgres' && this.drizzleDatabase) {
+      const db = this.drizzleDatabase as any;
+      await db.execute(sql`
+        UPDATE packet_log
+        SET decrypted_by = ${decryptedBy},
+            decrypted_channel_id = ${decryptedChannelId},
+            portnum = ${portnum},
+            encrypted = false,
+            metadata = ${metadata}
+        WHERE id = ${id}
+      `);
+    } else if (this.drizzleDbType === 'mysql' && this.drizzleDatabase) {
+      const db = this.drizzleDatabase as any;
+      await db.execute(sql`
+        UPDATE packet_log
+        SET decrypted_by = ${decryptedBy},
+            decrypted_channel_id = ${decryptedChannelId},
+            portnum = ${portnum},
+            encrypted = false,
+            metadata = ${metadata}
+        WHERE id = ${id}
+      `);
+    } else {
+      // SQLite
+      const stmt = this.db.prepare(`
+        UPDATE packet_log
+        SET decrypted_by = ?,
+            decrypted_channel_id = ?,
+            portnum = ?,
+            encrypted = 0,
+            metadata = ?
+        WHERE id = ?
+      `);
+      stmt.run(decryptedBy, decryptedChannelId, portnum, metadata, id);
+    }
+  }
+
+  /**
    * Get database size - async version for PostgreSQL/MySQL
    * Note: PostgreSQL uses pg_database_size() which requires different permissions
    * Returns 0 for PostgreSQL/MySQL as exact size calculation differs
@@ -8731,6 +8833,12 @@ class DatabaseService {
       // Run migration 049: Add missing notification channel settings columns
       await runMigration049Postgres(client);
 
+      // Run migration 050: Add channel database tables
+      await runMigration050Postgres(client);
+
+      // Run migration 051: Add decrypted_by column to messages
+      await runMigration051Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -8788,6 +8896,12 @@ class DatabaseService {
 
       // Run migration 049: Add missing notification channel settings columns
       await runMigration049Mysql(pool);
+
+      // Run migration 050: Add channel database tables
+      await runMigration050Mysql(pool);
+
+      // Run migration 051: Add decrypted_by column to messages
+      await runMigration051Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -9006,6 +9120,105 @@ class DatabaseService {
     this.auditLog(userId, action, resource, details, ipAddress);
   }
 
+  // ============ ASYNC MESSAGE METHODS ============
+  // These methods provide async access to message operations for multi-database support
+
+  /**
+   * Async method to get a message by ID.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async getMessageAsync(id: string): Promise<DbMessage | null> {
+    if (this.messagesRepo) {
+      const result = await this.messagesRepo.getMessage(id);
+      // Transform null values to undefined to match DbMessage type
+      if (result) {
+        return {
+          ...result,
+          portnum: result.portnum ?? undefined,
+          requestId: result.requestId ?? undefined,
+          rxTime: result.rxTime ?? undefined,
+          hopStart: result.hopStart ?? undefined,
+          hopLimit: result.hopLimit ?? undefined,
+          relayNode: result.relayNode ?? undefined,
+          replyId: result.replyId ?? undefined,
+          emoji: result.emoji ?? undefined,
+          viaMqtt: result.viaMqtt ?? undefined,
+          rxSnr: result.rxSnr ?? undefined,
+          rxRssi: result.rxRssi ?? undefined,
+          ackFailed: result.ackFailed ?? undefined,
+          routingErrorReceived: result.routingErrorReceived ?? undefined,
+          deliveryState: result.deliveryState ?? undefined,
+          wantAck: result.wantAck ?? undefined,
+          ackFromNode: result.ackFromNode ?? undefined,
+          decryptedBy: result.decryptedBy ?? undefined,
+        };
+      }
+      return null;
+    }
+    // Fallback to sync for SQLite
+    return this.getMessage(id);
+  }
+
+  /**
+   * Async method to delete a message by ID.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async deleteMessageAsync(id: string): Promise<boolean> {
+    if (this.messagesRepo) {
+      return this.messagesRepo.deleteMessage(id);
+    }
+    // Fallback to sync for SQLite
+    return this.deleteMessage(id);
+  }
+
+  /**
+   * Async method to purge all messages from a channel.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async purgeChannelMessagesAsync(channel: number): Promise<number> {
+    if (this.messagesRepo) {
+      return this.messagesRepo.purgeChannelMessages(channel);
+    }
+    // Fallback to sync for SQLite
+    return this.purgeChannelMessages(channel);
+  }
+
+  /**
+   * Async method to purge all direct messages with a node.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async purgeDirectMessagesAsync(nodeNum: number): Promise<number> {
+    if (this.messagesRepo) {
+      return this.messagesRepo.purgeDirectMessages(nodeNum);
+    }
+    // Fallback to sync for SQLite
+    return this.purgeDirectMessages(nodeNum);
+  }
+
+  /**
+   * Async method to purge all traceroutes for a node.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async purgeNodeTraceroutesAsync(nodeNum: number): Promise<number> {
+    if (this.traceroutesRepo) {
+      return this.traceroutesRepo.deleteTraceroutesForNode(nodeNum);
+    }
+    // Fallback to sync for SQLite
+    return this.purgeNodeTraceroutes(nodeNum);
+  }
+
+  /**
+   * Async method to purge all telemetry for a node.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
+    if (this.telemetryRepo) {
+      return this.telemetryRepo.purgeNodeTelemetry(nodeNum);
+    }
+    // Fallback to sync for SQLite
+    return this.purgeNodeTelemetry(nodeNum);
+  }
+
   /**
    * Async method to update user password.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
@@ -9021,6 +9234,147 @@ class DatabaseService {
     }
     // Fallback to sync for SQLite
     await this.userModel.updatePassword(userId, newPassword);
+  }
+
+  // ============ ASYNC CHANNEL DATABASE METHODS ============
+  // These methods provide server-side decryption channel management
+
+  /**
+   * Get a channel database entry by ID
+   */
+  async getChannelDatabaseByIdAsync(id: number): Promise<import('../db/types.js').DbChannelDatabase | null> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.getByIdAsync(id);
+  }
+
+  /**
+   * Get all channel database entries
+   */
+  async getAllChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.getAllAsync();
+  }
+
+  /**
+   * Get all enabled channel database entries (for decryption)
+   */
+  async getEnabledChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.getEnabledAsync();
+  }
+
+  /**
+   * Create a new channel database entry
+   */
+  async createChannelDatabaseEntryAsync(data: {
+    name: string;
+    psk: string;
+    pskLength: number;
+    description?: string | null;
+    isEnabled?: boolean;
+    createdBy?: number | null;
+  }): Promise<number> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.createAsync(data);
+  }
+
+  /**
+   * Update a channel database entry
+   */
+  async updateChannelDatabaseEntryAsync(id: number, data: {
+    name?: string;
+    psk?: string;
+    pskLength?: number;
+    description?: string | null;
+    isEnabled?: boolean;
+  }): Promise<void> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.updateAsync(id, data);
+  }
+
+  /**
+   * Delete a channel database entry
+   */
+  async deleteChannelDatabaseEntryAsync(id: number): Promise<void> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.deleteAsync(id);
+  }
+
+  /**
+   * Increment decrypted packet count for a channel
+   */
+  async incrementChannelDatabaseDecryptedCountAsync(id: number): Promise<void> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.incrementDecryptedCountAsync(id);
+  }
+
+  /**
+   * Get permission for a specific user and channel database
+   */
+  async getChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission | null> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.getPermissionAsync(userId, channelDatabaseId);
+  }
+
+  /**
+   * Get all channel database permissions for a user
+   */
+  async getChannelDatabasePermissionsForUserAsync(userId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.getPermissionsForUserAsync(userId);
+  }
+
+  /**
+   * Get all permissions for a channel database entry
+   */
+  async getChannelDatabasePermissionsForChannelAsync(channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.getPermissionsForChannelAsync(channelDatabaseId);
+  }
+
+  /**
+   * Set permission for a user on a channel database entry
+   */
+  async setChannelDatabasePermissionAsync(data: {
+    userId: number;
+    channelDatabaseId: number;
+    canRead: boolean;
+    grantedBy?: number | null;
+  }): Promise<void> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.setPermissionAsync(data);
+  }
+
+  /**
+   * Delete permission for a user on a channel database entry
+   */
+  async deleteChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<void> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.deletePermissionAsync(userId, channelDatabaseId);
   }
 }
 

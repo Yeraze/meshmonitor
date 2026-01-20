@@ -31,4 +31,6 @@ export interface MeshMessage {
   wantAck?: boolean; // Whether message requested acknowledgment
   routingErrorReceived?: boolean; // Whether routing error was received
   requestId?: number; // Packet request ID for tracking
+  // Decryption source - 'server' means read-only (cannot reply)
+  decryptedBy?: 'node' | 'server' | null;
 }
