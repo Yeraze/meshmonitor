@@ -47,6 +47,7 @@ export class MessagesRepository extends BaseRepository {
       wantAck: messageData.wantAck ?? null,
       ackFromNode: messageData.ackFromNode ?? null,
       createdAt: messageData.createdAt,
+      decryptedBy: messageData.decryptedBy ?? null,
     };
 
     if (this.isSQLite()) {

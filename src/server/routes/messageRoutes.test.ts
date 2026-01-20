@@ -53,7 +53,7 @@ describe('Message Deletion Routes', () => {
 
     it('should return 404 for non-existent message', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'getMessage').mockReturnValue(null);
+      vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(null);
 
       const response = await request(app).delete('/api/messages/nonexistent');
 
@@ -69,16 +69,16 @@ describe('Message Deletion Routes', () => {
         text: 'Test message'
       };
 
-      vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockMessage as any);
-      vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockMessage as any);
+      vi.spyOn(databaseService, 'deleteMessageAsync').mockResolvedValue(true);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/msg-123');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message', 'Message deleted successfully');
       expect(response.body).toHaveProperty('id', 'msg-123');
-      expect(databaseService.deleteMessage).toHaveBeenCalledWith('msg-123');
+      expect(databaseService.deleteMessageAsync).toHaveBeenCalledWith('msg-123');
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
         'message_deleted',
@@ -96,8 +96,8 @@ describe('Message Deletion Routes', () => {
         text: 'Channel message'
       };
 
-      vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockChannelMessage as any);
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockChannelMessage as any);
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: false, write: false },
         channel_0: { read: false, write: false }
       });
@@ -116,8 +116,8 @@ describe('Message Deletion Routes', () => {
         text: 'Direct message'
       };
 
-      vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockDMMessage as any);
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockDMMessage as any);
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: false, write: false },
         channel_0: { read: false, write: false }
       });
@@ -136,17 +136,17 @@ describe('Message Deletion Routes', () => {
         text: 'Channel message'
       };
 
-      vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockChannelMessage as any);
-      vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockChannelMessage as any);
+      vi.spyOn(databaseService, 'deleteMessageAsync').mockResolvedValue(true);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         channel_5: { read: true, write: true }
       });
 
       const response = await request(app).delete('/api/messages/msg-channel');
 
       expect(response.status).toBe(200);
-      expect(databaseService.deleteMessage).toHaveBeenCalledWith('msg-channel');
+      expect(databaseService.deleteMessageAsync).toHaveBeenCalledWith('msg-channel');
       expect(auditLogSpy).toHaveBeenCalledWith(
         2,
         'message_deleted',
@@ -164,9 +164,9 @@ describe('Message Deletion Routes', () => {
         text: 'Test message'
       };
 
-      vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockMessage as any);
-      vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockMessage as any);
+      vi.spyOn(databaseService, 'deleteMessageAsync').mockResolvedValue(true);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       await request(app).delete('/api/messages/msg-123');
 
@@ -183,7 +183,7 @@ describe('Message Deletion Routes', () => {
   describe('DELETE /api/messages/channels/:channelId - Channel purge', () => {
     it('should return 403 for users without channel_5:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         channel_0: { read: false, write: false }
       });
 
@@ -203,15 +203,15 @@ describe('Message Deletion Routes', () => {
 
     it('should allow admin to purge channel messages', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(15);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeChannelMessagesAsync').mockResolvedValue(15);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/channels/5');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 15);
       expect(response.body).toHaveProperty('channelId', 5);
-      expect(databaseService.purgeChannelMessages).toHaveBeenCalledWith(5);
+      expect(databaseService.purgeChannelMessagesAsync).toHaveBeenCalledWith(5);
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
         'channel_messages_purged',
@@ -223,16 +223,16 @@ describe('Message Deletion Routes', () => {
 
     it('should allow user with channel_3:write to purge channel messages', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         channel_3: { read: true, write: true }
       });
-      vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(10);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeChannelMessagesAsync').mockResolvedValue(10);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/channels/3');
 
       expect(response.status).toBe(200);
-      expect(databaseService.purgeChannelMessages).toHaveBeenCalledWith(3);
+      expect(databaseService.purgeChannelMessagesAsync).toHaveBeenCalledWith(3);
       expect(auditLogSpy).toHaveBeenCalledWith(
         2,
         'channel_messages_purged',
@@ -244,8 +244,8 @@ describe('Message Deletion Routes', () => {
 
     it('should log purge to audit log', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(20);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeChannelMessagesAsync').mockResolvedValue(20);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       await request(app).delete('/api/messages/channels/7');
 
@@ -262,7 +262,7 @@ describe('Message Deletion Routes', () => {
   describe('DELETE /api/messages/direct-messages/:nodeNum - DM purge', () => {
     it('should return 403 for users without messages:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: false, write: false }
       });
 
@@ -282,15 +282,15 @@ describe('Message Deletion Routes', () => {
 
     it('should allow admin to purge direct messages', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeDirectMessages').mockReturnValue(25);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeDirectMessagesAsync').mockResolvedValue(25);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/direct-messages/999999999');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 25);
       expect(response.body).toHaveProperty('nodeNum', 999999999);
-      expect(databaseService.purgeDirectMessages).toHaveBeenCalledWith(999999999);
+      expect(databaseService.purgeDirectMessagesAsync).toHaveBeenCalledWith(999999999);
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
         'dm_messages_purged',
@@ -302,16 +302,16 @@ describe('Message Deletion Routes', () => {
 
     it('should allow user with messages:write to purge direct messages', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: true, write: true }
       });
-      vi.spyOn(databaseService, 'purgeDirectMessages').mockReturnValue(12);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeDirectMessagesAsync').mockResolvedValue(12);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/direct-messages/123456');
 
       expect(response.status).toBe(200);
-      expect(databaseService.purgeDirectMessages).toHaveBeenCalledWith(123456);
+      expect(databaseService.purgeDirectMessagesAsync).toHaveBeenCalledWith(123456);
       expect(auditLogSpy).toHaveBeenCalledWith(
         2,
         'dm_messages_purged',
@@ -323,8 +323,8 @@ describe('Message Deletion Routes', () => {
 
     it('should log purge to audit log', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeDirectMessages').mockReturnValue(30);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeDirectMessagesAsync').mockResolvedValue(30);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       await request(app).delete('/api/messages/direct-messages/123456');
 
@@ -341,7 +341,7 @@ describe('Message Deletion Routes', () => {
   describe('DELETE /api/messages/nodes/:nodeNum/traceroutes - Node traceroutes purge', () => {
     it('should return 403 for users without messages:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: false, write: false }
       });
 
@@ -361,35 +361,35 @@ describe('Message Deletion Routes', () => {
 
     it('should successfully purge traceroutes for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(15);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeNodeTraceroutesAsync').mockResolvedValue(15);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 15);
       expect(response.body).toHaveProperty('message', 'Node traceroutes purged successfully');
-      expect(databaseService.purgeNodeTraceroutes).toHaveBeenCalledWith(123456);
+      expect(databaseService.purgeNodeTraceroutesAsync).toHaveBeenCalledWith(123456);
     });
 
     it('should successfully purge traceroutes for user with messages:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: true, write: true }
       });
-      vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(8);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeNodeTraceroutesAsync').mockResolvedValue(8);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
 
       expect(response.status).toBe(200);
-      expect(databaseService.purgeNodeTraceroutes).toHaveBeenCalledWith(123456);
+      expect(databaseService.purgeNodeTraceroutesAsync).toHaveBeenCalledWith(123456);
     });
 
     it('should log audit event for traceroutes purge', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(20);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeNodeTraceroutesAsync').mockResolvedValue(20);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       await request(app).delete('/api/messages/nodes/123456/traceroutes');
 
@@ -406,7 +406,7 @@ describe('Message Deletion Routes', () => {
   describe('DELETE /api/messages/nodes/:nodeNum/telemetry - Node telemetry purge', () => {
     it('should return 403 for users without messages:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: false, write: false }
       });
 
@@ -426,35 +426,35 @@ describe('Message Deletion Routes', () => {
 
     it('should successfully purge telemetry for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(45);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeNodeTelemetryAsync').mockResolvedValue(45);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 45);
       expect(response.body).toHaveProperty('message', 'Node telemetry purged successfully');
-      expect(databaseService.purgeNodeTelemetry).toHaveBeenCalledWith(123456);
+      expect(databaseService.purgeNodeTelemetryAsync).toHaveBeenCalledWith(123456);
     });
 
     it('should successfully purge telemetry for user with messages:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: true, write: true }
       });
-      vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(12);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeNodeTelemetryAsync').mockResolvedValue(12);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
 
       expect(response.status).toBe(200);
-      expect(databaseService.purgeNodeTelemetry).toHaveBeenCalledWith(123456);
+      expect(databaseService.purgeNodeTelemetryAsync).toHaveBeenCalledWith(123456);
     });
 
     it('should log audit event for telemetry purge', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(30);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'purgeNodeTelemetryAsync').mockResolvedValue(30);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       await request(app).delete('/api/messages/nodes/123456/telemetry');
 

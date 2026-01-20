@@ -1148,6 +1148,125 @@ class ApiService {
 
     return response.json();
   }
+
+  // ===== Channel Database Methods (Session-based API) =====
+
+  /**
+   * Get all channel database entries
+   */
+  async getChannelDatabaseEntries(): Promise<{
+    success: boolean;
+    count: number;
+    data: ChannelDatabaseEntry[];
+  }> {
+    return this.get('/api/channel-database');
+  }
+
+  /**
+   * Get a specific channel database entry
+   */
+  async getChannelDatabaseEntry(id: number): Promise<{
+    success: boolean;
+    data: ChannelDatabaseEntry;
+  }> {
+    return this.get(`/api/channel-database/${id}`);
+  }
+
+  /**
+   * Create a new channel database entry
+   */
+  async createChannelDatabaseEntry(entry: {
+    name: string;
+    psk: string;
+    pskLength?: number;
+    description?: string;
+    isEnabled?: boolean;
+  }): Promise<{
+    success: boolean;
+    data: ChannelDatabaseEntry;
+    message: string;
+  }> {
+    return this.post('/api/channel-database', entry);
+  }
+
+  /**
+   * Update a channel database entry
+   */
+  async updateChannelDatabaseEntry(
+    id: number,
+    updates: {
+      name?: string;
+      psk?: string;
+      description?: string;
+      isEnabled?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    data: ChannelDatabaseEntry;
+    message: string;
+  }> {
+    return this.put(`/api/channel-database/${id}`, updates);
+  }
+
+  /**
+   * Delete a channel database entry
+   */
+  async deleteChannelDatabaseEntry(id: number): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    return this.delete(`/api/channel-database/${id}`);
+  }
+
+  /**
+   * Trigger retroactive decryption for a specific channel
+   */
+  async triggerRetroactiveDecryption(channelId: number): Promise<{
+    success: boolean;
+    message: string;
+    progress: RetroactiveDecryptionProgress | null;
+  }> {
+    return this.post(`/api/channel-database/${channelId}/retroactive-decrypt`);
+  }
+
+  /**
+   * Get retroactive decryption progress
+   */
+  async getRetroactiveDecryptionProgress(): Promise<{
+    success: boolean;
+    isRunning: boolean;
+    progress: RetroactiveDecryptionProgress | null;
+  }> {
+    return this.get('/api/channel-database/retroactive-decrypt/progress');
+  }
+}
+
+// Channel Database types
+export interface ChannelDatabaseEntry {
+  id: number;
+  name: string;
+  pskLength: number;
+  pskPreview: string;
+  psk?: string;
+  description: string | null;
+  isEnabled: boolean;
+  decryptedPacketCount: number;
+  lastDecryptedAt: number | null;
+  createdBy: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RetroactiveDecryptionProgress {
+  channelDatabaseId: number;
+  channelName: string;
+  total: number;
+  processed: number;
+  decrypted: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
 }
 
 export default new ApiService();

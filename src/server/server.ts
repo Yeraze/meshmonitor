@@ -603,6 +603,7 @@ import messageRoutes from './routes/messageRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
 import apiTokenRoutes from './routes/apiTokenRoutes.js';
+import channelDatabaseRoutes from './routes/channelDatabaseRoutes.js';
 import v1Router from './routes/v1/index.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -656,6 +657,9 @@ apiRouter.use('/users', userRoutes);
 
 // Audit log routes (admin only)
 apiRouter.use('/audit', auditRoutes);
+
+// Channel database routes (admin only, session-based)
+apiRouter.use('/channel-database', channelDatabaseRoutes);
 
 // Security routes (requires security:read)
 apiRouter.use('/security', securityRoutes);
@@ -1541,6 +1545,7 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
         : (msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed'
         ? true
         : undefined,
+    decryptedBy: msg.decryptedBy ?? (msg as any).decrypted_by ?? null,
   };
 }
 

@@ -44,7 +44,7 @@ import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { SortField, SortDirection, NodeFilters } from './types/ui';
 import { ResourceType } from './types/permission';
-import api from './services/api';
+import api, { type ChannelDatabaseEntry } from './services/api';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
@@ -361,6 +361,26 @@ function App() {
       setThemeColors({ mauve, red, blue, overlay0 });
     }
   }, [theme]);
+
+  // Channel Database entries for displaying names of server-decrypted channels
+  const [channelDatabaseEntries, setChannelDatabaseEntries] = useState<ChannelDatabaseEntry[]>([]);
+
+  // Fetch Channel Database entries when authenticated
+  useEffect(() => {
+    const fetchChannelDatabaseEntries = async () => {
+      if (!authStatus?.authenticated) return;
+      try {
+        const response = await api.getChannelDatabaseEntries();
+        if (response.success && response.data) {
+          setChannelDatabaseEntries(response.data);
+        }
+      } catch (err) {
+        // Channel database might not be accessible to all users, fail silently
+        logger.debug('Failed to fetch channel database entries:', err);
+      }
+    };
+    fetchChannelDatabaseEntries();
+  }, [authStatus?.authenticated]);
 
   // Messaging context
   const {
@@ -4028,6 +4048,7 @@ function App() {
         {activeTab === 'channels' && (
           <ChannelsTab
             channels={channels}
+            channelDatabaseEntries={channelDatabaseEntries}
             channelMessages={channelMessages}
             messages={messages}
             currentNodeId={currentNodeId}

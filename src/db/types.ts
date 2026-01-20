@@ -107,6 +107,7 @@ export interface DbMessage {
   wantAck?: boolean | null;
   ackFromNode?: number | null;
   createdAt: number;
+  decryptedBy?: 'node' | 'server' | null;
 }
 
 /**
@@ -231,6 +232,8 @@ export interface DbPacketLog {
   metadata?: string | null;
   direction?: 'rx' | 'tx' | null;
   created_at?: number | null;
+  decrypted_by?: 'node' | 'server' | null;
+  decrypted_channel_id?: number | null;
 }
 
 /**
@@ -255,4 +258,34 @@ export interface DbSetting {
   value: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * Channel Database entry for server-side decryption
+ * Stores channel configurations beyond the device's 8 slots
+ */
+export interface DbChannelDatabase {
+  id?: number;
+  name: string;
+  psk: string; // Base64-encoded PSK
+  pskLength: number; // 16 for AES-128, 32 for AES-256
+  description?: string | null;
+  isEnabled: boolean;
+  decryptedPacketCount: number;
+  lastDecryptedAt?: number | null;
+  createdBy?: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Channel Database Permission for per-user read access
+ */
+export interface DbChannelDatabasePermission {
+  id?: number;
+  userId: number;
+  channelDatabaseId: number;
+  canRead: boolean;
+  grantedBy?: number | null;
+  grantedAt: number;
 }

@@ -750,7 +750,35 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             {packet.encrypted ? (
                               <span className="encrypted-indicator">🔒 {t('packet_monitor.encrypted')}</span>
                             ) : (
-                              <span className="content-preview">{packet.payload_preview || t('packet_monitor.no_preview')}</span>
+                              <span className="content-preview">
+                                {packet.decrypted_by === 'server' && (
+                                  <span
+                                    className="decryption-indicator server"
+                                    title={t('packet_monitor.decrypted_by_server')}
+                                    style={{
+                                      marginRight: '0.25rem',
+                                      color: 'var(--ctp-blue)',
+                                      cursor: 'help'
+                                    }}
+                                  >
+                                    🔑
+                                  </span>
+                                )}
+                                {packet.decrypted_by === 'node' && (
+                                  <span
+                                    className="decryption-indicator node"
+                                    title={t('packet_monitor.decrypted_by_node')}
+                                    style={{
+                                      marginRight: '0.25rem',
+                                      color: 'var(--ctp-green)',
+                                      cursor: 'help'
+                                    }}
+                                  >
+                                    🔓
+                                  </span>
+                                )}
+                                {packet.payload_preview || t('packet_monitor.no_preview')}
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -801,6 +829,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     portnum: selectedPacket.portnum,
                     portnum_name: selectedPacket.portnum_name,
                     encrypted: selectedPacket.encrypted,
+                    decrypted_by: selectedPacket.decrypted_by,
+                    decrypted_channel_id: selectedPacket.decrypted_channel_id,
                     snr: selectedPacket.snr,
                     rssi: selectedPacket.rssi,
                     hop_limit: selectedPacket.hop_limit,

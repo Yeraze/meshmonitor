@@ -298,6 +298,8 @@ export const MYSQL_SCHEMA_SQL = `
     metadata TEXT,
     direction VARCHAR(8),
     created_at BIGINT,
+    decrypted_by VARCHAR(16),
+    decrypted_channel_id INT,
     INDEX idx_packet_log_createdat (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -392,6 +394,36 @@ export const MYSQL_SCHEMA_SQL = `
     INDEX idx_auto_key_repair_log_timestamp (timestamp)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+  CREATE TABLE IF NOT EXISTS channel_database (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    psk VARCHAR(255) NOT NULL,
+    pskLength INT NOT NULL,
+    description TEXT,
+    isEnabled BOOLEAN NOT NULL DEFAULT true,
+    decryptedPacketCount INT NOT NULL DEFAULT 0,
+    lastDecryptedAt BIGINT,
+    createdBy INT,
+    createdAt BIGINT NOT NULL,
+    updatedAt BIGINT NOT NULL,
+    INDEX idx_channel_database_enabled (isEnabled),
+    FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS channel_database_permissions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT NOT NULL,
+    channelDatabaseId INT NOT NULL,
+    canRead BOOLEAN NOT NULL DEFAULT false,
+    grantedBy INT,
+    grantedAt BIGINT NOT NULL,
+    UNIQUE KEY unique_user_channel (userId, channelDatabaseId),
+    INDEX idx_channel_database_permissions_user (userId),
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (channelDatabaseId) REFERENCES channel_database(id) ON DELETE CASCADE,
+    FOREIGN KEY (grantedBy) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
   CREATE INDEX idx_nodes_nodeid ON nodes(nodeId);
   CREATE INDEX idx_nodes_lastheard ON nodes(lastHeard);
 `;
@@ -423,4 +455,6 @@ export const MYSQL_TABLE_NAMES = [
   'auto_traceroute_log',
   'auto_key_repair_state',
   'auto_key_repair_log',
+  'channel_database',
+  'channel_database_permissions',
 ];

@@ -11,6 +11,7 @@ import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import type { ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
@@ -23,6 +24,11 @@ import { useNodes } from '../hooks/useServerData';
 
 // Default PSK value (publicly known key - not truly secure)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
+
+// Offset for Channel Database channels
+// IMPORTANT: This value must match CHANNEL_DB_OFFSET in src/server/constants/meshtastic.ts
+// Device channels use indices 0-7, database channels start at 100
+const CHANNEL_DB_OFFSET = 100;
 
 // Encryption status types
 type EncryptionStatus = 'none' | 'default' | 'secure';
@@ -41,6 +47,7 @@ const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus =
 export interface ChannelsTabProps {
   // Data
   channels: Channel[];
+  channelDatabaseEntries: ChannelDatabaseEntry[];
   channelMessages: Record<number, MeshMessage[]>;
   messages: MeshMessage[];
   currentNodeId: string;
@@ -109,6 +116,7 @@ export interface ChannelsTabProps {
 
 export default function ChannelsTab({
   channels,
+  channelDatabaseEntries,
   channelMessages,
   messages,
   currentNodeId,
@@ -237,9 +245,19 @@ export default function ChannelsTab({
 
   // Helper: get channel name
   const getChannelName = (channelNum: number): string => {
+    // First check device channels (0-7)
     const channel = channels.find(ch => ch.id === channelNum);
     if (channel) {
       return channel.name;
+    }
+    // For channels >= CHANNEL_DB_OFFSET, check Channel Database entries
+    // Channel number = CHANNEL_DB_OFFSET + Channel Database entry ID
+    if (channelNum >= CHANNEL_DB_OFFSET && channelDatabaseEntries.length > 0) {
+      const channelDbId = channelNum - CHANNEL_DB_OFFSET;
+      const dbChannel = channelDatabaseEntries.find(entry => entry.id === channelDbId);
+      if (dbChannel) {
+        return dbChannel.name;
+      }
     }
     return t('channels.channel_fallback', { channelNum });
   };
@@ -484,6 +502,26 @@ export default function ChannelsTab({
                   </button>
                 </div>
 
+                {/* Read-only banner for Channel Database channels */}
+                {selectedChannel >= CHANNEL_DB_OFFSET && (
+                  <div
+                    style={{
+                      backgroundColor: 'var(--ctp-surface0)',
+                      color: 'var(--ctp-blue)',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.25rem',
+                      marginBottom: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    <span>🔑</span>
+                    <span>{t('channels.channel_database_readonly')}</span>
+                  </div>
+                )}
+
                 <div className="channel-conversation">
                   <div className="messages-container" ref={channelMessagesContainerRef} style={{ position: 'relative' }}>
                     {showJumpToBottom && (
@@ -604,33 +642,39 @@ export default function ChannelsTab({
                                   <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                                     {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
                                       <div className="message-actions">
-                                        {isMine ? (
+                                        {/* Hide reply/resend for Channel Database channels (read-only) - device channels are 0-7 */}
+                                        {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
+                                          isMine ? (
+                                            <button
+                                              className="resend-button"
+                                              onClick={() => handleResendMessage(msg)}
+                                              title={t('channels.resend_button_title')}
+                                            >
+                                              ↻
+                                            </button>
+                                          ) : (
+                                            <button
+                                              className="reply-button"
+                                              onClick={() => {
+                                                setReplyingTo(msg);
+                                                channelMessageInputRef.current?.focus();
+                                              }}
+                                              title={t('channels.reply_button_title')}
+                                            >
+                                              ↩
+                                            </button>
+                                          )
+                                        )}
+                                        {/* Hide emoji reactions for Channel Database channels (read-only) */}
+                                        {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
                                           <button
-                                            className="resend-button"
-                                            onClick={() => handleResendMessage(msg)}
-                                            title={t('channels.resend_button_title')}
+                                            className="emoji-picker-button"
+                                            onClick={() => setEmojiPickerMessage(msg)}
+                                            title={t('channels.emoji_button_title')}
                                           >
-                                            ↻
-                                          </button>
-                                        ) : (
-                                          <button
-                                            className="reply-button"
-                                            onClick={() => {
-                                              setReplyingTo(msg);
-                                              channelMessageInputRef.current?.focus();
-                                            }}
-                                            title={t('channels.reply_button_title')}
-                                          >
-                                            ↩
+                                            😄
                                           </button>
                                         )}
-                                        <button
-                                          className="emoji-picker-button"
-                                          onClick={() => setEmojiPickerMessage(msg)}
-                                          title={t('channels.emoji_button_title')}
-                                        >
-                                          😄
-                                        </button>
                                         <button
                                           className="delete-button"
                                           onClick={() => handleDeleteMessage(msg)}
@@ -703,7 +747,8 @@ export default function ChannelsTab({
                           </button>
                         </div>
                       )}
-                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                      {/* Hide message input for Channel Database channels (read-only) - device channels are 0-7 */}
+                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
                         <div className="message-input-container">
                           <div className="input-with-counter">
                             <input

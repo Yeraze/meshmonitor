@@ -23,3 +23,6 @@ export * from './packets.js';
 
 // Miscellaneous tables
 export * from './misc.js';
+
+// Channel Database tables
+export * from './channelDatabase.js';
