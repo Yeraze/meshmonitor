@@ -360,19 +360,26 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
 
     // Fall back to matching just the lowest byte
+    // A relay MUST be a direct neighbor, so filter to only plausible candidates
     const byteMatches = relayCapableNodes.filter(node => (node.nodeNum & 0xFF) === relayNode);
-    if (byteMatches.length === 1) {
-      return byteMatches[0].user?.shortName || `!${byteMatches[0].nodeNum.toString(16).padStart(8, '0')}`;
+
+    // Filter to only direct neighbors or nodes within 1 hop - a relay must be directly connected
+    const plausibleRelays = byteMatches.filter(node =>
+      directNeighborStats[node.nodeNum] !== undefined || (node.hopsAway !== undefined && node.hopsAway <= 1)
+    );
+
+    if (plausibleRelays.length === 1) {
+      return plausibleRelays[0].user?.shortName || `!${plausibleRelays[0].nodeNum.toString(16).padStart(8, '0')}`;
     }
-    if (byteMatches.length > 1) {
-      // Multiple matches - pick the one with closest RSSI
-      const closest = findClosestByRssi(byteMatches);
+    if (plausibleRelays.length > 1) {
+      // Multiple plausible matches - pick the one with closest RSSI
+      const closest = findClosestByRssi(plausibleRelays);
       if (closest) {
         return closest.user?.shortName || `!${closest.nodeNum.toString(16).padStart(8, '0')}`;
       }
     }
 
-    // No matches found - return hex byte as fallback
+    // No plausible matches found - return hex byte as fallback
     return `0x${relayNode.toString(16).padStart(2, '0').toUpperCase()}`;
   };
 
