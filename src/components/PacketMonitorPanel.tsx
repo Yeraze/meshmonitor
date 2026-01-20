@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { clearPackets, exportPackets } from '../services/packetApi';
+import apiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useDeviceConfig, useNodes } from '../hooks/useServerData';
@@ -157,15 +158,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     const fetchNeighborStats = async () => {
       try {
-        const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setDirectNeighborStats(data.data);
-          }
-        }
+        const stats = await apiService.getDirectNeighborStats(24);
+        setDirectNeighborStats(stats);
       } catch (error) {
         console.error('Failed to fetch direct neighbor stats:', error);
       }
@@ -218,15 +212,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     // Fetch direct neighbor stats (refresh to ensure up-to-date data)
     try {
-      const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setDirectNeighborStats(data.data);
-        }
-      }
+      const stats = await apiService.getDirectNeighborStats(24);
+      setDirectNeighborStats(stats);
     } catch (error) {
       console.error('Failed to fetch direct neighbor stats:', error);
     }

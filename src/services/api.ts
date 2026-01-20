@@ -631,6 +631,18 @@ class ApiService {
     return data.nodes || [];
   }
 
+  async getDirectNeighborStats(hoursBack: number = 24): Promise<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/direct-neighbors?hours=${hoursBack}`, {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch direct neighbor stats');
+    }
+    const data = await response.json();
+    return data.success ? data.data : {};
+  }
+
   async updateTracerouteInterval(minutes: number) {
     // Validate interval minutes
     const validatedMinutes = validateIntervalMinutes(minutes);

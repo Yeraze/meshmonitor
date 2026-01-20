@@ -11,7 +11,7 @@ import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
-import type { ChannelDatabaseEntry } from '../services/api';
+import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
@@ -194,15 +194,8 @@ export default function ChannelsTab({
 
         // Fetch direct neighbor stats
         try {
-          const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
-            credentials: 'include'
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              setDirectNeighborStats(data.data);
-            }
-          }
+          const stats = await apiService.getDirectNeighborStats(24);
+          setDirectNeighborStats(stats);
         } catch (error) {
           console.error('Failed to fetch direct neighbor stats:', error);
         }

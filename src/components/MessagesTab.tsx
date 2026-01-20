@@ -34,6 +34,7 @@ import TelemetryGraphs from './TelemetryGraphs';
 import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
+import apiService from '../services/api';
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -344,15 +345,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
         // Fetch direct neighbor stats
         try {
-          const response = await fetch('/meshmonitor/api/direct-neighbors?hours=24', {
-            credentials: 'include'
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              setDirectNeighborStats(data.data);
-            }
-          }
+          const stats = await apiService.getDirectNeighborStats(24);
+          setDirectNeighborStats(stats);
         } catch (error) {
           console.error('Failed to fetch direct neighbor stats:', error);
         }
