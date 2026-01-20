@@ -96,8 +96,12 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
         }
 
         // Fall back to byte matching
+        // A relay MUST be a direct neighbor, so filter to only plausible candidates
         const byteMatches = relayCapableNodes.filter(node => (node.nodeNum & 0xFF) === relayNode);
-        return sortByLikelihood(byteMatches);
+        const plausibleRelays = byteMatches.filter(node =>
+          node.heardDirectly === true || (node.hopsAway !== undefined && node.hopsAway <= 1)
+        );
+        return sortByLikelihood(plausibleRelays);
       })();
 
   const formatDateTime = (date?: Date) => {
