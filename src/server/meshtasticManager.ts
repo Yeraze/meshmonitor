@@ -3857,7 +3857,7 @@ class MeshtasticManager {
       const fromNum = Number(meshPacket.from);
       const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
 
-      logger.debug(`🏠 Neighbor info from ${fromNodeId}:`, neighborInfo);
+      logger.info(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
 
       // Get the sender node to determine their hopsAway
       let senderNode = databaseService.getNode(fromNum);
@@ -3879,7 +3879,7 @@ class MeshtasticManager {
 
       // Process each neighbor in the list
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
-        logger.debug(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
+        logger.info(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
 
         for (const neighbor of neighborInfo.neighbors) {
           const neighborNodeNum = Number(neighbor.nodeId);
@@ -3896,7 +3896,7 @@ class MeshtasticManager {
               hopsAway: senderHopsAway + 1,
               lastHeard: Date.now() / 1000
             });
-            logger.debug(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
+            logger.info(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
           }
 
           // Save the neighbor relationship
@@ -3908,7 +3908,7 @@ class MeshtasticManager {
             timestamp: timestamp
           });
 
-          logger.debug(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
+          logger.info(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
         }
       }
     } catch (error) {
