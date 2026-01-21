@@ -54,6 +54,16 @@ const SOLAR_DEFAULT_ON_TYPES = new Set([
   'temperature',
   'humidity',
   'pressure',
+  // Extended environment metrics affected by solar/weather
+  'lux',
+  'whiteLux',
+  'irLux',
+  'uvLux',
+  'windSpeed',
+  'windGust',
+  'windLull',
+  'soilTemperature',
+  'soilMoisture',
 ]);
 
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
@@ -418,6 +428,26 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         hostLoad1: 'Host Load (1 min)',
         hostLoad5: 'Host Load (5 min)',
         hostLoad15: 'Host Load (15 min)',
+        // Extended Environment metrics
+        gasResistance: 'Gas Resistance',
+        iaq: 'Indoor Air Quality (IAQ)',
+        lux: 'Ambient Light',
+        whiteLux: 'White Light',
+        irLux: 'Infrared Light',
+        uvLux: 'UV Light',
+        windDirection: 'Wind Direction',
+        windSpeed: 'Wind Speed',
+        windGust: 'Wind Gust',
+        windLull: 'Wind Lull',
+        rainfall1h: 'Rainfall (1 hour)',
+        rainfall24h: 'Rainfall (24 hours)',
+        soilMoisture: 'Soil Moisture',
+        soilTemperature: 'Soil Temperature',
+        radiation: 'Radiation',
+        distance: 'Distance (Water Level)',
+        weight: 'Weight',
+        envVoltage: 'Environment Voltage',
+        envCurrent: 'Environment Current',
       };
       return labels[type] || type;
     };
@@ -473,6 +503,26 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         paxcounterWifi: '#ff9500', // Orange
         paxcounterBle: '#17c0fa', // Cyan
         paxcounterUptime: '#9c88ff', // Purple
+        // Extended Environment metrics
+        gasResistance: '#cba6f7', // Mauve - air quality related
+        iaq: '#f38ba8', // Red - important air quality indicator
+        lux: '#f9e2af', // Yellow - light
+        whiteLux: '#cdd6f4', // Light - white light
+        irLux: '#f5c2e7', // Pink - infrared
+        uvLux: '#b4befe', // Lavender - UV
+        windDirection: '#94e2d5', // Teal - wind
+        windSpeed: '#89dceb', // Sky - wind
+        windGust: '#74c7ec', // Sapphire - wind
+        windLull: '#89b4fa', // Blue - wind
+        rainfall1h: '#74c7ec', // Sapphire - rain
+        rainfall24h: '#7287fd', // Blue - rain
+        soilMoisture: '#a6e3a1', // Green - soil
+        soilTemperature: '#fab387', // Peach - soil temp
+        radiation: '#eba0ac', // Maroon - radiation (warning color)
+        distance: '#94e2d5', // Teal - distance/water level
+        weight: '#cdd6f4', // Text - weight
+        envVoltage: '#f5c2e7', // Pink - deprecated env voltage
+        envCurrent: '#cba6f7', // Mauve - deprecated env current
       };
       return colors[type] || '#8884d8';
     };
