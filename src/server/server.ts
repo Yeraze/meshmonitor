@@ -2632,6 +2632,47 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
   }
 });
 
+// Telemetry request endpoint (request telemetry from remote node)
+apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), async (req, res) => {
+  try {
+    const { destination, telemetryType } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    // Validate telemetry type if provided
+    const validTypes = ['device', 'environment', 'airQuality', 'power'];
+    if (telemetryType && !validTypes.includes(telemetryType)) {
+      return res.status(400).json({ error: `Invalid telemetry type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+
+    // Look up the node to get its channel
+    const node = databaseService.getNode(destinationNum);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const { packetId, requestId } = await meshtasticManager.sendTelemetryRequest(
+      destinationNum,
+      channel,
+      telemetryType as 'device' | 'environment' | 'airQuality' | 'power' | undefined
+    );
+
+    const typeLabel = telemetryType || 'device';
+    logger.info(`📊 Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+
+    res.json({
+      success: true,
+      message: `Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}`,
+      packetId,
+      requestId
+    });
+  } catch (error) {
+    logger.error('Error sending telemetry request:', error);
+    res.status(500).json({ error: 'Failed to send telemetry request' });
+  }
+});
+
 // Get recent traceroutes (last 24 hours)
 apiRouter.get('/traceroutes/recent', (req, res) => {
   try {

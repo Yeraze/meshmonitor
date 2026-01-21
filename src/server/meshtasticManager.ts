@@ -5836,6 +5836,64 @@ class MeshtasticManager {
   }
 
   /**
+   * Send a telemetry request to a remote node
+   * This sends an empty telemetry packet with wantResponse=true to request telemetry data
+   */
+  async sendTelemetryRequest(
+    destination: number,
+    channel: number = 0,
+    telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'
+  ): Promise<{ packetId: number; requestId: number }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      const { data: telemetryRequestData, packetId, requestId } = meshtasticProtobufService.createTelemetryRequestMessage(
+        destination,
+        channel,
+        telemetryType
+      );
+
+      const typeLabel = telemetryType || 'device';
+      logger.info(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
+
+      await this.transport.send(telemetryRequestData);
+
+      // Broadcast to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(telemetryRequestData);
+          logger.debug(`📡 Broadcasted outgoing Telemetry request to virtual node clients (${telemetryRequestData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing Telemetry request:', error);
+        }
+      }
+
+      logger.info(`📤 Telemetry request (${typeLabel}) sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+
+      // Log outgoing Telemetry request to packet monitor
+      this.logOutgoingPacket(
+        67, // TELEMETRY_APP
+        destination,
+        channel,
+        `Telemetry request (${typeLabel}) to !${destination.toString(16).padStart(8, '0')}`,
+        { destination, telemetryType: typeLabel, packetId, requestId }
+      );
+
+      return { packetId, requestId };
+    } catch (error) {
+      logger.error('Error sending Telemetry request:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Broadcast NodeInfo to all nodes on a specific channel
    * Uses the broadcast address (0xFFFFFFFF) to send to all nodes
    * wantAck is set to false to reduce mesh traffic

@@ -34,6 +34,7 @@ import TelemetryGraphs from './TelemetryGraphs';
 import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
+import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
 import apiService from '../services/api';
 
 // Types for node with message metadata
@@ -141,6 +142,7 @@ export interface MessagesTabProps {
   positionLoading: string | null;
   nodeInfoLoading: string | null;
   neighborInfoLoading: string | null;
+  telemetryRequestLoading: string | null;
 
   // Settings
   timeFormat: TimeFormat;
@@ -160,6 +162,7 @@ export interface MessagesTabProps {
   handleExchangePosition: (nodeId: string) => Promise<void>;
   handleExchangeNodeInfo: (nodeId: string) => Promise<void>;
   handleRequestNeighborInfo: (nodeId: string) => Promise<void>;
+  handleRequestTelemetry: (nodeId: string, telemetryType: 'device' | 'environment' | 'airQuality' | 'power') => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
   handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
@@ -217,6 +220,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   positionLoading,
   nodeInfoLoading,
   neighborInfoLoading,
+  telemetryRequestLoading,
   timeFormat,
   dateFormat,
   temperatureUnit,
@@ -230,6 +234,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   handleExchangePosition,
   handleExchangeNodeInfo,
   handleRequestNeighborInfo,
+  handleRequestTelemetry,
   handleDeleteMessage,
   handleSenderClick,
   handleSendTapback,
@@ -260,6 +265,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
+
+  // Telemetry request modal state
+  const [showTelemetryRequestModal, setShowTelemetryRequestModal] = useState(false);
 
   // Resizable send section (only on desktop)
   const {
@@ -831,6 +839,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             >
                               🔑 {t('messages.exchange_user_info')}
                               {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={() => {
+                                setShowTelemetryRequestModal(true);
+                                setShowActionsMenu(false);
+                              }}
+                              disabled={connectionStatus !== 'connected' || telemetryRequestLoading === selectedDMNode}
+                            >
+                              📊 {t('messages.request_telemetry')}
+                              {telemetryRequestLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                           </>
                         )}
@@ -1510,6 +1529,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             setSelectedRelayNode(null);
             handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
           }}
+        />
+      )}
+
+      {/* Telemetry request modal */}
+      {showTelemetryRequestModal && selectedDMNode && (
+        <TelemetryRequestModal
+          isOpen={showTelemetryRequestModal}
+          onClose={() => setShowTelemetryRequestModal(false)}
+          onRequest={(telemetryType: TelemetryType) => {
+            handleRequestTelemetry(selectedDMNode, telemetryType);
+            setShowTelemetryRequestModal(false);
+          }}
+          loading={telemetryRequestLoading === selectedDMNode}
+          nodeName={selectedNode?.user?.longName || selectedNode?.user?.shortName || selectedDMNode}
         />
       )}
     </div>
