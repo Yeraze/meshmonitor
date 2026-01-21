@@ -378,11 +378,7 @@ export class MeshtasticProtobufService {
     }
 
     try {
-      // Generate unique IDs
-      const packetId = Math.floor(Math.random() * 0xffffffff);
-      const requestId = Math.floor(Math.random() * 0xffffffff);
-
-      // Create empty NeighborInfo message (request format)
+      // Create empty NeighborInfo message (request format - like traceroute's empty RouteDiscovery)
       const NeighborInfo = root.lookupType('meshtastic.NeighborInfo');
       const neighborInfoMessage = NeighborInfo.create({});
 
@@ -390,23 +386,22 @@ export class MeshtasticProtobufService {
       const payload = NeighborInfo.encode(neighborInfoMessage).finish();
 
       // Create Data message with NEIGHBORINFO_APP portnum
+      // Match traceroute pattern exactly (no requestId - traceroute works without it)
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
         portnum: PortNum.NEIGHBORINFO_APP,
         payload: payload,
         dest: destination,
-        wantResponse: true, // Request neighbor info from destination
-        requestId: requestId
+        wantResponse: true // Request neighbor info from destination
       });
 
-      // Create MeshPacket with explicit ID
+      // Create MeshPacket
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
       const meshPacket = MeshPacket.create({
-        id: packetId,
         to: destination,
         channel: channel || 0,
         decoded: dataMessage,
-        wantAck: true, // Want delivery confirmation
+        wantAck: false,
         hopLimit: 7 // Default hop limit for remote nodes
       });
 
@@ -416,7 +411,7 @@ export class MeshtasticProtobufService {
         packet: meshPacket
       });
 
-      return { data: ToRadio.encode(toRadio).finish(), packetId, requestId };
+      return { data: ToRadio.encode(toRadio).finish(), packetId: 0, requestId: 0 };
     } catch (error) {
       logger.error('❌ Failed to create neighbor info request message:', error);
       return { data: new Uint8Array(), packetId: 0, requestId: 0 };

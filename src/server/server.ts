@@ -2625,15 +2625,13 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
     const node = databaseService.getNode(destinationNum);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const { packetId, requestId } = await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
+    await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
 
-    logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+    logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`);
 
     res.json({
       success: true,
-      message: `NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`,
-      packetId,
-      requestId
+      message: `NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`
     });
   } catch (error) {
     logger.error('Error sending neighborinfo request:', error);

@@ -5808,7 +5808,7 @@ class MeshtasticManager {
    * The target node must have NeighborInfo module enabled (broadcast interval can be 0)
    * Firmware rate-limits responses to one every 3 minutes
    */
-  async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+  async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -5818,12 +5818,12 @@ class MeshtasticManager {
     }
 
     try {
-      const { data: neighborInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNeighborInfoRequestMessage(
+      const { data: neighborInfoRequestData } = meshtasticProtobufService.createNeighborInfoRequestMessage(
         destination,
         channel
       );
 
-      logger.info(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
+      logger.info(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}`);
 
       await this.transport.send(neighborInfoRequestData);
 
@@ -5846,10 +5846,8 @@ class MeshtasticManager {
         destination,
         channel,
         `NeighborInfo request to !${destination.toString(16).padStart(8, '0')}`,
-        { destination, packetId, requestId }
+        { destination }
       );
-
-      return { packetId, requestId };
     } catch (error) {
       logger.error('Error sending NeighborInfo request:', error);
       throw error;
