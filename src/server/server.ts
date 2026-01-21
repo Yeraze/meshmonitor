@@ -2801,7 +2801,9 @@ const getEffectivePosition = (node: ReturnType<typeof databaseService.getNode>) 
   if (!node) return { latitude: undefined, longitude: undefined };
 
   // Check for position override first
-  if (node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null) {
+  // Note: SQLite returns 1 for boolean true, PostgreSQL/MySQL return true
+  const overrideEnabled = node.positionOverrideEnabled === true || node.positionOverrideEnabled === 1;
+  if (overrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null) {
     return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
   }
 
