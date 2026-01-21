@@ -1,0 +1,76 @@
+.telemetry-request-modal {
+  max-width: 450px;
+  width: 90%;
+}
+
+.telemetry-modal-subtitle {
+  color: var(--ctp-subtext0);
+  margin-bottom: 20px;
+  font-size: 0.95em;
+}
+
+.telemetry-types-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.telemetry-type-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.telemetry-type-button:hover:not(:disabled) {
+  background-color: var(--ctp-surface1);
+  border-color: var(--ctp-blue);
+  transform: translateX(4px);
+}
+
+.telemetry-type-button:focus {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 2px;
+}
+
+.telemetry-type-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.telemetry-type-icon {
+  font-size: 1.5em;
+  width: 40px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.telemetry-type-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.telemetry-type-name {
+  font-weight: 600;
+  color: var(--ctp-text);
+  font-size: 1em;
+}
+
+.telemetry-type-description {
+  font-size: 0.85em;
+  color: var(--ctp-subtext0);
+  line-height: 1.4;
+}
+
+.telemetry-type-button .spinner {
+  flex-shrink: 0;
+}

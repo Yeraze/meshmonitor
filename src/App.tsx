@@ -566,6 +566,9 @@ function App() {
   // NeighborInfo request loading state
   const [neighborInfoLoading, setNeighborInfoLoading] = useState<string | null>(null);
 
+  // Telemetry request loading state
+  const [telemetryRequestLoading, setTelemetryRequestLoading] = useState<string | null>(null);
+
   // Play notification sound using Web Audio API
   const playNotificationSound = useCallback(() => {
     // Check if audio notifications are enabled
@@ -2585,6 +2588,46 @@ function App() {
     }
   };
 
+  const handleRequestTelemetry = async (nodeId: string, telemetryType: 'device' | 'environment' | 'airQuality' | 'power') => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    // Prevent duplicate requests (debounce logic)
+    if (telemetryRequestLoading === nodeId) {
+      logger.debug(`📊 Telemetry request already in progress for ${nodeId}`);
+      return;
+    }
+
+    try {
+      // Set loading state
+      setTelemetryRequestLoading(nodeId);
+
+      // Convert nodeId to node number for backend
+      const nodeNumStr = nodeId.replace('!', '');
+      const nodeNum = parseInt(nodeNumStr, 16);
+
+      // Use direct fetch with CSRF token
+      await authFetch(`${baseUrl}/api/telemetry/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ destination: nodeNum, telemetryType }),
+      });
+
+      logger.debug(`📊 Telemetry request (${telemetryType}) sent to ${nodeId}`);
+
+      // Clear loading state after 30 seconds
+      setTimeout(() => {
+        setTelemetryRequestLoading(null);
+      }, 30000);
+    } catch (error) {
+      logger.error('Failed to send telemetry request:', error);
+      setTelemetryRequestLoading(null);
+    }
+  };
+
   const handleSendDirectMessage = async (destinationNodeId: string) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -4121,6 +4164,7 @@ function App() {
             positionLoading={positionLoading}
             nodeInfoLoading={nodeInfoLoading}
             neighborInfoLoading={neighborInfoLoading}
+            telemetryRequestLoading={telemetryRequestLoading}
             timeFormat={timeFormat}
             dateFormat={dateFormat}
             temperatureUnit={temperatureUnit}
@@ -4134,6 +4178,7 @@ function App() {
             handleExchangePosition={handleExchangePosition}
             handleExchangeNodeInfo={handleExchangeNodeInfo}
             handleRequestNeighborInfo={handleRequestNeighborInfo}
+            handleRequestTelemetry={handleRequestTelemetry}
             handleDeleteMessage={handleDeleteMessage}
             handleSenderClick={handleSenderClick}
             handleSendTapback={handleSendTapback}

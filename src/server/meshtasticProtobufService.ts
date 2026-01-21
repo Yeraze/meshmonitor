@@ -276,7 +276,8 @@ export class MeshtasticProtobufService {
    */
   createTelemetryRequestMessage(
     destination: number,
-    channel?: number
+    channel?: number,
+    telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -289,9 +290,40 @@ export class MeshtasticProtobufService {
       const packetId = Math.floor(Math.random() * 0xffffffff);
       const requestId = Math.floor(Math.random() * 0xffffffff);
 
-      // Create empty Telemetry message (request format)
+      // Create Telemetry message with appropriate variant based on telemetryType
       const Telemetry = root.lookupType('meshtastic.Telemetry');
-      const telemetryMessage = Telemetry.create({});
+      let telemetryPayload: { deviceMetrics?: object; environmentMetrics?: object; airQualityMetrics?: object; powerMetrics?: object } = {};
+
+      // Set the appropriate empty variant to request that telemetry type
+      switch (telemetryType) {
+        case 'device': {
+          const DeviceMetrics = root.lookupType('meshtastic.DeviceMetrics');
+          telemetryPayload = { deviceMetrics: DeviceMetrics.create({}) };
+          break;
+        }
+        case 'environment': {
+          const EnvironmentMetrics = root.lookupType('meshtastic.EnvironmentMetrics');
+          telemetryPayload = { environmentMetrics: EnvironmentMetrics.create({}) };
+          break;
+        }
+        case 'airQuality': {
+          const AirQualityMetrics = root.lookupType('meshtastic.AirQualityMetrics');
+          telemetryPayload = { airQualityMetrics: AirQualityMetrics.create({}) };
+          break;
+        }
+        case 'power': {
+          const PowerMetrics = root.lookupType('meshtastic.PowerMetrics');
+          telemetryPayload = { powerMetrics: PowerMetrics.create({}) };
+          break;
+        }
+        default: {
+          // No type specified - request general telemetry (device metrics by default)
+          const DeviceMetrics = root.lookupType('meshtastic.DeviceMetrics');
+          telemetryPayload = { deviceMetrics: DeviceMetrics.create({}) };
+        }
+      }
+
+      const telemetryMessage = Telemetry.create(telemetryPayload);
 
       // Encode the Telemetry as payload
       const payload = Telemetry.encode(telemetryMessage).finish();
@@ -314,7 +346,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true, // Want delivery confirmation
-        hopLimit: 0 // Direct connection only (local node)
+        hopLimit: 3 // Allow multi-hop delivery (like other remote requests)
       });
 
       // Create ToRadio message
