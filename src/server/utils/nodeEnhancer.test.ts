@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { enhanceNodeForClient } from './nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission } from './nodeEnhancer.js';
 
 // Mock the auth middleware
 vi.mock('../auth/authMiddleware.js', () => ({
@@ -10,6 +10,36 @@ vi.mock('../auth/authMiddleware.js', () => ({
     }
     return false;
   })
+}));
+
+// Mock the database service for filterNodesByChannelPermission
+vi.mock('../../services/database.js', () => ({
+  default: {
+    getUserPermissionSetAsync: vi.fn(async (userId: number) => {
+      // User 1: has access to channels 0 and 1
+      if (userId === 1) {
+        return {
+          channel_0: { read: true, write: false },
+          channel_1: { read: true, write: false },
+        };
+      }
+      // User 2: has access to all channels
+      if (userId === 2) {
+        return {
+          channel_0: { read: true, write: true },
+          channel_1: { read: true, write: true },
+          channel_2: { read: true, write: true },
+          channel_3: { read: true, write: true },
+          channel_4: { read: true, write: true },
+          channel_5: { read: true, write: true },
+          channel_6: { read: true, write: true },
+          channel_7: { read: true, write: true },
+        };
+      }
+      // Default: no permissions
+      return {};
+    }),
+  },
 }));
 
 describe('nodeEnhancer: enhanceNodeForClient', () => {
@@ -87,5 +117,71 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
     expect(result.position.latitude).toBe(50);
     expect(result.position.longitude).toBe(60);
     expect(result.positionIsOverride).toBe(false);
+  });
+});
+
+describe('nodeEnhancer: filterNodesByChannelPermission', () => {
+  const testNodes = [
+    { nodeId: '!00000001', channel: 0 },
+    { nodeId: '!00000002', channel: 1 },
+    { nodeId: '!00000003', channel: 2 },
+    { nodeId: '!00000004', channel: 3 },
+    { nodeId: '!00000005' }, // No channel (defaults to 0)
+  ];
+
+  it('should return all nodes for admin user', async () => {
+    const adminUser = { id: 1, isAdmin: true } as any;
+    const result = await filterNodesByChannelPermission(testNodes, adminUser);
+    expect(result).toHaveLength(5);
+  });
+
+  it('should filter nodes based on channel permissions for regular user', async () => {
+    // User 1 has permissions for channels 0 and 1 only
+    const regularUser = { id: 1, isAdmin: false } as any;
+    const result = await filterNodesByChannelPermission(testNodes, regularUser);
+
+    // Should only see nodes on channel 0 (including the one with no channel) and channel 1
+    expect(result).toHaveLength(3);
+    expect(result.map(n => n.nodeId)).toContain('!00000001'); // channel 0
+    expect(result.map(n => n.nodeId)).toContain('!00000002'); // channel 1
+    expect(result.map(n => n.nodeId)).toContain('!00000005'); // no channel, defaults to 0
+    expect(result.map(n => n.nodeId)).not.toContain('!00000003'); // channel 2
+    expect(result.map(n => n.nodeId)).not.toContain('!00000004'); // channel 3
+  });
+
+  it('should return all nodes for user with all channel permissions', async () => {
+    // User 2 has permissions for all channels
+    const fullAccessUser = { id: 2, isAdmin: false } as any;
+    const result = await filterNodesByChannelPermission(testNodes, fullAccessUser);
+    expect(result).toHaveLength(5);
+  });
+
+  it('should return no nodes for user with no permissions', async () => {
+    // User 99 has no permissions (not mocked)
+    const noPermUser = { id: 99, isAdmin: false } as any;
+    const result = await filterNodesByChannelPermission(testNodes, noPermUser);
+    expect(result).toHaveLength(0);
+  });
+
+  it('should return no nodes for null user (anonymous without permissions)', async () => {
+    const result = await filterNodesByChannelPermission(testNodes, null);
+    expect(result).toHaveLength(0);
+  });
+
+  it('should return no nodes for undefined user', async () => {
+    const result = await filterNodesByChannelPermission(testNodes, undefined);
+    expect(result).toHaveLength(0);
+  });
+
+  it('should preserve original node type/shape', async () => {
+    const adminUser = { id: 1, isAdmin: true } as any;
+    const complexNodes = [
+      { nodeId: '!00000001', channel: 0, extra: 'data', nested: { value: 1 } },
+    ];
+    const result = await filterNodesByChannelPermission(complexNodes, adminUser);
+
+    expect(result[0]).toHaveProperty('extra', 'data');
+    expect(result[0]).toHaveProperty('nested');
+    expect((result[0] as any).nested.value).toBe(1);
   });
 });

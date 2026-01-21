@@ -8,6 +8,7 @@
 import express, { Request, Response } from 'express';
 import databaseService, { DbNode } from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
+import { filterNodesByChannelPermission } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router();
 
@@ -70,8 +71,11 @@ router.get('/', async (req: Request, res: Response) => {
       nodes = await databaseService.getAllNodesAsync();
     }
 
+    // Filter nodes based on channel read permissions
+    const filteredNodes = await filterNodesByChannelPermission(nodes, user);
+
     // Enrich nodes with uptime data from telemetry
-    const enrichedNodes = nodes.map(enrichNodeWithUptime);
+    const enrichedNodes = filteredNodes.map(enrichNodeWithUptime);
 
     res.json({
       success: true,
@@ -121,8 +125,19 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
       });
     }
 
+    // Check if user has permission to view this node based on its channel
+    const [filteredNode] = await filterNodesByChannelPermission([node], user);
+    if (!filteredNode) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'No permission to view this node',
+        required: { resource: `channel_${node.channel ?? 0}`, action: 'read' }
+      });
+    }
+
     // Enrich with uptime data from telemetry
-    const enrichedNode = enrichNodeWithUptime(node);
+    const enrichedNode = enrichNodeWithUptime(filteredNode);
 
     res.json({
       success: true,

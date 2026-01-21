@@ -34,6 +34,30 @@
 
 ## Current Sprint
 
+### Channel-Based Node Visibility (Discussion #1503)
+
+**Completed:**
+- [x] Add `filterNodesByChannelPermission` helper function to nodeEnhancer.ts
+  - Filters nodes based on user's channel read permissions
+  - Admin users see all nodes
+  - Uses `channel_0` through `channel_7` read permissions
+  - Handles null/undefined users (anonymous without permissions)
+- [x] Update `/api/nodes` endpoint to filter nodes by channel permission
+- [x] Update `/api/nodes/active` endpoint to filter nodes by channel permission
+- [x] Update `/api/bulk` (poll) endpoint to filter nodes by channel permission
+- [x] Update `/api/messages/unread-counts` to filter DM node list
+- [x] Update `/api/telemetry/available/nodes` to filter node telemetry availability
+- [x] Update `/api/v1/nodes` endpoint to filter nodes by channel permission
+- [x] Update `/api/v1/nodes/:nodeId` to check channel permission for single node
+- [x] Add unit tests for `filterNodesByChannelPermission` function
+- [x] TypeScript compilation passes
+- [x] Unit tests pass (12 tests in nodeEnhancer.test.ts)
+
+**Summary:**
+Extended the permission system so that channel read permissions (`channel_0:read` through `channel_7:read`) now control node visibility. Each node has a `channel` field indicating which channel it was last heard on. Users without read permission for a node's channel will not see that node in any API response. This works for Session auth, API token auth, and Anonymous users.
+
+---
+
 ### v3.0.0 "MultiDatabase" Release
 
 **Completed:**
