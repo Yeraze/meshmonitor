@@ -614,6 +614,50 @@ Nodes may also display role badges:
 
 ---
 
+### The map is blank for anonymous (not logged in) users
+
+**Problem:** When accessing MeshMonitor without logging in, the map appears empty even though logged-in users can see nodes.
+
+**Cause:** Node visibility in MeshMonitor is controlled by **channel read permissions**. Each node is associated with the channel it was last heard on, and users (including anonymous users) can only see nodes on channels they have read permission for. By default, anonymous users have no channel permissions.
+
+**Solution:** Configure channel read permissions for the anonymous user:
+
+1. **Login as admin**
+
+2. **Navigate to User Management:**
+   - Click your username in the top right corner
+   - Select "Admin Panel" from the dropdown
+   - Click "User Management"
+
+3. **Find the anonymous user:**
+   - Look for the user named **"anonymous"** in the user list
+   - Click on it to edit permissions
+
+4. **Grant channel read permissions:**
+   - In the permissions section, find the channel permissions (e.g., `channel_0`, `channel_1`, etc.)
+   - Enable **read** permission for each channel you want anonymous users to see
+   - Most commonly, you'll want to enable `channel_0:read` (the primary channel)
+   - Click **Save**
+
+**Example configuration:**
+- `channel_0: read` - Anonymous users can see nodes on the primary channel
+- `channel_1: read` - Anonymous users can see nodes on channel 1
+- Leave other channels disabled to restrict visibility
+
+**How it works:**
+- Each node in the mesh has a `channel` field indicating which channel it was last heard on
+- When a user (logged in or anonymous) requests the node list, MeshMonitor filters results based on their channel read permissions
+- This allows administrators to control exactly which nodes are visible to public visitors
+
+**Use cases:**
+- **Public dashboards:** Enable read permission on your public channel for anonymous users
+- **Private networks:** Keep all channel permissions disabled to require login
+- **Multi-channel setups:** Selectively expose only certain channels to anonymous visitors
+
+**Note:** This also affects the V1 API. API token users follow the same channel permission filtering based on their associated user account.
+
+---
+
 ### How do I send messages to a specific channel?
 
 1. **Go to Messages tab**
