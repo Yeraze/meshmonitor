@@ -310,7 +310,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {t('channel_database.title')}
           <a
-            href="https://meshtastic.org/docs/configuration/radio/channels/#encryption"
+            href="https://meshmonitor.org/features/channel-database.html"
             target="_blank"
             rel="noopener noreferrer"
             style={{
