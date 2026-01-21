@@ -2942,24 +2942,39 @@ class MeshtasticManager {
         const envMetrics = telemetry.environmentMetrics;
         logger.debug(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
-        if (envMetrics.temperature !== undefined && envMetrics.temperature !== null && !isNaN(envMetrics.temperature)) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'temperature',
-            timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now, packetTimestamp
-          });
-        }
-        if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null && !isNaN(envMetrics.relativeHumidity)) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'humidity',
-            timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now, packetTimestamp
-          });
-        }
-        if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null && !isNaN(envMetrics.barometricPressure)) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'pressure',
-            timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now, packetTimestamp
-          });
-        }
+        // Save all Environment metrics to telemetry table
+        this.saveTelemetryMetrics([
+          // Core weather metrics
+          { type: 'temperature', value: envMetrics.temperature, unit: '°C' },
+          { type: 'humidity', value: envMetrics.relativeHumidity, unit: '%' },
+          { type: 'pressure', value: envMetrics.barometricPressure, unit: 'hPa' },
+          // Air quality related
+          { type: 'gasResistance', value: envMetrics.gasResistance, unit: 'MΩ' },
+          { type: 'iaq', value: envMetrics.iaq, unit: 'IAQ' },
+          // Light sensors
+          { type: 'lux', value: envMetrics.lux, unit: 'lux' },
+          { type: 'whiteLux', value: envMetrics.whiteLux, unit: 'lux' },
+          { type: 'irLux', value: envMetrics.irLux, unit: 'lux' },
+          { type: 'uvLux', value: envMetrics.uvLux, unit: 'lux' },
+          // Wind metrics
+          { type: 'windDirection', value: envMetrics.windDirection, unit: '°' },
+          { type: 'windSpeed', value: envMetrics.windSpeed, unit: 'm/s' },
+          { type: 'windGust', value: envMetrics.windGust, unit: 'm/s' },
+          { type: 'windLull', value: envMetrics.windLull, unit: 'm/s' },
+          // Precipitation
+          { type: 'rainfall1h', value: envMetrics.rainfall1h, unit: 'mm' },
+          { type: 'rainfall24h', value: envMetrics.rainfall24h, unit: 'mm' },
+          // Soil sensors
+          { type: 'soilMoisture', value: envMetrics.soilMoisture, unit: '%' },
+          { type: 'soilTemperature', value: envMetrics.soilTemperature, unit: '°C' },
+          // Other sensors
+          { type: 'radiation', value: envMetrics.radiation, unit: 'µR/h' },
+          { type: 'distance', value: envMetrics.distance, unit: 'mm' },
+          { type: 'weight', value: envMetrics.weight, unit: 'kg' },
+          // Deprecated but still supported (use PowerMetrics for new implementations)
+          { type: 'envVoltage', value: envMetrics.voltage, unit: 'V' },
+          { type: 'envCurrent', value: envMetrics.current, unit: 'A' }
+        ], nodeId, fromNum, timestamp, packetTimestamp);
       } else if (telemetry.powerMetrics) {
         const powerMetrics = telemetry.powerMetrics;
 
