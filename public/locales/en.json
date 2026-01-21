@@ -310,6 +310,7 @@
   "messages.traceroute_return": "← Return:",
   "messages.last_traced": "Last traced {{time}}",
   "messages.traceroute_failed": "Failed",
+  "messages.neighbor_info_title": "Neighbor Info",
   "messages.resize_handle_title": "Drag to resize",
   "messages.security_issue_title": "Security Issue",
   "messages.issue_details": "Issue Details",

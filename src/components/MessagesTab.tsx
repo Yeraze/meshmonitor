@@ -21,7 +21,7 @@ import {
 } from '../utils/datetime';
 import { formatTracerouteRoute } from '../utils/traceroute';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
-import { getDistanceToNode } from '../utils/distance';
+import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId } from '../utils/nodeHelpers';
 import { getEffectiveHops } from '../utils/nodeHops';
@@ -248,7 +248,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   // Get settings and context for effective hops calculation
   const { nodeHopsCalculation } = useSettings();
-  const { traceroutes } = useMapContext();
+  const { traceroutes, neighborInfo } = useMapContext();
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
 
   // Local state for actions menu
@@ -1235,6 +1235,60 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   }
                   return null;
                 })()}
+
+            {/* Neighbor Info Display */}
+            {(() => {
+              if (!selectedDMNode || !neighborInfo) return null;
+              const nodeNumStr = selectedDMNode.replace('!', '');
+              const nodeNum = parseInt(nodeNumStr, 16);
+              const nodeNeighbors = neighborInfo.filter(ni => ni.nodeNum === nodeNum);
+              if (nodeNeighbors.length === 0) return null;
+
+              // Get most recent timestamp
+              const mostRecent = Math.max(...nodeNeighbors.map(n => n.timestamp));
+              const age = Math.floor((Date.now() - mostRecent) / (1000 * 60));
+              const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+
+              return (
+                <div className="neighbor-info-section" style={{ marginTop: '1rem' }}>
+                  <div className="neighbor-info-header">
+                    <strong>{t('messages.neighbor_info_title', 'Neighbor Info')}</strong>
+                    <span className="neighbor-info-age" style={{ marginLeft: '0.5rem', fontSize: '0.85em', color: 'var(--ctp-subtext0)' }}>
+                      ({ageStr})
+                    </span>
+                  </div>
+                  <div className="neighbor-info-list" style={{ marginTop: '0.5rem' }}>
+                    {nodeNeighbors.map((neighbor, idx) => {
+                      // Calculate distance if both positions available
+                      let distanceStr = '';
+                      if (neighbor.nodeLatitude != null && neighbor.nodeLongitude != null &&
+                          neighbor.neighborLatitude != null && neighbor.neighborLongitude != null) {
+                        const distKm = calculateDistance(
+                          neighbor.nodeLatitude, neighbor.nodeLongitude,
+                          neighbor.neighborLatitude, neighbor.neighborLongitude
+                        );
+                        distanceStr = formatDistance(distKm, distanceUnit);
+                      }
+
+                      return (
+                        <div key={idx} className="neighbor-info-item" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '0.25rem 0',
+                          borderBottom: idx < nodeNeighbors.length - 1 ? '1px solid var(--ctp-surface0)' : 'none'
+                        }}>
+                          <span>{neighbor.neighborName || neighbor.neighborNodeId || `!${neighbor.neighborNodeNum.toString(16)}`}</span>
+                          <span style={{ color: 'var(--ctp-subtext0)' }}>
+                            {neighbor.snr != null && `SNR: ${neighbor.snr.toFixed(1)} dB`}
+                            {distanceStr && ` | ${distanceStr}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Quick Action Buttons */}
             <div className="dm-action-buttons" style={{
