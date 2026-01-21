@@ -666,7 +666,7 @@ const dockerComposeYaml = computed(() => {
     lines.push('      - BLE_ADDRESS=${BLE_ADDRESS}')
     lines.push('    command: ${BLE_ADDRESS}')
     lines.push('    healthcheck:')
-    lines.push('      test: ["CMD-SHELL", "netstat -tln | grep -q :4403 || exit 1"]')
+    lines.push('      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(1); s.connect((\'localhost\', 4403)); s.close()"]')
     lines.push('      interval: 30s')
     lines.push('      timeout: 10s')
     lines.push('      retries: 3')
