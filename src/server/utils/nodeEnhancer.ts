@@ -1,6 +1,8 @@
 import { hasPermission } from '../auth/authMiddleware.js';
 import type { DeviceInfo } from '../meshtasticManager.js';
 import type { User } from '../../types/auth.js';
+import type { ResourceType, PermissionSet } from '../../types/permission.js';
+import databaseService from '../../services/database.js';
 
 /**
  * Helper to enhance a node with position priority logic and privacy masking
@@ -58,4 +60,37 @@ export async function enhanceNodeForClient(
   }
 
   return enhancedNode;
+}
+
+/**
+ * Filter nodes based on channel read permissions.
+ * A user can only see nodes that were last heard on a channel they have read permission for.
+ * Admins see all nodes.
+ *
+ * @param nodes - Array of nodes (any type that has an optional channel property)
+ * @param user - The user making the request, or null for anonymous
+ * @returns Filtered array of nodes the user has permission to see
+ */
+export async function filterNodesByChannelPermission<T>(
+  nodes: T[],
+  user: User | null | undefined
+): Promise<T[]> {
+  // Admins see all nodes
+  if (user?.isAdmin) {
+    return nodes;
+  }
+
+  // Get user's permission set
+  const permissions: PermissionSet = user
+    ? await databaseService.getUserPermissionSetAsync(user.id)
+    : {};
+
+  // Filter nodes by channel permission
+  return nodes.filter(node => {
+    // Access channel property dynamically since different node types have different shapes
+    const nodeWithChannel = node as { channel?: number };
+    const channelNum = nodeWithChannel.channel ?? 0;
+    const channelResource = `channel_${channelNum}` as ResourceType;
+    return permissions[channelResource]?.read === true;
+  });
 }

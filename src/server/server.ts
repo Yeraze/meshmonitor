@@ -37,7 +37,7 @@ import { inactiveNodeNotificationService } from './services/inactiveNodeNotifica
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefix } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
-import { enhanceNodeForClient } from './utils/nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { PortNum } from './constants/meshtastic.js';
 
@@ -689,10 +689,12 @@ apiRouter.use('/', scriptContentRoutes);
  */
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
-    const nodes = meshtasticManager.getAllNodes();
+    const allNodes = meshtasticManager.getAllNodes();
     const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-    const enhancedNodes = await Promise.all(nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
+    // Filter nodes based on channel read permissions
+    const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
+    const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
     res.json(enhancedNodes);
   } catch (error) {
     logger.error('Error fetching nodes:', error);
@@ -703,7 +705,10 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
 apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
-    const dbNodes = databaseService.getActiveNodes(days);
+    const allDbNodes = databaseService.getActiveNodes(days);
+
+    // Filter nodes based on channel read permissions
+    const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user);
 
     // Map raw DB nodes to DeviceInfo format then enhance
     const maskedNodes = await Promise.all(dbNodes.map(async node => {
@@ -1700,9 +1705,10 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get DM unread counts if user has messages permission
     if (hasMessagesRead && localNodeInfo) {
       const directMessages: { [nodeId: string]: number } = {};
-      // Get all nodes that have DMs
+      // Get all nodes that have DMs, filtered by channel permission
       const allNodes = meshtasticManager.getAllNodes();
-      for (const node of allNodes) {
+      const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
+      for (const node of visibleNodes) {
         if (node.user?.id) {
           const count = await databaseService.getUnreadDMCountAsync(localNodeInfo.nodeId, node.user.id, userId);
           if (count > 0) {
@@ -3052,9 +3058,12 @@ apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePerm
 });
 
 // Check which nodes have telemetry data
-apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (_req, res) => {
+apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const nodes = databaseService.getAllNodes();
+    const allNodes = databaseService.getAllNodes();
+    // Filter nodes based on channel read permissions
+    const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
+
     const nodesWithTelemetry: string[] = [];
     const nodesWithWeather: string[] = [];
     const nodesWithEstimatedPosition: string[] = [];
@@ -3189,12 +3198,14 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       result.connection = { error: 'Failed to get connection status' };
     }
 
-    // 2. Nodes (always available with optionalAuth)
+    // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
-      const nodes = meshtasticManager.getAllNodes();
+      const allNodes = meshtasticManager.getAllNodes();
       const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-      result.nodes = await Promise.all(nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
+      // Filter nodes based on channel read permissions
+      const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
+      result.nodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
       result.nodes = [];
@@ -3252,7 +3263,9 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       if (hasMessagesRead && localNodeInfo) {
         const directMessages: { [nodeId: string]: number } = {};
         const allNodes = meshtasticManager.getAllNodes();
-        for (const node of allNodes) {
+        // Filter nodes by channel permission
+        const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
+        for (const node of visibleNodes) {
           if (node.user?.id) {
             const count = await databaseService.getUnreadDMCountAsync(localNodeInfo.nodeId, node.user.id, userId);
             if (count > 0) {
@@ -3318,11 +3331,14 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       logger.error('Error fetching channels in poll:', error);
     }
 
-    // 6. Telemetry availability (requires info:read permission)
+    // 6. Telemetry availability (requires info:read permission, filtered by channel permissions)
     try {
       const hasInfoRead = req.user?.isAdmin || await hasPermission(req.user!, 'info', 'read');
       if (hasInfoRead) {
-        const nodes = databaseService.getAllNodes();
+        const allNodes = databaseService.getAllNodes();
+        // Filter nodes based on channel read permissions
+        const nodes = await filterNodesByChannelPermission(allNodes, req.user);
+
         const nodesWithTelemetry: string[] = [];
         const nodesWithWeather: string[] = [];
         const nodesWithEstimatedPosition: string[] = [];
