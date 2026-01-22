@@ -33,6 +33,7 @@ import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
+import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefix } from './utils/notificationFiltering.js';
@@ -399,6 +400,10 @@ setTimeout(async () => {
     solarMonitoringService.initialize();
     logger.debug('Solar monitoring service initialized');
 
+    // Initialize news service (fetches news from meshmonitor.org)
+    newsService.initialize();
+    logger.debug('News service initialized');
+
     // Initialize database maintenance service
     databaseMaintenanceService.initialize();
     logger.debug('Database maintenance service initialized');
@@ -604,6 +609,7 @@ import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
 import apiTokenRoutes from './routes/apiTokenRoutes.js';
 import channelDatabaseRoutes from './routes/channelDatabaseRoutes.js';
+import newsRoutes from './routes/newsRoutes.js';
 import v1Router from './routes/v1/index.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -669,6 +675,9 @@ apiRouter.use('/packets', optionalAuth(), packetRoutes);
 
 // Solar monitoring routes
 apiRouter.use('/solar', optionalAuth(), solarRoutes);
+
+// News routes (public feed, authenticated status endpoints)
+apiRouter.use('/news', newsRoutes);
 
 // Upgrade routes (requires authentication)
 apiRouter.use('/upgrade', upgradeRoutes);

@@ -57,6 +57,7 @@ import { migration as channelDatabaseMigration, runMigration050Postgres, runMigr
 import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
 import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
 import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
+import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -884,6 +885,7 @@ class DatabaseService {
     this.runDecryptedByMessagesMigration();
     this.runUpgradeHistorySchemaMigration();
     this.runViewOnMapPermissionMigration();
+    this.runNewsTablesMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1932,6 +1934,26 @@ class DatabaseService {
       logger.debug('✅ View on map permission migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run view on map permission migration:', error);
+      throw error;
+    }
+  }
+
+  private runNewsTablesMigration(): void {
+    try {
+      const migrationKey = 'migration_054_news_tables';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ News tables migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 054: Add news tables...');
+      newsTablesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ News tables migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run news tables migration:', error);
       throw error;
     }
   }
@@ -8962,6 +8984,9 @@ class DatabaseService {
       // Run migration 053: Add viewOnMap permission column
       await runMigration053Postgres(client);
 
+      // Run migration 054: Add news tables
+      await runMigration054Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9031,6 +9056,9 @@ class DatabaseService {
 
       // Run migration 053: Add viewOnMap permission column
       await runMigration053Mysql(pool);
+
+      // Run migration 054: Add news tables
+      await runMigration054Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -9506,6 +9534,67 @@ class DatabaseService {
       throw new Error('Channel database repository not initialized');
     }
     return this.channelDatabaseRepo.deletePermissionAsync(userId, channelDatabaseId);
+  }
+
+  // ============ NEWS CACHE ============
+
+  /**
+   * Get cached news feed
+   */
+  async getNewsCacheAsync(): Promise<{ feedData: string; fetchedAt: number; sourceUrl: string } | null> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.getNewsCache();
+  }
+
+  /**
+   * Save news feed to cache
+   */
+  async saveNewsCacheAsync(feedData: string, sourceUrl: string): Promise<void> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    const now = Math.floor(Date.now() / 1000);
+    return this.miscRepo.saveNewsCache({
+      feedData,
+      fetchedAt: now,
+      sourceUrl,
+    });
+  }
+
+  // ============ USER NEWS STATUS ============
+
+  /**
+   * Get user's news status
+   */
+  async getUserNewsStatusAsync(userId: number): Promise<{ lastSeenNewsId: string | null; dismissedNewsIds: string[] } | null> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    const status = await this.miscRepo.getUserNewsStatus(userId);
+    if (!status) {
+      return null;
+    }
+    return {
+      lastSeenNewsId: status.lastSeenNewsId ?? null,
+      dismissedNewsIds: status.dismissedNewsIds ? JSON.parse(status.dismissedNewsIds) : [],
+    };
+  }
+
+  /**
+   * Save user's news status
+   */
+  async saveUserNewsStatusAsync(userId: number, lastSeenNewsId: string | null, dismissedNewsIds: string[]): Promise<void> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.saveUserNewsStatus({
+      userId,
+      lastSeenNewsId,
+      dismissedNewsIds: JSON.stringify(dismissedNewsIds),
+      updatedAt: Math.floor(Date.now() / 1000),
+    });
   }
 }
 

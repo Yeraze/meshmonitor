@@ -96,6 +96,8 @@ services:
       - "8081:3001"
       - "4405:4404"
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - meshmonitor-sqlite-data:/data
     env_file: .env
@@ -115,6 +117,8 @@ services:
       - ACCESS_LOG_FORMAT=combined
       - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
       - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
+      # News feed URL for testing - use host.docker.internal to access host machine
+      - NEWS_FEED_URL=${NEWS_FEED_URL:-}
 
   # MySQL service for testing dual-database support
   # Start with: docker compose -f docker-compose.dev.yml --profile mysql up -d

@@ -37,6 +37,7 @@ import { SystemStatusModal } from './components/SystemStatusModal';
 import { NodePopup } from './components/NodePopup';
 import { EmojiPickerModal } from './components/EmojiPickerModal';
 import { AdvancedNodeFilterPopup } from './components/AdvancedNodeFilterPopup';
+import { NewsPopup } from './components/NewsPopup';
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
@@ -118,6 +119,8 @@ function App() {
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
   const [showPurgeDataModal, setShowPurgeDataModal] = useState(false);
+  const [showNewsPopup, setShowNewsPopup] = useState(false);
+  const [forceShowAllNews, setForceShowAllNews] = useState(false);
   const [showPositionOverrideModal, setShowPositionOverrideModal] = useState(false);
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
@@ -379,6 +382,24 @@ function App() {
       }
     };
     fetchChannelDatabaseEntries();
+  }, [authStatus?.authenticated]);
+
+  // Show news popup when authenticated user has unread news
+  useEffect(() => {
+    const checkUnreadNews = async () => {
+      if (!authStatus?.authenticated) return;
+      try {
+        const response = await api.getUnreadNews();
+        if (response.items && response.items.length > 0) {
+          setForceShowAllNews(false);
+          setShowNewsPopup(true);
+        }
+      } catch (err) {
+        // News might not be available, fail silently
+        logger.debug('Failed to fetch unread news:', err);
+      }
+    };
+    checkUnreadNews();
   }, [authStatus?.authenticated]);
 
   // Messaging context
@@ -4051,6 +4072,10 @@ function App() {
             setUnreadCounts(prev => ({ ...prev, [channels[0].id]: 0 }));
           }
         }}
+        onNewsClick={() => {
+          setForceShowAllNews(true);
+          setShowNewsPopup(true);
+        }}
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
       />
@@ -4454,6 +4479,17 @@ function App() {
         traceroutes={traceroutes}
         currentNodeId={currentNodeId}
         distanceUnit={distanceUnit}
+      />
+
+      {/* News Popup */}
+      <NewsPopup
+        isOpen={showNewsPopup}
+        onClose={() => {
+          setShowNewsPopup(false);
+          setForceShowAllNews(false);
+        }}
+        forceShowAll={forceShowAllNews}
+        isAuthenticated={authStatus?.authenticated || false}
       />
 
       {/* System Status Modal */}

@@ -92,3 +92,32 @@ export interface NodeFilters {
  * Security filter options
  */
 export type SecurityFilter = 'all' | 'flaggedOnly' | 'hideFlagged';
+
+/**
+ * News item from meshmonitor.org
+ */
+export interface NewsItem {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  category: 'release' | 'security' | 'feature' | 'maintenance';
+  priority: 'normal' | 'important';
+}
+
+/**
+ * News feed containing multiple items
+ */
+export interface NewsFeed {
+  version: string;
+  lastUpdated: string;
+  items: NewsItem[];
+}
+
+/**
+ * User's news status (what they've seen/dismissed)
+ */
+export interface UserNewsStatus {
+  lastSeenNewsId: string | null;
+  dismissedNewsIds: string[];
+}

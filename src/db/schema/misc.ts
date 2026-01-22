@@ -262,6 +262,57 @@ export const autoTracerouteNodesMysql = mysqlTable('auto_traceroute_nodes', {
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
+// ============ NEWS CACHE ============
+// Stores cached news feed from meshmonitor.org
+
+export const newsCacheSqlite = sqliteTable('news_cache', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  feedData: text('feedData').notNull(), // JSON string of full feed
+  fetchedAt: integer('fetchedAt').notNull(),
+  sourceUrl: text('sourceUrl').notNull(),
+});
+
+export const newsCachePostgres = pgTable('news_cache', {
+  id: pgSerial('id').primaryKey(),
+  feedData: pgText('feedData').notNull(),
+  fetchedAt: pgBigint('fetchedAt', { mode: 'number' }).notNull(),
+  sourceUrl: pgText('sourceUrl').notNull(),
+});
+
+export const newsCacheMysql = mysqlTable('news_cache', {
+  id: mySerial('id').primaryKey(),
+  feedData: myText('feedData').notNull(),
+  fetchedAt: myBigint('fetchedAt', { mode: 'number' }).notNull(),
+  sourceUrl: myVarchar('sourceUrl', { length: 512 }).notNull(),
+});
+
+// ============ USER NEWS STATUS ============
+// Tracks which news items users have seen/dismissed
+
+export const userNewsStatusSqlite = sqliteTable('user_news_status', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('userId').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  lastSeenNewsId: text('lastSeenNewsId'),
+  dismissedNewsIds: text('dismissedNewsIds'), // JSON array of dismissed news IDs
+  updatedAt: integer('updatedAt').notNull(),
+});
+
+export const userNewsStatusPostgres = pgTable('user_news_status', {
+  id: pgSerial('id').primaryKey(),
+  userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  lastSeenNewsId: pgText('lastSeenNewsId'),
+  dismissedNewsIds: pgText('dismissedNewsIds'),
+  updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+});
+
+export const userNewsStatusMysql = mysqlTable('user_news_status', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  lastSeenNewsId: myVarchar('lastSeenNewsId', { length: 128 }),
+  dismissedNewsIds: myText('dismissedNewsIds'),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+});
+
 // Type inference exports
 export type BackupHistorySqlite = typeof backupHistorySqlite.$inferSelect;
 export type NewBackupHistorySqlite = typeof backupHistorySqlite.$inferInsert;
@@ -312,3 +363,17 @@ export type UpgradeHistoryMysql = typeof upgradeHistoryMysql.$inferSelect;
 export type NewUpgradeHistoryMysql = typeof upgradeHistoryMysql.$inferInsert;
 export type SolarEstimateMysql = typeof solarEstimatesMysql.$inferSelect;
 export type NewSolarEstimateMysql = typeof solarEstimatesMysql.$inferInsert;
+
+export type NewsCacheSqlite = typeof newsCacheSqlite.$inferSelect;
+export type NewNewsCacheSqlite = typeof newsCacheSqlite.$inferInsert;
+export type NewsCachePostgres = typeof newsCachePostgres.$inferSelect;
+export type NewNewsCachePostgres = typeof newsCachePostgres.$inferInsert;
+export type NewsCacheMysql = typeof newsCacheMysql.$inferSelect;
+export type NewNewsCacheMysql = typeof newsCacheMysql.$inferInsert;
+
+export type UserNewsStatusSqlite = typeof userNewsStatusSqlite.$inferSelect;
+export type NewUserNewsStatusSqlite = typeof userNewsStatusSqlite.$inferInsert;
+export type UserNewsStatusPostgres = typeof userNewsStatusPostgres.$inferSelect;
+export type NewUserNewsStatusPostgres = typeof userNewsStatusPostgres.$inferInsert;
+export type UserNewsStatusMysql = typeof userNewsStatusMysql.$inferSelect;
+export type NewUserNewsStatusMysql = typeof userNewsStatusMysql.$inferInsert;
