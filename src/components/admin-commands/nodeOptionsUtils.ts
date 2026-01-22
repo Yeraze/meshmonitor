@@ -6,6 +6,8 @@ export interface NodeOption {
   isLocal: boolean;
   isFavorite?: boolean;
   isIgnored?: boolean;
+  hasRemoteAdmin?: boolean;
+  lastRemoteAdminCheck?: number;
 }
 
 /**
@@ -33,7 +35,9 @@ export function buildNodeOptions(
       shortName: localNode.user?.shortName || localNode.shortName || t('admin_commands.local_node_short'),
       isLocal: true,
       isFavorite: localNode.isFavorite ?? false,
-      isIgnored: localNode.isIgnored ?? false
+      isIgnored: localNode.isIgnored ?? false,
+      hasRemoteAdmin: localNode.hasRemoteAdmin ?? false,
+      lastRemoteAdminCheck: localNode.lastRemoteAdminCheck,
     });
   }
 
@@ -57,11 +61,32 @@ export function buildNodeOptions(
         shortName: shortName || (nodeId.startsWith('!') ? nodeId.substring(1, 5) : nodeId.substring(0, 4)),
         isLocal: false,
         isFavorite: node.isFavorite ?? false,
-        isIgnored: node.isIgnored ?? false
+        isIgnored: node.isIgnored ?? false,
+        hasRemoteAdmin: node.hasRemoteAdmin ?? false,
+        lastRemoteAdminCheck: node.lastRemoteAdminCheck,
       });
     });
 
   return options;
+}
+
+/**
+ * Helper function to sort node options for Remote Admin page
+ * Sort order: local node first, then hasRemoteAdmin=true, then alphabetically by longName
+ */
+export function sortNodeOptionsForRemoteAdmin(nodes: NodeOption[]): NodeOption[] {
+  return [...nodes].sort((a, b) => {
+    // Local node always first
+    if (a.isLocal && !b.isLocal) return -1;
+    if (!a.isLocal && b.isLocal) return 1;
+
+    // Then nodes with remote admin access
+    if (a.hasRemoteAdmin && !b.hasRemoteAdmin) return -1;
+    if (!a.hasRemoteAdmin && b.hasRemoteAdmin) return 1;
+
+    // Then alphabetically by longName
+    return a.longName.localeCompare(b.longName);
+  });
 }
 
 /**

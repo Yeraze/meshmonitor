@@ -35,7 +35,9 @@ import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
+import { useToast } from './ToastContainer';
 import apiService from '../services/api';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -269,6 +271,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Telemetry request modal state
   const [showTelemetryRequestModal, setShowTelemetryRequestModal] = useState(false);
 
+  // Admin scan state
+  const [adminScanLoading, setAdminScanLoading] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const csrfFetch = useCsrfFetch();
+
   // Resizable send section (only on desktop)
   const {
     size: sendSectionHeight,
@@ -363,6 +370,43 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       }
     },
     []
+  );
+
+  // Handle scan for remote admin
+  const handleScanForAdmin = useCallback(
+    async (nodeId: string) => {
+      const node = nodes.find(n => n.user?.id === nodeId);
+      if (!node) return;
+
+      setAdminScanLoading(nodeId);
+      try {
+        const response = await csrfFetch(`${baseUrl}/api/nodes/${node.nodeNum}/scan-remote-admin`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          if (response.status === 403) {
+            showToast(t('messages.scan_admin_permission_denied'), 'error');
+            return;
+          }
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (result.hasRemoteAdmin) {
+          const firmware = result.metadata?.firmwareVersion || t('common.unknown');
+          showToast(t('messages.scan_admin_success', { firmware }), 'success');
+        } else {
+          showToast(t('messages.scan_admin_no_access'), 'warning');
+        }
+      } catch (error) {
+        console.error('Failed to scan for admin:', error);
+        showToast(t('messages.scan_admin_failed'), 'error');
+      } finally {
+        setAdminScanLoading(null);
+      }
+    },
+    [nodes, baseUrl, csrfFetch, showToast, t]
   );
 
   // Permission check
@@ -852,6 +896,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               {telemetryRequestLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                           </>
+                        )}
+
+                        {/* Admin Scan */}
+                        {hasPermission('settings', 'write') && (
+                          <button
+                            className="actions-menu-item"
+                            onClick={() => {
+                              handleScanForAdmin(selectedDMNode);
+                              setShowActionsMenu(false);
+                            }}
+                            disabled={connectionStatus !== 'connected' || adminScanLoading === selectedDMNode}
+                          >
+                            🔍 {t('messages.scan_for_admin')}
+                            {adminScanLoading === selectedDMNode && <span className="spinner"></span>}
+                          </button>
                         )}
 
                         {/* Node Management */}

@@ -11,7 +11,7 @@ import { encodePositionFlags, decodePositionFlags } from '../utils/positionFlags
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
-import { buildNodeOptions, filterNodes, type NodeOption } from './admin-commands/nodeOptionsUtils';
+import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 
 interface AdminCommandsTabProps {
@@ -234,9 +234,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     return Component;
   }, [toggleSection]);
 
-  // Memoize node options building
+  // Memoize node options building with sorting (admin-capable nodes first)
   const nodeOptionsMemo = useMemo(() => {
-    return buildNodeOptions(nodes, currentNodeId, t);
+    const options = buildNodeOptions(nodes, currentNodeId, t);
+    return sortNodeOptionsForRemoteAdmin(options);
   }, [nodes, currentNodeId, t]);
 
   useEffect(() => {

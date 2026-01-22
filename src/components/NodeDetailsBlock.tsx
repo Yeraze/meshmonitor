@@ -328,6 +328,98 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           </div>
         )}
 
+        {/* Remote Admin Status */}
+        {(() => {
+          // Determine remote admin state: unknown (never tested), available, or unavailable
+          const hasBeenTested = node.lastRemoteAdminCheck !== undefined && node.lastRemoteAdminCheck !== null;
+          const checkDate = hasBeenTested ? formatRelativeTime(node.lastRemoteAdminCheck!, timeFormat, dateFormat, false) : null;
+
+          if (!hasBeenTested) {
+            // Never been tested
+            return (
+              <div className="node-detail-card">
+                <div className="node-detail-label">{t('node_details.remote_admin')}</div>
+                <div className="node-detail-value">
+                  {t('node_details.remote_admin_unknown')}
+                </div>
+              </div>
+            );
+          } else if (node.hasRemoteAdmin) {
+            // Available
+            return (
+              <div className="node-detail-card">
+                <div className="node-detail-label">{t('node_details.remote_admin')}</div>
+                <div className="node-detail-value signal-good">
+                  {t('node_details.remote_admin_yes')}
+                  <span className="node-detail-secondary"> ({checkDate})</span>
+                </div>
+              </div>
+            );
+          } else {
+            // Unavailable (tested but failed)
+            return (
+              <div className="node-detail-card">
+                <div className="node-detail-label">{t('node_details.remote_admin')}</div>
+                <div className="node-detail-value">
+                  {t('node_details.remote_admin_no')}
+                  <span className="node-detail-secondary"> ({checkDate})</span>
+                </div>
+              </div>
+            );
+          }
+        })()}
+
+        {/* Remote Admin Metadata */}
+        {node.hasRemoteAdmin && node.remoteAdminMetadata && (() => {
+          try {
+            const metadata = JSON.parse(node.remoteAdminMetadata);
+            return (
+              <>
+                {metadata.firmwareVersion && (
+                  <div className="node-detail-card">
+                    <div className="node-detail-label">{t('node_details.remote_firmware')}</div>
+                    <div className="node-detail-value">{metadata.firmwareVersion}</div>
+                  </div>
+                )}
+                {metadata.hasWifi !== undefined && (
+                  <div className="node-detail-card">
+                    <div className="node-detail-label">{t('node_details.has_wifi')}</div>
+                    <div className="node-detail-value">
+                      {metadata.hasWifi ? t('common.yes') : t('common.no')}
+                    </div>
+                  </div>
+                )}
+                {metadata.hasBluetooth !== undefined && (
+                  <div className="node-detail-card">
+                    <div className="node-detail-label">{t('node_details.has_bluetooth')}</div>
+                    <div className="node-detail-value">
+                      {metadata.hasBluetooth ? t('common.yes') : t('common.no')}
+                    </div>
+                  </div>
+                )}
+                {metadata.hasEthernet !== undefined && (
+                  <div className="node-detail-card">
+                    <div className="node-detail-label">{t('node_details.has_ethernet')}</div>
+                    <div className="node-detail-value">
+                      {metadata.hasEthernet ? t('common.yes') : t('common.no')}
+                    </div>
+                  </div>
+                )}
+                {metadata.canShutdown !== undefined && (
+                  <div className="node-detail-card">
+                    <div className="node-detail-label">{t('node_details.can_shutdown')}</div>
+                    <div className="node-detail-value">
+                      {metadata.canShutdown ? t('common.yes') : t('common.no')}
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          } catch {
+            return null;
+          }
+        })()}
+
           {/* Last Heard */}
           {lastHeard !== undefined && (
             <div className="node-detail-card">
