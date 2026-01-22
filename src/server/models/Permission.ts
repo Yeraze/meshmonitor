@@ -200,11 +200,11 @@ export class PermissionModel {
    */
   getUsersWithPermission(resource: ResourceType, action: PermissionAction): number[] {
     // Validate action to prevent SQL injection
-    if (action !== 'read' && action !== 'write') {
+    if (action !== 'viewOnMap' && action !== 'read' && action !== 'write') {
       throw new Error(`Invalid action: ${action}`);
     }
 
-    const column = action === 'read' ? 'can_read' : 'can_write';
+    const column = action === 'viewOnMap' ? 'can_view_on_map' : action === 'read' ? 'can_read' : 'can_write';
 
     const stmt = this.db.prepare(`
       SELECT DISTINCT user_id as userId
