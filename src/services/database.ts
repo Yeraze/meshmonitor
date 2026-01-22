@@ -7051,10 +7051,41 @@ class DatabaseService {
     enabled: boolean,
     latitude?: number,
     longitude?: number,
-    altitude?: number,    
+    altitude?: number,
     isPrivate: boolean = false
   ): void {
     const now = Date.now();
+
+    // For PostgreSQL/MySQL, use cache and async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const existingNode = this.nodesCache.get(nodeNum);
+      if (!existingNode) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in cache`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+
+      // Update cache
+      existingNode.positionOverrideEnabled = enabled;
+      existingNode.latitudeOverride = enabled && latitude !== undefined ? latitude : undefined;
+      existingNode.longitudeOverride = enabled && longitude !== undefined ? longitude : undefined;
+      existingNode.altitudeOverride = enabled && altitude !== undefined ? altitude : undefined;
+      existingNode.positionOverrideIsPrivate = enabled && isPrivate;
+      existingNode.updatedAt = now;
+      this.nodesCache.set(nodeNum, existingNode);
+
+      // Fire and forget async update
+      if (this.nodesRepo) {
+        this.nodesRepo.upsertNode(existingNode).catch(err => {
+          logger.error('Failed to update position override:', err);
+        });
+      }
+
+      logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+      return;
+    }
+
+    // SQLite path
     const stmt = this.db.prepare(`
       UPDATE nodes SET
         positionOverrideEnabled = ?,
@@ -7091,6 +7122,23 @@ class DatabaseService {
     altitude?: number;
     isPrivate: boolean;
   } | null {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const node = this.nodesCache.get(nodeNum);
+      if (!node) {
+        return null;
+      }
+
+      return {
+        enabled: node.positionOverrideEnabled === true,
+        latitude: node.latitudeOverride ?? undefined,
+        longitude: node.longitudeOverride ?? undefined,
+        altitude: node.altitudeOverride ?? undefined,
+        isPrivate: node.positionOverrideIsPrivate === true,
+      };
+    }
+
+    // SQLite path
     const stmt = this.db.prepare(`
       SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
       FROM nodes
