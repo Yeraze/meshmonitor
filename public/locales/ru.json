@@ -3264,5 +3264,6 @@
     "settings.tapback_add_emoji": "",
     "common.never": "",
     "channel_database.is_enabled": "",
-    "channel_database.is_enabled_description": ""
+    "channel_database.is_enabled_description": "",
+    "messages.neighbor_info_title": "Информация о соседях"
 }
