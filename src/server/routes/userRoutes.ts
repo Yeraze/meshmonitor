@@ -436,6 +436,15 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       });
     }
 
+    // Validate permissions: write implies read for channel permissions
+    for (const [resource, perms] of Object.entries(permissions)) {
+      if (resource.startsWith('channel_') && perms.write && !perms.read) {
+        return res.status(400).json({
+          error: 'Invalid permissions: write permission requires read permission for channels'
+        });
+      }
+    }
+
     // Update permissions
     if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
       if (databaseService.authRepo) {
@@ -445,6 +454,7 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
           await databaseService.authRepo.createPermission({
             userId,
             resource,
+            canViewOnMap: perms.viewOnMap ?? false,
             canRead: perms.read,
             canWrite: perms.write,
             grantedBy: req.user!.id,

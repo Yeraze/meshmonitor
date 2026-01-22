@@ -56,6 +56,7 @@ import { migration as notificationChannelSettingsMigration, runMigration049Postg
 import { migration as channelDatabaseMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_add_channel_database.js';
 import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
 import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
+import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -882,6 +883,7 @@ class DatabaseService {
     this.runChannelDatabaseMigration();
     this.runDecryptedByMessagesMigration();
     this.runUpgradeHistorySchemaMigration();
+    this.runViewOnMapPermissionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1910,6 +1912,26 @@ class DatabaseService {
       logger.debug('✅ Upgrade history schema migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run upgrade history schema migration:', error);
+      throw error;
+    }
+  }
+
+  private runViewOnMapPermissionMigration(): void {
+    try {
+      const migrationKey = 'migration_053_view_on_map_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ View on map permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 053: Add view on map permission column...');
+      viewOnMapPermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ View on map permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run view on map permission migration:', error);
       throw error;
     }
   }
@@ -7279,9 +7301,9 @@ class DatabaseService {
 
       // Default permissions for anonymous user
       const defaultAnonPermissions = [
-        { resource: 'dashboard' as const, canRead: true, canWrite: false, canDelete: false },
-        { resource: 'nodes' as const, canRead: true, canWrite: false, canDelete: false },
-        { resource: 'info' as const, canRead: true, canWrite: false, canDelete: false }
+        { resource: 'dashboard' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false },
+        { resource: 'nodes' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false },
+        { resource: 'info' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false }
       ];
 
       // Use appropriate method based on database type
@@ -7315,6 +7337,7 @@ class DatabaseService {
           await this.authRepo.createPermission({
             userId: anonymousId,
             resource: perm.resource,
+            canViewOnMap: perm.canViewOnMap,
             canRead: perm.canRead,
             canWrite: perm.canWrite,
             canDelete: perm.canDelete
@@ -7354,6 +7377,7 @@ class DatabaseService {
           this.permissionModel.grant({
             userId: anonymous.id,
             resource: perm.resource,
+            canViewOnMap: perm.canViewOnMap,
             canRead: perm.canRead,
             canWrite: perm.canWrite,
             grantedBy: anonymous.id
@@ -8887,6 +8911,9 @@ class DatabaseService {
       // Run migration 052: Fix upgrade_history schema
       await runMigration052Postgres(client);
 
+      // Run migration 053: Add viewOnMap permission column
+      await runMigration053Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -8953,6 +8980,9 @@ class DatabaseService {
 
       // Run migration 052: Fix upgrade_history schema
       await runMigration052Mysql(pool);
+
+      // Run migration 053: Add viewOnMap permission column
+      await runMigration053Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -9109,6 +9139,7 @@ class DatabaseService {
       const permissions = await this.authRepo.getPermissionsForUser(userId);
       for (const perm of permissions) {
         if (perm.resource === resource) {
+          if (action === 'viewOnMap') return perm.canViewOnMap;
           if (action === 'read') return perm.canRead;
           if (action === 'write') return perm.canWrite;
         }
@@ -9124,12 +9155,13 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    * Returns permissions in the same format as PermissionModel.getUserPermissionSet()
    */
-  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { read: boolean; write: boolean }>> {
+  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
     if (this.authRepo) {
       const permissions = await this.authRepo.getPermissionsForUser(userId);
-      const permissionSet: Record<string, { read: boolean; write: boolean }> = {};
+      const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
       for (const perm of permissions) {
         permissionSet[perm.resource] = {
+          viewOnMap: perm.canViewOnMap ?? false,
           read: perm.canRead,
           write: perm.canWrite,
         };
