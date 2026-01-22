@@ -6559,7 +6559,29 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setSecurityConfig' });
         }
-        adminMessage = protobufService.createSetSecurityConfigMessage(params.config, sessionPasskey || undefined);
+        // IMPORTANT: Preserve existing public/private keys when updating security config
+        // If we don't include them, the firmware may reset them to empty/random values
+        // Only do this for LOCAL node - for remote nodes we don't have their private key
+        {
+          let configToSend = params.config;
+          if (isLocalNode) {
+            const existingKeys = meshtasticManager.getSecurityKeys();
+            configToSend = {
+              ...params.config,
+              // Include existing keys if not explicitly provided
+              publicKey: params.config.publicKey || existingKeys.publicKey,
+              privateKey: params.config.privateKey || existingKeys.privateKey
+            };
+            logger.debug('Preserving existing public/private keys for local node security config update');
+          } else {
+            // For remote nodes, explicitly exclude publicKey/privateKey to let firmware preserve them
+            // We don't have the remote node's private key, so we can't include it
+            const { publicKey, privateKey, ...remoteConfig } = params.config;
+            configToSend = remoteConfig;
+            logger.debug('Excluding publicKey/privateKey from remote node security config update');
+          }
+          adminMessage = protobufService.createSetSecurityConfigMessage(configToSend, sessionPasskey || undefined);
+        }
         break;
       case 'setFixedPosition':
         if (params.latitude === undefined || params.longitude === undefined) {
