@@ -280,7 +280,6 @@ function App() {
   const {
     showPaths,
     showRoute,
-    showNeighborInfo,
     showMqttNodes,
     showEstimatedPositions,
     setMapCenterTarget,
@@ -1309,9 +1308,9 @@ function App() {
   // Traceroutes are now synced via the poll mechanism (processPollData)
   // This provides consistent data across Dashboard Widget, Node View, and Traceroute History Modal
 
-  // Fetch neighbor info when showNeighborInfo is enabled
+  // Fetch neighbor info when connected (needed for both map display and Messages tab)
   useEffect(() => {
-    if (showNeighborInfo && shouldShowData()) {
+    if (shouldShowData()) {
       fetchNeighborInfo();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
@@ -1319,7 +1318,7 @@ function App() {
         return () => clearInterval(interval);
       }
     }
-  }, [showNeighborInfo, connectionStatus]);
+  }, [connectionStatus]);
 
   // Fetch position history when a mobile node is selected
   useEffect(() => {

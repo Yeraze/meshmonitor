@@ -6844,6 +6844,29 @@ class DatabaseService {
     );
   }
 
+  /**
+   * Clear all neighbor info for a specific node (called before saving new neighbor info)
+   */
+  clearNeighborInfoForNode(nodeNum: number): void {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Clear local cache for this node
+      this._neighborsCache = this._neighborsCache.filter(n => n.nodeNum !== nodeNum);
+      this._neighborsByNodeCache.delete(nodeNum);
+
+      if (this.neighborsRepo) {
+        this.neighborsRepo.deleteNeighborInfoForNode(nodeNum).catch(err =>
+          logger.debug('Failed to clear neighbor info:', err)
+        );
+      }
+      return;
+    }
+
+    // SQLite: direct delete
+    const stmt = this.db.prepare('DELETE FROM neighbor_info WHERE nodeNum = ?');
+    stmt.run(nodeNum);
+  }
+
   private convertRepoNeighborInfo(n: import('../db/types.js').DbNeighborInfo): DbNeighborInfo {
     return {
       id: n.id,
