@@ -1154,12 +1154,30 @@ class ProtobufService {
       if (config.debugLogApiEnabled !== undefined) securityConfigData.debugLogApiEnabled = config.debugLogApiEnabled;
       if (config.adminChannelEnabled !== undefined) securityConfigData.adminChannelEnabled = config.adminChannelEnabled;
 
-      // Note: public_key and private_key are typically read-only and should not be set via admin messages
-      // They are managed by the device itself
+      // IMPORTANT: Include public_key and private_key to preserve them when updating other settings
+      // If we don't include them, the firmware may reset them to empty/random values
+      if (config.publicKey) {
+        try {
+          securityConfigData.publicKey = Buffer.from(config.publicKey, 'base64');
+          logger.debug('Including existing public key in security config update');
+        } catch (error) {
+          logger.warn('Failed to parse public key, not including in update:', error);
+        }
+      }
+      if (config.privateKey) {
+        try {
+          securityConfigData.privateKey = Buffer.from(config.privateKey, 'base64');
+          logger.debug('Including existing private key in security config update');
+        } catch (error) {
+          logger.warn('Failed to parse private key, not including in update:', error);
+        }
+      }
 
       logger.debug('Security config data being sent to device:', JSON.stringify({
         ...securityConfigData,
-        adminKey: securityConfigData.adminKey ? `${securityConfigData.adminKey.length} key(s)` : 'none'
+        adminKey: securityConfigData.adminKey ? `${securityConfigData.adminKey.length} key(s)` : 'none',
+        publicKey: securityConfigData.publicKey ? '[PRESENT]' : '[NOT SET]',
+        privateKey: securityConfigData.privateKey ? '[PRESENT]' : '[NOT SET]'
       }, null, 2));
 
       const configMsg = Config.create({
