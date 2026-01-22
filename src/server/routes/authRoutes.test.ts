@@ -21,6 +21,7 @@ import { migration as themesMigration } from '../migrations/022_add_custom_theme
 import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
 import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
+import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 import authRoutes from './authRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -65,6 +66,7 @@ describe('Authentication Routes', () => {
     passwordLockedMigration.up(db);
     perChannelPermissionsMigration.up(db);
     nodesPrivatePermissionMigration.up(db);
+    viewOnMapPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
