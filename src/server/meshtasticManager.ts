@@ -3896,6 +3896,10 @@ class MeshtasticManager {
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
         logger.info(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
 
+        // Clear old neighbor info for this node before saving new data
+        // This ensures stale neighbors are removed when they drop from the mesh
+        databaseService.clearNeighborInfoForNode(fromNum);
+
         for (const neighbor of neighborInfo.neighbors) {
           const neighborNodeNum = Number(neighbor.nodeId);
           const neighborNodeId = `!${neighborNodeNum.toString(16).padStart(8, '0')}`;
