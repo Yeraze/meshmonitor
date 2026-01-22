@@ -1,0 +1,261 @@
+/**
+ * NewsPopup Component
+ *
+ * Displays news announcements from meshmonitor.org in a modal popup.
+ * Supports markdown content, category badges, pagination, and dismissal.
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import ReactMarkdown from 'react-markdown';
+import type { NewsItem, NewsFeed } from '../../types/ui';
+import api from '../../services/api';
+import './NewsPopup.css';
+
+interface NewsPopupProps {
+  isOpen: boolean;
+  onClose: () => void;
+  forceShowAll?: boolean;
+  isAuthenticated: boolean;
+}
+
+export const NewsPopup: React.FC<NewsPopupProps> = ({
+  isOpen,
+  onClose,
+  forceShowAll = false,
+  isAuthenticated,
+}) => {
+  const { t } = useTranslation();
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
+  // Fetch news data when popup opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const feed: NewsFeed = await api.getNewsFeed();
+        let status: { lastSeenNewsId: string | null; dismissedNewsIds: string[] } | null = null;
+
+        if (isAuthenticated) {
+          status = await api.getUserNewsStatus();
+        }
+
+        // Filter items based on forceShowAll and user status
+        let items = feed.items || [];
+
+        if (!forceShowAll && status) {
+          const dismissedIds = new Set(status.dismissedNewsIds || []);
+          items = items.filter(item => {
+            // Always show important items
+            if (item.priority === 'important') return true;
+            // Hide dismissed items
+            return !dismissedIds.has(item.id);
+          });
+        }
+
+        setNewsItems(items);
+        setCurrentIndex(0);
+      } catch (error) {
+        console.error('Error fetching news:', error);
+        setNewsItems([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [isOpen, forceShowAll, isAuthenticated]);
+
+  // Reset state when popup closes
+  useEffect(() => {
+    if (!isOpen) {
+      setDontShowAgain(false);
+      setCurrentIndex(0);
+    }
+  }, [isOpen]);
+
+  const handleClose = useCallback(async () => {
+    // If "don't show again" is checked and we're authenticated, dismiss the current item
+    if (dontShowAgain && isAuthenticated && newsItems.length > 0) {
+      const currentItem = newsItems[currentIndex];
+      try {
+        await api.dismissNewsItem(currentItem.id);
+      } catch (error) {
+        console.error('Error dismissing news item:', error);
+      }
+    }
+    onClose();
+  }, [dontShowAgain, isAuthenticated, newsItems, currentIndex, onClose]);
+
+  const handleNext = useCallback(async () => {
+    // Dismiss current item if checkbox is checked
+    if (dontShowAgain && isAuthenticated && newsItems.length > 0) {
+      const currentItem = newsItems[currentIndex];
+      try {
+        await api.dismissNewsItem(currentItem.id);
+      } catch (error) {
+        console.error('Error dismissing news item:', error);
+      }
+    }
+
+    if (currentIndex < newsItems.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setDontShowAgain(false);
+    } else {
+      onClose();
+    }
+  }, [currentIndex, newsItems.length, dontShowAgain, isAuthenticated, newsItems, onClose]);
+
+  const handlePrevious = useCallback(() => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      setDontShowAgain(false);
+    }
+  }, [currentIndex]);
+
+  const getCategoryLabel = (category: NewsItem['category']): string => {
+    switch (category) {
+      case 'release':
+        return t('news.category.release', 'Release');
+      case 'security':
+        return t('news.category.security', 'Security');
+      case 'feature':
+        return t('news.category.feature', 'Feature');
+      case 'maintenance':
+        return t('news.category.maintenance', 'Maintenance');
+      default:
+        return category;
+    }
+  };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  if (!isOpen) return null;
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="modal-overlay news-modal-overlay" onClick={handleClose}>
+        <div className="modal-content news-modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-header news-modal-header">
+            <h2>{t('news.title', 'News')}</h2>
+            <button className="modal-close" onClick={handleClose}>
+              &times;
+            </button>
+          </div>
+          <div className="modal-body news-modal-body">
+            <div className="news-loading">{t('common.loading', 'Loading...')}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No news items
+  if (newsItems.length === 0) {
+    return (
+      <div className="modal-overlay news-modal-overlay" onClick={handleClose}>
+        <div className="modal-content news-modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-header news-modal-header">
+            <h2>{t('news.title', 'News')}</h2>
+            <button className="modal-close" onClick={handleClose}>
+              &times;
+            </button>
+          </div>
+          <div className="modal-body news-modal-body">
+            <div className="news-empty">{t('news.no_news', 'No news at this time.')}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentItem = newsItems[currentIndex];
+  const isLastItem = currentIndex === newsItems.length - 1;
+
+  return (
+    <div className="modal-overlay news-modal-overlay" onClick={handleClose}>
+      <div className="modal-content news-modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header news-modal-header">
+          <div className="news-header-left">
+            <h2>{t('news.title', 'News')}</h2>
+            {newsItems.length > 1 && (
+              <span className="news-pagination">
+                {currentIndex + 1} / {newsItems.length}
+              </span>
+            )}
+          </div>
+          <button className="modal-close" onClick={handleClose}>
+            &times;
+          </button>
+        </div>
+
+        <div className="modal-body news-modal-body">
+          <div className="news-item">
+            <div className="news-item-header">
+              <span className={`news-category news-category-${currentItem.category}`}>
+                {getCategoryLabel(currentItem.category)}
+              </span>
+              {currentItem.priority === 'important' && (
+                <span className="news-priority-important">
+                  {t('news.important', 'Important')}
+                </span>
+              )}
+              <span className="news-date">{formatDate(currentItem.date)}</span>
+            </div>
+
+            <h3 className="news-item-title">{currentItem.title}</h3>
+
+            <div className="news-item-content">
+              <ReactMarkdown>{currentItem.content}</ReactMarkdown>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer news-modal-footer">
+          <div className="news-footer-left">
+            {isAuthenticated && !forceShowAll && (
+              <label className="news-dont-show-checkbox">
+                <input
+                  type="checkbox"
+                  checked={dontShowAgain}
+                  onChange={e => setDontShowAgain(e.target.checked)}
+                />
+                {t('news.do_not_show_again', "Don't show this again")}
+              </label>
+            )}
+          </div>
+
+          <div className="news-footer-right">
+            {currentIndex > 0 && (
+              <button className="news-button news-button-secondary" onClick={handlePrevious}>
+                {t('news.previous', 'Previous')}
+              </button>
+            )}
+            <button className="news-button news-button-primary" onClick={handleNext}>
+              {isLastItem ? t('news.close', 'Close') : t('news.next', 'Next')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default NewsPopup;

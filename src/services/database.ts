@@ -56,6 +56,8 @@ import { migration as notificationChannelSettingsMigration, runMigration049Postg
 import { migration as channelDatabaseMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_add_channel_database.js';
 import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
 import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
+import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
+import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -882,6 +884,8 @@ class DatabaseService {
     this.runChannelDatabaseMigration();
     this.runDecryptedByMessagesMigration();
     this.runUpgradeHistorySchemaMigration();
+    this.runViewOnMapPermissionMigration();
+    this.runNewsTablesMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1910,6 +1914,46 @@ class DatabaseService {
       logger.debug('✅ Upgrade history schema migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run upgrade history schema migration:', error);
+      throw error;
+    }
+  }
+
+  private runViewOnMapPermissionMigration(): void {
+    try {
+      const migrationKey = 'migration_053_view_on_map_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ View on map permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 053: Add view on map permission column...');
+      viewOnMapPermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ View on map permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run view on map permission migration:', error);
+      throw error;
+    }
+  }
+
+  private runNewsTablesMigration(): void {
+    try {
+      const migrationKey = 'migration_054_news_tables';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ News tables migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 054: Add news tables...');
+      newsTablesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ News tables migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run news tables migration:', error);
       throw error;
     }
   }
@@ -7051,10 +7095,41 @@ class DatabaseService {
     enabled: boolean,
     latitude?: number,
     longitude?: number,
-    altitude?: number,    
+    altitude?: number,
     isPrivate: boolean = false
   ): void {
     const now = Date.now();
+
+    // For PostgreSQL/MySQL, use cache and async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const existingNode = this.nodesCache.get(nodeNum);
+      if (!existingNode) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in cache`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+
+      // Update cache
+      existingNode.positionOverrideEnabled = enabled;
+      existingNode.latitudeOverride = enabled && latitude !== undefined ? latitude : undefined;
+      existingNode.longitudeOverride = enabled && longitude !== undefined ? longitude : undefined;
+      existingNode.altitudeOverride = enabled && altitude !== undefined ? altitude : undefined;
+      existingNode.positionOverrideIsPrivate = enabled && isPrivate;
+      existingNode.updatedAt = now;
+      this.nodesCache.set(nodeNum, existingNode);
+
+      // Fire and forget async update
+      if (this.nodesRepo) {
+        this.nodesRepo.upsertNode(existingNode).catch(err => {
+          logger.error('Failed to update position override:', err);
+        });
+      }
+
+      logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+      return;
+    }
+
+    // SQLite path
     const stmt = this.db.prepare(`
       UPDATE nodes SET
         positionOverrideEnabled = ?,
@@ -7091,6 +7166,23 @@ class DatabaseService {
     altitude?: number;
     isPrivate: boolean;
   } | null {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const node = this.nodesCache.get(nodeNum);
+      if (!node) {
+        return null;
+      }
+
+      return {
+        enabled: node.positionOverrideEnabled === true,
+        latitude: node.latitudeOverride ?? undefined,
+        longitude: node.longitudeOverride ?? undefined,
+        altitude: node.altitudeOverride ?? undefined,
+        isPrivate: node.positionOverrideIsPrivate === true,
+      };
+    }
+
+    // SQLite path
     const stmt = this.db.prepare(`
       SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
       FROM nodes
@@ -7279,9 +7371,9 @@ class DatabaseService {
 
       // Default permissions for anonymous user
       const defaultAnonPermissions = [
-        { resource: 'dashboard' as const, canRead: true, canWrite: false, canDelete: false },
-        { resource: 'nodes' as const, canRead: true, canWrite: false, canDelete: false },
-        { resource: 'info' as const, canRead: true, canWrite: false, canDelete: false }
+        { resource: 'dashboard' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false },
+        { resource: 'nodes' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false },
+        { resource: 'info' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false }
       ];
 
       // Use appropriate method based on database type
@@ -7315,6 +7407,7 @@ class DatabaseService {
           await this.authRepo.createPermission({
             userId: anonymousId,
             resource: perm.resource,
+            canViewOnMap: perm.canViewOnMap,
             canRead: perm.canRead,
             canWrite: perm.canWrite,
             canDelete: perm.canDelete
@@ -7354,6 +7447,7 @@ class DatabaseService {
           this.permissionModel.grant({
             userId: anonymous.id,
             resource: perm.resource,
+            canViewOnMap: perm.canViewOnMap,
             canRead: perm.canRead,
             canWrite: perm.canWrite,
             grantedBy: anonymous.id
@@ -8887,6 +8981,12 @@ class DatabaseService {
       // Run migration 052: Fix upgrade_history schema
       await runMigration052Postgres(client);
 
+      // Run migration 053: Add viewOnMap permission column
+      await runMigration053Postgres(client);
+
+      // Run migration 054: Add news tables
+      await runMigration054Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -8953,6 +9053,12 @@ class DatabaseService {
 
       // Run migration 052: Fix upgrade_history schema
       await runMigration052Mysql(pool);
+
+      // Run migration 053: Add viewOnMap permission column
+      await runMigration053Mysql(pool);
+
+      // Run migration 054: Add news tables
+      await runMigration054Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -9109,6 +9215,7 @@ class DatabaseService {
       const permissions = await this.authRepo.getPermissionsForUser(userId);
       for (const perm of permissions) {
         if (perm.resource === resource) {
+          if (action === 'viewOnMap') return perm.canViewOnMap;
           if (action === 'read') return perm.canRead;
           if (action === 'write') return perm.canWrite;
         }
@@ -9124,12 +9231,13 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    * Returns permissions in the same format as PermissionModel.getUserPermissionSet()
    */
-  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { read: boolean; write: boolean }>> {
+  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
     if (this.authRepo) {
       const permissions = await this.authRepo.getPermissionsForUser(userId);
-      const permissionSet: Record<string, { read: boolean; write: boolean }> = {};
+      const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
       for (const perm of permissions) {
         permissionSet[perm.resource] = {
+          viewOnMap: perm.canViewOnMap ?? false,
           read: perm.canRead,
           write: perm.canWrite,
         };
@@ -9426,6 +9534,67 @@ class DatabaseService {
       throw new Error('Channel database repository not initialized');
     }
     return this.channelDatabaseRepo.deletePermissionAsync(userId, channelDatabaseId);
+  }
+
+  // ============ NEWS CACHE ============
+
+  /**
+   * Get cached news feed
+   */
+  async getNewsCacheAsync(): Promise<{ feedData: string; fetchedAt: number; sourceUrl: string } | null> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.getNewsCache();
+  }
+
+  /**
+   * Save news feed to cache
+   */
+  async saveNewsCacheAsync(feedData: string, sourceUrl: string): Promise<void> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    const now = Math.floor(Date.now() / 1000);
+    return this.miscRepo.saveNewsCache({
+      feedData,
+      fetchedAt: now,
+      sourceUrl,
+    });
+  }
+
+  // ============ USER NEWS STATUS ============
+
+  /**
+   * Get user's news status
+   */
+  async getUserNewsStatusAsync(userId: number): Promise<{ lastSeenNewsId: string | null; dismissedNewsIds: string[] } | null> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    const status = await this.miscRepo.getUserNewsStatus(userId);
+    if (!status) {
+      return null;
+    }
+    return {
+      lastSeenNewsId: status.lastSeenNewsId ?? null,
+      dismissedNewsIds: status.dismissedNewsIds ? JSON.parse(status.dismissedNewsIds) : [],
+    };
+  }
+
+  /**
+   * Save user's news status
+   */
+  async saveUserNewsStatusAsync(userId: number, lastSeenNewsId: string | null, dismissedNewsIds: string[]): Promise<void> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.saveUserNewsStatus({
+      userId,
+      lastSeenNewsId,
+      dismissedNewsIds: JSON.stringify(dismissedNewsIds),
+      updatedAt: Math.floor(Date.now() / 1000),
+    });
   }
 }
 

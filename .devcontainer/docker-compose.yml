@@ -38,6 +38,10 @@ services:
     environment:
       - NODE_ENV=development
       - WORKSPACE_FOLDER=/workspace
+      # For testing news popup, point to local docs server running on host
+      # Start docs with: npm run docs:dev -- --port 4173
+      # Then access from container via host.docker.internal
+      - NEWS_FEED_URL=${NEWS_FEED_URL:-}
 
     # Keep container running (entrypoint will handle user switching)
     # Using 'bash -c' to ensure entrypoint runs first

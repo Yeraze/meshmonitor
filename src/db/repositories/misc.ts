@@ -15,6 +15,12 @@ import {
   upgradeHistorySqlite,
   upgradeHistoryPostgres,
   upgradeHistoryMysql,
+  newsCacheSqlite,
+  newsCachePostgres,
+  newsCacheMysql,
+  userNewsStatusSqlite,
+  userNewsStatusPostgres,
+  userNewsStatusMysql,
 } from '../schema/misc.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
@@ -65,8 +71,23 @@ export interface NewUpgradeHistory {
   rollbackAvailable?: boolean;
 }
 
+export interface NewsCache {
+  id?: number;
+  feedData: string; // JSON string of full feed
+  fetchedAt: number;
+  sourceUrl: string;
+}
+
+export interface UserNewsStatus {
+  id?: number;
+  userId: number;
+  lastSeenNewsId?: string | null;
+  dismissedNewsIds?: string | null; // JSON array of dismissed news IDs
+  updatedAt: number;
+}
+
 /**
- * Repository for miscellaneous operations (solar estimates, auto-traceroute nodes)
+ * Repository for miscellaneous operations (solar estimates, auto-traceroute nodes, news)
  */
 export class MiscRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -662,6 +683,190 @@ export class MiscRepository extends BaseRepository {
           currentStep: 'Upgrade complete',
         })
         .where(eq(upgradeHistoryPostgres.id, id));
+    }
+  }
+
+  // ============ NEWS CACHE ============
+
+  /**
+   * Get the cached news feed
+   */
+  async getNewsCache(): Promise<NewsCache | null> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const results = await db
+        .select()
+        .from(newsCacheSqlite)
+        .orderBy(desc(newsCacheSqlite.fetchedAt))
+        .limit(1);
+      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const results = await db
+        .select()
+        .from(newsCacheMysql)
+        .orderBy(desc(newsCacheMysql.fetchedAt))
+        .limit(1);
+      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+    } else {
+      const db = this.getPostgresDb();
+      const results = await db
+        .select()
+        .from(newsCachePostgres)
+        .orderBy(desc(newsCachePostgres.fetchedAt))
+        .limit(1);
+      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+    }
+  }
+
+  /**
+   * Save news feed to cache (replaces any existing cache)
+   */
+  async saveNewsCache(cache: NewsCache): Promise<void> {
+    const now = this.now();
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      // Delete old cache entries
+      await db.delete(newsCacheSqlite);
+      // Insert new cache
+      await db.insert(newsCacheSqlite).values({
+        feedData: cache.feedData,
+        fetchedAt: cache.fetchedAt ?? now,
+        sourceUrl: cache.sourceUrl,
+      });
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.delete(newsCacheMysql);
+      await db.insert(newsCacheMysql).values({
+        feedData: cache.feedData,
+        fetchedAt: cache.fetchedAt ?? now,
+        sourceUrl: cache.sourceUrl,
+      });
+    } else {
+      const db = this.getPostgresDb();
+      await db.delete(newsCachePostgres);
+      await db.insert(newsCachePostgres).values({
+        feedData: cache.feedData,
+        fetchedAt: cache.fetchedAt ?? now,
+        sourceUrl: cache.sourceUrl,
+      });
+    }
+  }
+
+  // ============ USER NEWS STATUS ============
+
+  /**
+   * Get user's news status
+   */
+  async getUserNewsStatus(userId: number): Promise<UserNewsStatus | null> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const results = await db
+        .select()
+        .from(userNewsStatusSqlite)
+        .where(eq(userNewsStatusSqlite.userId, userId))
+        .limit(1);
+      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const results = await db
+        .select()
+        .from(userNewsStatusMysql)
+        .where(eq(userNewsStatusMysql.userId, userId))
+        .limit(1);
+      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+    } else {
+      const db = this.getPostgresDb();
+      const results = await db
+        .select()
+        .from(userNewsStatusPostgres)
+        .where(eq(userNewsStatusPostgres.userId, userId))
+        .limit(1);
+      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+    }
+  }
+
+  /**
+   * Save or update user's news status
+   */
+  async saveUserNewsStatus(status: UserNewsStatus): Promise<void> {
+    const now = this.now();
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      // Check if exists
+      const existing = await db
+        .select()
+        .from(userNewsStatusSqlite)
+        .where(eq(userNewsStatusSqlite.userId, status.userId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(userNewsStatusSqlite)
+          .set({
+            lastSeenNewsId: status.lastSeenNewsId,
+            dismissedNewsIds: status.dismissedNewsIds,
+            updatedAt: now,
+          })
+          .where(eq(userNewsStatusSqlite.userId, status.userId));
+      } else {
+        await db.insert(userNewsStatusSqlite).values({
+          userId: status.userId,
+          lastSeenNewsId: status.lastSeenNewsId,
+          dismissedNewsIds: status.dismissedNewsIds,
+          updatedAt: now,
+        });
+      }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const existing = await db
+        .select()
+        .from(userNewsStatusMysql)
+        .where(eq(userNewsStatusMysql.userId, status.userId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(userNewsStatusMysql)
+          .set({
+            lastSeenNewsId: status.lastSeenNewsId,
+            dismissedNewsIds: status.dismissedNewsIds,
+            updatedAt: now,
+          })
+          .where(eq(userNewsStatusMysql.userId, status.userId));
+      } else {
+        await db.insert(userNewsStatusMysql).values({
+          userId: status.userId,
+          lastSeenNewsId: status.lastSeenNewsId,
+          dismissedNewsIds: status.dismissedNewsIds,
+          updatedAt: now,
+        });
+      }
+    } else {
+      const db = this.getPostgresDb();
+      const existing = await db
+        .select()
+        .from(userNewsStatusPostgres)
+        .where(eq(userNewsStatusPostgres.userId, status.userId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(userNewsStatusPostgres)
+          .set({
+            lastSeenNewsId: status.lastSeenNewsId,
+            dismissedNewsIds: status.dismissedNewsIds,
+            updatedAt: now,
+          })
+          .where(eq(userNewsStatusPostgres.userId, status.userId));
+      } else {
+        await db.insert(userNewsStatusPostgres).values({
+          userId: status.userId,
+          lastSeenNewsId: status.lastSeenNewsId,
+          dismissedNewsIds: status.dismissedNewsIds,
+          updatedAt: now,
+        });
+      }
     }
   }
 }

@@ -1805,6 +1805,9 @@
   "users.can_initiate_traceroutes": "Can Initiate Traceroutes",
   "users.read": "Read",
   "users.write": "Write",
+  "users.view_on_map": "View on Map",
+  "users.read_messages": "Read Messages",
+  "users.send_messages": "Send Messages",
   "users.save_permissions": "Save Permissions",
   "users.create_new_user": "Create New User",
   "users.username_label": "Username",
@@ -3498,5 +3501,18 @@
 
   "common.never": "Never",
   "common.importing": "Importing...",
-  "common.deleting": "Deleting..."
+  "common.deleting": "Deleting...",
+
+  "news.title": "News",
+  "news.view_news": "View News",
+  "news.do_not_show_again": "Don't show this again",
+  "news.next": "Next",
+  "news.previous": "Previous",
+  "news.close": "Close",
+  "news.no_news": "No news at this time.",
+  "news.important": "Important",
+  "news.category.release": "Release",
+  "news.category.security": "Security",
+  "news.category.feature": "Feature",
+  "news.category.maintenance": "Maintenance"
 }

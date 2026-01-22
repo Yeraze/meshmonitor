@@ -25,12 +25,13 @@ export type ResourceType =
   | 'themes'
   | 'nodes_private';
 
-export type PermissionAction = 'read' | 'write';
+export type PermissionAction = 'viewOnMap' | 'read' | 'write';
 
 export interface Permission {
   id: number;
   userId: number;
   resource: ResourceType;
+  canViewOnMap: boolean;
   canRead: boolean;
   canWrite: boolean;
   grantedAt: number; // Unix timestamp
@@ -40,6 +41,7 @@ export interface Permission {
 export interface PermissionInput {
   userId: number;
   resource: ResourceType;
+  canViewOnMap: boolean;
   canRead: boolean;
   canWrite: boolean;
   grantedBy?: number;
@@ -47,6 +49,7 @@ export interface PermissionInput {
 
 export type PermissionSet = Partial<{
   [K in ResourceType]: {
+    viewOnMap?: boolean;
     read: boolean;
     write: boolean;
   };
@@ -86,14 +89,14 @@ export const RESOURCES: readonly ResourceDefinition[] = [
 export const ADMIN_PERMISSIONS: PermissionSet = {
   dashboard: { read: true, write: true },
   nodes: { read: true, write: true },
-  channel_0: { read: true, write: true },
-  channel_1: { read: true, write: true },
-  channel_2: { read: true, write: true },
-  channel_3: { read: true, write: true },
-  channel_4: { read: true, write: true },
-  channel_5: { read: true, write: true },
-  channel_6: { read: true, write: true },
-  channel_7: { read: true, write: true },
+  channel_0: { viewOnMap: true, read: true, write: true },
+  channel_1: { viewOnMap: true, read: true, write: true },
+  channel_2: { viewOnMap: true, read: true, write: true },
+  channel_3: { viewOnMap: true, read: true, write: true },
+  channel_4: { viewOnMap: true, read: true, write: true },
+  channel_5: { viewOnMap: true, read: true, write: true },
+  channel_6: { viewOnMap: true, read: true, write: true },
+  channel_7: { viewOnMap: true, read: true, write: true },
   messages: { read: true, write: true },
   settings: { read: true, write: true },
   configuration: { read: true, write: true },
@@ -110,14 +113,14 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   dashboard: { read: true, write: false },
   nodes: { read: true, write: false },
-  channel_0: { read: true, write: false },
-  channel_1: { read: true, write: false },
-  channel_2: { read: true, write: false },
-  channel_3: { read: true, write: false },
-  channel_4: { read: true, write: false },
-  channel_5: { read: true, write: false },
-  channel_6: { read: true, write: false },
-  channel_7: { read: true, write: false },
+  channel_0: { viewOnMap: true, read: true, write: false },
+  channel_1: { viewOnMap: true, read: true, write: false },
+  channel_2: { viewOnMap: true, read: true, write: false },
+  channel_3: { viewOnMap: true, read: true, write: false },
+  channel_4: { viewOnMap: true, read: true, write: false },
+  channel_5: { viewOnMap: true, read: true, write: false },
+  channel_6: { viewOnMap: true, read: true, write: false },
+  channel_7: { viewOnMap: true, read: true, write: false },
   messages: { read: true, write: false },
   settings: { read: false, write: false },
   configuration: { read: false, write: false },

@@ -88,7 +88,11 @@ const UsersTab: React.FC = () => {
       if (user.isAdmin && Object.keys(response.permissions).length === 0) {
         const allPermissions: PermissionSet = {};
         PERMISSION_KEYS.forEach(resource => {
-          allPermissions[resource] = { read: true, write: true };
+          if (resource.startsWith('channel_')) {
+            allPermissions[resource] = { viewOnMap: true, read: true, write: true };
+          } else {
+            allPermissions[resource] = { read: true, write: true };
+          }
         });
         setPermissions(allPermissions);
       } else {
@@ -108,10 +112,18 @@ const UsersTab: React.FC = () => {
       const validPermissions: PermissionSet = {};
       PERMISSION_KEYS.forEach(resource => {
         if (permissions[resource]) {
-          validPermissions[resource] = {
-            read: permissions[resource]?.read || false,
-            write: permissions[resource]?.write || false
-          };
+          if (resource.startsWith('channel_')) {
+            validPermissions[resource] = {
+              viewOnMap: permissions[resource]?.viewOnMap || false,
+              read: permissions[resource]?.read || false,
+              write: permissions[resource]?.write || false
+            };
+          } else {
+            validPermissions[resource] = {
+              read: permissions[resource]?.read || false,
+              write: permissions[resource]?.write || false
+            };
+          }
         }
       });
 
@@ -278,12 +290,49 @@ const UsersTab: React.FC = () => {
     }
   };
 
-  const togglePermission = (resource: keyof PermissionSet, action: 'read' | 'write') => {
+  const togglePermission = (resource: keyof PermissionSet, action: 'viewOnMap' | 'read' | 'write') => {
     setPermissions(prev => ({
       ...prev,
       [resource]: {
         ...prev[resource],
         [action]: !prev[resource]?.[action]
+      }
+    }));
+  };
+
+  // Toggle viewOnMap for channel resources
+  const toggleChannelViewOnMap = (resource: keyof PermissionSet) => {
+    setPermissions(prev => ({
+      ...prev,
+      [resource]: {
+        ...prev[resource],
+        viewOnMap: !prev[resource]?.viewOnMap
+      }
+    }));
+  };
+
+  // Toggle read for channel resources - unchecking read also unchecks write
+  const toggleChannelRead = (resource: keyof PermissionSet) => {
+    const newRead = !permissions[resource]?.read;
+    setPermissions(prev => ({
+      ...prev,
+      [resource]: {
+        ...prev[resource],
+        read: newRead,
+        write: newRead ? prev[resource]?.write : false // Uncheck write if unchecking read
+      }
+    }));
+  };
+
+  // Toggle write for channel resources - checking write also checks read
+  const toggleChannelWrite = (resource: keyof PermissionSet) => {
+    const newWrite = !permissions[resource]?.write;
+    setPermissions(prev => ({
+      ...prev,
+      [resource]: {
+        ...prev[resource],
+        write: newWrite,
+        read: newWrite ? true : prev[resource]?.read // Check read if checking write
       }
     }));
   };
@@ -524,6 +573,35 @@ const UsersTab: React.FC = () => {
                           />
                           {resource === 'connection' ? t('users.can_control_connection') : t('users.can_initiate_traceroutes')}
                         </label>
+                      ) : resource.startsWith('channel_') ? (
+                        // Channel permissions use three checkboxes: viewOnMap, read, write
+                        <>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.viewOnMap || false}
+                              onChange={() => toggleChannelViewOnMap(resource)}
+                            />
+                            {t('users.view_on_map')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.read || false}
+                              disabled={permissions[resource]?.write || false}
+                              onChange={() => toggleChannelRead(resource)}
+                            />
+                            {t('users.read_messages')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.write || false}
+                              onChange={() => toggleChannelWrite(resource)}
+                            />
+                            {t('users.send_messages')}
+                          </label>
+                        </>
                       ) : (
                         // Other permissions use read/write checkboxes
                         <>

@@ -21,6 +21,7 @@ import { migration as themesMigration } from '../migrations/022_add_custom_theme
 import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
 import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
+import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 import userRoutes from './userRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -65,6 +66,7 @@ describe('User Management Routes', () => {
     passwordLockedMigration.up(db);
     perChannelPermissionsMigration.up(db);
     nodesPrivatePermissionMigration.up(db);
+    viewOnMapPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
@@ -464,10 +466,10 @@ describe('User Management Routes', () => {
 
       expect(response.body.success).toBe(true);
 
-      // Verify permissions were updated
+      // Verify permissions were updated (viewOnMap defaults to false for non-channel resources)
       const permissionSet = permissionModel.getUserPermissionSet(userId);
-      expect(permissionSet.dashboard).toEqual({ read: true, write: true });
-      expect(permissionSet.nodes).toEqual({ read: true, write: false });
+      expect(permissionSet.dashboard).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.nodes).toEqual({ viewOnMap: false, read: true, write: false });
     });
 
     it('should deny regular user from updating permissions', async () => {
@@ -492,6 +494,101 @@ describe('User Management Routes', () => {
         .put(`/api/users/${userId}/permissions`)
         .send({ permissions: 'invalid' })
         .expect(400);
+    });
+
+    it('should reject channel permissions with write=true and read=false', async () => {
+      const users = userModel.findAll();
+      const userId = users.find(u => u.username === 'user')!.id;
+
+      // This should be rejected because write requires read for channels
+      const invalidPermissions = {
+        channel_0: { viewOnMap: true, read: false, write: true }
+      };
+
+      const response = await adminAgent
+        .put(`/api/users/${userId}/permissions`)
+        .send({ permissions: invalidPermissions })
+        .expect(400);
+
+      expect(response.body.error).toContain('write permission requires read permission');
+    });
+
+    it('should accept channel permissions with viewOnMap, read, and write all true', async () => {
+      const users = userModel.findAll();
+      const userId = users.find(u => u.username === 'user')!.id;
+
+      const validPermissions = {
+        channel_0: { viewOnMap: true, read: true, write: true }
+      };
+
+      const response = await adminAgent
+        .put(`/api/users/${userId}/permissions`)
+        .send({ permissions: validPermissions })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+
+      // Verify permissions were saved correctly
+      const permissionSet = permissionModel.getUserPermissionSet(userId);
+      expect(permissionSet.channel_0).toEqual({ viewOnMap: true, read: true, write: true });
+    });
+
+    it('should accept channel permissions with viewOnMap=true, read=false, write=false', async () => {
+      const users = userModel.findAll();
+      const userId = users.find(u => u.username === 'user')!.id;
+
+      // User can see nodes on map but not read messages
+      const validPermissions = {
+        channel_0: { viewOnMap: true, read: false, write: false }
+      };
+
+      const response = await adminAgent
+        .put(`/api/users/${userId}/permissions`)
+        .send({ permissions: validPermissions })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+
+      const permissionSet = permissionModel.getUserPermissionSet(userId);
+      expect(permissionSet.channel_0).toEqual({ viewOnMap: true, read: false, write: false });
+    });
+
+    it('should accept channel permissions with viewOnMap=false, read=true, write=false', async () => {
+      const users = userModel.findAll();
+      const userId = users.find(u => u.username === 'user')!.id;
+
+      // User can read messages but not see nodes on map
+      const validPermissions = {
+        channel_0: { viewOnMap: false, read: true, write: false }
+      };
+
+      const response = await adminAgent
+        .put(`/api/users/${userId}/permissions`)
+        .send({ permissions: validPermissions })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+
+      const permissionSet = permissionModel.getUserPermissionSet(userId);
+      expect(permissionSet.channel_0).toEqual({ viewOnMap: false, read: true, write: false });
+    });
+
+    it('should NOT validate write-requires-read for non-channel resources', async () => {
+      const users = userModel.findAll();
+      const userId = users.find(u => u.username === 'user')!.id;
+
+      // Non-channel resources don't have the viewOnMap concept
+      // and the write-requires-read validation doesn't apply
+      const permissions = {
+        dashboard: { read: true, write: true }
+      };
+
+      const response = await adminAgent
+        .put(`/api/users/${userId}/permissions`)
+        .send({ permissions })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
     });
   });
 

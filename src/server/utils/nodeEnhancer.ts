@@ -63,13 +63,13 @@ export async function enhanceNodeForClient(
 }
 
 /**
- * Filter nodes based on channel read permissions.
- * A user can only see nodes that were last heard on a channel they have read permission for.
+ * Filter nodes based on channel viewOnMap permissions.
+ * A user can only see nodes on the map that were last heard on a channel they have viewOnMap permission for.
  * Admins see all nodes.
  *
  * @param nodes - Array of nodes (any type that has an optional channel property)
  * @param user - The user making the request, or null for anonymous
- * @returns Filtered array of nodes the user has permission to see
+ * @returns Filtered array of nodes the user has permission to see on the map
  */
 export async function filterNodesByChannelPermission<T>(
   nodes: T[],
@@ -85,12 +85,12 @@ export async function filterNodesByChannelPermission<T>(
     ? await databaseService.getUserPermissionSetAsync(user.id)
     : {};
 
-  // Filter nodes by channel permission
+  // Filter nodes by channel viewOnMap permission for map visibility
   return nodes.filter(node => {
     // Access channel property dynamically since different node types have different shapes
     const nodeWithChannel = node as { channel?: number };
     const channelNum = nodeWithChannel.channel ?? 0;
     const channelResource = `channel_${channelNum}` as ResourceType;
-    return permissions[channelResource]?.read === true;
+    return permissions[channelResource]?.viewOnMap === true;
   });
 }

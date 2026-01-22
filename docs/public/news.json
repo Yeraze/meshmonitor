@@ -1,0 +1,14 @@
+{
+  "version": "1",
+  "lastUpdated": "2026-01-22T18:00:00Z",
+  "items": [
+    {
+      "id": "news-2026-01-22-permissions-update",
+      "title": "Important: User Permissions Changes",
+      "content": "MeshMonitor v3.1.0 introduced an updated **User Permissions** system to provide more granular control over channel access.\n\n## What's Changed\n\nChannel permissions now use a **tri-state system** with three separate controls:\n\n- **View Map** - Can see node positions on the map\n- **Read** - Can read messages from the channel\n- **Write** - Can send messages to the channel\n\nThis allows configurations like \"map-only\" access where users can see nodes but not read messages.\n\n## Action Required\n\nAdministrators should review their permission settings:\n\n1. Navigate to **Settings > Users** and review each user's permissions\n2. Pay special attention to the **Anonymous** user - this controls what unauthenticated visitors can see\n3. For each channel, verify the appropriate **View Map** and **Read** permissions are assigned\n\n## Common Issue: Blank Maps\n\nIf users report seeing blank maps, this is likely a permissions issue. The **View Map** permission must be enabled for a channel for users to see nodes on the map.\n\nSee our [FAQ: Why is my map blank?](https://meshmonitor.org/faq#the-map-is-blank-for-anonymous-not-logged-in-users) for troubleshooting steps.\n\nFor complete documentation on the new permission system, see [Understanding Channel Permissions](https://meshmonitor.org/faq#understanding-channel-permissions).",
+      "date": "2026-01-22T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    }
+  ]
+}

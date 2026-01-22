@@ -1,0 +1,342 @@
+/**
+ * NewsPopup Styles
+ *
+ * Catppuccin-themed modal for displaying news announcements.
+ */
+
+/* Modal overlay - higher z-index for news */
+.news-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10002;
+}
+
+/* Modal content container */
+.news-modal-content {
+  background: var(--ctp-base);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 600px;
+  width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ctp-surface0);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Header styles */
+.news-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--ctp-surface0);
+  flex-shrink: 0;
+}
+
+.news-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.news-modal-header h2 {
+  margin: 0;
+  color: var(--ctp-text);
+  font-size: 1.25rem;
+}
+
+.news-pagination {
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+  background: var(--ctp-surface0);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+}
+
+/* Body styles */
+.news-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.news-loading,
+.news-empty {
+  text-align: center;
+  color: var(--ctp-subtext0);
+  padding: 2rem;
+}
+
+/* News item styles */
+.news-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.news-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Category badges */
+.news-category {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+
+.news-category-release {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.news-category-security {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+}
+
+.news-category-feature {
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+}
+
+.news-category-maintenance {
+  background: var(--ctp-yellow);
+  color: var(--ctp-base);
+}
+
+/* Priority badge */
+.news-priority-important {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--ctp-maroon);
+  color: var(--ctp-base);
+  letter-spacing: 0.05em;
+}
+
+/* Date */
+.news-date {
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+  margin-left: auto;
+}
+
+/* Title */
+.news-item-title {
+  margin: 0;
+  color: var(--ctp-text);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Content with markdown */
+.news-item-content {
+  color: var(--ctp-text);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.news-item-content p {
+  margin: 0 0 1rem 0;
+}
+
+.news-item-content p:last-child {
+  margin-bottom: 0;
+}
+
+.news-item-content a {
+  color: var(--ctp-blue);
+  text-decoration: none;
+}
+
+.news-item-content a:hover {
+  text-decoration: underline;
+}
+
+.news-item-content code {
+  background: var(--ctp-surface0);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875em;
+}
+
+.news-item-content pre {
+  background: var(--ctp-surface0);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.news-item-content pre code {
+  background: none;
+  padding: 0;
+}
+
+.news-item-content ul,
+.news-item-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.news-item-content li {
+  margin: 0.25rem 0;
+}
+
+.news-item-content blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+}
+
+.news-item-content h1,
+.news-item-content h2,
+.news-item-content h3,
+.news-item-content h4 {
+  margin: 1.5rem 0 0.5rem 0;
+  color: var(--ctp-text);
+}
+
+.news-item-content h1:first-child,
+.news-item-content h2:first-child,
+.news-item-content h3:first-child,
+.news-item-content h4:first-child {
+  margin-top: 0;
+}
+
+/* Footer styles */
+.news-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--ctp-surface0);
+  flex-shrink: 0;
+  gap: 1rem;
+}
+
+.news-footer-left {
+  flex: 1;
+}
+
+.news-footer-right {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Don't show again checkbox */
+.news-dont-show-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.news-dont-show-checkbox input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ctp-blue);
+  cursor: pointer;
+}
+
+/* Buttons */
+.news-button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.news-button-primary {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.news-button-primary:hover {
+  background: var(--ctp-sapphire);
+}
+
+.news-button-secondary {
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+}
+
+.news-button-secondary:hover {
+  background: var(--ctp-surface1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .news-modal-content {
+    width: 95%;
+    max-height: 90vh;
+    border-radius: 8px;
+  }
+
+  .news-modal-header,
+  .news-modal-body,
+  .news-modal-footer {
+    padding: 1rem;
+  }
+
+  .news-header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .news-item-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .news-date {
+    margin-left: 0;
+  }
+
+  .news-item-title {
+    font-size: 1.25rem;
+  }
+
+  .news-modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .news-footer-left {
+    order: 2;
+    text-align: center;
+  }
+
+  .news-footer-right {
+    order: 1;
+    justify-content: flex-end;
+  }
+}
