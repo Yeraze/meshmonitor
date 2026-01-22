@@ -97,14 +97,14 @@ vi.mock('../../../services/database.js', () => {
       getUserPermissionSetAsync: vi.fn(async () => ({
         nodes: { read: true, write: false },
         messages: { read: true, write: true },
-        channel_0: { read: true, write: true },
-        channel_1: { read: true, write: true },
-        channel_2: { read: true, write: true },
-        channel_3: { read: true, write: true },
-        channel_4: { read: true, write: true },
-        channel_5: { read: true, write: true },
-        channel_6: { read: true, write: true },
-        channel_7: { read: true, write: true }
+        channel_0: { viewOnMap: true, read: true, write: true },
+        channel_1: { viewOnMap: true, read: true, write: true },
+        channel_2: { viewOnMap: true, read: true, write: true },
+        channel_3: { viewOnMap: true, read: true, write: true },
+        channel_4: { viewOnMap: true, read: true, write: true },
+        channel_5: { viewOnMap: true, read: true, write: true },
+        channel_6: { viewOnMap: true, read: true, write: true },
+        channel_7: { viewOnMap: true, read: true, write: true }
       })),
       auditLog: vi.fn(),
       auditLogAsync: vi.fn(async () => {}),
