@@ -703,11 +703,62 @@ export class VirtualNodeServer extends EventEmitter {
 
       logger.info(`Virtual node: ✓ Sent ${allNodes.length} fresh NodeInfo entries from database`);
 
-      // === STEP 3: Send static config data from cache (channels, config, metadata) ===
+      // === STEP 3: Rebuild and send channels from database ===
+      // This ensures channel names are properly sent to virtual node clients
+      // Previously, channels were sent from cache which could have empty names
+      const allChannels = databaseService.getAllChannels();
+      let channelCount = 0;
+      logger.debug(`Virtual node: Rebuilding ${allChannels.length} channels from database`);
+
+      for (const channel of allChannels) {
+        // Check if client is still connected
+        const client = this.clients.get(clientId);
+        if (!client || client.socket.destroyed) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during channel replay (sent ${sentCount} messages)`);
+          return;
+        }
+
+        // Convert base64 PSK back to Buffer if present
+        let pskBuffer: Buffer | undefined;
+        if (channel.psk) {
+          try {
+            pskBuffer = Buffer.from(channel.psk, 'base64');
+          } catch (e) {
+            logger.warn(`Virtual node: Failed to decode PSK for channel ${channel.id}`);
+          }
+        }
+
+        const channelMessage = await meshtasticProtobufService.createChannel({
+          index: channel.id,
+          settings: {
+            name: channel.name || '',
+            psk: pskBuffer,
+            uplinkEnabled: channel.uplinkEnabled ?? true,
+            downlinkEnabled: channel.downlinkEnabled ?? true,
+          },
+          role: channel.role ?? (channel.id === 0 ? 1 : 2), // Default: PRIMARY for channel 0, SECONDARY for others
+        });
+
+        if (channelMessage) {
+          await this.sendToClient(clientId, channelMessage);
+          sentCount++;
+          channelCount++;
+          logger.debug(`Virtual node: ✓ Sent channel ${channel.id} (${channel.name || 'unnamed'})`);
+        }
+      }
+
+      logger.info(`Virtual node: ✓ Sent ${channelCount} fresh Channel entries from database`);
+
+      // === STEP 4: Send static config data from cache (config, metadata - NOT channels) ===
       let staticCount = 0;
       for (const message of cachedMessages) {
         // Skip dynamic message types (we already rebuilt those from DB)
         if (message.type === 'myInfo' || message.type === 'nodeInfo') {
+          continue;
+        }
+
+        // Skip channels (we already rebuilt those from DB)
+        if (message.type === 'channel') {
           continue;
         }
 
@@ -733,9 +784,9 @@ export class VirtualNodeServer extends EventEmitter {
         }
       }
 
-      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, channels, metadata)`);
+      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, metadata)`);
 
-      // === STEP 4: Send custom ConfigComplete with client's requested ID ===
+      // === STEP 5: Send custom ConfigComplete with client's requested ID ===
       const useConfigId = configId || 1;
       logger.info(`Virtual node: Sending ConfigComplete to ${clientId} with ID ${useConfigId}...`);
       const configComplete = await meshtasticProtobufService.createConfigComplete(useConfigId);
@@ -747,7 +798,7 @@ export class VirtualNodeServer extends EventEmitter {
         logger.error(`Virtual node: Failed to create ConfigComplete message`);
       }
 
-      logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${staticCount} cached static)`);
+      logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${channelCount} fresh Channels + ${staticCount} cached static)`);
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
     }
