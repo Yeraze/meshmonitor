@@ -208,6 +208,8 @@ class MeshtasticManager {
   private remoteNodeChannels: Map<number, Map<number, any>> = new Map();
   // Per-node owner storage for remote nodes
   private remoteNodeOwners: Map<number, any> = new Map();
+  // Per-node device metadata storage for remote nodes
+  private remoteNodeDeviceMetadata: Map<number, any> = new Map();
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
@@ -1782,7 +1784,7 @@ class MeshtasticManager {
     // Note: Local node's public key is extracted from security config when received
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean } | null {
     return this.localNodeInfo;
   }
 
@@ -7657,7 +7659,17 @@ class MeshtasticManager {
         });
       }
       if (adminMsg.getDeviceMetadataResponse) {
-        logger.debug('⚙️ Received GetDeviceMetadataResponse');
+        logger.debug('⚙️ Received GetDeviceMetadataResponse from node', fromNum);
+        // Store device metadata response for retrieval
+        this.remoteNodeDeviceMetadata.set(fromNum, adminMsg.getDeviceMetadataResponse);
+        logger.debug(`📊 Stored device metadata from node ${fromNum}`, {
+          firmwareVersion: adminMsg.getDeviceMetadataResponse.firmwareVersion,
+          hwModel: adminMsg.getDeviceMetadataResponse.hwModel,
+          role: adminMsg.getDeviceMetadataResponse.role,
+          hasWifi: adminMsg.getDeviceMetadataResponse.hasWifi,
+          hasBluetooth: adminMsg.getDeviceMetadataResponse.hasBluetooth,
+          hasEthernet: adminMsg.getDeviceMetadataResponse.hasEthernet
+        });
       }
     } catch (error) {
       logger.error('❌ Error processing admin message:', error);
@@ -8376,6 +8388,80 @@ class MeshtasticManager {
       return null;
     } catch (error) {
       logger.error(`❌ Error requesting owner info from remote node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request device metadata from a remote node
+   * Returns firmware version, hardware model, capabilities, role, etc.
+   */
+  async requestRemoteDeviceMetadata(destinationNodeNum: number): Promise<any> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    try {
+      // Get or request session passkey
+      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
+      if (sessionPasskey) {
+        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+      } else {
+        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+        }
+      }
+
+      // Create the device metadata request message with session passkey
+      const root = getProtobufRoot();
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      const adminMsg = AdminMessage.create({
+        sessionPasskey: sessionPasskey,
+        getDeviceMetadataRequest: true
+      });
+      const encoded = AdminMessage.encode(adminMsg).finish();
+
+      // Clear any existing metadata for this node before requesting (to ensure fresh data)
+      this.remoteNodeDeviceMetadata.delete(destinationNodeNum);
+
+      // Send the request
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      await this.transport.send(adminPacket);
+      logger.debug(`📡 Requested device metadata from remote node ${destinationNodeNum}`);
+
+      // Wait for the response
+      const maxWaitTime = 10000; // 10 seconds
+      const pollInterval = 250; // Check every 250ms
+      const maxPolls = maxWaitTime / pollInterval;
+
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+        // Check if we have the device metadata for this remote node
+        if (this.remoteNodeDeviceMetadata.has(destinationNodeNum)) {
+          const metadata = this.remoteNodeDeviceMetadata.get(destinationNodeNum);
+          logger.debug(`✅ Received device metadata from remote node ${destinationNodeNum}`);
+          return metadata;
+        }
+      }
+
+      logger.warn(`⚠️ Device metadata not received from remote node ${destinationNodeNum} after waiting ${maxWaitTime / 1000}s`);
+      return null;
+    } catch (error) {
+      logger.error(`❌ Error requesting device metadata from remote node ${destinationNodeNum}:`, error);
       throw error;
     }
   }

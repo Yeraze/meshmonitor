@@ -109,6 +109,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     remainingSeconds: number | null;
   } | null>(null);
 
+  // Device metadata state for Retrieve Device Metadata feature
+  const [isLoadingDeviceMetadata, setIsLoadingDeviceMetadata] = useState(false);
+  const [deviceMetadata, setDeviceMetadata] = useState<{
+    firmwareVersion: string;
+    deviceStateVersion: number;
+    canShutdown: boolean;
+    hasWifi: boolean;
+    hasBluetooth: boolean;
+    hasEthernet: boolean;
+    role: number;
+    positionFlags: number;
+    hwModel: number;
+    hasRemoteHardware: boolean;
+  } | null>(null);
+
   // Collapsible sections state - persist to localStorage
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const stored = localStorage.getItem('adminCommandsExpandedSections');
@@ -720,6 +735,33 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     } finally {
       setIsLoadingAllConfigs(false);
       setLoadingProgress(null);
+    }
+  };
+
+  // Handle request device metadata
+  const handleRequestDeviceMetadata = async () => {
+    if (selectedNodeNum === null) {
+      showToast(t('admin_commands.please_select_node'), 'error');
+      return;
+    }
+
+    setIsLoadingDeviceMetadata(true);
+    setDeviceMetadata(null);
+
+    try {
+      const result = await apiService.post<{ deviceMetadata: any }>('/api/admin/get-device-metadata', {
+        nodeNum: selectedNodeNum
+      });
+      if (result?.deviceMetadata) {
+        setDeviceMetadata(result.deviceMetadata);
+        showToast(t('admin_commands.device_metadata_loaded'), 'success');
+      } else {
+        showToast(t('admin_commands.failed_device_metadata'), 'error');
+      }
+    } catch (error: any) {
+      showToast(error.message || t('admin_commands.failed_device_metadata'), 'error');
+    } finally {
+      setIsLoadingDeviceMetadata(false);
     }
   };
 
@@ -2130,6 +2172,64 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 t('admin_commands.load_all_configs', 'Load All Config')
               )}
             </button>
+            <button
+              onClick={handleRequestDeviceMetadata}
+              disabled={isLoadingDeviceMetadata || selectedNodeNum === null}
+              className="save-button"
+              style={{
+                width: '100%',
+                maxWidth: '600px',
+                marginTop: '0.5rem',
+                opacity: (isLoadingDeviceMetadata || selectedNodeNum === null) ? 0.5 : 1,
+                cursor: (isLoadingDeviceMetadata || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isLoadingDeviceMetadata ? t('common.loading') : t('admin_commands.retrieve_device_metadata', 'Retrieve Device Metadata')}
+            </button>
+            {deviceMetadata && (
+              <div
+                className="device-metadata-display"
+                style={{
+                  marginTop: '0.75rem',
+                  padding: '1rem',
+                  backgroundColor: 'var(--surface0)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--overlay0)',
+                  maxWidth: '600px'
+                }}
+              >
+                <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)' }}>
+                  {t('admin_commands.device_metadata_title', 'Device Metadata')}
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', fontSize: '0.9rem' }}>
+                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.firmware_version', 'Firmware Version')}:</span>
+                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.firmwareVersion}</span>
+
+                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
+                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.hwModel}</span>
+
+                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
+                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.role}</span>
+
+                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
+                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.deviceStateVersion}</span>
+
+                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.capabilities', 'Capabilities')}:</span>
+                  <span style={{ color: 'var(--text)' }}>
+                    {[
+                      deviceMetadata.hasWifi && 'WiFi',
+                      deviceMetadata.hasBluetooth && 'Bluetooth',
+                      deviceMetadata.hasEthernet && 'Ethernet',
+                      deviceMetadata.canShutdown && 'Shutdown',
+                      deviceMetadata.hasRemoteHardware && 'Remote HW'
+                    ].filter(Boolean).join(', ') || t('common.none', 'None')}
+                  </span>
+
+                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
+                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.positionFlags}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
