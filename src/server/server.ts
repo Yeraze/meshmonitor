@@ -6109,6 +6109,66 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
   }
 });
 
+// Admin get device metadata endpoint - requires admin role
+apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum } = req.body;
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    if (isLocalNode) {
+      // For local node, return cached device metadata from local node info
+      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      if (localNodeInfo) {
+        // Get node data from database for additional info
+        const nodeData = localNodeInfo.nodeNum ? databaseService.getNode(localNodeInfo.nodeNum) : null;
+        return res.json({
+          deviceMetadata: {
+            firmwareVersion: localNodeInfo.firmwareVersion || 'Unknown',
+            hwModel: nodeData?.hwModel || 0,
+            role: nodeData?.role || 0,
+            hasWifi: false,  // Not tracked for local node
+            hasBluetooth: false,
+            hasEthernet: false,
+            canShutdown: false,
+            hasRemoteHardware: false,
+            deviceStateVersion: 0,
+            positionFlags: 0
+          }
+        });
+      } else {
+        return res.status(404).json({ error: 'Local node information not available' });
+      }
+    } else {
+      // For remote node, request device metadata
+      const metadata = await meshtasticManager.requestRemoteDeviceMetadata(destinationNodeNum);
+      if (metadata) {
+        return res.json({
+          deviceMetadata: {
+            firmwareVersion: metadata.firmwareVersion || 'Unknown',
+            deviceStateVersion: metadata.deviceStateVersion || 0,
+            canShutdown: metadata.canShutdown || false,
+            hasWifi: metadata.hasWifi || false,
+            hasBluetooth: metadata.hasBluetooth || false,
+            hasEthernet: metadata.hasEthernet || false,
+            role: metadata.role || 0,
+            positionFlags: metadata.positionFlags || 0,
+            hwModel: metadata.hwModel || 0,
+            hasRemoteHardware: metadata.hasRemoteHardware || false
+          }
+        });
+      } else {
+        return res.status(404).json({ error: `Device metadata not received from remote node ${destinationNodeNum}` });
+      }
+    }
+  } catch (error: any) {
+    logger.error('Error getting device metadata:', error);
+    res.status(500).json({ error: error.message || 'Failed to get device metadata' });
+  }
+});
+
 // Admin commands endpoint - requires admin role
 // Admin endpoint: Export configuration for remote nodes
 apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
