@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Sidebar.css';
 import { TabType } from '../types/ui';
-import { ResourceType, PermissionAction } from '../types/permission';
+import { ResourceType } from '../types/permission';
 import packageJson from '../../package.json';
 
 interface UnreadCountsData {
@@ -13,7 +13,7 @@ interface UnreadCountsData {
 interface SidebarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  hasPermission: (resource: ResourceType, action: PermissionAction) => boolean;
+  hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
   isAdmin: boolean;
   isAuthenticated: boolean;
   unreadCounts: { [key: number]: number };

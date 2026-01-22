@@ -47,6 +47,7 @@ export const permissionsSqlite = sqliteTable('permissions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
   resource: text('resource').notNull(),
+  canViewOnMap: integer('can_view_on_map', { mode: 'boolean' }).notNull().default(false),
   canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
   canWrite: integer('can_write', { mode: 'boolean' }).notNull().default(false),
   // Note: SQLite doesn't have can_delete column
@@ -58,6 +59,7 @@ export const permissionsPostgres = pgTable('permissions', {
   id: pgSerial('id').primaryKey(),
   userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
   resource: pgText('resource').notNull(),
+  canViewOnMap: pgBoolean('canViewOnMap').notNull().default(false),
   canRead: pgBoolean('canRead').notNull().default(false),
   canWrite: pgBoolean('canWrite').notNull().default(false),
   canDelete: pgBoolean('canDelete').notNull().default(false),
@@ -157,6 +159,7 @@ export const permissionsMysql = mysqlTable('permissions', {
   id: mySerial('id').primaryKey(),
   userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
   resource: myVarchar('resource', { length: 64 }).notNull(),
+  canViewOnMap: myBoolean('canViewOnMap').notNull().default(false),
   canRead: myBoolean('canRead').notNull().default(false),
   canWrite: myBoolean('canWrite').notNull().default(false),
   canDelete: myBoolean('canDelete').notNull().default(false),

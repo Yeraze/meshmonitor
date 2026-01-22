@@ -83,6 +83,7 @@ export interface DbPermission {
   id: number;
   userId: number;
   resource: string;
+  canViewOnMap: boolean;
   canRead: boolean;
   canWrite: boolean;
   canDelete?: boolean; // PostgreSQL only
@@ -96,6 +97,7 @@ export interface DbPermission {
 export interface CreatePermissionInput {
   userId: number;
   resource: string;
+  canViewOnMap?: boolean;
   canRead?: boolean;
   canWrite?: boolean;
   canDelete?: boolean; // PostgreSQL only

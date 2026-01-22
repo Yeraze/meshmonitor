@@ -16,6 +16,7 @@ import { migration as themesMigration } from '../migrations/022_add_custom_theme
 import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
 import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
+import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 
 describe('PermissionModel', () => {
   let db: Database.Database;
@@ -39,6 +40,7 @@ describe('PermissionModel', () => {
     passwordLockedMigration.up(db);
     perChannelPermissionsMigration.up(db);
     nodesPrivatePermissionMigration.up(db);
+    viewOnMapPermissionMigration.up(db);
 
     // Create model instances
     userModel = new UserModel(db);
@@ -164,8 +166,9 @@ describe('PermissionModel', () => {
     it('should get user permission set', () => {
       const permissionSet = permissionModel.getUserPermissionSet(testUserId);
 
-      expect(permissionSet.dashboard).toEqual({ read: true, write: false });
-      expect(permissionSet.nodes).toEqual({ read: true, write: true });
+      // viewOnMap defaults to false for non-channel resources
+      expect(permissionSet.dashboard).toEqual({ viewOnMap: false, read: true, write: false });
+      expect(permissionSet.nodes).toEqual({ viewOnMap: false, read: true, write: true });
     });
 
     it('should find permission by user and resource', () => {
@@ -244,17 +247,19 @@ describe('PermissionModel', () => {
 
       const permissionSet = permissionModel.getUserPermissionSet(testUserId);
 
-      // Admins should have all permissions
-      expect(permissionSet.dashboard).toEqual({ read: true, write: true });
-      expect(permissionSet.nodes).toEqual({ read: true, write: true });
-      expect(permissionSet.messages).toEqual({ read: true, write: true });
-      expect(permissionSet.settings).toEqual({ read: true, write: true });
-      expect(permissionSet.configuration).toEqual({ read: true, write: true });
-      expect(permissionSet.info).toEqual({ read: true, write: true });
-      expect(permissionSet.automation).toEqual({ read: true, write: true });
-      expect(permissionSet.connection).toEqual({ read: true, write: true });
-      expect(permissionSet.traceroute).toEqual({ read: true, write: true });
-      expect(permissionSet.nodes_private).toEqual({ read: true, write: true });
+      // Admins should have all permissions (viewOnMap is false for non-channel resources)
+      expect(permissionSet.dashboard).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.nodes).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.messages).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.settings).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.configuration).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.info).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.automation).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.connection).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.traceroute).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.nodes_private).toEqual({ viewOnMap: false, read: true, write: true });
+      // Channel permissions have viewOnMap: true
+      expect(permissionSet.channel_0).toEqual({ viewOnMap: true, read: true, write: true });
     });
   });
 
@@ -270,9 +275,10 @@ describe('PermissionModel', () => {
 
       const permissionSet = permissionModel.getUserPermissionSet(testUserId);
 
-      expect(permissionSet.dashboard).toEqual({ read: true, write: true });
-      expect(permissionSet.nodes).toEqual({ read: true, write: false });
-      expect(permissionSet.messages).toEqual({ read: false, write: false });
+      // viewOnMap defaults to false for non-channel resources
+      expect(permissionSet.dashboard).toEqual({ viewOnMap: false, read: true, write: true });
+      expect(permissionSet.nodes).toEqual({ viewOnMap: false, read: true, write: false });
+      expect(permissionSet.messages).toEqual({ viewOnMap: false, read: false, write: false });
     });
   });
 

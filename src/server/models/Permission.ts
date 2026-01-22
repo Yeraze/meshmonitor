@@ -27,9 +27,10 @@ export class PermissionModel {
    */
   grant(input: PermissionInput): Permission {
     const stmt = this.db.prepare(`
-      INSERT INTO permissions (user_id, resource, can_read, can_write, granted_at, granted_by)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO permissions (user_id, resource, can_view_on_map, can_read, can_write, granted_at, granted_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, resource) DO UPDATE SET
+        can_view_on_map = excluded.can_view_on_map,
         can_read = excluded.can_read,
         can_write = excluded.can_write,
         granted_at = excluded.granted_at,
@@ -39,6 +40,7 @@ export class PermissionModel {
     stmt.run(
       input.userId,
       input.resource,
+      input.canViewOnMap ? 1 : 0,
       input.canRead ? 1 : 0,
       input.canWrite ? 1 : 0,
       Date.now(),
@@ -82,7 +84,7 @@ export class PermissionModel {
    */
   check(userId: number, resource: ResourceType, action: PermissionAction): boolean {
     const stmt = this.db.prepare(`
-      SELECT can_read as canRead, can_write as canWrite
+      SELECT can_view_on_map as canViewOnMap, can_read as canRead, can_write as canWrite
       FROM permissions
       WHERE user_id = ? AND resource = ?
     `);
@@ -90,7 +92,9 @@ export class PermissionModel {
     const row = stmt.get(userId, resource) as any;
     if (!row) return false;
 
-    if (action === 'read') {
+    if (action === 'viewOnMap') {
+      return Boolean(row.canViewOnMap);
+    } else if (action === 'read') {
       return Boolean(row.canRead);
     } else {
       return Boolean(row.canWrite);
@@ -103,8 +107,9 @@ export class PermissionModel {
   getUserPermissions(userId: number): Permission[] {
     const stmt = this.db.prepare(`
       SELECT
-        id, user_id as userId, resource, can_read as canRead,
-        can_write as canWrite, granted_at as grantedAt, granted_by as grantedBy
+        id, user_id as userId, resource, can_view_on_map as canViewOnMap,
+        can_read as canRead, can_write as canWrite,
+        granted_at as grantedAt, granted_by as grantedBy
       FROM permissions
       WHERE user_id = ?
       ORDER BY resource
@@ -123,6 +128,7 @@ export class PermissionModel {
 
     permissions.forEach(perm => {
       permissionSet[perm.resource] = {
+        viewOnMap: perm.canViewOnMap,
         read: perm.canRead,
         write: perm.canWrite
       };
@@ -137,8 +143,9 @@ export class PermissionModel {
   findByUserAndResource(userId: number, resource: ResourceType): Permission | null {
     const stmt = this.db.prepare(`
       SELECT
-        id, user_id as userId, resource, can_read as canRead,
-        can_write as canWrite, granted_at as grantedAt, granted_by as grantedBy
+        id, user_id as userId, resource, can_view_on_map as canViewOnMap,
+        can_read as canRead, can_write as canWrite,
+        granted_at as grantedAt, granted_by as grantedBy
       FROM permissions
       WHERE user_id = ? AND resource = ?
     `);
@@ -159,6 +166,7 @@ export class PermissionModel {
       this.grant({
         userId,
         resource: resource as ResourceType,
+        canViewOnMap: perms.viewOnMap ?? false,
         canRead: perms.read,
         canWrite: perms.write,
         grantedBy
@@ -176,6 +184,7 @@ export class PermissionModel {
         this.grant({
           userId,
           resource: resource as ResourceType,
+          canViewOnMap: perms.viewOnMap ?? false,
           canRead: perms.read,
           canWrite: perms.write,
           grantedBy
@@ -191,11 +200,11 @@ export class PermissionModel {
    */
   getUsersWithPermission(resource: ResourceType, action: PermissionAction): number[] {
     // Validate action to prevent SQL injection
-    if (action !== 'read' && action !== 'write') {
+    if (action !== 'viewOnMap' && action !== 'read' && action !== 'write') {
       throw new Error(`Invalid action: ${action}`);
     }
 
-    const column = action === 'read' ? 'can_read' : 'can_write';
+    const column = action === 'viewOnMap' ? 'can_view_on_map' : action === 'read' ? 'can_read' : 'can_write';
 
     const stmt = this.db.prepare(`
       SELECT DISTINCT user_id as userId
@@ -215,6 +224,7 @@ export class PermissionModel {
       id: row.id,
       userId: row.userId,
       resource: row.resource as ResourceType,
+      canViewOnMap: Boolean(row.canViewOnMap),
       canRead: Boolean(row.canRead),
       canWrite: Boolean(row.canWrite),
       grantedAt: row.grantedAt,

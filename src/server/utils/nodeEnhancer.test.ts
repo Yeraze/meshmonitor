@@ -19,21 +19,21 @@ vi.mock('../../services/database.js', () => ({
       // User 1: has access to channels 0 and 1
       if (userId === 1) {
         return {
-          channel_0: { read: true, write: false },
-          channel_1: { read: true, write: false },
+          channel_0: { viewOnMap: true, read: true, write: false },
+          channel_1: { viewOnMap: true, read: true, write: false },
         };
       }
       // User 2: has access to all channels
       if (userId === 2) {
         return {
-          channel_0: { read: true, write: true },
-          channel_1: { read: true, write: true },
-          channel_2: { read: true, write: true },
-          channel_3: { read: true, write: true },
-          channel_4: { read: true, write: true },
-          channel_5: { read: true, write: true },
-          channel_6: { read: true, write: true },
-          channel_7: { read: true, write: true },
+          channel_0: { viewOnMap: true, read: true, write: true },
+          channel_1: { viewOnMap: true, read: true, write: true },
+          channel_2: { viewOnMap: true, read: true, write: true },
+          channel_3: { viewOnMap: true, read: true, write: true },
+          channel_4: { viewOnMap: true, read: true, write: true },
+          channel_5: { viewOnMap: true, read: true, write: true },
+          channel_6: { viewOnMap: true, read: true, write: true },
+          channel_7: { viewOnMap: true, read: true, write: true },
         };
       }
       // Default: no permissions
