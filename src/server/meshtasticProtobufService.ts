@@ -378,15 +378,11 @@ export class MeshtasticProtobufService {
     }
 
     try {
-      // Create empty NeighborInfo message (request format - like traceroute's empty RouteDiscovery)
+      // Create empty NeighborInfo message (like traceroute's empty RouteDiscovery)
       const NeighborInfo = root.lookupType('meshtastic.NeighborInfo');
       const neighborInfoMessage = NeighborInfo.create({});
-
-      // Encode the NeighborInfo as payload
       const payload = NeighborInfo.encode(neighborInfoMessage).finish();
 
-      // Create Data message with NEIGHBORINFO_APP portnum
-      // Match traceroute pattern exactly (no requestId - traceroute works without it)
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
         portnum: PortNum.NEIGHBORINFO_APP,
@@ -395,13 +391,15 @@ export class MeshtasticProtobufService {
         wantResponse: true // Request neighbor info from destination
       });
 
+      logger.info(`🏠 NeighborInfo request Data message: portnum=${PortNum.NEIGHBORINFO_APP}, dest=${destination}, wantResponse=true, payload=${payload.length} bytes`);
+
       // Create MeshPacket
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
       const meshPacket = MeshPacket.create({
         to: destination,
         channel: channel || 0,
         decoded: dataMessage,
-        wantAck: false,
+        wantAck: true, // Request ACK to ensure delivery
         hopLimit: 7 // Default hop limit for remote nodes
       });
 
