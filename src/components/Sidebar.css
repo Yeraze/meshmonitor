@@ -48,7 +48,8 @@
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
 }
 
-.github-link {
+.github-link,
+.news-link {
   color: var(--ctp-subtext0);
   display: flex;
   align-items: center;
@@ -57,7 +58,15 @@
   text-decoration: none;
 }
 
-.github-link:hover {
+.news-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.github-link:hover,
+.news-link:hover {
   color: var(--ctp-text);
 }
 
