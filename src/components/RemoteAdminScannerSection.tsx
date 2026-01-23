@@ -80,7 +80,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
         const nodesResponse = await csrfFetch(`${baseUrl}/api/nodes`);
         if (nodesResponse.ok) {
           const nodes = await nodesResponse.json();
-          const nodesWithPublicKey = nodes.filter((n: any) => n.publicKey);
+          const nodesWithPublicKey = nodes.filter((n: any) => n.user?.publicKey);
           const nodesWithAdmin = nodesWithPublicKey.filter((n: any) => n.hasRemoteAdmin === true);
           const nodesChecked = nodesWithPublicKey.filter((n: any) => n.lastRemoteAdminCheck);
 
