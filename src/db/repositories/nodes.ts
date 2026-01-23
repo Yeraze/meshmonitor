@@ -1301,6 +1301,9 @@ export class NodesRepository extends BaseRepository {
 
   /**
    * Update a node's remote admin status
+   * @param nodeNum The node number to update
+   * @param hasRemoteAdmin Whether the node has remote admin access
+   * @param metadata Optional metadata to save (if null, existing metadata is preserved)
    */
   async updateNodeRemoteAdminStatusAsync(
     nodeNum: number,
@@ -1309,39 +1312,40 @@ export class NodesRepository extends BaseRepository {
   ): Promise<void> {
     const now = Date.now();
 
+    // Build update object - only include metadata if provided (not null)
+    const baseUpdate = {
+      hasRemoteAdmin: hasRemoteAdmin,
+      lastRemoteAdminCheck: now,
+      updatedAt: now,
+    };
+
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
+      const updateData = metadata !== null
+        ? { ...baseUpdate, remoteAdminMetadata: metadata }
+        : baseUpdate;
       await db
         .update(nodesSqlite)
-        .set({
-          hasRemoteAdmin: hasRemoteAdmin,
-          lastRemoteAdminCheck: now,
-          remoteAdminMetadata: metadata,
-          updatedAt: now,
-        })
+        .set(updateData as any)
         .where(eq(nodesSqlite.nodeNum, nodeNum));
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
+      const updateData = metadata !== null
+        ? { ...baseUpdate, remoteAdminMetadata: metadata }
+        : baseUpdate;
       await db
         .update(nodesMysql)
-        .set({
-          hasRemoteAdmin: hasRemoteAdmin,
-          lastRemoteAdminCheck: now,
-          remoteAdminMetadata: metadata,
-          updatedAt: now,
-        })
+        .set(updateData as any)
         .where(eq(nodesMysql.nodeNum, nodeNum));
     } else {
       // PostgreSQL
       const db = this.getPostgresDb();
+      const updateData = metadata !== null
+        ? { ...baseUpdate, remoteAdminMetadata: metadata }
+        : baseUpdate;
       await db
         .update(nodesPostgres)
-        .set({
-          hasRemoteAdmin: hasRemoteAdmin,
-          lastRemoteAdminCheck: now,
-          remoteAdminMetadata: metadata,
-          updatedAt: now,
-        })
+        .set(updateData as any)
         .where(eq(nodesPostgres.nodeNum, nodeNum));
     }
   }

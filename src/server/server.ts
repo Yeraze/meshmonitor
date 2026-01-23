@@ -6226,6 +6226,19 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
       // For remote node, request device metadata
       const metadata = await meshtasticManager.requestRemoteDeviceMetadata(destinationNodeNum);
       if (metadata) {
+        // Successfully retrieved metadata - update hasRemoteAdmin flag and save metadata
+        try {
+          await databaseService.updateNodeRemoteAdminStatusAsync(
+            destinationNodeNum,
+            true,
+            JSON.stringify(metadata)
+          );
+          logger.info(`✅ Updated hasRemoteAdmin=true and saved metadata for node ${destinationNodeNum}`);
+        } catch (dbError) {
+          logger.error(`Failed to save remote admin status for node ${destinationNodeNum}:`, dbError);
+          // Continue with response even if database update fails
+        }
+
         return res.json({
           deviceMetadata: {
             firmwareVersion: metadata.firmwareVersion || 'Unknown',
@@ -6716,9 +6729,24 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     // Send the admin command
     await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
 
-    res.json({ 
-      success: true, 
-      message: `Admin command '${command}' sent to node ${destinationNodeNum}` 
+    // If command succeeded on a remote node, update hasRemoteAdmin flag
+    if (!isLocalNode) {
+      try {
+        await databaseService.updateNodeRemoteAdminStatusAsync(
+          destinationNodeNum,
+          true,
+          null  // Don't overwrite existing metadata, just set the flag
+        );
+        logger.info(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
+      } catch (dbError) {
+        logger.error(`Failed to update hasRemoteAdmin for node ${destinationNodeNum}:`, dbError);
+        // Continue with response even if database update fails
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Admin command '${command}' sent to node ${destinationNodeNum}`
     });
   } catch (error: any) {
     logger.error('Error executing admin command:', error);
