@@ -367,16 +367,20 @@ class SystemBackupService {
         ORDER BY timestamp DESC
       `);
 
-      return rows.map(row => ({
-        dirname: row.dirname,
-        timestamp: new Date(row.timestamp).toISOString(),
-        timestampUnix: row.timestamp,
-        type: row.type,
-        size: row.size,
-        tableCount: row.table_count,
-        meshmonitorVersion: row.meshmonitor_version,
-        schemaVersion: row.schema_version
-      }));
+      return rows.map(row => {
+        // PostgreSQL returns bigint as strings, so we need to parse them
+        const timestampNum = typeof row.timestamp === 'string' ? parseInt(row.timestamp, 10) : row.timestamp;
+        return {
+          dirname: row.dirname,
+          timestamp: new Date(timestampNum).toISOString(),
+          timestampUnix: timestampNum,
+          type: row.type,
+          size: typeof row.size === 'string' ? parseInt(row.size, 10) : row.size,
+          tableCount: row.table_count,
+          meshmonitorVersion: row.meshmonitor_version,
+          schemaVersion: row.schema_version
+        };
+      });
     } catch (error) {
       logger.error('❌ Failed to list system backups:', error);
       throw new Error(`Failed to list system backups: ${error instanceof Error ? error.message : String(error)}`);

@@ -9696,6 +9696,130 @@ class DatabaseService {
       updatedAt: Math.floor(Date.now() / 1000),
     });
   }
+
+  // ============ BACKUP HISTORY ============
+
+  /**
+   * Insert a new backup history record
+   */
+  async insertBackupHistoryAsync(backup: {
+    filename: string;
+    filePath: string;
+    timestamp: number;
+    backupType: string;
+    fileSize?: number | null;
+    nodeId?: string | null;
+    nodeNum?: number | null;
+  }): Promise<void> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.insertBackupHistory({
+      ...backup,
+      createdAt: Date.now(),
+    });
+  }
+
+  /**
+   * Get all backup history records ordered by timestamp (newest first)
+   */
+  async getBackupHistoryListAsync(): Promise<Array<{
+    id?: number;
+    filename: string;
+    filePath: string;
+    timestamp: number;
+    backupType: string;
+    fileSize?: number | null;
+    nodeId?: string | null;
+    nodeNum?: number | null;
+    createdAt: number;
+  }>> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.getBackupHistoryList();
+  }
+
+  /**
+   * Get a backup history record by filename
+   */
+  async getBackupByFilenameAsync(filename: string): Promise<{
+    id?: number;
+    filename: string;
+    filePath: string;
+    timestamp: number;
+    backupType: string;
+    fileSize?: number | null;
+    nodeId?: string | null;
+    nodeNum?: number | null;
+    createdAt: number;
+  } | null> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.getBackupByFilename(filename);
+  }
+
+  /**
+   * Delete a backup history record by filename
+   */
+  async deleteBackupHistoryAsync(filename: string): Promise<void> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.deleteBackupHistory(filename);
+  }
+
+  /**
+   * Count total backup history records
+   */
+  async countBackupsAsync(): Promise<number> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.countBackups();
+  }
+
+  /**
+   * Get oldest backup history records (for purging)
+   */
+  async getOldestBackupsAsync(limit: number): Promise<Array<{
+    id?: number;
+    filename: string;
+    filePath: string;
+    timestamp: number;
+    backupType: string;
+    fileSize?: number | null;
+    nodeId?: string | null;
+    nodeNum?: number | null;
+    createdAt: number;
+  }>> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    return this.miscRepo.getOldestBackups(limit);
+  }
+
+  /**
+   * Get backup statistics
+   */
+  async getBackupStatsAsync(): Promise<{
+    count: number;
+    totalSize: number;
+    oldestBackup: string | null;
+    newestBackup: string | null;
+  }> {
+    if (!this.miscRepo) {
+      throw new Error('Misc repository not initialized');
+    }
+    const stats = await this.miscRepo.getBackupStats();
+    return {
+      count: stats.count,
+      totalSize: stats.totalSize,
+      oldestBackup: stats.oldestTimestamp ? new Date(stats.oldestTimestamp).toISOString() : null,
+      newestBackup: stats.newestTimestamp ? new Date(stats.newestTimestamp).toISOString() : null,
+    };
+  }
 }
 
 // Export the class for testing purposes (allows creating isolated test instances)
