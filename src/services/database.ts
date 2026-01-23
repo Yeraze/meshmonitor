@@ -59,6 +59,7 @@ import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, ru
 import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
 import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
 import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_add_remote_admin_columns.js';
+import { migration as backupHistoryColumnsMigration } from '../server/migrations/056_fix_backup_history_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -895,6 +896,7 @@ class DatabaseService {
     this.runViewOnMapPermissionMigration();
     this.runNewsTablesMigration();
     this.runRemoteAdminColumnsMigration();
+    this.runBackupHistoryColumnsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1983,6 +1985,26 @@ class DatabaseService {
       logger.debug('✅ Remote admin columns migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run remote admin columns migration:', error);
+      throw error;
+    }
+  }
+
+  private runBackupHistoryColumnsMigration(): void {
+    try {
+      const migrationKey = 'migration_056_backup_history_columns';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Backup history columns migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 056: Fix backup_history column names...');
+      backupHistoryColumnsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Backup history columns migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run backup history columns migration:', error);
       throw error;
     }
   }
