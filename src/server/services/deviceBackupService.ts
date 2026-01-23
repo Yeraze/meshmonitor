@@ -48,7 +48,10 @@ class YAMLGenerator {
         // Array
         lines.push(`${currentIndent}${yamlKey}:`);
         for (const item of value) {
-          if (typeof item === 'object') {
+          if (item instanceof Uint8Array) {
+            // Format Uint8Array as base64
+            lines.push(`${currentIndent}- ${this.formatValue(item)}`);
+          } else if (typeof item === 'object') {
             lines.push(`${currentIndent}- `);
             lines.push(this.toYAML(item, indentLevel + 1).replace(new RegExp(`^${currentIndent}`, 'gm'), `${currentIndent}  `));
           } else {

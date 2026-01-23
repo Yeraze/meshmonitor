@@ -1,6 +1,7 @@
 /**
  * Backup File Service
  * Handles file system operations for device backups
+ * Supports SQLite, PostgreSQL, and MySQL through DatabaseService
  */
 
 import * as fs from 'fs';
@@ -9,6 +10,13 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 
 const BACKUP_DIR = process.env.BACKUP_DIR || '/data/backups';
+
+/**
+ * Check if we're using a non-SQLite database (PostgreSQL or MySQL)
+ */
+function usesAsyncRepository(): boolean {
+  return databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql';
+}
 
 interface BackupFile {
   filename: string;
@@ -65,20 +73,32 @@ class BackupFileService {
       const stats = fs.statSync(filepath);
 
       // Record in database
-      const db = databaseService.db;
-      const stmt = db.prepare(`
-        INSERT INTO backup_history (filename, filepath, timestamp, type, size, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
+      if (usesAsyncRepository()) {
+        // PostgreSQL/MySQL: use async repository methods
+        await databaseService.insertBackupHistoryAsync({
+          filename,
+          filePath: filepath,
+          timestamp: Date.now(),
+          backupType: type,
+          fileSize: stats.size,
+        });
+      } else {
+        // SQLite: use sync db.prepare() method
+        const db = databaseService.db;
+        const stmt = db.prepare(`
+          INSERT INTO backup_history (filename, filePath, timestamp, backupType, fileSize, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
 
-      stmt.run(
-        filename,
-        filepath,
-        Date.now(),
-        type,
-        stats.size,
-        Date.now()
-      );
+        stmt.run(
+          filename,
+          filepath,
+          Date.now(),
+          type,
+          stats.size,
+          Date.now()
+        );
+      }
 
       logger.info(`💾 Saved ${type} backup: ${filename} (${this.formatFileSize(stats.size)})`);
 
@@ -98,22 +118,35 @@ class BackupFileService {
    */
   async listBackups(): Promise<BackupFile[]> {
     try {
-      const db = databaseService.db;
-      const stmt = db.prepare(`
-        SELECT filename, filepath, timestamp, type, size
-        FROM backup_history
-        ORDER BY timestamp DESC
-      `);
+      if (usesAsyncRepository()) {
+        // PostgreSQL/MySQL: use async repository methods
+        const rows = await databaseService.getBackupHistoryListAsync();
+        return rows.map(row => ({
+          filename: row.filename,
+          timestamp: new Date(row.timestamp).toISOString(),
+          size: row.fileSize ?? 0,
+          type: row.backupType as 'manual' | 'automatic',
+          filepath: row.filePath
+        }));
+      } else {
+        // SQLite: use sync db.prepare() method
+        const db = databaseService.db;
+        const stmt = db.prepare(`
+          SELECT filename, filePath, timestamp, backupType, fileSize
+          FROM backup_history
+          ORDER BY timestamp DESC
+        `);
 
-      const rows = stmt.all() as any[];
+        const rows = stmt.all() as any[];
 
-      return rows.map(row => ({
-        filename: row.filename,
-        timestamp: new Date(row.timestamp).toISOString(),
-        size: row.size,
-        type: row.type,
-        filepath: row.filepath
-      }));
+        return rows.map(row => ({
+          filename: row.filename,
+          timestamp: new Date(row.timestamp).toISOString(),
+          size: row.fileSize ?? 0,
+          type: row.backupType,
+          filepath: row.filePath
+        }));
+      }
     } catch (error) {
       logger.error('❌ Failed to list backups:', error);
       throw new Error(`Failed to list backups: ${error instanceof Error ? error.message : String(error)}`);
@@ -125,19 +158,32 @@ class BackupFileService {
    */
   async getBackup(filename: string): Promise<string> {
     try {
-      const db = databaseService.db;
-      const stmt = db.prepare('SELECT filepath FROM backup_history WHERE filename = ?');
-      const row = stmt.get(filename) as any;
+      let filepath: string;
 
-      if (!row) {
-        throw new Error('Backup not found');
+      if (usesAsyncRepository()) {
+        // PostgreSQL/MySQL: use async repository methods
+        const row = await databaseService.getBackupByFilenameAsync(filename);
+        if (!row) {
+          throw new Error('Backup not found');
+        }
+        filepath = row.filePath;
+      } else {
+        // SQLite: use sync db.prepare() method
+        const db = databaseService.db;
+        const stmt = db.prepare('SELECT filePath FROM backup_history WHERE filename = ?');
+        const row = stmt.get(filename) as any;
+
+        if (!row) {
+          throw new Error('Backup not found');
+        }
+        filepath = row.filePath;
       }
 
-      if (!fs.existsSync(row.filepath)) {
+      if (!fs.existsSync(filepath)) {
         throw new Error('Backup file not found on disk');
       }
 
-      return fs.readFileSync(row.filepath, 'utf8');
+      return fs.readFileSync(filepath, 'utf8');
     } catch (error) {
       logger.error(`❌ Failed to get backup ${filename}:`, error);
       throw new Error(`Failed to get backup: ${error instanceof Error ? error.message : String(error)}`);
@@ -149,22 +195,41 @@ class BackupFileService {
    */
   async deleteBackup(filename: string): Promise<void> {
     try {
-      const db = databaseService.db;
-      const stmt = db.prepare('SELECT filepath FROM backup_history WHERE filename = ?');
-      const row = stmt.get(filename) as any;
+      if (usesAsyncRepository()) {
+        // PostgreSQL/MySQL: use async repository methods
+        const row = await databaseService.getBackupByFilenameAsync(filename);
+        if (!row) {
+          throw new Error('Backup not found');
+        }
+        const filepath = row.filePath;
 
-      if (!row) {
-        throw new Error('Backup not found');
+        // Delete file from disk
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+        }
+
+        // Delete from database
+        await databaseService.deleteBackupHistoryAsync(filename);
+      } else {
+        // SQLite: use sync db.prepare() method
+        const db = databaseService.db;
+        const stmt = db.prepare('SELECT filePath FROM backup_history WHERE filename = ?');
+        const row = stmt.get(filename) as any;
+
+        if (!row) {
+          throw new Error('Backup not found');
+        }
+        const filepath = row.filePath;
+
+        // Delete file from disk
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+        }
+
+        // Delete from database
+        const deleteStmt = db.prepare('DELETE FROM backup_history WHERE filename = ?');
+        deleteStmt.run(filename);
       }
-
-      // Delete file from disk
-      if (fs.existsSync(row.filepath)) {
-        fs.unlinkSync(row.filepath);
-      }
-
-      // Delete from database
-      const deleteStmt = db.prepare('DELETE FROM backup_history WHERE filename = ?');
-      deleteStmt.run(filename);
 
       logger.info(`🗑️  Deleted backup: ${filename}`);
     } catch (error) {
@@ -188,44 +253,74 @@ class BackupFileService {
         return;
       }
 
-      const db = databaseService.db;
+      if (usesAsyncRepository()) {
+        // PostgreSQL/MySQL: use async repository methods
+        const totalBackups = await databaseService.countBackupsAsync();
 
-      // Get count of backups
-      const countStmt = db.prepare('SELECT COUNT(*) as count FROM backup_history');
-      const countRow = countStmt.get() as any;
-      const totalBackups = countRow.count;
-
-      if (totalBackups <= limit) {
-        return; // Under the limit
-      }
-
-      // Get oldest backups to delete
-      const toDelete = totalBackups - limit;
-      const oldBackupsStmt = db.prepare(`
-        SELECT filename, filepath
-        FROM backup_history
-        ORDER BY timestamp ASC
-        LIMIT ?
-      `);
-
-      const oldBackups = oldBackupsStmt.all(toDelete) as any[];
-
-      logger.info(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
-
-      for (const backup of oldBackups) {
-        // Delete file from disk
-        if (fs.existsSync(backup.filepath)) {
-          fs.unlinkSync(backup.filepath);
+        if (totalBackups <= limit) {
+          return; // Under the limit
         }
 
-        // Delete from database
-        const deleteStmt = db.prepare('DELETE FROM backup_history WHERE filename = ?');
-        deleteStmt.run(backup.filename);
+        // Get oldest backups to delete
+        const toDelete = totalBackups - limit;
+        const oldBackups = await databaseService.getOldestBackupsAsync(toDelete);
 
-        logger.debug(`  🗑️  Purged: ${backup.filename}`);
+        logger.info(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
+
+        for (const backup of oldBackups) {
+          // Delete file from disk
+          if (fs.existsSync(backup.filePath)) {
+            fs.unlinkSync(backup.filePath);
+          }
+
+          // Delete from database
+          await databaseService.deleteBackupHistoryAsync(backup.filename);
+
+          logger.debug(`  🗑️  Purged: ${backup.filename}`);
+        }
+
+        logger.info(`✅ Purged ${oldBackups.length} old backups`);
+      } else {
+        // SQLite: use sync db.prepare() method
+        const db = databaseService.db;
+
+        // Get count of backups
+        const countStmt = db.prepare('SELECT COUNT(*) as count FROM backup_history');
+        const countRow = countStmt.get() as any;
+        const totalBackups = countRow.count;
+
+        if (totalBackups <= limit) {
+          return; // Under the limit
+        }
+
+        // Get oldest backups to delete
+        const toDelete = totalBackups - limit;
+        const oldBackupsStmt = db.prepare(`
+          SELECT filename, filePath
+          FROM backup_history
+          ORDER BY timestamp ASC
+          LIMIT ?
+        `);
+
+        const oldBackups = oldBackupsStmt.all(toDelete) as any[];
+
+        logger.info(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
+
+        for (const backup of oldBackups) {
+          // Delete file from disk
+          if (fs.existsSync(backup.filePath)) {
+            fs.unlinkSync(backup.filePath);
+          }
+
+          // Delete from database
+          const deleteStmt = db.prepare('DELETE FROM backup_history WHERE filename = ?');
+          deleteStmt.run(backup.filename);
+
+          logger.debug(`  🗑️  Purged: ${backup.filename}`);
+        }
+
+        logger.info(`✅ Purged ${oldBackups.length} old backups`);
       }
-
-      logger.info(`✅ Purged ${oldBackups.length} old backups`);
     } catch (error) {
       logger.error('❌ Failed to purge old backups:', error);
     }
@@ -245,25 +340,31 @@ class BackupFileService {
    */
   async getBackupStats(): Promise<{ count: number; totalSize: number; oldestBackup: string | null; newestBackup: string | null }> {
     try {
-      const db = databaseService.db;
+      if (usesAsyncRepository()) {
+        // PostgreSQL/MySQL: use async repository methods
+        return await databaseService.getBackupStatsAsync();
+      } else {
+        // SQLite: use sync db.prepare() method
+        const db = databaseService.db;
 
-      const statsStmt = db.prepare(`
-        SELECT
-          COUNT(*) as count,
-          SUM(size) as totalSize,
-          MIN(timestamp) as oldestTimestamp,
-          MAX(timestamp) as newestTimestamp
-        FROM backup_history
-      `);
+        const statsStmt = db.prepare(`
+          SELECT
+            COUNT(*) as count,
+            SUM(fileSize) as totalSize,
+            MIN(timestamp) as oldestTimestamp,
+            MAX(timestamp) as newestTimestamp
+          FROM backup_history
+        `);
 
-      const stats = statsStmt.get() as any;
+        const stats = statsStmt.get() as any;
 
-      return {
-        count: stats.count || 0,
-        totalSize: stats.totalSize || 0,
-        oldestBackup: stats.oldestTimestamp ? new Date(stats.oldestTimestamp).toISOString() : null,
-        newestBackup: stats.newestTimestamp ? new Date(stats.newestTimestamp).toISOString() : null
-      };
+        return {
+          count: stats.count || 0,
+          totalSize: stats.totalSize || 0,
+          oldestBackup: stats.oldestTimestamp ? new Date(stats.oldestTimestamp).toISOString() : null,
+          newestBackup: stats.newestTimestamp ? new Date(stats.newestTimestamp).toISOString() : null
+        };
+      }
     } catch (error) {
       logger.error('❌ Failed to get backup stats:', error);
       return { count: 0, totalSize: 0, oldestBackup: null, newestBackup: null };
