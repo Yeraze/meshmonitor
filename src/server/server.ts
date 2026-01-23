@@ -3150,6 +3150,63 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
   }
 });
 
+// Get smart hops statistics (min/max/avg hop counts over time) for a node
+apiRouter.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req, res) => {
+  try {
+    // Allow users with info read OR dashboard read
+    if (
+      !req.user?.isAdmin &&
+      !await hasPermission(req.user!, 'info', 'read') &&
+      !await hasPermission(req.user!, 'dashboard', 'read')
+    ) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { nodeId } = req.params;
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    const intervalParam = req.query.interval ? parseInt(req.query.interval as string) : 15;
+
+    // Calculate cutoff timestamp for filtering
+    const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
+
+    // Get smart hops statistics
+    const stats = await databaseService.getSmartHopsStatsAsync(nodeId, cutoffTime, intervalParam);
+
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    logger.error('Error fetching smart hops stats:', error);
+    res.status(500).json({ error: 'Failed to fetch smart hops statistics' });
+  }
+});
+
+// Get link quality history for a node
+apiRouter.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req, res) => {
+  try {
+    // Allow users with info read OR dashboard read
+    if (
+      !req.user?.isAdmin &&
+      !await hasPermission(req.user!, 'info', 'read') &&
+      !await hasPermission(req.user!, 'dashboard', 'read')
+    ) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { nodeId } = req.params;
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+
+    // Calculate cutoff timestamp for filtering
+    const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
+
+    // Get link quality history
+    const history = await databaseService.getLinkQualityHistoryAsync(nodeId, cutoffTime);
+
+    res.json({ success: true, data: history });
+  } catch (error) {
+    logger.error('Error fetching link quality history:', error);
+    res.status(500).json({ error: 'Failed to fetch link quality history' });
+  }
+});
+
 // Delete telemetry data for a specific node and type
 apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), (req, res) => {
   try {
