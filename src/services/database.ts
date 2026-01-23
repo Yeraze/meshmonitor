@@ -59,7 +59,7 @@ import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, ru
 import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
 import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
 import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_add_remote_admin_columns.js';
-import { migration as backupHistoryColumnsMigration } from '../server/migrations/056_fix_backup_history_columns.js';
+import { migration as backupHistoryColumnsMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_fix_backup_history_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -9078,6 +9078,10 @@ class DatabaseService {
 
     const client = await pool.connect();
     try {
+      // Run migration 056 FIRST to fix backup_history table schema
+      // This must run before POSTGRES_SCHEMA_SQL which creates indexes on columns that may not exist
+      await runMigration056Postgres(client);
+
       // Execute the canonical schema SQL - all statements are idempotent
       // (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
       await client.query(POSTGRES_SCHEMA_SQL);
@@ -9131,6 +9135,10 @@ class DatabaseService {
    */
   private async createMySQLSchema(pool: MySQLPool): Promise<void> {
     logger.info('[MySQL] Ensuring database schema is up to date...');
+
+    // Run migration 056 FIRST to fix backup_history table schema
+    // This must run before MYSQL_SCHEMA_SQL which creates indexes on columns that may not exist
+    await runMigration056Mysql(pool);
 
     const connection = await pool.getConnection();
     try {
