@@ -196,3 +196,160 @@ export const migration = {
     }
   }
 };
+
+/**
+ * PostgreSQL migration: Fix backup_history table schema
+ * Must run BEFORE the main schema SQL to avoid index creation failures
+ */
+export async function runMigration056Postgres(client: import('pg').PoolClient): Promise<void> {
+  logger.debug('Running migration 056 (PostgreSQL): Fix backup_history schema');
+
+  try {
+    // Check if table exists
+    const tableExists = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'backup_history'
+      )
+    `);
+
+    if (!tableExists.rows[0].exists) {
+      logger.debug('backup_history table does not exist, will be created by schema');
+      return;
+    }
+
+    // Check if timestamp column exists
+    const hasTimestamp = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'backup_history'
+          AND column_name = 'timestamp'
+      )
+    `);
+
+    if (hasTimestamp.rows[0].exists) {
+      // Check if we have the new column names (filePath instead of filepath)
+      const hasNewFilePath = await client.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'backup_history'
+            AND column_name = 'filePath'
+        )
+      `);
+
+      if (hasNewFilePath.rows[0].exists) {
+        logger.debug('backup_history schema is already correct, skipping');
+        return;
+      }
+    }
+
+    // Table exists but has wrong schema - drop and let the main schema SQL recreate it
+    logger.debug('Recreating backup_history table with correct schema...');
+    await client.query('DROP TABLE IF EXISTS backup_history CASCADE');
+
+    // Create with correct schema
+    await client.query(`
+      CREATE TABLE backup_history (
+        id SERIAL PRIMARY KEY,
+        "nodeId" TEXT,
+        "nodeNum" BIGINT,
+        filename TEXT NOT NULL,
+        "filePath" TEXT NOT NULL,
+        "fileSize" BIGINT,
+        "backupType" TEXT NOT NULL,
+        timestamp BIGINT NOT NULL,
+        "createdAt" BIGINT NOT NULL
+      )
+    `);
+
+    // Create index
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC)
+    `);
+
+    logger.debug('✅ Migration 056 (PostgreSQL): backup_history table recreated with correct schema');
+  } catch (error) {
+    logger.error('Migration 056 (PostgreSQL) failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * MySQL migration: Fix backup_history table schema
+ * Must run BEFORE the main schema SQL to avoid index creation failures
+ */
+export async function runMigration056Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  logger.debug('Running migration 056 (MySQL): Fix backup_history schema');
+
+  try {
+    const connection = await pool.getConnection();
+    try {
+      // Check if table exists
+      const [tables] = await connection.query(`
+        SELECT TABLE_NAME FROM information_schema.tables
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'backup_history'
+      `);
+
+      if ((tables as any[]).length === 0) {
+        logger.debug('backup_history table does not exist, will be created by schema');
+        return;
+      }
+
+      // Check if timestamp column exists
+      const [timestampCol] = await connection.query(`
+        SELECT COLUMN_NAME FROM information_schema.columns
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'backup_history'
+          AND COLUMN_NAME = 'timestamp'
+      `);
+
+      if ((timestampCol as any[]).length > 0) {
+        // Check if we have the new column names
+        const [filePathCol] = await connection.query(`
+          SELECT COLUMN_NAME FROM information_schema.columns
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'backup_history'
+            AND COLUMN_NAME = 'filePath'
+        `);
+
+        if ((filePathCol as any[]).length > 0) {
+          logger.debug('backup_history schema is already correct, skipping');
+          return;
+        }
+      }
+
+      // Table exists but has wrong schema - drop and recreate
+      logger.debug('Recreating backup_history table with correct schema...');
+      await connection.query('DROP TABLE IF EXISTS backup_history');
+
+      // Create with correct schema
+      await connection.query(`
+        CREATE TABLE backup_history (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          nodeId VARCHAR(32),
+          nodeNum BIGINT,
+          filename VARCHAR(255) NOT NULL,
+          filePath VARCHAR(512) NOT NULL,
+          fileSize BIGINT,
+          backupType VARCHAR(32) NOT NULL,
+          timestamp BIGINT NOT NULL,
+          createdAt BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      // Create index
+      await connection.query(`
+        CREATE INDEX idx_backup_history_timestamp ON backup_history(timestamp DESC)
+      `);
+
+      logger.debug('✅ Migration 056 (MySQL): backup_history table recreated with correct schema');
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    logger.error('Migration 056 (MySQL) failed:', error);
+    throw error;
+  }
+}
