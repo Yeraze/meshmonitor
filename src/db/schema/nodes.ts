@@ -55,6 +55,10 @@ export const nodesSqlite = sqliteTable('nodes', {
   longitudeOverride: real('longitudeOverride'),
   altitudeOverride: real('altitudeOverride'),
   positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
+  // Remote admin discovery
+  hasRemoteAdmin: integer('hasRemoteAdmin', { mode: 'boolean' }).default(false),
+  lastRemoteAdminCheck: integer('lastRemoteAdminCheck'),
+  remoteAdminMetadata: text('remoteAdminMetadata'),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -109,6 +113,10 @@ export const nodesPostgres = pgTable('nodes', {
   longitudeOverride: pgReal('longitudeOverride'),
   altitudeOverride: pgReal('altitudeOverride'),
   positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
+  // Remote admin discovery
+  hasRemoteAdmin: pgBoolean('hasRemoteAdmin').default(false),
+  lastRemoteAdminCheck: pgBigint('lastRemoteAdminCheck', { mode: 'number' }),
+  remoteAdminMetadata: pgText('remoteAdminMetadata'),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -163,6 +171,10 @@ export const nodesMysql = mysqlTable('nodes', {
   longitudeOverride: myDouble('longitudeOverride'),
   altitudeOverride: myDouble('altitudeOverride'),
   positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
+  // Remote admin discovery
+  hasRemoteAdmin: myBoolean('hasRemoteAdmin').default(false),
+  lastRemoteAdminCheck: myBigint('lastRemoteAdminCheck', { mode: 'number' }),
+  remoteAdminMetadata: myVarchar('remoteAdminMetadata', { length: 4096 }),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

@@ -46,6 +46,10 @@ export interface DeviceInfo {
   altitudeOverride?: number;
   positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
+  // Remote admin discovery
+  hasRemoteAdmin?: boolean;
+  lastRemoteAdminCheck?: number;
+  remoteAdminMetadata?: string;
 }
 
 export interface Channel {
@@ -136,4 +140,8 @@ export interface DbNode extends Partial<DeviceInfo> {
   longitudeOverride?: number;
   altitudeOverride?: number;
   positionOverrideIsPrivate?: boolean;
+  // Remote admin discovery
+  hasRemoteAdmin?: boolean;
+  lastRemoteAdminCheck?: number;
+  remoteAdminMetadata?: string;
 }
