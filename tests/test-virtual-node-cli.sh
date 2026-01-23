@@ -100,10 +100,54 @@ echo ""
 # Wait for server to be listening and Virtual Node Server to start
 echo "Test 2: Wait for Meshtastic node connection and Virtual Node Server startup"
 echo "Waiting up to 90 seconds for Virtual Node Server to be ready..."
+
+# First wait for server to be up with health check
 set +e  # Temporarily disable exit on error for readiness check
+echo "  Waiting for server health check..."
+for i in {1..30}; do
+    HEALTH=$(curl -s http://localhost:8086/api/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
+    if [ "$HEALTH" = "ok" ]; then
+        echo "  Server health check passed"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e "${RED}✗ FAIL${NC}: Server health check failed after 30 seconds"
+        exit 1
+    fi
+    sleep 1
+done
+
+# Authenticate as admin to get session cookie (required for channel permission filtering)
+echo "  Authenticating as admin..."
+COOKIE_JAR="/tmp/meshmonitor-cookies.txt"
+
+# First get CSRF token
+CSRF_RESPONSE=$(curl -s -c "$COOKIE_JAR" http://localhost:8086/api/csrf-token 2>/dev/null)
+CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | jq -r '.csrfToken // empty' 2>/dev/null)
+if [ -z "$CSRF_TOKEN" ]; then
+    echo "  Failed to get CSRF token, response: $CSRF_RESPONSE"
+    echo -e "${RED}✗ FAIL${NC}: Could not get CSRF token"
+    exit 1
+fi
+echo "  Got CSRF token"
+
+# Now login with CSRF token
+LOGIN_RESPONSE=$(curl -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST http://localhost:8086/api/auth/login \
+    -H "Content-Type: application/json" \
+    -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d '{"username":"admin","password":"changeme"}' 2>/dev/null)
+LOGIN_SUCCESS=$(echo "$LOGIN_RESPONSE" | jq -r '.user.username // empty' 2>/dev/null)
+if [ "$LOGIN_SUCCESS" != "admin" ]; then
+    echo "  Login failed, response: $LOGIN_RESPONSE"
+    echo -e "${RED}✗ FAIL${NC}: Could not authenticate as admin"
+    exit 1
+fi
+echo "  Authenticated as admin"
+
+# Now wait for nodes with authenticated session
 for i in {1..90}; do
     # Check that we have nodes synced (indicating server connected to Meshtastic node)
-    POLL_RESPONSE=$(curl -s http://localhost:8086/api/poll 2>/dev/null)
+    POLL_RESPONSE=$(curl -s -b "$COOKIE_JAR" http://localhost:8086/api/poll 2>/dev/null)
     NODE_COUNT=$(echo "$POLL_RESPONSE" | jq -r '.nodes | length' 2>/dev/null || echo "0")
 
     # Check if environment variable is set correctly
