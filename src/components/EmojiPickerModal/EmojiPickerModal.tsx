@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshMessage } from '../../types/message';
 import './EmojiPickerModal.css';
@@ -69,11 +69,39 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
   customEmojis,
 }) => {
   const { t } = useTranslation();
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customEmoji, setCustomEmoji] = useState('');
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when custom input is shown
+  useEffect(() => {
+    if (showCustomInput && customInputRef.current) {
+      customInputRef.current.focus();
+    }
+  }, [showCustomInput]);
 
   if (!message) return null;
 
   // Use custom emojis if provided, otherwise use defaults
   const emojis = customEmojis && customEmojis.length > 0 ? customEmojis : DEFAULT_TAPBACK_EMOJIS;
+
+  const handleCustomSubmit = () => {
+    const trimmed = customEmoji.trim();
+    if (trimmed) {
+      onSelectEmoji(trimmed, message);
+      onClose();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCustomSubmit();
+    } else if (e.key === 'Escape') {
+      setShowCustomInput(false);
+      setCustomEmoji('');
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -98,7 +126,36 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
               {emoji}
             </button>
           ))}
+          {/* Custom emoji button */}
+          <button
+            className="emoji-picker-item emoji-picker-custom-btn"
+            onClick={() => setShowCustomInput(!showCustomInput)}
+            title={t('emoji_picker.custom', 'Custom emoji')}
+          >
+            ✏️
+          </button>
         </div>
+        {/* Custom emoji input section */}
+        {showCustomInput && (
+          <div className="emoji-picker-custom-input">
+            <input
+              ref={customInputRef}
+              type="text"
+              value={customEmoji}
+              onChange={e => setCustomEmoji(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={t('emoji_picker.custom_placeholder', 'Type or paste emoji...')}
+              maxLength={10}
+            />
+            <button
+              onClick={handleCustomSubmit}
+              disabled={!customEmoji.trim()}
+              title={t('emoji_picker.send_custom', 'Send')}
+            >
+              {t('common.send', 'Send')}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
