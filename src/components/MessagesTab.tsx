@@ -1141,8 +1141,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 </button>
                               </div>
                             )}
-                            <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
-                              {renderMessageWithLinks(msg.text)}
+                            <div className="message-text-row">
+                              <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
+                                {renderMessageWithLinks(msg.text)}
+                              </div>
+                              <div className="message-meta">
+                                <span className="message-time">
+                                  {formatMessageTime(currentDate, timeFormat, dateFormat)}
+                                  <HopCountDisplay
+                                    hopStart={msg.hopStart}
+                                    hopLimit={msg.hopLimit}
+                                    rxSnr={msg.rxSnr}
+                                    rxRssi={msg.rxRssi}
+                                    relayNode={msg.relayNode}
+                                    viaMqtt={msg.viaMqtt}
+                                    onClick={() => handleRelayClick(msg)}
+                                  />
+                                </span>
+                              </div>
                             </div>
                             <LinkPreview text={msg.text} />
                             {reactions.length > 0 && (
@@ -1159,20 +1175,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 ))}
                               </div>
                             )}
-                            <div className="message-meta">
-                              <span className="message-time">
-                                {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                <HopCountDisplay
-                                  hopStart={msg.hopStart}
-                                  hopLimit={msg.hopLimit}
-                                  rxSnr={msg.rxSnr}
-                                  rxRssi={msg.rxRssi}
-                                  relayNode={msg.relayNode}
-                                  viaMqtt={msg.viaMqtt}
-                                  onClick={() => handleRelayClick(msg)}
-                                />
-                              </span>
-                            </div>
                           </div>
                         </div>
                         {isMine && <div className="message-status"><MessageStatusIndicator message={msg} /></div>}
