@@ -40,6 +40,33 @@ export interface ProcessingContext {
 // Re-export for consumers who import from meshtasticManager
 export { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
+/**
+ * Link Quality scoring constants.
+ * Link Quality is a 0-10 score tracking the reliability of message routing to a node.
+ */
+export const LINK_QUALITY = {
+  /** Maximum quality score */
+  MAX: 10,
+  /** Minimum quality score (0 = dead link) */
+  MIN: 0,
+  /** Base value for initial calculation (LQ = BASE - hops) */
+  INITIAL_BASE: 8,
+  /** Default quality when hop count is unknown */
+  DEFAULT_QUALITY: 5,
+  /** Default hop count when unknown */
+  DEFAULT_HOPS: 3,
+  /** Bonus for stable/improved message delivery */
+  STABLE_MESSAGE_BONUS: 1,
+  /** Penalty for degraded routing (hops increased by 2+) */
+  DEGRADED_PATH_PENALTY: -1,
+  /** Penalty for failed traceroute */
+  TRACEROUTE_FAIL_PENALTY: -2,
+  /** Penalty for PKI/encryption error */
+  PKI_ERROR_PENALTY: -5,
+  /** Traceroute timeout in milliseconds (5 minutes) */
+  TRACEROUTE_TIMEOUT_MS: 5 * 60 * 1000,
+} as const;
+
 export interface DeviceInfo {
   nodeNum: number;
   user?: {
@@ -173,6 +200,8 @@ class MeshtasticManager {
   private announceCronJob: cron.ScheduledTask | null = null;
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
   private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
+  private pendingTracerouteTimestamps: Map<number, number> = new Map(); // Track when traceroutes were initiated for timeout detection
+  private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
   private remoteAdminScannerIntervalMinutes: number = 0; // 0 = disabled
   private pendingRemoteAdminScans: Set<number> = new Set(); // Track nodes being scanned
@@ -676,8 +705,12 @@ class MeshtasticManager {
             // Log the auto-traceroute attempt to database
             await databaseService.logAutoTracerouteAttemptAsync(targetNode.nodeNum, targetName);
             this.pendingAutoTraceroutes.add(targetNode.nodeNum);
+            this.pendingTracerouteTimestamps.set(targetNode.nodeNum, Date.now());
 
             await this.sendTraceroute(targetNode.nodeNum, channel);
+
+            // Check for timed-out traceroutes (> 5 minutes old)
+            this.checkTracerouteTimeouts();
           } else {
             logger.info('🗺️ Auto-traceroute: No nodes available for traceroute');
           }
@@ -2443,6 +2476,20 @@ class MeshtasticManager {
           hopStart >= hopLimit) {
         const messageHops = hopStart - hopLimit;
         databaseService.updateNodeMessageHops(fromNum, messageHops);
+
+        // Store hop count as telemetry for Smart Hops tracking
+        databaseService.insertTelemetry({
+          nodeId: nodeId,
+          nodeNum: fromNum,
+          telemetryType: 'messageHops',
+          timestamp: Date.now(),
+          value: messageHops,
+          unit: 'hops',
+          createdAt: Date.now(),
+        });
+
+        // Update Link Quality based on hop count comparison
+        this.updateLinkQualityForMessage(fromNum, messageHops);
       }
     }
 
@@ -3625,6 +3672,19 @@ class MeshtasticManager {
 
       databaseService.insertTraceroute(tracerouteRecord);
 
+      // Store traceroute hop count as telemetry for Smart Hops tracking
+      // Hop count is route.length + 1 (intermediate hops + final hop to destination)
+      const tracerouteHops = route.length + 1;
+      databaseService.insertTelemetry({
+        nodeId: fromNodeId,
+        nodeNum: fromNum,
+        telemetryType: 'messageHops',
+        timestamp: Date.now(),
+        value: tracerouteHops,
+        unit: 'hops',
+        createdAt: Date.now(),
+      });
+
       // Emit WebSocket event for traceroute completion
       dataEventEmitter.emitTracerouteComplete(tracerouteRecord as any);
 
@@ -3634,6 +3694,7 @@ class MeshtasticManager {
       if (this.pendingAutoTraceroutes.has(fromNum)) {
         await databaseService.updateAutoTracerouteResultByNodeAsync(fromNum, true);
         this.pendingAutoTraceroutes.delete(fromNum);
+        this.pendingTracerouteTimestamps.delete(fromNum); // Clear timeout tracking
         logger.debug(`🗺️ Auto-traceroute to ${fromNodeId} marked as successful`);
       }
 
@@ -3807,6 +3868,9 @@ class MeshtasticManager {
 
           // Emit event to notify UI of the key issue
           dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+
+          // Penalize Link Quality for PKI error (-5)
+          this.handlePkiError(targetNodeNum);
         }
       }
 
@@ -9346,6 +9410,143 @@ class MeshtasticManager {
    */
   isUserDisconnected(): boolean {
     return this.userDisconnectedState;
+  }
+
+  // ============================================================
+  // Link Quality Management
+  // ============================================================
+
+  /**
+   * Get or initialize link quality for a node.
+   * Initial LQ = 8 - hops (clamped to 1-7 based on initial hop count)
+   * Range: 0 (dead) to 10 (excellent)
+   */
+  private getNodeLinkQuality(nodeNum: number, currentHops: number): { quality: number; lastHops: number } {
+    let lqData = this.nodeLinkQuality.get(nodeNum);
+
+    if (!lqData) {
+      // Initialize: LQ = INITIAL_BASE - hops (so 1-hop = 7, 7-hop = 1)
+      const initialQuality = Math.max(1, Math.min(LINK_QUALITY.INITIAL_BASE - 1, LINK_QUALITY.INITIAL_BASE - currentHops));
+      lqData = { quality: initialQuality, lastHops: currentHops };
+      this.nodeLinkQuality.set(nodeNum, lqData);
+
+      // Store initial LQ as telemetry
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      this.storeLinkQualityTelemetry(nodeNum, nodeId, initialQuality);
+
+      logger.debug(`📊 Link Quality initialized for ${nodeId}: ${initialQuality} (${currentHops} hops)`);
+    }
+
+    return lqData;
+  }
+
+  /**
+   * Update link quality for a node based on an event.
+   * Clamps result to MIN-MAX range (0-10).
+   */
+  private updateLinkQuality(nodeNum: number, adjustment: number, reason: string): void {
+    const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+    let lqData = this.nodeLinkQuality.get(nodeNum);
+
+    if (!lqData) {
+      // Initialize with default if not exists
+      lqData = { quality: LINK_QUALITY.DEFAULT_QUALITY, lastHops: LINK_QUALITY.DEFAULT_HOPS };
+      this.nodeLinkQuality.set(nodeNum, lqData);
+    }
+
+    const oldQuality = lqData.quality;
+    lqData.quality = Math.max(LINK_QUALITY.MIN, Math.min(LINK_QUALITY.MAX, lqData.quality + adjustment));
+
+    if (lqData.quality !== oldQuality) {
+      this.nodeLinkQuality.set(nodeNum, lqData);
+      this.storeLinkQualityTelemetry(nodeNum, nodeId, lqData.quality);
+      logger.debug(`📊 Link Quality for ${nodeId}: ${oldQuality} -> ${lqData.quality} (${adjustment >= 0 ? '+' : ''}${adjustment}, ${reason})`);
+    }
+  }
+
+  /**
+   * Update link quality based on message hop count comparison.
+   * - If hops <= previous: STABLE_MESSAGE_BONUS (+1)
+   * - If hops = previous + 1: no change
+   * - If hops >= previous + 2: DEGRADED_PATH_PENALTY (-1)
+   */
+  private updateLinkQualityForMessage(nodeNum: number, currentHops: number): void {
+    const lqData = this.getNodeLinkQuality(nodeNum, currentHops);
+    const hopDiff = currentHops - lqData.lastHops;
+
+    // Update lastHops for next comparison
+    lqData.lastHops = currentHops;
+    this.nodeLinkQuality.set(nodeNum, lqData);
+
+    if (hopDiff <= 0) {
+      // Stable or improved
+      this.updateLinkQuality(nodeNum, LINK_QUALITY.STABLE_MESSAGE_BONUS, `stable message (${currentHops} hops)`);
+    } else if (hopDiff === 1) {
+      // Increased by 1 - no change
+      logger.debug(`📊 Link Quality unchanged for node ${nodeNum.toString(16)}: hops increased by 1`);
+    } else {
+      // Increased by 2 or more
+      this.updateLinkQuality(nodeNum, LINK_QUALITY.DEGRADED_PATH_PENALTY, `degraded path (+${hopDiff} hops)`);
+    }
+  }
+
+  /**
+   * Store link quality as telemetry for graphing.
+   */
+  private storeLinkQualityTelemetry(nodeNum: number, nodeId: string, quality: number): void {
+    databaseService.insertTelemetry({
+      nodeId: nodeId,
+      nodeNum: nodeNum,
+      telemetryType: 'linkQuality',
+      timestamp: Date.now(),
+      value: quality,
+      unit: 'quality',
+      createdAt: Date.now(),
+    });
+  }
+
+  /**
+   * Handle failed traceroute - penalize link quality.
+   * Penalty: TRACEROUTE_FAIL_PENALTY (-2)
+   */
+  private handleTracerouteFailure(nodeNum: number): void {
+    this.updateLinkQuality(nodeNum, LINK_QUALITY.TRACEROUTE_FAIL_PENALTY, 'failed traceroute');
+  }
+
+  /**
+   * Handle PKI error - penalize link quality.
+   * Penalty: PKI_ERROR_PENALTY (-5)
+   */
+  private handlePkiError(nodeNum: number): void {
+    this.updateLinkQuality(nodeNum, LINK_QUALITY.PKI_ERROR_PENALTY, 'PKI error');
+  }
+
+  /**
+   * Check for timed-out traceroutes and penalize link quality.
+   * Timeout: TRACEROUTE_TIMEOUT_MS (5 minutes)
+   * Called periodically from the traceroute scheduler.
+   */
+  private checkTracerouteTimeouts(): void {
+    const now = Date.now();
+
+    for (const [nodeNum, timestamp] of this.pendingTracerouteTimestamps.entries()) {
+      if (now - timestamp > LINK_QUALITY.TRACEROUTE_TIMEOUT_MS) {
+        // Traceroute timed out
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.debug(`🗺️ Auto-traceroute to ${nodeId} timed out after 5 minutes`);
+
+        // Mark as failed in database
+        databaseService.updateAutoTracerouteResultByNodeAsync(nodeNum, false)
+          .catch(err => logger.error('Failed to update auto-traceroute result:', err));
+
+        // Clean up tracking
+        this.pendingAutoTraceroutes.delete(nodeNum);
+        this.pendingTracerouteTimestamps.delete(nodeNum);
+
+        // Penalize link quality for failed traceroute (-2)
+        this.handleTracerouteFailure(nodeNum);
+      }
+    }
   }
 }
 

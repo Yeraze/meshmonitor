@@ -31,6 +31,8 @@ import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
 import TelemetryGraphs from './TelemetryGraphs';
+import SmartHopsGraphs from './SmartHopsGraphs';
+import LinkQualityGraph from './LinkQualityGraph';
 import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
@@ -1560,6 +1562,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               <TelemetryGraphs
                 nodeId={selectedDMNode}
                 temperatureUnit={temperatureUnit}
+                telemetryHours={telemetryVisualizationHours}
+                baseUrl={baseUrl}
+              />
+              <SmartHopsGraphs
+                nodeId={selectedDMNode}
+                telemetryHours={telemetryVisualizationHours}
+                baseUrl={baseUrl}
+              />
+              <LinkQualityGraph
+                nodeId={selectedDMNode}
                 telemetryHours={telemetryVisualizationHours}
                 baseUrl={baseUrl}
               />

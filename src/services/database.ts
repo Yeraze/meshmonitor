@@ -4403,6 +4403,44 @@ class DatabaseService {
   }
 
   /**
+   * Get smart hops statistics for a node.
+   * Returns min/max/avg hop counts aggregated into time buckets.
+   *
+   * @param nodeId - Node ID to get statistics for (e.g., '!abcd1234')
+   * @param sinceTimestamp - Only include telemetry after this timestamp
+   * @param intervalMinutes - Time bucket interval in minutes (default: 15)
+   * @returns Array of time-bucketed hop statistics
+   */
+  async getSmartHopsStatsAsync(
+    nodeId: string,
+    sinceTimestamp: number,
+    intervalMinutes: number = 15
+  ): Promise<Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }>> {
+    if (!this.telemetryRepo) {
+      return [];
+    }
+    return this.telemetryRepo.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes);
+  }
+
+  /**
+   * Get link quality history for a node.
+   * Returns link quality values over time for graphing.
+   *
+   * @param nodeId - Node ID to get history for (e.g., '!abcd1234')
+   * @param sinceTimestamp - Only include telemetry after this timestamp
+   * @returns Array of { timestamp, quality } records
+   */
+  async getLinkQualityHistoryAsync(
+    nodeId: string,
+    sinceTimestamp: number
+  ): Promise<Array<{ timestamp: number; quality: number }>> {
+    if (!this.telemetryRepo) {
+      return [];
+    }
+    return this.telemetryRepo.getLinkQualityHistory(nodeId, sinceTimestamp);
+  }
+
+  /**
    * Get all traceroutes for position recalculation.
    * Returns traceroutes with route data, ordered by timestamp for chronological processing.
    */
