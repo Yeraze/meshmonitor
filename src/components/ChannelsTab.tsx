@@ -615,6 +615,9 @@ export default function ChannelsTab({
                                   </div>
                                 )}
                                 <div className="message-content">
+                                  {!isMine && (
+                                    <div className="sender-name">{getNodeName(msg.from)}</div>
+                                  )}
                                   {msg.replyId && !isReaction && (
                                     <div className="replied-message">
                                       <div className="reply-arrow">↳</div>
@@ -677,8 +680,24 @@ export default function ChannelsTab({
                                         </button>
                                       </div>
                                     )}
-                                    <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
-                                      {renderMessageWithLinks(msg.text)}
+                                    <div className="message-text-row">
+                                      <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
+                                        {renderMessageWithLinks(msg.text)}
+                                      </div>
+                                      <div className="message-meta">
+                                        <span className="message-time">
+                                          {formatMessageTime(currentDate, timeFormat, dateFormat)}
+                                          <HopCountDisplay
+                                            hopStart={msg.hopStart}
+                                            hopLimit={msg.hopLimit}
+                                            rxSnr={msg.rxSnr}
+                                            rxRssi={msg.rxRssi}
+                                            relayNode={msg.relayNode}
+                                            viaMqtt={msg.viaMqtt}
+                                            onClick={() => handleRelayClick(msg)}
+                                          />
+                                        </span>
+                                      </div>
                                     </div>
                                     <LinkPreview text={msg.text} />
                                     {reactions.length > 0 && (
@@ -695,20 +714,6 @@ export default function ChannelsTab({
                                         ))}
                                       </div>
                                     )}
-                                    <div className="message-meta">
-                                      <span className="message-time">
-                                        {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                        <HopCountDisplay
-                                          hopStart={msg.hopStart}
-                                          hopLimit={msg.hopLimit}
-                                          rxSnr={msg.rxSnr}
-                                          rxRssi={msg.rxRssi}
-                                          relayNode={msg.relayNode}
-                                          viaMqtt={msg.viaMqtt}
-                                          onClick={() => handleRelayClick(msg)}
-                                        />
-                                      </span>
-                                    </div>
                                   </div>
                                 </div>
                                 {isMine && <div className="message-status"><MessageStatusIndicator message={msg} /></div>}

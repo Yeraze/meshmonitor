@@ -803,4 +803,107 @@ export class TelemetryRepository extends BaseRepository {
 
     return map;
   }
+
+  /**
+   * Get smart hops statistics for a node using rolling 24-hour window
+   * Each data point shows min/max/avg of all hops from the previous 24 hours
+   *
+   * @param nodeId - Node ID to get statistics for
+   * @param sinceTimestamp - Start generating output points from this timestamp
+   * @param intervalMinutes - Interval between output points in minutes (default: 15)
+   * @returns Array of rolling 24-hour hop statistics at regular intervals
+   */
+  async getSmartHopsStats(
+    nodeId: string,
+    sinceTimestamp: number,
+    intervalMinutes: number = 15
+  ): Promise<Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }>> {
+    // For rolling 24-hour window, we need data from 24 hours before the sinceTimestamp
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    const extendedSinceTimestamp = sinceTimestamp - twentyFourHours;
+
+    // Fetch all messageHops telemetry for this node (extended window for rolling calculation)
+    const telemetry = await this.getTelemetryByNode(
+      nodeId,
+      50000, // High limit to get all data in the extended time window
+      extendedSinceTimestamp,
+      undefined,
+      0,
+      'messageHops'
+    );
+
+    if (telemetry.length === 0) {
+      return [];
+    }
+
+    // Sort by timestamp ascending
+    telemetry.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Generate output points at regular intervals from sinceTimestamp to now
+    const intervalMs = intervalMinutes * 60 * 1000;
+    const now = Date.now();
+    const results: Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }> = [];
+
+    // Start from the first interval boundary after sinceTimestamp
+    let currentTime = Math.ceil(sinceTimestamp / intervalMs) * intervalMs;
+
+    while (currentTime <= now) {
+      // Calculate rolling 24-hour window: [currentTime - 24h, currentTime]
+      const windowStart = currentTime - twentyFourHours;
+      const windowEnd = currentTime;
+
+      // Get all data points within this 24-hour window
+      const windowData = telemetry.filter(
+        (t) => t.timestamp >= windowStart && t.timestamp <= windowEnd
+      );
+
+      if (windowData.length > 0) {
+        const values = windowData.map((t) => t.value);
+        const minHops = Math.min(...values);
+        const maxHops = Math.max(...values);
+        const avgHops = Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 100) / 100;
+
+        results.push({ timestamp: currentTime, minHops, maxHops, avgHops });
+      }
+
+      currentTime += intervalMs;
+    }
+
+    return results;
+  }
+
+  /**
+   * Get link quality history for a node
+   * Returns link quality values over time for graphing
+   *
+   * @param nodeId - Node ID to get statistics for
+   * @param sinceTimestamp - Only include telemetry after this timestamp
+   * @returns Array of { timestamp, quality } records
+   */
+  async getLinkQualityHistory(
+    nodeId: string,
+    sinceTimestamp: number
+  ): Promise<Array<{ timestamp: number; quality: number }>> {
+    // Fetch all linkQuality telemetry for this node since cutoff
+    const telemetry = await this.getTelemetryByNode(
+      nodeId,
+      10000, // High limit to get all data in the time window
+      sinceTimestamp,
+      undefined,
+      0,
+      'linkQuality'
+    );
+
+    if (telemetry.length === 0) {
+      return [];
+    }
+
+    // Sort by timestamp ascending and map to simpler format
+    return telemetry
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(record => ({
+        timestamp: record.timestamp,
+        quality: record.value,
+      }));
+  }
 }
