@@ -380,6 +380,18 @@ setTimeout(async () => {
     });
     logger.debug('✅ Loaded auto key repair settings');
 
+    // Load remote admin scanner interval
+    const remoteAdminScannerInterval = databaseService.getSetting('remoteAdminScannerIntervalMinutes');
+    if (remoteAdminScannerInterval !== null) {
+      const intervalMinutes = parseInt(remoteAdminScannerInterval);
+      if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
+        meshtasticManager.setRemoteAdminScannerInterval(intervalMinutes);
+        logger.debug(
+          `✅ Loaded saved remote admin scanner interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`
+        );
+      }
+    }
+
     // NOTE: We no longer mark existing nodes as welcomed on startup.
     // This is now handled when autoWelcomeEnabled is first changed to 'true'
     // via the settings endpoint. This prevents welcoming existing nodes when
@@ -1335,6 +1347,56 @@ apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 
     logger.error('Error clearing node position override:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to clear node position override',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Manually scan a node for remote admin capability
+apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const { nodeNum } = req.params;
+    const parsedNodeNum = parseInt(nodeNum, 10);
+
+    if (isNaN(parsedNodeNum)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeNum format',
+        code: 'INVALID_NODE_NUM',
+        details: 'nodeNum must be a valid integer',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    // Check if the node exists
+    const node = databaseService.getNode(parsedNodeNum);
+    if (!node) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Node not found',
+        code: 'NODE_NOT_FOUND',
+        details: `No node found with nodeNum ${parsedNodeNum}`,
+      };
+      res.status(404).json(errorResponse);
+      return;
+    }
+
+    logger.info(`Manual remote admin scan requested for node ${parsedNodeNum}`);
+
+    // Perform the scan
+    const result = await meshtasticManager.scanNodeForRemoteAdmin(parsedNodeNum);
+
+    res.json({
+      success: true,
+      nodeNum: parsedNodeNum,
+      hasRemoteAdmin: result.hasRemoteAdmin,
+      metadata: result.metadata,
+    });
+  } catch (error) {
+    logger.error('Error scanning node for remote admin:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to scan node for remote admin',
       code: 'INTERNAL_ERROR',
       details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
@@ -4470,6 +4532,8 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoKeyManagementIntervalMinutes',
       'autoKeyManagementMaxExchanges',
       'autoKeyManagementAutoPurge',
+      'remoteAdminScannerIntervalMinutes',
+      'remoteAdminScannerExpirationHours',
     ];
     const filteredSettings: Record<string, string> = {};
 
@@ -4699,6 +4763,14 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       const interval = parseInt(filteredSettings.tracerouteIntervalMinutes);
       if (!isNaN(interval) && interval >= 0 && interval <= 60) {
         meshtasticManager.setTracerouteInterval(interval);
+      }
+    }
+
+    // Apply remote admin scanner interval if changed
+    if ('remoteAdminScannerIntervalMinutes' in filteredSettings) {
+      const interval = parseInt(filteredSettings.remoteAdminScannerIntervalMinutes);
+      if (!isNaN(interval) && interval >= 0 && interval <= 60) {
+        meshtasticManager.setRemoteAdminScannerInterval(interval);
       }
     }
 

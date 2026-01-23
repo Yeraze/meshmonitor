@@ -1203,6 +1203,7 @@ export class NodesRepository extends BaseRepository {
       nodeNum: Number(node.nodeNum),
       lastHeard: node.lastHeard != null ? Number(node.lastHeard) : null,
       lastTracerouteRequest: node.lastTracerouteRequest != null ? Number(node.lastTracerouteRequest) : null,
+      lastRemoteAdminCheck: node.lastRemoteAdminCheck != null ? Number(node.lastRemoteAdminCheck) : null,
       latitude: node.latitude != null ? Number(node.latitude) : null,
       longitude: node.longitude != null ? Number(node.longitude) : null,
       altitude: node.altitude != null ? Number(node.altitude) : null,
@@ -1212,5 +1213,136 @@ export class NodesRepository extends BaseRepository {
       role: node.role != null ? Number(node.role) : null,
       hwModel: node.hwModel != null ? Number(node.hwModel) : null,
     };
+  }
+
+  /**
+   * Get a single node that needs remote admin checking
+   * Filters for:
+   * - Not the local node
+   * - Has a public key (required for admin)
+   * - Active (lastHeard recent)
+   * - Not checked recently (lastRemoteAdminCheck null or expired)
+   * Returns the most recently heard node matching these criteria
+   */
+  async getNodeNeedingRemoteAdminCheckAsync(
+    localNodeNum: number,
+    activeNodeCutoffMs: number,
+    expirationMsAgo: number
+  ): Promise<DbNode | null> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const results = await db
+        .select()
+        .from(nodesSqlite)
+        .where(
+          and(
+            ne(nodesSqlite.nodeNum, localNodeNum),
+            isNotNull(nodesSqlite.publicKey),
+            ne(nodesSqlite.publicKey, ''),
+            gt(nodesSqlite.lastHeard, activeNodeCutoffMs),
+            or(
+              isNull(nodesSqlite.lastRemoteAdminCheck),
+              lt(nodesSqlite.lastRemoteAdminCheck, expirationMsAgo)
+            )
+          )
+        )
+        .orderBy(desc(nodesSqlite.lastHeard))
+        .limit(1);
+
+      if (results.length === 0) return null;
+      return this.normalizeNode(results[0] as DbNode);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const results = await db
+        .select()
+        .from(nodesMysql)
+        .where(
+          and(
+            ne(nodesMysql.nodeNum, localNodeNum),
+            isNotNull(nodesMysql.publicKey),
+            ne(nodesMysql.publicKey, ''),
+            gt(nodesMysql.lastHeard, activeNodeCutoffMs),
+            or(
+              isNull(nodesMysql.lastRemoteAdminCheck),
+              lt(nodesMysql.lastRemoteAdminCheck, expirationMsAgo)
+            )
+          )
+        )
+        .orderBy(desc(nodesMysql.lastHeard))
+        .limit(1);
+
+      if (results.length === 0) return null;
+      return this.normalizeNode(results[0] as DbNode);
+    } else {
+      // PostgreSQL
+      const db = this.getPostgresDb();
+      const results = await db
+        .select()
+        .from(nodesPostgres)
+        .where(
+          and(
+            ne(nodesPostgres.nodeNum, localNodeNum),
+            isNotNull(nodesPostgres.publicKey),
+            ne(nodesPostgres.publicKey, ''),
+            gt(nodesPostgres.lastHeard, activeNodeCutoffMs),
+            or(
+              isNull(nodesPostgres.lastRemoteAdminCheck),
+              lt(nodesPostgres.lastRemoteAdminCheck, expirationMsAgo)
+            )
+          )
+        )
+        .orderBy(desc(nodesPostgres.lastHeard))
+        .limit(1);
+
+      if (results.length === 0) return null;
+      return this.normalizeNode(results[0] as DbNode);
+    }
+  }
+
+  /**
+   * Update a node's remote admin status
+   */
+  async updateNodeRemoteAdminStatusAsync(
+    nodeNum: number,
+    hasRemoteAdmin: boolean,
+    metadata: string | null
+  ): Promise<void> {
+    const now = Date.now();
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db
+        .update(nodesSqlite)
+        .set({
+          hasRemoteAdmin: hasRemoteAdmin,
+          lastRemoteAdminCheck: now,
+          remoteAdminMetadata: metadata,
+          updatedAt: now,
+        })
+        .where(eq(nodesSqlite.nodeNum, nodeNum));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .update(nodesMysql)
+        .set({
+          hasRemoteAdmin: hasRemoteAdmin,
+          lastRemoteAdminCheck: now,
+          remoteAdminMetadata: metadata,
+          updatedAt: now,
+        })
+        .where(eq(nodesMysql.nodeNum, nodeNum));
+    } else {
+      // PostgreSQL
+      const db = this.getPostgresDb();
+      await db
+        .update(nodesPostgres)
+        .set({
+          hasRemoteAdmin: hasRemoteAdmin,
+          lastRemoteAdminCheck: now,
+          remoteAdminMetadata: metadata,
+          updatedAt: now,
+        })
+        .where(eq(nodesPostgres.nodeNum, nodeNum));
+    }
   }
 }

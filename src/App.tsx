@@ -26,6 +26,7 @@ import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
 import AutoKeyManagementSection from './components/AutoKeyManagementSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
+import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
@@ -4311,6 +4312,7 @@ function App() {
               items={[
                 { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
                 { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
+                { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },
                 { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
                 { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
                 { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
@@ -4340,6 +4342,11 @@ function App() {
                   intervalMinutes={tracerouteIntervalMinutes}
                   baseUrl={baseUrl}
                   onIntervalChange={setTracerouteIntervalMinutes}
+                />
+              </div>
+              <div id="remote-admin-scanner">
+                <RemoteAdminScannerSection
+                  baseUrl={baseUrl}
                 />
               </div>
               <div id="auto-acknowledge">

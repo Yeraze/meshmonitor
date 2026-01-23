@@ -58,6 +58,7 @@ import { migration as decryptedByMessagesMigration, runMigration051Postgres, run
 import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
 import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
 import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
+import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_add_remote_admin_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -137,6 +138,10 @@ export interface DbNode {
   longitudeOverride?: number; // Override longitude
   altitudeOverride?: number; // Override altitude
   positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
+  // Remote admin discovery (Migration 055)
+  hasRemoteAdmin?: boolean; // Has remote admin access
+  lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
+  remoteAdminMetadata?: string; // JSON string of metadata response
   createdAt: number;
   updatedAt: number;
 }
@@ -785,6 +790,9 @@ class DatabaseService {
             longitudeOverride: node.longitudeOverride ?? undefined,
             altitudeOverride: node.altitudeOverride ?? undefined,
             positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
+            hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
+            lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
+            remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
             createdAt: node.createdAt,
             updatedAt: node.updatedAt,
           };
@@ -886,6 +894,7 @@ class DatabaseService {
     this.runUpgradeHistorySchemaMigration();
     this.runViewOnMapPermissionMigration();
     this.runNewsTablesMigration();
+    this.runRemoteAdminColumnsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1958,6 +1967,26 @@ class DatabaseService {
     }
   }
 
+  private runRemoteAdminColumnsMigration(): void {
+    try {
+      const migrationKey = 'migration_055_remote_admin_columns';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Remote admin columns migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 055: Add remote admin columns...');
+      remoteAdminColumnsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Remote admin columns migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run remote admin columns migration:', error);
+      throw error;
+    }
+  }
+
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
     try {
@@ -2638,6 +2667,10 @@ class DatabaseService {
           longitudeOverride: nodeData.longitudeOverride ?? existingNode?.longitudeOverride,
           altitudeOverride: nodeData.altitudeOverride ?? existingNode?.altitudeOverride,
           positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode?.positionOverrideIsPrivate,
+          // Remote admin discovery - preserve existing values
+          hasRemoteAdmin: existingNode?.hasRemoteAdmin,
+          lastRemoteAdminCheck: existingNode?.lastRemoteAdminCheck,
+          remoteAdminMetadata: existingNode?.remoteAdminMetadata,
           createdAt: existingNode?.createdAt ?? now,
           updatedAt: now,
         };
@@ -5125,6 +5158,67 @@ class DatabaseService {
     } catch (error) {
       logger.error('Error in getNodeNeedingTracerouteAsync:', error);
       return null;
+    }
+  }
+
+  /**
+   * Get a node that needs remote admin checking.
+   * Returns null if no nodes need checking.
+   */
+  async getNodeNeedingRemoteAdminCheckAsync(localNodeNum: number): Promise<DbNode | null> {
+    try {
+      // Get maxNodeAgeHours setting to filter only active nodes
+      // lastHeard is stored in SECONDS (Unix timestamp)
+      const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+      const activeNodeCutoffSeconds = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
+
+      // Get expiration hours (default 168 = 1 week)
+      // lastRemoteAdminCheck is stored in MILLISECONDS
+      const expirationHours = parseInt(this.getSetting('remoteAdminScannerExpirationHours') || '168');
+      const expirationMsAgo = Date.now() - (expirationHours * 60 * 60 * 1000);
+
+      if (this.nodesRepo) {
+        const node = await this.nodesRepo.getNodeNeedingRemoteAdminCheckAsync(
+          localNodeNum,
+          activeNodeCutoffSeconds,
+          expirationMsAgo
+        );
+        return node as DbNode | null;
+      }
+
+      return null;
+    } catch (error) {
+      logger.error('Error in getNodeNeedingRemoteAdminCheckAsync:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Update a node's remote admin status
+   */
+  async updateNodeRemoteAdminStatusAsync(
+    nodeNum: number,
+    hasRemoteAdmin: boolean,
+    metadata: string | null
+  ): Promise<void> {
+    try {
+      if (this.nodesRepo) {
+        await this.nodesRepo.updateNodeRemoteAdminStatusAsync(nodeNum, hasRemoteAdmin, metadata);
+      }
+
+      // Update cache for PostgreSQL/MySQL
+      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+        const existingNode = this.nodesCache.get(nodeNum);
+        if (existingNode) {
+          existingNode.hasRemoteAdmin = hasRemoteAdmin;
+          existingNode.lastRemoteAdminCheck = Date.now();
+          existingNode.remoteAdminMetadata = metadata ?? undefined;
+          existingNode.updatedAt = Date.now();
+          this.nodesCache.set(nodeNum, existingNode);
+        }
+      }
+    } catch (error) {
+      logger.error('Error in updateNodeRemoteAdminStatusAsync:', error);
     }
   }
 
@@ -8987,6 +9081,9 @@ class DatabaseService {
       // Run migration 054: Add news tables
       await runMigration054Postgres(client);
 
+      // Run migration 055: Add remote admin discovery columns
+      await runMigration055Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9059,6 +9156,9 @@ class DatabaseService {
 
       // Run migration 054: Add news tables
       await runMigration054Mysql(pool);
+
+      // Run migration 055: Add remote admin discovery columns
+      await runMigration055Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

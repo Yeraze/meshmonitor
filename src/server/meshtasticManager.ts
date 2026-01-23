@@ -173,6 +173,9 @@ class MeshtasticManager {
   private announceCronJob: cron.ScheduledTask | null = null;
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
   private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
+  private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
+  private remoteAdminScannerIntervalMinutes: number = 0; // 0 = disabled
+  private pendingRemoteAdminScans: Set<number> = new Set(); // Track nodes being scanned
   private keyRepairInterval: NodeJS.Timeout | null = null;
   private keyRepairEnabled: boolean = false;
   private keyRepairIntervalMinutes: number = 5;  // Default 5 minutes
@@ -452,6 +455,9 @@ class MeshtasticManager {
         // Start automatic traceroute scheduler
         this.startTracerouteScheduler();
 
+        // Start remote admin discovery scanner
+        this.startRemoteAdminScanner();
+
         // Start automatic LocalStats collection
         this.startLocalStatsScheduler();
 
@@ -623,6 +629,11 @@ class MeshtasticManager {
       this.tracerouteInterval = null;
     }
 
+    if (this.remoteAdminScannerInterval) {
+      clearInterval(this.remoteAdminScannerInterval);
+      this.remoteAdminScannerInterval = null;
+    }
+
     // Stop LocalStats collection
     this.stopLocalStatsScheduler();
 
@@ -693,6 +704,129 @@ class MeshtasticManager {
 
     if (this.isConnected) {
       this.startTracerouteScheduler();
+    }
+  }
+
+  /**
+   * Set the remote admin scanner interval
+   * @param minutes Interval in minutes (0 = disabled, 1-60)
+   */
+  setRemoteAdminScannerInterval(minutes: number): void {
+    if (minutes < 0 || minutes > 60) {
+      throw new Error('Remote admin scanner interval must be between 0 and 60 minutes (0 = disabled)');
+    }
+    this.remoteAdminScannerIntervalMinutes = minutes;
+
+    if (minutes === 0) {
+      logger.debug('🔑 Remote admin scanner set to 0 (disabled)');
+    } else {
+      logger.debug(`🔑 Remote admin scanner interval updated to ${minutes} minutes`);
+    }
+
+    if (this.isConnected) {
+      this.startRemoteAdminScanner();
+    }
+  }
+
+  /**
+   * Start the remote admin scanner scheduler
+   * Periodically checks nodes for remote admin capability
+   */
+  private startRemoteAdminScanner(): void {
+    if (this.remoteAdminScannerInterval) {
+      clearInterval(this.remoteAdminScannerInterval);
+      this.remoteAdminScannerInterval = null;
+    }
+
+    // Load setting from database if not already set
+    if (this.remoteAdminScannerIntervalMinutes === 0) {
+      const savedInterval = databaseService.getSetting('remoteAdminScannerIntervalMinutes');
+      if (savedInterval) {
+        this.remoteAdminScannerIntervalMinutes = parseInt(savedInterval, 10) || 0;
+      }
+    }
+
+    // If interval is 0, scanner is disabled
+    if (this.remoteAdminScannerIntervalMinutes === 0) {
+      logger.info('🔑 Remote admin scanner is disabled');
+      return;
+    }
+
+    const intervalMs = this.remoteAdminScannerIntervalMinutes * 60 * 1000;
+    logger.info(`🔑 Starting remote admin scanner with ${this.remoteAdminScannerIntervalMinutes} minute interval`);
+
+    this.remoteAdminScannerInterval = setInterval(async () => {
+      if (this.isConnected && this.localNodeInfo) {
+        try {
+          await this.scanNextNodeForRemoteAdmin();
+        } catch (error) {
+          logger.error('❌ Error in remote admin scanner:', error);
+        }
+      } else {
+        logger.debug('🔑 Remote admin scanner: Skipping - not connected or no local node info');
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Scan the next eligible node for remote admin capability
+   */
+  private async scanNextNodeForRemoteAdmin(): Promise<void> {
+    if (!this.localNodeInfo) {
+      logger.debug('🔑 Remote admin scan: No local node info');
+      return;
+    }
+
+    const targetNode = await databaseService.getNodeNeedingRemoteAdminCheckAsync(this.localNodeInfo.nodeNum);
+    if (!targetNode) {
+      logger.info('🔑 Remote admin scan: No nodes available for scanning');
+      return;
+    }
+
+    // Skip if already being scanned
+    if (this.pendingRemoteAdminScans.has(targetNode.nodeNum)) {
+      logger.debug(`🔑 Remote admin scan: Node ${targetNode.nodeNum} already being scanned`);
+      return;
+    }
+
+    const targetName = targetNode.longName || targetNode.nodeId;
+    logger.info(`🔑 Remote admin scan: Checking ${targetName} (${targetNode.nodeId}) for admin capability`);
+
+    await this.scanNodeForRemoteAdmin(targetNode.nodeNum);
+  }
+
+  /**
+   * Scan a specific node for remote admin capability
+   * @param nodeNum The node number to scan
+   * @returns Object with hasRemoteAdmin flag and metadata if successful
+   */
+  async scanNodeForRemoteAdmin(nodeNum: number): Promise<{ hasRemoteAdmin: boolean; metadata: any | null }> {
+    // Track that we're scanning this node
+    this.pendingRemoteAdminScans.add(nodeNum);
+
+    try {
+      // Try to get device metadata via admin
+      const metadata = await this.requestRemoteDeviceMetadata(nodeNum);
+
+      if (metadata) {
+        // Success - node has remote admin capability
+        logger.info(`🔑 Remote admin scan: Node ${nodeNum} has remote admin access`);
+        await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, true, JSON.stringify(metadata));
+        return { hasRemoteAdmin: true, metadata };
+      } else {
+        // Timeout or failure - node doesn't have admin access (or is unreachable)
+        logger.debug(`🔑 Remote admin scan: Node ${nodeNum} does not have remote admin access`);
+        await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null);
+        return { hasRemoteAdmin: false, metadata: null };
+      }
+    } catch (error) {
+      // Error - likely no admin access
+      logger.info(`🔑 Remote admin scan: Node ${nodeNum} scan failed - no admin access`);
+      logger.debug(`🔑 Remote admin scan error details:`, error);
+      await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null);
+      return { hasRemoteAdmin: false, metadata: null };
+    } finally {
+      this.pendingRemoteAdminScans.delete(nodeNum);
     }
   }
 
@@ -8954,14 +9088,6 @@ class MeshtasticManager {
   // Get data from database instead of maintaining in-memory state
   getAllNodes(): DeviceInfo[] {
     const dbNodes = databaseService.getAllNodes();
-    if (dbNodes.length > 0) {
-      logger.debug('🔍 Sample dbNode from database:', {
-        nodeId: dbNodes[0].nodeId,
-        longName: dbNodes[0].longName,
-        role: dbNodes[0].role,
-        hopsAway: dbNodes[0].hopsAway
-      });
-    }
     return dbNodes.map(node => {
       // Get latest uptime from telemetry
       const uptimeTelemetry = databaseService.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
@@ -9072,6 +9198,19 @@ class MeshtasticManager {
         deviceInfo.positionOverrideIsPrivate = Boolean(node.positionOverrideIsPrivate);
       }
 
+      // Add remote admin fields
+      if (node.hasRemoteAdmin !== null && node.hasRemoteAdmin !== undefined) {
+        deviceInfo.hasRemoteAdmin = Boolean(node.hasRemoteAdmin);
+        logger.debug(`🔍 Node ${node.nodeNum} hasRemoteAdmin: ${node.hasRemoteAdmin}`);
+      }
+      if (node.lastRemoteAdminCheck !== null && node.lastRemoteAdminCheck !== undefined) {
+        deviceInfo.lastRemoteAdminCheck = node.lastRemoteAdminCheck;
+      }
+      if (node.remoteAdminMetadata) {
+        deviceInfo.remoteAdminMetadata = node.remoteAdminMetadata;
+        logger.debug(`🔍 Node ${node.nodeNum} has remoteAdminMetadata`);
+      }
+
       return deviceInfo;
     });
   }
@@ -9151,6 +9290,11 @@ class MeshtasticManager {
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
+    }
+
+    if (this.remoteAdminScannerInterval) {
+      clearInterval(this.remoteAdminScannerInterval);
+      this.remoteAdminScannerInterval = null;
     }
 
     if (this.announceInterval) {

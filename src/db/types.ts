@@ -74,6 +74,10 @@ export interface DbNode {
   longitudeOverride?: number | null;
   altitudeOverride?: number | null;
   positionOverrideIsPrivate?: boolean | null;
+  // Remote admin discovery
+  hasRemoteAdmin?: boolean | null;
+  lastRemoteAdminCheck?: number | null;
+  remoteAdminMetadata?: string | null;
   createdAt: number;
   updatedAt: number;
 }
