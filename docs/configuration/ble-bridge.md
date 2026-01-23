@@ -4,12 +4,12 @@ The [MeshMonitor BLE Bridge](https://github.com/Yeraze/meshtastic-ble-bridge) is
 
 ## What is the BLE Bridge?
 
-The BLE Bridge is a lightweight Python application that:
+The BLE Bridge is a lightweight application that:
 
 - Connects to Meshtastic devices via Bluetooth Low Energy (BLE)
 - Exposes a TCP interface on port 4403 compatible with MeshMonitor
 - Translates between BLE's raw protobuf format and TCP's framed protocol
-- Runs as a standalone Docker container alongside MeshMonitor
+- Available as a **native Windows application** or **Docker container** for Linux
 - Provides automatic reconnection and error recovery
 
 ## When to Use the BLE Bridge
@@ -31,6 +31,13 @@ Use the BLE Bridge when:
 
 Before setting up the BLE Bridge, ensure you have:
 
+**For Windows:**
+1. **Windows 10/11** with Bluetooth hardware
+2. **BLE MAC address of your Meshtastic device**
+   - Find it using the scan feature in the app
+   - Usually visible in Android/iOS Bluetooth settings
+
+**For Linux (Docker):**
 1. **Linux system with Bluetooth support**
    - BlueZ Bluetooth stack installed
    - D-Bus system bus running
@@ -44,7 +51,60 @@ Before setting up the BLE Bridge, ensure you have:
    - Find it using the scan command (see below)
    - Usually visible in Android/iOS Bluetooth settings
 
-## Quick Start
+## Windows Quick Start
+
+For Windows users, a native GUI application is available that runs in the system tray.
+
+### 1. Download the Windows Application
+
+Download the latest `meshtastic-ble-bridge.exe` from the [GitHub Releases](https://github.com/Yeraze/meshtastic-ble-bridge/releases) page.
+
+### 2. Run the Application
+
+Double-click the executable to launch. The application will appear in your system tray with a gray icon (disconnected state).
+
+### 3. Configure the Bridge
+
+Right-click the system tray icon and select **Settings** to open the configuration dialog:
+
+- **BLE Address**: Enter your Meshtastic device's Bluetooth MAC address (e.g., `AA:BB:CC:DD:EE:FF`)
+- **TCP Port**: Default is `4403` (standard Meshtastic port)
+- **Auto-start**: Enable to automatically connect when the application launches
+- **Config Caching**: Optional performance optimization
+
+### 4. Connect to Your Device
+
+Click **Connect** in the settings dialog or right-click the tray icon and select **Connect**.
+
+The tray icon provides visual feedback:
+- 🟢 **Green**: Connected to BLE device
+- ⚪ **Gray**: Disconnected
+- 🔴 **Red**: Connection failed after retry attempts
+
+### 5. View Statistics
+
+Right-click the tray icon and select **Statistics** to view:
+- Connection status
+- Packet counts (sent/received)
+- Connected TCP clients
+- Cache performance (if enabled)
+
+### 6. Configure MeshMonitor
+
+Point MeshMonitor to your Windows machine's IP address on port 4403:
+
+```
+MESHTASTIC_NODE_IP=192.168.1.100  # Your Windows PC's IP
+MESHTASTIC_NODE_PORT=4403
+```
+
+::: tip Windows Firewall
+You may need to allow the BLE Bridge through Windows Firewall to accept connections from MeshMonitor on port 4403.
+:::
+
+## Linux Quick Start (Docker)
+
+For Linux users, the BLE Bridge runs as a Docker container alongside MeshMonitor.
 
 ### 1. Find Your Device's BLE MAC Address
 
@@ -334,9 +394,11 @@ services:
 
 **Note:** Ensure port 4403 is accessible between hosts (check firewalls).
 
-## Building Locally
+## Building from Source
 
-To build the BLE bridge from source instead of using the pre-built image:
+### Linux (Docker)
+
+To build the Docker image from source:
 
 ```bash
 # Clone the repository
@@ -350,6 +412,29 @@ docker build -t meshtastic-ble-bridge:local .
 # Uncomment the 'build' section and comment out 'image'
 ```
 
+### Windows (Executable)
+
+To build the Windows executable from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/Yeraze/meshtastic-ble-bridge.git
+cd meshtastic-ble-bridge
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+pip install pyinstaller
+
+# Build the executable
+pyinstaller --onefile --windowed --name meshtastic-ble-bridge gui.py
+```
+
+The executable will be created in the `dist` folder.
+
 ## Performance and Resource Usage
 
 The BLE bridge is lightweight:
@@ -361,16 +446,20 @@ The BLE bridge is lightweight:
 
 ## Security Considerations
 
-1. **Privileged containers** have full access to host hardware
+1. **Linux: Privileged containers** have full access to host hardware
    - Only run on trusted systems
    - Consider using specific device capabilities in production
 
-2. **Bluetooth security:**
+2. **Windows: Firewall configuration**
+   - Allow only trusted IPs to connect to port 4403
+   - Consider running MeshMonitor and BLE Bridge on the same machine
+
+3. **Bluetooth security:**
    - Use pairing when possible
    - Keep Bluetooth firmware updated
    - Monitor for unauthorized connections
 
-3. **Network security:**
+4. **Network security:**
    - The TCP interface is unencrypted
    - Use firewall rules to restrict access to port 4403
    - Consider running on isolated network segment
