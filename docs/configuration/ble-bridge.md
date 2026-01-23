@@ -59,11 +59,26 @@ For Windows users, a native GUI application is available that runs in the system
 
 Download the latest `meshtastic-ble-bridge.exe` from the [GitHub Releases](https://github.com/Yeraze/meshtastic-ble-bridge/releases) page.
 
-### 2. Run the Application
+### 2. Pair Your Meshtastic Device
+
+Before the BLE Bridge can connect, you must pair your Meshtastic device with Windows:
+
+1. Open **Windows Settings** → **Bluetooth & devices**
+2. Click **Add device** → **Bluetooth**
+3. Put your Meshtastic device in pairing mode (if required)
+4. Select your Meshtastic device from the list (usually named `Meshtastic_XXXX`)
+5. Complete the pairing process
+6. Note the device's MAC address from the Bluetooth settings (you'll need this)
+
+::: tip Finding the MAC Address
+After pairing, go to **Bluetooth & devices** → **Devices**, click on your Meshtastic device, and scroll down to find the Bluetooth address (MAC address) in the format `AA:BB:CC:DD:EE:FF`.
+:::
+
+### 3. Run the Application
 
 Double-click the executable to launch. The application will appear in your system tray with a gray icon (disconnected state).
 
-### 3. Configure the Bridge
+### 4. Configure the Bridge
 
 Right-click the system tray icon and select **Settings** to open the configuration dialog:
 
@@ -72,7 +87,7 @@ Right-click the system tray icon and select **Settings** to open the configurati
 - **Auto-start**: Enable to automatically connect when the application launches
 - **Config Caching**: Optional performance optimization
 
-### 4. Connect to Your Device
+### 5. Connect to Your Device
 
 Click **Connect** in the settings dialog or right-click the tray icon and select **Connect**.
 
@@ -81,7 +96,7 @@ The tray icon provides visual feedback:
 - ⚪ **Gray**: Disconnected
 - 🔴 **Red**: Connection failed after retry attempts
 
-### 5. View Statistics
+### 6. View Statistics
 
 Right-click the tray icon and select **Statistics** to view:
 - Connection status
@@ -89,7 +104,7 @@ Right-click the tray icon and select **Statistics** to view:
 - Connected TCP clients
 - Cache performance (if enabled)
 
-### 6. Configure MeshMonitor
+### 7. Configure MeshMonitor
 
 Point MeshMonitor to your Windows machine's IP address on port 4403:
 
