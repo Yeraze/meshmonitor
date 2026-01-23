@@ -23,10 +23,49 @@ export const migration = {
     logger.debug('Running migration 056: Fix backup_history column names');
 
     try {
-      // Check if we need to migrate (if old column names exist)
+      // Check if table exists at all
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='backup_history'").get();
+      if (!tableExists) {
+        logger.debug('backup_history table does not exist, creating with new schema');
+        db.exec(`
+          CREATE TABLE backup_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nodeId TEXT,
+            nodeNum INTEGER,
+            filename TEXT NOT NULL,
+            filePath TEXT NOT NULL,
+            fileSize INTEGER,
+            backupType TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            createdAt INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC);
+        `);
+        return;
+      }
+
+      // Check current column names
       const tableInfo = db.prepare("PRAGMA table_info(backup_history)").all() as any[];
-      const hasOldColumns = tableInfo.some((col: any) => col.name === 'filepath' || col.name === 'type' || col.name === 'size');
-      const hasNewColumns = tableInfo.some((col: any) => col.name === 'filePath' || col.name === 'backupType' || col.name === 'fileSize');
+      const columnNames = tableInfo.map((col: any) => col.name);
+
+      // Check for old-style columns (lowercase)
+      const hasOldFilepath = columnNames.includes('filepath');
+      const hasOldType = columnNames.includes('type');
+      const hasOldSize = columnNames.includes('size');
+      const hasOldColumns = hasOldFilepath || hasOldType || hasOldSize;
+
+      // Check for new-style columns (camelCase)
+      const hasNewFilePath = columnNames.includes('filePath');
+      const hasNewBackupType = columnNames.includes('backupType');
+      const hasNewFileSize = columnNames.includes('fileSize');
+      const hasNewColumns = hasNewFilePath || hasNewBackupType || hasNewFileSize;
+
+      // Check for timestamp column (required in both old and new schema)
+      const hasTimestamp = columnNames.includes('timestamp');
+      const hasCreatedAt = columnNames.includes('createdAt');
+
+      logger.debug(`backup_history columns: ${columnNames.join(', ')}`);
+      logger.debug(`hasOldColumns: ${hasOldColumns}, hasNewColumns: ${hasNewColumns}, hasTimestamp: ${hasTimestamp}`);
 
       if (hasNewColumns && !hasOldColumns) {
         logger.debug('backup_history already has new column names, skipping migration');
@@ -34,7 +73,46 @@ export const migration = {
       }
 
       if (!hasOldColumns && !hasNewColumns) {
-        logger.debug('backup_history table does not exist or has unexpected schema, skipping migration');
+        // Table exists but has unexpected schema - recreate it
+        logger.debug('backup_history has unexpected schema, recreating table');
+        db.exec(`
+          DROP TABLE IF EXISTS backup_history;
+          CREATE TABLE backup_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nodeId TEXT,
+            nodeNum INTEGER,
+            filename TEXT NOT NULL,
+            filePath TEXT NOT NULL,
+            fileSize INTEGER,
+            backupType TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            createdAt INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC);
+        `);
+        return;
+      }
+
+      // We have old columns - migrate to new schema
+      // First, check what columns actually exist for the SELECT statement
+      if (!hasTimestamp || !hasCreatedAt) {
+        // Missing required columns - drop and recreate
+        logger.debug('backup_history missing required columns (timestamp/createdAt), recreating table');
+        db.exec(`
+          DROP TABLE IF EXISTS backup_history;
+          CREATE TABLE backup_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nodeId TEXT,
+            nodeNum INTEGER,
+            filename TEXT NOT NULL,
+            filePath TEXT NOT NULL,
+            fileSize INTEGER,
+            backupType TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            createdAt INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC);
+        `);
         return;
       }
 
