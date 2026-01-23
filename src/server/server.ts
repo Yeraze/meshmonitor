@@ -3163,8 +3163,10 @@ apiRouter.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req, res) =
     }
 
     const { nodeId } = req.params;
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const intervalParam = req.query.interval ? parseInt(req.query.interval as string) : 15;
+    // Validate and clamp hours (1-168, default 24)
+    const hoursParam = Math.max(1, Math.min(168, parseInt(req.query.hours as string) || 24));
+    // Validate and clamp interval (5-60 minutes, default 15)
+    const intervalParam = Math.max(5, Math.min(60, parseInt(req.query.interval as string) || 15));
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
@@ -3192,7 +3194,8 @@ apiRouter.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req, res)
     }
 
     const { nodeId } = req.params;
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    // Validate and clamp hours (1-168, default 24)
+    const hoursParam = Math.max(1, Math.min(168, parseInt(req.query.hours as string) || 24));
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;

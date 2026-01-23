@@ -40,6 +40,33 @@ export interface ProcessingContext {
 // Re-export for consumers who import from meshtasticManager
 export { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
+/**
+ * Link Quality scoring constants.
+ * Link Quality is a 0-10 score tracking the reliability of message routing to a node.
+ */
+export const LINK_QUALITY = {
+  /** Maximum quality score */
+  MAX: 10,
+  /** Minimum quality score (0 = dead link) */
+  MIN: 0,
+  /** Base value for initial calculation (LQ = BASE - hops) */
+  INITIAL_BASE: 8,
+  /** Default quality when hop count is unknown */
+  DEFAULT_QUALITY: 5,
+  /** Default hop count when unknown */
+  DEFAULT_HOPS: 3,
+  /** Bonus for stable/improved message delivery */
+  STABLE_MESSAGE_BONUS: 1,
+  /** Penalty for degraded routing (hops increased by 2+) */
+  DEGRADED_PATH_PENALTY: -1,
+  /** Penalty for failed traceroute */
+  TRACEROUTE_FAIL_PENALTY: -2,
+  /** Penalty for PKI/encryption error */
+  PKI_ERROR_PENALTY: -5,
+  /** Traceroute timeout in milliseconds (5 minutes) */
+  TRACEROUTE_TIMEOUT_MS: 5 * 60 * 1000,
+} as const;
+
 export interface DeviceInfo {
   nodeNum: number;
   user?: {
@@ -9398,8 +9425,8 @@ class MeshtasticManager {
     let lqData = this.nodeLinkQuality.get(nodeNum);
 
     if (!lqData) {
-      // Initialize: LQ = 8 - hops (so 1-hop = 7, 7-hop = 1)
-      const initialQuality = Math.max(1, Math.min(7, 8 - currentHops));
+      // Initialize: LQ = INITIAL_BASE - hops (so 1-hop = 7, 7-hop = 1)
+      const initialQuality = Math.max(1, Math.min(LINK_QUALITY.INITIAL_BASE - 1, LINK_QUALITY.INITIAL_BASE - currentHops));
       lqData = { quality: initialQuality, lastHops: currentHops };
       this.nodeLinkQuality.set(nodeNum, lqData);
 
@@ -9415,20 +9442,20 @@ class MeshtasticManager {
 
   /**
    * Update link quality for a node based on an event.
-   * Clamps result to 0-10 range.
+   * Clamps result to MIN-MAX range (0-10).
    */
   private updateLinkQuality(nodeNum: number, adjustment: number, reason: string): void {
     const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
     let lqData = this.nodeLinkQuality.get(nodeNum);
 
     if (!lqData) {
-      // Initialize with default if not exists (assume 3 hops for unknown)
-      lqData = { quality: 5, lastHops: 3 };
+      // Initialize with default if not exists
+      lqData = { quality: LINK_QUALITY.DEFAULT_QUALITY, lastHops: LINK_QUALITY.DEFAULT_HOPS };
       this.nodeLinkQuality.set(nodeNum, lqData);
     }
 
     const oldQuality = lqData.quality;
-    lqData.quality = Math.max(0, Math.min(10, lqData.quality + adjustment));
+    lqData.quality = Math.max(LINK_QUALITY.MIN, Math.min(LINK_QUALITY.MAX, lqData.quality + adjustment));
 
     if (lqData.quality !== oldQuality) {
       this.nodeLinkQuality.set(nodeNum, lqData);
@@ -9439,9 +9466,9 @@ class MeshtasticManager {
 
   /**
    * Update link quality based on message hop count comparison.
-   * - If hops <= previous: +1 (stable/improving)
+   * - If hops <= previous: STABLE_MESSAGE_BONUS (+1)
    * - If hops = previous + 1: no change
-   * - If hops >= previous + 2: -1 (degrading)
+   * - If hops >= previous + 2: DEGRADED_PATH_PENALTY (-1)
    */
   private updateLinkQualityForMessage(nodeNum: number, currentHops: number): void {
     const lqData = this.getNodeLinkQuality(nodeNum, currentHops);
@@ -9452,14 +9479,14 @@ class MeshtasticManager {
     this.nodeLinkQuality.set(nodeNum, lqData);
 
     if (hopDiff <= 0) {
-      // Stable or improved - +1
-      this.updateLinkQuality(nodeNum, 1, `stable message (${currentHops} hops)`);
+      // Stable or improved
+      this.updateLinkQuality(nodeNum, LINK_QUALITY.STABLE_MESSAGE_BONUS, `stable message (${currentHops} hops)`);
     } else if (hopDiff === 1) {
       // Increased by 1 - no change
       logger.debug(`📊 Link Quality unchanged for node ${nodeNum.toString(16)}: hops increased by 1`);
     } else {
-      // Increased by 2 or more - -1
-      this.updateLinkQuality(nodeNum, -1, `degraded path (+${hopDiff} hops)`);
+      // Increased by 2 or more
+      this.updateLinkQuality(nodeNum, LINK_QUALITY.DEGRADED_PATH_PENALTY, `degraded path (+${hopDiff} hops)`);
     }
   }
 
@@ -9479,29 +9506,31 @@ class MeshtasticManager {
   }
 
   /**
-   * Handle failed traceroute - penalize link quality by -2
+   * Handle failed traceroute - penalize link quality.
+   * Penalty: TRACEROUTE_FAIL_PENALTY (-2)
    */
   private handleTracerouteFailure(nodeNum: number): void {
-    this.updateLinkQuality(nodeNum, -2, 'failed traceroute');
+    this.updateLinkQuality(nodeNum, LINK_QUALITY.TRACEROUTE_FAIL_PENALTY, 'failed traceroute');
   }
 
   /**
-   * Handle PKI error - penalize link quality by -5
+   * Handle PKI error - penalize link quality.
+   * Penalty: PKI_ERROR_PENALTY (-5)
    */
   private handlePkiError(nodeNum: number): void {
-    this.updateLinkQuality(nodeNum, -5, 'PKI error');
+    this.updateLinkQuality(nodeNum, LINK_QUALITY.PKI_ERROR_PENALTY, 'PKI error');
   }
 
   /**
-   * Check for timed-out traceroutes (> 5 minutes old) and penalize link quality.
+   * Check for timed-out traceroutes and penalize link quality.
+   * Timeout: TRACEROUTE_TIMEOUT_MS (5 minutes)
    * Called periodically from the traceroute scheduler.
    */
   private checkTracerouteTimeouts(): void {
-    const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
     const now = Date.now();
 
     for (const [nodeNum, timestamp] of this.pendingTracerouteTimestamps.entries()) {
-      if (now - timestamp > TIMEOUT_MS) {
+      if (now - timestamp > LINK_QUALITY.TRACEROUTE_TIMEOUT_MS) {
         // Traceroute timed out
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
         logger.debug(`🗺️ Auto-traceroute to ${nodeId} timed out after 5 minutes`);
