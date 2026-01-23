@@ -160,6 +160,105 @@ Traceroute uses Meshtastic's routing protocol. For more information:
 - [Meshtastic Routing Documentation](https://meshtastic.org/docs/overview/mesh-algo#routing)
 - [Traceroute Request Documentation](https://meshtastic.org/docs/configuration/module/traceroute)
 
+## Remote Admin Scanner {#remote-admin-scanner}
+
+Automatically discovers which nodes in your mesh network have remote administration capabilities enabled. This helps you identify nodes that can be managed remotely through MeshMonitor's Admin Commands feature.
+
+### How It Works
+
+When enabled, MeshMonitor periodically scans active nodes to determine if they have remote admin access enabled. The scanner:
+
+1. Identifies nodes with public keys (required for secure admin communication)
+2. Sends a device metadata request to each node
+3. Waits for a response (nodes without admin access will not respond)
+4. Records the result for each node
+
+Scan results are displayed in the Node Details panel and can be used to quickly identify which nodes support remote administration.
+
+### Configuration
+
+**Enable/Disable**: Toggle the checkbox next to "Remote Admin Scanner"
+
+**Scan Interval**: How often to check nodes for admin capability
+
+- **Range**: 1-60 minutes
+- **Default**: 5 minutes
+- **Recommendation**: Use longer intervals (10-15 minutes) for larger networks to reduce mesh traffic
+
+**Result Expiration**: How long scan results remain valid before a node needs to be re-scanned
+
+- **Range**: 24-168 hours (1-7 days)
+- **Default**: 168 hours (7 days)
+- **Purpose**: Prevents re-scanning nodes that were recently checked
+
+### Stats Panel
+
+The scanner displays real-time statistics:
+
+- **Nodes with Admin**: Number of nodes confirmed to have remote admin enabled
+- **Nodes Checked**: Total nodes that have been scanned
+- **Eligible Nodes**: Nodes with public keys (candidates for scanning)
+
+### Scan Log
+
+When enabled, a scan log shows recent scan activity:
+
+- **Timestamp**: When the node was last checked
+- **Node**: The node name and ID
+- **Status**: ✓ (green) for admin available, ✗ (red) for no admin
+- **Firmware**: Device firmware version (if admin is available)
+
+### Node Details Integration
+
+Scan results appear in the Node Details panel for each node:
+
+- **Available**: Remote admin is enabled with the date it was verified
+- **Unavailable**: Remote admin is not enabled with the date it was checked
+- **Unknown**: Node has never been scanned
+
+### Side Effects
+
+- **Network Traffic**: Each scan generates admin protocol packets
+- **Response Time**: Scans wait up to 45 seconds for node responses
+- **Battery Impact**: Scanning causes nodes to process admin requests
+- **Airtime Usage**: Uses encrypted admin channel airtime
+
+### Use Cases
+
+- **Network Discovery**: Identify all remotely manageable nodes in your mesh
+- **Security Auditing**: Find nodes with admin access that may need securing
+- **Fleet Management**: Quickly see which nodes can be configured remotely
+- **Troubleshooting**: Verify if a node's admin access is working
+
+### Best Practices
+
+- **Interval Selection**: Use longer intervals for stable networks
+- **Expiration Period**: Shorter expiration for networks with frequent changes
+- **Off-Peak Scanning**: Consider disabling during high network activity
+- **Review Results**: Periodically check for unexpected admin-enabled nodes
+
+### Troubleshooting
+
+**No Nodes Being Scanned**:
+- Verify nodes have public keys (required for admin communication)
+- Check that nodes are "active" (heard within the configured maxNodeAgeHours)
+- Ensure the scanner is enabled and saved
+
+**All Scans Failing**:
+- Remote admin may not be enabled on target nodes
+- Nodes may be too far away or unreachable
+- Check mesh connectivity to target nodes
+
+**Scan Log Not Showing**:
+- Ensure the scanner checkbox is enabled
+- Refresh the browser page
+- Check that scans have had time to complete (45+ seconds per node)
+
+### Related Documentation
+
+- [Admin Commands](/features/admin-commands) - Use remote admin to configure nodes
+- [Security](/features/security) - Learn about node security and encryption
+
 ## Auto Welcome
 
 Automatically sends a personalized welcome message to new nodes when they join your mesh network.
