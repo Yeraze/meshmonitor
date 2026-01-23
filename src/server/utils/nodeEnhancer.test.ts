@@ -36,6 +36,12 @@ vi.mock('../../services/database.js', () => ({
           channel_7: { viewOnMap: true, read: true, write: true },
         };
       }
+      // User 3: has nodes:read but no channel permissions (backwards compatibility case)
+      if (userId === 3) {
+        return {
+          nodes: { read: true, write: false },
+        };
+      }
       // Default: no permissions
       return {};
     }),
@@ -161,6 +167,34 @@ describe('nodeEnhancer: filterNodesByChannelPermission', () => {
     const noPermUser = { id: 99, isAdmin: false } as any;
     const result = await filterNodesByChannelPermission(testNodes, noPermUser);
     expect(result).toHaveLength(0);
+  });
+
+  it('should return all nodes for user with nodes:read but no channel permissions (backwards compatibility)', async () => {
+    // User 3 has nodes:read but no channel permissions - should see all nodes for backwards compatibility
+    const legacyUser = { id: 3, isAdmin: false } as any;
+    const result = await filterNodesByChannelPermission(testNodes, legacyUser);
+    expect(result).toHaveLength(5);
+  });
+
+  it('should allow nodes with null/undefined channel if user has ANY channel permission', async () => {
+    // User 1 has permissions for channels 0 and 1 only
+    const regularUser = { id: 1, isAdmin: false } as any;
+    const nodesWithMissingChannel = [
+      { nodeId: '!00000001', channel: 0 },
+      { nodeId: '!00000002', channel: 1 },
+      { nodeId: '!00000003', channel: 2 },  // No permission for this
+      { nodeId: '!00000004', channel: null },  // null channel - should be allowed
+      { nodeId: '!00000005' },  // undefined channel - should be allowed
+    ];
+    const result = await filterNodesByChannelPermission(nodesWithMissingChannel, regularUser);
+
+    // Should see: channel 0, channel 1, null channel, undefined channel (not channel 2)
+    expect(result).toHaveLength(4);
+    expect(result.map(n => n.nodeId)).toContain('!00000001'); // channel 0
+    expect(result.map(n => n.nodeId)).toContain('!00000002'); // channel 1
+    expect(result.map(n => n.nodeId)).toContain('!00000004'); // null channel
+    expect(result.map(n => n.nodeId)).toContain('!00000005'); // undefined channel
+    expect(result.map(n => n.nodeId)).not.toContain('!00000003'); // channel 2 - no permission
   });
 
   it('should return no nodes for null user (anonymous without permissions)', async () => {

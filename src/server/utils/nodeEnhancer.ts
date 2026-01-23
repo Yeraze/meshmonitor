@@ -67,6 +67,9 @@ export async function enhanceNodeForClient(
  * A user can only see nodes on the map that were last heard on a channel they have viewOnMap permission for.
  * Admins see all nodes.
  *
+ * For backwards compatibility: Users with nodes:read permission but no explicit channel permissions
+ * will see all nodes (this covers users created before per-channel permissions were introduced).
+ *
  * @param nodes - Array of nodes (any type that has an optional channel property)
  * @param user - The user making the request, or null for anonymous
  * @returns Filtered array of nodes the user has permission to see on the map
@@ -85,12 +88,92 @@ export async function filterNodesByChannelPermission<T>(
     ? await databaseService.getUserPermissionSetAsync(user.id)
     : {};
 
+  // Check if user has any channel-specific permissions
+  const hasAnyChannelPermission = Object.keys(permissions).some(key => key.startsWith('channel_'));
+
+  // Backwards compatibility: If user has no channel permissions but has nodes:read,
+  // allow all nodes (for users created before per-channel permissions)
+  if (!hasAnyChannelPermission) {
+    if (permissions.nodes?.read === true) {
+      return nodes;
+    }
+    // No permissions at all - return empty
+    return [];
+  }
+
+  // Pre-compute which channels the user has viewOnMap permission for
+  const allowedChannels = new Set<number>();
+  for (const key of Object.keys(permissions)) {
+    if (key.startsWith('channel_') && permissions[key as ResourceType]?.viewOnMap === true) {
+      const channelNum = parseInt(key.replace('channel_', ''), 10);
+      if (!isNaN(channelNum)) {
+        allowedChannels.add(channelNum);
+      }
+    }
+  }
+
   // Filter nodes by channel viewOnMap permission for map visibility
+  return nodes.filter(node => {
+    // Access channel property dynamically since different node types have different shapes
+    const nodeWithChannel = node as { channel?: number | null };
+    const channelNum = nodeWithChannel.channel;
+
+    // If node has no channel set (null/undefined), allow if user has ANY channel permission
+    // This handles nodes that haven't been heard on a specific channel yet
+    if (channelNum === null || channelNum === undefined) {
+      return allowedChannels.size > 0;
+    }
+
+    return allowedChannels.has(channelNum);
+  });
+}
+
+/**
+ * Filter nodes based on channel read permissions.
+ * A user can only see nodes that were last heard on a channel they have read permission for.
+ * Admins see all nodes.
+ *
+ * This is used by API endpoints where "read" access is the appropriate permission,
+ * as opposed to "viewOnMap" which is specifically for map display.
+ *
+ * @param nodes - Array of nodes (any type that has an optional channel property)
+ * @param user - The user making the request, or null for anonymous
+ * @returns Filtered array of nodes the user has permission to read
+ */
+export async function filterNodesByChannelReadPermission<T>(
+  nodes: T[],
+  user: User | null | undefined
+): Promise<T[]> {
+  // Admins see all nodes
+  if (user?.isAdmin) {
+    return nodes;
+  }
+
+  // Get user's permission set
+  const permissions: PermissionSet = user
+    ? await databaseService.getUserPermissionSetAsync(user.id)
+    : {};
+
+  // If user has no permissions at all, check if they have nodes:read permission
+  // (for backwards compatibility with users created before per-channel permissions)
+  const hasAnyChannelPermission = Object.keys(permissions).some(key => key.startsWith('channel_'));
+
+  if (!hasAnyChannelPermission) {
+    // No channel permissions set - allow all nodes if user has nodes:read permission
+    // This maintains backwards compatibility for users without explicit channel permissions
+    if (permissions.nodes?.read === true) {
+      return nodes;
+    }
+    // No permissions at all - return empty (will be handled by the nodes:read check in the endpoint)
+    return [];
+  }
+
+  // Filter nodes by channel read permission
   return nodes.filter(node => {
     // Access channel property dynamically since different node types have different shapes
     const nodeWithChannel = node as { channel?: number };
     const channelNum = nodeWithChannel.channel ?? 0;
     const channelResource = `channel_${channelNum}` as ResourceType;
-    return permissions[channelResource]?.viewOnMap === true;
+    return permissions[channelResource]?.read === true;
   });
 }
