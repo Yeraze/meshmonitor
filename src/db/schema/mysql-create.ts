@@ -305,15 +305,29 @@ export const MYSQL_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS backup_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    nodeId VARCHAR(255),
+    nodeNum BIGINT,
     filename VARCHAR(255) NOT NULL,
     filePath TEXT NOT NULL,
-    sizeBytes BIGINT NOT NULL,
-    schemaVersion INT NOT NULL,
-    nodeCount INT,
-    messageCount INT,
+    fileSize BIGINT,
+    backupType VARCHAR(50) NOT NULL,
+    timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL,
-    createdBy TEXT,
-    notes TEXT
+    INDEX idx_backup_history_timestamp (timestamp DESC)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS system_backup_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dirname VARCHAR(255) NOT NULL UNIQUE,
+    timestamp BIGINT NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    size BIGINT NOT NULL,
+    table_count INT NOT NULL,
+    meshmonitor_version VARCHAR(32) NOT NULL,
+    schema_version INT NOT NULL,
+    createdAt BIGINT NOT NULL,
+    INDEX idx_system_backup_history_timestamp (timestamp DESC),
+    INDEX idx_system_backup_history_type (type)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS upgrade_history (
@@ -453,6 +467,7 @@ export const MYSQL_TABLE_NAMES = [
   'user_notification_preferences',
   'packet_log',
   'backup_history',
+  'system_backup_history',
   'upgrade_history',
   'custom_themes',
   'user_map_preferences',

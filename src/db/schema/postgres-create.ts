@@ -284,15 +284,26 @@ export const POSTGRES_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS backup_history (
     id SERIAL PRIMARY KEY,
+    "nodeId" TEXT,
+    "nodeNum" BIGINT,
     filename TEXT NOT NULL,
     "filePath" TEXT NOT NULL,
-    "sizeBytes" BIGINT NOT NULL,
-    "schemaVersion" INTEGER NOT NULL,
-    "nodeCount" INTEGER,
-    "messageCount" INTEGER,
-    "createdAt" BIGINT NOT NULL,
-    "createdBy" TEXT,
-    notes TEXT
+    "fileSize" BIGINT,
+    "backupType" TEXT NOT NULL,
+    timestamp BIGINT NOT NULL,
+    "createdAt" BIGINT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS system_backup_history (
+    id SERIAL PRIMARY KEY,
+    dirname TEXT NOT NULL UNIQUE,
+    timestamp BIGINT NOT NULL,
+    type TEXT NOT NULL,
+    size BIGINT NOT NULL,
+    table_count INTEGER NOT NULL,
+    meshmonitor_version TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
+    "createdAt" BIGINT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS upgrade_history (
@@ -414,6 +425,9 @@ export const POSTGRES_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
   CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
   CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log(created_at);
+  CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC);
+  CREATE INDEX IF NOT EXISTS idx_system_backup_history_timestamp ON system_backup_history(timestamp DESC);
+  CREATE INDEX IF NOT EXISTS idx_system_backup_history_type ON system_backup_history(type);
 `;
 
 export const POSTGRES_TABLE_NAMES = [
@@ -435,6 +449,7 @@ export const POSTGRES_TABLE_NAMES = [
   'user_notification_preferences',
   'packet_log',
   'backup_history',
+  'system_backup_history',
   'upgrade_history',
   'custom_themes',
   'user_map_preferences',
