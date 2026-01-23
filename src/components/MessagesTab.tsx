@@ -1085,9 +1085,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           </div>
                         )}
                         <div className="message-content">
-                          {!isMine && (
-                            <div className="sender-name">{getNodeName(msg.from)}</div>
-                          )}
                           {msg.replyId && (
                             <div className="replied-message">
                               <div className="reply-arrow">↳</div>
