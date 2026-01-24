@@ -1257,6 +1257,71 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a FromRadio message containing a text message MeshPacket
+   * Used to replay historical messages to virtual node clients
+   *
+   * @param message - Message data from database
+   * @returns Encoded FromRadio bytes or null on failure
+   */
+  async createFromRadioTextMessage(message: {
+    fromNodeNum: number;
+    toNodeNum: number;
+    text: string;
+    channel: number;
+    timestamp: number;
+    requestId?: number | null;
+    hopLimit?: number | null;
+    rxTime?: number | null;
+    rxSnr?: number | null;
+    rxRssi?: number | null;
+  }): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const Data = root.lookupType('meshtastic.Data');
+
+      // Create the Data payload with the text message
+      const textBytes = new TextEncoder().encode(message.text);
+      const dataMessage = Data.create({
+        portnum: PortNum.TEXT_MESSAGE_APP,
+        payload: textBytes,
+      });
+
+      // Generate a packet ID from the requestId or timestamp
+      const packetId = message.requestId || (message.timestamp & 0xffffffff);
+
+      // Create the MeshPacket
+      const meshPacket = MeshPacket.create({
+        from: message.fromNodeNum,
+        to: message.toNodeNum,
+        channel: message.channel >= 0 ? message.channel : 0, // Use 0 for DMs
+        decoded: dataMessage,
+        id: packetId,
+        rxTime: message.rxTime || message.timestamp,
+        rxSnr: message.rxSnr || 0,
+        rxRssi: message.rxRssi || 0,
+        hopLimit: message.hopLimit || 3,
+      });
+
+      // Wrap in FromRadio
+      const fromRadio = FromRadio.create({
+        packet: meshPacket,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create FromRadio text message:', error);
+      return null;
+    }
+  }
+
+  /**
    * Strip PKI encryption from a ToRadio packet with from=0
    * This is needed because Android clients send PKI-encrypted packets with from=0,
    * which fail validation at the physical node when relayed through Virtual Node Server

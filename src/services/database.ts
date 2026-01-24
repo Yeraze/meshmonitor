@@ -3290,6 +3290,19 @@ class DatabaseService {
     return this.getMessageByRequestId(requestId);
   }
 
+  async getMessagesAsync(limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        const messages = await this.messagesRepo.getMessages(limit, offset);
+        return messages.map(msg => this.convertRepoMessage(msg));
+      }
+      return [];
+    }
+    // For SQLite, use sync method
+    return this.getMessages(limit, offset);
+  }
+
   // Internal cache for messages (used for PostgreSQL sync compatibility)
   private _messagesCache: DbMessage[] = [];
   private _messagesCacheChannel: Map<number, DbMessage[]> = new Map();
