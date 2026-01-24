@@ -5994,6 +5994,20 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'security':
             // Convert admin keys from Uint8Array to base64 strings for UI
             const remoteAdminKeys = remoteConfig.adminKey || [];
+            // Helper function to convert bytes to base64
+            const bytesToBase64 = (bytes: any): string | null => {
+              if (!bytes) return null;
+              if (bytes instanceof Uint8Array || Buffer.isBuffer(bytes)) {
+                return bytes.length > 0 ? Buffer.from(bytes).toString('base64') : null;
+              }
+              if (bytes && typeof bytes === 'object' && bytes.type === 'Buffer' && Array.isArray(bytes.data)) {
+                return bytes.data.length > 0 ? Buffer.from(bytes.data).toString('base64') : null;
+              }
+              if (Array.isArray(bytes)) {
+                return bytes.length > 0 ? Buffer.from(bytes).toString('base64') : null;
+              }
+              return null;
+            };
             config = {
               adminKeys: remoteAdminKeys.map((key: any) => {
                 if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
@@ -6015,11 +6029,23 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 logger.warn('Unknown admin key format:', typeof key, key);
                 return String(key);
               }),
+              // IMPORTANT: publicKey and privateKey MUST be included when saving security config
+              // The firmware replaces the entire struct, so missing keys = key regeneration
+              publicKey: bytesToBase64(remoteConfig.publicKey),
+              privateKey: bytesToBase64(remoteConfig.privateKey),
               isManaged: remoteConfig.isManaged,
               serialEnabled: remoteConfig.serialEnabled,
               debugLogApiEnabled: remoteConfig.debugLogApiEnabled,
               adminChannelEnabled: remoteConfig.adminChannelEnabled
             };
+            logger.info(`Remote security config loaded:`);
+            logger.info(`  publicKey: ${config.publicKey ? `${config.publicKey.length} chars (base64)` : 'MISSING'}`);
+            logger.info(`  privateKey: ${config.privateKey ? `${config.privateKey.length} chars (base64)` : 'MISSING'}`);
+            logger.info(`  adminKeys (${config.adminKeys.length}):`);
+            config.adminKeys.forEach((key: string, i: number) => {
+              logger.info(`    [${i}]: ${key}`);
+            });
+            logger.info(`  serialEnabled: ${config.serialEnabled}`);
             break;
           // Additional device configs - return raw config
           case 'power':
@@ -6745,29 +6771,9 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setSecurityConfig' });
         }
-        // IMPORTANT: Preserve existing public/private keys when updating security config
-        // If we don't include them, the firmware may reset them to empty/random values
-        // Only do this for LOCAL node - for remote nodes we don't have their private key
-        {
-          let configToSend = params.config;
-          if (isLocalNode) {
-            const existingKeys = meshtasticManager.getSecurityKeys();
-            configToSend = {
-              ...params.config,
-              // Include existing keys if not explicitly provided
-              publicKey: params.config.publicKey || existingKeys.publicKey,
-              privateKey: params.config.privateKey || existingKeys.privateKey
-            };
-            logger.debug('Preserving existing public/private keys for local node security config update');
-          } else {
-            // For remote nodes, explicitly exclude publicKey/privateKey to let firmware preserve them
-            // We don't have the remote node's private key, so we can't include it
-            const { publicKey, privateKey, ...remoteConfig } = params.config;
-            configToSend = remoteConfig;
-            logger.debug('Excluding publicKey/privateKey from remote node security config update');
-          }
-          adminMessage = protobufService.createSetSecurityConfigMessage(configToSend, sessionPasskey || undefined);
-        }
+        // Note: Remote node security config changes are blocked in protobufService due to firmware bugs.
+        // For local nodes, keys are handled internally by the firmware.
+        adminMessage = protobufService.createSetSecurityConfigMessage(params.config, sessionPasskey || undefined);
         break;
       case 'setFixedPosition':
         if (params.latitude === undefined || params.longitude === undefined) {

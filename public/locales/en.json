@@ -3093,6 +3093,8 @@
   "admin_commands.admin_channel_enabled": "Admin Channel Enabled",
   "admin_commands.admin_channel_enabled_description": "Allow incoming device control over the insecure legacy admin channel",
   "admin_commands.save_security_config": "Save Security Config",
+  "admin_commands.remote_security_not_supported_title": "Remote Security Config Not Supported",
+  "admin_commands.remote_security_not_supported_description": "Security configuration cannot be modified on remote nodes due to a firmware limitation. Use the Device Configuration page on the local node, or connect directly to the remote node via USB/Bluetooth to modify security settings.",
   "admin_commands.security_config_loaded": "Security config loaded successfully",
   "admin_commands.failed_load_security_config": "Failed to load security config",
 

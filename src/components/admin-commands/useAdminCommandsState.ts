@@ -68,8 +68,12 @@ export interface MQTTConfigState {
 }
 
 // Security Config State
+// IMPORTANT: publicKey and privateKey MUST be included when saving security config.
+// The firmware replaces the entire security struct, so missing keys = key regeneration.
 export interface SecurityConfigState {
   adminKeys: string[];
+  publicKey: string | null;   // Base64-encoded - MUST be sent back to preserve existing key
+  privateKey: string | null;  // Base64-encoded - MUST be sent back to preserve existing key
   isManaged: boolean;
   serialEnabled: boolean;
   debugLogApiEnabled: boolean;
@@ -204,6 +208,8 @@ const initialState: AdminCommandsState = {
   },
   security: {
     adminKeys: [''],
+    publicKey: null,
+    privateKey: null,
     isManaged: false,
     serialEnabled: false,
     debugLogApiEnabled: false,

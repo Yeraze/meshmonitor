@@ -518,6 +518,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           setSecurityConfig({ adminKeys: keys });
         }
         const securityUpdates: any = {};
+        // IMPORTANT: Store publicKey and privateKey - these MUST be sent back to preserve existing keys
+        if (config.publicKey !== undefined) securityUpdates.publicKey = config.publicKey;
+        if (config.privateKey !== undefined) securityUpdates.privateKey = config.privateKey;
         if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
         if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
         if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
@@ -930,6 +933,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   setSecurityConfig({ adminKeys: keys });
                 }
                 const securityUpdates: Record<string, unknown> = {};
+                // IMPORTANT: Store publicKey and privateKey - these MUST be sent back to preserve existing keys
+                if (config.publicKey !== undefined) securityUpdates.publicKey = config.publicKey;
+                if (config.privateKey !== undefined) securityUpdates.privateKey = config.privateKey;
                 if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
                 if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
                 if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
@@ -1504,7 +1510,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const handleSetSecurityConfig = useCallback(async () => {
     // Filter out empty admin keys
     const validAdminKeys = configState.security.adminKeys.filter(key => key && key.trim().length > 0);
-    
+
     const config: any = {
       adminKeys: validAdminKeys,
       isManaged: configState.security.isManaged,
@@ -1512,6 +1518,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       debugLogApiEnabled: configState.security.debugLogApiEnabled,
       adminChannelEnabled: configState.security.adminChannelEnabled
     };
+
+    // IMPORTANT: Include publicKey and privateKey to preserve existing keys
+    // The firmware replaces the entire security struct, so missing keys = key regeneration
+    if (configState.security.publicKey) {
+      config.publicKey = configState.security.publicKey;
+    }
+    if (configState.security.privateKey) {
+      config.privateKey = configState.security.privateKey;
+    }
 
     try {
       await executeCommand('setSecurityConfig', { config });

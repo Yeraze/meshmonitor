@@ -1107,6 +1107,10 @@ class ProtobufService {
    * @param sessionPasskey Optional session passkey for authentication
    */
   createSetSecurityConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    // IMPORTANT: The firmware replaces the ENTIRE security struct with what we send.
+    // We MUST include ALL fields with their current values, or they will be reset to defaults.
+    // For example, missing serialEnabled defaults to false and disables the serial port.
+    // Missing private_key (size != 32) triggers key regeneration.
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -1117,31 +1121,65 @@ class ProtobufService {
 
       const securityConfigData: any = {};
 
+      // Handle public key - MUST be included to preserve existing key
+      if (config.publicKey) {
+        try {
+          const buffer = Buffer.from(config.publicKey, 'base64');
+          if (buffer.length === 32) {
+            securityConfigData.publicKey = new Uint8Array(buffer);
+            logger.debug(`Including public key (${buffer.length} bytes)`);
+          } else {
+            logger.warn(`Public key has invalid length: ${buffer.length} (expected 32)`);
+          }
+        } catch (error) {
+          logger.warn('Failed to parse public key:', error);
+        }
+      }
+
+      // Handle private key - MUST be included to preserve existing key
+      // If private_key.size != 32, firmware will regenerate keys
+      if (config.privateKey) {
+        try {
+          const buffer = Buffer.from(config.privateKey, 'base64');
+          if (buffer.length === 32) {
+            securityConfigData.privateKey = new Uint8Array(buffer);
+            logger.debug(`Including private key (${buffer.length} bytes)`);
+          } else {
+            logger.warn(`Private key has invalid length: ${buffer.length} (expected 32)`);
+          }
+        } catch (error) {
+          logger.warn('Failed to parse private key:', error);
+        }
+      }
+
       // Handle admin keys - convert from base64/hex strings to Uint8Array
       // Maximum of 3 admin keys allowed (per protobuf config.options)
       if (config.adminKeys && Array.isArray(config.adminKeys)) {
         const validKeys = config.adminKeys
           .filter((key: string) => key && key.trim().length > 0)
           .slice(0, 3); // Enforce max 3 keys
-        
+
         if (config.adminKeys.length > 3) {
           logger.warn(`⚠️ More than 3 admin keys provided (${config.adminKeys.length}), only using first 3`);
         }
-        
-        securityConfigData.adminKey = validKeys.map((key: string) => {
+
+        securityConfigData.adminKey = validKeys.map((key: string, index: number) => {
             const trimmed = key.trim();
             try {
+              let buffer: Buffer;
               // Try base64 first
               if (trimmed.startsWith('base64:')) {
-                return Buffer.from(trimmed.substring(7), 'base64');
-              }
-              // Try hex
-              if (trimmed.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(trimmed)) {
+                buffer = Buffer.from(trimmed.substring(7), 'base64');
+              } else if (trimmed.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(trimmed)) {
+                // Try hex
                 const hex = trimmed.startsWith('0x') ? trimmed.substring(2) : trimmed;
-                return Buffer.from(hex, 'hex');
+                buffer = Buffer.from(hex, 'hex');
+              } else {
+                // Try base64 without prefix
+                buffer = Buffer.from(trimmed, 'base64');
               }
-              // Try base64 without prefix
-              return Buffer.from(trimmed, 'base64');
+              logger.debug(`Admin key ${index}: ${buffer.length} bytes`);
+              return new Uint8Array(buffer);
             } catch (error) {
               logger.error(`Failed to parse admin key "${trimmed}":`, error);
               throw new Error(`Invalid admin key format: ${trimmed}. Use base64 or hex format.`);
@@ -1149,36 +1187,24 @@ class ProtobufService {
           });
       }
 
-      if (config.isManaged !== undefined) securityConfigData.isManaged = config.isManaged;
-      if (config.serialEnabled !== undefined) securityConfigData.serialEnabled = config.serialEnabled;
-      if (config.debugLogApiEnabled !== undefined) securityConfigData.debugLogApiEnabled = config.debugLogApiEnabled;
-      if (config.adminChannelEnabled !== undefined) securityConfigData.adminChannelEnabled = config.adminChannelEnabled;
+      // Boolean fields - MUST be explicitly set to preserve their values
+      // The firmware replaces the entire struct, so missing = false (protobuf default)
+      securityConfigData.isManaged = config.isManaged === true;
+      securityConfigData.serialEnabled = config.serialEnabled === true;
+      securityConfigData.debugLogApiEnabled = config.debugLogApiEnabled === true;
+      securityConfigData.adminChannelEnabled = config.adminChannelEnabled === true;
 
-      // IMPORTANT: Include public_key and private_key to preserve them when updating other settings
-      // If we don't include them, the firmware may reset them to empty/random values
-      if (config.publicKey) {
-        try {
-          securityConfigData.publicKey = Buffer.from(config.publicKey, 'base64');
-          logger.debug('Including existing public key in security config update');
-        } catch (error) {
-          logger.warn('Failed to parse public key, not including in update:', error);
-        }
-      }
-      if (config.privateKey) {
-        try {
-          securityConfigData.privateKey = Buffer.from(config.privateKey, 'base64');
-          logger.debug('Including existing private key in security config update');
-        } catch (error) {
-          logger.warn('Failed to parse private key, not including in update:', error);
-        }
-      }
-
-      logger.debug('Security config data being sent to device:', JSON.stringify({
-        ...securityConfigData,
-        adminKey: securityConfigData.adminKey ? `${securityConfigData.adminKey.length} key(s)` : 'none',
-        publicKey: securityConfigData.publicKey ? '[PRESENT]' : '[NOT SET]',
-        privateKey: securityConfigData.privateKey ? '[PRESENT]' : '[NOT SET]'
-      }, null, 2));
+      logger.info('Security config to send:', JSON.stringify({
+        hasPublicKey: !!securityConfigData.publicKey,
+        publicKeyLength: securityConfigData.publicKey?.length || 0,
+        hasPrivateKey: !!securityConfigData.privateKey,
+        privateKeyLength: securityConfigData.privateKey?.length || 0,
+        adminKeyCount: securityConfigData.adminKey?.length || 0,
+        isManaged: securityConfigData.isManaged,
+        serialEnabled: securityConfigData.serialEnabled,
+        debugLogApiEnabled: securityConfigData.debugLogApiEnabled,
+        adminChannelEnabled: securityConfigData.adminChannelEnabled
+      }));
 
       const configMsg = Config.create({
         security: securityConfigData
@@ -1188,7 +1214,7 @@ class ProtobufService {
         setConfig: configMsg
       };
 
-      // Only include sessionPasskey if provided
+      // Include sessionPasskey if provided (for remote node admin)
       if (sessionPasskey && sessionPasskey.length > 0) {
         adminMsgData.sessionPasskey = sessionPasskey;
       }
@@ -1196,7 +1222,27 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      logger.debug('⚙️ Created SetSecurityConfig admin message');
+
+      // Detailed hex dump for debugging
+      logger.info(`⚙️ SetSecurityConfig encoded (${encoded.length} bytes):`);
+      logger.info(`   HEX: ${Buffer.from(encoded).toString('hex')}`);
+
+      // Decode and verify
+      try {
+        const decoded = AdminMessage.decode(encoded) as any;
+        const sec = decoded?.setConfig?.security;
+        logger.info(`⚙️ Round-trip verification:`);
+        logger.info(`   publicKey: ${sec?.publicKey?.length || 0} bytes`);
+        logger.info(`   privateKey: ${sec?.privateKey?.length || 0} bytes`);
+        logger.info(`   adminKey: ${sec?.adminKey?.length || 0} keys`);
+        logger.info(`   isManaged: ${sec?.isManaged}`);
+        logger.info(`   serialEnabled: ${sec?.serialEnabled}`);
+        logger.info(`   debugLogApiEnabled: ${sec?.debugLogApiEnabled}`);
+        logger.info(`   adminChannelEnabled: ${sec?.adminChannelEnabled}`);
+      } catch (e) {
+        logger.error('Round-trip decode failed:', e);
+      }
+
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetSecurityConfig message:', error);
@@ -1889,8 +1935,9 @@ class ProtobufService {
         channel: 0,
         hopLimit: 3,
         wantAck: true,
-        priority: 70,  // RELIABLE priority
-        pkiEncrypted: true  // Python CLI sets this flag even with plaintext admin messages
+        priority: 70  // RELIABLE priority
+        // NOTE: pkiEncrypted removed - admin messages use channel encryption, not PKI
+        // PKI encryption requires the destination's public key which the local node should have
       };
 
       // Include from field if provided
