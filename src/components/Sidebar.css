@@ -71,9 +71,6 @@
 }
 
 .sidebar-toggle {
-  position: absolute;
-  right: 8px;
-  bottom: 70px; /* Above the footer */
   background: var(--ctp-blue, #2a2a2a);
   border: 1px solid var(--ctp-sapphire, #333);
   color: var(--ctp-base, #e0e0e0);
@@ -87,13 +84,56 @@
   font-size: 14px;
   font-weight: bold;
   transition: all 0.2s;
-  z-index: 1; /* Within sidebar stacking context */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar-toggle:hover {
   background: var(--ctp-sapphire, #74c7ec);
   transform: scale(1.05);
+}
+
+.sidebar-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 70px; /* Above the footer */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1;
+}
+
+.sidebar-pin {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-pin:hover {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+  transform: scale(1.05);
+}
+
+.sidebar-pin.pinned {
+  background: var(--ctp-green);
+  border-color: var(--ctp-green);
+  color: var(--ctp-crust);
+}
+
+.sidebar-pin.pinned:hover {
+  background: var(--ctp-teal);
+  border-color: var(--ctp-teal);
+  color: var(--ctp-crust);
 }
 
 .sidebar-header {

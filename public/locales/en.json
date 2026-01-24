@@ -22,6 +22,8 @@
   "nav.audit_log": "Audit Log",
   "nav.expand_sidebar": "Expand sidebar",
   "nav.collapse_sidebar": "Collapse sidebar",
+  "nav.pin_sidebar": "Pin sidebar open",
+  "nav.unpin_sidebar": "Unpin sidebar",
 
   "banners.default_password_warning": "Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.",
   "banners.tx_disabled": "Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.",

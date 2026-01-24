@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConfigIssue } from '../../hooks/useSecurityCheck';
 import './AppBanners.css';
@@ -34,15 +34,21 @@ export const AppBanners: React.FC<AppBannersProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  // Use ref to avoid resetting timer when onDismissUpdate reference changes
+  const onDismissUpdateRef = useRef(onDismissUpdate);
+  useEffect(() => {
+    onDismissUpdateRef.current = onDismissUpdate;
+  }, [onDismissUpdate]);
+
   // Auto-dismiss update banner after 5 seconds (unless upgrade is in progress)
   useEffect(() => {
     if (updateAvailable && !upgradeInProgress) {
       const timer = setTimeout(() => {
-        onDismissUpdate();
+        onDismissUpdateRef.current();
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [updateAvailable, upgradeInProgress, onDismissUpdate]);
+  }, [updateAvailable, upgradeInProgress]);
 
   return (
     <>
