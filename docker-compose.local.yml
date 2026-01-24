@@ -7,6 +7,7 @@ services:
     container_name: meshmonitor
     ports:
       - "8081:3001"
+      - "4404:4404"  # Virtual node server
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
