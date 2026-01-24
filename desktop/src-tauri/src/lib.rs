@@ -165,11 +165,19 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         )
         .env(
             "ENABLE_VIRTUAL_NODE",
-            if config.enable_virtual_node { "true" } else { "false" },
+            if config.enable_virtual_node {
+                "true"
+            } else {
+                "false"
+            },
         )
         .env(
             "VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS",
-            if config.virtual_node_allow_admin { "true" } else { "false" },
+            if config.virtual_node_allow_admin {
+                "true"
+            } else {
+                "false"
+            },
         );
 
     log_to_file(&logs_path, "Environment variables set");
@@ -184,7 +192,10 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     );
     log_to_file(
         &logs_path,
-        &format!("VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS: {}", config.virtual_node_allow_admin),
+        &format!(
+            "VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS: {}",
+            config.virtual_node_allow_admin
+        ),
     );
 
     // On Windows, hide the console window
