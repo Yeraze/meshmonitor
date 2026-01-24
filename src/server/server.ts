@@ -1354,6 +1354,47 @@ apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 
   }
 });
 
+// Delete neighbor info for a node
+apiRouter.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write'), async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Delete neighbor info from database
+    const deletedCount = await databaseService.deleteNeighborInfoForNodeAsync(nodeNum);
+
+    res.json({
+      success: true,
+      nodeNum,
+      deletedCount,
+      message: `Deleted ${deletedCount} neighbor records`,
+    });
+  } catch (error) {
+    logger.error('Error deleting neighbor info:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to delete neighbor info',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
 // Manually scan a node for remote admin capability
 apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', 'write'), async (req, res) => {
   try {

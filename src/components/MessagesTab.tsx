@@ -1331,13 +1331,43 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               const age = Math.floor((Date.now() - mostRecent) / (1000 * 60));
               const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
+              const handlePurgeNeighbors = async () => {
+                if (!selectedDMNode) return;
+                try {
+                  await apiService.purgeNeighborInfo(selectedDMNode);
+                  showToast(t('messages.neighbor_info_purged', 'Neighbor info purged successfully'), 'success');
+                  // The MapContext will refresh on next poll
+                } catch (error) {
+                  console.error('Failed to purge neighbor info:', error);
+                  showToast(t('messages.neighbor_info_purge_failed', 'Failed to purge neighbor info'), 'error');
+                }
+              };
+
               return (
                 <div className="neighbor-info-section" style={{ marginTop: '1rem' }}>
-                  <div className="neighbor-info-header">
-                    <strong>{t('messages.neighbor_info_title', 'Neighbor Info')}</strong>
-                    <span className="neighbor-info-age" style={{ marginLeft: '0.5rem', fontSize: '0.85em', color: 'var(--ctp-subtext0)' }}>
-                      ({ageStr})
-                    </span>
+                  <div className="neighbor-info-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong>{t('messages.neighbor_info_title', 'Neighbor Info')}</strong>
+                      <span className="neighbor-info-age" style={{ marginLeft: '0.5rem', fontSize: '0.85em', color: 'var(--ctp-subtext0)' }}>
+                        ({ageStr})
+                      </span>
+                    </div>
+                    <button
+                      onClick={handlePurgeNeighbors}
+                      className="purge-neighbors-btn"
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.8em',
+                        backgroundColor: 'var(--ctp-surface0)',
+                        color: 'var(--ctp-text)',
+                        border: '1px solid var(--ctp-surface1)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                      title={t('messages.purge_neighbors_tooltip', 'Delete neighbor info for this node')}
+                    >
+                      {t('messages.purge_neighbors', 'Purge')}
+                    </button>
                   </div>
                   <div className="neighbor-info-list" style={{ marginTop: '0.5rem' }}>
                     {nodeNeighbors.map((neighbor, idx) => {

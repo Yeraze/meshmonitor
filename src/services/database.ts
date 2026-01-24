@@ -7165,6 +7165,27 @@ class DatabaseService {
     return result;
   }
 
+  /**
+   * Delete all neighbor info for a specific node
+   *
+   * @param nodeNum The node number to delete neighbor info for
+   * @returns Number of neighbor records deleted
+   */
+  async deleteNeighborInfoForNodeAsync(nodeNum: number): Promise<number> {
+    if (!this.neighborsRepo) {
+      return 0;
+    }
+
+    // Clear from cache
+    this._neighborsByNodeCache.delete(nodeNum);
+    this._neighborsCache = this._neighborsCache.filter(n => n.nodeNum !== nodeNum);
+
+    // Delete from database
+    const deleted = await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum);
+    logger.info(`Deleted ${deleted} neighbor records for node ${nodeNum}`);
+    return deleted;
+  }
+
   // Favorite operations
   setNodeFavorite(nodeNum: number, isFavorite: boolean): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
