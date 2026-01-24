@@ -3093,6 +3093,7 @@
   "admin_commands.admin_channel_enabled": "Admin Channel Enabled",
   "admin_commands.admin_channel_enabled_description": "Allow incoming device control over the insecure legacy admin channel",
   "admin_commands.save_security_config": "Save Security Config",
+  "admin_commands.security_save_disabled": "Saving security config is temporarily disabled due to a firmware compatibility issue",
   "admin_commands.security_config_loaded": "Security config loaded successfully",
   "admin_commands.failed_load_security_config": "Failed to load security config",
 

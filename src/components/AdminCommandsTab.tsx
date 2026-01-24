@@ -2605,13 +2605,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <button
           className="save-button"
           onClick={handleSetSecurityConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          disabled={true}
+          title={t('admin_commands.security_save_disabled')}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: 0.5,
+            cursor: 'not-allowed'
           }}
         >
-          {isExecuting ? t('common.saving') : t('admin_commands.save_security_config')}
+          {t('admin_commands.save_security_config')}
         </button>
       </CollapsibleSection>
 
