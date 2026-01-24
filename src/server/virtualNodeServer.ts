@@ -735,6 +735,53 @@ export class VirtualNodeServer extends EventEmitter {
 
       logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, channels, metadata)`);
 
+      // === STEP 3.5: Send recent message history from database ===
+      // This allows clients to see recent messages without waiting for new ones
+      const MESSAGE_HISTORY_LIMIT = 10;
+      try {
+        const recentMessages = await databaseService.getMessagesAsync(MESSAGE_HISTORY_LIMIT, 0);
+        let messageCount = 0;
+
+        // Sort by timestamp ascending so oldest messages arrive first
+        const sortedMessages = recentMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+        for (const msg of sortedMessages) {
+          // Check if client is still connected
+          const client = this.clients.get(clientId);
+          if (!client || client.socket.destroyed) {
+            logger.warn(`Virtual node: Client ${clientId} disconnected during message history replay`);
+            return;
+          }
+
+          // Create FromRadio packet for this message
+          const messagePacket = await meshtasticProtobufService.createFromRadioTextMessage({
+            fromNodeNum: msg.fromNodeNum,
+            toNodeNum: msg.toNodeNum,
+            text: msg.text,
+            channel: msg.channel,
+            timestamp: msg.timestamp,
+            requestId: msg.requestId,
+            hopLimit: msg.hopLimit,
+            rxTime: msg.rxTime,
+            rxSnr: msg.rxSnr,
+            rxRssi: msg.rxRssi,
+          });
+
+          if (messagePacket) {
+            await this.sendToClient(clientId, messagePacket);
+            sentCount++;
+            messageCount++;
+          }
+        }
+
+        if (messageCount > 0) {
+          logger.info(`Virtual node: ✓ Sent ${messageCount} historical messages to ${clientId}`);
+        }
+      } catch (error) {
+        logger.error(`Virtual node: Failed to send message history to ${clientId}:`, error);
+        // Continue with config - message history is not critical
+      }
+
       // === STEP 4: Send custom ConfigComplete with client's requested ID ===
       const useConfigId = configId || 1;
       logger.info(`Virtual node: Sending ConfigComplete to ${clientId} with ID ${useConfigId}...`);
