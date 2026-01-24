@@ -16,6 +16,12 @@ pub struct Config {
     pub session_secret: String,
     /// First run completed
     pub setup_completed: bool,
+    /// Enable virtual node server for mobile app connections
+    #[serde(default)]
+    pub enable_virtual_node: bool,
+    /// Allow admin commands via virtual node
+    #[serde(default)]
+    pub virtual_node_allow_admin: bool,
 }
 
 impl Default for Config {
@@ -27,6 +33,8 @@ impl Default for Config {
             auto_start: false,
             session_secret: generate_secret(),
             setup_completed: false,
+            enable_virtual_node: false,
+            virtual_node_allow_admin: false,
         }
     }
 }
