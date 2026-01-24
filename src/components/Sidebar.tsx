@@ -41,6 +41,22 @@ const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useTranslation();
   // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
   const [isCollapsed, setIsCollapsed] = useState(true);
+  // Pin state persisted to localStorage - when pinned, sidebar won't auto-collapse on nav click
+  const [isPinned, setIsPinned] = useState(() => {
+    const saved = localStorage.getItem('sidebar-pinned');
+    return saved === 'true';
+  });
+
+  // Persist pin state to localStorage
+  const togglePin = () => {
+    const newPinned = !isPinned;
+    setIsPinned(newPinned);
+    localStorage.setItem('sidebar-pinned', String(newPinned));
+    // When pinning, expand the sidebar if collapsed
+    if (newPinned && isCollapsed) {
+      setIsCollapsed(false);
+    }
+  };
 
   // Check if user has permission to read ANY channel
   const hasAnyChannelPermission = () => {
@@ -76,8 +92,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     showNotification?: boolean;
   }> = ({ id, label, icon, onClick, showNotification }) => {
     const handleClick = () => {
-      // Auto-collapse sidebar when navigation item is clicked (if expanded)
-      if (!isCollapsed) {
+      // Auto-collapse sidebar when navigation item is clicked (if expanded and not pinned)
+      if (!isCollapsed && !isPinned) {
         setIsCollapsed(true);
       }
       // Execute the custom onClick or default setActiveTab
@@ -246,13 +262,24 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      <button
-        className="sidebar-toggle"
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        title={isCollapsed ? t('nav.expand_sidebar') : t('nav.collapse_sidebar')}
-      >
-        {isCollapsed ? '▶' : '◀'}
-      </button>
+      <div className="sidebar-controls">
+        {!isCollapsed && (
+          <button
+            className={`sidebar-pin ${isPinned ? 'pinned' : ''}`}
+            onClick={togglePin}
+            title={isPinned ? t('nav.unpin_sidebar') : t('nav.pin_sidebar')}
+          >
+            📌
+          </button>
+        )}
+        <button
+          className="sidebar-toggle"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          title={isCollapsed ? t('nav.expand_sidebar') : t('nav.collapse_sidebar')}
+        >
+          {isCollapsed ? '▶' : '◀'}
+        </button>
+      </div>
     </aside>
   );
 };
