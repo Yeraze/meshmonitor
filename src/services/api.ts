@@ -738,6 +738,22 @@ class ApiService {
     return response.json();
   }
 
+  async purgeNeighborInfo(nodeId: string) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/nodes/${nodeId}/neighbors`, {
+      method: 'DELETE',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to purge neighbor info');
+    }
+
+    return response.json();
+  }
+
   async getLongestActiveRouteSegment() {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/route-segments/longest-active`);
