@@ -257,7 +257,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   // Get settings and context for effective hops calculation
   const { nodeHopsCalculation } = useSettings();
-  const { traceroutes, neighborInfo } = useMapContext();
+  const { traceroutes, neighborInfo, setNeighborInfo } = useMapContext();
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
 
   // Local state for actions menu
@@ -277,6 +277,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [adminScanLoading, setAdminScanLoading] = useState<string | null>(null);
   const { showToast } = useToast();
   const csrfFetch = useCsrfFetch();
+
+  // Purge neighbors state
+  const [purgingNeighbors, setPurgingNeighbors] = useState(false);
 
   // Resizable send section (only on desktop)
   const {
@@ -1332,14 +1335,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
               const handlePurgeNeighbors = async () => {
-                if (!selectedDMNode) return;
+                if (!selectedDMNode || purgingNeighbors) return;
+
+                // Confirm before purging
+                const confirmed = window.confirm(t('messages.confirm_purge_neighbors', 'Are you sure you want to delete all neighbor info for this node?'));
+                if (!confirmed) return;
+
+                setPurgingNeighbors(true);
                 try {
                   await apiService.purgeNeighborInfo(selectedDMNode);
+                  // Immediately update UI by filtering out purged neighbors
+                  setNeighborInfo(neighborInfo.filter(n => n.nodeNum !== nodeNum));
                   showToast(t('messages.neighbor_info_purged', 'Neighbor info purged successfully'), 'success');
-                  // The MapContext will refresh on next poll
                 } catch (error) {
                   console.error('Failed to purge neighbor info:', error);
                   showToast(t('messages.neighbor_info_purge_failed', 'Failed to purge neighbor info'), 'error');
+                } finally {
+                  setPurgingNeighbors(false);
                 }
               };
 
@@ -1355,6 +1367,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     <button
                       onClick={handlePurgeNeighbors}
                       className="purge-neighbors-btn"
+                      disabled={purgingNeighbors}
                       style={{
                         padding: '0.25rem 0.5rem',
                         fontSize: '0.8em',
@@ -1362,11 +1375,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         color: 'var(--ctp-text)',
                         border: '1px solid var(--ctp-surface1)',
                         borderRadius: '4px',
-                        cursor: 'pointer',
+                        cursor: purgingNeighbors ? 'not-allowed' : 'pointer',
+                        opacity: purgingNeighbors ? 0.6 : 1,
                       }}
                       title={t('messages.purge_neighbors_tooltip', 'Delete neighbor info for this node')}
                     >
-                      {t('messages.purge_neighbors', 'Purge')}
+                      {purgingNeighbors ? <span className="spinner"></span> : t('messages.purge_neighbors', 'Purge')}
                     </button>
                   </div>
                   <div className="neighbor-info-list" style={{ marginTop: '0.5rem' }}>

@@ -328,6 +328,7 @@
   "messages.neighbor_info_title": "Neighbor Info",
   "messages.purge_neighbors": "Purge",
   "messages.purge_neighbors_tooltip": "Delete neighbor info for this node",
+  "messages.confirm_purge_neighbors": "Are you sure you want to delete all neighbor info for this node?",
   "messages.neighbor_info_purged": "Neighbor info purged successfully",
   "messages.neighbor_info_purge_failed": "Failed to purge neighbor info",
   "messages.resize_handle_title": "Drag to resize",
