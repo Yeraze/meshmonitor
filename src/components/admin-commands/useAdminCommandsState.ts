@@ -116,6 +116,20 @@ export interface DeviceConfigState {
   nodeInfoBroadcastSecs: number;
 }
 
+// Telemetry Config State
+export interface TelemetryConfigState {
+  deviceUpdateInterval: number;
+  environmentUpdateInterval: number;
+  environmentMeasurementEnabled: boolean;
+  environmentScreenEnabled: boolean;
+  environmentDisplayFahrenheit: boolean;
+  airQualityEnabled: boolean;
+  airQualityInterval: number;
+  powerMeasurementEnabled: boolean;
+  powerUpdateInterval: number;
+  powerScreenEnabled: boolean;
+}
+
 // Combined Admin Commands State
 export interface AdminCommandsState {
   lora: LoRaConfigState;
@@ -127,6 +141,7 @@ export interface AdminCommandsState {
   neighborInfo: NeighborInfoConfigState;
   owner: OwnerConfigState;
   device: DeviceConfigState;
+  telemetry: TelemetryConfigState;
 }
 
 // Action types
@@ -141,6 +156,7 @@ type AdminCommandsAction =
   | { type: 'SET_NEIGHBORINFO_CONFIG'; payload: Partial<NeighborInfoConfigState> }
   | { type: 'SET_OWNER_CONFIG'; payload: Partial<OwnerConfigState> }
   | { type: 'SET_DEVICE_CONFIG'; payload: Partial<DeviceConfigState> }
+  | { type: 'SET_TELEMETRY_CONFIG'; payload: Partial<TelemetryConfigState> }
   | { type: 'SET_ADMIN_KEY'; payload: { index: number; value: string } }
   | { type: 'ADD_ADMIN_KEY' }
   | { type: 'REMOVE_ADMIN_KEY'; payload: number }
@@ -239,6 +255,18 @@ const initialState: AdminCommandsState = {
     role: 0,
     nodeInfoBroadcastSecs: 3600,
   },
+  telemetry: {
+    deviceUpdateInterval: 900,
+    environmentUpdateInterval: 900,
+    environmentMeasurementEnabled: false,
+    environmentScreenEnabled: false,
+    environmentDisplayFahrenheit: false,
+    airQualityEnabled: false,
+    airQualityInterval: 900,
+    powerMeasurementEnabled: false,
+    powerUpdateInterval: 900,
+    powerScreenEnabled: false,
+  },
 };
 
 function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAction): AdminCommandsState {
@@ -295,6 +323,11 @@ function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAc
       return {
         ...state,
         device: { ...state.device, ...action.payload },
+      };
+    case 'SET_TELEMETRY_CONFIG':
+      return {
+        ...state,
+        telemetry: { ...state.telemetry, ...action.payload },
       };
     case 'SET_ADMIN_KEY':
       const newKeys = [...state.security.adminKeys];
@@ -418,6 +451,11 @@ export function useAdminCommandsState() {
     dispatch({ type: 'SET_DEVICE_CONFIG', payload: config });
   }, []);
 
+  // Telemetry config actions
+  const setTelemetryConfig = useCallback((config: Partial<TelemetryConfigState>) => {
+    dispatch({ type: 'SET_TELEMETRY_CONFIG', payload: config });
+  }, []);
+
   // Reset all configs
   const resetAll = useCallback(() => {
     dispatch({ type: 'RESET_ALL' });
@@ -448,6 +486,8 @@ export function useAdminCommandsState() {
     setOwnerConfig,
     // Device
     setDeviceConfig,
+    // Telemetry
+    setTelemetryConfig,
     // Reset
     resetAll,
   };

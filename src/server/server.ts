@@ -6741,6 +6741,12 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         }
         adminMessage = protobufService.createSetNeighborInfoConfigMessage(params.config, sessionPasskey || undefined);
         break;
+      case 'setTelemetryConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setTelemetryConfig' });
+        }
+        adminMessage = protobufService.createSetModuleConfigMessageGeneric('telemetry', params.config, sessionPasskey || undefined);
+        break;
       case 'setSecurityConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setSecurityConfig' });
