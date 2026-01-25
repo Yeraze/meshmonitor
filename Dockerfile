@@ -49,6 +49,7 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     py3-requests \
+    curl \
     supervisor \
     su-exec \
     && ln -sf /usr/bin/python3 /usr/bin/python \
