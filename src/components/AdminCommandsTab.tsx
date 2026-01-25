@@ -42,6 +42,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setNeighborInfoConfig,
     setOwnerConfig,
     setDeviceConfig,
+    setTelemetryConfig,
   } = useAdminCommandsState();
 
   // UI and non-config state (keep as useState for now)
@@ -97,6 +98,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     bluetooth: 'idle',
     network: 'idle',
     neighborinfo: 'idle',
+    telemetry: 'idle',
     owner: 'idle',
     channels: 'idle'
   });
@@ -967,6 +969,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   transmitOverLora: config.transmitOverLora
                 });
                 break;
+              case 'telemetry':
+                setTelemetryConfig({
+                  deviceUpdateInterval: config.deviceUpdateInterval ?? 900,
+                  environmentUpdateInterval: config.environmentUpdateInterval ?? 900,
+                  environmentMeasurementEnabled: config.environmentMeasurementEnabled ?? false,
+                  environmentScreenEnabled: config.environmentScreenEnabled ?? false,
+                  environmentDisplayFahrenheit: config.environmentDisplayFahrenheit ?? false,
+                  airQualityEnabled: config.airQualityEnabled ?? false,
+                  airQualityInterval: config.airQualityInterval ?? 900,
+                  powerMeasurementEnabled: config.powerMeasurementEnabled ?? false,
+                  powerUpdateInterval: config.powerUpdateInterval ?? 900,
+                  powerScreenEnabled: config.powerScreenEnabled ?? false
+                });
+                break;
             }
             setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
             showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
@@ -1611,6 +1627,32 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       console.error('Set NeighborInfo config command failed:', error);
     }
   }, [configState.neighborInfo, executeCommand]);
+
+  const handleTelemetryConfigChange = useCallback((field: string, value: any) => {
+    setTelemetryConfig({ [field]: value });
+  }, [setTelemetryConfig]);
+
+  const handleSetTelemetryConfig = useCallback(async () => {
+    const config: any = {
+      deviceUpdateInterval: configState.telemetry.deviceUpdateInterval,
+      environmentUpdateInterval: configState.telemetry.environmentUpdateInterval,
+      environmentMeasurementEnabled: configState.telemetry.environmentMeasurementEnabled,
+      environmentScreenEnabled: configState.telemetry.environmentScreenEnabled,
+      environmentDisplayFahrenheit: configState.telemetry.environmentDisplayFahrenheit,
+      airQualityEnabled: configState.telemetry.airQualityEnabled,
+      airQualityInterval: configState.telemetry.airQualityInterval,
+      powerMeasurementEnabled: configState.telemetry.powerMeasurementEnabled,
+      powerUpdateInterval: configState.telemetry.powerUpdateInterval,
+      powerScreenEnabled: configState.telemetry.powerScreenEnabled
+    };
+
+    try {
+      await executeCommand('setTelemetryConfig', { config });
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set Telemetry config command failed:', error);
+    }
+  }, [configState.telemetry, executeCommand]);
 
   const handleAdminKeyChange = (index: number, value: string) => {
     setAdminKey(index, value);
@@ -2828,10 +2870,23 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         neighborInfoTransmitOverLora={configState.neighborInfo.transmitOverLora}
         onNeighborInfoConfigChange={handleNeighborInfoConfigChange}
         onSaveNeighborInfoConfig={handleSetNeighborInfoConfig}
+        telemetryDeviceUpdateInterval={configState.telemetry.deviceUpdateInterval}
+        telemetryEnvironmentUpdateInterval={configState.telemetry.environmentUpdateInterval}
+        telemetryEnvironmentMeasurementEnabled={configState.telemetry.environmentMeasurementEnabled}
+        telemetryEnvironmentScreenEnabled={configState.telemetry.environmentScreenEnabled}
+        telemetryEnvironmentDisplayFahrenheit={configState.telemetry.environmentDisplayFahrenheit}
+        telemetryAirQualityEnabled={configState.telemetry.airQualityEnabled}
+        telemetryAirQualityInterval={configState.telemetry.airQualityInterval}
+        telemetryPowerMeasurementEnabled={configState.telemetry.powerMeasurementEnabled}
+        telemetryPowerUpdateInterval={configState.telemetry.powerUpdateInterval}
+        telemetryPowerScreenEnabled={configState.telemetry.powerScreenEnabled}
+        onTelemetryConfigChange={handleTelemetryConfigChange}
+        onSaveTelemetryConfig={handleSetTelemetryConfig}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
         mqttHeaderActions={renderSectionLoadButton('mqtt')}
         neighborInfoHeaderActions={renderSectionLoadButton('neighborinfo')}
+        telemetryHeaderActions={renderSectionLoadButton('telemetry')}
       />
 
       {/* Import/Export Configuration Section */}

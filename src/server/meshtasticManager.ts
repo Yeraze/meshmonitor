@@ -8334,6 +8334,7 @@ class MeshtasticManager {
       if (isModuleConfig) {
         const moduleConfigMap: { [key: number]: string } = {
           0: 'mqtt',
+          5: 'telemetry',
           9: 'neighborInfo'
         };
         const configKey = moduleConfigMap[configType];
@@ -8382,6 +8383,7 @@ class MeshtasticManager {
             // Map module config types to their keys
             const moduleConfigMap: { [key: number]: string } = {
               0: 'mqtt',
+              5: 'telemetry',
               9: 'neighborInfo'
             };
             const configKey = moduleConfigMap[configType];

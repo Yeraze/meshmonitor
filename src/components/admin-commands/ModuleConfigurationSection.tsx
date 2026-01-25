@@ -31,6 +31,20 @@ interface ModuleConfigurationSectionProps {
   onNeighborInfoConfigChange: (field: string, value: any) => void;
   onSaveNeighborInfoConfig: () => Promise<void>;
 
+  // Telemetry Config
+  telemetryDeviceUpdateInterval: number;
+  telemetryEnvironmentUpdateInterval: number;
+  telemetryEnvironmentMeasurementEnabled: boolean;
+  telemetryEnvironmentScreenEnabled: boolean;
+  telemetryEnvironmentDisplayFahrenheit: boolean;
+  telemetryAirQualityEnabled: boolean;
+  telemetryAirQualityInterval: number;
+  telemetryPowerMeasurementEnabled: boolean;
+  telemetryPowerUpdateInterval: number;
+  telemetryPowerScreenEnabled: boolean;
+  onTelemetryConfigChange: (field: string, value: any) => void;
+  onSaveTelemetryConfig: () => Promise<void>;
+
   // Common
   isExecuting: boolean;
   selectedNodeNum: number | null;
@@ -38,6 +52,7 @@ interface ModuleConfigurationSectionProps {
   // Section header actions (load buttons)
   mqttHeaderActions?: React.ReactNode;
   neighborInfoHeaderActions?: React.ReactNode;
+  telemetryHeaderActions?: React.ReactNode;
 }
 
 export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProps> = ({
@@ -56,10 +71,23 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   neighborInfoTransmitOverLora,
   onNeighborInfoConfigChange,
   onSaveNeighborInfoConfig,
+  telemetryDeviceUpdateInterval,
+  telemetryEnvironmentUpdateInterval,
+  telemetryEnvironmentMeasurementEnabled,
+  telemetryEnvironmentScreenEnabled,
+  telemetryEnvironmentDisplayFahrenheit,
+  telemetryAirQualityEnabled,
+  telemetryAirQualityInterval,
+  telemetryPowerMeasurementEnabled,
+  telemetryPowerUpdateInterval,
+  telemetryPowerScreenEnabled,
+  onTelemetryConfigChange,
+  onSaveTelemetryConfig,
   isExecuting,
   selectedNodeNum,
   mqttHeaderActions,
   neighborInfoHeaderActions,
+  telemetryHeaderActions,
 }) => {
   const { t } = useTranslation();
 
@@ -262,6 +290,218 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_neighbor_info_config', 'Save Neighbor Info Config')}
+        </button>
+      </CollapsibleSection>
+
+      {/* Telemetry Config Section */}
+      <CollapsibleSection
+        id="admin-telemetry-config"
+        title={t('admin_commands.telemetry_configuration', 'Telemetry Configuration')}
+        nested={true}
+        headerActions={telemetryHeaderActions}
+      >
+        {/* Device Telemetry */}
+        <h4 style={{ margin: '0.5rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+          {t('telemetry_config.device_section', 'Device Telemetry')}
+        </h4>
+        <div className="setting-item">
+          <label>
+            {t('telemetry_config.device_interval', 'Device Update Interval (seconds)')}
+            <span className="setting-description">{t('telemetry_config.device_interval_description', 'How often to collect and transmit device metrics (battery, voltage, etc.)')}</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={telemetryDeviceUpdateInterval}
+            onChange={(e) => onTelemetryConfigChange('deviceUpdateInterval', parseInt(e.target.value) || 0)}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '100%', maxWidth: '600px' }}
+            placeholder="900"
+          />
+        </div>
+
+        {/* Environment Telemetry */}
+        <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+          {t('telemetry_config.environment_section', 'Environment Telemetry')}
+        </h4>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={telemetryEnvironmentMeasurementEnabled}
+              onChange={(e) => onTelemetryConfigChange('environmentMeasurementEnabled', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('telemetry_config.environment_enabled', 'Environment Measurement Enabled')}</div>
+              <span className="setting-description">{t('telemetry_config.environment_enabled_description', 'Enable collection of environment sensor data (temperature, humidity, etc.)')}</span>
+            </div>
+          </label>
+        </div>
+        {telemetryEnvironmentMeasurementEnabled && (
+          <>
+            <div className="setting-item">
+              <label>
+                {t('telemetry_config.environment_interval', 'Environment Update Interval (seconds)')}
+                <span className="setting-description">{t('telemetry_config.environment_interval_description', 'How often to collect and transmit environment metrics')}</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={telemetryEnvironmentUpdateInterval}
+                onChange={(e) => onTelemetryConfigChange('environmentUpdateInterval', parseInt(e.target.value) || 0)}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+                placeholder="900"
+              />
+            </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  checked={telemetryEnvironmentScreenEnabled}
+                  onChange={(e) => onTelemetryConfigChange('environmentScreenEnabled', e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('telemetry_config.environment_screen', 'Show on Device Screen')}</div>
+                  <span className="setting-description">{t('telemetry_config.environment_screen_description', 'Display environment data on the device screen')}</span>
+                </div>
+              </label>
+            </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  checked={telemetryEnvironmentDisplayFahrenheit}
+                  onChange={(e) => onTelemetryConfigChange('environmentDisplayFahrenheit', e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('telemetry_config.environment_fahrenheit', 'Display in Fahrenheit')}</div>
+                  <span className="setting-description">{t('telemetry_config.environment_fahrenheit_description', 'Display temperature in Fahrenheit instead of Celsius')}</span>
+                </div>
+              </label>
+            </div>
+          </>
+        )}
+
+        {/* Advanced Settings (Air Quality & Power) */}
+        <CollapsibleSection
+          id="admin-telemetry-advanced"
+          title={t('telemetry_config.advanced_settings', 'Advanced Settings')}
+          nested={true}
+        >
+          {/* Air Quality */}
+          <h4 style={{ margin: '0.5rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+            {t('telemetry_config.air_quality_section', 'Air Quality Metrics')}
+          </h4>
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={telemetryAirQualityEnabled}
+                onChange={(e) => onTelemetryConfigChange('airQualityEnabled', e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('telemetry_config.air_quality_enabled', 'Air Quality Enabled')}</div>
+                <span className="setting-description">{t('telemetry_config.air_quality_enabled_description', 'Enable air quality sensor collection')}</span>
+              </div>
+            </label>
+          </div>
+          {telemetryAirQualityEnabled && (
+            <div className="setting-item">
+              <label>
+                {t('telemetry_config.air_quality_interval', 'Air Quality Interval (seconds)')}
+                <span className="setting-description">{t('telemetry_config.air_quality_interval_description', 'How often to collect air quality metrics')}</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={telemetryAirQualityInterval}
+                onChange={(e) => onTelemetryConfigChange('airQualityInterval', parseInt(e.target.value) || 0)}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+                placeholder="900"
+              />
+            </div>
+          )}
+
+          {/* Power Metrics */}
+          <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+            {t('telemetry_config.power_section', 'Power Metrics')}
+          </h4>
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={telemetryPowerMeasurementEnabled}
+                onChange={(e) => onTelemetryConfigChange('powerMeasurementEnabled', e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('telemetry_config.power_enabled', 'Power Measurement Enabled')}</div>
+                <span className="setting-description">{t('telemetry_config.power_enabled_description', 'Enable power metrics collection (INA sensors)')}</span>
+              </div>
+            </label>
+          </div>
+          {telemetryPowerMeasurementEnabled && (
+            <>
+              <div className="setting-item">
+                <label>
+                  {t('telemetry_config.power_interval', 'Power Update Interval (seconds)')}
+                  <span className="setting-description">{t('telemetry_config.power_interval_description', 'How often to collect power metrics')}</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={telemetryPowerUpdateInterval}
+                  onChange={(e) => onTelemetryConfigChange('powerUpdateInterval', parseInt(e.target.value) || 0)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '100%', maxWidth: '600px' }}
+                  placeholder="900"
+                />
+              </div>
+              <div className="setting-item">
+                <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    type="checkbox"
+                    checked={telemetryPowerScreenEnabled}
+                    onChange={(e) => onTelemetryConfigChange('powerScreenEnabled', e.target.checked)}
+                    disabled={isExecuting}
+                    style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('telemetry_config.power_screen', 'Show Power on Screen')}</div>
+                    <span className="setting-description">{t('telemetry_config.power_screen_description', 'Display power metrics on the device screen')}</span>
+                  </div>
+                </label>
+              </div>
+            </>
+          )}
+        </CollapsibleSection>
+
+        <button
+          className="save-button"
+          onClick={onSaveTelemetryConfig}
+          disabled={isExecuting || selectedNodeNum === null}
+          style={{
+            marginTop: '1rem',
+            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('telemetry_config.save_button', 'Save Telemetry Config')}
         </button>
       </CollapsibleSection>
     </CollapsibleSection>
