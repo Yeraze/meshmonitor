@@ -2330,11 +2330,6 @@ body {
   z-index: 10;
 }
 
-/* Position actions on left for incoming messages */
-.message-bubble-container.theirs .message-actions {
-  right: auto;
-  left: 0;
-}
 
 .message-bubble-container:hover .message-actions {
   opacity: 1;
