@@ -763,9 +763,6 @@ export class VirtualNodeServer extends EventEmitter {
 
           // Create FromRadio packet for this message
           // Include replyId and emoji so tapbacks/reactions display correctly on clients
-          if (msg.emoji || msg.replyId) {
-            logger.info(`Virtual node: Message ${msg.id} has emoji=${msg.emoji}, replyId=${msg.replyId}`);
-          }
           const messagePacket = await meshtasticProtobufService.createFromRadioTextMessage({
             id: msg.id,  // Pass ID to extract original packet ID for tapback linking
             fromNodeNum: msg.fromNodeNum,
