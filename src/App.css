@@ -2320,12 +2320,11 @@ body {
 /* Message actions positioned above the bubble to avoid overlapping content */
 .message-actions {
   position: absolute;
-  bottom: 100%;
+  top: -12px;
   right: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
-  margin-bottom: 4px;
   opacity: 0;
   transition: opacity 0.2s ease;
   z-index: 10;
@@ -2339,6 +2338,12 @@ body {
 
 .message-bubble-container:hover .message-actions {
   opacity: 1;
+}
+
+/* Highlight the message bubble on hover to show action relationship */
+.message-bubble-container:hover .message-bubble {
+  outline: 1px solid var(--ctp-overlay1);
+  outline-offset: 2px;
 }
 
 .reply-button,
