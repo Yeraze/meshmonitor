@@ -1107,45 +1107,45 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               </div>
                             </div>
                           )}
+                          {hasPermission('messages', 'write') && (
+                            <div className="message-actions">
+                              {isMine ? (
+                                <button
+                                  className="resend-button"
+                                  onClick={() => handleResendMessage(msg)}
+                                  title={t('messages.resend_button_title')}
+                                >
+                                  ↻
+                                </button>
+                              ) : (
+                                <button
+                                  className="reply-button"
+                                  onClick={() => {
+                                    setReplyingTo(msg);
+                                    dmMessageInputRef.current?.focus();
+                                  }}
+                                  title={t('messages.reply_button_title')}
+                                >
+                                  ↩
+                                </button>
+                              )}
+                              <button
+                                className="emoji-picker-button"
+                                onClick={() => setEmojiPickerMessage(msg)}
+                                title={t('messages.emoji_button_title')}
+                              >
+                                😄
+                              </button>
+                              <button
+                                className="delete-button"
+                                onClick={() => handleDeleteMessage(msg)}
+                                title={t('messages.delete_button_title')}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
                           <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                            {hasPermission('messages', 'write') && (
-                              <div className="message-actions">
-                                {isMine ? (
-                                  <button
-                                    className="resend-button"
-                                    onClick={() => handleResendMessage(msg)}
-                                    title={t('messages.resend_button_title')}
-                                  >
-                                    ↻
-                                  </button>
-                                ) : (
-                                  <button
-                                    className="reply-button"
-                                    onClick={() => {
-                                      setReplyingTo(msg);
-                                      dmMessageInputRef.current?.focus();
-                                    }}
-                                    title={t('messages.reply_button_title')}
-                                  >
-                                    ↩
-                                  </button>
-                                )}
-                                <button
-                                  className="emoji-picker-button"
-                                  onClick={() => setEmojiPickerMessage(msg)}
-                                  title={t('messages.emoji_button_title')}
-                                >
-                                  😄
-                                </button>
-                                <button
-                                  className="delete-button"
-                                  onClick={() => handleDeleteMessage(msg)}
-                                  title={t('messages.delete_button_title')}
-                                >
-                                  🗑️
-                                </button>
-                              </div>
-                            )}
                             <div className="message-text-row">
                               <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
                                 {renderMessageWithLinks(msg.text)}

@@ -2317,21 +2317,28 @@ body {
   position: relative;
 }
 
+/* Message actions positioned above the bubble to avoid overlapping content */
 .message-actions {
   position: absolute;
-  top: 4px;
-  right: 8px;
+  top: -12px;
+  right: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
-  max-width: 200px;
   opacity: 0;
   transition: opacity 0.2s ease;
   z-index: 10;
 }
 
+
 .message-bubble-container:hover .message-actions {
   opacity: 1;
+}
+
+/* Highlight the message bubble on hover to show action relationship */
+.message-bubble-container:hover .message-bubble {
+  outline: 1px solid var(--ctp-overlay1);
+  outline-offset: 2px;
 }
 
 .reply-button,
@@ -3897,6 +3904,7 @@ body {
   flex-direction: column;
   gap: 2px;
   width: 100%;
+  position: relative;
 }
 
 /* Sender name displayed above message bubble for incoming messages */

@@ -635,51 +635,51 @@ export default function ChannelsTab({
                                       </div>
                                     </div>
                                   )}
-                                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                    {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
-                                      <div className="message-actions">
-                                        {/* Hide reply/resend for Channel Database channels (read-only) - device channels are 0-7 */}
-                                        {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
-                                          isMine ? (
-                                            <button
-                                              className="resend-button"
-                                              onClick={() => handleResendMessage(msg)}
-                                              title={t('channels.resend_button_title')}
-                                            >
-                                              ↻
-                                            </button>
-                                          ) : (
-                                            <button
-                                              className="reply-button"
-                                              onClick={() => {
-                                                setReplyingTo(msg);
-                                                channelMessageInputRef.current?.focus();
-                                              }}
-                                              title={t('channels.reply_button_title')}
-                                            >
-                                              ↩
-                                            </button>
-                                          )
-                                        )}
-                                        {/* Hide emoji reactions for Channel Database channels (read-only) */}
-                                        {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
+                                  {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                                    <div className="message-actions">
+                                      {/* Hide reply/resend for Channel Database channels (read-only) - device channels are 0-7 */}
+                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
+                                        isMine ? (
                                           <button
-                                            className="emoji-picker-button"
-                                            onClick={() => setEmojiPickerMessage(msg)}
-                                            title={t('channels.emoji_button_title')}
+                                            className="resend-button"
+                                            onClick={() => handleResendMessage(msg)}
+                                            title={t('channels.resend_button_title')}
                                           >
-                                            😄
+                                            ↻
                                           </button>
-                                        )}
+                                        ) : (
+                                          <button
+                                            className="reply-button"
+                                            onClick={() => {
+                                              setReplyingTo(msg);
+                                              channelMessageInputRef.current?.focus();
+                                            }}
+                                            title={t('channels.reply_button_title')}
+                                          >
+                                            ↩
+                                          </button>
+                                        )
+                                      )}
+                                      {/* Hide emoji reactions for Channel Database channels (read-only) */}
+                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
                                         <button
-                                          className="delete-button"
-                                          onClick={() => handleDeleteMessage(msg)}
-                                          title={t('channels.delete_button_title')}
+                                          className="emoji-picker-button"
+                                          onClick={() => setEmojiPickerMessage(msg)}
+                                          title={t('channels.emoji_button_title')}
                                         >
-                                          🗑️
+                                          😄
                                         </button>
-                                      </div>
-                                    )}
+                                      )}
+                                      <button
+                                        className="delete-button"
+                                        onClick={() => handleDeleteMessage(msg)}
+                                        title={t('channels.delete_button_title')}
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                                     <div className="message-text-row">
                                       <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
                                         {renderMessageWithLinks(msg.text)}
