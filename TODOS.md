@@ -34,6 +34,32 @@
 
 ## Current Sprint
 
+### Remote Admin Telemetry Configuration (#1589)
+
+**Completed:**
+- [x] Add TelemetryConfigState interface to useAdminCommandsState.ts
+  - 10 telemetry configuration fields (device interval, environment, air quality, power)
+  - SET_TELEMETRY_CONFIG action type and reducer case
+  - setTelemetryConfig callback function
+- [x] Add telemetry section to ModuleConfigurationSection.tsx
+  - Device Telemetry: update interval
+  - Environment Telemetry: enabled, interval, screen display, Fahrenheit
+  - Advanced Settings (collapsible): Air Quality and Power metrics
+- [x] Wire telemetry in AdminCommandsTab.tsx
+  - Add telemetry to sectionLoadStatus initial state
+  - handleTelemetryConfigChange and handleSetTelemetryConfig callbacks
+  - Case for loading telemetry config in handleLoadSingleConfig
+  - Pass telemetry props to ModuleConfigurationSection
+- [x] Add setTelemetryConfig case to server.ts admin/commands endpoint
+- [x] Add telemetry (config type 5) to moduleConfigMap in meshtasticManager.ts
+- [x] Add telemetry_config_short translation key to en.json
+- [x] Build successful, TypeScript check passed
+
+**Summary:**
+Added Telemetry Configuration section to the Admin Commands tab's Module Configuration area. Users can now remotely configure device metrics interval, environment sensors (enabled, interval, screen, Fahrenheit), air quality metrics, and power metrics for remote nodes.
+
+---
+
 ### Channel-Based Node Visibility (Discussion #1503)
 
 **Completed:**
