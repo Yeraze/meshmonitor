@@ -12,6 +12,8 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import TelemetryChart from '../../TelemetryChart';
 import PacketRateChart, { isPacketRateType } from '../../PacketRateChart';
+import SmartHopsChart, { isSmartHopsType } from '../../SmartHopsChart';
+import LinkQualityChart, { isLinkQualityType } from '../../LinkQualityChart';
 import NodeStatusWidget from '../../NodeStatusWidget';
 import TracerouteWidget from '../../TracerouteWidget';
 import {
@@ -156,6 +158,38 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
               if (isPacketRateType(favorite.telemetryType)) {
                 return (
                   <PacketRateChart
+                    key={key}
+                    id={key}
+                    favorite={favorite}
+                    node={node}
+                    hours={hours}
+                    baseUrl={baseUrl}
+                    globalTimeRange={globalTimeRange}
+                    onRemove={onRemoveFavorite}
+                  />
+                );
+              }
+
+              // Use SmartHopsChart for smart hops type
+              if (isSmartHopsType(favorite.telemetryType)) {
+                return (
+                  <SmartHopsChart
+                    key={key}
+                    id={key}
+                    favorite={favorite}
+                    node={node}
+                    hours={hours}
+                    baseUrl={baseUrl}
+                    globalTimeRange={globalTimeRange}
+                    onRemove={onRemoveFavorite}
+                  />
+                );
+              }
+
+              // Use LinkQualityChart for link quality type
+              if (isLinkQualityType(favorite.telemetryType)) {
+                return (
+                  <LinkQualityChart
                     key={key}
                     id={key}
                     favorite={favorite}
