@@ -3338,5 +3338,7 @@
     "admin_commands.device_metadata_title": "Метаданные устройства",
     "news.no_news": "На данный момент новостей нет.",
     "info.link_quality_graph": "Анализ качества соединения",
-    "info.link_quality_title": "Качество соединения"
+    "info.link_quality_title": "Качество соединения",
+    "nav.pin_sidebar": "Закрепить открытой боковую панель",
+    "nav.unpin_sidebar": "Открепить боковую панель"
 }
