@@ -1264,6 +1264,7 @@ export class MeshtasticProtobufService {
    * @returns Encoded FromRadio bytes or null on failure
    */
   async createFromRadioTextMessage(message: {
+    id?: string;  // Database message ID (format: "fromNum_packetId") - used to extract original packet ID
     fromNodeNum: number;
     toNodeNum: number;
     text: string;
@@ -1274,6 +1275,8 @@ export class MeshtasticProtobufService {
     rxTime?: number | null;
     rxSnr?: number | null;
     rxRssi?: number | null;
+    replyId?: number | null;
+    emoji?: number | null;
   }): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
@@ -1287,14 +1290,51 @@ export class MeshtasticProtobufService {
       const Data = root.lookupType('meshtastic.Data');
 
       // Create the Data payload with the text message
+      // Include replyId and emoji for tapbacks/reactions to display correctly
       const textBytes = new TextEncoder().encode(message.text);
-      const dataMessage = Data.create({
+
+      // Build data message fields - only include replyId/emoji if they have valid values
+      // This ensures tapbacks are properly associated with their original messages
+      const dataFields: Record<string, unknown> = {
         portnum: PortNum.TEXT_MESSAGE_APP,
         payload: textBytes,
-      });
+      };
 
-      // Generate a packet ID from the requestId or timestamp
-      const packetId = message.requestId || (message.timestamp & 0xffffffff);
+      // Add replyId if present (links this message/reaction to another message)
+      if (message.replyId && message.replyId > 0) {
+        dataFields.replyId = message.replyId;
+      }
+
+      // Add emoji flag if present (indicates this is a tapback/reaction, not a regular message)
+      if (message.emoji && message.emoji > 0) {
+        dataFields.emoji = message.emoji;
+      }
+
+      const dataMessage = Data.create(dataFields);
+
+      // Generate a packet ID - prefer the original packet ID if available
+      // Message IDs are stored in format "fromNum_packetId", so we can extract the original
+      // This is critical for tapbacks to link correctly to their original messages
+      let packetId = message.requestId;
+      if (!packetId && message.id) {
+        const idParts = message.id.split('_');
+        if (idParts.length > 1) {
+          const extractedId = parseInt(idParts[1], 10);
+          if (!isNaN(extractedId) && extractedId > 0) {
+            packetId = extractedId;
+          }
+        }
+      }
+      // Fallback to timestamp-based ID if no packet ID found
+      if (!packetId) {
+        packetId = message.timestamp & 0xffffffff;
+      }
+
+      // Convert timestamp from milliseconds (database format) to seconds (Meshtastic protocol)
+      // The database stores timestamps as milliseconds since epoch, but MeshPacket.rxTime
+      // expects Unix seconds. Without this conversion, the 13-digit ms timestamp overflows
+      // 32-bit integers and wraps to dates in the 1960s on iOS clients.
+      const rxTimeSeconds = Math.floor((message.rxTime || message.timestamp) / 1000);
 
       // Create the MeshPacket
       const meshPacket = MeshPacket.create({
@@ -1303,7 +1343,7 @@ export class MeshtasticProtobufService {
         channel: message.channel >= 0 ? message.channel : 0, // Use 0 for DMs
         decoded: dataMessage,
         id: packetId,
-        rxTime: message.rxTime || message.timestamp,
+        rxTime: rxTimeSeconds,
         rxSnr: message.rxSnr || 0,
         rxRssi: message.rxRssi || 0,
         hopLimit: message.hopLimit || 3,

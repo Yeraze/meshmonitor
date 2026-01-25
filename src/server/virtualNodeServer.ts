@@ -5,6 +5,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
+import { PortNum } from './constants/meshtastic.js';
 
 export interface VirtualNodeConfig {
   port: number;
@@ -742,8 +743,15 @@ export class VirtualNodeServer extends EventEmitter {
         const recentMessages = await databaseService.getMessagesAsync(MESSAGE_HISTORY_LIMIT, 0);
         let messageCount = 0;
 
+        // Filter to only TEXT_MESSAGE_APP messages (portnum 1)
+        // This excludes traceroutes, telemetry, and other non-text messages that get stored
+        // in the messages table but shouldn't appear as chat messages on connected clients
+        const textMessages = recentMessages.filter(msg =>
+          msg.portnum === PortNum.TEXT_MESSAGE_APP || msg.portnum === 1
+        );
+
         // Sort by timestamp ascending so oldest messages arrive first
-        const sortedMessages = recentMessages.sort((a, b) => a.timestamp - b.timestamp);
+        const sortedMessages = textMessages.sort((a, b) => a.timestamp - b.timestamp);
 
         for (const msg of sortedMessages) {
           // Check if client is still connected
@@ -754,7 +762,9 @@ export class VirtualNodeServer extends EventEmitter {
           }
 
           // Create FromRadio packet for this message
+          // Include replyId and emoji so tapbacks/reactions display correctly on clients
           const messagePacket = await meshtasticProtobufService.createFromRadioTextMessage({
+            id: msg.id,  // Pass ID to extract original packet ID for tapback linking
             fromNodeNum: msg.fromNodeNum,
             toNodeNum: msg.toNodeNum,
             text: msg.text,
@@ -765,6 +775,8 @@ export class VirtualNodeServer extends EventEmitter {
             rxTime: msg.rxTime,
             rxSnr: msg.rxSnr,
             rxRssi: msg.rxRssi,
+            replyId: msg.replyId,
+            emoji: msg.emoji,
           });
 
           if (messagePacket) {
