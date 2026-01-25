@@ -1296,6 +1296,12 @@ export class MeshtasticProtobufService {
       // Generate a packet ID from the requestId or timestamp
       const packetId = message.requestId || (message.timestamp & 0xffffffff);
 
+      // Convert timestamp from milliseconds (database format) to seconds (Meshtastic protocol)
+      // The database stores timestamps as milliseconds since epoch, but MeshPacket.rxTime
+      // expects Unix seconds. Without this conversion, the 13-digit ms timestamp overflows
+      // 32-bit integers and wraps to dates in the 1960s on iOS clients.
+      const rxTimeSeconds = Math.floor((message.rxTime || message.timestamp) / 1000);
+
       // Create the MeshPacket
       const meshPacket = MeshPacket.create({
         from: message.fromNodeNum,
@@ -1303,7 +1309,7 @@ export class MeshtasticProtobufService {
         channel: message.channel >= 0 ? message.channel : 0, // Use 0 for DMs
         decoded: dataMessage,
         id: packetId,
-        rxTime: message.rxTime || message.timestamp,
+        rxTime: rxTimeSeconds,
         rxSnr: message.rxSnr || 0,
         rxRssi: message.rxRssi || 0,
         hopLimit: message.hopLimit || 3,
