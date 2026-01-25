@@ -43,9 +43,10 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-# Install Python and dependencies for Apprise
+# Install curl (for healthchecks), Python and dependencies for Apprise
 # Create python symlink for user scripts that use #!/usr/bin/env python
 RUN apk add --no-cache \
+    curl \
     python3 \
     py3-pip \
     py3-requests \
