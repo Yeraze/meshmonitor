@@ -117,6 +117,7 @@ services:
       - ACCESS_LOG_FORMAT=combined
       - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
       - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
+      - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=${VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS:-true}
       # News feed URL for testing - use host.docker.internal to access host machine
       - NEWS_FEED_URL=${NEWS_FEED_URL:-}
 
