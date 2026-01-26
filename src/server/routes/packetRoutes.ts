@@ -215,7 +215,7 @@ router.get('/:id', requirePacketPermissions, (req, res) => {
  * DELETE /api/packets
  * Clear all packet logs (admin only)
  */
-router.delete('/', requirePacketPermissions, (req, res) => {
+router.delete('/', requirePacketPermissions, async (req, res) => {
   try {
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;
@@ -227,7 +227,7 @@ router.delete('/', requirePacketPermissions, (req, res) => {
       });
     }
 
-    const deletedCount = packetLogService.clearPackets();
+    const deletedCount = await packetLogService.clearPacketsAsync();
     logger.info(`🧹 Admin ${user.username} cleared ${deletedCount} packet logs`);
 
     // Log to audit log

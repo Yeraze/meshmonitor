@@ -124,6 +124,13 @@ class PacketLogService {
   }
 
   /**
+   * Clear all packet logs - async version for PostgreSQL/MySQL
+   */
+  async clearPacketsAsync(): Promise<number> {
+    return databaseService.clearPacketLogsAsync();
+  }
+
+  /**
    * Check if packet logging is enabled
    */
   isEnabled(): boolean {
