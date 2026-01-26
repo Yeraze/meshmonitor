@@ -5,7 +5,6 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
-import { PortNum } from './constants/meshtastic.js';
 
 export interface VirtualNodeConfig {
   port: number;
