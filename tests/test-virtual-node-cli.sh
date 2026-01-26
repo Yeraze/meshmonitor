@@ -117,6 +117,21 @@ for i in {1..30}; do
     sleep 1
 done
 
+# Wait for admin user to be created before attempting login
+echo "  Waiting for admin user creation..."
+for i in {1..30}; do
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
+        echo "  Admin user created"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e "${RED}✗ FAIL${NC}: Admin user not created after 30 seconds"
+        docker logs "$CONTAINER_NAME" 2>&1 | tail -20
+        exit 1
+    fi
+    sleep 1
+done
+
 # Authenticate as admin to get session cookie (required for channel permission filtering)
 echo "  Authenticating as admin..."
 COOKIE_JAR="/tmp/meshmonitor-cookies.txt"
