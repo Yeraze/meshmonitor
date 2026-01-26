@@ -1688,7 +1688,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* Draw uncertainty circles for estimated positions */}
               {showEstimatedPositions && nodesWithPosition
-                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)))
+                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
                   // Calculate radius based on precision bits (higher precision = smaller circle)
                   // Meshtastic uses precision_bits to reduce coordinate precision
@@ -1777,6 +1777,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
                 // Filter out segments where either endpoint is not visible (Issue #1149)
                 if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
+                  return null;
+                }
+
+                // When traceroute is active, only show segments for nodes in the traceroute
+                if (tracerouteNodeNums && (!tracerouteNodeNums.has(ni.nodeNum) || !tracerouteNodeNums.has(ni.neighborNodeNum))) {
                   return null;
                 }
 
