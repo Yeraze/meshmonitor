@@ -280,7 +280,7 @@ export const POSTGRES_SCHEMA_SQL = `
     created_at BIGINT,
     decrypted_by TEXT,
     decrypted_channel_id INTEGER,
-    via_mqtt BOOLEAN
+    transport_mechanism INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS backup_history (

@@ -16,7 +16,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism } from './constants/meshtastic.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -623,7 +623,7 @@ class MeshtasticManager {
       payload_preview: payloadPreview,
       metadata: JSON.stringify({ ...metadata, direction: 'tx' }),
       direction: 'tx',
-      via_mqtt: false,  // Outgoing packets are sent via direct connection, not MQTT
+      transport_mechanism: TransportMechanism.INTERNAL,  // Outgoing packets are sent via direct connection
     });
   }
 
@@ -2391,7 +2391,7 @@ class MeshtasticManager {
           hop_start: meshPacket.hopStart,
           want_ack: meshPacket.wantAck,
           priority: meshPacket.priority,
-          via_mqtt: meshPacket.viaMqtt
+          transport_mechanism: meshPacket.transportMechanism
         };
 
         // Include encrypted payload bytes if packet is encrypted
@@ -2430,7 +2430,8 @@ class MeshtasticManager {
           direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx',
           decrypted_by: decryptedBy ?? undefined,
           decrypted_channel_id: decryptedChannelId ?? undefined,
-          via_mqtt: meshPacket.viaMqtt ?? false,
+          // Note: ?? (nullish coalescing) correctly preserves 0 (INTERNAL), only defaults on null/undefined
+          transport_mechanism: meshPacket.transportMechanism ?? TransportMechanism.LORA,
         });
         } // end else (not internal packet)
       }
