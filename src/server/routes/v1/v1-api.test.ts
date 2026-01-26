@@ -106,6 +106,12 @@ vi.mock('../../../services/database.js', () => {
         channel_6: { viewOnMap: true, read: true, write: true },
         channel_7: { viewOnMap: true, read: true, write: true }
       })),
+      getChannelDatabasePermissionsForUserAsSetAsync: vi.fn(async () => ({
+        // Grant access to virtual channels 1-3 for testing
+        1: { viewOnMap: true, read: true },
+        2: { viewOnMap: true, read: true },
+        3: { viewOnMap: true, read: true }
+      })),
       auditLog: vi.fn(),
       auditLogAsync: vi.fn(async () => {}),
       getSetting: vi.fn((key: string) => {
