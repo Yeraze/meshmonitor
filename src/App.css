@@ -3321,6 +3321,20 @@ body {
   color: rgba(30, 30, 46, 0.8);
 }
 
+.node-short.sticky {
+  background: var(--ctp-yellow);
+  color: var(--ctp-base);
+}
+
+.node-short .pin-indicator {
+  margin-right: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.node-short:hover {
+  opacity: 0.8;
+}
+
 .node-details {
   display: flex;
   justify-content: space-between;

@@ -273,6 +273,36 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Telemetry request modal state
   const [showTelemetryRequestModal, setShowTelemetryRequestModal] = useState(false);
 
+  // Sticky nodes - pinned to top of list regardless of sorting (stored in localStorage)
+  const [stickyNodes, setStickyNodes] = useState<Set<number>>(() => {
+    try {
+      const stored = localStorage.getItem('meshmonitor-sticky-dm-nodes');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return new Set(Array.isArray(parsed) ? parsed : []);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return new Set();
+  });
+
+  // Toggle sticky status for a node
+  const toggleStickyNode = useCallback((nodeNum: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't select the node when toggling sticky
+    setStickyNodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeNum)) {
+        newSet.delete(nodeNum);
+      } else {
+        newSet.add(nodeNum);
+      }
+      // Persist to localStorage
+      localStorage.setItem('meshmonitor-sticky-dm-nodes', JSON.stringify([...newSet]));
+      return newSet;
+    });
+  }, []);
+
   // Admin scan state
   const [adminScanLoading, setAdminScanLoading] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -479,6 +509,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Sort and filter nodes based on dmFilter
   const sortedNodesWithMessages = [...nodesWithMessages]
     .filter(node => {
+      // Sticky nodes always pass through filters
+      if (stickyNodes.has(node.nodeNum)) return true;
+
       // Apply filter conditions
       switch (dmFilter) {
         case 'unread':
@@ -500,6 +533,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       }
     })
     .sort((a, b) => {
+      // Sticky nodes always come first
+      const aSticky = stickyNodes.has(a.nodeNum);
+      const bSticky = stickyNodes.has(b.nodeNum);
+      if (aSticky && !bSticky) return -1;
+      if (!aSticky && bSticky) return 1;
+
       // For hops-based filters, sort by hops ascending
       if (['hops', 'favorites', 'withPosition', 'noInfra'].includes(dmFilter)) {
         return sortByHops(a, b);
@@ -510,6 +549,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   // Filter for display
   const filteredNodes = sortedNodesWithMessages.filter(node => {
+    // Sticky nodes always pass through filters
+    if (stickyNodes.has(node.nodeNum)) return true;
+
     if (securityFilter === 'flaggedOnly') {
       if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
     } else if (securityFilter === 'hideFlagged') {
@@ -627,7 +669,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               {node.keyMismatchDetected ? '🔓' : '⚠️'}
                             </span>
                           )}
-                          <div className="node-short">{node.user?.shortName || '-'}</div>
+                          <div
+                            className={`node-short ${stickyNodes.has(node.nodeNum) ? 'sticky' : ''}`}
+                            onClick={(e) => toggleStickyNode(node.nodeNum, e)}
+                            title={stickyNodes.has(node.nodeNum) ? t('messages.unpin_node') : t('messages.pin_node')}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {stickyNodes.has(node.nodeNum) && <span className="pin-indicator">📌</span>}
+                            {node.user?.shortName || '-'}
+                          </div>
                         </div>
                       </div>
 
