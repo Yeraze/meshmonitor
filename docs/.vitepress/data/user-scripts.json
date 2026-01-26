@@ -360,5 +360,30 @@
       "Optional MQTT publishing",
       "Customizable provider lists via JSON config"
     ]
+  },
+  {
+    "name": "Sky and Sea Alert",
+    "filename": "sky_and_sea_alert.py",
+    "icon": "✈️",
+    "description": "Lightweight proximity alert system for aircraft and vessels using free public ADS-B and AIS APIs. Features emoji-based notifications, configurable geofencing, built-in deduplication, and KISS design philosophy.",
+    "language": "Python",
+    "tags": ["Aircraft", "Marine", "ADS-B", "AIS", "Geofencing", "Proximity", "Tracking", "Situational Awareness"],
+    "githubPath": "maxhayim/sky-and-sea-alert/sky_and_sea_alert.py",
+    "exampleTrigger": "Timer-based (automatic polling) or manual execution",
+    "requirements": [
+      "Python 3.8+",
+      "Internet access",
+      "ADSBX_API_KEY environment variable (free from ADS-B Exchange)",
+      "AISHUB_API_KEY environment variable (free from AIS Hub)"
+    ],
+    "author": "maxhayim",
+    "features": [
+      "Aircraft overhead alerts via ADS-B Exchange API",
+      "Vessel proximity alerts via AIS Hub API",
+      "Configurable detection radius (miles)",
+      "Built-in alert deduplication (suppress repeated alerts)",
+      "Environment variable configuration",
+      "No external Python dependencies (uses only requests)"
+    ]
   }
 ]
