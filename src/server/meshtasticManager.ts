@@ -2430,6 +2430,7 @@ class MeshtasticManager {
           direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx',
           decrypted_by: decryptedBy ?? undefined,
           decrypted_channel_id: decryptedChannelId ?? undefined,
+          // Note: ?? (nullish coalescing) correctly preserves 0 (INTERNAL), only defaults on null/undefined
           transport_mechanism: meshPacket.transportMechanism ?? TransportMechanism.LORA,
         });
         } // end else (not internal packet)
