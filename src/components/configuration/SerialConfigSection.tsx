@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Serial baud rate options matching protobuf enum
 const SERIAL_BAUD_OPTIONS = [
@@ -77,6 +78,57 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      echo !== initial.echo ||
+      rxd !== initial.rxd ||
+      txd !== initial.txd ||
+      baud !== initial.baud ||
+      timeout !== initial.timeout ||
+      mode !== initial.mode ||
+      overrideConsoleSerialPort !== initial.overrideConsoleSerialPort
+    );
+  }, [enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setEcho(initial.echo);
+    setRxd(initial.rxd);
+    setTxd(initial.txd);
+    setBaud(initial.baud);
+    setTimeout(initial.timeout);
+    setMode(initial.mode);
+    setOverrideConsoleSerialPort(initial.overrideConsoleSerialPort);
+  }, [setEnabled, setEcho, setRxd, setTxd, setBaud, setTimeout, setMode, setOverrideConsoleSerialPort]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort
+    };
+  }, [onSave, enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'serial-config',
+    sectionName: t('serial_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -277,14 +329,6 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
           )}
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('serial_config.save_button')}
-      </button>
     </div>
   );
 };

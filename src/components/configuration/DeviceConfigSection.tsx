@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ROLE_OPTIONS, TIMEZONE_PRESETS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS } from './constants';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface DeviceConfigSectionProps {
   role: number;
@@ -56,6 +57,69 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
   const [isTimezoneDropdownOpen, setIsTimezoneDropdownOpen] = useState(false);
   const [timezoneFilter, setTimezoneFilter] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    role, nodeInfoBroadcastSecs, tzdef, rebroadcastMode,
+    doubleTapAsButtonPress, disableTripleClick, ledHeartbeatDisabled,
+    buzzerMode, buttonGpio, buzzerGpio
+  });
+
+  // Update initial values after successful save
+  useEffect(() => {
+    if (!isSaving) {
+      initialValuesRef.current = {
+        role, nodeInfoBroadcastSecs, tzdef, rebroadcastMode,
+        doubleTapAsButtonPress, disableTripleClick, ledHeartbeatDisabled,
+        buzzerMode, buttonGpio, buzzerGpio
+      };
+    }
+  }, [isSaving]);
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      role !== initial.role ||
+      nodeInfoBroadcastSecs !== initial.nodeInfoBroadcastSecs ||
+      tzdef !== initial.tzdef ||
+      rebroadcastMode !== initial.rebroadcastMode ||
+      doubleTapAsButtonPress !== initial.doubleTapAsButtonPress ||
+      disableTripleClick !== initial.disableTripleClick ||
+      ledHeartbeatDisabled !== initial.ledHeartbeatDisabled ||
+      buzzerMode !== initial.buzzerMode ||
+      buttonGpio !== initial.buttonGpio ||
+      buzzerGpio !== initial.buzzerGpio
+    );
+  }, [role, nodeInfoBroadcastSecs, tzdef, rebroadcastMode, doubleTapAsButtonPress,
+      disableTripleClick, ledHeartbeatDisabled, buzzerMode, buttonGpio, buzzerGpio]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setRole(initial.role);
+    setNodeInfoBroadcastSecs(initial.nodeInfoBroadcastSecs);
+    setTzdef(initial.tzdef);
+    setRebroadcastMode(initial.rebroadcastMode);
+    setDoubleTapAsButtonPress(initial.doubleTapAsButtonPress);
+    setDisableTripleClick(initial.disableTripleClick);
+    setLedHeartbeatDisabled(initial.ledHeartbeatDisabled);
+    setBuzzerMode(initial.buzzerMode);
+    setButtonGpio(initial.buttonGpio);
+    setBuzzerGpio(initial.buzzerGpio);
+  }, [setRole, setNodeInfoBroadcastSecs, setTzdef, setRebroadcastMode,
+      setDoubleTapAsButtonPress, setDisableTripleClick, setLedHeartbeatDisabled,
+      setBuzzerMode, setButtonGpio, setBuzzerGpio]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'device-config',
+    sectionName: t('device_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: onSave,
+    onDismiss: resetChanges
+  });
 
   const handleRoleChange = (newRole: number) => {
     if (newRole === 2) {
@@ -572,14 +636,6 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           </div>
         </div>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('device_config.save_button')}
-      </button>
     </div>
   );
 };

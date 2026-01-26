@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface MaintenanceStats {
   messagesDeleted: number;
@@ -58,6 +59,42 @@ const DatabaseMaintenanceSection: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
+  const [saveCounter, setSaveCounter] = useState(0); // Triggers hasChanges recalculation
+
+  // Track initial values loaded from API for change detection
+  const initialValuesRef = useRef({
+    enabled: false,
+    maintenanceTime: '04:00',
+    messageRetentionDays: 30,
+    tracerouteRetentionDays: 30,
+    routeSegmentRetentionDays: 30,
+    neighborInfoRetentionDays: 30
+  });
+
+  // Calculate if there are unsaved changes
+  // saveCounter forces recalculation after save updates initialValuesRef
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      maintenanceTime !== initial.maintenanceTime ||
+      messageRetentionDays !== initial.messageRetentionDays ||
+      tracerouteRetentionDays !== initial.tracerouteRetentionDays ||
+      routeSegmentRetentionDays !== initial.routeSegmentRetentionDays ||
+      neighborInfoRetentionDays !== initial.neighborInfoRetentionDays
+    );
+  }, [enabled, maintenanceTime, messageRetentionDays, tracerouteRetentionDays, routeSegmentRetentionDays, neighborInfoRetentionDays, saveCounter]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setMaintenanceTime(initial.maintenanceTime);
+    setMessageRetentionDays(initial.messageRetentionDays);
+    setTracerouteRetentionDays(initial.tracerouteRetentionDays);
+    setRouteSegmentRetentionDays(initial.routeSegmentRetentionDays);
+    setNeighborInfoRetentionDays(initial.neighborInfoRetentionDays);
+  }, []);
 
   // Fetch database type from health endpoint (public, no auth required)
   useEffect(() => {
@@ -102,6 +139,15 @@ const DatabaseMaintenanceSection: React.FC = () => {
         setTracerouteRetentionDays(data.settings.tracerouteRetentionDays);
         setRouteSegmentRetentionDays(data.settings.routeSegmentRetentionDays);
         setNeighborInfoRetentionDays(data.settings.neighborInfoRetentionDays);
+        // Update initial values to match loaded settings
+        initialValuesRef.current = {
+          enabled: data.enabled,
+          maintenanceTime: data.maintenanceTime,
+          messageRetentionDays: data.settings.messageRetentionDays,
+          tracerouteRetentionDays: data.settings.tracerouteRetentionDays,
+          routeSegmentRetentionDays: data.settings.routeSegmentRetentionDays,
+          neighborInfoRetentionDays: data.settings.neighborInfoRetentionDays
+        };
       }
     } catch (error) {
       logger.error('Error loading maintenance status:', error);
@@ -154,6 +200,18 @@ const DatabaseMaintenanceSection: React.FC = () => {
         throw new Error('Failed to save maintenance settings');
       }
 
+      // Update initial values to match saved settings
+      initialValuesRef.current = {
+        enabled,
+        maintenanceTime,
+        messageRetentionDays,
+        tracerouteRetentionDays,
+        routeSegmentRetentionDays,
+        neighborInfoRetentionDays
+      };
+      // Trigger hasChanges recalculation
+      setSaveCounter(c => c + 1);
+
       showToast(t('maintenance.toast_settings_saved'), 'success');
       loadStatus();
     } catch (error) {
@@ -163,6 +221,16 @@ const DatabaseMaintenanceSection: React.FC = () => {
       setIsSaving(false);
     }
   };
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'database-maintenance',
+    sectionName: t('maintenance.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveSettings,
+    onDismiss: resetChanges
+  });
 
   const handleRunNow = async () => {
     try {
@@ -431,16 +499,6 @@ const DatabaseMaintenanceSection: React.FC = () => {
               </p>
             </>
           )}
-
-          <div className="settings-buttons">
-            <button
-              className="save-button"
-              onClick={handleSaveSettings}
-              disabled={isSaving}
-            >
-              {isSaving ? t('common.saving') : t('maintenance.save_settings')}
-            </button>
-          </div>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface RemoteHardwareConfigSectionProps {
   enabled: boolean;
@@ -19,6 +20,45 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, allowUndefinedPinAccess
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      allowUndefinedPinAccess !== initial.allowUndefinedPinAccess
+    );
+  }, [enabled, allowUndefinedPinAccess]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setAllowUndefinedPinAccess(initial.allowUndefinedPinAccess);
+  }, [setEnabled, setAllowUndefinedPinAccess]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, allowUndefinedPinAccess
+    };
+  }, [onSave, enabled, allowUndefinedPinAccess]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'remotehw-config',
+    sectionName: t('remotehw_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -87,14 +127,6 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
           </div>
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('remotehw_config.save_button')}
-      </button>
     </div>
   );
 };

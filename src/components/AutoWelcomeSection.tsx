@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoWelcomeSectionProps {
   enabled: boolean;
@@ -69,6 +70,15 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     setHasChanges(changed);
   }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, enabled, message, target, waitForName, maxHops]);
 
+  // Reset local state to props (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalEnabled(enabled);
+    setLocalMessage(message || DEFAULT_MESSAGE);
+    setLocalTarget(target || '0');
+    setLocalWaitForName(waitForName);
+    setLocalMaxHops(maxHops || 5);
+  }, [enabled, message, target, waitForName, maxHops]);
+
   const handleMarkAllWelcomed = async () => {
     setIsMarkingWelcomed(true);
     try {
@@ -95,7 +105,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
       // Sync to backend first
@@ -134,7 +144,17 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, baseUrl, csrfFetch, showToast, t, onEnabledChange, onMessageChange, onTargetChange, onWaitForNameChange, onMaxHopsChange]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'auto-welcome',
+    sectionName: t('automation.auto_welcome.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   const insertToken = (token: string) => {
     const textarea = textareaRef.current;
@@ -220,19 +240,6 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
             title={t('automation.auto_welcome.mark_all_welcomed_tooltip')}
           >
             {isMarkingWelcomed ? t('automation.auto_welcome.marking') : t('automation.auto_welcome.mark_all_welcomed')}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges || isSaving}
-            className="btn-primary"
-            style={{
-              padding: '0.5rem 1.5rem',
-              fontSize: '14px',
-              opacity: hasChanges ? 1 : 0.5,
-              cursor: hasChanges ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {isSaving ? t('automation.saving') : t('automation.save_changes')}
           </button>
         </div>
       </div>

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSaveBar } from '../hooks/useSaveBar';
 import {
   AutoResponderTrigger,
   AutoResponderSectionProps,
@@ -80,6 +81,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     const changed = localEnabled !== enabled || JSON.stringify(localTriggers) !== JSON.stringify(triggers) || localSkipIncompleteNodes !== skipIncompleteNodes;
     setHasChanges(changed);
   }, [localEnabled, localTriggers, localSkipIncompleteNodes, enabled, triggers, skipIncompleteNodes]);
+
+  // Reset local state to props (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalEnabled(enabled);
+    setLocalTriggers(triggers);
+    setLocalSkipIncompleteNodes(skipIncompleteNodes);
+  }, [enabled, triggers, skipIncompleteNodes]);
 
   // Validate new trigger in realtime
   useEffect(() => {
@@ -480,7 +488,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
 
 
-  const handleSave = async () => {
+  const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
       // Sync to backend
@@ -515,7 +523,17 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localEnabled, localTriggers, localSkipIncompleteNodes, baseUrl, csrfFetch, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'auto-responder',
+    sectionName: t('auto_responder.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   return (
     <>
@@ -551,19 +569,6 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             ❓
           </a>
         </h2>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="btn-primary"
-          style={{
-            padding: '0.5rem 1.5rem',
-            fontSize: '14px',
-            opacity: hasChanges ? 1 : 0.5,
-            cursor: hasChanges ? 'pointer' : 'not-allowed'
-          }}
-        >
-          {isSaving ? t('common.saving') : t('automation.save_changes')}
-        </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>

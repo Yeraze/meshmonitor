@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Trigger type options matching protobuf enum
 const TRIGGER_TYPE_OPTIONS = [
@@ -54,6 +55,62 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
+    monitorPin, detectionTriggerType, usePullup
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      minimumBroadcastSecs !== initial.minimumBroadcastSecs ||
+      stateBroadcastSecs !== initial.stateBroadcastSecs ||
+      sendBell !== initial.sendBell ||
+      name !== initial.name ||
+      monitorPin !== initial.monitorPin ||
+      detectionTriggerType !== initial.detectionTriggerType ||
+      usePullup !== initial.usePullup
+    );
+  }, [enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
+      monitorPin, detectionTriggerType, usePullup]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setMinimumBroadcastSecs(initial.minimumBroadcastSecs);
+    setStateBroadcastSecs(initial.stateBroadcastSecs);
+    setSendBell(initial.sendBell);
+    setName(initial.name);
+    setMonitorPin(initial.monitorPin);
+    setDetectionTriggerType(initial.detectionTriggerType);
+    setUsePullup(initial.usePullup);
+  }, [setEnabled, setMinimumBroadcastSecs, setStateBroadcastSecs, setSendBell,
+      setName, setMonitorPin, setDetectionTriggerType, setUsePullup]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
+      monitorPin, detectionTriggerType, usePullup
+    };
+  }, [onSave, enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
+      monitorPin, detectionTriggerType, usePullup]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'detectionsensor-config',
+    sectionName: t('detectionsensor_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -251,14 +308,6 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
           )}
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('detectionsensor_config.save_button')}
-      </button>
     </div>
   );
 };

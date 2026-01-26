@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface NodeIdentitySectionProps {
   longName: string;
@@ -23,6 +24,47 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    longName, shortName, isUnmessagable
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      longName !== initial.longName ||
+      shortName !== initial.shortName ||
+      isUnmessagable !== initial.isUnmessagable
+    );
+  }, [longName, shortName, isUnmessagable]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setLongName(initial.longName);
+    setShortName(initial.shortName);
+    setIsUnmessagable(initial.isUnmessagable);
+  }, [setLongName, setShortName, setIsUnmessagable]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      longName, shortName, isUnmessagable
+    };
+  }, [onSave, longName, shortName, isUnmessagable]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'node-identity',
+    sectionName: t('node_identity.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -87,13 +129,6 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           </div>
         </label>
       </div>
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving || !longName || !shortName}
-      >
-        {isSaving ? t('common.saving') : t('node_identity.save_button')}
-      </button>
     </div>
   );
 };

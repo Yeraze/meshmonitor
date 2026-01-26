@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface NeighborInfoSectionProps {
   neighborInfoEnabled: boolean;
@@ -23,6 +24,47 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      neighborInfoEnabled !== initial.neighborInfoEnabled ||
+      neighborInfoInterval !== initial.neighborInfoInterval ||
+      neighborInfoTransmitOverLora !== initial.neighborInfoTransmitOverLora
+    );
+  }, [neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setNeighborInfoEnabled(initial.neighborInfoEnabled);
+    setNeighborInfoInterval(initial.neighborInfoInterval);
+    setNeighborInfoTransmitOverLora(initial.neighborInfoTransmitOverLora);
+  }, [setNeighborInfoEnabled, setNeighborInfoInterval, setNeighborInfoTransmitOverLora]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora
+    };
+  }, [onSave, neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'neighbor-info',
+    sectionName: t('neighbor_info.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -91,13 +133,6 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
           </div>
         </>
       )}
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('neighbor_info.save_button')}
-      </button>
     </div>
   );
 };
