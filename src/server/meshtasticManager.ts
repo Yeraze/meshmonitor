@@ -2184,6 +2184,7 @@ class MeshtasticManager {
       const displayName = channelName || `Channel ${channel.index}`; // For logging only
       const hasValidConfig = channel.settings.name !== undefined ||
                             channel.settings.psk ||
+                            channel.role === 0 || // DISABLED role (explicitly set)
                             channel.role === 1 || // PRIMARY role
                             channel.role === 2 || // SECONDARY role
                             channel.index === 0;   // Always include channel 0
