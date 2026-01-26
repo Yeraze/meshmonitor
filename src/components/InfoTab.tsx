@@ -58,9 +58,12 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number) => {
-                  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                  return [`${value.toLocaleString()} (${pct}%)`, ''];
+                formatter={(value) => {
+                  if (value === null || value === undefined) return ['-', ''];
+                  const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                  if (isNaN(numValue)) return ['-', ''];
+                  const pct = total > 0 ? ((numValue / total) * 100).toFixed(1) : '0';
+                  return [`${numValue.toLocaleString()} (${pct}%)`, ''];
                 }}
                 contentStyle={{
                   backgroundColor: 'var(--ctp-surface0)',
