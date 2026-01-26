@@ -8661,6 +8661,40 @@ class DatabaseService {
   }
 
   /**
+   * Clear all packet logs - async version for PostgreSQL/MySQL
+   */
+  async clearPacketLogsAsync(): Promise<number> {
+    // For PostgreSQL
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const result = await this.postgresPool.query('DELETE FROM packet_log');
+        const deletedCount = result.rowCount ?? 0;
+        logger.debug(`🧹 Cleared ${deletedCount} packet log entries (PostgreSQL)`);
+        return deletedCount;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to clear packet logs (PostgreSQL):', error);
+        throw error;
+      }
+    }
+
+    // For MySQL/MariaDB
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const [result] = await this.mysqlPool.execute('DELETE FROM packet_log');
+        const deletedCount = (result as any).affectedRows ?? 0;
+        logger.debug(`🧹 Cleared ${deletedCount} packet log entries (MySQL)`);
+        return deletedCount;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to clear packet logs (MySQL):', error);
+        throw error;
+      }
+    }
+
+    // Fallback to SQLite
+    return this.clearPacketLogs();
+  }
+
+  /**
    * Get packet log count - async version for PostgreSQL/MySQL
    */
   async getPacketLogCountAsync(options: {

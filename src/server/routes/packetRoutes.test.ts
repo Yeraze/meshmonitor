@@ -215,6 +215,10 @@ describe('Packet Routes', () => {
       return result.changes;
     };
 
+    (DatabaseService as any).clearPacketLogsAsync = async () => {
+      return (DatabaseService as any).clearPacketLogs();
+    };
+
     (DatabaseService as any).cleanupOldPacketLogs = () => {
       const maxAgeHours = (DatabaseService as any).getSetting('packet_log_max_age_hours');
       const hours = maxAgeHours ? parseInt(maxAgeHours, 10) : 24;
