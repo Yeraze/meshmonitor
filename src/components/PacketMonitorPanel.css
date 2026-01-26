@@ -321,6 +321,39 @@
   color: var(--ctp-peach, #fab387);
 }
 
+/* Transport mechanism column colors */
+.packet-table .transport-mechanism {
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.packet-table .transport-0 { /* INTERNAL */
+  color: var(--ctp-subtext1, #a6adc8);
+}
+
+.packet-table .transport-1,
+.packet-table .transport-2,
+.packet-table .transport-3,
+.packet-table .transport-4 { /* LORA variants */
+  color: var(--ctp-green, #a6e3a1);
+}
+
+.packet-table .transport-5 { /* MQTT */
+  color: var(--ctp-mauve, #cba6f7);
+}
+
+.packet-table .transport-6 { /* UDP */
+  color: var(--ctp-blue, #89b4fa);
+}
+
+.packet-table .transport-7 { /* API */
+  color: var(--ctp-teal, #94e2d5);
+}
+
+.packet-table .transport-unknown {
+  color: var(--ctp-subtext0, #6c7086);
+}
+
 .encrypted-indicator {
   color: #9e9e9e;
   font-style: italic;

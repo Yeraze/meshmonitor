@@ -61,6 +61,7 @@ import { migration as newsTablesMigration, runMigration054Postgres, runMigration
 import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_add_remote_admin_columns.js';
 import { migration as backupHistoryColumnsMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_fix_backup_history_columns.js';
 import { migration as packetViaMqttMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_packet_via_mqtt.js';
+import { migration as transportMechanismMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_convert_via_mqtt_to_transport_mechanism.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -281,7 +282,7 @@ export interface DbPacketLog {
   created_at?: number;
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
-  via_mqtt?: boolean;
+  transport_mechanism?: number;
 }
 
 export interface DbCustomTheme {
@@ -900,6 +901,7 @@ class DatabaseService {
     this.runRemoteAdminColumnsMigration();
     this.runBackupHistoryColumnsMigration();
     this.runPacketViaMqttMigration();
+    this.runTransportMechanismMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2028,6 +2030,26 @@ class DatabaseService {
       logger.debug('✅ Packet via_mqtt migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run packet via_mqtt migration:', error);
+      throw error;
+    }
+  }
+
+  private runTransportMechanismMigration(): void {
+    try {
+      const migrationKey = 'migration_058_transport_mechanism';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Transport mechanism migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 058: Convert via_mqtt to transport_mechanism...');
+      transportMechanismMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Transport mechanism migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run transport mechanism migration:', error);
       throw error;
     }
   }
@@ -8443,7 +8465,7 @@ class DatabaseService {
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
         channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
-        relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction, via_mqtt
+        relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction, transport_mechanism
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
@@ -8469,7 +8491,7 @@ class DatabaseService {
       packet.payload_preview ?? null,
       packet.metadata ?? null,
       packet.direction ?? 'rx',
-      packet.via_mqtt ? 1 : 0
+      packet.transport_mechanism ?? null
     );
 
     // Enforce max count limit
@@ -8542,7 +8564,7 @@ class DatabaseService {
         metadata: packet.metadata ?? null,
         direction: packet.direction ?? 'rx',
         created_at: Date.now(),
-        via_mqtt: packet.via_mqtt ?? false,
+        transport_mechanism: packet.transport_mechanism ?? null,
       };
 
       // Use type assertion to avoid complex type narrowing
@@ -9244,6 +9266,9 @@ class DatabaseService {
       // Run migration 057: Add via_mqtt column to packet_log
       await runMigration057Postgres(client);
 
+      // Run migration 058: Convert via_mqtt to transport_mechanism
+      await runMigration058Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9326,6 +9351,9 @@ class DatabaseService {
 
       // Run migration 057: Add via_mqtt column to packet_log
       await runMigration057Mysql(pool);
+
+      // Run migration 058: Convert via_mqtt to transport_mechanism
+      await runMigration058Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

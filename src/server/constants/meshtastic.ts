@@ -69,6 +69,51 @@ export const RoutingError = {
 export type RoutingErrorType = typeof RoutingError[keyof typeof RoutingError];
 
 /**
+ * Transport mechanism indicating how a packet arrived.
+ * From meshtastic.MeshPacket.TransportMechanism enum in mesh.proto
+ */
+export const TransportMechanism = {
+  /** The node generated the packet itself */
+  INTERNAL: 0,
+  /** Arrived via the primary LoRa radio */
+  LORA: 1,
+  /** Arrived via a secondary LoRa radio */
+  LORA_ALT1: 2,
+  /** Arrived via a tertiary LoRa radio */
+  LORA_ALT2: 3,
+  /** Arrived via a quaternary LoRa radio */
+  LORA_ALT3: 4,
+  /** Arrived via an MQTT connection */
+  MQTT: 5,
+  /** Arrived via Multicast UDP */
+  MULTICAST_UDP: 6,
+  /** Arrived via API connection */
+  API: 7,
+} as const;
+
+export type TransportMechanismType = typeof TransportMechanism[keyof typeof TransportMechanism];
+
+/**
+ * Get the name of a transport mechanism
+ */
+export function getTransportMechanismName(mechanism: number): string {
+  const entries = Object.entries(TransportMechanism);
+  for (const [name, value] of entries) {
+    if (value === mechanism) {
+      return name;
+    }
+  }
+  return `UNKNOWN_${mechanism}`;
+}
+
+/**
+ * Check if a transport mechanism indicates the packet came via MQTT
+ */
+export function isViaMqtt(mechanism: number | undefined): boolean {
+  return mechanism === TransportMechanism.MQTT;
+}
+
+/**
  * Get the name of a port number
  */
 export function getPortNumName(portnum: number): string {

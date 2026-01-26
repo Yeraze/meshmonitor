@@ -300,7 +300,7 @@ export const MYSQL_SCHEMA_SQL = `
     created_at BIGINT,
     decrypted_by VARCHAR(16),
     decrypted_channel_id INT,
-    via_mqtt BOOLEAN,
+    transport_mechanism INT,
     INDEX idx_packet_log_createdat (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
