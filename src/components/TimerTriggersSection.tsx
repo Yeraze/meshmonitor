@@ -5,6 +5,7 @@ import { TimerTrigger, TimerResponseType, ScriptMetadata } from './auto-responde
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { Channel } from '../types/device';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 /**
  * Get language emoji for display
@@ -145,7 +146,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     }
   }, [newCronExpression, t]);
 
-  const handleSave = async () => {
+  const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
       const response = await csrfFetch(`${baseUrl}/api/settings`, {
@@ -167,11 +168,22 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localTriggers, baseUrl, csrfFetch, showToast, t, onTriggersChange]);
 
-  const handleCancel = () => {
+  // Reset local state to props (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
     setLocalTriggers(triggers);
-  };
+  }, [triggers]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'timer-triggers',
+    sectionName: t('automation.timer_triggers.title', 'Timer Triggers'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   const handleAddTrigger = () => {
     if (!newName.trim()) {
@@ -264,19 +276,6 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
             ?
           </a>
         </h2>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="btn-primary"
-          style={{
-            padding: '0.5rem 1.5rem',
-            fontSize: '14px',
-            opacity: hasChanges ? 1 : 0.5,
-            cursor: hasChanges ? 'pointer' : 'not-allowed'
-          }}
-        >
-          {isSaving ? t('common.saving') : t('automation.save_changes')}
-        </button>
       </div>
 
       <div className="settings-section">
@@ -512,33 +511,6 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
             borderRadius: '8px',
           }}>
             {t('automation.timer_triggers.no_timers', 'No timer triggers configured. Add one above to schedule automatic script execution.')}
-          </div>
-        )}
-
-        {/* Save/Cancel Buttons */}
-        {hasChanges && (
-          <div style={{
-            display: 'flex',
-            gap: '0.5rem',
-            justifyContent: 'flex-end',
-            marginTop: '1rem',
-            paddingTop: '1rem',
-            borderTop: '1px solid var(--ctp-surface1)',
-          }}>
-            <button
-              onClick={handleCancel}
-              className="settings-button"
-              disabled={isSaving}
-            >
-              {t('common.cancel', 'Cancel')}
-            </button>
-            <button
-              onClick={handleSave}
-              className="settings-button settings-button-primary"
-              disabled={isSaving}
-            >
-              {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Changes')}
-            </button>
           </div>
         )}
       </div>

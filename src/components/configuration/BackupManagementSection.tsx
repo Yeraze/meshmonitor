@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
+import { useSaveBar } from '../../hooks/useSaveBar';
 import '../../styles/BackupManagement.css';
 
 interface BackupFile {
@@ -28,6 +29,33 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   const [backupList, setBackupList] = useState<BackupFile[]>([]);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [saveCounter, setSaveCounter] = useState(0); // Triggers hasChanges recalculation
+
+  // Track initial values loaded from API for change detection
+  const initialValuesRef = useRef({
+    autoBackupEnabled: false,
+    maxBackups: 7,
+    backupTime: '02:00'
+  });
+
+  // Calculate if there are unsaved changes
+  // saveCounter forces recalculation after save updates initialValuesRef
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      autoBackupEnabled !== initial.autoBackupEnabled ||
+      maxBackups !== initial.maxBackups ||
+      backupTime !== initial.backupTime
+    );
+  }, [autoBackupEnabled, maxBackups, backupTime, saveCounter]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setAutoBackupEnabled(initial.autoBackupEnabled);
+    setMaxBackups(initial.maxBackups);
+    setBackupTime(initial.backupTime);
+  }, []);
 
   // Load backup settings on mount
   useEffect(() => {
@@ -43,9 +71,18 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
       if (response.ok) {
         const settings = await response.json();
-        setAutoBackupEnabled(settings.enabled || false);
-        setMaxBackups(settings.maxBackups || 7);
-        setBackupTime(settings.backupTime || '02:00');
+        const enabled = settings.enabled || false;
+        const max = settings.maxBackups || 7;
+        const time = settings.backupTime || '02:00';
+        setAutoBackupEnabled(enabled);
+        setMaxBackups(max);
+        setBackupTime(time);
+        // Update initial values to match loaded settings
+        initialValuesRef.current = {
+          autoBackupEnabled: enabled,
+          maxBackups: max,
+          backupTime: time
+        };
       }
     } catch (error) {
       logger.error('Error loading backup settings:', error);
@@ -79,6 +116,15 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
         throw new Error('Failed to save backup settings');
       }
 
+      // Update initial values to match saved settings
+      initialValuesRef.current = {
+        autoBackupEnabled,
+        maxBackups,
+        backupTime
+      };
+      // Trigger hasChanges recalculation
+      setSaveCounter(c => c + 1);
+
       showToast(t('backup_management.toast_settings_saved'), 'success');
     } catch (error) {
       logger.error('Error saving backup settings:', error);
@@ -87,6 +133,16 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       setIsSavingSettings(false);
     }
   };
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'backup-management',
+    sectionName: t('backup_management.title'),
+    hasChanges,
+    isSaving: isSavingSettings,
+    onSave: handleSaveBackupSettings,
+    onDismiss: resetChanges
+  });
 
   const handleManualBackup = async () => {
     try {
@@ -354,24 +410,6 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             </span>
           </div>
         </div>
-
-        <button
-          onClick={handleSaveBackupSettings}
-          disabled={isSavingSettings}
-          style={{
-            backgroundColor: 'var(--ctp-green)',
-            color: '#fff',
-            padding: '0.75rem 1.5rem',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isSavingSettings ? 'not-allowed' : 'pointer',
-            fontSize: '1rem',
-            fontWeight: 'bold',
-            opacity: isSavingSettings ? 0.6 : 1
-          }}
-        >
-          {isSavingSettings ? t('common.saving') : t('backup_management.save_settings')}
-        </button>
       </div>
 
       {/* Backup List Modal */}

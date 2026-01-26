@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 /**
  * Validates if a string is valid base64 format
@@ -62,6 +63,71 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    adminKeys: [...adminKeys],
+    isManaged,
+    serialEnabled,
+    debugLogApiEnabled,
+    adminChannelEnabled
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    // Check if adminKeys array has changed
+    const adminKeysChanged = adminKeys.length !== initial.adminKeys.length ||
+      adminKeys.some((key, i) => key !== initial.adminKeys[i]);
+
+    return (
+      adminKeysChanged ||
+      isManaged !== initial.isManaged ||
+      serialEnabled !== initial.serialEnabled ||
+      debugLogApiEnabled !== initial.debugLogApiEnabled ||
+      adminChannelEnabled !== initial.adminChannelEnabled
+    );
+  }, [adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setAdminKeys([...initial.adminKeys]);
+    setIsManaged(initial.isManaged);
+    setSerialEnabled(initial.serialEnabled);
+    setDebugLogApiEnabled(initial.debugLogApiEnabled);
+    setAdminChannelEnabled(initial.adminChannelEnabled);
+  }, [setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled]);
+
+  // Check if any admin keys have invalid format
+  const hasInvalidKeys = adminKeys.some(key => key.trim() && !isValidBase64(key));
+
+  // Update initial values after successful save
+  const handleSaveInternal = useCallback(async () => {
+    // Validate before saving
+    if (hasInvalidKeys) {
+      alert(t('security_config.fix_invalid_keys'));
+      return;
+    }
+    await onSave();
+    initialValuesRef.current = {
+      adminKeys: [...adminKeys],
+      isManaged,
+      serialEnabled,
+      debugLogApiEnabled,
+      adminChannelEnabled
+    };
+  }, [onSave, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, hasInvalidKeys, t]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'security-config',
+    sectionName: t('security_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveInternal,
+    onDismiss: resetChanges
+  });
+
   const handleAdminKeyChange = (index: number, value: string) => {
     const newKeys = [...adminKeys];
     newKeys[index] = value;
@@ -88,9 +154,6 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       navigator.clipboard.writeText(privateKey);
     }
   }, [privateKey, t]);
-
-  // Check if any admin keys have invalid format
-  const hasInvalidKeys = adminKeys.some(key => key.trim() && !isValidBase64(key));
 
   return (
     <div className="settings-section">
@@ -338,15 +401,6 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           </div>
         </label>
       </div>
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving || hasInvalidKeys}
-        title={hasInvalidKeys ? t('security_config.fix_invalid_keys') : undefined}
-      >
-        {isSaving ? t('common.saving') : t('security_config.save_button')}
-      </button>
     </div>
   );
 };

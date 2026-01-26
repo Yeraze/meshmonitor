@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface PaxcounterConfigSectionProps {
   enabled: boolean;
@@ -27,6 +28,49 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      paxcounterUpdateInterval !== initial.paxcounterUpdateInterval ||
+      wifiThreshold !== initial.wifiThreshold ||
+      bleThreshold !== initial.bleThreshold
+    );
+  }, [enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setPaxcounterUpdateInterval(initial.paxcounterUpdateInterval);
+    setWifiThreshold(initial.wifiThreshold);
+    setBleThreshold(initial.bleThreshold);
+  }, [setEnabled, setPaxcounterUpdateInterval, setWifiThreshold, setBleThreshold]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold
+    };
+  }, [onSave, enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'paxcounter-config',
+    sectionName: t('paxcounter_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -121,14 +165,6 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
           </div>
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('paxcounter_config.save_button')}
-      </button>
     </div>
   );
 };

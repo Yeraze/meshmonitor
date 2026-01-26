@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatTime, formatDate } from '../utils/datetime';
 import { Channel } from '../types/device';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -102,6 +103,20 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setHasChanges(changed);
   }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
 
+  // Reset local state to props (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalEnabled(enabled);
+    setLocalRegex(regex || '^(test|ping)');
+    setLocalMessage(message || DEFAULT_MESSAGE);
+    setLocalMessageDirect(messageDirect || DEFAULT_MESSAGE_DIRECT);
+    setLocalEnabledChannels(enabledChannels);
+    setLocalDirectMessagesEnabled(directMessagesEnabled);
+    setLocalUseDM(useDM);
+    setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setLocalTapbackEnabled(tapbackEnabled);
+    setLocalReplyEnabled(replyEnabled);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
+
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
     // Check length
@@ -195,7 +210,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     return sample;
   };
 
-  const handleSave = async () => {
+  const handleSaveForSaveBar = useCallback(async () => {
     // Validate regex before saving
     const validation = validateRegex(localRegex);
     if (!validation.valid) {
@@ -251,7 +266,17 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onTapbackEnabledChange, onReplyEnabledChange]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'auto-acknowledge',
+    sectionName: t('automation.auto_ack.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
   return (
     <>
       <div className="automation-section-header" style={{
@@ -286,19 +311,6 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             ❓
           </a>
         </h2>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="btn-primary"
-          style={{
-            padding: '0.5rem 1.5rem',
-            fontSize: '14px',
-            opacity: hasChanges ? 1 : 0.5,
-            cursor: hasChanges ? 'pointer' : 'not-allowed'
-          }}
-        >
-          {isSaving ? t('automation.saving') : t('automation.save_changes')}
-        </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>

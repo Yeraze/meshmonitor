@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface RangeTestConfigSectionProps {
   enabled: boolean;
@@ -23,6 +24,47 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, sender, save
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      sender !== initial.sender ||
+      save !== initial.save
+    );
+  }, [enabled, sender, save]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setSender(initial.sender);
+    setSave(initial.save);
+  }, [setEnabled, setSender, setSave]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, sender, save
+    };
+  }, [onSave, enabled, sender, save]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'rangetest-config',
+    sectionName: t('rangetest_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -98,14 +140,6 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
           </div>
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('rangetest_config.save_button')}
-      </button>
     </div>
   );
 };

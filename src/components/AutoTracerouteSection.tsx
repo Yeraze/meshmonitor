@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { DEVICE_ROLES } from '../utils/deviceRole';
 import { getHardwareModelName } from '../utils/hardwareModel';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;
@@ -218,6 +219,27 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours, sortByHops]);
 
+  // Reset local state to initial settings (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalEnabled(intervalMinutes > 0);
+    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 3);
+    if (initialSettings) {
+      setFilterEnabled(initialSettings.enabled);
+      setSelectedNodeNums(initialSettings.nodeNums || []);
+      setFilterChannels(initialSettings.filterChannels || []);
+      setFilterRoles(initialSettings.filterRoles || []);
+      setFilterHwModels(initialSettings.filterHwModels || []);
+      setFilterNameRegex(initialSettings.filterNameRegex || '.*');
+      setFilterNodesEnabled(initialSettings.filterNodesEnabled !== false);
+      setFilterChannelsEnabled(initialSettings.filterChannelsEnabled !== false);
+      setFilterRolesEnabled(initialSettings.filterRolesEnabled !== false);
+      setFilterHwModelsEnabled(initialSettings.filterHwModelsEnabled !== false);
+      setFilterRegexEnabled(initialSettings.filterRegexEnabled !== false);
+      setExpirationHours(initialSettings.expirationHours || 24);
+      setSortByHops(initialSettings.sortByHops || false);
+    }
+  }, [intervalMinutes, initialSettings]);
+
   // Helper to get role from node (could be at top level or in user object)
   const getNodeRole = (node: Node): number | undefined => {
     if (node.role !== undefined && node.role !== null) return node.role;
@@ -354,7 +376,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     }
   }, [matchingNodes, debouncedMatchingNodes.length]);
 
-  const handleSave = async () => {
+  const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
       const intervalToSave = localEnabled ? localInterval : 0;
@@ -431,7 +453,17 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours, sortByHops, baseUrl, csrfFetch, showToast, t, onIntervalChange]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'auto-traceroute',
+    sectionName: t('automation.auto_traceroute.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   // Filter nodes based on search term
   const filteredNodes = useMemo(() => {
@@ -531,19 +563,6 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             ?
           </a>
         </h2>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="btn-primary"
-          style={{
-            padding: '0.5rem 1.5rem',
-            fontSize: '14px',
-            opacity: hasChanges ? 1 : 0.5,
-            cursor: hasChanges ? 'pointer' : 'not-allowed'
-          }}
-        >
-          {isSaving ? t('automation.saving') : t('automation.save_changes')}
-        </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>

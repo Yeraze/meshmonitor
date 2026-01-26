@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface StoreForwardConfigSectionProps {
   enabled: boolean;
@@ -35,6 +36,53 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, heartbeat, records, historyReturnMax, historyReturnWindow, isServer
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      heartbeat !== initial.heartbeat ||
+      records !== initial.records ||
+      historyReturnMax !== initial.historyReturnMax ||
+      historyReturnWindow !== initial.historyReturnWindow ||
+      isServer !== initial.isServer
+    );
+  }, [enabled, heartbeat, records, historyReturnMax, historyReturnWindow, isServer]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setHeartbeat(initial.heartbeat);
+    setRecords(initial.records);
+    setHistoryReturnMax(initial.historyReturnMax);
+    setHistoryReturnWindow(initial.historyReturnWindow);
+    setIsServer(initial.isServer);
+  }, [setEnabled, setHeartbeat, setRecords, setHistoryReturnMax, setHistoryReturnWindow, setIsServer]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, heartbeat, records, historyReturnMax, historyReturnWindow, isServer
+    };
+  }, [onSave, enabled, heartbeat, records, historyReturnMax, historyReturnWindow, isServer]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'storeforward-config',
+    sectionName: t('storeforward_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -163,14 +211,6 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
           </div>
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('storeforward_config.save_button')}
-      </button>
     </div>
   );
 };

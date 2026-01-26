@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Input event character options matching protobuf enum
 const INPUT_EVENT_OPTIONS = [
@@ -68,6 +69,73 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, rotary1Enabled, inputbrokerPinA, inputbrokerPinB, inputbrokerPinPress,
+    inputbrokerEventCw, inputbrokerEventCcw, inputbrokerEventPress, updown1Enabled,
+    sendBell, allowInputSource
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      rotary1Enabled !== initial.rotary1Enabled ||
+      inputbrokerPinA !== initial.inputbrokerPinA ||
+      inputbrokerPinB !== initial.inputbrokerPinB ||
+      inputbrokerPinPress !== initial.inputbrokerPinPress ||
+      inputbrokerEventCw !== initial.inputbrokerEventCw ||
+      inputbrokerEventCcw !== initial.inputbrokerEventCcw ||
+      inputbrokerEventPress !== initial.inputbrokerEventPress ||
+      updown1Enabled !== initial.updown1Enabled ||
+      sendBell !== initial.sendBell ||
+      allowInputSource !== initial.allowInputSource
+    );
+  }, [enabled, rotary1Enabled, inputbrokerPinA, inputbrokerPinB, inputbrokerPinPress,
+      inputbrokerEventCw, inputbrokerEventCcw, inputbrokerEventPress, updown1Enabled,
+      sendBell, allowInputSource]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setRotary1Enabled(initial.rotary1Enabled);
+    setInputbrokerPinA(initial.inputbrokerPinA);
+    setInputbrokerPinB(initial.inputbrokerPinB);
+    setInputbrokerPinPress(initial.inputbrokerPinPress);
+    setInputbrokerEventCw(initial.inputbrokerEventCw);
+    setInputbrokerEventCcw(initial.inputbrokerEventCcw);
+    setInputbrokerEventPress(initial.inputbrokerEventPress);
+    setUpdown1Enabled(initial.updown1Enabled);
+    setSendBell(initial.sendBell);
+    setAllowInputSource(initial.allowInputSource);
+  }, [setEnabled, setRotary1Enabled, setInputbrokerPinA, setInputbrokerPinB,
+      setInputbrokerPinPress, setInputbrokerEventCw, setInputbrokerEventCcw,
+      setInputbrokerEventPress, setUpdown1Enabled, setSendBell, setAllowInputSource]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, rotary1Enabled, inputbrokerPinA, inputbrokerPinB, inputbrokerPinPress,
+      inputbrokerEventCw, inputbrokerEventCcw, inputbrokerEventPress, updown1Enabled,
+      sendBell, allowInputSource
+    };
+  }, [onSave, enabled, rotary1Enabled, inputbrokerPinA, inputbrokerPinB, inputbrokerPinPress,
+      inputbrokerEventCw, inputbrokerEventCcw, inputbrokerEventPress, updown1Enabled,
+      sendBell, allowInputSource]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'cannedmsg-config',
+    sectionName: t('cannedmsg_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -335,14 +403,6 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
         )}
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('cannedmsg_config.save_button')}
-      </button>
     </div>
   );
 };

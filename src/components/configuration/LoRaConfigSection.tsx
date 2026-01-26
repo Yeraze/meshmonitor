@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './constants';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface LoRaConfigSectionProps {
   usePreset: boolean;
@@ -81,6 +82,86 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [isPresetDropdownOpen, setIsPresetDropdownOpen] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
+    overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+    ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      usePreset !== initial.usePreset ||
+      modemPreset !== initial.modemPreset ||
+      bandwidth !== initial.bandwidth ||
+      spreadFactor !== initial.spreadFactor ||
+      codingRate !== initial.codingRate ||
+      frequencyOffset !== initial.frequencyOffset ||
+      overrideFrequency !== initial.overrideFrequency ||
+      region !== initial.region ||
+      hopLimit !== initial.hopLimit ||
+      txPower !== initial.txPower ||
+      channelNum !== initial.channelNum ||
+      sx126xRxBoostedGain !== initial.sx126xRxBoostedGain ||
+      ignoreMqtt !== initial.ignoreMqtt ||
+      configOkToMqtt !== initial.configOkToMqtt ||
+      txEnabled !== initial.txEnabled ||
+      overrideDutyCycle !== initial.overrideDutyCycle ||
+      paFanDisabled !== initial.paFanDisabled
+    );
+  }, [usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
+      overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+      ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setUsePreset(initial.usePreset);
+    setModemPreset(initial.modemPreset);
+    setBandwidth(initial.bandwidth);
+    setSpreadFactor(initial.spreadFactor);
+    setCodingRate(initial.codingRate);
+    setFrequencyOffset(initial.frequencyOffset);
+    setOverrideFrequency(initial.overrideFrequency);
+    setRegion(initial.region);
+    setHopLimit(initial.hopLimit);
+    setTxPower(initial.txPower);
+    setChannelNum(initial.channelNum);
+    setSx126xRxBoostedGain(initial.sx126xRxBoostedGain);
+    setIgnoreMqtt(initial.ignoreMqtt);
+    setConfigOkToMqtt(initial.configOkToMqtt);
+    setTxEnabled(initial.txEnabled);
+    setOverrideDutyCycle(initial.overrideDutyCycle);
+    setPaFanDisabled(initial.paFanDisabled);
+  }, [setUsePreset, setModemPreset, setBandwidth, setSpreadFactor, setCodingRate,
+      setFrequencyOffset, setOverrideFrequency, setRegion, setHopLimit, setTxPower,
+      setChannelNum, setSx126xRxBoostedGain, setIgnoreMqtt, setConfigOkToMqtt,
+      setTxEnabled, setOverrideDutyCycle, setPaFanDisabled]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
+      overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+      ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled
+    };
+  }, [onSave, usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
+      overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+      ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'lora-config',
+    sectionName: t('lora_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -434,13 +515,6 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           </div>
         </label>
       </div>
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('lora_config.save_button')}
-      </button>
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoKeyManagementSectionProps {
   enabled: boolean;
@@ -64,6 +65,14 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     setHasChanges(changed);
   }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, enabled, intervalMinutes, maxExchanges, autoPurge]);
 
+  // Reset local state to props (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalEnabled(enabled);
+    setLocalInterval(intervalMinutes || 5);
+    setLocalMaxExchanges(maxExchanges || 3);
+    setLocalAutoPurge(autoPurge);
+  }, [enabled, intervalMinutes, maxExchanges, autoPurge]);
+
   // Fetch repair log
   useEffect(() => {
     const fetchLog = async () => {
@@ -84,7 +93,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     return () => clearInterval(interval);
   }, [baseUrl, csrfFetch]);
 
-  const handleSave = async () => {
+  const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
       const response = await csrfFetch(`${baseUrl}/api/settings`, {
@@ -120,7 +129,17 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMaxExchangesChange, onAutoPurgeChange]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'auto-key-management',
+    sectionName: t('automation.key_management.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   const getActionIcon = (action: string, success: boolean | null): string => {
     switch (action) {
@@ -189,21 +208,6 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
             ?
           </a>
         </h2>
-        <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges || isSaving}
-            className="btn-primary"
-            style={{
-              padding: '0.5rem 1.5rem',
-              fontSize: '14px',
-              opacity: hasChanges ? 1 : 0.5,
-              cursor: hasChanges ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {isSaving ? t('automation.saving') : t('automation.save_changes')}
-          </button>
-        </div>
       </div>
 
       <div

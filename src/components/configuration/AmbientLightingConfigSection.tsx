@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface AmbientLightingConfigSectionProps {
   ledState: boolean;
@@ -31,6 +32,51 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    ledState, current, red, green, blue
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      ledState !== initial.ledState ||
+      current !== initial.current ||
+      red !== initial.red ||
+      green !== initial.green ||
+      blue !== initial.blue
+    );
+  }, [ledState, current, red, green, blue]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setLedState(initial.ledState);
+    setCurrent(initial.current);
+    setRed(initial.red);
+    setGreen(initial.green);
+    setBlue(initial.blue);
+  }, [setLedState, setCurrent, setRed, setGreen, setBlue]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      ledState, current, red, green, blue
+    };
+  }, [onSave, ledState, current, red, green, blue]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'ambientlighting-config',
+    sectionName: t('ambientlighting_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   // Generate preview color
   const previewColor = `rgb(${red}, ${green}, ${blue})`;
@@ -191,14 +237,6 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
           </div>
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('ambientlighting_config.save_button')}
-      </button>
     </div>
   );
 };

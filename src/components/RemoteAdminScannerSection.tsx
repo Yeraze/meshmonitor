@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 interface RemoteAdminScannerSectionProps {
   baseUrl: string;
@@ -143,7 +144,16 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
     setHasChanges(intervalChanged || expirationChanged);
   }, [localEnabled, localInterval, expirationHours, initialSettings]);
 
-  const handleSave = async () => {
+  // Reset local state to initial settings (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    if (initialSettings) {
+      setLocalEnabled(initialSettings.intervalMinutes > 0);
+      setLocalInterval(initialSettings.intervalMinutes > 0 ? initialSettings.intervalMinutes : 5);
+      setExpirationHours(initialSettings.expirationHours);
+    }
+  }, [initialSettings]);
+
+  const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
       const intervalToSave = localEnabled ? localInterval : 0;
@@ -174,7 +184,17 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localEnabled, localInterval, expirationHours, baseUrl, csrfFetch, showToast, t]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'remote-admin-scanner',
+    sectionName: t('automation.remote_admin_scanner.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   if (isLoading) {
     return (
@@ -223,19 +243,6 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
             ?
           </a>
         </h2>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="btn-primary"
-          style={{
-            padding: '0.5rem 1.5rem',
-            fontSize: '14px',
-            opacity: hasChanges ? 1 : 0.5,
-            cursor: hasChanges ? 'pointer' : 'not-allowed'
-          }}
-        >
-          {isSaving ? t('automation.saving') : t('automation.save_changes')}
-        </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
