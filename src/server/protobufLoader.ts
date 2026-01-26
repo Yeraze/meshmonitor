@@ -68,6 +68,15 @@ export interface MeshPacket {
   rxTime?: number;
   rxSnr?: number;
   rxRssi?: number;
+  hopLimit?: number;
+  hopStart?: number;
+  wantAck?: boolean;
+  priority?: number;
+  relayNode?: number;
+  viaMqtt?: boolean;
+  encrypted?: Uint8Array;
+  /** Transport mechanism - see TransportMechanism enum in constants/meshtastic.ts */
+  transportMechanism?: number;
 }
 
 export interface Data {

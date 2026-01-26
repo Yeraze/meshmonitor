@@ -22,6 +22,28 @@ interface PacketMonitorPanelProps {
 // Constants
 const LOAD_MORE_THRESHOLD = 10;
 
+// Transport mechanism display names (matches protobufs/meshtastic/mesh.proto TransportMechanism enum)
+const TRANSPORT_MECHANISM_NAMES: Record<number, { short: string; full: string }> = {
+  0: { short: 'INT', full: 'Internal - Node generated packet' },
+  1: { short: 'LoRa', full: 'LoRa - Primary radio' },
+  2: { short: 'LoR1', full: 'LoRa Alt 1 - Secondary radio' },
+  3: { short: 'LoR2', full: 'LoRa Alt 2 - Tertiary radio' },
+  4: { short: 'LoR3', full: 'LoRa Alt 3 - Quaternary radio' },
+  5: { short: 'MQTT', full: 'MQTT - Message queue' },
+  6: { short: 'UDP', full: 'Multicast UDP' },
+  7: { short: 'API', full: 'API - Direct connection' },
+};
+
+/**
+ * Get display name for transport mechanism
+ */
+const getTransportMechanismName = (mechanism: number | undefined): { short: string; full: string } => {
+  if (mechanism === undefined || mechanism === null) {
+    return { short: '?', full: 'Unknown transport' };
+  }
+  return TRANSPORT_MECHANISM_NAMES[mechanism] || { short: '?', full: `Unknown (${mechanism})` };
+};
+
 // Safe JSON parse helper
 const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
   if (!value) return fallback;
@@ -532,6 +554,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 <colgroup>
                   <col style={{ width: '60px' }} />
                   <col style={{ width: '35px' }} />
+                  <col style={{ width: '45px' }} />
                   <col style={{ width: '110px' }} />
                   <col style={{ width: '140px' }} />
                   <col style={{ width: '140px' }} />
@@ -548,6 +571,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                   <tr>
                     <th style={{ width: '60px' }}>#</th>
                     <th style={{ width: '35px' }}>{t('packet_monitor.column.dir')}</th>
+                    <th style={{ width: '45px' }}>{t('packet_monitor.column.via')}</th>
                     <th style={{ width: '110px' }}>{t('packet_monitor.column.time')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
@@ -573,6 +597,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                   <colgroup>
                     <col style={{ width: '60px' }} />
                     <col style={{ width: '35px' }} />
+                    <col style={{ width: '45px' }} />
                     <col style={{ width: '110px' }} />
                     <col style={{ width: '140px' }} />
                     <col style={{ width: '140px' }} />
@@ -605,7 +630,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               tableLayout: 'fixed',
                             }}
                           >
-                            <td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                               {t('packet_monitor.loading_more')}
                             </td>
                           </tr>
@@ -638,6 +663,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}
                           >
                             {packet.direction === 'tx' ? 'TX' : 'RX'}
+                          </td>
+                          <td
+                            className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`}
+                            style={{ width: '45px', textAlign: 'center' }}
+                            title={getTransportMechanismName(packet.transport_mechanism).full}
+                          >
+                            {getTransportMechanismName(packet.transport_mechanism).short}
                           </td>
                           <td
                             className="timestamp"

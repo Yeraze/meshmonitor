@@ -1060,6 +1060,7 @@
   "packet_monitor.column.size": "Size",
   "packet_monitor.column.content": "Content",
   "packet_monitor.column.dir": "Dir",
+  "packet_monitor.column.via": "Via",
   "packet_monitor.direction_rx": "Received",
   "packet_monitor.direction_tx": "Transmitted",
   "packet_monitor.broadcast": "Broadcast",

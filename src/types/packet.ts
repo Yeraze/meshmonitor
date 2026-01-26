@@ -30,6 +30,7 @@ export interface PacketLog {
   created_at?: number;
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
+  transport_mechanism?: number;
 }
 
 export interface PacketLogResponse {
