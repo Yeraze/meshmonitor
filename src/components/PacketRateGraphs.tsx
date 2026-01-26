@@ -279,19 +279,21 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
                     minute: '2-digit',
                   });
                 }}
-                formatter={(value, name: string) => {
-                  if (value === null || value === undefined) return ['-', name];
+                formatter={(value, name) => {
+                  const label = name ?? '';
+                  if (value === null || value === undefined) return ['-', label];
                   const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                  if (isNaN(numValue)) return ['-', name];
-                  return [`${numValue.toFixed(2)} pkts/min`, name];
+                  if (isNaN(numValue)) return ['-', label];
+                  return [`${numValue.toFixed(2)} pkts/min`, label];
                 }}
               />
               <Legend
                 verticalAlign="bottom"
                 height={36}
-                formatter={(value: string) => {
-                  const metric = metrics.find(m => m.key === value);
-                  return metric?.label || value;
+                formatter={(value) => {
+                  const strValue = String(value ?? '');
+                  const metric = metrics.find(m => m.key === strValue);
+                  return metric?.label || strValue;
                 }}
               />
               {metrics.map(metric => (

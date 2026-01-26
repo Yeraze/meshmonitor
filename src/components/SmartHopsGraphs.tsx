@@ -224,19 +224,21 @@ const SmartHopsGraphs: React.FC<SmartHopsGraphsProps> = React.memo(
                       minute: '2-digit',
                     });
                   }}
-                  formatter={(value, name: string) => {
-                    if (value === null || value === undefined) return ['-', t(`info.${name}`)];
+                  formatter={(value, name) => {
+                    const label = name ? t(`info.${name}`) : '';
+                    if (value === null || value === undefined) return ['-', label];
                     const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                    if (isNaN(numValue)) return ['-', t(`info.${name}`)];
-                    return [`${numValue.toFixed(1)} hops`, t(`info.${name}`)];
+                    if (isNaN(numValue)) return ['-', label];
+                    return [`${numValue.toFixed(1)} hops`, label];
                   }}
                 />
                 <Legend
                   verticalAlign="bottom"
                   height={36}
-                  formatter={(value: string) => {
-                    const metric = HOP_METRICS.find(m => m.key === value);
-                    return metric ? t(`info.${metric.label}`) : value;
+                  formatter={(value) => {
+                    const strValue = String(value ?? '');
+                    const metric = HOP_METRICS.find(m => m.key === strValue);
+                    return metric ? t(`info.${metric.label}`) : strValue;
                   }}
                 />
                 {HOP_METRICS.map(metric => (

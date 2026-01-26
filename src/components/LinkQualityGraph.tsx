@@ -247,7 +247,7 @@ const LinkQualityGraph: React.FC<LinkQualityGraphProps> = React.memo(
                       minute: '2-digit',
                     });
                   }}
-                  formatter={(value, _name: string) => {
+                  formatter={(value) => {
                     if (value === null || value === undefined) return ['-', t('info.link_quality_label')];
                     const numValue = typeof value === 'number' ? value : parseFloat(String(value));
                     if (isNaN(numValue)) return ['-', t('info.link_quality_label')];
