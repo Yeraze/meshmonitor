@@ -66,6 +66,8 @@ import { useTraceroutePaths } from './hooks/useTraceroutePaths';
 import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
+import { SaveBarProvider } from './contexts/SaveBarContext';
+import { SaveBar } from './components/SaveBar';
 
 // Track pending favorite requests outside component to persist across remounts
 // Maps nodeNum -> expected isFavorite state
@@ -4505,6 +4507,9 @@ function App() {
         systemStatus={systemStatus}
         onClose={() => setShowStatusModal(false)}
       />
+
+      {/* SaveBar for unified save/dismiss actions */}
+      <SaveBar />
     </div>
   );
 }
@@ -4543,7 +4548,9 @@ const AppWithToast = () => {
           <MessagingProvider baseUrl={initialBaseUrl}>
             <UIProvider>
               <ToastProvider>
-                <App />
+                <SaveBarProvider>
+                  <App />
+                </SaveBarProvider>
               </ToastProvider>
             </UIProvider>
           </MessagingProvider>

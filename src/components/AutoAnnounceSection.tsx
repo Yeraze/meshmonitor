@@ -5,6 +5,7 @@ import { isValidCron } from 'cron-validator';
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -152,7 +153,22 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setHasChanges(changed);
   }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
-  const handleSave = async () => {
+  // Reset local state to props (used by SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalEnabled(enabled);
+    setLocalInterval(intervalHours || 6);
+    setLocalMessage(message || DEFAULT_MESSAGE);
+    setLocalChannelIndex(channelIndex || 0);
+    setLocalAnnounceOnStart(announceOnStart);
+    setLocalUseSchedule(useSchedule);
+    setLocalSchedule(schedule || '0 */6 * * *');
+    setLocalNodeInfoEnabled(nodeInfoEnabled);
+    setLocalNodeInfoChannels(nodeInfoChannels);
+    setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
+  }, [enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+
+  // Wrap handleSave for useSaveBar (needs to be defined before useSaveBar call)
+  const handleSaveForSaveBar = useCallback(async () => {
     // Validate cron expression before saving
     if (localUseSchedule && scheduleError) {
       showToast(t('automation.auto_announce.cannot_save_invalid_cron'), 'error');
@@ -204,7 +220,17 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localSchedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'auto-announce',
+    sectionName: t('automation.auto_announce.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSaveForSaveBar,
+    onDismiss: resetChanges
+  });
 
   const insertToken = (token: string) => {
     const textarea = textareaRef.current;
@@ -280,10 +306,6 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     handleSendNow();
   }, [handleSendNow]);
 
-  const handleSaveClick = useCallback(() => {
-    handleSave();
-  }, [handleSave]);
-
   const createInsertTokenHandler = useCallback((token: string) => {
     return () => insertToken(token);
   }, [insertToken]);
@@ -335,19 +357,6 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             }}
           >
             {isSendingNow ? t('automation.auto_announce.sending') : t('automation.auto_announce.send_now')}
-          </button>
-          <button
-            onClick={handleSaveClick}
-            disabled={!hasChanges || isSaving}
-            className="btn-primary"
-            style={{
-              padding: '0.5rem 1.5rem',
-              fontSize: '14px',
-              opacity: hasChanges ? 1 : 0.5,
-              cursor: hasChanges ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {isSaving ? t('automation.saving') : t('automation.save_changes')}
           </button>
         </div>
       </div>

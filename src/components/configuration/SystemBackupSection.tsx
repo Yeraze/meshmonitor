@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
+import { useSaveBar } from '../../hooks/useSaveBar';
 import '../../styles/BackupManagement.css';
 
 interface SystemBackupFile {
@@ -29,6 +30,33 @@ const SystemBackupSection: React.FC = () => {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [saveCounter, setSaveCounter] = useState(0); // Triggers hasChanges recalculation
+
+  // Track initial values loaded from API for change detection
+  const initialValuesRef = useRef({
+    autoBackupEnabled: false,
+    maxBackups: 7,
+    backupTime: '03:00'
+  });
+
+  // Calculate if there are unsaved changes
+  // saveCounter forces recalculation after save updates initialValuesRef
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      autoBackupEnabled !== initial.autoBackupEnabled ||
+      maxBackups !== initial.maxBackups ||
+      backupTime !== initial.backupTime
+    );
+  }, [autoBackupEnabled, maxBackups, backupTime, saveCounter]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setAutoBackupEnabled(initial.autoBackupEnabled);
+    setMaxBackups(initial.maxBackups);
+    setBackupTime(initial.backupTime);
+  }, []);
 
   // Load backup settings on mount
   useEffect(() => {
@@ -44,9 +72,18 @@ const SystemBackupSection: React.FC = () => {
 
       if (response.ok) {
         const settings = await response.json();
-        setAutoBackupEnabled(settings.enabled || false);
-        setMaxBackups(settings.maxBackups || 7);
-        setBackupTime(settings.backupTime || '03:00');
+        const enabled = settings.enabled || false;
+        const max = settings.maxBackups || 7;
+        const time = settings.backupTime || '03:00';
+        setAutoBackupEnabled(enabled);
+        setMaxBackups(max);
+        setBackupTime(time);
+        // Update initial values to match loaded settings
+        initialValuesRef.current = {
+          autoBackupEnabled: enabled,
+          maxBackups: max,
+          backupTime: time
+        };
       }
     } catch (error) {
       logger.error('Error loading system backup settings:', error);
@@ -80,6 +117,15 @@ const SystemBackupSection: React.FC = () => {
         throw new Error('Failed to save system backup settings');
       }
 
+      // Update initial values to match saved settings
+      initialValuesRef.current = {
+        autoBackupEnabled,
+        maxBackups,
+        backupTime
+      };
+      // Trigger hasChanges recalculation
+      setSaveCounter(c => c + 1);
+
       showToast(t('system_backup.toast_settings_saved'), 'success');
     } catch (error) {
       logger.error('Error saving system backup settings:', error);
@@ -88,6 +134,16 @@ const SystemBackupSection: React.FC = () => {
       setIsSavingSettings(false);
     }
   };
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'system-backup',
+    sectionName: t('system_backup.title'),
+    hasChanges,
+    isSaving: isSavingSettings,
+    onSave: handleSaveBackupSettings,
+    onDismiss: resetChanges
+  });
 
   const handleManualBackup = async () => {
     try {
@@ -346,16 +402,6 @@ const SystemBackupSection: React.FC = () => {
               </div>
             </>
           )}
-
-          <div className="settings-buttons">
-            <button
-              className="save-button"
-              onClick={handleSaveBackupSettings}
-              disabled={isSavingSettings}
-            >
-              {isSavingSettings ? t('common.saving') : t('system_backup.save_settings')}
-            </button>
-          </div>
         </div>
       </div>
 

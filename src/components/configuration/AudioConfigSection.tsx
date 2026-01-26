@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Audio bitrate options matching protobuf enum
 const AUDIO_BAUD_OPTIONS = [
@@ -53,6 +54,55 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    codec2Enabled, pttPin, bitrate, i2sWs, i2sSd, i2sDin, i2sSck
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      codec2Enabled !== initial.codec2Enabled ||
+      pttPin !== initial.pttPin ||
+      bitrate !== initial.bitrate ||
+      i2sWs !== initial.i2sWs ||
+      i2sSd !== initial.i2sSd ||
+      i2sDin !== initial.i2sDin ||
+      i2sSck !== initial.i2sSck
+    );
+  }, [codec2Enabled, pttPin, bitrate, i2sWs, i2sSd, i2sDin, i2sSck]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setCodec2Enabled(initial.codec2Enabled);
+    setPttPin(initial.pttPin);
+    setBitrate(initial.bitrate);
+    setI2sWs(initial.i2sWs);
+    setI2sSd(initial.i2sSd);
+    setI2sDin(initial.i2sDin);
+    setI2sSck(initial.i2sSck);
+  }, [setCodec2Enabled, setPttPin, setBitrate, setI2sWs, setI2sSd, setI2sDin, setI2sSck]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      codec2Enabled, pttPin, bitrate, i2sWs, i2sSd, i2sDin, i2sSck
+    };
+  }, [onSave, codec2Enabled, pttPin, bitrate, i2sWs, i2sSd, i2sDin, i2sSck]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'audio-config',
+    sectionName: t('audio_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -240,14 +290,6 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
           )}
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('audio_config.save_button')}
-      </button>
     </div>
   );
 };

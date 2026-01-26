@@ -145,6 +145,8 @@
   "common.hours_ago": "{{count}}h ago",
   "common.days_ago": "{{count}}d ago",
 
+  "savebar.save_changes_to": "Save changes to {{section}}",
+
   "auth.login": "Login",
   "auth.username": "Username",
   "auth.password": "Password",

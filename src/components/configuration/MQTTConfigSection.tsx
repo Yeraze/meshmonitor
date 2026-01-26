@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -59,6 +60,75 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
+    mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
+    proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      mqttEnabled !== initial.mqttEnabled ||
+      mqttAddress !== initial.mqttAddress ||
+      mqttUsername !== initial.mqttUsername ||
+      mqttPassword !== initial.mqttPassword ||
+      mqttEncryptionEnabled !== initial.mqttEncryptionEnabled ||
+      mqttJsonEnabled !== initial.mqttJsonEnabled ||
+      mqttRoot !== initial.mqttRoot ||
+      tlsEnabled !== initial.tlsEnabled ||
+      proxyToClientEnabled !== initial.proxyToClientEnabled ||
+      mapReportingEnabled !== initial.mapReportingEnabled ||
+      mapPublishIntervalSecs !== initial.mapPublishIntervalSecs ||
+      mapPositionPrecision !== initial.mapPositionPrecision
+    );
+  }, [mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
+      mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
+      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setMqttEnabled(initial.mqttEnabled);
+    setMqttAddress(initial.mqttAddress);
+    setMqttUsername(initial.mqttUsername);
+    setMqttPassword(initial.mqttPassword);
+    setMqttEncryptionEnabled(initial.mqttEncryptionEnabled);
+    setMqttJsonEnabled(initial.mqttJsonEnabled);
+    setMqttRoot(initial.mqttRoot);
+    setTlsEnabled(initial.tlsEnabled);
+    setProxyToClientEnabled(initial.proxyToClientEnabled);
+    setMapReportingEnabled(initial.mapReportingEnabled);
+    setMapPublishIntervalSecs(initial.mapPublishIntervalSecs);
+    setMapPositionPrecision(initial.mapPositionPrecision);
+  }, [setMqttEnabled, setMqttAddress, setMqttUsername, setMqttPassword,
+      setMqttEncryptionEnabled, setMqttJsonEnabled, setMqttRoot, setTlsEnabled,
+      setProxyToClientEnabled, setMapReportingEnabled, setMapPublishIntervalSecs, setMapPositionPrecision]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
+      mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
+      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision
+    };
+  }, [onSave, mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
+      mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
+      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'mqtt-config',
+    sectionName: t('mqtt_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -279,13 +349,6 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           )}
         </>
       )}
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('mqtt_config.save_button')}
-      </button>
     </div>
   );
 };

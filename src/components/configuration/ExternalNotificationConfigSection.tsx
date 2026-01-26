@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface ExternalNotificationConfigSectionProps {
   // Main settings
@@ -76,6 +77,81 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    enabled, outputMs, output, active, alertMessage, alertMessageVibra, alertMessageBuzzer,
+    alertBell, alertBellVibra, alertBellBuzzer, usePwm, nagTimeout,
+    useI2sAsBuzzer, outputVibra, outputBuzzer
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      enabled !== initial.enabled ||
+      outputMs !== initial.outputMs ||
+      output !== initial.output ||
+      active !== initial.active ||
+      alertMessage !== initial.alertMessage ||
+      alertMessageVibra !== initial.alertMessageVibra ||
+      alertMessageBuzzer !== initial.alertMessageBuzzer ||
+      alertBell !== initial.alertBell ||
+      alertBellVibra !== initial.alertBellVibra ||
+      alertBellBuzzer !== initial.alertBellBuzzer ||
+      usePwm !== initial.usePwm ||
+      nagTimeout !== initial.nagTimeout ||
+      useI2sAsBuzzer !== initial.useI2sAsBuzzer ||
+      outputVibra !== initial.outputVibra ||
+      outputBuzzer !== initial.outputBuzzer
+    );
+  }, [enabled, outputMs, output, active, alertMessage, alertMessageVibra, alertMessageBuzzer,
+      alertBell, alertBellVibra, alertBellBuzzer, usePwm, nagTimeout,
+      useI2sAsBuzzer, outputVibra, outputBuzzer]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setEnabled(initial.enabled);
+    setOutputMs(initial.outputMs);
+    setOutput(initial.output);
+    setActive(initial.active);
+    setAlertMessage(initial.alertMessage);
+    setAlertMessageVibra(initial.alertMessageVibra);
+    setAlertMessageBuzzer(initial.alertMessageBuzzer);
+    setAlertBell(initial.alertBell);
+    setAlertBellVibra(initial.alertBellVibra);
+    setAlertBellBuzzer(initial.alertBellBuzzer);
+    setUsePwm(initial.usePwm);
+    setNagTimeout(initial.nagTimeout);
+    setUseI2sAsBuzzer(initial.useI2sAsBuzzer);
+    setOutputVibra(initial.outputVibra);
+    setOutputBuzzer(initial.outputBuzzer);
+  }, [setEnabled, setOutputMs, setOutput, setActive, setAlertMessage, setAlertMessageVibra,
+      setAlertMessageBuzzer, setAlertBell, setAlertBellVibra, setAlertBellBuzzer,
+      setUsePwm, setNagTimeout, setUseI2sAsBuzzer, setOutputVibra, setOutputBuzzer]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      enabled, outputMs, output, active, alertMessage, alertMessageVibra, alertMessageBuzzer,
+      alertBell, alertBellVibra, alertBellBuzzer, usePwm, nagTimeout,
+      useI2sAsBuzzer, outputVibra, outputBuzzer
+    };
+  }, [onSave, enabled, outputMs, output, active, alertMessage, alertMessageVibra, alertMessageBuzzer,
+      alertBell, alertBellVibra, alertBellBuzzer, usePwm, nagTimeout,
+      useI2sAsBuzzer, outputVibra, outputBuzzer]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'extnotif-config',
+    sectionName: t('extnotif_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -401,14 +477,6 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
           )}
         </>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('extnotif_config.save_button')}
-      </button>
     </div>
   );
 };

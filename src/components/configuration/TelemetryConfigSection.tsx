@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface TelemetryConfigSectionProps {
   // Device Telemetry
@@ -57,6 +58,71 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+    environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
+    airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      deviceUpdateInterval !== initial.deviceUpdateInterval ||
+      environmentUpdateInterval !== initial.environmentUpdateInterval ||
+      environmentMeasurementEnabled !== initial.environmentMeasurementEnabled ||
+      environmentScreenEnabled !== initial.environmentScreenEnabled ||
+      environmentDisplayFahrenheit !== initial.environmentDisplayFahrenheit ||
+      airQualityEnabled !== initial.airQualityEnabled ||
+      airQualityInterval !== initial.airQualityInterval ||
+      powerMeasurementEnabled !== initial.powerMeasurementEnabled ||
+      powerUpdateInterval !== initial.powerUpdateInterval ||
+      powerScreenEnabled !== initial.powerScreenEnabled
+    );
+  }, [deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+      environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
+      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setDeviceUpdateInterval(initial.deviceUpdateInterval);
+    setEnvironmentUpdateInterval(initial.environmentUpdateInterval);
+    setEnvironmentMeasurementEnabled(initial.environmentMeasurementEnabled);
+    setEnvironmentScreenEnabled(initial.environmentScreenEnabled);
+    setEnvironmentDisplayFahrenheit(initial.environmentDisplayFahrenheit);
+    setAirQualityEnabled(initial.airQualityEnabled);
+    setAirQualityInterval(initial.airQualityInterval);
+    setPowerMeasurementEnabled(initial.powerMeasurementEnabled);
+    setPowerUpdateInterval(initial.powerUpdateInterval);
+    setPowerScreenEnabled(initial.powerScreenEnabled);
+  }, [setDeviceUpdateInterval, setEnvironmentUpdateInterval, setEnvironmentMeasurementEnabled,
+      setEnvironmentScreenEnabled, setEnvironmentDisplayFahrenheit, setAirQualityEnabled,
+      setAirQualityInterval, setPowerMeasurementEnabled, setPowerUpdateInterval, setPowerScreenEnabled]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+      environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
+      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled
+    };
+  }, [onSave, deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+      environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
+      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'telemetry-config',
+    sectionName: t('telemetry_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   // Convert seconds to human-readable format
   const formatDuration = (seconds: number): string => {
@@ -339,14 +405,6 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           </div>
         </div>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('telemetry_config.save_button')}
-      </button>
     </div>
   );
 };

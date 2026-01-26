@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 // OLED type options from protobufs
 const OLED_TYPES = [
@@ -87,6 +88,64 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
+    displayMode, headingBold, wakeOnTapOrMotion, compassOrientation
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      screenOnSecs !== initial.screenOnSecs ||
+      autoScreenCarouselSecs !== initial.autoScreenCarouselSecs ||
+      flipScreen !== initial.flipScreen ||
+      units !== initial.units ||
+      oled !== initial.oled ||
+      displayMode !== initial.displayMode ||
+      headingBold !== initial.headingBold ||
+      wakeOnTapOrMotion !== initial.wakeOnTapOrMotion ||
+      compassOrientation !== initial.compassOrientation
+    );
+  }, [screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
+      displayMode, headingBold, wakeOnTapOrMotion, compassOrientation]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setScreenOnSecs(initial.screenOnSecs);
+    setAutoScreenCarouselSecs(initial.autoScreenCarouselSecs);
+    setFlipScreen(initial.flipScreen);
+    setUnits(initial.units);
+    setOled(initial.oled);
+    setDisplayMode(initial.displayMode);
+    setHeadingBold(initial.headingBold);
+    setWakeOnTapOrMotion(initial.wakeOnTapOrMotion);
+    setCompassOrientation(initial.compassOrientation);
+  }, [setScreenOnSecs, setAutoScreenCarouselSecs, setFlipScreen, setUnits, setOled,
+      setDisplayMode, setHeadingBold, setWakeOnTapOrMotion, setCompassOrientation]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
+      displayMode, headingBold, wakeOnTapOrMotion, compassOrientation
+    };
+  }, [onSave, screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
+      displayMode, headingBold, wakeOnTapOrMotion, compassOrientation]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'display-config',
+    sectionName: t('display_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   // Convert seconds to human-readable format
   const formatDuration = (seconds: number): string => {
@@ -327,14 +386,6 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
           </div>
         </div>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('display_config.save_button')}
-      </button>
     </div>
   );
 };

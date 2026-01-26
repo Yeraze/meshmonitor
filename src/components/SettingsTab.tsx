@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../hooks/useSaveBar';
 import { TemperatureUnit } from '../utils/temperature';
 import { SortField, SortDirection } from '../types/ui';
 import { version } from '../../package.json';
@@ -318,7 +319,41 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localHideIncompleteNodes, showIncompleteNodes]);
 
-  const handleSave = async () => {
+  // Reset local state to current saved values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    setLocalMaxNodeAge(maxNodeAgeHours);
+    setLocalInactiveNodeThresholdHours(inactiveNodeThresholdHours);
+    setLocalInactiveNodeCheckIntervalMinutes(inactiveNodeCheckIntervalMinutes);
+    setLocalInactiveNodeCooldownHours(inactiveNodeCooldownHours);
+    setLocalTemperatureUnit(temperatureUnit);
+    setLocalDistanceUnit(distanceUnit);
+    setLocalTelemetryHours(telemetryVisualizationHours);
+    setLocalFavoriteTelemetryStorageDays(favoriteTelemetryStorageDays);
+    setLocalPreferredSortField(preferredSortField);
+    setLocalPreferredSortDirection(preferredSortDirection);
+    setLocalTimeFormat(timeFormat);
+    setLocalDateFormat(dateFormat);
+    setLocalMapTileset(mapTileset);
+    setLocalMapPinStyle(mapPinStyle);
+    setLocalTheme(theme);
+    setLocalNodeHopsCalculation(nodeHopsCalculation);
+    setLocalPacketLogEnabled(initialPacketMonitorSettings.enabled);
+    setLocalPacketLogMaxCount(initialPacketMonitorSettings.maxCount);
+    setLocalPacketLogMaxAgeHours(initialPacketMonitorSettings.maxAgeHours);
+    setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
+    setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
+    setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
+    setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
+    setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
+    setLocalHideIncompleteNodes(!showIncompleteNodes);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
+      inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
+      favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
+      dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation,
+      initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
+      solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
+
+  const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       const settings = {
@@ -390,7 +425,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [csrfFetch, baseUrl, localMaxNodeAge, localInactiveNodeThresholdHours,
+      localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours,
+      localTemperatureUnit, localDistanceUnit, localTelemetryHours,
+      localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
+      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
+      localNodeHopsCalculation, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
+      localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
+      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localHideIncompleteNodes,
+      onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
+      onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange,
+      onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
+      onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
+      onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, onSolarMonitoringEnabledChange,
+      onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
+      onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'settings',
+    sectionName: t('settings.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   const handleFetchSolarEstimates = async () => {
     setIsFetchingSolarEstimates(true);
@@ -1250,13 +1309,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <h3>{t('settings.settings_management')}</h3>
           <p className="setting-description">{t('settings.settings_management_description')}</p>
           <div className="settings-buttons">
-            <button
-              className="save-button"
-              onClick={handleSave}
-              disabled={!hasChanges || isSaving}
-            >
-              {isSaving ? t('settings.saving') : t('settings.save_settings')}
-            </button>
             <button
               className="reset-button"
               onClick={handleReset}

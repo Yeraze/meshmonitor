@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Address mode options from protobufs
 const ADDRESS_MODE_OPTIONS = [
@@ -56,6 +57,64 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+    ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      wifiEnabled !== initial.wifiEnabled ||
+      wifiSsid !== initial.wifiSsid ||
+      wifiPsk !== initial.wifiPsk ||
+      ntpServer !== initial.ntpServer ||
+      addressMode !== initial.addressMode ||
+      ipv4Address !== initial.ipv4Address ||
+      ipv4Gateway !== initial.ipv4Gateway ||
+      ipv4Subnet !== initial.ipv4Subnet ||
+      ipv4Dns !== initial.ipv4Dns
+    );
+  }, [wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+      ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setWifiEnabled(initial.wifiEnabled);
+    setWifiSsid(initial.wifiSsid);
+    setWifiPsk(initial.wifiPsk);
+    setNtpServer(initial.ntpServer);
+    setAddressMode(initial.addressMode);
+    setIpv4Address(initial.ipv4Address);
+    setIpv4Gateway(initial.ipv4Gateway);
+    setIpv4Subnet(initial.ipv4Subnet);
+    setIpv4Dns(initial.ipv4Dns);
+  }, [setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setAddressMode,
+      setIpv4Address, setIpv4Gateway, setIpv4Subnet, setIpv4Dns]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+      ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
+    };
+  }, [onSave, wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+      ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'network-config',
+    sectionName: t('network_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   return (
     <div className="settings-section">
@@ -267,14 +326,6 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           style={{ width: '400px' }}
         />
       </div>
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('network_config.save_button')}
-      </button>
     </div>
   );
 };

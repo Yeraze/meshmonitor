@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface PowerConfigSectionProps {
   // Power saving
@@ -50,6 +51,62 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    isPowerSaving, onBatteryShutdownAfterSecs, adcMultiplierOverride,
+    waitBluetoothSecs, sdsSecs, lsSecs, minWakeSecs, deviceBatteryInaAddress
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      isPowerSaving !== initial.isPowerSaving ||
+      onBatteryShutdownAfterSecs !== initial.onBatteryShutdownAfterSecs ||
+      adcMultiplierOverride !== initial.adcMultiplierOverride ||
+      waitBluetoothSecs !== initial.waitBluetoothSecs ||
+      sdsSecs !== initial.sdsSecs ||
+      lsSecs !== initial.lsSecs ||
+      minWakeSecs !== initial.minWakeSecs ||
+      deviceBatteryInaAddress !== initial.deviceBatteryInaAddress
+    );
+  }, [isPowerSaving, onBatteryShutdownAfterSecs, adcMultiplierOverride,
+      waitBluetoothSecs, sdsSecs, lsSecs, minWakeSecs, deviceBatteryInaAddress]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setIsPowerSaving(initial.isPowerSaving);
+    setOnBatteryShutdownAfterSecs(initial.onBatteryShutdownAfterSecs);
+    setAdcMultiplierOverride(initial.adcMultiplierOverride);
+    setWaitBluetoothSecs(initial.waitBluetoothSecs);
+    setSdsSecs(initial.sdsSecs);
+    setLsSecs(initial.lsSecs);
+    setMinWakeSecs(initial.minWakeSecs);
+    setDeviceBatteryInaAddress(initial.deviceBatteryInaAddress);
+  }, [setIsPowerSaving, setOnBatteryShutdownAfterSecs, setAdcMultiplierOverride,
+      setWaitBluetoothSecs, setSdsSecs, setLsSecs, setMinWakeSecs, setDeviceBatteryInaAddress]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      isPowerSaving, onBatteryShutdownAfterSecs, adcMultiplierOverride,
+      waitBluetoothSecs, sdsSecs, lsSecs, minWakeSecs, deviceBatteryInaAddress
+    };
+  }, [onSave, isPowerSaving, onBatteryShutdownAfterSecs, adcMultiplierOverride,
+      waitBluetoothSecs, sdsSecs, lsSecs, minWakeSecs, deviceBatteryInaAddress]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'power-config',
+    sectionName: t('power_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   // Convert seconds to human-readable format
   const formatDuration = (seconds: number): string => {
@@ -280,14 +337,6 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
           </div>
         </div>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('power_config.save_button')}
-      </button>
     </div>
   );
 };

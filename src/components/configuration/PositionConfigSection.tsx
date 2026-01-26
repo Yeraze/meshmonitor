@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GPS_MODE_OPTIONS, POSITION_FLAGS } from './constants';
+import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface PositionConfigSectionProps {
   positionBroadcastSecs: number;
@@ -69,6 +70,84 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Track initial values for change detection
+  const initialValuesRef = useRef({
+    positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
+    fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
+    broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
+    positionFlags, rxGpio, txGpio, gpsEnGpio
+  });
+
+  // Calculate if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    const initial = initialValuesRef.current;
+    return (
+      positionBroadcastSecs !== initial.positionBroadcastSecs ||
+      positionSmartEnabled !== initial.positionSmartEnabled ||
+      fixedPosition !== initial.fixedPosition ||
+      fixedLatitude !== initial.fixedLatitude ||
+      fixedLongitude !== initial.fixedLongitude ||
+      fixedAltitude !== initial.fixedAltitude ||
+      gpsUpdateInterval !== initial.gpsUpdateInterval ||
+      gpsMode !== initial.gpsMode ||
+      broadcastSmartMinimumDistance !== initial.broadcastSmartMinimumDistance ||
+      broadcastSmartMinimumIntervalSecs !== initial.broadcastSmartMinimumIntervalSecs ||
+      positionFlags !== initial.positionFlags ||
+      rxGpio !== initial.rxGpio ||
+      txGpio !== initial.txGpio ||
+      gpsEnGpio !== initial.gpsEnGpio
+    );
+  }, [positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
+      fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
+      broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
+      positionFlags, rxGpio, txGpio, gpsEnGpio]);
+
+  // Reset to initial values (for SaveBar dismiss)
+  const resetChanges = useCallback(() => {
+    const initial = initialValuesRef.current;
+    setPositionBroadcastSecs(initial.positionBroadcastSecs);
+    setPositionSmartEnabled(initial.positionSmartEnabled);
+    setFixedPosition(initial.fixedPosition);
+    setFixedLatitude(initial.fixedLatitude);
+    setFixedLongitude(initial.fixedLongitude);
+    setFixedAltitude(initial.fixedAltitude);
+    setGpsUpdateInterval(initial.gpsUpdateInterval);
+    setGpsMode(initial.gpsMode);
+    setBroadcastSmartMinimumDistance(initial.broadcastSmartMinimumDistance);
+    setBroadcastSmartMinimumIntervalSecs(initial.broadcastSmartMinimumIntervalSecs);
+    setPositionFlags(initial.positionFlags);
+    setRxGpio(initial.rxGpio);
+    setTxGpio(initial.txGpio);
+    setGpsEnGpio(initial.gpsEnGpio);
+  }, [setPositionBroadcastSecs, setPositionSmartEnabled, setFixedPosition, setFixedLatitude,
+      setFixedLongitude, setFixedAltitude, setGpsUpdateInterval, setGpsMode,
+      setBroadcastSmartMinimumDistance, setBroadcastSmartMinimumIntervalSecs,
+      setPositionFlags, setRxGpio, setTxGpio, setGpsEnGpio]);
+
+  // Update initial values after successful save
+  const handleSave = useCallback(async () => {
+    await onSave();
+    initialValuesRef.current = {
+      positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
+      fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
+      broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
+      positionFlags, rxGpio, txGpio, gpsEnGpio
+    };
+  }, [onSave, positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
+      fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
+      broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
+      positionFlags, rxGpio, txGpio, gpsEnGpio]);
+
+  // Register with SaveBar
+  useSaveBar({
+    id: 'position-config',
+    sectionName: t('position_config.title'),
+    hasChanges,
+    isSaving,
+    onSave: handleSave,
+    onDismiss: resetChanges
+  });
 
   // Helper to toggle a flag bit
   const toggleFlag = (flagValue: number) => {
@@ -387,14 +466,6 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           </div>
         </div>
       )}
-
-      <button
-        className="save-button"
-        onClick={onSave}
-        disabled={isSaving}
-      >
-        {isSaving ? t('common.saving') : t('position_config.save_button')}
-      </button>
     </div>
   );
 };
