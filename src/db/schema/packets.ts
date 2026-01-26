@@ -34,6 +34,7 @@ export const packetLogSqlite = sqliteTable('packet_log', {
   created_at: integer('created_at'),
   decrypted_by: text('decrypted_by'), // 'node' | 'server' | null
   decrypted_channel_id: integer('decrypted_channel_id'), // FK to channel_database.id
+  via_mqtt: integer('via_mqtt', { mode: 'boolean' }), // Whether packet was received via MQTT
 });
 
 // PostgreSQL schema
@@ -66,6 +67,7 @@ export const packetLogPostgres = pgTable('packet_log', {
   created_at: pgBigint('created_at', { mode: 'number' }),
   decrypted_by: pgText('decrypted_by'), // 'node' | 'server' | null
   decrypted_channel_id: pgInteger('decrypted_channel_id'), // FK to channel_database.id
+  via_mqtt: pgBoolean('via_mqtt'), // Whether packet was received via MQTT
 });
 
 // MySQL schema
@@ -98,6 +100,7 @@ export const packetLogMysql = mysqlTable('packet_log', {
   created_at: myBigint('created_at', { mode: 'number' }),
   decrypted_by: myVarchar('decrypted_by', { length: 16 }), // 'node' | 'server' | null
   decrypted_channel_id: myInt('decrypted_channel_id'), // FK to channel_database.id
+  via_mqtt: myBoolean('via_mqtt'), // Whether packet was received via MQTT
 });
 
 // Type inference

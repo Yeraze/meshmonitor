@@ -622,7 +622,8 @@ class MeshtasticManager {
       encrypted: false,  // Outgoing packets are logged before encryption
       payload_preview: payloadPreview,
       metadata: JSON.stringify({ ...metadata, direction: 'tx' }),
-      direction: 'tx'
+      direction: 'tx',
+      via_mqtt: false,  // Outgoing packets are sent via direct connection, not MQTT
     });
   }
 
@@ -2429,6 +2430,7 @@ class MeshtasticManager {
           direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx',
           decrypted_by: decryptedBy ?? undefined,
           decrypted_channel_id: decryptedChannelId ?? undefined,
+          via_mqtt: meshPacket.viaMqtt ?? false,
         });
         } // end else (not internal packet)
       }
