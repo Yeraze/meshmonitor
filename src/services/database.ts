@@ -62,6 +62,7 @@ import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runM
 import { migration as backupHistoryColumnsMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_fix_backup_history_columns.js';
 import { migration as packetViaMqttMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_packet_via_mqtt.js';
 import { migration as transportMechanismMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_convert_via_mqtt_to_transport_mechanism.js';
+import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_add_channel_database_view_on_map.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -902,6 +903,7 @@ class DatabaseService {
     this.runBackupHistoryColumnsMigration();
     this.runPacketViaMqttMigration();
     this.runTransportMechanismMigration();
+    this.runChannelDbViewOnMapMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2050,6 +2052,26 @@ class DatabaseService {
       logger.debug('✅ Transport mechanism migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run transport mechanism migration:', error);
+      throw error;
+    }
+  }
+
+  private runChannelDbViewOnMapMigration(): void {
+    try {
+      const migrationKey = 'migration_059_channel_db_view_on_map';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channel database view on map migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 059: Add can_view_on_map to channel_database_permissions...');
+      channelDbViewOnMapMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channel database view on map migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run channel database view on map migration:', error);
       throw error;
     }
   }
@@ -9269,6 +9291,9 @@ class DatabaseService {
       // Run migration 058: Convert via_mqtt to transport_mechanism
       await runMigration058Postgres(client);
 
+      // Run migration 059: Add canViewOnMap to channel_database_permissions
+      await runMigration059Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9354,6 +9379,9 @@ class DatabaseService {
 
       // Run migration 058: Convert via_mqtt to transport_mechanism
       await runMigration058Mysql(pool);
+
+      // Run migration 059: Add canViewOnMap to channel_database_permissions
+      await runMigration059Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -9812,6 +9840,7 @@ class DatabaseService {
   async setChannelDatabasePermissionAsync(data: {
     userId: number;
     channelDatabaseId: number;
+    canViewOnMap: boolean;
     canRead: boolean;
     grantedBy?: number | null;
   }): Promise<void> {
@@ -9819,6 +9848,24 @@ class DatabaseService {
       throw new Error('Channel database repository not initialized');
     }
     return this.channelDatabaseRepo.setPermissionAsync(data);
+  }
+
+  /**
+   * Get channel database permissions for a user as a map keyed by channel database ID
+   * Returns { [channelDbId]: { viewOnMap: boolean, read: boolean } }
+   */
+  async getChannelDatabasePermissionsForUserAsSetAsync(userId: number): Promise<{
+    [channelDbId: number]: { viewOnMap: boolean; read: boolean }
+  }> {
+    const permissions = await this.getChannelDatabasePermissionsForUserAsync(userId);
+    const result: { [channelDbId: number]: { viewOnMap: boolean; read: boolean } } = {};
+    for (const perm of permissions) {
+      result[perm.channelDatabaseId] = {
+        viewOnMap: perm.canViewOnMap,
+        read: perm.canRead,
+      };
+    }
+    return result;
   }
 
   /**

@@ -39,6 +39,24 @@ vi.mock('../../services/database.js', () => ({
       // Default: no permissions
       return {};
     }),
+    getChannelDatabasePermissionsForUserAsSetAsync: vi.fn(async (userId: number) => {
+      // User 1: has access to virtual channel 1 (channel_database id 1)
+      if (userId === 1) {
+        return {
+          1: { viewOnMap: true, read: true },
+        };
+      }
+      // User 2: has access to all virtual channels
+      if (userId === 2) {
+        return {
+          1: { viewOnMap: true, read: true },
+          2: { viewOnMap: true, read: true },
+          3: { viewOnMap: true, read: true },
+        };
+      }
+      // Default: no permissions
+      return {};
+    }),
   },
 }));
 

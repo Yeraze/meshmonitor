@@ -46,6 +46,7 @@ export interface ChannelDatabaseUpdate {
 export interface ChannelDatabasePermissionInput {
   userId: number;
   channelDatabaseId: number;
+  canViewOnMap: boolean;
   canRead: boolean;
   grantedBy?: number | null;
 }
@@ -452,6 +453,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         await db
           .update(channelDatabasePermissionsSqlite)
           .set({
+            canViewOnMap: data.canViewOnMap,
             canRead: data.canRead,
             grantedBy: data.grantedBy ?? existing.grantedBy,
             grantedAt: now,
@@ -462,6 +464,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         await db
           .update(channelDatabasePermissionsMysql)
           .set({
+            canViewOnMap: data.canViewOnMap,
             canRead: data.canRead,
             grantedBy: data.grantedBy ?? existing.grantedBy,
             grantedAt: now,
@@ -472,6 +475,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         await db
           .update(channelDatabasePermissionsPostgres)
           .set({
+            canViewOnMap: data.canViewOnMap,
             canRead: data.canRead,
             grantedBy: data.grantedBy ?? existing.grantedBy,
             grantedAt: now,
@@ -485,6 +489,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         await db.insert(channelDatabasePermissionsSqlite).values({
           userId: data.userId,
           channelDatabaseId: data.channelDatabaseId,
+          canViewOnMap: data.canViewOnMap,
           canRead: data.canRead,
           grantedBy: data.grantedBy ?? null,
           grantedAt: now,
@@ -494,6 +499,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         await db.insert(channelDatabasePermissionsMysql).values({
           userId: data.userId,
           channelDatabaseId: data.channelDatabaseId,
+          canViewOnMap: data.canViewOnMap,
           canRead: data.canRead,
           grantedBy: data.grantedBy ?? null,
           grantedAt: now,
@@ -503,6 +509,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         await db.insert(channelDatabasePermissionsPostgres).values({
           userId: data.userId,
           channelDatabaseId: data.channelDatabaseId,
+          canViewOnMap: data.canViewOnMap,
           canRead: data.canRead,
           grantedBy: data.grantedBy ?? null,
           grantedAt: now,
@@ -510,7 +517,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       }
     }
 
-    logger.debug(`Set permission for user ${data.userId} on channel_db ${data.channelDatabaseId}: canRead=${data.canRead}`);
+    logger.debug(`Set permission for user ${data.userId} on channel_db ${data.channelDatabaseId}: canViewOnMap=${data.canViewOnMap}, canRead=${data.canRead}`);
   }
 
   /**
@@ -607,6 +614,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       id: row.id,
       userId: row.userId,
       channelDatabaseId: row.channelDatabaseId,
+      canViewOnMap: Boolean(row.canViewOnMap),
       canRead: Boolean(row.canRead),
       grantedBy: row.grantedBy,
       grantedAt: row.grantedAt,
@@ -618,6 +626,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       id: row.id,
       userId: row.userId,
       channelDatabaseId: row.channelDatabaseId,
+      canViewOnMap: row.canViewOnMap,
       canRead: row.canRead,
       grantedBy: row.grantedBy,
       grantedAt: Number(row.grantedAt),
@@ -629,6 +638,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       id: row.id,
       userId: row.userId,
       channelDatabaseId: row.channelDatabaseId,
+      canViewOnMap: Boolean(row.canViewOnMap),
       canRead: Boolean(row.canRead),
       grantedBy: row.grantedBy,
       grantedAt: Number(row.grantedAt),
