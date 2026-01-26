@@ -5,6 +5,22 @@ import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
 import { logger } from '../../utils/logger';
 
+// Default public PSK (base64 encoded value of single byte 0x01)
+const DEFAULT_PUBLIC_PSK = 'AQ==';
+
+type EncryptionStatus = 'none' | 'default' | 'secure';
+
+// Helper to determine encryption status
+const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
+  if (!psk || psk === '') {
+    return 'none'; // No encryption
+  }
+  if (psk === DEFAULT_PUBLIC_PSK) {
+    return 'default'; // Default/public key - not secure
+  }
+  return 'secure'; // Custom key - encrypted
+};
+
 interface ChannelsConfigSectionProps {
   baseUrl?: string;
   channels: Channel[];
@@ -247,7 +263,16 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   </h4>
                   {channel && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
-                      <div>🔒 {channel.psk ? t('channels_config.encrypted') : t('channels_config.unencrypted')}</div>
+                      {(() => {
+                        const status = getEncryptionStatus(channel.psk);
+                        if (status === 'secure') {
+                          return <div title={t('channels.encrypted_secure')}>🔒 {t('channels_config.encrypted_secure')}</div>;
+                        } else if (status === 'default') {
+                          return <div title={t('channels.encrypted_default')}>🔐 {t('channels_config.encrypted_default')}</div>;
+                        } else {
+                          return <div title={t('channels.unencrypted')}>🔓 {t('channels_config.unencrypted')}</div>;
+                        }
+                      })()}
                       <div>
                         {channel.uplinkEnabled ? `↑ ${t('channels_config.uplink')} ` : ''}
                         {channel.downlinkEnabled ? `↓ ${t('channels_config.downlink')}` : ''}
