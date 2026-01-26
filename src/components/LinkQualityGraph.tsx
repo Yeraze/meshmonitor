@@ -50,36 +50,18 @@ function getQualityLabel(quality: number, t: (key: string) => string): string {
 }
 
 /**
- * Process link quality data and insert gaps for breaks > 1 hour
+ * Process link quality data for charting
  */
-function processLinkQualityData(data: LinkQualityData[] | undefined): Array<Record<string, number | null>> {
+function processLinkQualityData(data: LinkQualityData[] | undefined): Array<Record<string, number>> {
   if (!data || data.length === 0) return [];
 
-  // Sort by timestamp ascending
-  const sorted = [...data].sort((a, b) => a.timestamp - b.timestamp);
-
-  const oneHour = 60 * 60 * 1000;
-  const result: Array<Record<string, number | null>> = [];
-
-  for (let i = 0; i < sorted.length; i++) {
-    result.push({
-      timestamp: sorted[i].timestamp,
-      quality: sorted[i].quality,
-    });
-
-    if (i < sorted.length - 1) {
-      const timeDiff = sorted[i + 1].timestamp - sorted[i].timestamp;
-      if (timeDiff > oneHour) {
-        // Insert a gap point
-        result.push({
-          timestamp: sorted[i].timestamp + 1,
-          quality: null,
-        });
-      }
-    }
-  }
-
-  return result;
+  // Sort by timestamp ascending and map to chart format
+  return [...data]
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map(d => ({
+      timestamp: d.timestamp,
+      quality: d.quality,
+    }));
 }
 
 const LinkQualityGraph: React.FC<LinkQualityGraphProps> = React.memo(
@@ -280,15 +262,13 @@ const LinkQualityGraph: React.FC<LinkQualityGraphProps> = React.memo(
                   dataKey="quality"
                   stroke="none"
                   fill="url(#qualityGradient)"
-                  connectNulls={false}
                 />
                 <Line
                   type="monotone"
                   dataKey="quality"
                   stroke="#89b4fa"
                   strokeWidth={2}
-                  dot={false}
-                  connectNulls={false}
+                  dot={{ r: 3, fill: '#89b4fa', strokeWidth: 0 }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
