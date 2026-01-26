@@ -736,63 +736,10 @@ export class VirtualNodeServer extends EventEmitter {
 
       logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, channels, metadata)`);
 
-      // === STEP 3.5: Send recent message history from database ===
-      // This allows clients to see recent messages without waiting for new ones
-      const MESSAGE_HISTORY_LIMIT = 10;
-      try {
-        const recentMessages = await databaseService.getMessagesAsync(MESSAGE_HISTORY_LIMIT, 0);
-        let messageCount = 0;
-
-        // Filter to only TEXT_MESSAGE_APP messages (portnum 1)
-        // This excludes traceroutes, telemetry, and other non-text messages that get stored
-        // in the messages table but shouldn't appear as chat messages on connected clients
-        const textMessages = recentMessages.filter(msg =>
-          msg.portnum === PortNum.TEXT_MESSAGE_APP || msg.portnum === 1
-        );
-
-        // Sort by timestamp ascending so oldest messages arrive first
-        const sortedMessages = textMessages.sort((a, b) => a.timestamp - b.timestamp);
-
-        for (const msg of sortedMessages) {
-          // Check if client is still connected
-          const client = this.clients.get(clientId);
-          if (!client || client.socket.destroyed) {
-            logger.warn(`Virtual node: Client ${clientId} disconnected during message history replay`);
-            return;
-          }
-
-          // Create FromRadio packet for this message
-          // Include replyId and emoji so tapbacks/reactions display correctly on clients
-          const messagePacket = await meshtasticProtobufService.createFromRadioTextMessage({
-            id: msg.id,  // Pass ID to extract original packet ID for tapback linking
-            fromNodeNum: msg.fromNodeNum,
-            toNodeNum: msg.toNodeNum,
-            text: msg.text,
-            channel: msg.channel,
-            timestamp: msg.timestamp,
-            requestId: msg.requestId,
-            hopLimit: msg.hopLimit,
-            rxTime: msg.rxTime,
-            rxSnr: msg.rxSnr,
-            rxRssi: msg.rxRssi,
-            replyId: msg.replyId,
-            emoji: msg.emoji,
-          });
-
-          if (messagePacket) {
-            await this.sendToClient(clientId, messagePacket);
-            sentCount++;
-            messageCount++;
-          }
-        }
-
-        if (messageCount > 0) {
-          logger.info(`Virtual node: ✓ Sent ${messageCount} historical messages to ${clientId}`);
-        }
-      } catch (error) {
-        logger.error(`Virtual node: Failed to send message history to ${clientId}:`, error);
-        // Continue with config - message history is not critical
-      }
+      // NOTE: Message history replay was removed in v3.2.6 (issue #1608)
+      // Sending cached messages on each reconnection caused problems with clients
+      // that don't deduplicate messages, leading to duplicate chats and incorrect
+      // hop counts. Clients should rely on real-time message forwarding instead.
 
       // === STEP 4: Send custom ConfigComplete with client's requested ID ===
       const useConfigId = configId || 1;
