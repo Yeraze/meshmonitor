@@ -2605,6 +2605,8 @@
   "channels_config.disabled": "DISABLED",
   "channels_config.empty": "Empty",
   "channels_config.encrypted": "Encrypted",
+  "channels_config.encrypted_secure": "Encrypted (Custom Key)",
+  "channels_config.encrypted_default": "Default Key (Not Secure)",
   "channels_config.unencrypted": "Unencrypted",
   "channels_config.uplink": "Uplink",
   "channels_config.downlink": "Downlink",
