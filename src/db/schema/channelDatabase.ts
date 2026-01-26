@@ -51,6 +51,7 @@ export const channelDatabasePermissionsSqlite = sqliteTable('channel_database_pe
   channelDatabaseId: integer('channel_database_id')
     .notNull()
     .references(() => channelDatabaseSqlite.id, { onDelete: 'cascade' }),
+  canViewOnMap: integer('can_view_on_map', { mode: 'boolean' }).notNull().default(false),
   canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
   grantedBy: integer('granted_by').references(() => usersSqlite.id, { onDelete: 'set null' }),
   grantedAt: integer('granted_at').notNull(),
@@ -82,6 +83,7 @@ export const channelDatabasePermissionsPostgres = pgTable('channel_database_perm
   channelDatabaseId: pgInteger('channelDatabaseId')
     .notNull()
     .references(() => channelDatabasePostgres.id, { onDelete: 'cascade' }),
+  canViewOnMap: pgBoolean('canViewOnMap').notNull().default(false),
   canRead: pgBoolean('canRead').notNull().default(false),
   grantedBy: pgInteger('grantedBy').references(() => usersPostgres.id, { onDelete: 'set null' }),
   grantedAt: pgBigint('grantedAt', { mode: 'number' }).notNull(),
@@ -113,6 +115,7 @@ export const channelDatabasePermissionsMysql = mysqlTable('channel_database_perm
   channelDatabaseId: myInt('channelDatabaseId')
     .notNull()
     .references(() => channelDatabaseMysql.id, { onDelete: 'cascade' }),
+  canViewOnMap: myBoolean('canViewOnMap').notNull().default(false),
   canRead: myBoolean('canRead').notNull().default(false),
   grantedBy: myInt('grantedBy').references(() => usersMysql.id, { onDelete: 'set null' }),
   grantedAt: myBigint('grantedAt', { mode: 'number' }).notNull(),

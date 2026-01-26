@@ -289,6 +289,7 @@ export interface DbChannelDatabasePermission {
   id?: number;
   userId: number;
   channelDatabaseId: number;
+  canViewOnMap: boolean;
   canRead: boolean;
   grantedBy?: number | null;
   grantedAt: number;

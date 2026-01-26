@@ -535,4 +535,229 @@ router.get('/retroactive-decrypt/progress', async (req: Request, res: Response) 
   }
 });
 
+// ============ PERMISSION ENDPOINTS ============
+
+/**
+ * GET /api/v1/channel-database/:id/permissions
+ * Get all user permissions for a specific channel database entry
+ * Admin only
+ */
+router.get('/:id/permissions', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Invalid channel database ID'
+      });
+    }
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Admin access required to view channel permissions'
+      });
+    }
+
+    // Check if entry exists
+    const channel = await databaseService.getChannelDatabaseByIdAsync(id);
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: `Channel database entry ${id} not found`
+      });
+    }
+
+    const permissions = await databaseService.getChannelDatabasePermissionsForChannelAsync(id);
+
+    res.json({
+      success: true,
+      channelId: id,
+      channelName: channel.name,
+      count: permissions.length,
+      data: permissions.map(p => ({
+        userId: p.userId,
+        canViewOnMap: p.canViewOnMap,
+        canRead: p.canRead,
+        grantedBy: p.grantedBy,
+        grantedAt: p.grantedAt
+      }))
+    });
+  } catch (error) {
+    logger.error('Error getting channel database permissions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to retrieve channel database permissions'
+    });
+  }
+});
+
+/**
+ * PUT /api/v1/channel-database/:id/permissions/:userId
+ * Set or update a user's permission for a channel database entry
+ * Admin only
+ */
+router.put('/:id/permissions/:userId', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const channelId = parseInt(req.params.id, 10);
+    const targetUserId = parseInt(req.params.userId, 10);
+
+    if (isNaN(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Invalid channel database ID'
+      });
+    }
+
+    if (isNaN(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Invalid user ID'
+      });
+    }
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Admin access required to modify channel permissions'
+      });
+    }
+
+    // Check if channel exists
+    const channel = await databaseService.getChannelDatabaseByIdAsync(channelId);
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: `Channel database entry ${channelId} not found`
+      });
+    }
+
+    // Check if target user exists
+    const targetUser = await databaseService.findUserByIdAsync(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: `User ${targetUserId} not found`
+      });
+    }
+
+    const { canViewOnMap, canRead } = req.body;
+
+    // Validate permission values
+    if (typeof canViewOnMap !== 'boolean' || typeof canRead !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'canViewOnMap and canRead are required and must be boolean values'
+      });
+    }
+
+    await databaseService.setChannelDatabasePermissionAsync({
+      userId: targetUserId,
+      channelDatabaseId: channelId,
+      canViewOnMap,
+      canRead,
+      grantedBy: user?.id ?? null
+    });
+
+    logger.info(`Channel database permission set: user ${targetUserId} on channel ${channelId} (viewOnMap=${canViewOnMap}, read=${canRead}) by ${user?.username ?? 'unknown'}`);
+
+    res.json({
+      success: true,
+      message: `Permission updated for user ${targetUserId} on channel ${channelId}`,
+      data: {
+        userId: targetUserId,
+        channelDatabaseId: channelId,
+        canViewOnMap,
+        canRead
+      }
+    });
+  } catch (error) {
+    logger.error('Error setting channel database permission:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to set channel database permission'
+    });
+  }
+});
+
+/**
+ * DELETE /api/v1/channel-database/:id/permissions/:userId
+ * Remove a user's permission for a channel database entry
+ * Admin only
+ */
+router.delete('/:id/permissions/:userId', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const channelId = parseInt(req.params.id, 10);
+    const targetUserId = parseInt(req.params.userId, 10);
+
+    if (isNaN(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Invalid channel database ID'
+      });
+    }
+
+    if (isNaN(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Invalid user ID'
+      });
+    }
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Admin access required to modify channel permissions'
+      });
+    }
+
+    // Check if channel exists
+    const channel = await databaseService.getChannelDatabaseByIdAsync(channelId);
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: `Channel database entry ${channelId} not found`
+      });
+    }
+
+    await databaseService.deleteChannelDatabasePermissionAsync(targetUserId, channelId);
+
+    logger.info(`Channel database permission deleted: user ${targetUserId} on channel ${channelId} by ${user?.username ?? 'unknown'}`);
+
+    res.json({
+      success: true,
+      message: `Permission removed for user ${targetUserId} on channel ${channelId}`
+    });
+  } catch (error) {
+    logger.error('Error deleting channel database permission:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to delete channel database permission'
+    });
+  }
+});
+
 export default router;

@@ -25,6 +25,19 @@ interface User {
   lastLoginAt: number | null;
 }
 
+interface ChannelDatabaseEntry {
+  id: number;
+  name: string;
+  description: string | null;
+  isEnabled: boolean;
+}
+
+interface ChannelDatabasePermission {
+  channelDatabaseId: number;
+  canViewOnMap: boolean;
+  canRead: boolean;
+}
+
 const PERMISSION_KEYS = [
   'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 
   'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 
@@ -61,9 +74,37 @@ const UsersTab: React.FC = () => {
     isAdmin: false
   });
 
+  // Virtual channel (channel database) permissions
+  const [channelDatabaseEntries, setChannelDatabaseEntries] = useState<ChannelDatabaseEntry[]>([]);
+  const [channelDbPermissions, setChannelDbPermissions] = useState<ChannelDatabasePermission[]>([]);
+
   useEffect(() => {
     fetchUsers();
+    fetchChannelDatabaseEntries();
   }, []);
+
+  // Fetch channel database entries (virtual channels) - admin only
+  const fetchChannelDatabaseEntries = async () => {
+    try {
+      const response = await api.get<{ data: ChannelDatabaseEntry[] }>('/api/channel-database');
+      setChannelDatabaseEntries(response.data || []);
+    } catch (err) {
+      // This may fail for non-admins, which is fine
+      logger.debug('Failed to fetch channel database entries (may be non-admin):', err);
+      setChannelDatabaseEntries([]);
+    }
+  };
+
+  // Fetch channel database permissions for a user
+  const fetchChannelDbPermissions = async (userId: number) => {
+    try {
+      const response = await api.get<{ data: ChannelDatabasePermission[] }>(`/api/users/${userId}/channel-database-permissions`);
+      setChannelDbPermissions(response.data || []);
+    } catch (err) {
+      logger.error('Failed to fetch channel database permissions:', err);
+      setChannelDbPermissions([]);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -98,6 +139,9 @@ const UsersTab: React.FC = () => {
       } else {
         setPermissions(response.permissions);
       }
+
+      // Also fetch channel database permissions
+      await fetchChannelDbPermissions(user.id);
     } catch (err) {
       logger.error('Failed to fetch user permissions:', err);
       setError(t('users.failed_load_permissions'));
@@ -335,6 +379,51 @@ const UsersTab: React.FC = () => {
         read: newWrite ? true : prev[resource]?.read // Check read if checking write
       }
     }));
+  };
+
+  // Channel database (virtual channel) permission handlers
+  const getChannelDbPermission = (channelDbId: number): ChannelDatabasePermission => {
+    const existing = channelDbPermissions.find(p => p.channelDatabaseId === channelDbId);
+    return existing || { channelDatabaseId: channelDbId, canViewOnMap: false, canRead: false };
+  };
+
+  const toggleChannelDbViewOnMap = (channelDbId: number) => {
+    const existing = getChannelDbPermission(channelDbId);
+    const newValue = !existing.canViewOnMap;
+    updateChannelDbPermission(channelDbId, { canViewOnMap: newValue, canRead: existing.canRead });
+  };
+
+  const toggleChannelDbRead = (channelDbId: number) => {
+    const existing = getChannelDbPermission(channelDbId);
+    const newValue = !existing.canRead;
+    updateChannelDbPermission(channelDbId, { canViewOnMap: existing.canViewOnMap, canRead: newValue });
+  };
+
+  const updateChannelDbPermission = (channelDbId: number, updates: { canViewOnMap: boolean; canRead: boolean }) => {
+    setChannelDbPermissions(prev => {
+      const existingIndex = prev.findIndex(p => p.channelDatabaseId === channelDbId);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = { channelDatabaseId: channelDbId, ...updates };
+        return updated;
+      } else {
+        return [...prev, { channelDatabaseId: channelDbId, ...updates }];
+      }
+    });
+  };
+
+  const handleUpdateChannelDbPermissions = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await api.put(`/api/users/${selectedUser.id}/channel-database-permissions`, {
+        permissions: channelDbPermissions
+      });
+      showToast(t('users.channel_db_permissions_updated'), 'success');
+    } catch (err) {
+      logger.error('Failed to update channel database permissions:', err);
+      showToast(t('users.failed_update_channel_db_permissions'), 'error');
+    }
   };
 
   const handleCreateUser = async () => {
@@ -632,6 +721,56 @@ const UsersTab: React.FC = () => {
             <button className="button button-primary" onClick={handleUpdatePermissions}>
               {t('users.save_permissions')}
             </button>
+
+            {/* Virtual Channel (Channel Database) Permissions */}
+            {channelDatabaseEntries.length > 0 && (
+              <>
+                <h3 style={{ marginTop: '24px' }}>{t('users.channel_database_permissions')}</h3>
+                <div className="permissions-grid">
+                  {channelDatabaseEntries.map(entry => {
+                    const perm = getChannelDbPermission(entry.id);
+                    return (
+                      <div key={`channeldb-${entry.id}`} className="permission-item">
+                        <div className="permission-label">
+                          {entry.name}
+                          {entry.description && (
+                            <span className="permission-description" style={{ fontSize: '0.85em', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                              ({entry.description})
+                            </span>
+                          )}
+                        </div>
+                        <div className="permission-actions">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={perm.canViewOnMap}
+                              onChange={() => toggleChannelDbViewOnMap(entry.id)}
+                            />
+                            {t('users.view_on_map')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={perm.canRead}
+                              onChange={() => toggleChannelDbRead(entry.id)}
+                            />
+                            {t('users.read_messages')}
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button className="button button-primary" onClick={handleUpdateChannelDbPermissions}>
+                  {t('users.save_channel_db_permissions')}
+                </button>
+              </>
+            )}
+            {channelDatabaseEntries.length === 0 && (
+              <p style={{ marginTop: '16px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                {t('users.no_channel_database_entries')}
+              </p>
+            )}
           </div>
         )}
       </div>

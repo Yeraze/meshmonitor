@@ -3,6 +3,7 @@ import type { DeviceInfo } from '../meshtasticManager.js';
 import type { User } from '../../types/auth.js';
 import type { ResourceType, PermissionSet } from '../../types/permission.js';
 import databaseService from '../../services/database.js';
+import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 
 /**
  * Helper to enhance a node with position priority logic and privacy masking
@@ -67,6 +68,9 @@ export async function enhanceNodeForClient(
  * A user can only see nodes on the map that were last heard on a channel they have viewOnMap permission for.
  * Admins see all nodes.
  *
+ * For device channels (0-7), uses the regular permission system.
+ * For virtual channels (>= CHANNEL_DB_OFFSET), uses channel database permissions.
+ *
  * @param nodes - Array of nodes (any type that has an optional channel property)
  * @param user - The user making the request, or null for anonymous
  * @returns Filtered array of nodes the user has permission to see on the map
@@ -80,9 +84,14 @@ export async function filterNodesByChannelPermission<T>(
     return nodes;
   }
 
-  // Get user's permission set
+  // Get user's device channel permission set
   const permissions: PermissionSet = user
     ? await databaseService.getUserPermissionSetAsync(user.id)
+    : {};
+
+  // Get user's virtual channel (channel database) permissions
+  const channelDbPermissions = user
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
 
   // Filter nodes by channel viewOnMap permission for map visibility
@@ -90,7 +99,15 @@ export async function filterNodesByChannelPermission<T>(
     // Access channel property dynamically since different node types have different shapes
     const nodeWithChannel = node as { channel?: number };
     const channelNum = nodeWithChannel.channel ?? 0;
-    const channelResource = `channel_${channelNum}` as ResourceType;
-    return permissions[channelResource]?.viewOnMap === true;
+
+    // Device channels (0-7)
+    if (channelNum < CHANNEL_DB_OFFSET) {
+      const channelResource = `channel_${channelNum}` as ResourceType;
+      return permissions[channelResource]?.viewOnMap === true;
+    }
+
+    // Virtual channels (>= CHANNEL_DB_OFFSET)
+    const channelDbId = channelNum - CHANNEL_DB_OFFSET;
+    return channelDbPermissions[channelDbId]?.viewOnMap === true;
   });
 }

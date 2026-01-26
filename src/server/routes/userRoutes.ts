@@ -489,4 +489,144 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
   }
 });
 
+// ============ CHANNEL DATABASE PERMISSIONS ============
+
+/**
+ * GET /api/users/:id/channel-database-permissions
+ * Get a user's permissions for all channel database entries (virtual channels)
+ * Admin only
+ */
+router.get('/:id/channel-database-permissions', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if user exists
+    const targetUser = await databaseService.findUserByIdAsync(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const permissions = await databaseService.getChannelDatabasePermissionsForUserAsync(userId);
+
+    return res.json({
+      success: true,
+      userId,
+      count: permissions.length,
+      data: permissions.map(p => ({
+        channelDatabaseId: p.channelDatabaseId,
+        canViewOnMap: p.canViewOnMap,
+        canRead: p.canRead,
+        grantedBy: p.grantedBy,
+        grantedAt: p.grantedAt
+      }))
+    });
+  } catch (error) {
+    logger.error('Error getting user channel database permissions:', error);
+    return res.status(500).json({ error: 'Failed to get channel database permissions' });
+  }
+});
+
+/**
+ * PUT /api/users/:id/channel-database-permissions
+ * Batch update a user's permissions for channel database entries (virtual channels)
+ * Admin only
+ *
+ * Request body:
+ * {
+ *   permissions: [
+ *     { channelDatabaseId: number, canViewOnMap: boolean, canRead: boolean },
+ *     ...
+ *   ]
+ * }
+ */
+router.put('/:id/channel-database-permissions', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if user exists
+    const targetUser = await databaseService.findUserByIdAsync(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { permissions } = req.body as {
+      permissions: Array<{
+        channelDatabaseId: number;
+        canViewOnMap: boolean;
+        canRead: boolean;
+      }>;
+    };
+
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({
+        error: 'Invalid permissions format - expected an array'
+      });
+    }
+
+    // Validate all permission entries
+    for (const perm of permissions) {
+      if (
+        typeof perm.channelDatabaseId !== 'number' ||
+        typeof perm.canViewOnMap !== 'boolean' ||
+        typeof perm.canRead !== 'boolean'
+      ) {
+        return res.status(400).json({
+          error: 'Invalid permission format - each entry must have channelDatabaseId (number), canViewOnMap (boolean), and canRead (boolean)'
+        });
+      }
+
+      // Verify channel database entry exists
+      const channel = await databaseService.getChannelDatabaseByIdAsync(perm.channelDatabaseId);
+      if (!channel) {
+        return res.status(404).json({
+          error: `Channel database entry ${perm.channelDatabaseId} not found`
+        });
+      }
+    }
+
+    // Apply all permission updates
+    for (const perm of permissions) {
+      if (!perm.canViewOnMap && !perm.canRead) {
+        // If both permissions are false, delete the permission record
+        await databaseService.deleteChannelDatabasePermissionAsync(userId, perm.channelDatabaseId);
+      } else {
+        await databaseService.setChannelDatabasePermissionAsync({
+          userId,
+          channelDatabaseId: perm.channelDatabaseId,
+          canViewOnMap: perm.canViewOnMap,
+          canRead: perm.canRead,
+          grantedBy: req.user!.id
+        });
+      }
+    }
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'channel_db_permissions_updated',
+      'permissions',
+      JSON.stringify({ userId, permissions }),
+      req.ip || null
+    );
+
+    logger.info(`Channel database permissions updated for user ${userId} by ${req.user?.username ?? 'unknown'}`);
+
+    return res.json({
+      success: true,
+      message: 'Channel database permissions updated successfully'
+    });
+  } catch (error) {
+    logger.error('Error updating channel database permissions:', error);
+    return res.status(500).json({ error: 'Failed to update channel database permissions' });
+  }
+});
+
 export default router;

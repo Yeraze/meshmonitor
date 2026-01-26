@@ -22,10 +22,15 @@ export interface User {
   lastLoginAt: number | null;
 }
 
+export interface ChannelDbPermissionSet {
+  [channelDbId: number]: { viewOnMap: boolean; read: boolean };
+}
+
 export interface AuthStatus {
   authenticated: boolean;
   user: User | null;
   permissions: PermissionSet;
+  channelDbPermissions: ChannelDbPermissionSet;
   oidcEnabled: boolean;
   localAuthDisabled: boolean;
   anonymousDisabled: boolean;
@@ -39,6 +44,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
   hasPermission: (resource: keyof PermissionSet, action: 'read' | 'write') => boolean;
+  hasChannelDbPermission: (channelDbId: number, action: 'viewOnMap' | 'read') => boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -51,7 +57,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshAuth = useCallback(async () => {
     try {
       const response = await api.get<AuthStatus>('/api/auth/status');
-      setAuthStatus(response);
+
+      // Fetch channel database permissions if authenticated
+      let channelDbPermissions: ChannelDbPermissionSet = {};
+      if (response.authenticated && response.user) {
+        try {
+          const cdPermsResponse = await api.get<{
+            data: Array<{ channelDatabaseId: number; canViewOnMap: boolean; canRead: boolean }>;
+          }>(`/api/users/${response.user.id}/channel-database-permissions`);
+
+          for (const perm of cdPermsResponse.data || []) {
+            channelDbPermissions[perm.channelDatabaseId] = {
+              viewOnMap: perm.canViewOnMap,
+              read: perm.canRead
+            };
+          }
+        } catch (err) {
+          // Non-fatal - user may not have permissions to view this
+          logger.debug('Could not fetch channel database permissions:', err);
+        }
+      }
+
+      setAuthStatus({
+        ...response,
+        channelDbPermissions
+      });
       logger.debug('Auth status refreshed:', response.authenticated);
     } catch (error) {
       logger.error('Failed to fetch auth status:', error);
@@ -60,6 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authenticated: false,
         user: null,
         permissions: {},
+        channelDbPermissions: {},
         oidcEnabled: false,
         localAuthDisabled: false,
         anonymousDisabled: false
@@ -163,6 +194,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return resourcePermissions[action] === true;
   }, [authStatus]);
 
+  // Check if user has specific channel database (virtual channel) permission
+  const hasChannelDbPermission = useCallback((channelDbId: number, action: 'viewOnMap' | 'read'): boolean => {
+    // If authenticated and admin, grant all permissions
+    if (authStatus?.authenticated && authStatus.user?.isAdmin) {
+      return true;
+    }
+
+    if (!authStatus?.channelDbPermissions) {
+      return false;
+    }
+
+    const channelPermissions = authStatus.channelDbPermissions[channelDbId];
+    if (!channelPermissions) {
+      return false;
+    }
+
+    return channelPermissions[action] === true;
+  }, [authStatus]);
+
   const value: AuthContextType = {
     authStatus,
     loading,
@@ -170,7 +220,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loginWithOIDC,
     logout,
     refreshAuth,
-    hasPermission
+    hasPermission,
+    hasChannelDbPermission
   };
 
   return (
