@@ -500,9 +500,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       }
       setSelectedNodeId(nodeId);
       // When showRoute is enabled, let TracerouteBoundsController handle the zoom
-      // to fit the entire traceroute path instead of just centering on the node
+      // to fit the entire traceroute path instead of just centering on the node.
+      // But if the node has no valid traceroute, fall back to centering on it.
       if (!showRoute) {
         centerMapOnNode(node);
+      } else {
+        const hasTraceroute = traceroutes.some(tr => {
+          const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
+          if (!matches) return false;
+          return tr.route && tr.route !== 'null' && tr.route !== '' &&
+                 tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
+        });
+        if (!hasTraceroute) {
+          centerMapOnNode(node);
+        }
       }
       // Auto-collapse node list on mobile when a node with position is clicked
       if (window.innerWidth <= 768) {
@@ -514,7 +525,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         }
       }
     };
-  }, [selectedNodeId, setSelectedNodeId, centerMapOnNode, setIsNodeListCollapsed, showRoute]);
+  }, [selectedNodeId, setSelectedNodeId, centerMapOnNode, setIsNodeListCollapsed, showRoute, traceroutes]);
 
   const handleFavoriteClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => toggleFavorite(node, e);
