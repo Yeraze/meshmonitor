@@ -46,7 +46,7 @@ export const migration = {
     logger.debug('✅ Added enabled column to auto_traceroute_nodes');
   },
 
-  down: (db: Database): void => {
+  down: (_db: Database): void => {
     logger.debug('Reverting migration 060: Cannot remove column in SQLite, skipping');
     // SQLite doesn't support DROP COLUMN before 3.35.0, and the column is harmless
   }
