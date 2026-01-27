@@ -492,7 +492,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Stable callback factories for node item interactions
   const handleNodeClick = useCallback((node: DeviceInfo) => {
     return () => {
-      setSelectedNodeId(node.user?.id || null);
+      const nodeId = node.user?.id || null;
+      // Toggle selection: if already selected, deselect; otherwise select
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(null);
+        return;
+      }
+      setSelectedNodeId(nodeId);
       // When showRoute is enabled, let TracerouteBoundsController handle the zoom
       // to fit the entire traceroute path instead of just centering on the node
       if (!showRoute) {
@@ -508,7 +514,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         }
       }
     };
-  }, [setSelectedNodeId, centerMapOnNode, setIsNodeListCollapsed, showRoute]);
+  }, [selectedNodeId, setSelectedNodeId, centerMapOnNode, setIsNodeListCollapsed, showRoute]);
 
   const handleFavoriteClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => toggleFavorite(node, e);
