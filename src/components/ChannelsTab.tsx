@@ -573,7 +573,7 @@ export default function ChannelsTab({
                         messagesForChannel.map((msg, index) => {
                           const isMine = isMyMessage(msg);
                           const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
-                          const isReaction = msg.emoji === 1;
+                          const isReaction = msg.emoji === 1 || (msg.replyId != null && isEmoji(msg.text));
 
                           // Hide reactions (tapbacks) from main message list
                           if (isReaction) {
@@ -583,7 +583,7 @@ export default function ChannelsTab({
                           // Find ALL reactions in the full channel message list
                           const allChannelMessages = channelMessages[messageChannel] || [];
                           const reactions = allChannelMessages.filter(
-                            m => m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                            m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
                           );
 
                           // Check if we should show a date separator

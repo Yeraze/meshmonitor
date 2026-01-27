@@ -1065,12 +1065,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 selectedDMMessages.map((msg, index) => {
                   const isTraceroute = msg.portnum === 70;
                   const isMine = isMyMessage(msg);
-                  const isReaction = msg.emoji === 1;
+                  const isReaction = msg.emoji === 1 || (msg.replyId != null && isEmoji(msg.text));
 
                   if (isReaction) return null;
 
                   const reactions = selectedDMMessages.filter(
-                    m => m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                    m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
                   );
 
                   const repliedMessage = msg.replyId

@@ -44,6 +44,6 @@ export function formatByteCount(byteCount: number, maxBytes: number = 200): { te
  */
 export function isEmoji(content: string): boolean {
   if (!content) return false;
-  // Match emoji characters - the string should be 1-2 emoji with no other characters
-  return /^\p{Emoji}+$/u.test(content) && content.length <= 2;
+  // Match emoji characters - allow any length to support skin tone modifiers and ZWJ sequences
+  return /^\p{Emoji}+$/u.test(content);
 }

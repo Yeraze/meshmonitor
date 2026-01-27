@@ -80,11 +80,10 @@ describe('text utilities', () => {
       expect(isEmoji('👍')).toBe(true);
     });
 
-    it('should return false for two surrogate pair emoji (length > 2)', () => {
-      // Two emoji like 😀😀 have string length 4 (each is 2 UTF-16 code units)
-      // This exceeds the length <= 2 check in the function
-      expect(isEmoji('😀😀')).toBe(false);
-      expect(isEmoji('🎉🎊')).toBe(false);
+    it('should return true for two surrogate pair emoji', () => {
+      // Two emoji like 😀😀 are still all-emoji strings
+      expect(isEmoji('😀😀')).toBe(true);
+      expect(isEmoji('🎉🎊')).toBe(true);
     });
 
     it('should return false for text', () => {
@@ -105,9 +104,9 @@ describe('text utilities', () => {
       expect(isEmoji(undefined as unknown as string)).toBe(false);
     });
 
-    it('should return false for more than 2 emoji', () => {
-      expect(isEmoji('😀😀😀')).toBe(false);
-      expect(isEmoji('🎉🎊🎁')).toBe(false);
+    it('should return true for more than 2 emoji', () => {
+      expect(isEmoji('😀😀😀')).toBe(true);
+      expect(isEmoji('🎉🎊🎁')).toBe(true);
     });
 
     it('should handle number emoji based on string length', () => {
