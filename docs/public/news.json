@@ -1,7 +1,15 @@
 {
   "version": "1",
-  "lastUpdated": "2026-01-22T18:00:00Z",
+  "lastUpdated": "2026-01-27T18:00:00Z",
   "items": [
+    {
+      "id": "news-2026-01-27-v3-3-0",
+      "title": "MeshMonitor v3.3.0 - Virtual Channel Permissions & More",
+      "content": "MeshMonitor v3.3.0 introduces **user-specific permissions for Virtual Channels**, along with several quality-of-life improvements.\n\n## Virtual Channel Permissions\n\nVirtual channels (from the Channel Database) now support per-user **View Map** and **Read** permissions, just like device channels.\n\n## Action Required\n\nAdministrators should review their user permissions for any virtual channels:\n\n1. Navigate to **Settings > Users** and select a user\n2. Scroll to the new **Virtual Channel Permissions** section\n3. For each virtual channel, verify the appropriate **View Map** and **Read** permissions are assigned\n4. Non-admin users will only see nodes and messages from virtual channels they have been granted access to\n\n## Other Improvements\n\n- **Emoji tapback reactions** - Replying to a message with just an emoji now renders as a tapback pill instead of a full message bubble\n- **Sticky/pinned nodes** in the Messages tab\n- **Map improvements** - Clicking a node with Show Traceroute enabled now zooms to the node if no traceroute data exists\n- **Link Quality chart** improvements for sparse data\n- **Channel fixes** - Correct encryption status display, preserved disabled channels, shorthand PSK support in Channel Database",
+      "date": "2026-01-27T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "id": "news-2026-01-22-permissions-update",
       "title": "Important: User Permissions Changes",
