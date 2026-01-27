@@ -252,9 +252,17 @@ docker compose up -d
 
 **Problem:** You've lost access to the admin account and can't login.
 
-**Solution:** Use the built-in password reset script to reset the admin password without losing any data.
+**Solution:** Use the built-in password reset script to reset the admin password without losing any data. The script automatically detects your database backend (SQLite, PostgreSQL, or MySQL) and uses the correct driver.
 
-#### For Docker Deployments:
+#### For Docker Deployments (SQLite — default):
+
+```bash
+docker compose exec meshmonitor node reset-admin.mjs
+```
+
+#### For Docker Deployments (PostgreSQL or MySQL):
+
+The script reads `DATABASE_URL` from the container environment, so it works automatically:
 
 ```bash
 docker compose exec meshmonitor node reset-admin.mjs
@@ -263,12 +271,20 @@ docker compose exec meshmonitor node reset-admin.mjs
 #### For Bare Metal Deployments:
 
 ```bash
+# SQLite (default — uses DATABASE_PATH or /data/meshmonitor.db)
 node reset-admin.mjs
+
+# PostgreSQL
+DATABASE_URL=postgres://user:pass@localhost:5432/meshmonitor node reset-admin.mjs
+
+# MySQL
+DATABASE_URL=mysql://user:pass@localhost:3306/meshmonitor node reset-admin.mjs
 ```
 
 The script will generate a new random password and display it:
 
 ```
+Detected database: sqlite
 ═══════════════════════════════════════════════════════════
 🔐 Admin password has been reset
 ═══════════════════════════════════════════════════════════
@@ -279,7 +295,13 @@ The script will generate a new random password and display it:
 ═══════════════════════════════════════════════════════════
 ```
 
+The script also ensures the admin account is active and not locked, so it will fix accounts that were accidentally disabled.
+
 After running this, log in with the new password and change it to something memorable in the Users tab.
+
+::: tip
+The application must have been started at least once before running this script, so that the default admin account exists in the database.
+:::
 
 ---
 
