@@ -869,6 +869,33 @@ export class VirtualNodeServer extends EventEmitter {
   }
 
   /**
+   * Re-send initial config to all connected clients.
+   * Called after the physical node reconnects and config capture completes,
+   * so clients get fresh channel/config data through the proper sendInitialConfig()
+   * flow rather than via raw broadcast (which can cause "Channel Name" bug #1567).
+   */
+  public async refreshAllClients(): Promise<void> {
+    const clientIds = Array.from(this.clients.keys());
+    if (clientIds.length === 0) {
+      logger.debug('Virtual node: No connected clients to refresh');
+      return;
+    }
+
+    logger.info(`Virtual node: Refreshing config for ${clientIds.length} connected client(s) after physical node reconnection`);
+    for (const clientId of clientIds) {
+      const client = this.clients.get(clientId);
+      if (client && !client.socket.destroyed) {
+        try {
+          await this.sendInitialConfig(clientId);
+          logger.info(`Virtual node: Refreshed config for client ${clientId}`);
+        } catch (error) {
+          logger.error(`Virtual node: Failed to refresh config for client ${clientId}:`, error);
+        }
+      }
+    }
+  }
+
+  /**
    * Get queue size
    */
   public getQueueSize(): number {

@@ -1505,21 +1505,31 @@ class MeshtasticManager {
 
       logger.debug(`📦 Processing single FromRadio message (${data.length} bytes)...`);
 
-      // Broadcast to virtual node clients if virtual node server is enabled (unless explicitly skipped)
-      if (!context?.skipVirtualNodeBroadcast) {
+      // Parse the message to determine its type before deciding whether to broadcast.
+      // We parse first so we can filter out 'channel' type messages from the broadcast.
+      const parsed = meshtasticProtobufService.parseIncomingData(data);
+
+      // Broadcast to virtual node clients if virtual node server is enabled (unless explicitly skipped).
+      // Skip broadcasting 'channel' type FromRadio messages — these should only reach clients
+      // through the controlled sendInitialConfig() flow. Broadcasting raw FromRadio.channel
+      // messages during physical node reconnection causes Android/iOS clients to receive
+      // unsolicited channel updates with empty name fields, which the Meshtastic app displays
+      // as the placeholder text "Channel Name" (fixes #1567).
+      // If parsing failed, still broadcast the raw data (clients may understand it even if
+      // the server can't parse it).
+      const shouldBroadcast = !context?.skipVirtualNodeBroadcast &&
+        (!parsed || parsed.type !== 'channel');
+      if (shouldBroadcast) {
         const virtualNodeServer = (global as any).virtualNodeServer;
         if (virtualNodeServer) {
           try {
             await virtualNodeServer.broadcastToClients(data);
-            logger.debug(`📡 Broadcasted message to virtual node clients (${data.length} bytes)`);
+            logger.debug(`📡 Broadcasted ${parsed?.type || 'unparsed'} to virtual node clients (${data.length} bytes)`);
           } catch (error) {
             logger.error('Virtual node: Failed to broadcast message to clients:', error);
           }
         }
       }
-
-      // Parse single message (using ?all=false approach)
-      const parsed = meshtasticProtobufService.parseIncomingData(data);
 
       if (!parsed) {
         logger.warn('⚠️ Failed to parse message');
