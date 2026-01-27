@@ -249,10 +249,17 @@ initializeOIDC()
   });
 
 // Function to initialize virtual node server after config capture is complete
-async function initializeVirtualNodeServer(): Promise<void> {
-  // Only initialize once
+async function initializeOrRefreshVirtualNodeServer(): Promise<void> {
+  // If already initialized, refresh all connected clients with fresh config
+  // This handles physical node reconnection: clients get updated channel/config data
+  // through the proper sendInitialConfig() flow (fixes #1567)
   if ((global as any).virtualNodeServer) {
-    logger.debug('Virtual node server already initialized, skipping');
+    logger.info('Virtual node server already initialized, refreshing connected clients with fresh config');
+    try {
+      await ((global as any).virtualNodeServer as VirtualNodeServer).refreshAllClients();
+    } catch (error) {
+      logger.error('❌ Failed to refresh virtual node clients:', error);
+    }
     return;
   }
 
@@ -279,8 +286,9 @@ async function initializeVirtualNodeServer(): Promise<void> {
 }
 
 // Register callback to initialize virtual node server when config capture completes
-// This ensures it starts after both initial connection and reconnections
-meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeServer);
+// On first connection: starts the virtual node server
+// On reconnection: refreshes all connected clients with fresh config data
+meshtasticManager.registerConfigCaptureCompleteCallback(initializeOrRefreshVirtualNodeServer);
 
 // ========== Bootstrap Restore Logic ==========
 // Check for RESTORE_FROM_BACKUP environment variable and restore if set
