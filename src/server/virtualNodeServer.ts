@@ -703,11 +703,53 @@ export class VirtualNodeServer extends EventEmitter {
 
       logger.info(`Virtual node: ✓ Sent ${allNodes.length} fresh NodeInfo entries from database`);
 
-      // === STEP 3: Send static config data from cache (channels, config, metadata) ===
+      // === STEP 3: Rebuild and send channels from database ===
+      // Channels must be rebuilt from DB rather than sent from cache because the
+      // physical radio often sends channels with empty name strings. The Android
+      // app renders empty channel names as "Channel NAme", effectively wiping the
+      // client's channel database on every container restart.
+      const dbChannels = await databaseService.getAllChannelsAsync();
+      let channelCount = 0;
+      for (const ch of dbChannels) {
+        // Skip disabled channels (role 0)
+        if (ch.role === 0) continue;
+
+        const client = this.clients.get(clientId);
+        if (!client || client.socket.destroyed) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during channel send (sent ${sentCount} messages)`);
+          return;
+        }
+
+        const channelMessage = await meshtasticProtobufService.createChannel({
+          index: ch.id,
+          settings: {
+            name: ch.name || '',
+            psk: ch.psk ? Buffer.from(ch.psk, 'base64') : undefined,
+            uplinkEnabled: ch.uplinkEnabled,
+            downlinkEnabled: ch.downlinkEnabled,
+          },
+          role: ch.role ?? (ch.id === 0 ? 1 : 2),
+        });
+
+        if (channelMessage) {
+          await this.sendToClient(clientId, channelMessage);
+          sentCount++;
+          channelCount++;
+          logger.debug(`Virtual node: Sent rebuilt channel ${ch.id} (${ch.name || 'unnamed'}) role=${ch.role}`);
+        }
+      }
+      logger.info(`Virtual node: ✓ Sent ${channelCount} fresh channels from database`);
+
+      // === STEP 4: Send static config data from cache (config, metadata) ===
       let staticCount = 0;
       for (const message of cachedMessages) {
         // Skip dynamic message types (we already rebuilt those from DB)
         if (message.type === 'myInfo' || message.type === 'nodeInfo') {
+          continue;
+        }
+
+        // Skip channels (rebuilt from DB in step 3)
+        if (message.type === 'channel') {
           continue;
         }
 
@@ -733,14 +775,14 @@ export class VirtualNodeServer extends EventEmitter {
         }
       }
 
-      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, channels, metadata)`);
+      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, metadata)`);
 
       // NOTE: Message history replay was removed in v3.2.6 (issue #1608)
       // Sending cached messages on each reconnection caused problems with clients
       // that don't deduplicate messages, leading to duplicate chats and incorrect
       // hop counts. Clients should rely on real-time message forwarding instead.
 
-      // === STEP 4: Send custom ConfigComplete with client's requested ID ===
+      // === STEP 5: Send custom ConfigComplete with client's requested ID ===
       const useConfigId = configId || 1;
       logger.info(`Virtual node: Sending ConfigComplete to ${clientId} with ID ${useConfigId}...`);
       const configComplete = await meshtasticProtobufService.createConfigComplete(useConfigId);
@@ -752,7 +794,7 @@ export class VirtualNodeServer extends EventEmitter {
         logger.error(`Virtual node: Failed to create ConfigComplete message`);
       }
 
-      logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${staticCount} cached static)`);
+      logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${channelCount} fresh channels + ${staticCount} cached static)`);
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
     }
