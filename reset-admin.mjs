@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
 import bcrypt from 'bcrypt';
 
-const db = new Database('./data/meshmonitor.db');
+const dbPath = process.env.DATABASE_PATH || '/data/meshmonitor.db';
+const db = new Database(dbPath);
 
 // Generate a new random password
 function generatePassword() {
@@ -16,8 +17,10 @@ function generatePassword() {
 const newPassword = generatePassword();
 const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-// Update admin password
-const stmt = db.prepare('UPDATE users SET password_hash = ? WHERE username = ?');
+// Update admin password, ensure account is active and not locked
+const stmt = db.prepare(
+  'UPDATE users SET password_hash = ?, is_active = 1, password_locked = 0 WHERE username = ?'
+);
 const result = stmt.run(hashedPassword, 'admin');
 
 if (result.changes > 0) {
@@ -33,6 +36,9 @@ if (result.changes > 0) {
   console.log('');
 } else {
   console.error('Failed to reset password - admin user not found');
+  console.error('');
+  console.error('If you have not yet started the application, start it first');
+  console.error('to create the default admin account, then run this script.');
 }
 
 db.close();
