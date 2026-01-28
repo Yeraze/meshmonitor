@@ -360,10 +360,56 @@ class MeshtasticManager {
    */
   private getConfig(): MeshtasticConfig {
     const env = getEnvironmentConfig();
+
+    // Check for runtime override in settings (set via UI)
+    const overrideIp = databaseService.getSetting('meshtasticNodeIpOverride');
+    const overridePortStr = databaseService.getSetting('meshtasticTcpPortOverride');
+    const overridePort = overridePortStr ? parseInt(overridePortStr, 10) : null;
+
     return {
-      nodeIp: env.meshtasticNodeIp,
-      tcpPort: env.meshtasticTcpPort
+      nodeIp: overrideIp || env.meshtasticNodeIp,
+      tcpPort: (overridePort && !isNaN(overridePort)) ? overridePort : env.meshtasticTcpPort
     };
+  }
+
+  /**
+   * Set a runtime IP (and optionally port) override and reconnect
+   * Accepts formats: "192.168.1.100", "192.168.1.100:4403", "hostname", "hostname:4403"
+   * This setting is temporary and will reset when the container restarts
+   */
+  async setNodeIpOverride(address: string): Promise<void> {
+    // Parse IP and optional port from address
+    let ip = address;
+    let port: string | null = null;
+
+    // Check for port suffix (handle both IPv4 and hostname with port)
+    const portMatch = address.match(/^(.+):(\d+)$/);
+    if (portMatch) {
+      ip = portMatch[1];
+      port = portMatch[2];
+    }
+
+    await databaseService.setSettingAsync('meshtasticNodeIpOverride', ip);
+    if (port) {
+      await databaseService.setSettingAsync('meshtasticTcpPortOverride', port);
+    } else {
+      // Clear port override if not specified (use default)
+      await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+    }
+
+    // Disconnect and reconnect with new IP/port
+    this.disconnect();
+    await this.connect();
+  }
+
+  /**
+   * Clear the runtime IP/port override and revert to defaults
+   */
+  async clearNodeIpOverride(): Promise<void> {
+    await databaseService.setSettingAsync('meshtasticNodeIpOverride', '');
+    await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+    this.disconnect();
+    await this.connect();
   }
 
   /**
