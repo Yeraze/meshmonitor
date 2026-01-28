@@ -26,6 +26,7 @@ import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
 import AutoKeyManagementSection from './components/AutoKeyManagementSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
+import GeofenceTriggersSection from './components/GeofenceTriggersSection';
 import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
@@ -523,6 +524,8 @@ function App() {
     setAutoKeyManagementAutoPurge,
     timerTriggers,
     setTimerTriggers,
+    geofenceTriggers,
+    setGeofenceTriggers,
     showNodeFilterPopup,
     setShowNodeFilterPopup,
     showIncompleteNodes,
@@ -1031,6 +1034,15 @@ function App() {
               setTimerTriggers(triggers);
             } catch (e) {
               console.error('Failed to parse timerTriggers:', e);
+            }
+          }
+
+          if (settings.geofenceTriggers) {
+            try {
+              const triggers = JSON.parse(settings.geofenceTriggers);
+              setGeofenceTriggers(triggers);
+            } catch (e) {
+              console.error('Failed to parse geofenceTriggers:', e);
             }
           }
 
@@ -4320,6 +4332,7 @@ function App() {
                 { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
                 { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management') },
                 { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
+                { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
               ]}
             />
             <div className="settings-content">
@@ -4434,6 +4447,15 @@ function App() {
                   channels={channels}
                   baseUrl={baseUrl}
                   onTriggersChange={setTimerTriggers}
+                />
+              </div>
+              <div id="geofence-triggers">
+                <GeofenceTriggersSection
+                  triggers={geofenceTriggers}
+                  channels={channels}
+                  nodes={nodes}
+                  baseUrl={baseUrl}
+                  onTriggersChange={setGeofenceTriggers}
                 />
               </div>
             </div>
