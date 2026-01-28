@@ -328,4 +328,109 @@ describe('GeofenceTriggersSection Component', () => {
       expect(mockShowToast).not.toHaveBeenCalled();
     });
   });
+
+  describe('Edit trigger', () => {
+    it('should show Edit button on existing triggers', () => {
+      render(<GeofenceTriggersSection {...defaultProps} triggers={[sampleTrigger]} />);
+
+      const editButton = screen.getByText('Edit');
+      expect(editButton).toBeInTheDocument();
+    });
+
+    it('should populate form with trigger data when Edit is clicked', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<GeofenceTriggersSection {...defaultProps} triggers={[sampleTrigger]} />);
+
+      // Click the Edit button
+      const editButton = screen.getByText('Edit');
+      await user.click(editButton);
+
+      // Check that the name field is populated
+      const nameInput = screen.getByPlaceholderText('automation.geofence_triggers.name_placeholder') as HTMLInputElement;
+      expect(nameInput.value).toBe('Test Geofence');
+
+      // Check that the response field is populated
+      const messageInput = screen.getByPlaceholderText('automation.geofence_triggers.message_placeholder') as HTMLTextAreaElement;
+      expect(messageInput.value).toBe('Node entered zone');
+    });
+
+    it('should show edit header and Save button when editing', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<GeofenceTriggersSection {...defaultProps} triggers={[sampleTrigger]} />);
+
+      // Click the Edit button
+      const editButton = screen.getByText('Edit');
+      await user.click(editButton);
+
+      // Should show edit header
+      expect(screen.getByText('automation.geofence_triggers.edit_trigger')).toBeInTheDocument();
+
+      // Should show Save Changes button instead of Add
+      expect(screen.getByText('automation.geofence_triggers.save')).toBeInTheDocument();
+      expect(screen.queryByText('automation.geofence_triggers.add')).not.toBeInTheDocument();
+    });
+
+    it('should show Cancel button when editing', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<GeofenceTriggersSection {...defaultProps} triggers={[sampleTrigger]} />);
+
+      // Click the Edit button
+      const editButton = screen.getByText('Edit');
+      await user.click(editButton);
+
+      // Cancel button should appear
+      expect(screen.getByText('common.cancel')).toBeInTheDocument();
+    });
+
+    it('should cancel editing and reset form when Cancel is clicked', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<GeofenceTriggersSection {...defaultProps} triggers={[sampleTrigger]} />);
+
+      // Click the Edit button
+      const editButton = screen.getByText('Edit');
+      await user.click(editButton);
+
+      // Verify we're in edit mode
+      expect(screen.getByText('automation.geofence_triggers.edit_trigger')).toBeInTheDocument();
+
+      // Click Cancel
+      const cancelButton = screen.getByText('common.cancel');
+      await user.click(cancelButton);
+
+      // Should exit edit mode - show Add header again
+      expect(screen.getByText('automation.geofence_triggers.add_new')).toBeInTheDocument();
+      expect(screen.queryByText('automation.geofence_triggers.edit_trigger')).not.toBeInTheDocument();
+
+      // Name field should be empty
+      const nameInput = screen.getByPlaceholderText('automation.geofence_triggers.name_placeholder') as HTMLInputElement;
+      expect(nameInput.value).toBe('');
+    });
+
+    it('should update trigger when saving changes', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<GeofenceTriggersSection {...defaultProps} triggers={[sampleTrigger]} />);
+
+      // Click the Edit button
+      const editButton = screen.getByText('Edit');
+      await user.click(editButton);
+
+      // Change the name
+      const nameInput = screen.getByPlaceholderText('automation.geofence_triggers.name_placeholder');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Geofence Name');
+
+      // Click Save
+      const saveButton = screen.getByText('automation.geofence_triggers.save');
+      await user.click(saveButton);
+
+      // Should show success toast
+      expect(mockShowToast).toHaveBeenCalledWith('automation.geofence_triggers.updated', 'success');
+
+      // The updated trigger name should appear in the list
+      expect(screen.getByText('Updated Geofence Name')).toBeInTheDocument();
+
+      // The old name should not be present
+      expect(screen.queryByText('Test Geofence')).not.toBeInTheDocument();
+    });
+  });
 });
