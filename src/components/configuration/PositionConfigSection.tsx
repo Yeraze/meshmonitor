@@ -227,7 +227,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             <label htmlFor="fixedLatitude">
               {t('position_config.latitude')}
               <span className="setting-description">
-                {t('position_config.latitude_description')} • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('position_config.find_coordinates')}</a>
+                {t('position_config.latitude_description')} • <a href="https://www.latlong.net/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('position_config.find_coordinates')}</a>
               </span>
             </label>
             <input
