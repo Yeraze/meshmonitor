@@ -25,6 +25,7 @@ const AVAILABLE_TOKENS = [
   { token: '{NODE_LAT}', description: 'Node latitude' },
   { token: '{NODE_LON}', description: 'Node longitude' },
   { token: '{DISTANCE_TO_CENTER}', description: 'Distance to geofence center (km)' },
+  { token: '{IP}', description: 'Connected Meshtastic node IP address' },
   { token: '{VERSION}', description: 'MeshMonitor version' },
   { token: '{NODECOUNT}', description: 'Total active nodes' },
 ];

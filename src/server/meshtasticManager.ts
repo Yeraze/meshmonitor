@@ -1574,6 +1574,7 @@ class MeshtasticManager {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       const node = databaseService.getNode(nodeNum);
       const dist = distanceToGeofenceCenter(lat, lng, trigger.shape);
+      const config = this.getConfig();
 
       const scriptEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
@@ -1585,6 +1586,8 @@ class MeshtasticManager {
         NODE_LAT: String(lat),
         NODE_LON: String(lng),
         DISTANCE_TO_CENTER: dist.toFixed(2),
+        MESHTASTIC_IP: config.nodeIp,
+        MESHTASTIC_PORT: String(config.tcpPort),
       };
 
       if (node?.longName) scriptEnv.NODE_LONG_NAME = node.longName;
@@ -1692,6 +1695,8 @@ class MeshtasticManager {
     const node = databaseService.getNode(nodeNum);
     const dist = distanceToGeofenceCenter(lat, lng, trigger.shape);
 
+    const config = this.getConfig();
+
     result = result.replace(/{GEOFENCE_NAME}/g, trigger.name);
     result = result.replace(/{NODE_LAT}/g, String(lat));
     result = result.replace(/{NODE_LON}/g, String(lng));
@@ -1701,6 +1706,7 @@ class MeshtasticManager {
     result = result.replace(/{SHORT_NAME}/g, node?.shortName || nodeId);
     result = result.replace(/{DISTANCE_TO_CENTER}/g, dist.toFixed(2));
     result = result.replace(/{EVENT}/g, eventType);
+    result = result.replace(/{IP}/g, config.nodeIp);
 
     return result;
   }
