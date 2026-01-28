@@ -78,6 +78,12 @@ describe('text utilities', () => {
       expect(isEmoji('🎉')).toBe(true);
       expect(isEmoji('❤')).toBe(true);
       expect(isEmoji('👍')).toBe(true);
+      expect(isEmoji('✅')).toBe(true);
+    });
+
+    it('should return true for emoji with variation selectors', () => {
+      expect(isEmoji('❤️')).toBe(true);  // heart with variation selector
+      expect(isEmoji('☺️')).toBe(true);  // smiling face with variation selector
     });
 
     it('should return true for two surrogate pair emoji', () => {
@@ -86,10 +92,31 @@ describe('text utilities', () => {
       expect(isEmoji('🎉🎊')).toBe(true);
     });
 
+    it('should return true for emoji with skin tone modifiers', () => {
+      expect(isEmoji('👍🏻')).toBe(true);
+      expect(isEmoji('👍🏿')).toBe(true);
+      expect(isEmoji('🙋🏽')).toBe(true);
+    });
+
+    it('should return true for ZWJ sequences', () => {
+      expect(isEmoji('👨‍👩‍👧')).toBe(true);    // family
+      expect(isEmoji('🏳️‍🌈')).toBe(true);      // rainbow flag
+      expect(isEmoji('👩‍💻')).toBe(true);       // woman technologist
+    });
+
     it('should return false for text', () => {
       expect(isEmoji('hello')).toBe(false);
       expect(isEmoji('abc')).toBe(false);
       expect(isEmoji('A')).toBe(false);
+    });
+
+    it('should return false for digits and ASCII symbols that are technically emoji', () => {
+      // These are in the Unicode Emoji category but should NOT be treated as emoji reactions
+      expect(isEmoji('123')).toBe(false);
+      expect(isEmoji('0')).toBe(false);
+      expect(isEmoji('#')).toBe(false);
+      expect(isEmoji('*')).toBe(false);
+      expect(isEmoji('1')).toBe(false);
     });
 
     it('should return false for mixed emoji and text', () => {
@@ -109,11 +136,11 @@ describe('text utilities', () => {
       expect(isEmoji('🎉🎊🎁')).toBe(true);
     });
 
-    it('should handle number emoji based on string length', () => {
-      // Number emoji like 1️⃣ are complex sequences with length > 2
-      // The function checks string length, not grapheme count
-      expect(isEmoji('1️⃣')).toBe(false); // length is 3 (digit + variation selector + keycap)
-      expect(isEmoji('🔢')).toBe(true);   // single emoji, length 2
+    it('should handle keycap sequences', () => {
+      // Keycap sequences like 1️⃣ are complex and not commonly used as tapbacks
+      // The regex doesn't match these because they start with ASCII digits
+      expect(isEmoji('1️⃣')).toBe(false);
+      expect(isEmoji('🔢')).toBe(true);   // input numbers emoji
     });
   });
 });
