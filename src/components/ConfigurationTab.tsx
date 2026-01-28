@@ -2383,6 +2383,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         <div id="config-channel-database">
           <ChannelDatabaseSection
             isAdmin={authStatus?.user?.isAdmin ?? false}
+            rebroadcastMode={rebroadcastMode}
           />
         </div>
 
