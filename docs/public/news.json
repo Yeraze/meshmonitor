@@ -1,7 +1,23 @@
 {
   "version": "1",
-  "lastUpdated": "2026-01-27T18:00:00Z",
+  "lastUpdated": "2026-01-28T18:00:00Z",
   "items": [
+    {
+      "id": "news-2026-01-28-geofence-triggers",
+      "title": "New Feature: Geofence Triggers",
+      "content": "MeshMonitor v3.4.0 introduces **Geofence Triggers** - a powerful new automation feature that lets you trigger actions when nodes enter, exit, or remain inside geographic areas.\n\n## What Are Geofence Triggers?\n\nGeofence Triggers monitor node positions and automatically execute responses when location conditions are met. Define circular or polygon-shaped zones on an interactive map, and MeshMonitor will watch for nodes crossing those boundaries.\n\n## Key Features\n\n- **Flexible Zone Shapes**: Draw circles (specify center and radius) or polygons (custom boundaries) directly on the map\n- **Three Event Types**: Trigger on entry, exit, or periodically while a node remains inside\n- **Node Filtering**: Monitor all nodes or select specific ones\n- **Dynamic Responses**: Send text messages with tokens like `{LONG_NAME}`, `{GEOFENCE_NAME}`, `{DISTANCE_TO_CENTER}`, or execute custom scripts\n- **Routing Options**: Send alerts to a channel or as direct messages to the triggering node\n\n## Use Cases\n\n- Arrival/departure notifications for family or team members\n- Asset tracking and delivery confirmation\n- Proximity alerts for restricted or hazardous areas\n- Ongoing presence monitoring in work zones\n\n[Read more about Geofence Triggers](https://meshmonitor.org/features/automation#geofence-triggers)",
+      "date": "2026-01-28T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
+    {
+      "id": "news-2026-01-28-node-connection-ui",
+      "title": "New Feature: In-App Node Connection Configuration",
+      "content": "MeshMonitor v3.4.0 adds the ability to **change your Meshtastic node's IP address directly from the UI** - no container restart required.\n\n## How It Works\n\nClick on the **node name in the header** to open the Node Info modal. Administrators will see a new section to modify the connection IP address and port.\n\n## Key Benefits\n\n- **No Restart Required**: Change connections on the fly without restarting MeshMonitor\n- **Quick Troubleshooting**: Temporarily connect to different nodes for testing\n- **Network Flexibility**: Adapt to DHCP changes or network reconfigurations instantly\n- **Mobile-Friendly**: Manage connections without needing terminal access\n\n## Important Notes\n\n- Changes persist until container restart\n- For permanent changes, update your `MESHTASTIC_IP` environment variable\n- Admin privileges required to modify connection settings\n- All authenticated users can view current connection info\n\n[Read more about Node Connection Configuration](https://meshmonitor.org/features/settings#node-connection)",
+      "date": "2026-01-28T17:00:00Z",
+      "category": "feature",
+      "priority": "normal"
+    },
     {
       "id": "news-2026-01-27-v3-3-0",
       "title": "MeshMonitor v3.3.0 - Virtual Channel Permissions & More",

@@ -2,6 +2,71 @@
 
 The Settings tab allows you to customize MeshMonitor's behavior and manage your system. Settings are stored on the server and apply to all users accessing the application.
 
+## Node Connection Configuration {#node-connection}
+
+Configure how MeshMonitor connects to your Meshtastic node without restarting the container. This feature allows administrators to dynamically change the node IP address and port through the user interface.
+
+### Accessing Connection Settings
+
+1. Click on the **node name** in the header bar (displays your connected node's name)
+2. A modal opens showing current connection details and node information
+3. Admins see an additional section to modify connection settings
+
+### Connection Information Display
+
+The Node Info modal shows:
+- **Node Name**: Long name of the connected node
+- **Short Name**: 4-character abbreviated name
+- **Node ID**: Unique identifier (e.g., !a1b2c3d4)
+- **Current Address**: IP address and port MeshMonitor is using to connect
+
+### Changing Connection Settings (Admin Only)
+
+Administrators can modify the connection address:
+
+1. **IP Address**: Enter the new IP address of your Meshtastic node
+2. **Port** (optional): Specify a custom port (default: 4403)
+   - Format: `192.168.1.100` or `192.168.1.100:4045`
+   - Port range: 1-65535
+
+3. Click **Save** to apply the new connection settings
+
+### Connection Persistence
+
+::: warning Temporary Settings
+Connection changes persist **until container restart**. After a container restart, MeshMonitor reverts to the IP address configured via the `MESHTASTIC_IP` environment variable.
+:::
+
+For permanent changes, update your Docker configuration:
+
+```yaml
+environment:
+  - MESHTASTIC_IP=192.168.1.100:4403
+```
+
+### Use Cases
+
+**Network Changes**: When your Meshtastic node's IP address changes (e.g., DHCP renewal), update the connection without restarting MeshMonitor.
+
+**Multi-Node Testing**: Quickly switch between different Meshtastic nodes for testing or development.
+
+**Troubleshooting**: Temporarily connect to a different node to diagnose network issues.
+
+**Mobile Deployments**: Adapt to changing network conditions without container access.
+
+### API Endpoints
+
+The connection configuration is managed through these API endpoints:
+
+- `GET /api/connection/info` - Retrieve current connection details
+- `POST /api/connection/configure` - Update connection settings (admin only)
+
+### Access Control
+
+- **All authenticated users**: Can view the Node Info modal and current connection details
+- **Admin users only**: Can modify connection settings
+- **Anonymous users**: Cannot access the Node Info modal
+
 ## Node Display
 
 ### Maximum Age of Active Nodes

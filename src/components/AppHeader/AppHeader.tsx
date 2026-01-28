@@ -26,6 +26,7 @@ interface AppHeaderProps {
   onReconnect: () => void;
   onShowLoginModal: () => void;
   onLogout: () => void;
+  onNodeClick?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -43,6 +44,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onReconnect,
   onShowLoginModal,
   onLogout,
+  onNodeClick,
 }) => {
   const { t } = useTranslation();
 
@@ -65,14 +67,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
   const renderNodeInfo = () => {
     const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+    const isClickable = authStatus?.authenticated && onNodeClick;
 
     if (!localNode && deviceInfo?.localNodeInfo) {
       const { nodeId, longName, shortName } = deviceInfo.localNodeInfo;
       return (
         <span
-          className="node-address"
-          title={authStatus?.authenticated ? t('header.connectedTo', { address: nodeAddress }) : undefined}
-          style={{ cursor: authStatus?.authenticated ? 'help' : 'default' }}
+          className={`node-address${isClickable ? ' clickable' : ''}`}
+          title={authStatus?.authenticated ? t('header.clickForNodeInfo') : undefined}
+          style={{ cursor: isClickable ? 'pointer' : 'default' }}
+          onClick={isClickable ? onNodeClick : undefined}
         >
           {longName} ({shortName}) - {nodeId}
         </span>
@@ -82,9 +86,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     if (localNode && localNode.user) {
       return (
         <span
-          className="node-address"
-          title={authStatus?.authenticated ? t('header.connectedTo', { address: nodeAddress }) : undefined}
-          style={{ cursor: authStatus?.authenticated ? 'help' : 'default' }}
+          className={`node-address${isClickable ? ' clickable' : ''}`}
+          title={authStatus?.authenticated ? t('header.clickForNodeInfo') : undefined}
+          style={{ cursor: isClickable ? 'pointer' : 'default' }}
+          onClick={isClickable ? onNodeClick : undefined}
         >
           {localNode.user.longName} ({localNode.user.shortName}) - {localNode.user.id}
         </span>

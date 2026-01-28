@@ -35,6 +35,7 @@ import { AppBanners } from './components/AppBanners';
 import { AppHeader } from './components/AppHeader';
 import { PurgeDataModal } from './components/PurgeDataModal';
 import { PositionOverrideModal } from './components/PositionOverrideModal';
+import { NodeInfoModal } from './components/NodeInfoModal/NodeInfoModal';
 import { SystemStatusModal } from './components/SystemStatusModal';
 import { NodePopup } from './components/NodePopup';
 import { EmojiPickerModal } from './components/EmojiPickerModal';
@@ -126,6 +127,14 @@ function App() {
   const [showNewsPopup, setShowNewsPopup] = useState(false);
   const [forceShowAllNews, setForceShowAllNews] = useState(false);
   const [showPositionOverrideModal, setShowPositionOverrideModal] = useState(false);
+  const [showNodeInfoModal, setShowNodeInfoModal] = useState(false);
+  const [nodeConnectionInfo, setNodeConnectionInfo] = useState<{
+    nodeIp: string;
+    tcpPort: number;
+    defaultIp: string;
+    defaultPort: number;
+    isOverridden: boolean;
+  } | null>(null);
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
 
@@ -2455,6 +2464,43 @@ function App() {
     }
   };
 
+  // Handler to open node info modal and fetch connection info
+  const handleNodeClick = async () => {
+    if (authStatus?.authenticated) {
+      try {
+        const info = await api.getConnectionInfo();
+        setNodeConnectionInfo({
+          nodeIp: info.nodeIp,
+          tcpPort: info.tcpPort,
+          defaultIp: info.defaultIp,
+          defaultPort: info.defaultPort,
+          isOverridden: info.isOverridden
+        });
+        setShowNodeInfoModal(true);
+      } catch (error) {
+        logger.error('Failed to get connection info:', error);
+        showToast(t('toast.failed_connection_info'), 'error');
+      }
+    }
+  };
+
+  // Handler to change node IP/address
+  const handleChangeNodeIp = async (newAddress: string) => {
+    try {
+      await api.configureConnection(newAddress);
+      // Show success message and reload page to get fresh data from new node
+      showToast(t('node_info.success'), 'success');
+      setShowNodeInfoModal(false);
+      // Reload page after a short delay to allow toast to be seen
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      logger.error('Failed to configure connection:', error);
+      throw error; // Re-throw so the modal can display the error
+    }
+  };
+
   const handleTraceroute = async (nodeId: string) => {
     if (connectionStatus !== 'connected') {
       return;
@@ -3979,6 +4025,7 @@ function App() {
         onReconnect={handleReconnect}
         onShowLoginModal={() => setShowLoginModal(true)}
         onLogout={() => setActiveTab('nodes')}
+        onNodeClick={handleNodeClick}
       />
 
       <AppBanners
@@ -4037,6 +4084,23 @@ function App() {
         onSave={handlePositionOverrideSave}
         getNodeName={getNodeName}
         baseUrl={baseUrl}
+      />
+
+      <NodeInfoModal
+        isOpen={showNodeInfoModal}
+        onClose={() => setShowNodeInfoModal(false)}
+        nodeInfo={deviceInfo?.localNodeInfo ? {
+          longName: deviceInfo.localNodeInfo.longName,
+          shortName: deviceInfo.localNodeInfo.shortName,
+          nodeId: deviceInfo.localNodeInfo.nodeId
+        } : null}
+        nodeIp={nodeConnectionInfo?.nodeIp || nodeAddress}
+        tcpPort={nodeConnectionInfo?.tcpPort || 4403}
+        defaultIp={nodeConnectionInfo?.defaultIp || ''}
+        defaultPort={nodeConnectionInfo?.defaultPort || 4403}
+        isOverridden={nodeConnectionInfo?.isOverridden || false}
+        isAdmin={authStatus?.user?.isAdmin || false}
+        onChangeIp={handleChangeNodeIp}
       />
 
       {selectedRouteSegment && (
