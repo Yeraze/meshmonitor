@@ -3342,7 +3342,7 @@
   "node_info.warning_immediate": "The new address will be used for all operations immediately.",
   "node_info.save": "Apply Changes",
   "node_info.saving": "Applying...",
-  "node_info.success": "Address changed successfully. Reconnecting...",
+  "node_info.success": "Address changed successfully. Reloading page...",
   "node_info.error_empty_ip": "Please enter an IP address or hostname",
   "node_info.error_invalid_ip": "Please enter a valid IP address or hostname (with optional port)",
   "node_info.error_failed": "Failed to change address",

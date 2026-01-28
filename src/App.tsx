@@ -2488,16 +2488,13 @@ function App() {
   const handleChangeNodeIp = async (newAddress: string) => {
     try {
       await api.configureConnection(newAddress);
-      // Refresh connection info
-      const info = await api.getConnectionInfo();
-      setNodeConnectionInfo({
-        nodeIp: info.nodeIp,
-        tcpPort: info.tcpPort,
-        defaultIp: info.defaultIp,
-        defaultPort: info.defaultPort,
-        isOverridden: info.isOverridden
-      });
+      // Show success message and reload page to get fresh data from new node
       showToast(t('node_info.success'), 'success');
+      setShowNodeInfoModal(false);
+      // Reload page after a short delay to allow toast to be seen
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (error) {
       logger.error('Failed to configure connection:', error);
       throw error; // Re-throw so the modal can display the error
