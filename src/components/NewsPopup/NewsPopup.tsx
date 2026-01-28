@@ -5,7 +5,7 @@
  * Supports markdown content, category badges, pagination, and dismissal.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import type { NewsItem, NewsFeed } from '../../types/ui';
@@ -33,6 +33,9 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
 
   // Track the full feed for updating lastSeenNewsId
   const [fullFeed, setFullFeed] = useState<NewsItem[]>([]);
+
+  // Ref to scroll content to top on navigation
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Fetch news data when popup opens
   useEffect(() => {
@@ -152,6 +155,8 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
     if (currentIndex < newsItems.length - 1) {
       setCurrentIndex(prev => prev + 1);
       setDontShowAgain(false);
+      // Scroll content to top for new item
+      contentRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     } else {
       onClose();
     }
@@ -161,6 +166,8 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
       setDontShowAgain(false);
+      // Scroll content to top for new item
+      contentRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     }
   }, [currentIndex]);
 
@@ -252,7 +259,7 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
           </button>
         </div>
 
-        <div className="modal-body news-modal-body">
+        <div className="modal-body news-modal-body" ref={contentRef}>
           <div className="news-item">
             <div className="news-item-header">
               <span className={`news-category news-category-${currentItem.category}`}>
