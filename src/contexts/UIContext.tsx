@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TabType, SortField, SortDirection } from '../types/ui';
-import { AutoResponderTrigger, TimerTrigger } from '../components/auto-responder/types';
+import { AutoResponderTrigger, TimerTrigger, GeofenceTrigger } from '../components/auto-responder/types';
 
 interface UIContextType {
   activeTab: TabType;
@@ -101,6 +101,8 @@ interface UIContextType {
   setAutoKeyManagementAutoPurge: React.Dispatch<React.SetStateAction<boolean>>;
   timerTriggers: TimerTrigger[];
   setTimerTriggers: React.Dispatch<React.SetStateAction<TimerTrigger[]>>;
+  geofenceTriggers: GeofenceTrigger[];
+  setGeofenceTriggers: React.Dispatch<React.SetStateAction<GeofenceTrigger[]>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -194,6 +196,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges] = useState<number>(3);
   const [autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge] = useState<boolean>(false);
   const [timerTriggers, setTimerTriggers] = useState<TimerTrigger[]>([]);
+  const [geofenceTriggers, setGeofenceTriggers] = useState<GeofenceTrigger[]>([]);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
@@ -328,6 +331,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoKeyManagementAutoPurge,
         timerTriggers,
         setTimerTriggers,
+        geofenceTriggers,
+        setGeofenceTriggers,
         showNodeFilterPopup,
         setShowNodeFilterPopup,
         isNodeListCollapsed,

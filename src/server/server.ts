@@ -4643,6 +4643,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoKeyManagementAutoPurge',
       'remoteAdminScannerIntervalMinutes',
       'remoteAdminScannerExpirationHours',
+      'geofenceTriggers',
     ];
     const filteredSettings: Record<string, string> = {};
 
@@ -4815,6 +4816,115 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       }
     }
 
+    // Validate geofenceTriggers JSON
+    if ('geofenceTriggers' in filteredSettings) {
+      try {
+        const triggers = JSON.parse(filteredSettings.geofenceTriggers);
+
+        if (!Array.isArray(triggers)) {
+          return res.status(400).json({ error: 'geofenceTriggers must be an array' });
+        }
+
+        for (const trigger of triggers) {
+          // Required fields
+          if (!trigger.id || !trigger.name || !trigger.shape || !trigger.event || !trigger.responseType || trigger.channel === undefined) {
+            return res.status(400).json({ error: 'Each geofence trigger must have id, name, shape, event, responseType, and channel fields' });
+          }
+
+          // Validate enabled is boolean
+          if (trigger.enabled !== undefined && typeof trigger.enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled must be a boolean' });
+          }
+
+          // Validate shape
+          if (trigger.shape.type === 'circle') {
+            if (!trigger.shape.center || typeof trigger.shape.center.lat !== 'number' || typeof trigger.shape.center.lng !== 'number') {
+              return res.status(400).json({ error: 'Circle geofence must have a center with lat and lng' });
+            }
+            if (trigger.shape.center.lat < -90 || trigger.shape.center.lat > 90) {
+              return res.status(400).json({ error: 'Circle center latitude must be between -90 and 90' });
+            }
+            if (trigger.shape.center.lng < -180 || trigger.shape.center.lng > 180) {
+              return res.status(400).json({ error: 'Circle center longitude must be between -180 and 180' });
+            }
+            if (typeof trigger.shape.radiusKm !== 'number' || trigger.shape.radiusKm <= 0) {
+              return res.status(400).json({ error: 'Circle geofence must have a positive radiusKm' });
+            }
+          } else if (trigger.shape.type === 'polygon') {
+            if (!Array.isArray(trigger.shape.vertices) || trigger.shape.vertices.length < 3) {
+              return res.status(400).json({ error: 'Polygon geofence must have at least 3 vertices' });
+            }
+            for (const v of trigger.shape.vertices) {
+              if (typeof v.lat !== 'number' || typeof v.lng !== 'number') {
+                return res.status(400).json({ error: 'Each polygon vertex must have numeric lat and lng' });
+              }
+              if (v.lat < -90 || v.lat > 90 || v.lng < -180 || v.lng > 180) {
+                return res.status(400).json({ error: 'Polygon vertex coordinates out of range' });
+              }
+            }
+          } else {
+            return res.status(400).json({ error: 'Shape type must be "circle" or "polygon"' });
+          }
+
+          // Validate event
+          if (!['entry', 'exit', 'while_inside'].includes(trigger.event)) {
+            return res.status(400).json({ error: 'event must be "entry", "exit", or "while_inside"' });
+          }
+
+          // Validate whileInsideIntervalMinutes
+          if (trigger.event === 'while_inside') {
+            if (typeof trigger.whileInsideIntervalMinutes !== 'number' || trigger.whileInsideIntervalMinutes < 1) {
+              return res.status(400).json({ error: 'whileInsideIntervalMinutes must be >= 1 when event is "while_inside"' });
+            }
+          }
+
+          // Validate responseType and response/scriptPath
+          if (trigger.responseType !== 'text' && trigger.responseType !== 'script') {
+            return res.status(400).json({ error: 'Geofence responseType must be "text" or "script"' });
+          }
+
+          if (trigger.responseType === 'text') {
+            if (!trigger.response || typeof trigger.response !== 'string' || trigger.response.trim().length === 0) {
+              return res.status(400).json({ error: 'Text geofence triggers must have a non-empty response message' });
+            }
+          } else if (trigger.responseType === 'script') {
+            if (!trigger.scriptPath) {
+              return res.status(400).json({ error: 'Script geofence triggers must have a scriptPath' });
+            }
+            if (!trigger.scriptPath.startsWith('/data/scripts/')) {
+              return res.status(400).json({ error: 'Geofence script path must start with /data/scripts/' });
+            }
+            if (trigger.scriptPath.includes('..')) {
+              return res.status(400).json({ error: 'Geofence script path cannot contain ..' });
+            }
+            const ext = trigger.scriptPath.split('.').pop()?.toLowerCase();
+            if (!ext || !['js', 'mjs', 'py', 'sh'].includes(ext)) {
+              return res.status(400).json({ error: 'Geofence script must have .js, .mjs, .py, or .sh extension' });
+            }
+          }
+
+          // Validate channel ('dm' or number 0-7)
+          if (trigger.channel !== 'dm' && (typeof trigger.channel !== 'number' || trigger.channel < 0 || trigger.channel > 7)) {
+            return res.status(400).json({ error: 'Geofence channel must be "dm" or a number between 0 and 7' });
+          }
+
+          // Validate nodeFilter
+          if (trigger.nodeFilter) {
+            if (trigger.nodeFilter.type !== 'all' && trigger.nodeFilter.type !== 'selected') {
+              return res.status(400).json({ error: 'nodeFilter type must be "all" or "selected"' });
+            }
+            if (trigger.nodeFilter.type === 'selected') {
+              if (!Array.isArray(trigger.nodeFilter.nodeNums) || trigger.nodeFilter.nodeNums.length === 0) {
+                return res.status(400).json({ error: 'Selected node filter must include at least one node number' });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid JSON format for geofenceTriggers' });
+      }
+    }
+
     // Validate customTilesets JSON
     if ('customTilesets' in filteredSettings) {
       try {
@@ -4965,6 +5075,11 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     // Restart timer scheduler if timer triggers changed
     if ('timerTriggers' in filteredSettings) {
       meshtasticManager.restartTimerScheduler();
+    }
+
+    // Restart geofence engine if geofence triggers changed
+    if ('geofenceTriggers' in filteredSettings) {
+      meshtasticManager.restartGeofenceEngine();
     }
 
     // Audit log with before/after values
