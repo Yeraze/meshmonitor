@@ -3367,5 +3367,20 @@
     "packet_monitor.column.via": "Через",
     "channels_config.encrypted_secure": "Зашифровано (с помощью пользовательского ключа)",
     "channel_database.toast_psk_no_crypto": "Каналы без шифрования (PSK=0) нельзя добавить в базу данных каналов",
-    "channels_config.encrypted_default": "Ключ по умолчанию (небезопасный)"
+    "channels_config.encrypted_default": "Ключ по умолчанию (небезопасный)",
+    "news.close": "",
+    "admin_commands.capabilities": "",
+    "news.view_news": "",
+    "news.category.release": "",
+    "news.do_not_show_again": "",
+    "news.next": "",
+    "news.category.security": "",
+    "news.previous": "",
+    "admin_commands.hardware_model": "",
+    "admin_commands.firmware_version": "",
+    "admin_commands.failed_device_metadata": "",
+    "news.category.maintenance": "",
+    "news.title": "",
+    "news.important": "",
+    "news.category.feature": ""
 }
