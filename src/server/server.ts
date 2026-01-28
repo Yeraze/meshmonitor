@@ -3762,6 +3762,71 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
   }
 });
 
+// Get detailed connection info (authenticated users only)
+apiRouter.get('/connection/info', requireAuth(), (_req, res) => {
+  try {
+    const status = meshtasticManager.getConnectionStatus();
+    const env = getEnvironmentConfig();
+    const ipOverride = databaseService.getSetting('meshtasticNodeIpOverride');
+    const portOverride = databaseService.getSetting('meshtasticTcpPortOverride');
+
+    res.json({
+      ...status,
+      defaultIp: env.meshtasticNodeIp,
+      defaultPort: env.meshtasticTcpPort,
+      isOverridden: !!(ipOverride || portOverride),
+      tcpPort: portOverride ? parseInt(portOverride, 10) : env.meshtasticTcpPort
+    });
+  } catch (error) {
+    logger.error('Error getting connection info:', error);
+    res.status(500).json({ error: 'Failed to get connection info' });
+  }
+});
+
+// Configure connection IP address (admin only)
+apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeIp } = req.body;
+
+    // Validate IP format (IPv4 address or hostname, with optional port)
+    // Accepts: 192.168.1.100, 192.168.1.100:4403, hostname, hostname:4403
+    const ipRegex = /^(?:(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)|[\w.-]+)(?::\d{1,5})?$/;
+    if (!nodeIp || !ipRegex.test(nodeIp)) {
+      return res.status(400).json({ error: 'Invalid IP address or hostname' });
+    }
+
+    // Validate port range if specified
+    const portMatch = nodeIp.match(/:(\d+)$/);
+    if (portMatch) {
+      const port = parseInt(portMatch[1], 10);
+      if (port < 1 || port > 65535) {
+        return res.status(400).json({ error: 'Port must be between 1 and 65535' });
+      }
+    }
+
+    // Set the override
+    await meshtasticManager.setNodeIpOverride(nodeIp);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'connection_address_changed',
+      'connection',
+      JSON.stringify({ address: nodeIp }),
+      req.ip || null
+    );
+
+    res.json({
+      success: true,
+      message: 'Node address updated. Reconnecting...',
+      nodeIp
+    });
+  } catch (error) {
+    logger.error('Error configuring connection:', error);
+    res.status(500).json({ error: 'Failed to configure connection' });
+  }
+});
+
 // Configuration endpoint for frontend
 apiRouter.get('/config', optionalAuth(), async (req, res) => {
   try {

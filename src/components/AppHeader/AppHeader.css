@@ -63,6 +63,13 @@
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   color: var(--ctp-blue);
+  transition: all 0.2s ease;
+}
+
+.node-address.clickable:hover {
+  background: var(--ctp-surface1);
+  color: var(--ctp-sapphire);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .device-name {
