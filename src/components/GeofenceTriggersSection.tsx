@@ -81,7 +81,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newResponseType, setNewResponseType] = useState<GeofenceResponseType>('text');
   const [newScriptPath, setNewScriptPath] = useState('');
   const [newResponse, setNewResponse] = useState('');
-  const [newChannel, setNewChannel] = useState<number | 'dm'>('dm');
+  const [newChannel, setNewChannel] = useState<number | 'dm' | 'none'>('dm');
 
   // Edit mode state
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
@@ -537,11 +537,14 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 value={newChannel}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setNewChannel(val === 'dm' ? 'dm' : Number(val));
+                  setNewChannel(val === 'dm' ? 'dm' : val === 'none' ? 'none' : Number(val));
                 }}
                 className="setting-input"
                 style={{ flex: 1 }}
               >
+                {newResponseType === 'script' && (
+                  <option value="none">{t('automation.geofence_triggers.channel_none', 'None (no mesh output)')}</option>
+                )}
                 <option value="dm">{t('auto_responder.direct_messages', 'Direct Message')}</option>
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
@@ -550,7 +553,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 ))}
               </select>
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
-                {t('automation.geofence_triggers.channel_help', 'Output will be sent to this channel')}
+                {newResponseType === 'script' && newChannel === 'none'
+                  ? t('automation.geofence_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
+                  : t('automation.geofence_triggers.channel_help', 'Output will be sent to this channel')}
               </div>
             </div>
 
@@ -677,7 +682,9 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           ) : (
             <>Text: {trigger.response && trigger.response.length > 40 ? trigger.response.substring(0, 40) + '...' : trigger.response}</>
           )}
-          {' \u2192 '}{trigger.channel === 'dm' ? 'DM' : `Ch ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || `Channel ${trigger.channel}`}`}
+          {trigger.channel !== 'none' && (
+            <>{' \u2192 '}{trigger.channel === 'dm' ? 'DM' : `Ch ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || `Channel ${trigger.channel}`}`}</>
+          )}
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.15rem' }}>
           Nodes: {trigger.nodeFilter.type === 'all' ? 'All' : `${trigger.nodeFilter.nodeNums.length} selected`}
