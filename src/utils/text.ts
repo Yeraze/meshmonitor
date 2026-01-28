@@ -36,14 +36,17 @@ export function formatByteCount(byteCount: number, maxBytes: number = 200): { te
 }
 
 /**
- * Check if a string consists primarily of emoji characters
- * Used for styling sender dots that use emoji as shortnames
+ * Check if a string consists only of emoji characters
+ * Used for styling sender dots that use emoji as shortnames, and for detecting tapback reactions
  *
  * @param content - The text to check
- * @returns True if the content is primarily emoji (1-2 emoji characters)
+ * @returns True if the content contains only emoji characters
  */
 export function isEmoji(content: string): boolean {
   if (!content) return false;
-  // Match emoji characters - allow any length to support skin tone modifiers and ZWJ sequences
-  return /^\p{Emoji}+$/u.test(content);
+  // Use Extended_Pictographic and Emoji_Presentation to match actual pictographic emojis
+  // This excludes ASCII characters like digits (#, *, 0-9) which are technically in the Emoji category
+  // but shouldn't be treated as emoji reactions
+  // Allows variation selectors (FE00-FE0F), ZWJ (200D), and emoji modifiers for sequences
+  return /^(?:[\p{Extended_Pictographic}\p{Emoji_Presentation}][\u{FE00}-\u{FE0F}\u{200D}\p{Emoji_Modifier}]*)+$/u.test(content);
 }
