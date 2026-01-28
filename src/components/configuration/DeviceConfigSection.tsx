@@ -496,6 +496,28 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
             </option>
           ))}
         </select>
+        {rebroadcastMode !== 0 && (
+          <div
+            style={{
+              backgroundColor: 'var(--ctp-peach)',
+              color: 'var(--ctp-base)',
+              padding: '0.75rem',
+              borderRadius: '6px',
+              marginTop: '0.5rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem',
+              fontSize: '0.9rem'
+            }}
+          >
+            <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>⚠️</span>
+            <span>
+              {t('device_config.rebroadcast_warning',
+                'This mode may prevent the Channel Database from decrypting packets from distant nodes, as encrypted packets won\'t be forwarded to MeshMonitor for analysis.'
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Buzzer Mode */}
