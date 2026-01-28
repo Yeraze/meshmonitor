@@ -1218,7 +1218,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <label htmlFor="solarLatitude">
                   {t('settings.solar_latitude')}
                   <span className="setting-description">
-                    {t('settings.solar_latitude_description')} • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('settings.solar_find_coords')}</a>
+                    {t('settings.solar_latitude_description')} • <a href="https://www.latlong.net/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('settings.solar_find_coords')}</a>
                   </span>
                 </label>
                 <input

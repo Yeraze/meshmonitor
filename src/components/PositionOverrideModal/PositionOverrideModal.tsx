@@ -283,7 +283,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
 
                   <div className="position-override-link">
                     <a
-                      href="https://gps-coordinates.org/"
+                      href="https://www.latlong.net/"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
