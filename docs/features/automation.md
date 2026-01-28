@@ -1178,6 +1178,200 @@ print(json.dumps(output))
 - Check that the script returns a `response` field
 - Ensure response text is under 200 characters
 
+## Geofence Triggers {#geofence-triggers}
+
+Trigger automated actions when nodes enter, exit, or remain inside defined geographic areas. This powerful feature enables location-based automation such as arrival notifications, area monitoring, or proximity alerts.
+
+### How It Works
+
+Geofence Triggers monitor node positions and compare them against defined geographic boundaries. When a node's position matches a trigger condition (entering, exiting, or remaining inside a zone), MeshMonitor automatically executes the configured response.
+
+### Configuration
+
+**Adding a Geofence Trigger**:
+
+1. Navigate to the Automation settings (Info tab)
+2. Scroll to the "Geofence Triggers" section
+3. Fill out the trigger configuration:
+   - **Name**: A descriptive name for the trigger (e.g., "Base Camp Entry Alert")
+   - **Shape**: Circle or polygon defining the geographic boundary
+   - **Event**: When to trigger (entry, exit, or while inside)
+   - **Node Filter**: Which nodes to monitor (all or selected)
+   - **Response Type**: Text message or script
+   - **Channel**: Where to send the response (channel or direct message)
+4. Click "Add Geofence Trigger"
+5. Click "Save" to persist your changes
+
+### Geofence Shapes
+
+**Circle**: Define a circular area by clicking on the map to set the center point and dragging to set the radius.
+
+- Displays radius in kilometers
+- Good for simple proximity monitoring
+- Easy to visualize and adjust
+
+**Polygon**: Define a custom-shaped area by clicking multiple points on the map to create vertices.
+
+- Supports complex boundary shapes
+- Useful for irregular areas like property boundaries
+- Click points to add vertices, close the polygon to complete
+
+The interactive map editor shows your current nodes with position data, making it easy to draw zones around specific locations.
+
+### Trigger Events
+
+**Entry**: Fires when a node enters the geofence zone.
+- Triggers once when position changes from outside to inside
+- Useful for arrival notifications
+
+**Exit**: Fires when a node leaves the geofence zone.
+- Triggers once when position changes from inside to outside
+- Useful for departure alerts
+
+**While Inside**: Fires periodically while a node remains inside the zone.
+- Configurable interval (in minutes)
+- Useful for ongoing presence monitoring
+- Example: Send status update every 5 minutes while node is in area
+
+### Node Filtering
+
+**All Nodes**: Monitor all nodes with position data.
+- Any node entering/exiting the zone triggers the action
+
+**Selected Nodes**: Monitor only specific nodes.
+- Choose which nodes to track from the node selector
+- Filter by node name or ID
+- Useful for monitoring specific assets or people
+
+### Response Types
+
+**Text Message**: Send a customizable message with dynamic tokens.
+
+Available tokens:
+- `{GEOFENCE_NAME}` - Name of the geofence trigger
+- `{EVENT}` - Event type (entry/exit/while_inside)
+- `{LONG_NAME}` - Node's long name
+- `{SHORT_NAME}` - Node's short name
+- `{NODE_ID}` - Node's ID (e.g., !a1b2c3d4)
+- `{NODE_LAT}` - Node's latitude
+- `{NODE_LON}` - Node's longitude
+- `{DISTANCE_TO_CENTER}` - Distance to geofence center in kilometers
+- `{VERSION}` - MeshMonitor version
+- `{NODECOUNT}` - Total active nodes
+
+**Example Messages**:
+```
+{LONG_NAME} entered {GEOFENCE_NAME}
+```
+```
+Alert: {SHORT_NAME} has left the monitored area
+```
+```
+{LONG_NAME} is {DISTANCE_TO_CENTER}km from base camp
+```
+
+**Script Response**: Execute a custom script for advanced logic.
+
+- Scripts must be in `/data/scripts/` directory
+- Supports Node.js, Python, and Shell scripts
+- Receives geofence data via environment variables
+- Same 10-second timeout as Auto Responder scripts
+
+### Output Channel
+
+**Direct Message**: Send the response directly to the triggering node.
+- Private notification to the node owner
+- Good for personal alerts
+
+**Channel**: Send the response to a specific channel.
+- Public notification visible to channel members
+- Good for team/group awareness
+
+### Managing Triggers
+
+**Enable/Disable**: Toggle individual triggers without removing them.
+- Disabled triggers show reduced opacity
+- Quick way to temporarily pause monitoring
+
+**Edit**: Modify any trigger property.
+- Click "Edit" to load trigger into the form
+- Make changes and click "Save Changes"
+- Click "Cancel" to discard changes
+
+**Remove**: Delete a trigger permanently.
+- Confirmation dialog prevents accidental deletion
+
+**Status Display**: Each trigger shows:
+- Shape type and size (e.g., "Circle (2.5 km)")
+- Event type
+- Response preview
+- Node filter status
+- Last run time and result (if applicable)
+
+### Side Effects
+
+- **Position Monitoring**: Requires nodes to broadcast position data
+- **Processing Overhead**: Each position update is checked against all active triggers
+- **Network Traffic**: Text responses consume airtime on the mesh
+- **Script Execution**: Scripts run in the container with timeout limits
+
+### Use Cases
+
+**Arrival/Departure Notifications**:
+- Alert when family members arrive home
+- Notify team when assets reach destination
+- Track vehicle entry/exit from facilities
+
+**Area Monitoring**:
+- Monitor restricted areas for unauthorized access
+- Track node presence in work zones
+- Event perimeter monitoring
+
+**Proximity Alerts**:
+- Warn when nodes approach hazardous areas
+- Notify when nodes leave safe zones
+- Distance-based status updates
+
+**Asset Tracking**:
+- Confirm delivery arrivals
+- Monitor equipment location
+- Track personnel in field operations
+
+### Best Practices
+
+**Zone Design**:
+- Use appropriate buffer zones to avoid edge-case triggers
+- Consider GPS accuracy when sizing zones
+- Test triggers with actual node movement
+
+**Performance**:
+- Limit number of active triggers for better performance
+- Use node filtering when monitoring specific assets
+- Choose appropriate "while inside" intervals
+
+**Notifications**:
+- Keep messages concise for radio efficiency
+- Include relevant context (node name, location)
+- Consider privacy when using public channels
+
+### Troubleshooting
+
+**Trigger Not Firing**:
+- Verify node has recent position data
+- Check that node filter includes the target node
+- Ensure trigger is enabled
+- Verify geofence zone covers the expected area
+
+**False Triggers**:
+- GPS accuracy may cause edge-case triggers
+- Increase zone size to add buffer
+- Consider using "while inside" instead of entry/exit for stationary monitoring
+
+**Messages Not Sending**:
+- Check response text is under 200 characters
+- Verify channel selection is correct
+- Check for script errors in container logs
+
 ## Configuration Storage
 
 All automation settings are stored on the MeshMonitor server and persist across container restarts and browser sessions. Changes made by any user with appropriate permissions will affect all users accessing the system.
