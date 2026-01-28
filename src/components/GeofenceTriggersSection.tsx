@@ -83,6 +83,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newResponse, setNewResponse] = useState('');
   const [newChannel, setNewChannel] = useState<number | 'dm'>('dm');
 
+  // Edit mode state
+  const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
+
   useEffect(() => {
     setLocalTriggers(triggers);
   }, [triggers]);
@@ -154,7 +157,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     onDismiss: resetChanges,
   });
 
-  const handleAddTrigger = () => {
+  const handleAddOrUpdateTrigger = () => {
     if (!newName.trim()) {
       showToast(t('automation.geofence_triggers.name_required', 'Name is required'), 'error');
       return;
@@ -172,24 +175,50 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
       return;
     }
 
-    const newTrigger: GeofenceTrigger = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: newName.trim(),
-      enabled: true,
-      shape: newShape,
-      event: newEvent,
-      whileInsideIntervalMinutes: newEvent === 'while_inside' ? newWhileInsideInterval : undefined,
-      nodeFilter: newNodeFilter,
-      responseType: newResponseType,
-      response: newResponseType === 'text' ? newResponse.trim() : undefined,
-      scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
-      channel: newChannel,
-    };
+    if (editingTriggerId) {
+      // Update existing trigger
+      setLocalTriggers(localTriggers.map(t => {
+        if (t.id === editingTriggerId) {
+          return {
+            ...t,
+            name: newName.trim(),
+            shape: newShape,
+            event: newEvent,
+            whileInsideIntervalMinutes: newEvent === 'while_inside' ? newWhileInsideInterval : undefined,
+            nodeFilter: newNodeFilter,
+            responseType: newResponseType,
+            response: newResponseType === 'text' ? newResponse.trim() : undefined,
+            scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+            channel: newChannel,
+          };
+        }
+        return t;
+      }));
+      showToast(t('automation.geofence_triggers.updated', 'Geofence trigger updated'), 'success');
+      setEditingTriggerId(null);
+    } else {
+      // Add new trigger
+      const newTrigger: GeofenceTrigger = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: newName.trim(),
+        enabled: true,
+        shape: newShape,
+        event: newEvent,
+        whileInsideIntervalMinutes: newEvent === 'while_inside' ? newWhileInsideInterval : undefined,
+        nodeFilter: newNodeFilter,
+        responseType: newResponseType,
+        response: newResponseType === 'text' ? newResponse.trim() : undefined,
+        scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+        channel: newChannel,
+      };
+      setLocalTriggers([...localTriggers, newTrigger]);
+      showToast(t('automation.geofence_triggers.added', 'Geofence trigger added'), 'success');
+    }
 
-    setLocalTriggers([...localTriggers, newTrigger]);
     // Reset form
     setNewName('');
     setNewShape(null);
+    setNewShapeType('circle');
     setNewEvent('entry');
     setNewWhileInsideInterval(5);
     setNewNodeFilter({ type: 'all' });
@@ -197,7 +226,6 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewScriptPath('');
     setNewResponse('');
     setNewChannel('dm');
-    showToast(t('automation.geofence_triggers.added', 'Geofence trigger added'), 'success');
   };
 
   const handleRemoveTrigger = (id: string) => {
@@ -208,6 +236,34 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setLocalTriggers(localTriggers.map(t =>
       t.id === id ? { ...t, enabled: !t.enabled } : t
     ));
+  };
+
+  const handleStartEdit = (trigger: GeofenceTrigger) => {
+    setEditingTriggerId(trigger.id);
+    setNewName(trigger.name);
+    setNewShapeType(trigger.shape.type);
+    setNewShape(trigger.shape);
+    setNewEvent(trigger.event);
+    setNewWhileInsideInterval(trigger.whileInsideIntervalMinutes ?? 5);
+    setNewNodeFilter(trigger.nodeFilter);
+    setNewResponseType(trigger.responseType);
+    setNewScriptPath(trigger.scriptPath ?? '');
+    setNewResponse(trigger.response ?? '');
+    setNewChannel(trigger.channel);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTriggerId(null);
+    setNewName('');
+    setNewShape(null);
+    setNewShapeType('circle');
+    setNewEvent('entry');
+    setNewWhileInsideInterval(5);
+    setNewNodeFilter({ type: 'all' });
+    setNewResponseType('text');
+    setNewScriptPath('');
+    setNewResponse('');
+    setNewChannel('dm');
   };
 
   const formatLastRun = (timestamp?: number) => {
@@ -267,15 +323,18 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
           {t('automation.geofence_triggers.description', 'Trigger actions when nodes enter, exit, or remain inside geographic areas')}
         </p>
 
-        {/* Add New Geofence Trigger Form */}
+        {/* Add/Edit Geofence Trigger Form */}
         <div style={{
           padding: '1rem',
-          background: 'var(--ctp-surface0)',
+          background: editingTriggerId ? 'var(--ctp-surface1)' : 'var(--ctp-surface0)',
           borderRadius: '8px',
           marginBottom: '1rem',
+          border: editingTriggerId ? '2px solid var(--ctp-blue)' : 'none',
         }}>
           <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--ctp-text)' }}>
-            {t('automation.geofence_triggers.add_new', 'Add New Geofence Trigger')}
+            {editingTriggerId
+              ? t('automation.geofence_triggers.edit_trigger', 'Edit Geofence Trigger')
+              : t('automation.geofence_triggers.add_new', 'Add New Geofence Trigger')}
           </h4>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -495,10 +554,23 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
               </div>
             </div>
 
-            {/* Add Button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            {/* Add/Save Button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              {editingTriggerId && (
+                <button
+                  onClick={handleCancelEdit}
+                  className="settings-button"
+                  style={{
+                    background: 'var(--ctp-surface1)',
+                    color: 'var(--ctp-text)',
+                    border: '1px solid var(--ctp-overlay0)',
+                  }}
+                >
+                  {t('common.cancel', 'Cancel')}
+                </button>
+              )}
               <button
-                onClick={handleAddTrigger}
+                onClick={handleAddOrUpdateTrigger}
                 disabled={!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim())}
                 className="settings-button settings-button-primary"
                 style={{
@@ -506,7 +578,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   cursor: (!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim())) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {t('automation.geofence_triggers.add', 'Add Geofence Trigger')}
+                {editingTriggerId
+                  ? t('automation.geofence_triggers.save', 'Save Changes')
+                  : t('automation.geofence_triggers.add', 'Add Geofence Trigger')}
               </button>
             </div>
           </div>
@@ -524,6 +598,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 key={trigger.id}
                 trigger={trigger}
                 channels={channels}
+                onEdit={() => handleStartEdit(trigger)}
                 onRemove={() => handleRemoveTrigger(trigger.id)}
                 onToggleEnabled={() => handleToggleEnabled(trigger.id)}
                 formatLastRun={formatLastRun}
@@ -554,6 +629,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 interface GeofenceTriggerItemProps {
   trigger: GeofenceTrigger;
   channels: Channel[];
+  onEdit: () => void;
   onRemove: () => void;
   onToggleEnabled: () => void;
   formatLastRun: (timestamp?: number) => string;
@@ -564,6 +640,7 @@ interface GeofenceTriggerItemProps {
 const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
   trigger,
   channels,
+  onEdit,
   onRemove,
   onToggleEnabled,
   formatLastRun,
@@ -643,6 +720,20 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           }}
         >
           {trigger.enabled ? 'Disable' : 'Enable'}
+        </button>
+        <button
+          onClick={onEdit}
+          style={{
+            padding: '0.25rem 0.5rem',
+            fontSize: '12px',
+            background: 'var(--ctp-blue)',
+            color: 'var(--ctp-base)',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          Edit
         </button>
         <button
           onClick={() => setShowRemoveModal(true)}

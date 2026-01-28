@@ -4,6 +4,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { DEFAULT_TAPBACK_EMOJIS, type TapbackEmoji } from './EmojiPickerModal/EmojiPickerModal';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
+import { isEmoji } from '../utils/text';
 
 /**
  * TapbackEmojiSettings - Settings component for managing tapback emoji reactions
@@ -23,6 +24,12 @@ const TapbackEmojiSettings: React.FC = () => {
 
     if (!trimmedEmoji) {
       showToast(t('settings.tapback_emoji_required', 'Please enter an emoji'), 'error');
+      return;
+    }
+
+    // Validate that the input is actually an emoji (not regular text)
+    if (!isEmoji(trimmedEmoji)) {
+      showToast(t('settings.tapback_invalid_emoji', 'Please enter a valid emoji, not text'), 'error');
       return;
     }
 

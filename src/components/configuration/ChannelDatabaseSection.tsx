@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService, { ChannelDatabaseEntry, RetroactiveDecryptionProgress } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
+import { REBROADCAST_MODE_OPTIONS } from './constants';
 
 /**
  * Meshtastic default channel key (shorthand value 1)
@@ -50,6 +51,7 @@ function uint8ArrayToBase64(arr: Uint8Array): string {
 
 interface ChannelDatabaseSectionProps {
   isAdmin: boolean;
+  rebroadcastMode?: number;
 }
 
 interface ChannelEditState {
@@ -60,9 +62,12 @@ interface ChannelEditState {
   isEnabled: boolean;
 }
 
-const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin }) => {
+const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin, rebroadcastMode }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+
+  // Get the rebroadcast mode name for warning display
+  const rebroadcastModeName = REBROADCAST_MODE_OPTIONS.find(opt => opt.value === rebroadcastMode)?.name || 'UNKNOWN';
 
   const [channels, setChannels] = useState<ChannelDatabaseEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -390,6 +395,35 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('channel_database.description')}
         </p>
+
+        {/* Rebroadcast Mode Warning */}
+        {rebroadcastMode !== undefined && rebroadcastMode !== 0 && (
+          <div
+            style={{
+              backgroundColor: 'var(--ctp-peach)',
+              color: 'var(--ctp-base)',
+              padding: '1rem',
+              borderRadius: '8px',
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.75rem'
+            }}
+          >
+            <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>⚠️</span>
+            <div>
+              <strong style={{ display: 'block', marginBottom: '0.25rem' }}>
+                {t('channel_database.rebroadcast_warning_title', 'Rebroadcast Mode Warning')}
+              </strong>
+              <span>
+                {t('channel_database.rebroadcast_warning_message',
+                  'Your node\'s Rebroadcast Mode is set to "{{mode}}". For the Channel Database to decrypt packets from other nodes, Rebroadcast Mode should be set to "ALL". Otherwise, encrypted packets from distant nodes may not be forwarded to MeshMonitor for analysis.',
+                  { mode: rebroadcastModeName }
+                )}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Retroactive Decryption Progress */}
         {decryptionProgress && (decryptionProgress.status === 'running' || decryptionProgress.status === 'pending') && (
