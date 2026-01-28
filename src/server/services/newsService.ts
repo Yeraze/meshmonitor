@@ -179,7 +179,7 @@ class NewsService {
 
   /**
    * Get unread news for a user
-   * Returns news items that the user hasn't dismissed
+   * Returns news items that the user hasn't dismissed and are newer than lastSeenNewsId
    */
   async getUnreadNewsForUser(userId: number): Promise<NewsItem[]> {
     try {
@@ -191,8 +191,33 @@ class NewsService {
       const userStatus = await this.getUserNewsStatus(userId);
       const dismissedIds = new Set(userStatus?.dismissedNewsIds || []);
 
-      // Filter out dismissed items
-      return feed.items.filter(item => !dismissedIds.has(item.id));
+      // Find the date of the lastSeenNewsId item to filter out older items
+      let lastSeenDate: Date | null = null;
+      if (userStatus?.lastSeenNewsId) {
+        const lastSeenItem = feed.items.find(item => item.id === userStatus.lastSeenNewsId);
+        if (lastSeenItem) {
+          lastSeenDate = new Date(lastSeenItem.date);
+        }
+      }
+
+      // Filter items: show if newer than lastSeenDate OR important (unless dismissed)
+      return feed.items.filter(item => {
+        // Hide dismissed items
+        if (dismissedIds.has(item.id)) {
+          return false;
+        }
+        // Always show important items that aren't dismissed
+        if (item.priority === 'important') {
+          return true;
+        }
+        // If we have a lastSeenDate, only show items newer than that
+        if (lastSeenDate) {
+          const itemDate = new Date(item.date);
+          return itemDate > lastSeenDate;
+        }
+        // No lastSeenDate means show all non-dismissed items (first time user)
+        return true;
+      });
     } catch (error) {
       logger.error('Error getting unread news for user:', error);
       return [];

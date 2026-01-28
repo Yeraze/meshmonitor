@@ -31,6 +31,9 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
   const [loading, setLoading] = useState(true);
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
+  // Track the full feed for updating lastSeenNewsId
+  const [fullFeed, setFullFeed] = useState<NewsItem[]>([]);
+
   // Fetch news data when popup opens
   useEffect(() => {
     if (!isOpen) return;
@@ -45,16 +48,41 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
           status = await api.getUserNewsStatus();
         }
 
+        // Store full feed for later use
+        const allItems = feed.items || [];
+        setFullFeed(allItems);
+
         // Filter items based on forceShowAll and user status
-        let items = feed.items || [];
+        let items = [...allItems];
 
         if (!forceShowAll && status) {
           const dismissedIds = new Set(status.dismissedNewsIds || []);
+
+          // Find the date of the lastSeenNewsId item to filter out older items
+          let lastSeenDate: Date | null = null;
+          if (status.lastSeenNewsId) {
+            const lastSeenItem = allItems.find(item => item.id === status.lastSeenNewsId);
+            if (lastSeenItem) {
+              lastSeenDate = new Date(lastSeenItem.date);
+            }
+          }
+
           items = items.filter(item => {
-            // Always show important items
-            if (item.priority === 'important') return true;
+            // Always show important items that haven't been dismissed
+            if (item.priority === 'important' && !dismissedIds.has(item.id)) {
+              return true;
+            }
             // Hide dismissed items
-            return !dismissedIds.has(item.id);
+            if (dismissedIds.has(item.id)) {
+              return false;
+            }
+            // If we have a lastSeenDate, only show items newer than that
+            if (lastSeenDate) {
+              const itemDate = new Date(item.date);
+              return itemDate > lastSeenDate;
+            }
+            // No lastSeenDate means show all non-dismissed items (first time user)
+            return true;
           });
         }
 
@@ -63,6 +91,7 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
       } catch (error) {
         console.error('Error fetching news:', error);
         setNewsItems([]);
+        setFullFeed([]);
       } finally {
         setLoading(false);
       }
@@ -89,8 +118,25 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
         console.error('Error dismissing news item:', error);
       }
     }
+
+    // Update lastSeenNewsId to the most recent item in the feed (so user won't see current items again)
+    if (isAuthenticated && fullFeed.length > 0 && !forceShowAll) {
+      // Find the most recent item by date
+      const sortedItems = [...fullFeed].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      const mostRecentId = sortedItems[0].id;
+      try {
+        // Get current status to preserve dismissedNewsIds
+        const status = await api.getUserNewsStatus();
+        await api.updateUserNewsStatus(mostRecentId, status.dismissedNewsIds || []);
+      } catch (error) {
+        console.error('Error updating lastSeenNewsId:', error);
+      }
+    }
+
     onClose();
-  }, [dontShowAgain, isAuthenticated, newsItems, currentIndex, onClose]);
+  }, [dontShowAgain, isAuthenticated, newsItems, currentIndex, onClose, fullFeed, forceShowAll]);
 
   const handleNext = useCallback(async () => {
     // Dismiss current item if checkbox is checked
