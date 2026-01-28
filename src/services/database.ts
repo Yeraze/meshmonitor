@@ -8509,8 +8509,9 @@ class DatabaseService {
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
         channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
-        relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction, transport_mechanism
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction,
+        transport_mechanism, decrypted_by, decrypted_channel_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -8535,7 +8536,9 @@ class DatabaseService {
       packet.payload_preview ?? null,
       packet.metadata ?? null,
       packet.direction ?? 'rx',
-      packet.transport_mechanism ?? null
+      packet.transport_mechanism ?? null,
+      packet.decrypted_by ?? null,
+      packet.decrypted_channel_id ?? null
     );
 
     // Enforce max count limit
@@ -8609,6 +8612,8 @@ class DatabaseService {
         direction: packet.direction ?? 'rx',
         created_at: Date.now(),
         transport_mechanism: packet.transport_mechanism ?? null,
+        decrypted_by: packet.decrypted_by ?? null,
+        decrypted_channel_id: packet.decrypted_channel_id ?? null,
       };
 
       // Use type assertion to avoid complex type narrowing
