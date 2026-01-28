@@ -4,6 +4,7 @@ import protobufService, { convertIpv4ConfigToStrings } from './protobufService.j
 import { getProtobufRoot } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
+import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
@@ -188,6 +189,27 @@ interface AutoResponderTrigger {
   multiline?: boolean;
 }
 
+/**
+ * Geofence trigger configuration
+ */
+interface GeofenceTriggerConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  shape: { type: 'circle'; center: { lat: number; lng: number }; radiusKm: number }
+       | { type: 'polygon'; vertices: Array<{ lat: number; lng: number }> };
+  event: 'entry' | 'exit' | 'while_inside';
+  whileInsideIntervalMinutes?: number;
+  nodeFilter: { type: 'all' } | { type: 'selected'; nodeNums: number[] };
+  responseType: 'text' | 'script';
+  response?: string;
+  scriptPath?: string;
+  channel: number | 'dm';
+  lastRun?: number;
+  lastResult?: 'success' | 'error';
+  lastError?: string;
+}
+
 class MeshtasticManager {
   private transport: TcpTransport | null = null;
   private isConnected = false;
@@ -199,6 +221,8 @@ class MeshtasticManager {
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
+  private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
   private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
   private pendingTracerouteTimestamps: Map<number, number> = new Map(); // Track when traceroutes were initiated for timeout detection
   private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
@@ -495,6 +519,9 @@ class MeshtasticManager {
 
         // Start timer trigger scheduler
         this.startTimerScheduler();
+
+        // Start geofence engine
+        this.initGeofenceEngine();
 
         // Start auto key repair scheduler
         this.startKeyRepairScheduler();
@@ -1276,6 +1303,378 @@ class MeshtasticManager {
   restartTimerScheduler(): void {
     logger.debug('⏱️ Restarting timer scheduler due to settings change');
     this.startTimerScheduler();
+  }
+
+  // ─── Geofence Engine ───────────────────────────────────────────────────
+
+  /**
+   * Initialize the geofence engine. Loads triggers from settings,
+   * computes initial inside/outside state from current node positions
+   * (without firing events), and sets up "while inside" interval timers.
+   */
+  private initGeofenceEngine(): void {
+    // Clear existing state and timers
+    this.geofenceWhileInsideTimers.forEach(timer => clearInterval(timer));
+    this.geofenceWhileInsideTimers.clear();
+    this.geofenceNodeState.clear();
+
+    const triggersJson = databaseService.getSetting('geofenceTriggers');
+    if (!triggersJson) {
+      logger.debug('📍 No geofence triggers configured');
+      return;
+    }
+
+    let triggers: GeofenceTriggerConfig[];
+    try {
+      triggers = JSON.parse(triggersJson);
+    } catch (e) {
+      logger.error('📍 Failed to parse geofenceTriggers setting:', e);
+      return;
+    }
+
+    const enabledTriggers = triggers.filter(t => t.enabled);
+    if (enabledTriggers.length === 0) {
+      logger.debug('📍 No enabled geofence triggers');
+      return;
+    }
+
+    // Compute initial state from current node positions (no events fired)
+    const allNodes = databaseService.getAllNodes ? databaseService.getAllNodes() : [];
+    for (const trigger of enabledTriggers) {
+      const insideSet = new Set<number>();
+      for (const node of allNodes) {
+        if (node.latitude == null || node.longitude == null) continue;
+        const nodeNum = Number(node.nodeNum);
+
+        // Check node filter
+        if (trigger.nodeFilter.type === 'selected' &&
+            !trigger.nodeFilter.nodeNums.includes(nodeNum)) {
+          continue;
+        }
+
+        if (isPointInGeofence(node.latitude, node.longitude, trigger.shape)) {
+          insideSet.add(nodeNum);
+        }
+      }
+      this.geofenceNodeState.set(trigger.id, insideSet);
+      logger.debug(`📍 Geofence "${trigger.name}": ${insideSet.size} node(s) initially inside`);
+
+      // Set up "while inside" interval timer
+      if (trigger.event === 'while_inside' && trigger.whileInsideIntervalMinutes && trigger.whileInsideIntervalMinutes >= 1) {
+        const intervalMs = trigger.whileInsideIntervalMinutes * 60 * 1000;
+        const timer = setInterval(() => {
+          this.executeWhileInsideGeofenceTrigger(trigger);
+        }, intervalMs);
+        this.geofenceWhileInsideTimers.set(trigger.id, timer);
+        logger.info(`📍 Geofence "${trigger.name}": while_inside timer set for every ${trigger.whileInsideIntervalMinutes} minute(s)`);
+      }
+    }
+
+    logger.info(`📍 Geofence engine started with ${enabledTriggers.length} active trigger(s)`);
+  }
+
+  /**
+   * Check all geofence triggers for a node that just reported a new position.
+   * Fires entry/exit events based on state transitions.
+   */
+  private checkGeofencesForNode(nodeNum: number, lat: number, lng: number): void {
+    const triggersJson = databaseService.getSetting('geofenceTriggers');
+    if (!triggersJson) return;
+
+    let triggers: GeofenceTriggerConfig[];
+    try {
+      triggers = JSON.parse(triggersJson);
+    } catch {
+      return;
+    }
+
+    for (const trigger of triggers) {
+      if (!trigger.enabled) continue;
+
+      // Check node filter
+      if (trigger.nodeFilter.type === 'selected' &&
+          !trigger.nodeFilter.nodeNums.includes(nodeNum)) {
+        continue;
+      }
+
+      const isInside = isPointInGeofence(lat, lng, trigger.shape);
+      const stateSet = this.geofenceNodeState.get(trigger.id) || new Set<number>();
+      const wasInside = stateSet.has(nodeNum);
+
+      if (isInside && !wasInside) {
+        // Node entered geofence
+        stateSet.add(nodeNum);
+        this.geofenceNodeState.set(trigger.id, stateSet);
+        if (trigger.event === 'entry' || trigger.event === 'while_inside') {
+          logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} entered`);
+          this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'entry');
+        }
+      } else if (!isInside && wasInside) {
+        // Node exited geofence
+        stateSet.delete(nodeNum);
+        this.geofenceNodeState.set(trigger.id, stateSet);
+        if (trigger.event === 'exit') {
+          logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} exited`);
+          this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'exit');
+        }
+      }
+      // If isInside && wasInside — no state change, while_inside handled by timer
+      // If !isInside && !wasInside — no state change
+    }
+  }
+
+  /**
+   * Execute a geofence trigger for a specific node and event.
+   */
+  private async executeGeofenceTrigger(
+    trigger: GeofenceTriggerConfig,
+    nodeNum: number,
+    lat: number,
+    lng: number,
+    eventType: 'entry' | 'exit' | 'while_inside'
+  ): Promise<void> {
+    try {
+      if (trigger.responseType === 'text' && trigger.response?.trim()) {
+        const expanded = await this.replaceGeofenceTokens(trigger.response, trigger, nodeNum, lat, lng, eventType);
+        const truncated = this.truncateMessageForMeshtastic(expanded, 200);
+
+        const isDM = trigger.channel === 'dm';
+        logger.info(`📍 Geofence "${trigger.name}" sending text to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}`);
+        messageQueueService.enqueue(
+          truncated,
+          isDM ? nodeNum : 0,
+          undefined,
+          () => logger.info(`✅ Geofence "${trigger.name}" message delivered to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}`),
+          (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" message failed: ${reason}`),
+          isDM ? undefined : trigger.channel as number
+        );
+
+        this.updateGeofenceTriggerResult(trigger.id, 'success');
+      } else if (trigger.responseType === 'script' && trigger.scriptPath) {
+        await this.executeGeofenceScript(trigger, nodeNum, lat, lng, eventType);
+      } else {
+        logger.error(`📍 Geofence "${trigger.name}" has no valid response configured`);
+        this.updateGeofenceTriggerResult(trigger.id, 'error', 'No response configured');
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || 'Unknown error';
+      logger.error(`📍 Geofence "${trigger.name}" trigger failed: ${errorMessage}`);
+      this.updateGeofenceTriggerResult(trigger.id, 'error', errorMessage);
+    }
+  }
+
+  /**
+   * Execute a geofence trigger script.
+   */
+  private async executeGeofenceScript(
+    trigger: GeofenceTriggerConfig,
+    nodeNum: number,
+    lat: number,
+    lng: number,
+    eventType: string
+  ): Promise<void> {
+    const scriptPath = trigger.scriptPath!;
+
+    // Validate script path
+    if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
+      logger.error(`📍 Invalid script path for geofence "${trigger.name}": ${scriptPath}`);
+      this.updateGeofenceTriggerResult(trigger.id, 'error', 'Invalid script path');
+      return;
+    }
+
+    const resolvedPath = this.resolveScriptPath(scriptPath);
+    if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+      logger.error(`📍 Script file not found for geofence "${trigger.name}": ${scriptPath}`);
+      this.updateGeofenceTriggerResult(trigger.id, 'error', 'Script file not found');
+      return;
+    }
+
+    const ext = scriptPath.split('.').pop()?.toLowerCase();
+    let interpreter: string;
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    switch (ext) {
+      case 'js': case 'mjs': interpreter = isDev ? 'node' : '/usr/local/bin/node'; break;
+      case 'py': interpreter = isDev ? 'python' : '/usr/bin/python'; break;
+      case 'sh': interpreter = isDev ? 'sh' : '/bin/sh'; break;
+      default:
+        this.updateGeofenceTriggerResult(trigger.id, 'error', `Unsupported script extension: ${ext}`);
+        return;
+    }
+
+    try {
+      const { execFile } = await import('child_process');
+      const { promisify } = await import('util');
+      const execFileAsync = promisify(execFile);
+
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      const node = databaseService.getNode(nodeNum);
+      const dist = distanceToGeofenceCenter(lat, lng, trigger.shape);
+
+      const scriptEnv: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        GEOFENCE_NAME: trigger.name,
+        GEOFENCE_ID: trigger.id,
+        GEOFENCE_EVENT: eventType,
+        NODE_NUM: String(nodeNum),
+        NODE_ID: nodeId,
+        NODE_LAT: String(lat),
+        NODE_LON: String(lng),
+        DISTANCE_TO_CENTER: dist.toFixed(2),
+      };
+
+      if (node?.longName) scriptEnv.NODE_LONG_NAME = node.longName;
+      if (node?.shortName) scriptEnv.NODE_SHORT_NAME = node.shortName;
+
+      // Add MeshMonitor node location
+      const localNodeInfo = this.getLocalNodeInfo();
+      if (localNodeInfo) {
+        const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
+        if (mmNode?.latitude != null && mmNode?.longitude != null) {
+          scriptEnv.MM_LAT = String(mmNode.latitude);
+          scriptEnv.MM_LON = String(mmNode.longitude);
+        }
+      }
+
+      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+        timeout: 30000,
+        env: scriptEnv,
+        maxBuffer: 1024 * 1024,
+      });
+
+      if (stderr) logger.debug(`📍 Geofence script stderr: ${stderr}`);
+
+      // Parse JSON output and send messages (same format as timer scripts)
+      if (stdout && stdout.trim()) {
+        let scriptOutput;
+        try {
+          scriptOutput = JSON.parse(stdout.trim());
+        } catch {
+          this.updateGeofenceTriggerResult(trigger.id, 'success');
+          return;
+        }
+
+        let scriptResponses: string[];
+        if (scriptOutput.responses && Array.isArray(scriptOutput.responses)) {
+          scriptResponses = scriptOutput.responses.filter((r: any) => typeof r === 'string');
+        } else if (scriptOutput.response && typeof scriptOutput.response === 'string') {
+          scriptResponses = [scriptOutput.response];
+        } else {
+          this.updateGeofenceTriggerResult(trigger.id, 'success');
+          return;
+        }
+
+        const isDM = trigger.channel === 'dm';
+        for (const resp of scriptResponses) {
+          const truncated = this.truncateMessageForMeshtastic(resp, 200);
+          messageQueueService.enqueue(
+            truncated,
+            isDM ? nodeNum : 0,
+            undefined,
+            () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
+            (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
+            isDM ? undefined : trigger.channel as number
+          );
+        }
+      }
+
+      this.updateGeofenceTriggerResult(trigger.id, 'success');
+    } catch (error: any) {
+      const errorMessage = error.message || 'Unknown error';
+      logger.error(`📍 Geofence "${trigger.name}" script failed: ${errorMessage}`);
+      this.updateGeofenceTriggerResult(trigger.id, 'error', errorMessage);
+    }
+  }
+
+  /**
+   * Called by interval timer for "while inside" geofence triggers.
+   * Iterates nodes currently in the geofence and fires the trigger for each.
+   */
+  private executeWhileInsideGeofenceTrigger(trigger: GeofenceTriggerConfig): void {
+    const stateSet = this.geofenceNodeState.get(trigger.id);
+    if (!stateSet || stateSet.size === 0) return;
+
+    for (const nodeNum of stateSet) {
+      const node = databaseService.getNode(nodeNum);
+      if (!node || node.latitude == null || node.longitude == null) continue;
+
+      // Re-validate position is still inside
+      if (!isPointInGeofence(node.latitude, node.longitude, trigger.shape)) {
+        stateSet.delete(nodeNum);
+        logger.debug(`📍 Geofence "${trigger.name}": node ${nodeNum} no longer inside (stale position)`);
+        continue;
+      }
+
+      logger.info(`📍 Geofence "${trigger.name}": while_inside tick for node ${nodeNum}`);
+      this.executeGeofenceTrigger(trigger, nodeNum, node.latitude, node.longitude, 'while_inside');
+    }
+  }
+
+  /**
+   * Replace geofence-specific tokens in a message template.
+   */
+  private async replaceGeofenceTokens(
+    message: string,
+    trigger: GeofenceTriggerConfig,
+    nodeNum: number,
+    lat: number,
+    lng: number,
+    eventType: string
+  ): Promise<string> {
+    // Start with standard announcement tokens
+    let result = await this.replaceAnnouncementTokens(message);
+
+    const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+    const node = databaseService.getNode(nodeNum);
+    const dist = distanceToGeofenceCenter(lat, lng, trigger.shape);
+
+    result = result.replace(/{GEOFENCE_NAME}/g, trigger.name);
+    result = result.replace(/{NODE_LAT}/g, String(lat));
+    result = result.replace(/{NODE_LON}/g, String(lng));
+    result = result.replace(/{NODE_ID}/g, nodeId);
+    result = result.replace(/{NODE_NUM}/g, String(nodeNum));
+    result = result.replace(/{LONG_NAME}/g, node?.longName || nodeId);
+    result = result.replace(/{SHORT_NAME}/g, node?.shortName || nodeId);
+    result = result.replace(/{DISTANCE_TO_CENTER}/g, dist.toFixed(2));
+    result = result.replace(/{EVENT}/g, eventType);
+
+    return result;
+  }
+
+  /**
+   * Update the result/status of a geofence trigger in settings.
+   */
+  private updateGeofenceTriggerResult(triggerId: string, result: 'success' | 'error', errorMessage?: string): void {
+    try {
+      const triggersJson = databaseService.getSetting('geofenceTriggers');
+      if (!triggersJson) return;
+
+      const triggers = JSON.parse(triggersJson);
+      const trigger = triggers.find((t: any) => t.id === triggerId);
+
+      if (trigger) {
+        trigger.lastRun = Date.now();
+        trigger.lastResult = result;
+        if (result === 'error' && errorMessage) {
+          trigger.lastError = errorMessage;
+        } else {
+          delete trigger.lastError;
+        }
+
+        databaseService.setSetting('geofenceTriggers', JSON.stringify(triggers));
+        logger.debug(`📍 Updated geofence trigger ${triggerId} result: ${result}`);
+      }
+    } catch (e) {
+      logger.error('📍 Failed to update geofence trigger result:', e);
+    }
+  }
+
+  /**
+   * Restart the geofence engine (called when settings change).
+   */
+  restartGeofenceEngine(): void {
+    logger.debug('📍 Restarting geofence engine due to settings change');
+    this.initGeofenceEngine();
   }
 
   /**
@@ -2880,6 +3279,9 @@ class MeshtasticManager {
 
           // Update mobility detection for this node
           databaseService.updateNodeMobility(nodeId);
+
+          // Check geofence triggers for this node's new position
+          this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude);
 
           logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${precisionBits ?? 'unknown'} bits, channel: ${channelIndex})`);
         }

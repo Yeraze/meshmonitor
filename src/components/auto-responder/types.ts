@@ -39,6 +39,44 @@ export interface TimerTrigger {
   lastError?: string; // Error message if last run failed
 }
 
+export type GeofenceShapeCircle = {
+  type: 'circle';
+  center: { lat: number; lng: number };
+  radiusKm: number;
+};
+
+export type GeofenceShapePolygon = {
+  type: 'polygon';
+  vertices: Array<{ lat: number; lng: number }>;
+};
+
+export type GeofenceShape = GeofenceShapeCircle | GeofenceShapePolygon;
+
+export type GeofenceEvent = 'entry' | 'exit' | 'while_inside';
+
+export type GeofenceNodeFilter =
+  | { type: 'all' }
+  | { type: 'selected'; nodeNums: number[] };
+
+export type GeofenceResponseType = 'text' | 'script';
+
+export interface GeofenceTrigger {
+  id: string;
+  name: string;
+  enabled: boolean;
+  shape: GeofenceShape;
+  event: GeofenceEvent;
+  whileInsideIntervalMinutes?: number; // Required when event is 'while_inside'
+  nodeFilter: GeofenceNodeFilter;
+  responseType: GeofenceResponseType;
+  response?: string; // Text message with expansion tokens (when responseType is 'text')
+  scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
+  channel: number | 'dm'; // Channel index (0-7) or 'dm' for direct message to triggering node
+  lastRun?: number; // Unix timestamp of last execution
+  lastResult?: 'success' | 'error';
+  lastError?: string;
+}
+
 export interface AutoResponderSectionProps {
   enabled: boolean;
   triggers: AutoResponderTrigger[];
