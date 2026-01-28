@@ -405,6 +405,11 @@ setTimeout(async () => {
     // via the settings endpoint. This prevents welcoming existing nodes when
     // the feature is enabled after nodes are already in the database.
 
+    // Clear any runtime IP/port overrides from previous sessions
+    // These are temporary settings that should reset on container restart
+    await databaseService.setSettingAsync('meshtasticNodeIpOverride', '');
+    await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
 
