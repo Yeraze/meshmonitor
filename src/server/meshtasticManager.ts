@@ -718,9 +718,18 @@ class MeshtasticManager {
     }
 
     const intervalMs = this.tracerouteIntervalMinutes * 60 * 1000;
-    logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval`);
 
-    this.tracerouteInterval = setInterval(async () => {
+    // Add random initial jitter (0 to min of interval or 5 minutes) to prevent network bursts
+    // when multiple MeshMonitor instances start at similar times with the same interval.
+    // Only the first execution is delayed; subsequent runs use the regular interval.
+    const maxJitterMs = Math.min(intervalMs, 5 * 60 * 1000); // Cap at 5 minutes
+    const initialJitterMs = Math.random() * maxJitterMs;
+    const jitterSeconds = Math.round(initialJitterMs / 1000);
+
+    logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval (initial jitter: ${jitterSeconds}s)`);
+
+    // The traceroute execution logic
+    const executeTraceroute = async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
           // Use async version which supports PostgreSQL/MySQL
@@ -748,7 +757,16 @@ class MeshtasticManager {
       } else {
         logger.info('🗺️ Auto-traceroute: Skipping - not connected or no local node info');
       }
-    }, intervalMs);
+    };
+
+    // Delay first execution by jitter, then start regular interval
+    setTimeout(() => {
+      // Execute first traceroute
+      executeTraceroute();
+
+      // Start regular interval (no jitter on subsequent runs)
+      this.tracerouteInterval = setInterval(executeTraceroute, intervalMs);
+    }, initialJitterMs);
   }
 
   setTracerouteInterval(minutes: number): void {
