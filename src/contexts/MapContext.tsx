@@ -35,8 +35,8 @@ interface MapContextType {
   setShowAnimations: (show: boolean) => void;
   showEstimatedPositions: boolean;
   setShowEstimatedPositions: (show: boolean) => void;
-  showAccuracyCircles: boolean;
-  setShowAccuracyCircles: (show: boolean) => void;
+  showAccuracyRegions: boolean;
+  setShowAccuracyRegions: (show: boolean) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -75,7 +75,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     const saved = localStorage.getItem('showEstimatedPositions');
     return saved !== null ? saved === 'true' : true; // Default to true
   });
-  const [showAccuracyCircles, setShowAccuracyCirclesState] = useState<boolean>(false);
+  const [showAccuracyRegions, setShowAccuracyRegionsState] = useState<boolean>(false);
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -142,9 +142,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     savePreferenceToServer({ showEstimatedPositions: value });
   }, []);
 
-  const setShowAccuracyCircles = React.useCallback((value: boolean) => {
-    setShowAccuracyCirclesState(value);
-    savePreferenceToServer({ showAccuracyCircles: value });
+  const setShowAccuracyRegions = React.useCallback((value: boolean) => {
+    setShowAccuracyRegionsState(value);
+    savePreferenceToServer({ showAccuracyRegions: value });
   }, []);
 
   // Helper function to save preference to server
@@ -215,8 +215,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showEstimatedPositions !== undefined) {
               setShowEstimatedPositionsState(preferences.showEstimatedPositions);
             }
-            if (preferences.showAccuracyCircles !== undefined) {
-              setShowAccuracyCirclesState(preferences.showAccuracyCircles);
+            // Support both old 'showAccuracyCircles' and new 'showAccuracyRegions' for backward compatibility
+            if (preferences.showAccuracyRegions !== undefined) {
+              setShowAccuracyRegionsState(preferences.showAccuracyRegions);
+            } else if (preferences.showAccuracyCircles !== undefined) {
+              setShowAccuracyRegionsState(preferences.showAccuracyCircles);
             }
           }
           // If preferences is null (anonymous user), initial defaults are already set
@@ -275,8 +278,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowAnimations,
         showEstimatedPositions,
         setShowEstimatedPositions,
-        showAccuracyCircles,
-        setShowAccuracyCircles,
+        showAccuracyRegions,
+        setShowAccuracyRegions,
         animatedNodes,
         triggerNodeAnimation,
         mapCenterTarget,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
@@ -198,8 +198,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowAnimations,
     showEstimatedPositions,
     setShowEstimatedPositions,
-    showAccuracyCircles,
-    setShowAccuracyCircles,
+    showAccuracyRegions,
+    setShowAccuracyRegions,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -1418,10 +1418,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <label className="map-control-item">
                     <input
                       type="checkbox"
-                      checked={showAccuracyCircles}
-                      onChange={(e) => setShowAccuracyCircles(e.target.checked)}
+                      checked={showAccuracyRegions}
+                      onChange={(e) => setShowAccuracyRegions(e.target.checked)}
                     />
-                    <span>Show Accuracy Circles</span>
+                    <span>Show Accuracy Regions</span>
                   </label>
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
@@ -1736,8 +1736,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   );
                 })}
 
-              {/* Draw position accuracy circles for all nodes with precision data */}
-              {showAccuracyCircles && nodesWithPosition
+              {/* Draw position accuracy regions (rectangles) for all nodes with precision data */}
+              {showAccuracyRegions && nodesWithPosition
                 .filter(node => {
                   // Check precision data exists
                   if (node.positionPrecisionBits === undefined || node.positionPrecisionBits === null) return false;
@@ -1745,29 +1745,47 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   // Apply standard filters
                   if (!showMqttNodes && node.viaMqtt) return false;
                   if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                  // When traceroute is active, only show circles for nodes in the traceroute
+                  // When traceroute is active, only show regions for nodes in the traceroute
                   if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
                   return true;
                 })
                 .map(node => {
-                  // Convert precision_bits to radius in meters
+                  // Convert precision_bits to size in meters
                   // precision_bits indicates how many bits of lat/lon are valid
                   // Earth's circumference is ~40,075,000 meters
-                  // At N precision bits, accuracy is Earth's circumference / 2^N
-                  // Radius is half of that accuracy diameter
+                  // At N precision bits, the grid cell size is Earth's circumference / 2^N
                   const earthCircumference = 40_075_000; // meters
-                  const radiusMeters = earthCircumference / Math.pow(2, node.positionPrecisionBits!) / 2;
+                  const sizeMeters = earthCircumference / Math.pow(2, node.positionPrecisionBits!);
+                  const halfSizeMeters = sizeMeters / 2;
 
-                  // Get hop color for the circle (same as marker)
+                  // Convert meters to lat/lng offsets
+                  // 1 degree of latitude is approximately 111,111 meters
+                  const metersPerDegreeLat = 111_111;
+                  const lat = node.position!.latitude;
+                  const lng = node.position!.longitude;
+
+                  // Latitude offset is constant
+                  const latOffset = halfSizeMeters / metersPerDegreeLat;
+
+                  // Longitude offset varies with latitude (cos(lat) factor)
+                  const metersPerDegreeLng = metersPerDegreeLat * Math.cos(lat * Math.PI / 180);
+                  const lngOffset = halfSizeMeters / metersPerDegreeLng;
+
+                  // Calculate bounds: [[south, west], [north, east]]
+                  const bounds: [[number, number], [number, number]] = [
+                    [lat - latOffset, lng - lngOffset],
+                    [lat + latOffset, lng + lngOffset]
+                  ];
+
+                  // Get hop color for the region (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;
                   const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                   const color = getHopColor(hops);
 
                   return (
-                    <Circle
+                    <Rectangle
                       key={`accuracy-${node.nodeNum}`}
-                      center={[node.position!.latitude, node.position!.longitude]}
-                      radius={radiusMeters}
+                      bounds={bounds}
                       pathOptions={{
                         color: color,
                         fillColor: color,
