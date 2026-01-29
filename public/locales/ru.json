@@ -1783,7 +1783,7 @@
     "backup_management.confirm_delete": "Вы уверены, что хотите удалить резервную копию \"{{filename}}\"?",
     "config.reboot_confirm": "Вы уверены, что хотите перезагрузить устройство? \n\nУстройство перезагрузится и будет недоступно примерно 30-60 секунд.",
     "storeforward_config.history_return_max_description": "",
-    "lora_config.spread_factor": "",
+    "lora_config.spread_factor": "Фактор распространения",
     "notifications.config_save_failed": "Ошибка сохранения настроек",
     "config.node_names_saved_toast": "Имена узлов сохранены! Устройство будет перезагружено...",
     "import_config.title": "Импорт настроек Meshtastic",
@@ -2779,7 +2779,7 @@
     "power_config.advanced_settings": "Расширенные настройки",
     "admin_commands.position_flag_seq_no": "Включить порядковый номер",
     "audio_config.codec2_enabled": "",
-    "admin_commands.channel_number": "",
+    "admin_commands.channel_number": "Номер канала",
     "auto_responder.type_script": "Скрипт",
     "notifications.ios_step_share": "Нажмите кнопку «Поделиться» (квадрат со стрелкой)",
     "auto_responder.type_text": "Текст",
@@ -3423,5 +3423,11 @@
     "node_info.success": "Адрес успешно изменен. Страница перезагружается...",
     "node_info.error_empty_ip": "Пожалуйста, введите IP-адрес или имя хоста",
     "node_info.error_invalid_ip": "Пожалуйста, введите действительный IP-адрес или имя хоста (с необязательным указанием порта)",
-    "node_info.error_failed": "Не удалось изменить адрес"
+    "node_info.error_failed": "Не удалось изменить адрес",
+    "node_info.short_name": "Короткое имя",
+    "node_info.node_id": "ID узла",
+    "node_info.connection_section": "Подключение",
+    "node_info.address": "Адрес",
+    "node_info.save": "Применить изменения",
+    "node_info.saving": "Применяется..."
 }
