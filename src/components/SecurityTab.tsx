@@ -16,13 +16,25 @@ interface SecurityNode {
   keySecurityIssueDetails?: string;
   publicKey?: string;
   hwModel?: number;
+  isExcessivePackets?: boolean;
+  packetRatePerHour?: number | null;
+  packetRateLastChecked?: number | null;
+}
+
+interface TopBroadcaster {
+  nodeNum: number;
+  shortName: string | null;
+  longName: string | null;
+  packetCount: number;
 }
 
 interface SecurityIssuesResponse {
   total: number;
   lowEntropyCount: number;
   duplicateKeyCount: number;
+  excessivePacketsCount: number;
   nodes: SecurityNode[];
+  topBroadcasters: TopBroadcaster[];
 }
 
 interface ScannerStatus {
@@ -301,6 +313,10 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
           <div className="stat-value">{issues?.duplicateKeyCount || 0}</div>
           <div className="stat-label">{t('security.have_duplicate')}</div>
         </div>
+        <div className="stat-card excessive-packets">
+          <div className="stat-value">{issues?.excessivePacketsCount || 0}</div>
+          <div className="stat-label">{t('security.have_excessive_packets')}</div>
+        </div>
       </div>
       {issues && issues.total > 0 && (issues.lowEntropyCount + issues.duplicateKeyCount > issues.total) && (
         <div className="info-note" style={{marginTop: '0.5rem', fontSize: '0.85rem', color: '#666', fontStyle: 'italic'}}>
@@ -469,6 +485,117 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Top Broadcasters Table */}
+            {issues.topBroadcasters && issues.topBroadcasters.length > 0 && (
+              <div className="issues-section top-broadcasters-section">
+                <h3>{t('security.top_broadcasters')}</h3>
+                <p className="section-description">{t('security.top_broadcasters_description')}</p>
+                <table className="top-broadcasters-table">
+                  <thead>
+                    <tr>
+                      <th>{t('security.rank')}</th>
+                      <th>{t('security.node')}</th>
+                      <th>{t('security.node_id')}</th>
+                      <th>{t('security.packets_hour')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {issues.topBroadcasters.map((broadcaster, index) => (
+                      <tr key={broadcaster.nodeNum}>
+                        <td className="rank">#{index + 1}</td>
+                        <td className="node-name">
+                          <span
+                            className="node-link"
+                            onClick={() => handleNodeClick(broadcaster.nodeNum)}
+                          >
+                            {broadcaster.longName || broadcaster.shortName || 'Unknown'}
+                          </span>
+                          {broadcaster.shortName && broadcaster.longName && (
+                            <span className="short-name"> ({broadcaster.shortName})</span>
+                          )}
+                        </td>
+                        <td className="node-id">!{broadcaster.nodeNum.toString(16).padStart(8, '0')}</td>
+                        <td className="packet-count">{broadcaster.packetCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Excessive Packets Section */}
+            {issues.excessivePacketsCount > 0 && (
+              <div className="issues-section">
+                <h3>{t('security.excessive_packets_count', { count: issues.excessivePacketsCount })}</h3>
+                <div className="issues-list">
+                  {issues.nodes.filter(node => node.isExcessivePackets).map((node) => (
+                    <div key={node.nodeNum} className="issue-card">
+                      <div
+                        className="issue-header"
+                        onClick={() => setExpandedNode(expandedNode === node.nodeNum ? null : node.nodeNum)}
+                      >
+                        <div className="node-info">
+                          <div className="node-name">
+                            <span
+                              className="node-link"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNodeClick(node.nodeNum);
+                              }}
+                            >
+                              {node.longName || node.shortName} ({node.shortName})
+                            </span>
+                          </div>
+                          <div className="node-id">
+                            Node #{node.nodeNum.toString(16).toUpperCase()}
+                            {node.hwModel !== undefined && node.hwModel !== 0 && (
+                              <span className="hw-model"> - {getHardwareModelName(node.hwModel)}</span>
+                            )}
+                          </div>
+                          <div className="node-last-seen">
+                            {t('security.last_seen', { time: formatRelativeTime(node.lastHeard) })}
+                          </div>
+                        </div>
+                        <div className="issue-types">
+                          <span className="badge excessive-packets">{t('security.badge_excessive_packets')}</span>
+                          {node.packetRatePerHour && (
+                            <span className="packet-rate">{node.packetRatePerHour} {t('security.packets_per_hour')}</span>
+                          )}
+                        </div>
+                        <div className="expand-icon">
+                          {expandedNode === node.nodeNum ? '▼' : '▶'}
+                        </div>
+                      </div>
+
+                      {expandedNode === node.nodeNum && (
+                        <div className="issue-details">
+                          <div className="detail-row">
+                            <span className="detail-label">{t('security.packet_rate')}:</span>
+                            <span className="detail-value">{node.packetRatePerHour || 0} {t('security.packets_per_hour')}</span>
+                          </div>
+                          <div className="detail-row">
+                            <span className="detail-label">{t('security.rate_last_checked')}:</span>
+                            <span className="detail-value">{formatDate(node.packetRateLastChecked || null)}</span>
+                          </div>
+                          <div className="detail-row">
+                            <span className="detail-label">{t('security.last_heard')}:</span>
+                            <span className="detail-value">{formatDate(node.lastHeard)}</span>
+                          </div>
+                          <div className="detail-row recommendations">
+                            <span className="detail-label">{t('security.recommendations')}:</span>
+                            <ul>
+                              <li>{t('security.recommendation_excessive_packets')}</li>
+                              <li>{t('security.recommendation_investigate_spam')}</li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </>

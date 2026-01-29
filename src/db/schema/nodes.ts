@@ -42,6 +42,10 @@ export const nodesSqlite = sqliteTable('nodes', {
   duplicateKeyDetected: integer('duplicateKeyDetected', { mode: 'boolean' }),
   keyMismatchDetected: integer('keyMismatchDetected', { mode: 'boolean' }),
   keySecurityIssueDetails: text('keySecurityIssueDetails'),
+  // Spam detection
+  isExcessivePackets: integer('isExcessivePackets', { mode: 'boolean' }).default(false),
+  packetRatePerHour: integer('packetRatePerHour'),
+  packetRateLastChecked: integer('packetRateLastChecked'),
   welcomedAt: integer('welcomedAt'),
   // Position precision tracking
   positionChannel: integer('positionChannel'),
@@ -100,6 +104,10 @@ export const nodesPostgres = pgTable('nodes', {
   duplicateKeyDetected: pgBoolean('duplicateKeyDetected'),
   keyMismatchDetected: pgBoolean('keyMismatchDetected'),
   keySecurityIssueDetails: pgText('keySecurityIssueDetails'),
+  // Spam detection
+  isExcessivePackets: pgBoolean('isExcessivePackets').default(false),
+  packetRatePerHour: pgInteger('packetRatePerHour'),
+  packetRateLastChecked: pgBigint('packetRateLastChecked', { mode: 'number' }),
   welcomedAt: pgBigint('welcomedAt', { mode: 'number' }),
   // Position precision tracking
   positionChannel: pgInteger('positionChannel'),
@@ -158,6 +166,10 @@ export const nodesMysql = mysqlTable('nodes', {
   duplicateKeyDetected: myBoolean('duplicateKeyDetected'),
   keyMismatchDetected: myBoolean('keyMismatchDetected'),
   keySecurityIssueDetails: myVarchar('keySecurityIssueDetails', { length: 512 }),
+  // Spam detection
+  isExcessivePackets: myBoolean('isExcessivePackets').default(false),
+  packetRatePerHour: myInt('packetRatePerHour'),
+  packetRateLastChecked: myBigint('packetRateLastChecked', { mode: 'number' }),
   welcomedAt: myBigint('welcomedAt', { mode: 'number' }),
   // Position precision tracking
   positionChannel: myInt('positionChannel'),
