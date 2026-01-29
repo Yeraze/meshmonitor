@@ -4973,9 +4973,9 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
             }
           }
 
-          // Validate channel ('dm' or number 0-7)
-          if (trigger.channel !== 'dm' && (typeof trigger.channel !== 'number' || trigger.channel < 0 || trigger.channel > 7)) {
-            return res.status(400).json({ error: 'Geofence channel must be "dm" or a number between 0 and 7' });
+          // Validate channel ('dm', 'none', or number 0-7)
+          if (trigger.channel !== 'dm' && trigger.channel !== 'none' && (typeof trigger.channel !== 'number' || trigger.channel < 0 || trigger.channel > 7)) {
+            return res.status(400).json({ error: 'Geofence channel must be "dm", "none", or a number between 0 and 7' });
           }
 
           // Validate nodeFilter

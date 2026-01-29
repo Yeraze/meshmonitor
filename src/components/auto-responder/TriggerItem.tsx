@@ -42,7 +42,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editResponse, setEditResponse] = useState(trigger.response);
   const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
   const [editVerifyResponse, setEditVerifyResponse] = useState(trigger.verifyResponse || false);
-  const [editChannel, setEditChannel] = useState<number | 'dm'>(trigger.channel !== undefined ? trigger.channel : 'dm');
+  const [editChannel, setEditChannel] = useState<number | 'dm' | 'none'>(trigger.channel !== undefined ? trigger.channel : 'dm');
   const [editScriptArgs, setEditScriptArgs] = useState(trigger.scriptArgs || '');
   const [triggerValidation, setTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
 
@@ -269,7 +269,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               <select
                 value={editChannel}
                 onChange={(e) => {
-                  const value = e.target.value === 'dm' ? 'dm' : parseInt(e.target.value);
+                  const val = e.target.value;
+                  const value = val === 'dm' ? 'dm' : val === 'none' ? 'none' : parseInt(val);
                   setEditChannel(value);
                   // Auto-disable verifyResponse when switching to a channel
                   if (value !== 'dm') {
@@ -279,6 +280,9 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 className="setting-input"
                 style={{ flex: '1' }}
               >
+                {editResponseType === 'script' && (
+                  <option value="none">{t('auto_responder.channel_none', 'None (no mesh output)')}</option>
+                )}
                 <option value="dm">Direct Messages</option>
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>

@@ -184,7 +184,7 @@ interface AutoResponderTrigger {
   trigger: string | string[];
   response: string;
   responseType?: 'text' | 'http' | 'script';
-  channel?: number | 'dm';
+  channel?: number | 'dm' | 'none';
   verifyResponse?: boolean;
   multiline?: boolean;
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
@@ -206,7 +206,7 @@ interface GeofenceTriggerConfig {
   response?: string;
   scriptPath?: string;
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
-  channel: number | 'dm';
+  channel: number | 'dm' | 'none';
   lastRun?: number;
   lastResult?: 'success' | 'error';
   lastError?: string;
@@ -1644,17 +1644,22 @@ class MeshtasticManager {
           return;
         }
 
-        const isDM = trigger.channel === 'dm';
-        for (const resp of scriptResponses) {
-          const truncated = this.truncateMessageForMeshtastic(resp, 200);
-          messageQueueService.enqueue(
-            truncated,
-            isDM ? nodeNum : 0,
-            undefined,
-            () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
-            (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
-            isDM ? undefined : trigger.channel as number
-          );
+        // Skip sending if channel is 'none' (script handles its own output)
+        if (trigger.channel !== 'none') {
+          const isDM = trigger.channel === 'dm';
+          for (const resp of scriptResponses) {
+            const truncated = this.truncateMessageForMeshtastic(resp, 200);
+            messageQueueService.enqueue(
+              truncated,
+              isDM ? nodeNum : 0,
+              undefined,
+              () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
+              (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
+              isDM ? undefined : trigger.channel as number
+            );
+          }
+        } else {
+          logger.debug(`📍 Geofence "${trigger.name}" script executed (channel=none, no mesh output)`);
         }
       }
 
@@ -1763,7 +1768,7 @@ class MeshtasticManager {
   /**
    * Execute a timer trigger script and send output to specified channel
    */
-  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number, scriptArgs?: string): Promise<void> {
+  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number | 'none', scriptArgs?: string): Promise<void> {
     const startTime = Date.now();
 
     // Validate script path
@@ -1892,25 +1897,30 @@ class MeshtasticManager {
           return;
         }
 
-        // Send each response to the specified channel
-        logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
+        // Skip sending if channel is 'none' (script handles its own output)
+        if (channel !== 'none') {
+          // Send each response to the specified channel
+          logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
 
-        scriptResponses.forEach((resp, index) => {
-          const truncated = this.truncateMessageForMeshtastic(resp, 200);
+          scriptResponses.forEach((resp, index) => {
+            const truncated = this.truncateMessageForMeshtastic(resp, 200);
 
-          messageQueueService.enqueue(
-            truncated,
-            0, // destination: 0 for channel broadcast
-            undefined, // no reply-to packet ID for timer messages
-            () => {
-              logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
-            },
-            (reason: string) => {
-              logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
-            },
-            channel // channel number
-          );
-        });
+            messageQueueService.enqueue(
+              truncated,
+              0, // destination: 0 for channel broadcast
+              undefined, // no reply-to packet ID for timer messages
+              () => {
+                logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
+              },
+              (reason: string) => {
+                logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
+              },
+              channel // channel number
+            );
+          });
+        } else {
+          logger.debug(`⏱️ Timer "${triggerName}" script executed (channel=none, no mesh output)`);
+        }
       }
 
       this.updateTimerTriggerResult(triggerId, 'success');
@@ -7440,6 +7450,13 @@ class MeshtasticManager {
 
               // For scripts with multiple responses, send each one
               const triggerChannel = trigger.channel ?? 'dm';
+
+              // Skip sending if channel is 'none' (script handles its own output)
+              if (triggerChannel === 'none') {
+                logger.debug(`🤖 Script executed (channel=none, no mesh output)`);
+                return;
+              }
+
               const target = triggerChannel === 'dm' ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
               logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}`);
 

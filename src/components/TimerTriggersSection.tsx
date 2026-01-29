@@ -72,7 +72,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   const [newScriptPath, setNewScriptPath] = useState('');
   const [newScriptArgs, setNewScriptArgs] = useState('');
   const [newResponse, setNewResponse] = useState('');
-  const [newChannel, setNewChannel] = useState<number>(0);
+  const [newChannel, setNewChannel] = useState<number | 'none'>(0);
   const [cronError, setCronError] = useState<string | null>(null);
 
   // Update local state when props change
@@ -466,10 +466,16 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               </label>
               <select
                 value={newChannel}
-                onChange={(e) => setNewChannel(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewChannel(val === 'none' ? 'none' : Number(val));
+                }}
                 className="setting-input"
                 style={{ flex: 1 }}
               >
+                {newResponseType === 'script' && (
+                  <option value="none">{t('automation.timer_triggers.channel_none', 'None (no mesh output)')}</option>
+                )}
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
                     Channel {channel.id}: {channel.name}
@@ -477,7 +483,9 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 ))}
               </select>
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
-                {t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}
+                {newResponseType === 'script' && newChannel === 'none'
+                  ? t('automation.timer_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
+                  : t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}
               </div>
             </div>
 
@@ -576,7 +584,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   const [editScriptPath, setEditScriptPath] = useState(trigger.scriptPath || '');
   const [editScriptArgs, setEditScriptArgs] = useState(trigger.scriptArgs || '');
   const [editResponse, setEditResponse] = useState(trigger.response || '');
-  const [editChannel, setEditChannel] = useState(trigger.channel ?? 0);
+  const [editChannel, setEditChannel] = useState<number | 'none'>(trigger.channel ?? 0);
   const [editCronError, setEditCronError] = useState<string | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
 
@@ -763,10 +771,16 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
               <select
                 value={editChannel}
-                onChange={(e) => setEditChannel(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditChannel(val === 'none' ? 'none' : Number(val));
+                }}
                 className="setting-input"
                 style={{ flex: 1 }}
               >
+                {editResponseType === 'script' && (
+                  <option value="none">{t('automation.timer_triggers.channel_none', 'None (no mesh output)')}</option>
+                )}
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
                     Channel {channel.id}: {channel.name}

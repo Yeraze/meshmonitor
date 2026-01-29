@@ -376,7 +376,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm', scriptArgs?: string) => {
+  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm' | 'none', scriptArgs?: string) => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
