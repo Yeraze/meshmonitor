@@ -539,8 +539,44 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - Scripts receive message data and parameters via environment variables
 - Can output single or multiple responses (see Script Response Details below)
 - 10-second execution timeout
+- **Script Arguments**: Optional command-line arguments with token expansion (see below)
 - Example trigger: `weather {location}`
 - Example response: `/data/scripts/weather.py`
+
+### Script Arguments (Auto Responder)
+
+When using Script responses, you can pass command-line arguments to scripts via the **Arguments** field. Arguments support token expansion, allowing dynamic values to be injected at runtime.
+
+**Example Arguments:**
+- `--reboot` - Pass a simple flag
+- `--set lora.region US` - Pass a setting and value
+- `--dest {NODE_ID} --reboot` - Use token expansion
+- `--ip {IP} --verbose` - Include the node IP address
+
+**Available Tokens:**
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| `{NODE_ID}` | Sender's node ID | `!a1b2c3d4` |
+| `{LONG_NAME}` | Sender's long name | `Alice's Node` |
+| `{SHORT_NAME}` | Sender's short name | `ALI` |
+| `{IP}` | Meshtastic node IP | `192.168.1.100` |
+| `{PORT}` | Meshtastic TCP port | `4403` |
+| `{VERSION}` | MeshMonitor version | `v3.4.0` |
+| `{NODECOUNT}` | Active node count | `42` |
+| `{HOPS}` | Message hop count | `2` |
+| `{SNR}` | Signal-to-noise ratio | `7.5` |
+| `{RSSI}` | Signal strength | `-95` |
+
+**Example Configuration:**
+```
+Trigger: reboot {nodeid}
+Response Type: script
+Response: /data/scripts/remote-admin.py
+Arguments: --dest {nodeid} --reboot
+```
+
+When someone sends "reboot !abc12345", the script is called with arguments `--dest !abc12345 --reboot`.
 
 ### Multiline Support
 
@@ -1040,6 +1076,39 @@ Timer trigger scripts follow the same requirements as Auto Responder scripts:
 - Must output valid JSON to stdout with a `response` or `responses` field
 - 10-second execution timeout
 - Execute with container user permissions
+- **Script Arguments**: Optional command-line arguments with token expansion
+
+### Script Arguments (Timer Triggers)
+
+Timer triggers support passing command-line arguments to scripts via the **Arguments** field. Arguments support token expansion for dynamic values.
+
+**Example Arguments:**
+- `--ip {IP}` - Pass the node IP address
+- `--count {NODECOUNT}` - Pass the active node count
+- `--verbose --format json` - Pass multiple flags
+
+**Available Tokens:**
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| `{IP}` | Meshtastic node IP | `192.168.1.100` |
+| `{PORT}` | Meshtastic TCP port | `4403` |
+| `{VERSION}` | MeshMonitor version | `v3.4.0` |
+| `{NODECOUNT}` | Active node count | `42` |
+| `{DIRECTCOUNT}` | Direct node count | `15` |
+| `{DURATION}` | Server uptime | `2 days, 5 hours` |
+| `{FEATURES}` | Enabled features | `🗺️ 🤖` |
+
+**Example Configuration:**
+```
+Name: Scheduled Remote Admin
+Schedule: 0 3 * * *
+Script: remote-admin.py
+Arguments: --ip {IP} --dest !abc12345 --reboot
+Channel: 0 (Primary)
+```
+
+This runs a remote admin command every day at 3 AM.
 
 **JSON Output Format**:
 
@@ -1276,6 +1345,56 @@ Alert: {SHORT_NAME} has left the monitored area
 - Supports Node.js, Python, and Shell scripts
 - Receives geofence data via environment variables
 - Same 10-second timeout as Auto Responder scripts
+- **Script Arguments**: Optional command-line arguments with token expansion
+
+### Script Arguments (Geofence Triggers)
+
+Geofence triggers support passing command-line arguments to scripts via the **Arguments** field. This is particularly useful with the `remote-admin.py` script for automated node management.
+
+**Example Arguments:**
+- `--reboot` - Reboot node on geofence entry
+- `--set lora.region US` - Change settings on exit
+- `--dest {NODE_ID} --reboot` - Target the triggering node
+- `--ip {IP} --dest {NODE_ID} --factory-reset` - Full reset with token expansion
+
+**Available Tokens:**
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| `{NODE_ID}` | Triggering node ID | `!a1b2c3d4` |
+| `{NODE_NUM}` | Triggering node number | `123456789` |
+| `{LONG_NAME}` | Node's long name | `Alice's Node` |
+| `{SHORT_NAME}` | Node's short name | `ALI` |
+| `{NODE_LAT}` | Node's latitude | `40.7128` |
+| `{NODE_LON}` | Node's longitude | `-74.0060` |
+| `{GEOFENCE_NAME}` | Geofence name | `Base Camp` |
+| `{EVENT}` | Event type | `entry` |
+| `{DISTANCE_TO_CENTER}` | Distance in km | `2.5` |
+| `{IP}` | Meshtastic node IP | `192.168.1.100` |
+| `{PORT}` | Meshtastic TCP port | `4403` |
+| `{VERSION}` | MeshMonitor version | `v3.4.0` |
+| `{NODECOUNT}` | Active node count | `42` |
+
+**Example Configurations:**
+
+| Use Case | Script | Arguments |
+|----------|--------|-----------|
+| Reboot on entry | remote-admin.py | `--reboot` |
+| Change region on exit | remote-admin.py | `--set lora.region US` |
+| Set position | remote-admin.py | `--setlat 40.7128 --setlon -74.0060` |
+| Factory reset | remote-admin.py | `--factory-reset` |
+| Custom with tokens | remote-admin.py | `--dest {NODE_ID} --set device.role CLIENT` |
+
+**Example: Reboot Node on Geofence Entry**
+```
+Name: Reboot on Entry
+Shape: Circle (500m radius)
+Event: Entry
+Response Type: Script
+Script: /data/scripts/remote-admin.py
+Arguments: --reboot
+Channel: Direct Message
+```
 
 ### Output Channel
 

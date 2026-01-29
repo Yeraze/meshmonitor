@@ -376,7 +376,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => {
+  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm', scriptArgs?: string) => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
@@ -391,7 +391,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
     setLocalTriggers(localTriggers.map(t =>
       t.id === id
-        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channel }
+        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channel, scriptArgs: responseType === 'script' ? scriptArgs : undefined }
         : t
     ));
     setEditingId(null);
@@ -1506,7 +1506,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   channels={channels}
                   onStartEdit={() => startEditing(trigger.id)}
                   onCancelEdit={cancelEditing}
-                  onSaveEdit={(t, rt, r, m, v, c) => saveEdit(trigger.id, t, rt, r, m, v, c)}
+                  onSaveEdit={(t, rt, r, m, v, c, sa) => saveEdit(trigger.id, t, rt, r, m, v, c, sa)}
                   onRemove={() => removeTrigger(trigger.id)}
                   showToast={showToast}
                 />

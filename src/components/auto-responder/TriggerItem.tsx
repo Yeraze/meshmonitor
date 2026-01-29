@@ -43,6 +43,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
   const [editVerifyResponse, setEditVerifyResponse] = useState(trigger.verifyResponse || false);
   const [editChannel, setEditChannel] = useState<number | 'dm'>(trigger.channel !== undefined ? trigger.channel : 'dm');
+  const [editScriptArgs, setEditScriptArgs] = useState(trigger.scriptArgs || '');
   const [triggerValidation, setTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
 
   // Validate trigger in realtime
@@ -95,9 +96,10 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       setEditMultiline(trigger.multiline || false);
       setEditVerifyResponse(trigger.verifyResponse || false);
       setEditChannel(trigger.channel !== undefined ? trigger.channel : 'dm');
+      setEditScriptArgs(trigger.scriptArgs || '');
       setTriggerValidation({ valid: true });
     }
-  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channel]);
+  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channel, trigger.scriptArgs]);
 
   // Validate trigger on change
   useEffect(() => {
@@ -121,7 +123,9 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
     } else {
       normalizedTrigger = editTrigger.trim();
     }
-    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannel);
+    // Only pass scriptArgs if responseType is script and args are not empty
+    const scriptArgsToSave = editResponseType === 'script' && editScriptArgs.trim() ? editScriptArgs.trim() : undefined;
+    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannel, scriptArgsToSave);
   };
 
   return (
@@ -242,6 +246,24 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 )}
               </div>
             </div>
+            {editResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.script_args', 'Arguments:')}</label>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input
+                    type="text"
+                    value={editScriptArgs}
+                    onChange={(e) => setEditScriptArgs(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace' }}
+                    placeholder="--ip {IP} --dest {NODE_ID} --flag"
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('auto_responder.script_args_help', 'Optional CLI arguments. Tokens: {NODE_ID}, {IP}, {VERSION}, etc.')}
+                  </span>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
               <select

@@ -21,6 +21,7 @@ export interface AutoResponderTrigger {
   multiline?: boolean; // Enable multiline support for text/http responses
   verifyResponse?: boolean; // Enable retry logic (3 attempts) for this trigger (DM only)
   channel?: number | 'dm'; // Channel index (0-7) or 'dm' for direct messages (default: 'dm')
+  scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
 }
 
 export type TimerResponseType = 'script' | 'text';
@@ -32,6 +33,7 @@ export interface TimerTrigger {
   responseType?: TimerResponseType; // 'script' (default) or 'text' message
   scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
   response?: string; // Text message with expansion tokens (when responseType is 'text')
+  scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
   channel: number; // Channel index (0-7) to send output to
   enabled: boolean; // Whether this timer is active
   lastRun?: number; // Unix timestamp of last execution
@@ -71,6 +73,7 @@ export interface GeofenceTrigger {
   responseType: GeofenceResponseType;
   response?: string; // Text message with expansion tokens (when responseType is 'text')
   scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
+  scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
   channel: number | 'dm' | 'none'; // Channel index (0-7), 'dm' for direct message, or 'none' for scripts with no mesh output
   lastRun?: number; // Unix timestamp of last execution
   lastResult?: 'success' | 'error';
@@ -96,7 +99,7 @@ export interface TriggerItemProps {
   channels: Channel[];
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => void;
+  onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm', scriptArgs?: string) => void;
   onRemove: () => void;
   showToast?: (message: string, type: 'success' | 'error' | 'warning') => void;
 }

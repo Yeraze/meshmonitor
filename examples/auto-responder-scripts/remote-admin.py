@@ -7,18 +7,22 @@
 Remote Admin Script for MeshMonitor
 
 Sends remote admin commands to Meshtastic nodes via the CLI.
-Designed for use with Geofence triggers but works with any automation.
+Works with Geofence triggers, Timer triggers, and Auto Responder.
+
+Usage with MeshMonitor Script Arguments (Recommended):
+    In the MeshMonitor UI, set:
+    - Script: remote-admin.py
+    - Arguments: --reboot
+    - Arguments: --set lora.region US
+    - Arguments: --setlat 40.7128 --setlon -74.0060
+
+    Arguments support token expansion:
+    - Arguments: --dest {NODE_ID} --reboot
+    - Arguments: --set device.role CLIENT
 
 Usage as a standalone script:
     ./remote-admin.py --dest !abcd1234 --set lora.region US
     ./remote-admin.py --ip 192.168.1.100 --dest !abcd1234 --reboot
-
-Usage with Geofence triggers:
-    Set scriptPath to this script and use environment variables:
-    - MESHTASTIC_IP: Automatically set by MeshMonitor
-    - MESHTASTIC_PORT: Automatically set by MeshMonitor
-    - NODE_ID: The node that triggered the geofence (e.g., !abcd1234)
-    - GEOFENCE_EVENT: entry, exit, or while_inside
 
 Environment variables (set automatically by MeshMonitor):
     MESHTASTIC_IP      - IP address of the connected Meshtastic node
@@ -26,18 +30,16 @@ Environment variables (set automatically by MeshMonitor):
     NODE_ID            - Node ID that triggered the event
     NODE_NUM           - Node number (decimal)
     NODE_LONG_NAME     - Node's long name (if known)
-    GEOFENCE_NAME      - Name of the geofence
+    GEOFENCE_NAME      - Name of the geofence (for geofence triggers)
     GEOFENCE_EVENT     - Event type: entry, exit, while_inside
 
-Examples for geofence scripts:
-    # Reboot a node when it enters a geofence
-    ./remote-admin.py --reboot
-
-    # Set a node's position when it exits
-    ./remote-admin.py --setlat 40.7128 --setlon -74.0060
-
-    # Change channel settings
-    ./remote-admin.py --ch-set psk random --ch-index 1
+Common meshtastic CLI arguments:
+    --reboot                      Reboot the node
+    --set <setting> <value>       Set a configuration value
+    --setlat <lat> --setlon <lon> Set node position
+    --ch-set <setting> <value>    Modify channel settings
+    --factory-reset               Factory reset the node
+    --get <setting>               Get a configuration value
 """
 
 import os

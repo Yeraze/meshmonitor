@@ -5,11 +5,22 @@
 #   language: Shell
 #
 # Simple shell wrapper for remote admin commands
+# Works with Geofence triggers, Timer triggers, and Auto Responder.
 #
-# Usage:
+# Usage with MeshMonitor Script Arguments (Recommended):
+#   In the MeshMonitor UI, set:
+#   - Script: remote-admin.sh
+#   - Arguments: --reboot
+#   - Arguments: --set lora.region US
+#   - Arguments: --setlat 40.7128 --setlon -74.0060
+#
+#   Arguments support token expansion:
+#   - Arguments: --dest {NODE_ID} --reboot
+#   - Arguments: --set device.role CLIENT
+#
+# Usage as a standalone script:
 #   ./remote-admin.sh --reboot
 #   ./remote-admin.sh --set lora.region US
-#   ./remote-admin.sh --setlat 40.7128 --setlon -74.0060
 #
 # Environment variables (set automatically by MeshMonitor):
 #   MESHTASTIC_IP   - IP address of connected node
