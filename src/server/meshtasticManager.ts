@@ -207,6 +207,7 @@ interface GeofenceTriggerConfig {
   scriptPath?: string;
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
   channel: number | 'dm' | 'none';
+  verifyResponse?: boolean; // Enable retry logic (3 attempts) for DM messages
   lastRun?: number;
   lastResult?: 'success' | 'error';
   lastError?: string;

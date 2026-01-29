@@ -84,6 +84,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newScriptArgs, setNewScriptArgs] = useState('');
   const [newResponse, setNewResponse] = useState('');
   const [newChannel, setNewChannel] = useState<number | 'dm' | 'none'>('dm');
+  const [newVerifyResponse, setNewVerifyResponse] = useState(false);
 
   // Edit mode state
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
@@ -193,6 +194,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
             scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
             channel: newChannel,
+            verifyResponse: newChannel === 'dm' ? newVerifyResponse : false,
           };
         }
         return t;
@@ -214,6 +216,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
         scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
         channel: newChannel,
+        verifyResponse: newChannel === 'dm' ? newVerifyResponse : false,
       };
       setLocalTriggers([...localTriggers, newTrigger]);
       showToast(t('automation.geofence_triggers.added', 'Geofence trigger added'), 'success');
@@ -231,6 +234,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewScriptArgs('');
     setNewResponse('');
     setNewChannel('dm');
+    setNewVerifyResponse(false);
   };
 
   const handleRemoveTrigger = (id: string) => {
@@ -256,6 +260,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewScriptArgs(trigger.scriptArgs ?? '');
     setNewResponse(trigger.response ?? '');
     setNewChannel(trigger.channel);
+    setNewVerifyResponse(trigger.verifyResponse ?? false);
   };
 
   const handleCancelEdit = () => {
@@ -271,6 +276,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewScriptArgs('');
     setNewResponse('');
     setNewChannel('dm');
+    setNewVerifyResponse(false);
   };
 
   const formatLastRun = (timestamp?: number) => {
@@ -586,6 +592,27 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   ? t('automation.geofence_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
                   : t('automation.geofence_triggers.channel_help', 'Output will be sent to this channel')}
               </div>
+              {/* Verify Response checkbox - only for DM channel */}
+              {newResponseType === 'text' && (
+                <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.85rem',
+                    cursor: newChannel === 'dm' ? 'pointer' : 'not-allowed',
+                    color: 'var(--ctp-subtext0)',
+                    opacity: newChannel === 'dm' ? 1 : 0.5
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={newVerifyResponse}
+                      onChange={(e) => setNewVerifyResponse(e.target.checked)}
+                      disabled={newChannel !== 'dm'}
+                      style={{ marginRight: '0.5rem', cursor: newChannel === 'dm' ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span>{t('automation.geofence_triggers.verify_response', 'Verify Response (enable 3-retry delivery confirmation - DM only)')}</span>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Add/Save Button */}
@@ -743,6 +770,18 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
         }}>
           {trigger.enabled ? 'ENABLED' : 'DISABLED'}
         </span>
+        {trigger.verifyResponse && (
+          <span style={{
+            fontSize: '0.7rem',
+            padding: '0.15rem 0.4rem',
+            background: 'var(--ctp-peach)',
+            color: 'var(--ctp-base)',
+            borderRadius: '3px',
+            fontWeight: 'bold',
+          }}>
+            VERIFY
+          </span>
+        )}
         <button
           onClick={onToggleEnabled}
           style={{

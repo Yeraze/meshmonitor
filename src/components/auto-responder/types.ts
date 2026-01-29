@@ -75,6 +75,7 @@ export interface GeofenceTrigger {
   scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
   channel: number | 'dm' | 'none'; // Channel index (0-7), 'dm' for direct message, or 'none' for scripts with no mesh output
+  verifyResponse?: boolean; // Enable retry logic (3 attempts) for DM messages
   lastRun?: number; // Unix timestamp of last execution
   lastResult?: 'success' | 'error';
   lastError?: string;
