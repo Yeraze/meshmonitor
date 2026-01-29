@@ -448,10 +448,12 @@ components:
       properties:
         text:
           type: string
-          description: The message text to send
+          description: |
+            The message text to send. Messages longer than 200 bytes will be
+            automatically split into multiple parts and queued for delivery.
           example: "Hello from the API!"
           minLength: 1
-          maxLength: 237
+          maxLength: 1000
         channel:
           type: integer
           description: Channel number to send to (0-7). Required if toNodeId is not specified.
@@ -483,6 +485,7 @@ components:
             - messageId
             - requestId
             - deliveryState
+            - messageCount
           properties:
             messageId:
               type: string
@@ -497,6 +500,10 @@ components:
               description: Current delivery state
               enum: [pending, delivered, confirmed, failed]
               example: "pending"
+            messageCount:
+              type: integer
+              description: Number of messages sent (always 1 for short messages)
+              example: 1
             text:
               type: string
               description: The message text that was sent
@@ -509,6 +516,54 @@ components:
               type: string
               description: Destination node ID or "broadcast" for channel messages
               example: "broadcast"
+
+    SendMessageQueuedResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - deliveryState
+            - messageCount
+            - queueIds
+          properties:
+            deliveryState:
+              type: string
+              description: Current delivery state (always "queued" for split messages)
+              enum: [queued]
+              example: "queued"
+            messageCount:
+              type: integer
+              description: Number of message parts the text was split into
+              example: 3
+            queueIds:
+              type: array
+              items:
+                type: string
+              description: Queue IDs for tracking each message part
+              example: ["1234567890-abc123", "1234567891-def456", "1234567892-ghi789"]
+            text:
+              type: string
+              description: The original message text that was sent
+              example: "This is a very long message that exceeds the 200-byte limit..."
+            channel:
+              type: integer
+              description: Channel the message was sent to (-1 for direct messages)
+              example: 0
+            toNodeId:
+              type: string
+              description: Destination node ID or "broadcast" for channel messages
+              example: "broadcast"
+            note:
+              type: string
+              description: Informational note about the message splitting
+              example: "Message split into 3 parts, queued for delivery with 30-second intervals"
 
     Traceroute:
       type: object
@@ -1300,6 +1355,14 @@ paths:
         - Provide `channel` for broadcast messages to a channel
         - Provide `toNodeId` for direct messages to a specific node
         - Do not provide both `channel` and `toNodeId`
+
+        **Multi-Message Breakup:**
+        - Meshtastic has a 200-byte payload limit for text messages
+        - Messages longer than 200 bytes are automatically split into multiple parts
+        - Split messages are queued and delivered with 30-second intervals between parts
+        - Returns HTTP 202 (Accepted) when messages are queued for delivery
+        - The response includes `messageCount` and `queueIds` for tracking split messages
+        - Only the first message part will have the `replyId` set (if provided)
       requestBody:
         required: true
         content:
@@ -1323,13 +1386,25 @@ paths:
                   text: "This is a reply"
                   channel: 0
                   replyId: 123456789
+              longMessage:
+                summary: Long message (will be split)
+                description: Messages exceeding 200 bytes are automatically split and queued
+                value:
+                  text: "This is a longer message that exceeds the Meshtastic payload limit of 200 bytes. When sent via the API, it will be automatically split into multiple parts and queued for delivery with 30-second intervals between each part. This helps ensure reliable delivery of longer content."
+                  channel: 0
       responses:
         '201':
-          description: Message sent successfully
+          description: Message sent successfully (short message, ≤200 bytes)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Message queued for delivery (long message split into multiple parts)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
         '400':
           description: Bad request (invalid parameters)
           content:

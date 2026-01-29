@@ -39,6 +39,8 @@ tags:
     description: API version and endpoint information
   - name: Nodes
     description: Mesh network node information
+  - name: Channels
+    description: Mesh network channel configuration
   - name: Telemetry
     description: Telemetry data from mesh nodes
   - name: Messages
@@ -102,6 +104,9 @@ components:
             nodes:
               type: string
               example: "/api/v1/nodes"
+            channels:
+              type: string
+              example: "/api/v1/channels"
             telemetry:
               type: string
               example: "/api/v1/telemetry"
@@ -201,6 +206,75 @@ components:
           example: true
         data:
           $ref: '#/components/schemas/Node'
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Channel index (0-7)
+          minimum: 0
+          maximum: 7
+          example: 0
+        name:
+          type: string
+          description: Channel name
+          example: "LongFast"
+        role:
+          type: integer
+          description: Channel role (0=Disabled, 1=Primary, 2=Secondary)
+          enum: [0, 1, 2]
+          example: 1
+        roleName:
+          type: string
+          description: Human-readable role name
+          enum: ["Disabled", "Primary", "Secondary"]
+          example: "Primary"
+        uplinkEnabled:
+          type: boolean
+          description: Whether MQTT uplink is enabled for this channel
+          example: true
+        downlinkEnabled:
+          type: boolean
+          description: Whether MQTT downlink is enabled for this channel
+          example: true
+        positionPrecision:
+          type: integer
+          description: Location precision bits (0-32, where 0 means full precision disabled)
+          minimum: 0
+          maximum: 32
+          example: 32
+
+    ChannelListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of channels returned
+          example: 3
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Channel'
+
+    ChannelResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Channel'
 
     Telemetry:
       type: object
@@ -374,10 +448,12 @@ components:
       properties:
         text:
           type: string
-          description: The message text to send
+          description: |
+            The message text to send. Messages longer than 200 bytes will be
+            automatically split into multiple parts and queued for delivery.
           example: "Hello from the API!"
           minLength: 1
-          maxLength: 237
+          maxLength: 1000
         channel:
           type: integer
           description: Channel number to send to (0-7). Required if toNodeId is not specified.
@@ -409,6 +485,7 @@ components:
             - messageId
             - requestId
             - deliveryState
+            - messageCount
           properties:
             messageId:
               type: string
@@ -423,6 +500,10 @@ components:
               description: Current delivery state
               enum: [pending, delivered, confirmed, failed]
               example: "pending"
+            messageCount:
+              type: integer
+              description: Number of messages sent (always 1 for short messages)
+              example: 1
             text:
               type: string
               description: The message text that was sent
@@ -435,6 +516,54 @@ components:
               type: string
               description: Destination node ID or "broadcast" for channel messages
               example: "broadcast"
+
+    SendMessageQueuedResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - deliveryState
+            - messageCount
+            - queueIds
+          properties:
+            deliveryState:
+              type: string
+              description: Current delivery state (always "queued" for split messages)
+              enum: [queued]
+              example: "queued"
+            messageCount:
+              type: integer
+              description: Number of message parts the text was split into
+              example: 3
+            queueIds:
+              type: array
+              items:
+                type: string
+              description: Queue IDs for tracking each message part
+              example: ["1234567890-abc123", "1234567891-def456", "1234567892-ghi789"]
+            text:
+              type: string
+              description: The original message text that was sent
+              example: "This is a very long message that exceeds the 200-byte limit..."
+            channel:
+              type: integer
+              description: Channel the message was sent to (-1 for direct messages)
+              example: 0
+            toNodeId:
+              type: string
+              description: Destination node ID or "broadcast" for channel messages
+              example: "broadcast"
+            note:
+              type: string
+              description: Informational note about the message splitting
+              example: "Message split into 3 parts, queued for delivery with 30-second intervals"
 
     Traceroute:
       type: object
@@ -910,6 +1039,73 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /channels:
+    get:
+      tags:
+        - Channels
+      summary: Get all channels
+      description: Retrieve all configured channels in the mesh network
+      responses:
+        '200':
+          description: Channels retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /channels/{channelId}:
+    get:
+      tags:
+        - Channels
+      summary: Get a specific channel
+      description: Retrieve detailed information about a specific channel
+      parameters:
+        - name: channelId
+          in: path
+          description: Channel index (0-7)
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 7
+      responses:
+        '200':
+          description: Channel retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelResponse'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /telemetry:
     get:
       tags:
@@ -1159,6 +1355,14 @@ paths:
         - Provide `channel` for broadcast messages to a channel
         - Provide `toNodeId` for direct messages to a specific node
         - Do not provide both `channel` and `toNodeId`
+
+        **Multi-Message Breakup:**
+        - Meshtastic has a 200-byte payload limit for text messages
+        - Messages longer than 200 bytes are automatically split into multiple parts
+        - Split messages are queued and delivered with 30-second intervals between parts
+        - Returns HTTP 202 (Accepted) when messages are queued for delivery
+        - The response includes `messageCount` and `queueIds` for tracking split messages
+        - Only the first message part will have the `replyId` set (if provided)
       requestBody:
         required: true
         content:
@@ -1182,13 +1386,25 @@ paths:
                   text: "This is a reply"
                   channel: 0
                   replyId: 123456789
+              longMessage:
+                summary: Long message (will be split)
+                description: Messages exceeding 200 bytes are automatically split and queued
+                value:
+                  text: "This is a longer message that exceeds the Meshtastic payload limit of 200 bytes. When sent via the API, it will be automatically split into multiple parts and queued for delivery with 30-second intervals between each part. This helps ensure reliable delivery of longer content."
+                  channel: 0
       responses:
         '201':
-          description: Message sent successfully
+          description: Message sent successfully (short message, ≤200 bytes)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Message queued for delivery (long message split into multiple parts)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
         '400':
           description: Bad request (invalid parameters)
           content:
