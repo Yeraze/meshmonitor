@@ -1100,4 +1100,53 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
       expect(call[5]).toBe(5); // channel parameter (6th argument)
     }
   });
+
+  it('should return 413 when message would require more than 3 parts', async () => {
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Message of 800 characters would require 4 parts (200 chars each)
+    const veryLongMessage = 'X'.repeat(800);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: veryLongMessage,
+        channel: 0
+      })
+      .expect(413);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('Payload Too Large');
+    expect(response.body.message).toContain('Would require 4 parts');
+    expect(response.body.message).toContain('maximum is 3 parts');
+    // Should NOT queue any messages
+    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('should allow messages that split into exactly 3 parts', async () => {
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Message of 600 characters should split into exactly 3 parts (200 chars each)
+    const maxAllowedMessage = 'Y'.repeat(600);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: maxAllowedMessage,
+        channel: 0
+      })
+      .expect(202);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.messageCount).toBe(3);
+    expect(messageQueueService.enqueue).toHaveBeenCalledTimes(3);
+  });
 });

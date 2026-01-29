@@ -1358,7 +1358,8 @@ paths:
 
         **Multi-Message Breakup:**
         - Meshtastic has a 200-byte payload limit for text messages
-        - Messages longer than 200 bytes are automatically split into multiple parts
+        - Messages longer than 200 bytes are automatically split into multiple parts (max 3 parts, ~600 bytes)
+        - Messages requiring more than 3 parts will be rejected with HTTP 413 (Payload Too Large)
         - Split messages are queued and delivered with 30-second intervals between parts
         - Returns HTTP 202 (Accepted) when messages are queued for delivery
         - The response includes `messageCount` and `queueIds` for tracking split messages
@@ -1455,6 +1456,16 @@ paths:
                       action:
                         type: string
                         example: "write"
+        '413':
+          description: Payload too large - message would require more than 3 parts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: "Payload Too Large"
+                message: "Message too long. Would require 5 parts but maximum is 3 parts (~600 bytes)"
         '503':
           description: Service unavailable - not connected to Meshtastic node
           content:

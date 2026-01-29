@@ -15,6 +15,9 @@ import { logger } from '../../../utils/logger.js';
 import { messageQueueService } from '../../messageQueueService.js';
 import { MAX_MESSAGE_BYTES } from '../../constants/meshtastic.js';
 
+/** Maximum number of message parts allowed when splitting long messages */
+const MAX_MESSAGE_PARTS = 3;
+
 /**
  * Get set of channel IDs the user has read access to
  */
@@ -314,6 +317,17 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
     if (messageBytes.length > MAX_MESSAGE_BYTES) {
       // Split the message into chunks
       const messageParts = meshtasticManager.splitMessageForMeshtastic(trimmedText, MAX_MESSAGE_BYTES);
+
+      // Reject messages that would split into too many parts
+      if (messageParts.length > MAX_MESSAGE_PARTS) {
+        const maxBytes = MAX_MESSAGE_BYTES * MAX_MESSAGE_PARTS;
+        logger.warn(`❌ v1 API: Message too long (${messageBytes.length} bytes, ${messageParts.length} parts) - max ${MAX_MESSAGE_PARTS} parts (~${maxBytes} bytes)`);
+        return res.status(413).json({
+          success: false,
+          error: 'Payload Too Large',
+          message: `Message too long. Would require ${messageParts.length} parts but maximum is ${MAX_MESSAGE_PARTS} parts (~${maxBytes} bytes)`
+        });
+      }
 
       logger.info(`📝 v1 API: Splitting long message (${messageBytes.length} bytes) into ${messageParts.length} parts`);
 
