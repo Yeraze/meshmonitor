@@ -1783,7 +1783,7 @@
     "backup_management.confirm_delete": "Вы уверены, что хотите удалить резервную копию \"{{filename}}\"?",
     "config.reboot_confirm": "Вы уверены, что хотите перезагрузить устройство? \n\nУстройство перезагрузится и будет недоступно примерно 30-60 секунд.",
     "storeforward_config.history_return_max_description": "",
-    "lora_config.spread_factor": "Фактор распространения",
+    "lora_config.spread_factor": "Фактор",
     "notifications.config_save_failed": "Ошибка сохранения настроек",
     "config.node_names_saved_toast": "Имена узлов сохранены! Устройство будет перезагружено...",
     "import_config.title": "Импорт настроек Meshtastic",
@@ -3429,5 +3429,6 @@
     "node_info.connection_section": "Подключение",
     "node_info.address": "Адрес",
     "node_info.save": "Применить изменения",
-    "node_info.saving": "Применяется..."
+    "node_info.saving": "Применяется...",
+    "auto_responder.script_args_help": "Необязательные аргументы командной строки. Токены: {NODE_ID}, {IP}, {VERSION} и т. д."
 }
