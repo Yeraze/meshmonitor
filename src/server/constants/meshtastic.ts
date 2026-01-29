@@ -180,3 +180,10 @@ export const DEFAULT_RETROACTIVE_BATCH_SIZE = 10000;
  * Default: 1 minute
  */
 export const CHANNEL_CACHE_TTL_MS = 60000;
+
+/**
+ * Maximum message size in bytes for Meshtastic text messages.
+ * This is the payload limit for TEXT_MESSAGE_APP packets.
+ * Messages longer than this will be truncated or need to be split.
+ */
+export const MAX_MESSAGE_BYTES = 200;

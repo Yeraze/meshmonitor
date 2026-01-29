@@ -12,6 +12,11 @@ import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
+import { messageQueueService } from '../../messageQueueService.js';
+import { MAX_MESSAGE_BYTES } from '../../constants/meshtastic.js';
+
+/** Maximum number of message parts allowed when splitting long messages */
+const MAX_MESSAGE_PARTS = 3;
 
 /**
  * Get set of channel IDs the user has read access to
@@ -195,11 +200,15 @@ router.get('/:messageId', async (req: Request, res: Response) => {
  * - Either channel OR toNodeId must be provided, not both
  * - Channel messages require channel_X:write permission
  * - Direct messages require messages:write permission
+ * - Long messages (>200 bytes) are automatically split and queued for delivery
+ *   with 30-second intervals between parts
  *
  * Response:
  * - messageId: string - Unique message ID for tracking (format: nodeNum_requestId)
- * - requestId: number - Request ID for matching delivery acknowledgments
- * - deliveryState: string - Initial delivery state ("pending")
+ * - requestId: number - Request ID for matching delivery acknowledgments (first message if split)
+ * - deliveryState: string - Initial delivery state ("pending" or "queued")
+ * - messageCount: number - Number of messages (>1 if the message was split)
+ * - queueIds: string[] - Queue IDs for tracking split messages (only if split)
  */
 router.post('/', messageLimiter, async (req: Request, res: Response) => {
   try {
@@ -298,34 +307,96 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       }
     }
 
-    // Send the message
     const meshChannel = channel !== undefined ? parseInt(channel) : 0;
-    const requestId = await meshtasticManager.sendTextMessage(
-      text.trim(),
-      meshChannel,
-      destinationNum,
-      replyId,
-      undefined, // emoji
-      req.user?.id
-    );
+    const trimmedText = text.trim();
 
-    // Get local node info to construct messageId
-    const localNodeNum = databaseService.getSetting('localNodeNum');
-    const messageId = localNodeNum ? `${localNodeNum}_${requestId}` : requestId.toString();
+    // Check if message needs to be split (exceeds Meshtastic's byte limit)
+    const encoder = new TextEncoder();
+    const messageBytes = encoder.encode(trimmedText);
 
-    logger.info(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);
+    if (messageBytes.length > MAX_MESSAGE_BYTES) {
+      // Split the message into chunks
+      const messageParts = meshtasticManager.splitMessageForMeshtastic(trimmedText, MAX_MESSAGE_BYTES);
 
-    res.status(201).json({
-      success: true,
-      data: {
-        messageId,
-        requestId,
-        deliveryState: 'pending',
-        text: text.trim(),
-        channel: destinationNum ? -1 : meshChannel,
-        toNodeId: toNodeId || 'broadcast'
+      // Reject messages that would split into too many parts
+      if (messageParts.length > MAX_MESSAGE_PARTS) {
+        const maxBytes = MAX_MESSAGE_BYTES * MAX_MESSAGE_PARTS;
+        logger.warn(`❌ v1 API: Message too long (${messageBytes.length} bytes, ${messageParts.length} parts) - max ${MAX_MESSAGE_PARTS} parts (~${maxBytes} bytes)`);
+        return res.status(413).json({
+          success: false,
+          error: 'Payload Too Large',
+          message: `Message too long. Would require ${messageParts.length} parts but maximum is ${MAX_MESSAGE_PARTS} parts (~${maxBytes} bytes)`
+        });
       }
-    });
+
+      logger.info(`📝 v1 API: Splitting long message (${messageBytes.length} bytes) into ${messageParts.length} parts`);
+
+      // Queue all parts through messageQueueService
+      const queueIds: string[] = [];
+
+      messageParts.forEach((part, index) => {
+        const isFirstMessage = index === 0;
+
+        const queueId = messageQueueService.enqueue(
+          part,
+          destinationNum || 0, // 0 for channel messages (broadcast)
+          isFirstMessage ? replyId : undefined, // Only first message gets replyId
+          () => {
+            logger.info(`✅ API message part ${index + 1}/${messageParts.length} delivered`);
+          },
+          (reason: string) => {
+            logger.warn(`❌ API message part ${index + 1}/${messageParts.length} failed: ${reason}`);
+          },
+          destinationNum ? undefined : meshChannel // Channel for broadcast messages
+        );
+
+        queueIds.push(queueId);
+      });
+
+      logger.info(`📤 v1 API: Queued ${messageParts.length} message parts (user: ${req.user?.username}, queueIds: ${queueIds.join(', ')})`);
+
+      res.status(202).json({
+        success: true,
+        data: {
+          deliveryState: 'queued',
+          messageCount: messageParts.length,
+          queueIds,
+          text: trimmedText,
+          channel: destinationNum ? -1 : meshChannel,
+          toNodeId: toNodeId || 'broadcast',
+          note: `Message split into ${messageParts.length} parts, queued for delivery with 30-second intervals`
+        }
+      });
+    } else {
+      // Message fits in one packet - send directly
+      const requestId = await meshtasticManager.sendTextMessage(
+        trimmedText,
+        meshChannel,
+        destinationNum,
+        replyId,
+        undefined, // emoji
+        req.user?.id
+      );
+
+      // Get local node info to construct messageId
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      const messageId = localNodeNum ? `${localNodeNum}_${requestId}` : requestId.toString();
+
+      logger.info(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);
+
+      res.status(201).json({
+        success: true,
+        data: {
+          messageId,
+          requestId,
+          deliveryState: 'pending',
+          messageCount: 1,
+          text: trimmedText,
+          channel: destinationNum ? -1 : meshChannel,
+          toNodeId: toNodeId || 'broadcast'
+        }
+      });
+    }
   } catch (error: any) {
     logger.error('Error sending message via v1 API:', error);
 
