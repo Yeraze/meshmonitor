@@ -81,6 +81,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newNodeFilter, setNewNodeFilter] = useState<GeofenceNodeFilter>({ type: 'all' });
   const [newResponseType, setNewResponseType] = useState<GeofenceResponseType>('text');
   const [newScriptPath, setNewScriptPath] = useState('');
+  const [newScriptArgs, setNewScriptArgs] = useState('');
   const [newResponse, setNewResponse] = useState('');
   const [newChannel, setNewChannel] = useState<number | 'dm' | 'none'>('dm');
 
@@ -190,6 +191,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             responseType: newResponseType,
             response: newResponseType === 'text' ? newResponse.trim() : undefined,
             scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+            scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
             channel: newChannel,
           };
         }
@@ -210,6 +212,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         responseType: newResponseType,
         response: newResponseType === 'text' ? newResponse.trim() : undefined,
         scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+        scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
         channel: newChannel,
       };
       setLocalTriggers([...localTriggers, newTrigger]);
@@ -225,6 +228,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewNodeFilter({ type: 'all' });
     setNewResponseType('text');
     setNewScriptPath('');
+    setNewScriptArgs('');
     setNewResponse('');
     setNewChannel('dm');
   };
@@ -249,6 +253,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewNodeFilter(trigger.nodeFilter);
     setNewResponseType(trigger.responseType);
     setNewScriptPath(trigger.scriptPath ?? '');
+    setNewScriptArgs(trigger.scriptArgs ?? '');
     setNewResponse(trigger.response ?? '');
     setNewChannel(trigger.channel);
   };
@@ -263,6 +268,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewNodeFilter({ type: 'all' });
     setNewResponseType('text');
     setNewScriptPath('');
+    setNewScriptArgs('');
     setNewResponse('');
     setNewChannel('dm');
   };
@@ -487,6 +493,28 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {/* Script Arguments */}
+            {newResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                  {t('automation.geofence_triggers.script_args', 'Arguments:')}
+                </label>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input
+                    type="text"
+                    value={newScriptArgs}
+                    onChange={(e) => setNewScriptArgs(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace' }}
+                    placeholder="--ip {IP} --dest {NODE_ID} --reboot"
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('automation.geofence_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {NODE_ID}, {EVENT}, {GEOFENCE_NAME}, etc.')}
+                  </span>
+                </div>
               </div>
             )}
 

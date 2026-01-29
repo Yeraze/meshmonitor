@@ -70,8 +70,9 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   const [newCronExpression, setNewCronExpression] = useState('0 */6 * * *');
   const [newResponseType, setNewResponseType] = useState<TimerResponseType>('script');
   const [newScriptPath, setNewScriptPath] = useState('');
+  const [newScriptArgs, setNewScriptArgs] = useState('');
   const [newResponse, setNewResponse] = useState('');
-  const [newChannel, setNewChannel] = useState<number>(0);
+  const [newChannel, setNewChannel] = useState<number | 'none'>(0);
   const [cronError, setCronError] = useState<string | null>(null);
 
   // Update local state when props change
@@ -210,6 +211,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
       cronExpression: newCronExpression.trim(),
       responseType: newResponseType,
       scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+      scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
       response: newResponseType === 'text' ? newResponse.trim() : undefined,
       channel: newChannel,
       enabled: true,
@@ -221,6 +223,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     setNewCronExpression('0 */6 * * *');
     setNewResponseType('script');
     setNewScriptPath('');
+    setNewScriptArgs('');
     setNewResponse('');
     setNewChannel(0);
     showToast(t('automation.timer_triggers.added', 'Timer trigger added'), 'success');
@@ -398,6 +401,27 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               </div>
             )}
 
+            {newResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                  {t('automation.timer_triggers.script_args', 'Arguments:')}
+                </label>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input
+                    type="text"
+                    value={newScriptArgs}
+                    onChange={(e) => setNewScriptArgs(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace' }}
+                    placeholder="--ip {IP} --count {NODECOUNT}"
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('automation.timer_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {PORT}, {VERSION}, {NODECOUNT}, etc.')}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {newResponseType === 'text' && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem', paddingTop: '0.5rem' }}>
@@ -442,10 +466,16 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               </label>
               <select
                 value={newChannel}
-                onChange={(e) => setNewChannel(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewChannel(val === 'none' ? 'none' : Number(val));
+                }}
                 className="setting-input"
                 style={{ flex: 1 }}
               >
+                {newResponseType === 'script' && (
+                  <option value="none">{t('automation.timer_triggers.channel_none', 'None (no mesh output)')}</option>
+                )}
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
                     Channel {channel.id}: {channel.name}
@@ -453,7 +483,9 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 ))}
               </select>
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
-                {t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}
+                {newResponseType === 'script' && newChannel === 'none'
+                  ? t('automation.timer_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
+                  : t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}
               </div>
             </div>
 
@@ -550,8 +582,9 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   const [editCronExpression, setEditCronExpression] = useState(trigger.cronExpression);
   const [editResponseType, setEditResponseType] = useState<TimerResponseType>(trigger.responseType || 'script');
   const [editScriptPath, setEditScriptPath] = useState(trigger.scriptPath || '');
+  const [editScriptArgs, setEditScriptArgs] = useState(trigger.scriptArgs || '');
   const [editResponse, setEditResponse] = useState(trigger.response || '');
-  const [editChannel, setEditChannel] = useState(trigger.channel ?? 0);
+  const [editChannel, setEditChannel] = useState<number | 'none'>(trigger.channel ?? 0);
   const [editCronError, setEditCronError] = useState<string | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
 
@@ -561,6 +594,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
       setEditCronExpression(trigger.cronExpression);
       setEditResponseType(trigger.responseType || 'script');
       setEditScriptPath(trigger.scriptPath || '');
+      setEditScriptArgs(trigger.scriptArgs || '');
       setEditResponse(trigger.response || '');
       setEditChannel(trigger.channel ?? 0);
     }
@@ -585,6 +619,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
       cronExpression: editCronExpression.trim(),
       responseType: editResponseType,
       scriptPath: editResponseType === 'script' ? editScriptPath : undefined,
+      scriptArgs: editResponseType === 'script' && editScriptArgs.trim() ? editScriptArgs.trim() : undefined,
       response: editResponseType === 'text' ? editResponse.trim() : undefined,
       channel: editChannel,
     });
@@ -689,6 +724,24 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 </select>
               </div>
             )}
+            {editResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('automation.timer_triggers.script_args', 'Arguments:')}</label>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input
+                    type="text"
+                    value={editScriptArgs}
+                    onChange={(e) => setEditScriptArgs(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace' }}
+                    placeholder="--ip {IP} --count {NODECOUNT}"
+                  />
+                  <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('automation.timer_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {PORT}, {VERSION}, {NODECOUNT}, etc.')}
+                  </span>
+                </div>
+              </div>
+            )}
             {editResponseType === 'text' && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                 <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Message:</label>
@@ -718,10 +771,16 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
               <select
                 value={editChannel}
-                onChange={(e) => setEditChannel(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditChannel(val === 'none' ? 'none' : Number(val));
+                }}
                 className="setting-input"
                 style={{ flex: 1 }}
               >
+                {editResponseType === 'script' && (
+                  <option value="none">{t('automation.timer_triggers.channel_none', 'None (no mesh output)')}</option>
+                )}
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
                     Channel {channel.id}: {channel.name}

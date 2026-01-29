@@ -184,9 +184,10 @@ interface AutoResponderTrigger {
   trigger: string | string[];
   response: string;
   responseType?: 'text' | 'http' | 'script';
-  channel?: number | 'dm';
+  channel?: number | 'dm' | 'none';
   verifyResponse?: boolean;
   multiline?: boolean;
+  scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
 }
 
 /**
@@ -204,7 +205,8 @@ interface GeofenceTriggerConfig {
   responseType: 'text' | 'script';
   response?: string;
   scriptPath?: string;
-  channel: number | 'dm';
+  scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
+  channel: number | 'dm' | 'none';
   lastRun?: number;
   lastResult?: 'success' | 'error';
   lastError?: string;
@@ -1312,6 +1314,7 @@ class MeshtasticManager {
       cronExpression: string;
       responseType?: 'script' | 'text'; // 'script' (default) or 'text' message
       scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
+      scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
       response?: string; // Text message with expansion tokens (when responseType is 'text')
       channel?: number; // Channel index (0-7) to send output to
       enabled: boolean;
@@ -1347,7 +1350,7 @@ class MeshtasticManager {
         if (responseType === 'text' && trigger.response?.trim()) {
           await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, trigger.channel ?? 0);
         } else if (trigger.scriptPath) {
-          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0);
+          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0, trigger.scriptArgs);
         } else {
           logger.error(`⏱️ Timer "${trigger.name}" has no valid response configured`);
           this.updateTimerTriggerResult(trigger.id, 'error', 'No response configured');
@@ -1603,7 +1606,17 @@ class MeshtasticManager {
         }
       }
 
-      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+      // Expand tokens in script args if provided
+      let scriptArgsList: string[] = [];
+      if (trigger.scriptArgs) {
+        const expandedArgs = await this.replaceGeofenceTokens(
+          trigger.scriptArgs, trigger, nodeNum, lat, lng, eventType
+        );
+        scriptArgsList = this.parseScriptArgs(expandedArgs);
+        logger.debug(`📍 Geofence script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
+      }
+
+      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
         timeout: 30000,
         env: scriptEnv,
         maxBuffer: 1024 * 1024,
@@ -1631,17 +1644,22 @@ class MeshtasticManager {
           return;
         }
 
-        const isDM = trigger.channel === 'dm';
-        for (const resp of scriptResponses) {
-          const truncated = this.truncateMessageForMeshtastic(resp, 200);
-          messageQueueService.enqueue(
-            truncated,
-            isDM ? nodeNum : 0,
-            undefined,
-            () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
-            (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
-            isDM ? undefined : trigger.channel as number
-          );
+        // Skip sending if channel is 'none' (script handles its own output)
+        if (trigger.channel !== 'none') {
+          const isDM = trigger.channel === 'dm';
+          for (const resp of scriptResponses) {
+            const truncated = this.truncateMessageForMeshtastic(resp, 200);
+            messageQueueService.enqueue(
+              truncated,
+              isDM ? nodeNum : 0,
+              undefined,
+              () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
+              (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
+              isDM ? undefined : trigger.channel as number
+            );
+          }
+        } else {
+          logger.debug(`📍 Geofence "${trigger.name}" script executed (channel=none, no mesh output)`);
         }
       }
 
@@ -1750,7 +1768,7 @@ class MeshtasticManager {
   /**
    * Execute a timer trigger script and send output to specified channel
    */
-  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number): Promise<void> {
+  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number | 'none', scriptArgs?: string): Promise<void> {
     const startTime = Date.now();
 
     // Validate script path
@@ -1805,11 +1823,14 @@ class MeshtasticManager {
       const execFileAsync = promisify(execFile);
 
       // Prepare environment variables for timer scripts
+      const config = this.getConfig();
       const scriptEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
         TIMER_NAME: triggerName,
         TIMER_ID: triggerId,
         TIMER_SCRIPT: scriptPath,
+        MESHTASTIC_IP: config.nodeIp,
+        MESHTASTIC_PORT: String(config.tcpPort),
       };
 
       // Add MeshMonitor node location if available
@@ -1822,8 +1843,16 @@ class MeshtasticManager {
         }
       }
 
+      // Expand tokens in script args if provided
+      let scriptArgsList: string[] = [];
+      if (scriptArgs) {
+        const expandedArgs = await this.replaceAnnouncementTokens(scriptArgs);
+        scriptArgsList = this.parseScriptArgs(expandedArgs);
+        logger.debug(`⏱️ Timer script args expanded: ${scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
+      }
+
       // Execute script with 30-second timeout (longer than auto-responder for scheduled tasks)
-      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
         timeout: 30000,
         env: scriptEnv,
         maxBuffer: 1024 * 1024, // 1MB max output
@@ -1871,25 +1900,30 @@ class MeshtasticManager {
           return;
         }
 
-        // Send each response to the specified channel
-        logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
+        // Skip sending if channel is 'none' (script handles its own output)
+        if (channel !== 'none') {
+          // Send each response to the specified channel
+          logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
 
-        scriptResponses.forEach((resp, index) => {
-          const truncated = this.truncateMessageForMeshtastic(resp, 200);
+          scriptResponses.forEach((resp, index) => {
+            const truncated = this.truncateMessageForMeshtastic(resp, 200);
 
-          messageQueueService.enqueue(
-            truncated,
-            0, // destination: 0 for channel broadcast
-            undefined, // no reply-to packet ID for timer messages
-            () => {
-              logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
-            },
-            (reason: string) => {
-              logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
-            },
-            channel // channel number
-          );
-        });
+            messageQueueService.enqueue(
+              truncated,
+              0, // destination: 0 for channel broadcast
+              undefined, // no reply-to packet ID for timer messages
+              () => {
+                logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
+              },
+              (reason: string) => {
+                logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
+              },
+              channel // channel number
+            );
+          });
+        } else {
+          logger.debug(`⏱️ Timer "${triggerName}" script executed (channel=none, no mesh output)`);
+        }
       }
 
       this.updateTimerTriggerResult(triggerId, 'success');
@@ -7365,9 +7399,21 @@ class MeshtasticManager {
 
               const scriptEnv = this.createScriptEnvVariables(message, matchedPattern, extractedParams, trigger, packetId);
 
+              // Expand tokens in script args if provided
+              let scriptArgsList: string[] = [];
+              if (trigger.scriptArgs) {
+                const expandedArgs = await this.replaceAcknowledgementTokens(
+                  trigger.scriptArgs, nodeId, message.fromNodeNum, hopsTraveled,
+                  receivedDate, receivedTime, message.channel, isDirectMessage,
+                  message.rxSnr, message.rxRssi, message.viaMqtt
+                );
+                scriptArgsList = this.parseScriptArgs(expandedArgs);
+                logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
+              }
+
               // Execute script with 10-second timeout
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
-              const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+              const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
                 timeout: 10000,
                 env: scriptEnv,
                 maxBuffer: 1024 * 1024, // 1MB max output
@@ -7407,6 +7453,13 @@ class MeshtasticManager {
 
               // For scripts with multiple responses, send each one
               const triggerChannel = trigger.channel ?? 'dm';
+
+              // Skip sending if channel is 'none' (script handles its own output)
+              if (triggerChannel === 'none') {
+                logger.debug(`🤖 Script executed (channel=none, no mesh output)`);
+                return;
+              }
+
               const target = triggerChannel === 'dm' ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
               logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}`);
 
@@ -7514,6 +7567,8 @@ class MeshtasticManager {
    * - PACKET_ID: The packet ID (empty string if undefined)
    * - TRIGGER: The matched trigger pattern(s)
    * - MATCHED_PATTERN: The specific pattern that matched
+   * - MESHTASTIC_IP: IP address of the connected Meshtastic node
+   * - MESHTASTIC_PORT: TCP port of the connected Meshtastic node
    * - FROM_SHORT_NAME, FROM_LONG_NAME: Sender's node names
    * - FROM_LAT, FROM_LON: Sender's location (if available)
    * - MM_LAT, MM_LON: MeshMonitor node location (if available)
@@ -7521,6 +7576,7 @@ class MeshtasticManager {
    * - PARAM_*: Extracted parameters from trigger pattern
    */
   private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: AutoResponderTrigger, packetId?: number) {
+    const config = this.getConfig();
     const scriptEnv: Record<string, string> = {
       ...process.env as Record<string, string>,
       MESSAGE: message.text,
@@ -7528,6 +7584,8 @@ class MeshtasticManager {
       PACKET_ID: packetId !== undefined ? String(packetId) : '',
       TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
       MATCHED_PATTERN: matchedPattern || '',
+      MESHTASTIC_IP: config.nodeIp,
+      MESHTASTIC_PORT: String(config.tcpPort),
     };
 
     // Add sender node information environment variables
@@ -7949,6 +8007,39 @@ class MeshtasticManager {
     }
   }
 
+  /**
+   * Parse a shell-style arguments string into an array
+   * Handles single quotes, double quotes, and unquoted tokens
+   * Example: `--ip 192.168.1.1 --dest '!ab1234' --set "lora.region US"`
+   * Returns: ['--ip', '192.168.1.1', '--dest', '!ab1234', '--set', 'lora.region US']
+   */
+  private parseScriptArgs(argsString: string): string[] {
+    const args: string[] = [];
+    let current = '';
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+
+    for (let i = 0; i < argsString.length; i++) {
+      const char = argsString[i];
+      if (char === "'" && !inDoubleQuote) {
+        inSingleQuote = !inSingleQuote;
+      } else if (char === '"' && !inSingleQuote) {
+        inDoubleQuote = !inDoubleQuote;
+      } else if (char === ' ' && !inSingleQuote && !inDoubleQuote) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+    if (current) {
+      args.push(current);
+    }
+    return args;
+  }
+
   private async replaceAnnouncementTokens(message: string): Promise<string> {
     let result = message;
 
@@ -8014,11 +8105,24 @@ class MeshtasticManager {
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
 
+    // {IP} - Meshtastic node IP address
+    if (result.includes('{IP}')) {
+      const config = this.getConfig();
+      result = result.replace(/{IP}/g, config.nodeIp);
+    }
+
+    // {PORT} - Meshtastic node TCP port
+    if (result.includes('{PORT}')) {
+      const config = this.getConfig();
+      result = result.replace(/{PORT}/g, String(config.tcpPort));
+    }
+
     return result;
   }
 
   private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean): Promise<string> {
-    let result = message;
+    // Start with base announcement tokens (includes {IP}, {PORT}, {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT})
+    let result = await this.replaceAnnouncementTokens(message);
 
     // {NODE_ID} - Sender node ID
     if (result.includes('{NODE_ID}')) {
@@ -8065,65 +8169,8 @@ class MeshtasticManager {
       result = result.replace(/{TIME}/g, time);
     }
 
-    // {VERSION} - MeshMonitor version
-    if (result.includes('{VERSION}')) {
-      result = result.replace(/{VERSION}/g, packageJson.version);
-    }
-
-    // {DURATION} - Uptime
-    if (result.includes('{DURATION}')) {
-      const uptimeMs = Date.now() - this.serverStartTime;
-      const duration = this.formatDuration(uptimeMs);
-      result = result.replace(/{DURATION}/g, duration);
-    }
-
-    // {FEATURES} - Enabled features as emojis
-    if (result.includes('{FEATURES}')) {
-      const features: string[] = [];
-
-      // Check traceroute
-      const tracerouteInterval = databaseService.getSetting('tracerouteIntervalMinutes');
-      if (tracerouteInterval && parseInt(tracerouteInterval) > 0) {
-        features.push('🗺️');
-      }
-
-      // Check auto-ack
-      const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
-      if (autoAckEnabled === 'true') {
-        features.push('🤖');
-      }
-
-      // Check auto-announce
-      const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
-      if (autoAnnounceEnabled === 'true') {
-        features.push('📢');
-      }
-
-      // Check auto-welcome
-      const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
-      if (autoWelcomeEnabled === 'true') {
-        features.push('👋');
-      }
-
-      result = result.replace(/{FEATURES}/g, features.join(' '));
-    }
-
-    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
-    if (result.includes('{NODECOUNT}')) {
-      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
-      result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
-    }
-
-    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
-    if (result.includes('{DIRECTCOUNT}')) {
-      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
-      const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
-      result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
-    }
+    // Note: {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT}, {IP}, {PORT}
+    // are now handled by replaceAnnouncementTokens which is called at the start of this function
 
     // {SNR} - Signal-to-Noise Ratio
     if (result.includes('{SNR}')) {
