@@ -319,7 +319,6 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
 
       // Queue all parts through messageQueueService
       const queueIds: string[] = [];
-      const localNodeNum = databaseService.getSetting('localNodeNum');
 
       messageParts.forEach((part, index) => {
         const isFirstMessage = index === 0;
