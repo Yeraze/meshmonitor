@@ -148,6 +148,47 @@ export function shouldExcludeFromPacketLog(
   return isLocalPacket && isInternalPortnum;
 }
 
+/**
+ * Determines if a packet is a "phantom" internal state update from the local device.
+ * These are packets the Meshtastic device sends to TCP clients to report its internal
+ * state, but they are NOT actual RF transmissions. They should not be logged as "TX"
+ * packets because they clutter the packet log and don't represent actual mesh traffic.
+ *
+ * Phantom packets are identified by:
+ * - from_node === localNodeNum (originated from local device)
+ * - transport_mechanism === INTERNAL (0) or undefined
+ * - hop_start === 0 or undefined (hasn't traveled any hops)
+ *
+ * @param fromNum - Source node number
+ * @param localNodeNum - The local node's number (null if not connected)
+ * @param transportMechanism - Transport mechanism from the packet (0 = INTERNAL)
+ * @param hopStart - Hop start value from the packet
+ * @returns true if the packet is a phantom internal state update
+ */
+export function isPhantomInternalPacket(
+  fromNum: number,
+  localNodeNum: number | null,
+  transportMechanism: number | undefined,
+  hopStart: number | undefined
+): boolean {
+  // If we don't know the local node, can't determine if it's local traffic
+  if (!localNodeNum) return false;
+
+  // Must be from the local node
+  if (fromNum !== localNodeNum) return false;
+
+  // Transport mechanism must be INTERNAL (0) or undefined
+  // Note: TransportMechanism.INTERNAL === 0
+  const isInternalTransport = transportMechanism === undefined || transportMechanism === 0;
+  if (!isInternalTransport) return false;
+
+  // Hop start must be 0 or undefined (hasn't traveled any hops)
+  const hasNotTraveled = hopStart === undefined || hopStart === 0;
+  if (!hasNotTraveled) return false;
+
+  return true;
+}
+
 type TextMessage = {
   id: string;
   fromNodeNum: number;
@@ -2820,8 +2861,10 @@ class MeshtasticManager {
 
         // Skip logging for local internal packets (ADMIN_APP and ROUTING_APP)
         // These are management packets between MeshMonitor and the local node, not actual mesh traffic
-        if (shouldExcludeFromPacketLog(fromNum, toNum, portnum, this.localNodeInfo?.nodeNum ?? null)) {
-          // Skip logging - these are internal management packets
+        // Also skip "phantom" internal state updates from the device that aren't actual RF transmissions
+        if (shouldExcludeFromPacketLog(fromNum, toNum, portnum, this.localNodeInfo?.nodeNum ?? null) ||
+            isPhantomInternalPacket(fromNum, this.localNodeInfo?.nodeNum ?? null, meshPacket.transportMechanism, meshPacket.hopStart)) {
+          // Skip logging - these are internal packets, not actual mesh traffic
         } else {
 
         // Generate payload preview and store decoded payload
