@@ -71,7 +71,7 @@ export interface GeofenceTrigger {
   responseType: GeofenceResponseType;
   response?: string; // Text message with expansion tokens (when responseType is 'text')
   scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
-  channel: number | 'dm'; // Channel index (0-7) or 'dm' for direct message to triggering node
+  channel: number | 'dm' | 'none'; // Channel index (0-7), 'dm' for direct message, or 'none' for scripts with no mesh output
   lastRun?: number; // Unix timestamp of last execution
   lastResult?: 'success' | 'error';
   lastError?: string;

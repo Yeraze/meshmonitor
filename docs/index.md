@@ -67,6 +67,22 @@ features:
   - icon: ☀️
     title: Solar Monitoring
     details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Perfect for optimizing off-grid deployments and predicting power availability.
+
+  - icon: ⚡
+    title: Automation & Triggers
+    details: Create powerful automations with Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Respond to keywords, schedule broadcasts, and trigger actions based on node locations.
+
+  - icon: 📍
+    title: Geofence Triggers
+    details: Define geographic zones on an interactive map and trigger automated responses when nodes enter, exit, or remain inside. Perfect for arrival notifications, asset tracking, and proximity alerts.
+
+  - icon: 📜
+    title: Custom Scripting
+    details: Extend MeshMonitor with custom Python or Bash scripts. Execute scripts on message events, geofence triggers, or scheduled intervals. Full access to message context and node information.
+
+  - icon: 🔧
+    title: Remote Administration
+    details: Change node connections on-the-fly without container restarts. Configure device settings, manage channels, and send admin commands directly from the web interface.
 ---
 
 ## Quick Start
