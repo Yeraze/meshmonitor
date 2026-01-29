@@ -1823,11 +1823,14 @@ class MeshtasticManager {
       const execFileAsync = promisify(execFile);
 
       // Prepare environment variables for timer scripts
+      const config = this.getConfig();
       const scriptEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
         TIMER_NAME: triggerName,
         TIMER_ID: triggerId,
         TIMER_SCRIPT: scriptPath,
+        MESHTASTIC_IP: config.nodeIp,
+        MESHTASTIC_PORT: String(config.tcpPort),
       };
 
       // Add MeshMonitor node location if available
@@ -7564,6 +7567,8 @@ class MeshtasticManager {
    * - PACKET_ID: The packet ID (empty string if undefined)
    * - TRIGGER: The matched trigger pattern(s)
    * - MATCHED_PATTERN: The specific pattern that matched
+   * - MESHTASTIC_IP: IP address of the connected Meshtastic node
+   * - MESHTASTIC_PORT: TCP port of the connected Meshtastic node
    * - FROM_SHORT_NAME, FROM_LONG_NAME: Sender's node names
    * - FROM_LAT, FROM_LON: Sender's location (if available)
    * - MM_LAT, MM_LON: MeshMonitor node location (if available)
@@ -7571,6 +7576,7 @@ class MeshtasticManager {
    * - PARAM_*: Extracted parameters from trigger pattern
    */
   private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: AutoResponderTrigger, packetId?: number) {
+    const config = this.getConfig();
     const scriptEnv: Record<string, string> = {
       ...process.env as Record<string, string>,
       MESSAGE: message.text,
@@ -7578,6 +7584,8 @@ class MeshtasticManager {
       PACKET_ID: packetId !== undefined ? String(packetId) : '',
       TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
       MATCHED_PATTERN: matchedPattern || '',
+      MESHTASTIC_IP: config.nodeIp,
+      MESHTASTIC_PORT: String(config.tcpPort),
     };
 
     // Add sender node information environment variables

@@ -20,6 +20,9 @@ Usage with MeshMonitor Script Arguments (Recommended):
     - Arguments: --dest {NODE_ID} --reboot
     - Arguments: --set device.role CLIENT
 
+    For Timer triggers (no automatic NODE_ID), specify destination:
+    - Arguments: --dest !abcd1234 --reboot
+
 Usage as a standalone script:
     ./remote-admin.py --dest !abcd1234 --set lora.region US
     ./remote-admin.py --ip 192.168.1.100 --dest !abcd1234 --reboot
