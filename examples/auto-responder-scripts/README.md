@@ -185,6 +185,63 @@ Distance calculator that uses the new location environment variables to calculat
 - Shows distance in both kilometers and miles
 - Includes compass direction from sender to MeshMonitor
 
+### remote-admin.py / remote-admin.sh (Python/Shell)
+Remote admin scripts for sending Meshtastic CLI commands to nodes. Designed for use with Geofence triggers but works with any automation.
+
+**Available in:** Python (`remote-admin.py`) and Shell (`remote-admin.sh`)
+
+**Environment Variables (set automatically by MeshMonitor):**
+- `MESHTASTIC_IP` - IP address of the connected Meshtastic node
+- `MESHTASTIC_PORT` - TCP port (usually 4403)
+- `NODE_ID` - Destination node ID (e.g., `!abcd1234`)
+- `GEOFENCE_NAME` - Name of the geofence (for geofence triggers)
+- `GEOFENCE_EVENT` - Event type: entry, exit, or while_inside
+
+**Geofence Trigger Examples:**
+
+1. **Reboot a node when it enters a specific area:**
+   - Create geofence trigger with event "entry"
+   - Set Script to `/data/scripts/remote-admin.py`
+   - Create a wrapper script that calls: `remote-admin.py --reboot`
+
+2. **Change radio settings when node exits an area:**
+   - Create geofence trigger with event "exit"
+   - Create wrapper: `remote-admin.py --set lora.region US`
+
+3. **Set node position:**
+   - `remote-admin.py --setlat 40.7128 --setlon -74.0060`
+
+4. **Change channel settings:**
+   - `remote-admin.py --ch-set psk random --ch-index 1`
+
+**Standalone Usage:**
+```bash
+# Specify IP and destination manually
+./remote-admin.py --ip 192.168.1.100 --dest !abcd1234 --reboot
+
+# Use environment variables
+export MESHTASTIC_IP=192.168.1.100
+export NODE_ID=!abcd1234
+./remote-admin.py --set device.role CLIENT
+```
+
+**Creating Wrapper Scripts for Geofences:**
+Since geofence scripts can't pass custom arguments, create wrapper scripts for specific actions:
+
+```python
+#!/usr/bin/env python3
+# geofence-reboot.py - Reboot node on geofence entry
+import subprocess
+import sys
+subprocess.run(['/data/scripts/remote-admin.py', '--reboot'])
+```
+
+```bash
+#!/bin/sh
+# geofence-set-region.sh - Set region when node exits area
+/data/scripts/remote-admin.sh --set lora.region US
+```
+
 ### api-query.py (Python)
 Demonstrates using MeshMonitor's v1 API from scripts. Shows how to query node information using API token authentication.
 

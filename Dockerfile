@@ -54,7 +54,8 @@ RUN apk add --no-cache \
     su-exec \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && python3 -m venv /opt/apprise-venv \
-    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
+    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0" meshtastic \
+    && ln -sf /opt/apprise-venv/bin/meshtastic /usr/local/bin/meshtastic
 
 # Copy package files
 COPY package*.json ./

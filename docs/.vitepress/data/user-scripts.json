@@ -385,5 +385,49 @@
       "Environment variable configuration",
       "No external Python dependencies (uses only requests)"
     ]
+  },
+  {
+    "name": "Remote Admin (Python)",
+    "filename": "remote-admin.py",
+    "icon": "🔧",
+    "description": "Send remote admin commands to Meshtastic nodes via the CLI. Designed for Geofence triggers but works with any automation. Supports rebooting nodes, changing settings, and more when nodes enter/exit geofences.",
+    "language": "Python",
+    "tags": ["Remote Admin", "Geofence", "CLI", "Automation", "Device Control"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.py",
+    "exampleTrigger": "Geofence trigger (entry/exit/while_inside)",
+    "requirements": [
+      "Python 3.6+ (included in MeshMonitor)",
+      "Meshtastic CLI (included in MeshMonitor container)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Use with Geofence triggers for location-based actions",
+      "Full meshtastic CLI support (--reboot, --set, etc.)",
+      "Uses MESHTASTIC_IP and NODE_ID environment variables",
+      "Create wrapper scripts for specific geofence actions",
+      "JSON output for integration with MeshMonitor"
+    ]
+  },
+  {
+    "name": "Remote Admin (Shell)",
+    "filename": "remote-admin.sh",
+    "icon": "🔧",
+    "description": "Simple shell wrapper for remote admin commands. Pass any meshtastic CLI arguments to control nodes when they enter/exit geofences.",
+    "language": "Shell",
+    "tags": ["Remote Admin", "Geofence", "CLI", "Automation", "Device Control", "Shell"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.sh",
+    "exampleTrigger": "Geofence trigger (entry/exit/while_inside)",
+    "requirements": [
+      "BusyBox sh (included in MeshMonitor)",
+      "Meshtastic CLI (included in MeshMonitor container)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Lightweight shell implementation",
+      "Pass arguments directly to meshtastic CLI",
+      "Uses MESHTASTIC_IP and NODE_ID environment variables",
+      "Easy to create wrapper scripts for specific actions",
+      "JSON output for integration with MeshMonitor"
+    ]
   }
 ]

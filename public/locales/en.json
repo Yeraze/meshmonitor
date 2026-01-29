@@ -2148,6 +2148,8 @@
   "automation.geofence_triggers.tokens_help": "Available tokens:",
   "automation.geofence_triggers.channel": "Channel:",
   "automation.geofence_triggers.channel_help": "Output will be sent to this channel",
+  "automation.geofence_triggers.channel_none": "None (no mesh output)",
+  "automation.geofence_triggers.channel_none_help": "Script handles its own output (e.g., external integrations)",
   "automation.geofence_triggers.add": "Add Geofence Trigger",
   "automation.geofence_triggers.added": "Geofence trigger added",
   "automation.geofence_triggers.saved": "Geofence triggers saved",
