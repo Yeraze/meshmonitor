@@ -18,17 +18,14 @@ router.use(requirePermission('security', 'read'));
 // Get all nodes with security issues
 router.get('/issues', async (_req: Request, res: Response) => {
   try {
-    const nodesWithIssues = await databaseService.getNodesWithKeySecurityIssuesAsync();
+    const nodesWithKeyIssues = await databaseService.getNodesWithKeySecurityIssuesAsync();
+    const nodesWithExcessivePackets = await databaseService.getNodesWithExcessivePacketsAsync();
 
-    // Categorize issues
-    const lowEntropyNodes = nodesWithIssues.filter(node => node.keyIsLowEntropy);
-    const duplicateKeyNodes = nodesWithIssues.filter(node => node.duplicateKeyDetected);
+    // Combine and deduplicate
+    const allIssueNodes = new Map<number, any>();
 
-    return res.json({
-      total: nodesWithIssues.length,
-      lowEntropyCount: lowEntropyNodes.length,
-      duplicateKeyCount: duplicateKeyNodes.length,
-      nodes: nodesWithIssues.map(node => ({
+    for (const node of nodesWithKeyIssues) {
+      allIssueNodes.set(node.nodeNum, {
         nodeNum: node.nodeNum,
         shortName: node.shortName || 'Unknown',
         longName: node.longName || 'Unknown',
@@ -37,8 +34,55 @@ router.get('/issues', async (_req: Request, res: Response) => {
         duplicateKeyDetected: node.duplicateKeyDetected,
         keySecurityIssueDetails: node.keySecurityIssueDetails,
         publicKey: node.publicKey,
-        hwModel: node.hwModel
-      }))
+        hwModel: node.hwModel,
+        isExcessivePackets: (node as any).isExcessivePackets || false,
+        packetRatePerHour: (node as any).packetRatePerHour || null,
+        packetRateLastChecked: (node as any).packetRateLastChecked || null
+      });
+    }
+
+    for (const node of nodesWithExcessivePackets) {
+      if (!allIssueNodes.has(node.nodeNum)) {
+        allIssueNodes.set(node.nodeNum, {
+          nodeNum: node.nodeNum,
+          shortName: node.shortName || 'Unknown',
+          longName: node.longName || 'Unknown',
+          lastHeard: node.lastHeard,
+          keyIsLowEntropy: node.keyIsLowEntropy || false,
+          duplicateKeyDetected: node.duplicateKeyDetected || false,
+          keySecurityIssueDetails: node.keySecurityIssueDetails,
+          publicKey: node.publicKey,
+          hwModel: node.hwModel,
+          isExcessivePackets: (node as any).isExcessivePackets || false,
+          packetRatePerHour: (node as any).packetRatePerHour || null,
+          packetRateLastChecked: (node as any).packetRateLastChecked || null
+        });
+      } else {
+        // Merge excessive packets info into existing node
+        const existing = allIssueNodes.get(node.nodeNum)!;
+        existing.isExcessivePackets = (node as any).isExcessivePackets || false;
+        existing.packetRatePerHour = (node as any).packetRatePerHour || null;
+        existing.packetRateLastChecked = (node as any).packetRateLastChecked || null;
+      }
+    }
+
+    const nodesWithIssues = Array.from(allIssueNodes.values());
+
+    // Categorize issues
+    const lowEntropyNodes = nodesWithIssues.filter(node => node.keyIsLowEntropy);
+    const duplicateKeyNodes = nodesWithIssues.filter(node => node.duplicateKeyDetected);
+    const excessivePacketsNodes = nodesWithIssues.filter(node => node.isExcessivePackets);
+
+    // Get top 5 broadcasters for spam analysis
+    const topBroadcasters = await databaseService.getTopBroadcastersAsync(5);
+
+    return res.json({
+      total: nodesWithIssues.length,
+      lowEntropyCount: lowEntropyNodes.length,
+      duplicateKeyCount: duplicateKeyNodes.length,
+      excessivePacketsCount: excessivePacketsNodes.length,
+      nodes: nodesWithIssues,
+      topBroadcasters
     });
   } catch (error) {
     logger.error('Error getting security issues:', error);

@@ -2,9 +2,15 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { detectDuplicateKeys, checkLowEntropyKey } from '../../services/lowEntropyKeyService.js';
 
+/** Threshold for excessive packets per hour (spam detection) */
+const EXCESSIVE_PACKETS_THRESHOLD = 30;
+
 /**
- * Scheduled duplicate key detection service
- * Periodically scans all nodes for duplicate public keys
+ * Scheduled security scanning service
+ * Periodically scans all nodes for:
+ * - Duplicate public keys
+ * - Low-entropy keys
+ * - Excessive packet rates (spam detection)
  */
 class DuplicateKeySchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
@@ -134,6 +140,9 @@ class DuplicateKeySchedulerService {
           }
         }
 
+        // Run spam detection (even when no duplicates found)
+        await this.runSpamDetection();
+
         // Update last scan time (Unix timestamp in seconds)
         this.lastScanTime = Math.floor(Date.now() / 1000);
 
@@ -186,13 +195,109 @@ class DuplicateKeySchedulerService {
 
       logger.info(`✅ Duplicate key scan complete: ${updateCount} nodes flagged across ${duplicates.size} duplicate groups`);
 
+      // Run spam detection (excessive packet rates)
+      await this.runSpamDetection();
+
       // Update last scan time (Unix timestamp in seconds)
       this.lastScanTime = Math.floor(Date.now() / 1000);
 
     } catch (error) {
-      logger.error('Error during duplicate key scan:', error);
+      logger.error('Error during security scan:', error);
     } finally {
       this.isScanning = false;
+    }
+  }
+
+  /**
+   * Run spam detection (excessive packet rate check)
+   */
+  private async runSpamDetection(): Promise<void> {
+    try {
+      logger.info('🔐 Running spam detection (excessive packet rate check)...');
+
+      // Get the local node number to exclude from spam detection
+      // (local node has high packet counts due to admin/config traffic)
+      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
+
+      // Get packet counts per node for the last hour
+      const packetCounts = await databaseService.getPacketCountsPerNodeLastHourAsync();
+
+      if (packetCounts.length === 0) {
+        logger.info('ℹ️  No packet data available for spam detection');
+        return;
+      }
+
+      // Get all nodes to track which ones we need to clear flags from
+      const allNodes = databaseService.getAllNodes();
+      const nodesWithCurrentPackets = new Set(packetCounts.map(p => p.nodeNum));
+
+      let flaggedCount = 0;
+      let clearedCount = 0;
+
+      // Check each node with packet activity
+      for (const { nodeNum, packetCount } of packetCounts) {
+        // Skip the local node - it has high packet counts due to admin traffic
+        if (localNodeNum && nodeNum === localNodeNum) {
+          continue;
+        }
+
+        const node = databaseService.getNode(nodeNum);
+        if (!node) continue;
+
+        const isExcessive = packetCount > EXCESSIVE_PACKETS_THRESHOLD;
+        const wasExcessive = (node as any).isExcessivePackets;
+
+        if (isExcessive && !wasExcessive) {
+          // Newly flagged as excessive
+          databaseService.updateNodeSpamFlags(nodeNum, true, packetCount);
+          flaggedCount++;
+          logger.warn(`🚨 Excessive packets detected: Node ${nodeNum} (${node.shortName || 'Unknown'}) sent ${packetCount} packets in the last hour (threshold: ${EXCESSIVE_PACKETS_THRESHOLD})`);
+        } else if (!isExcessive && wasExcessive) {
+          // Was excessive but now below threshold
+          databaseService.updateNodeSpamFlags(nodeNum, false, packetCount);
+          clearedCount++;
+          logger.info(`✅ Spam flag cleared: Node ${nodeNum} (${node.shortName || 'Unknown'}) now at ${packetCount} packets/hour`);
+        } else if (isExcessive) {
+          // Still excessive, update the rate
+          databaseService.updateNodeSpamFlags(nodeNum, true, packetCount);
+        } else {
+          // Not excessive, update the rate
+          databaseService.updateNodeSpamFlags(nodeNum, false, packetCount);
+        }
+      }
+
+      // Clear flags from nodes that have no packet activity in the last hour
+      // Also clear flags from the local node (it's excluded from spam detection)
+      for (const node of allNodes) {
+        const isLocalNode = localNodeNum && node.nodeNum === localNodeNum;
+
+        if ((node as any).isExcessivePackets) {
+          if (isLocalNode) {
+            // Clear spam flag from local node - it's excluded from detection
+            databaseService.updateNodeSpamFlags(node.nodeNum, false, 0);
+            clearedCount++;
+            logger.info(`✅ Spam flag cleared: Local node ${node.nodeNum} (${node.shortName || 'Unknown'}) - excluded from spam detection`);
+          } else if (!nodesWithCurrentPackets.has(node.nodeNum)) {
+            databaseService.updateNodeSpamFlags(node.nodeNum, false, 0);
+            clearedCount++;
+            logger.info(`✅ Spam flag cleared: Node ${node.nodeNum} (${node.shortName || 'Unknown'}) - no packets in last hour`);
+          }
+        }
+      }
+
+      if (flaggedCount > 0) {
+        logger.info(`🚨 Spam detection complete: ${flaggedCount} nodes flagged for excessive packets`);
+      } else {
+        logger.info(`✅ Spam detection complete: No nodes exceeding ${EXCESSIVE_PACKETS_THRESHOLD} packets/hour`);
+      }
+
+      if (clearedCount > 0) {
+        logger.info(`✅ Cleared spam flags from ${clearedCount} nodes`);
+      }
+
+    } catch (error) {
+      logger.error('Error during spam detection:', error);
     }
   }
 
