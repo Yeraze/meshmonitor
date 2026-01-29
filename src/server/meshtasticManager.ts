@@ -7633,7 +7633,15 @@ class MeshtasticManager {
    * Split message into chunks that fit within Meshtastic's character limit
    * Tries to split on line breaks first, then spaces/punctuation, then anywhere
    */
-  private splitMessageForMeshtastic(text: string, maxChars: number): string[] {
+  /**
+   * Split message into chunks that fit within Meshtastic's character limit.
+   * This is used by auto-responders and can be used by the API for long messages.
+   * Tries to split on line breaks first, then spaces/punctuation, then anywhere.
+   * @param text The text to split
+   * @param maxChars Maximum bytes per message (default 200 for Meshtastic)
+   * @returns Array of message chunks
+   */
+  public splitMessageForMeshtastic(text: string, maxChars: number): string[] {
     const encoder = new TextEncoder();
     const messages: string[] = [];
     let remaining = text;

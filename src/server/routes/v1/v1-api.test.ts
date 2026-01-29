@@ -177,7 +177,36 @@ vi.mock('../../meshtasticManager.js', () => {
       sendTextMessage: vi.fn(async (text: string, channel: number, destination?: number, replyId?: number, emoji?: number, userId?: number) => {
         // Simulate returning a message ID
         return 123456789;
+      }),
+      splitMessageForMeshtastic: vi.fn((text: string, maxChars: number) => {
+        // Simple implementation that splits text into chunks
+        const chunks: string[] = [];
+        let remaining = text;
+        while (remaining.length > 0) {
+          if (remaining.length <= maxChars) {
+            chunks.push(remaining);
+            break;
+          }
+          chunks.push(remaining.substring(0, maxChars));
+          remaining = remaining.substring(maxChars);
+        }
+        return chunks;
       })
+    }
+  };
+});
+
+// Mock messageQueueService
+vi.mock('../../messageQueueService.js', () => {
+  let queueIdCounter = 0;
+  return {
+    messageQueueService: {
+      enqueue: vi.fn((text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number) => {
+        queueIdCounter++;
+        return `queue-${queueIdCounter}-${Date.now()}`;
+      }),
+      clear: vi.fn(),
+      getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false }))
     }
   };
 });
@@ -842,5 +871,282 @@ describe('POST /api/v1/messages - Error Handling', () => {
 
     expect(response.body).toHaveProperty('success', false);
     expect(response.body).toHaveProperty('error', 'Internal Server Error');
+  });
+});
+
+describe('POST /api/v1/messages - Multi-Message Breakup', () => {
+  it('should send short messages directly without splitting', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Short message',
+        channel: 0
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('deliveryState', 'pending');
+    expect(response.body.data).toHaveProperty('messageCount', 1);
+    expect(response.body.data).toHaveProperty('requestId', 123456789);
+    // Should call sendTextMessage directly, not queue
+    expect(meshtasticManager.default.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('should split and queue long messages for channel broadcast', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Create a message longer than 200 bytes
+    const longMessage = 'A'.repeat(250);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: longMessage,
+        channel: 0
+      })
+      .expect(202);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('deliveryState', 'queued');
+    expect(response.body.data).toHaveProperty('messageCount');
+    expect(response.body.data.messageCount).toBeGreaterThan(1);
+    expect(response.body.data).toHaveProperty('queueIds');
+    expect(Array.isArray(response.body.data.queueIds)).toBe(true);
+    expect(response.body.data.queueIds.length).toBe(response.body.data.messageCount);
+    expect(response.body.data).toHaveProperty('note');
+    expect(response.body.data.note).toContain('split');
+
+    // Should NOT call sendTextMessage directly
+    expect(meshtasticManager.default.sendTextMessage).not.toHaveBeenCalled();
+    // Should call splitMessageForMeshtastic and enqueue
+    expect(meshtasticManager.default.splitMessageForMeshtastic).toHaveBeenCalledWith(longMessage, 200);
+    expect(messageQueueService.enqueue).toHaveBeenCalled();
+  });
+
+  it('should split and queue long direct messages', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+    const databaseService = await import('../../../services/database.js');
+
+    // Reset mocks and restore default permission behavior
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(databaseService.default.checkPermissionAsync).mockResolvedValue(true);
+
+    // Create a message longer than 200 bytes
+    const longMessage = 'B'.repeat(450);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: longMessage,
+        toNodeId: '!a1b2c3d4'
+      })
+      .expect(202);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('deliveryState', 'queued');
+    expect(response.body.data).toHaveProperty('messageCount');
+    expect(response.body.data.messageCount).toBeGreaterThan(1);
+    expect(response.body.data).toHaveProperty('channel', -1);
+    expect(response.body.data).toHaveProperty('toNodeId', '!a1b2c3d4');
+
+    // Should call enqueue with correct destination
+    expect(messageQueueService.enqueue).toHaveBeenCalled();
+    const enqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
+    expect(enqueueCall[1]).toBe(0xa1b2c3d4); // Destination node number
+  });
+
+  it('should only set replyId on first message part', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Create a message longer than 200 bytes with a replyId
+    const longMessage = 'C'.repeat(450);
+
+    await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: longMessage,
+        channel: 0,
+        replyId: 999888777
+      })
+      .expect(202);
+
+    // First call should have replyId
+    const firstEnqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
+    expect(firstEnqueueCall[2]).toBe(999888777); // replyId
+
+    // Subsequent calls should NOT have replyId
+    const secondEnqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[1];
+    expect(secondEnqueueCall[2]).toBeUndefined();
+  });
+
+  it('should handle messages exactly at the byte limit', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Message exactly at 200 bytes (ASCII characters = 1 byte each)
+    const exactMessage = 'D'.repeat(200);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: exactMessage,
+        channel: 0
+      })
+      .expect(201);
+
+    // Should send directly, not queue
+    expect(response.body.data).toHaveProperty('deliveryState', 'pending');
+    expect(response.body.data).toHaveProperty('messageCount', 1);
+    expect(meshtasticManager.default.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('should handle multi-byte UTF-8 characters correctly', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Emoji characters are 4 bytes each in UTF-8
+    // 51 emoji = 204 bytes > 200 limit, but only 51 characters
+    // This verifies the endpoint uses byte counting, not character counting
+    const emojiMessage = '😀'.repeat(51);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: emojiMessage,
+        channel: 0
+      })
+      .expect(202);
+
+    // Should trigger split logic due to byte length exceeding 200
+    // The splitMessageForMeshtastic should be called because UTF-8 byte length > 200
+    expect(response.body.data).toHaveProperty('deliveryState', 'queued');
+    expect(meshtasticManager.default.splitMessageForMeshtastic).toHaveBeenCalledWith(emojiMessage, 200);
+    // Note: The mock doesn't properly handle UTF-8 byte splitting, but we verify the route
+    // correctly identifies the message as too long based on byte count
+  });
+
+  it('should return 202 status for queued messages', async () => {
+    const longMessage = 'E'.repeat(300);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: longMessage,
+        channel: 0
+      });
+
+    // Queued messages should return 202 Accepted
+    expect(response.status).toBe(202);
+    expect(response.body.data).toHaveProperty('deliveryState', 'queued');
+  });
+
+  it('should set correct channel for broadcast split messages', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    const longMessage = 'F'.repeat(300);
+
+    await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: longMessage,
+        channel: 5
+      })
+      .expect(202);
+
+    // Each enqueue call should have the correct channel
+    const calls = vi.mocked(messageQueueService.enqueue).mock.calls;
+    for (const call of calls) {
+      expect(call[5]).toBe(5); // channel parameter (6th argument)
+    }
+  });
+
+  it('should return 413 when message would require more than 3 parts', async () => {
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Message of 800 characters would require 4 parts (200 chars each)
+    const veryLongMessage = 'X'.repeat(800);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: veryLongMessage,
+        channel: 0
+      })
+      .expect(413);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('Payload Too Large');
+    expect(response.body.message).toContain('Would require 4 parts');
+    expect(response.body.message).toContain('maximum is 3 parts');
+    // Should NOT queue any messages
+    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('should allow messages that split into exactly 3 parts', async () => {
+    const { messageQueueService } = await import('../../messageQueueService.js');
+
+    // Reset mocks
+    vi.mocked(messageQueueService.enqueue).mockClear();
+
+    // Message of 600 characters should split into exactly 3 parts (200 chars each)
+    const maxAllowedMessage = 'Y'.repeat(600);
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: maxAllowedMessage,
+        channel: 0
+      })
+      .expect(202);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.messageCount).toBe(3);
+    expect(messageQueueService.enqueue).toHaveBeenCalledTimes(3);
   });
 });
