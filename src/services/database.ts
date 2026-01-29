@@ -64,6 +64,7 @@ import { migration as packetViaMqttMigration, runMigration057Postgres, runMigrat
 import { migration as transportMechanismMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_convert_via_mqtt_to_transport_mechanism.js';
 import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_add_channel_database_view_on_map.js';
 import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_add_auto_traceroute_enabled_column.js';
+import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -906,6 +907,7 @@ class DatabaseService {
     this.runTransportMechanismMigration();
     this.runChannelDbViewOnMapMigration();
     this.runAutoTracerouteEnabledMigration();
+    this.runSpamDetectionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2094,6 +2096,26 @@ class DatabaseService {
       logger.debug('✅ Auto traceroute enabled column migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run auto traceroute enabled column migration:', error);
+      throw error;
+    }
+  }
+
+  private runSpamDetectionMigration(): void {
+    try {
+      const migrationKey = 'migration_061_spam_detection';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Spam detection columns migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 061: Add spam detection columns to nodes...');
+      spamDetectionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Spam detection columns migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run spam detection columns migration:', error);
       throw error;
     }
   }
@@ -3287,6 +3309,259 @@ class DatabaseService {
     `);
     const now = Date.now();
     stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum);
+  }
+
+  /**
+   * Get packet counts per node for the last hour (for spam detection)
+   * Returns an array of { nodeNum, packetCount }
+   * Excludes internal traffic (packets where both from and to are the local node)
+   */
+  getPacketCountsPerNodeLastHour(): Array<{ nodeNum: number; packetCount: number }> {
+    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+
+    // For PostgreSQL/MySQL, use async method
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Return empty array and caller should use async version
+      logger.warn('getPacketCountsPerNodeLastHour() called for non-SQLite database - use async version');
+      return [];
+    }
+
+    // Get local node number to exclude internal traffic
+    const localNodeNumStr = this.getSetting('localNodeNum');
+    const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
+
+    const stmt = this.db.prepare(`
+      SELECT from_node as nodeNum, COUNT(*) as packetCount
+      FROM packet_log
+      WHERE timestamp >= ?
+        AND NOT (from_node = ? AND to_node = ?)
+      GROUP BY from_node
+    `);
+
+    return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1) as Array<{ nodeNum: number; packetCount: number }>;
+  }
+
+  /**
+   * Get packet counts per node for the last hour (async version)
+   * Excludes internal traffic (packets where both from and to are the local node)
+   */
+  async getPacketCountsPerNodeLastHourAsync(): Promise<Array<{ nodeNum: number; packetCount: number }>> {
+    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+
+    // Get local node number to exclude internal traffic
+    const localNodeNumStr = this.getSetting('localNodeNum');
+    const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const result = await this.postgresPool.query(`
+          SELECT from_node as "nodeNum", COUNT(*)::int as "packetCount"
+          FROM packet_log
+          WHERE timestamp >= $1
+            AND NOT (from_node = $2 AND to_node = $2)
+          GROUP BY from_node
+        `, [oneHourAgo, localNodeNum || -1]);
+
+        return result.rows;
+      } catch (error) {
+        logger.error('Error getting packet counts per node (PostgreSQL):', error);
+        return [];
+      }
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const [rows] = await this.mysqlPool.query(`
+          SELECT from_node as nodeNum, COUNT(*) as packetCount
+          FROM packet_log
+          WHERE timestamp >= ?
+            AND NOT (from_node = ? AND to_node = ?)
+          GROUP BY from_node
+        `, [oneHourAgo, localNodeNum || -1, localNodeNum || -1]) as any;
+
+        return rows.map((row: any) => ({
+          nodeNum: Number(row.nodeNum),
+          packetCount: Number(row.packetCount)
+        }));
+      } catch (error) {
+        logger.error('Error getting packet counts per node (MySQL):', error);
+        return [];
+      }
+    }
+
+    // SQLite fallback
+    return this.getPacketCountsPerNodeLastHour();
+  }
+
+  /**
+   * Get top N broadcasters by packet count in the last hour
+   * Returns node info with packet counts, sorted by count descending
+   * Excludes internal traffic (packets where both from and to are the local node)
+   */
+  async getTopBroadcastersAsync(limit: number = 5): Promise<Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>> {
+    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+
+    // Get local node number to exclude internal traffic
+    const localNodeNumStr = this.getSetting('localNodeNum');
+    const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        // Exclude packets where both from_node and to_node are the local node (internal traffic)
+        const result = await this.postgresPool.query(`
+          SELECT p.from_node as "nodeNum", n."shortName", n."longName", COUNT(*)::int as "packetCount"
+          FROM packet_log p
+          LEFT JOIN nodes n ON p.from_node = n."nodeNum"
+          WHERE p.timestamp >= $1
+            AND NOT (p.from_node = $3 AND p.to_node = $3)
+          GROUP BY p.from_node, n."shortName", n."longName"
+          ORDER BY "packetCount" DESC
+          LIMIT $2
+        `, [oneHourAgo, limit, localNodeNum || -1]);
+
+        return result.rows;
+      } catch (error) {
+        logger.error('Error getting top broadcasters (PostgreSQL):', error);
+        return [];
+      }
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const [rows] = await this.mysqlPool.query(`
+          SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
+          FROM packet_log p
+          LEFT JOIN nodes n ON p.from_node = n.nodeNum
+          WHERE p.timestamp >= ?
+            AND NOT (p.from_node = ? AND p.to_node = ?)
+          GROUP BY p.from_node, n.shortName, n.longName
+          ORDER BY packetCount DESC
+          LIMIT ?
+        `, [oneHourAgo, localNodeNum || -1, localNodeNum || -1, limit]) as any;
+
+        return rows.map((row: any) => ({
+          nodeNum: Number(row.nodeNum),
+          shortName: row.shortName,
+          longName: row.longName,
+          packetCount: Number(row.packetCount)
+        }));
+      } catch (error) {
+        logger.error('Error getting top broadcasters (MySQL):', error);
+        return [];
+      }
+    }
+
+    // SQLite - exclude packets where both from_node and to_node are the local node
+    const stmt = this.db.prepare(`
+      SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
+      FROM packet_log p
+      LEFT JOIN nodes n ON p.from_node = n.nodeNum
+      WHERE p.timestamp >= ?
+        AND NOT (p.from_node = ? AND p.to_node = ?)
+      GROUP BY p.from_node
+      ORDER BY packetCount DESC
+      LIMIT ?
+    `);
+
+    return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1, limit) as Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>;
+  }
+
+  /**
+   * Update the spam detection flags for a node
+   */
+  updateNodeSpamFlags(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number): void {
+    const now = Math.floor(Date.now() / 1000);
+
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const cachedNode = this.nodesCache.get(nodeNum);
+      if (cachedNode) {
+        (cachedNode as any).isExcessivePackets = isExcessivePackets;
+        (cachedNode as any).packetRatePerHour = packetRatePerHour;
+        (cachedNode as any).packetRateLastChecked = now;
+        cachedNode.updatedAt = Date.now();
+      }
+
+      // Fire-and-forget database update
+      this.updateNodeSpamFlagsAsync(nodeNum, isExcessivePackets, packetRatePerHour, now).catch(err => {
+        logger.error(`Failed to update node spam flags in database:`, err);
+      });
+      return;
+    }
+
+    // SQLite: synchronous update
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET isExcessivePackets = ?,
+          packetRatePerHour = ?,
+          packetRateLastChecked = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, now, Date.now(), nodeNum);
+  }
+
+  /**
+   * Update the spam detection flags for a node (async)
+   */
+  async updateNodeSpamFlagsAsync(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, lastChecked: number): Promise<void> {
+    const now = Date.now();
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      await this.postgresPool.query(`
+        UPDATE nodes
+        SET "isExcessivePackets" = $1,
+            "packetRatePerHour" = $2,
+            "packetRateLastChecked" = $3,
+            "updatedAt" = $4
+        WHERE "nodeNum" = $5
+      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
+      return;
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      await this.mysqlPool.query(`
+        UPDATE nodes
+        SET isExcessivePackets = ?,
+            packetRatePerHour = ?,
+            packetRateLastChecked = ?,
+            updatedAt = ?
+        WHERE nodeNum = ?
+      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
+      return;
+    }
+  }
+
+  /**
+   * Get all nodes with excessive packet rates (for security page)
+   */
+  getNodesWithExcessivePackets(): DbNode[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const result: DbNode[] = [];
+      for (const node of this.nodesCache.values()) {
+        if ((node as any).isExcessivePackets) {
+          result.push(node);
+        }
+      }
+      return result;
+    }
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM nodes WHERE isExcessivePackets = 1
+    `);
+    return stmt.all() as DbNode[];
+  }
+
+  /**
+   * Get all nodes with excessive packet rates (async)
+   */
+  async getNodesWithExcessivePacketsAsync(): Promise<DbNode[]> {
+    if (this.nodesRepo) {
+      // Use cache for now since we don't have a repo method yet
+      return this.getNodesWithExcessivePackets();
+    }
+    return this.getNodesWithExcessivePackets();
   }
 
   // Message operations
@@ -9334,6 +9609,9 @@ class DatabaseService {
       // Run migration 060: Add enabled column to auto_traceroute_nodes
       await runMigration060Postgres(client);
 
+      // Run migration 061: Add spam detection columns to nodes
+      await runMigration061Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9425,6 +9703,9 @@ class DatabaseService {
 
       // Run migration 060: Add enabled column to auto_traceroute_nodes
       await runMigration060Mysql(pool);
+
+      // Run migration 061: Add spam detection columns to nodes
+      await runMigration061Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

@@ -146,6 +146,14 @@
   color: var(--ctp-red);
 }
 
+.stat-card.excessive-packets {
+  border-color: var(--ctp-peach);
+}
+
+.stat-card.excessive-packets .stat-value {
+  color: var(--ctp-peach);
+}
+
 .stat-label {
   font-size: 14px;
   color: var(--ctp-subtext0);
@@ -278,6 +286,95 @@
   color: var(--ctp-base);
   border: 1px solid var(--ctp-red);
   opacity: 0.8;
+}
+
+.badge.excessive-packets {
+  background: var(--ctp-peach);
+  color: var(--ctp-base);
+  border: 1px solid var(--ctp-peach);
+  opacity: 0.8;
+}
+
+.packet-rate {
+  font-size: 12px;
+  color: var(--ctp-peach);
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+/* Top Broadcasters Table */
+.top-broadcasters-section {
+  margin-bottom: 30px;
+}
+
+.top-broadcasters-section .section-description {
+  color: var(--ctp-subtext0);
+  font-size: 14px;
+  margin-bottom: 15px;
+}
+
+.top-broadcasters-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ctp-surface0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.top-broadcasters-table th,
+.top-broadcasters-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid var(--ctp-surface1);
+}
+
+.top-broadcasters-table th {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.top-broadcasters-table td {
+  color: var(--ctp-text);
+  font-size: 14px;
+}
+
+.top-broadcasters-table tr:last-child td {
+  border-bottom: none;
+}
+
+.top-broadcasters-table tr:hover {
+  background: var(--ctp-surface1);
+}
+
+.top-broadcasters-table .rank {
+  width: 60px;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+}
+
+.top-broadcasters-table .node-name {
+  font-weight: 500;
+}
+
+.top-broadcasters-table .node-name .short-name {
+  color: var(--ctp-subtext0);
+  font-weight: 400;
+}
+
+.top-broadcasters-table .node-id {
+  font-family: monospace;
+  color: var(--ctp-subtext0);
+  font-size: 13px;
+}
+
+.top-broadcasters-table .packet-count {
+  font-weight: 600;
+  color: var(--ctp-peach);
+  text-align: right;
+  width: 100px;
 }
 
 .expand-icon {
