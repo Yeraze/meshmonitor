@@ -4574,6 +4574,9 @@ function App() {
         traceroutes={traceroutes}
         currentNodeId={currentNodeId}
         distanceUnit={distanceUnit}
+        onTraceroute={handleTraceroute}
+        connectionStatus={connectionStatus}
+        tracerouteLoading={tracerouteLoading}
       />
 
       {/* News Popup */}

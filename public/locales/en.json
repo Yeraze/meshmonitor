@@ -1020,6 +1020,7 @@
   "node_popup.last_seen": "Last Seen",
   "node_popup.direct_message": "Direct Message",
   "node_popup.show_on_map": "Show on Map",
+  "node_popup.traceroute": "Traceroute",
   "node_popup.last_traceroute": "Last Traceroute",
   "node_popup.forward_path": "Forward",
   "node_popup.return_path": "Return",
