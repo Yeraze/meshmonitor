@@ -4432,6 +4432,16 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
+  // Async version of getPositionTelemetryByNode - works for all database backends
+  async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number): Promise<DbTelemetry[]> {
+    if (this.telemetryRepo) {
+      // Cast to local DbTelemetry type (they have compatible structure)
+      return this.telemetryRepo.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp) as unknown as Promise<DbTelemetry[]>;
+    }
+    // Fallback to sync method for SQLite when repo not available
+    return this.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp);
+  }
+
   /**
    * Get the latest estimated positions for all nodes in a single query.
    * This is much more efficient than querying each node individually (N+1 problem).

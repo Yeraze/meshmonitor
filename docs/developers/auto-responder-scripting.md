@@ -208,6 +208,154 @@ Scripts must print JSON to stdout:
 }
 ```
 
+## Script Arguments
+
+Scripts can receive command-line arguments via the **Arguments** field in the MeshMonitor UI. Arguments support token expansion, allowing dynamic values to be passed to scripts at runtime.
+
+### How It Works
+
+When you configure a script trigger with arguments:
+1. MeshMonitor expands any tokens (e.g., `{NODE_ID}`) with their runtime values
+2. Arguments are parsed using shell-style quoting (supports single and double quotes)
+3. Arguments are passed to the script as command-line arguments (`sys.argv` in Python, `process.argv` in Node.js, `$@` in Shell)
+
+### Example Configuration
+
+```
+Trigger: admin {command}
+Response Type: Script
+Response: /data/scripts/remote-admin.py
+Arguments: --dest {NODE_ID} --{command}
+```
+
+When someone sends "admin reboot", the script is called as:
+```bash
+/data/scripts/remote-admin.py --dest !abc12345 --reboot
+```
+
+### Available Tokens (Auto Responder)
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| `{NODE_ID}` | Sender's node ID | `!a1b2c3d4` |
+| `{LONG_NAME}` | Sender's long name | `Alice's Node` |
+| `{SHORT_NAME}` | Sender's short name | `ALI` |
+| `{IP}` | Meshtastic node IP | `192.168.1.100` |
+| `{PORT}` | Meshtastic TCP port | `4403` |
+| `{VERSION}` | MeshMonitor version | `v3.4.0` |
+| `{NODECOUNT}` | Active node count | `42` |
+| `{DIRECTCOUNT}` | Direct node count | `15` |
+| `{HOPS}` | Message hop count | `2` |
+| `{SNR}` | Signal-to-noise ratio | `7.5` |
+| `{RSSI}` | Signal strength | `-95` |
+| `{CHANNEL}` | Channel name | `LongFast` |
+| `{DATE}` | Current date | `1/15/2025` |
+| `{TIME}` | Current time | `2:30:00 PM` |
+
+### Accessing Arguments in Scripts
+
+**Python:**
+```python
+#!/usr/bin/env python3
+import sys
+import json
+
+# Arguments are in sys.argv[1:]
+args = sys.argv[1:]
+print(f"Received args: {args}", file=sys.stderr)
+
+# Example: Parse with argparse
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--dest', help='Destination node')
+parser.add_argument('--reboot', action='store_true')
+parsed, unknown = parser.parse_known_args()
+
+if parsed.reboot:
+    response = {"response": f"Rebooting {parsed.dest}..."}
+else:
+    response = {"response": "No action specified"}
+
+print(json.dumps(response))
+```
+
+**Node.js:**
+```javascript
+#!/usr/bin/env node
+
+// Arguments are in process.argv.slice(2)
+const args = process.argv.slice(2);
+console.error('Received args:', args);
+
+// Simple flag parsing
+const hasReboot = args.includes('--reboot');
+const destIndex = args.indexOf('--dest');
+const dest = destIndex !== -1 ? args[destIndex + 1] : null;
+
+const response = hasReboot
+  ? { response: `Rebooting ${dest}...` }
+  : { response: 'No action specified' };
+
+console.log(JSON.stringify(response));
+```
+
+**Shell:**
+```bash
+#!/bin/sh
+
+# Arguments are in $@ or $1, $2, etc.
+echo "Received args: $@" >&2
+
+# Parse arguments
+DEST=""
+REBOOT=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dest) DEST="$2"; shift 2;;
+        --reboot) REBOOT=true; shift;;
+        *) shift;;
+    esac
+done
+
+if [ "$REBOOT" = true ]; then
+    cat <<EOF
+{"response": "Rebooting ${DEST}..."}
+EOF
+else
+    cat <<EOF
+{"response": "No action specified"}
+EOF
+fi
+```
+
+### Quoting in Arguments
+
+Arguments support shell-style quoting for values with spaces:
+
+| Arguments | Parsed Result |
+|-----------|---------------|
+| `--flag --value test` | `["--flag", "--value", "test"]` |
+| `--set 'lora.region US'` | `["--set", "lora.region US"]` |
+| `--msg "Hello World"` | `["--msg", "Hello World"]` |
+| `--dest '!abc123' --reboot` | `["--dest", "!abc123", "--reboot"]` |
+
+### Use Cases
+
+**Remote Administration:**
+```
+Arguments: --reboot
+Arguments: --set lora.region US
+Arguments: --setlat 40.7128 --setlon -74.0060
+```
+
+**Custom Scripts:**
+```
+Arguments: --format json --verbose
+Arguments: --ip {IP} --count {NODECOUNT}
+Arguments: --dest {NODE_ID} --action '{command}'
+```
+
 ## Environment Variables
 
 All scripts receive these environment variables:

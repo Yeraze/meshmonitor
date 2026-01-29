@@ -793,7 +793,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
     }
 
     // Get only position-related telemetry (lat/lon/alt) for the node - much more efficient!
-    const positionTelemetry = databaseService.getPositionTelemetryByNode(nodeId, 1500, cutoffTime);
+    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, 1500, cutoffTime);
 
     // Group by timestamp to get lat/lon pairs
     const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
@@ -832,13 +832,13 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
 });
 
 // Alternative endpoint with limit parameter for fetching positions
-apiRouter.get('/nodes/:nodeId/positions', optionalAuth(), (req, res) => {
+apiRouter.get('/nodes/:nodeId/positions', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 2000;
 
     // Get only position-related telemetry (lat/lon/alt) for the node
-    const positionTelemetry = databaseService.getPositionTelemetryByNode(nodeId, limit);
+    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, limit);
 
     // Group by timestamp to get lat/lon pairs
     const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
@@ -4973,9 +4973,9 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
             }
           }
 
-          // Validate channel ('dm' or number 0-7)
-          if (trigger.channel !== 'dm' && (typeof trigger.channel !== 'number' || trigger.channel < 0 || trigger.channel > 7)) {
-            return res.status(400).json({ error: 'Geofence channel must be "dm" or a number between 0 and 7' });
+          // Validate channel ('dm', 'none', or number 0-7)
+          if (trigger.channel !== 'dm' && trigger.channel !== 'none' && (typeof trigger.channel !== 'number' || trigger.channel < 0 || trigger.channel > 7)) {
+            return res.status(400).json({ error: 'Geofence channel must be "dm", "none", or a number between 0 and 7' });
           }
 
           // Validate nodeFilter

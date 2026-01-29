@@ -81,8 +81,10 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newNodeFilter, setNewNodeFilter] = useState<GeofenceNodeFilter>({ type: 'all' });
   const [newResponseType, setNewResponseType] = useState<GeofenceResponseType>('text');
   const [newScriptPath, setNewScriptPath] = useState('');
+  const [newScriptArgs, setNewScriptArgs] = useState('');
   const [newResponse, setNewResponse] = useState('');
   const [newChannel, setNewChannel] = useState<number | 'dm' | 'none'>('dm');
+  const [newVerifyResponse, setNewVerifyResponse] = useState(false);
 
   // Edit mode state
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
@@ -190,7 +192,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             responseType: newResponseType,
             response: newResponseType === 'text' ? newResponse.trim() : undefined,
             scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+            scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
             channel: newChannel,
+            verifyResponse: newChannel === 'dm' ? newVerifyResponse : false,
           };
         }
         return t;
@@ -210,7 +214,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         responseType: newResponseType,
         response: newResponseType === 'text' ? newResponse.trim() : undefined,
         scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+        scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
         channel: newChannel,
+        verifyResponse: newChannel === 'dm' ? newVerifyResponse : false,
       };
       setLocalTriggers([...localTriggers, newTrigger]);
       showToast(t('automation.geofence_triggers.added', 'Geofence trigger added'), 'success');
@@ -225,8 +231,10 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewNodeFilter({ type: 'all' });
     setNewResponseType('text');
     setNewScriptPath('');
+    setNewScriptArgs('');
     setNewResponse('');
     setNewChannel('dm');
+    setNewVerifyResponse(false);
   };
 
   const handleRemoveTrigger = (id: string) => {
@@ -249,8 +257,10 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewNodeFilter(trigger.nodeFilter);
     setNewResponseType(trigger.responseType);
     setNewScriptPath(trigger.scriptPath ?? '');
+    setNewScriptArgs(trigger.scriptArgs ?? '');
     setNewResponse(trigger.response ?? '');
     setNewChannel(trigger.channel);
+    setNewVerifyResponse(trigger.verifyResponse ?? false);
   };
 
   const handleCancelEdit = () => {
@@ -263,8 +273,10 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewNodeFilter({ type: 'all' });
     setNewResponseType('text');
     setNewScriptPath('');
+    setNewScriptArgs('');
     setNewResponse('');
     setNewChannel('dm');
+    setNewVerifyResponse(false);
   };
 
   const formatLastRun = (timestamp?: number) => {
@@ -490,6 +502,28 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
               </div>
             )}
 
+            {/* Script Arguments */}
+            {newResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                  {t('automation.geofence_triggers.script_args', 'Arguments:')}
+                </label>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input
+                    type="text"
+                    value={newScriptArgs}
+                    onChange={(e) => setNewScriptArgs(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace' }}
+                    placeholder="--ip {IP} --dest {NODE_ID} --reboot"
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('automation.geofence_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {NODE_ID}, {EVENT}, {GEOFENCE_NAME}, etc.')}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Text Message */}
             {newResponseType === 'text' && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
@@ -558,6 +592,27 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   ? t('automation.geofence_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
                   : t('automation.geofence_triggers.channel_help', 'Output will be sent to this channel')}
               </div>
+              {/* Verify Response checkbox - only for DM channel */}
+              {newResponseType === 'text' && (
+                <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.85rem',
+                    cursor: newChannel === 'dm' ? 'pointer' : 'not-allowed',
+                    color: 'var(--ctp-subtext0)',
+                    opacity: newChannel === 'dm' ? 1 : 0.5
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={newVerifyResponse}
+                      onChange={(e) => setNewVerifyResponse(e.target.checked)}
+                      disabled={newChannel !== 'dm'}
+                      style={{ marginRight: '0.5rem', cursor: newChannel === 'dm' ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span>{t('automation.geofence_triggers.verify_response', 'Verify Response (enable 3-retry delivery confirmation - DM only)')}</span>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Add/Save Button */}
@@ -715,6 +770,18 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
         }}>
           {trigger.enabled ? 'ENABLED' : 'DISABLED'}
         </span>
+        {trigger.verifyResponse && (
+          <span style={{
+            fontSize: '0.7rem',
+            padding: '0.15rem 0.4rem',
+            background: 'var(--ctp-peach)',
+            color: 'var(--ctp-base)',
+            borderRadius: '3px',
+            fontWeight: 'bold',
+          }}>
+            VERIFY
+          </span>
+        )}
         <button
           onClick={onToggleEnabled}
           style={{
