@@ -3366,6 +3366,37 @@ class MeshtasticManager {
           }
         }
 
+        // Always save position to telemetry table for historical tracking
+        // This ensures position history is complete regardless of precision changes
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'latitude',
+          timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp,
+          channel: channelIndex, precisionBits, gpsAccuracy
+        });
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'longitude',
+          timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp,
+          channel: channelIndex, precisionBits, gpsAccuracy
+        });
+        if (position.altitude !== undefined && position.altitude !== null) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'altitude',
+            timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp,
+            channel: channelIndex
+          });
+        }
+
+        // Store satellites in view for GPS accuracy tracking
+        const satsInView = position.satsInView ?? position.sats_in_view;
+        if (satsInView !== undefined && satsInView > 0) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'sats_in_view',
+            timestamp, value: satsInView, unit: 'sats', createdAt: now, packetTimestamp,
+            channel: channelIndex
+          });
+        }
+
+        // Only update node's current position if precision check passes
         if (shouldUpdatePosition) {
           const nodeData: any = {
             nodeNum: fromNum,
@@ -3395,35 +3426,6 @@ class MeshtasticManager {
 
           // Emit node update event to notify frontend via WebSocket
           dataEventEmitter.emitNodeUpdate(fromNum, nodeData);
-
-          // Save position to telemetry table (historical tracking with precision metadata)
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'latitude',
-            timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp,
-            channel: channelIndex, precisionBits, gpsAccuracy
-          });
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'longitude',
-            timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp,
-            channel: channelIndex, precisionBits, gpsAccuracy
-          });
-          if (position.altitude !== undefined && position.altitude !== null) {
-            databaseService.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: 'altitude',
-              timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp,
-              channel: channelIndex
-            });
-          }
-
-          // Store satellites in view for GPS accuracy tracking
-          const satsInView = position.satsInView ?? position.sats_in_view;
-          if (satsInView !== undefined && satsInView > 0) {
-            databaseService.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: 'sats_in_view',
-              timestamp, value: satsInView, unit: 'sats', createdAt: now, packetTimestamp,
-              channel: channelIndex
-            });
-          }
 
           // Update mobility detection for this node
           databaseService.updateNodeMobility(nodeId);
