@@ -4337,6 +4337,48 @@ body {
   font-style: italic;
 }
 
+/* Tab Navigation for Map Popups */
+.node-popup-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ctp-surface1);
+}
+
+.node-popup-tab {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: background 0.2s, border-color 0.2s;
+  text-align: center;
+}
+
+.node-popup-tab:hover {
+  background: var(--ctp-surface1);
+}
+
+.node-popup-tab.active {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+}
+
+.node-popup-content {
+  min-height: 80px;
+}
+
+.node-popup-no-traceroute {
+  font-size: 0.875rem;
+  color: var(--ctp-subtext0);
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
 /* Legacy Route Popup Styles (for other popups) */
 .route-popup {
   min-width: 200px;
