@@ -169,14 +169,17 @@ export class ChannelsRepository extends BaseRepository {
 
     if (existingChannel) {
       // Update existing channel
-      logger.info(`Updating channel ${existingChannel.id} from "${existingChannel.name}" to "${data.name}"`);
+      // Preserve existing non-empty name if incoming name is empty (fixes #1567)
+      // This prevents device reconnections from wiping channel names
+      const effectiveName = data.name || existingChannel.name;
+      logger.info(`Updating channel ${existingChannel.id}: name "${existingChannel.name}" -> "${effectiveName}" (incoming: "${data.name}")`);
 
       if (this.isSQLite()) {
         const db = this.getSqliteDb();
         await db
           .update(channelsSqlite)
           .set({
-            name: data.name,
+            name: effectiveName,
             psk: data.psk ?? existingChannel.psk,
             role: data.role ?? existingChannel.role,
             uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
@@ -190,7 +193,7 @@ export class ChannelsRepository extends BaseRepository {
         await db
           .update(channelsMysql)
           .set({
-            name: data.name,
+            name: effectiveName,
             psk: data.psk ?? existingChannel.psk,
             role: data.role ?? existingChannel.role,
             uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
@@ -204,7 +207,7 @@ export class ChannelsRepository extends BaseRepository {
         await db
           .update(channelsPostgres)
           .set({
-            name: data.name,
+            name: effectiveName,
             psk: data.psk ?? existingChannel.psk,
             role: data.role ?? existingChannel.role,
             uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
