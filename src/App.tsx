@@ -4189,6 +4189,9 @@ function App() {
             visibleNodeNums={visibleNodeNums}
             tracerouteNodeNums={tracerouteNodeNums}
             tracerouteBounds={tracerouteBounds}
+            onTraceroute={handleTraceroute}
+            connectionStatus={connectionStatus}
+            tracerouteLoading={tracerouteLoading}
           />
         )}
         {activeTab === 'channels' && (
