@@ -1026,6 +1026,9 @@
   "node_popup.return_path": "Return",
   "node_popup.traceroute_failed": "No response received",
   "node_popup.view_traceroute_history": "View History",
+  "node_popup.tab_info": "Node Info",
+  "node_popup.tab_traceroute": "Traceroute",
+  "node_popup.no_recent_traceroute": "No recent traceroute data",
 
   "route_segment.title": "Traceroutes Using Segment",
   "route_segment.segment": "Segment",
