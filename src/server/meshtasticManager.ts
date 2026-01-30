@@ -4715,10 +4715,26 @@ class MeshtasticManager {
       // Check if node already exists to determine if we should set isFavorite
       const existingNode = databaseService.getNode(Number(nodeInfo.num));
 
+      // Determine lastHeard value carefully to avoid incorrectly updating timestamps
+      // during config sync. Only update lastHeard if:
+      // 1. The device provides a valid lastHeard value, AND
+      // 2. Either the node is new OR the incoming value is newer than existing
+      // This fixes #1706 where config sync was resetting lastHeard for all nodes
+      let lastHeardValue: number | undefined = undefined;
+      if (nodeInfo.lastHeard && nodeInfo.lastHeard > 0) {
+        // Device provided a valid lastHeard - cap at current time to prevent future timestamps
+        const incomingLastHeard = Math.min(Number(nodeInfo.lastHeard), Date.now() / 1000);
+        if (!existingNode || !existingNode.lastHeard || incomingLastHeard > existingNode.lastHeard) {
+          lastHeardValue = incomingLastHeard;
+        }
+        // If existing node has a more recent lastHeard, keep it (don't include in nodeData)
+      }
+      // If device didn't provide lastHeard, don't update it at all - preserve existing value
+
       const nodeData: any = {
         nodeNum: Number(nodeInfo.num),
         nodeId: nodeId,
-        lastHeard: Math.min(nodeInfo.lastHeard || (Date.now() / 1000), Date.now() / 1000), // Cap at current time to prevent future timestamps
+        ...(lastHeardValue !== undefined && { lastHeard: lastHeardValue }),
         snr: nodeInfo.snr,
         // Note: NodeInfo protobuf doesn't include RSSI, only MeshPacket does
         // RSSI will be updated from mesh packet if available
@@ -6120,7 +6136,20 @@ class MeshtasticManager {
 
   // @ts-ignore - Legacy function kept for backward compatibility
   private async processNodeInfo(nodeInfo: any): Promise<void> {
-    const nodeData = {
+    // Check existing node to avoid overwriting lastHeard with stale/default values
+    const existingNode = databaseService.getNode(Number(nodeInfo.num));
+
+    // Only update lastHeard if device provides a valid value that's newer than existing
+    // This fixes #1706 where config sync was resetting lastHeard for all nodes
+    let lastHeardValue: number | undefined = undefined;
+    if (nodeInfo.lastHeard && nodeInfo.lastHeard > 0) {
+      const incomingLastHeard = Math.min(Math.floor(Number(nodeInfo.lastHeard)), Math.floor(Date.now() / 1000));
+      if (!existingNode || !existingNode.lastHeard || incomingLastHeard > existingNode.lastHeard) {
+        lastHeardValue = incomingLastHeard;
+      }
+    }
+
+    const nodeData: any = {
       nodeNum: nodeInfo.num,
       nodeId: nodeInfo.user?.id || nodeInfo.num.toString(),
       longName: nodeInfo.user?.longName,
@@ -6132,7 +6161,7 @@ class MeshtasticManager {
       altitude: nodeInfo.position?.altitude,
       // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
-      lastHeard: Math.min(nodeInfo.lastHeard || Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)), // Cap at current time to prevent future timestamps
+      ...(lastHeardValue !== undefined && { lastHeard: lastHeardValue }),
       snr: nodeInfo.snr,
       rssi: nodeInfo.rssi
     };
