@@ -1,11 +1,15 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface TelemetryConfigSectionProps {
+  // Config version - increment when config is loaded from device to sync saved state
+  configVersion?: number;
   // Device Telemetry
   deviceUpdateInterval: number;
   setDeviceUpdateInterval: (value: number) => void;
+  deviceTelemetryEnabled: boolean;
+  setDeviceTelemetryEnabled: (value: boolean) => void;
   // Environment Telemetry
   environmentUpdateInterval: number;
   setEnvironmentUpdateInterval: (value: number) => void;
@@ -27,14 +31,24 @@ interface TelemetryConfigSectionProps {
   setPowerUpdateInterval: (value: number) => void;
   powerScreenEnabled: boolean;
   setPowerScreenEnabled: (value: boolean) => void;
+  // Health Metrics
+  healthMeasurementEnabled: boolean;
+  setHealthMeasurementEnabled: (value: boolean) => void;
+  healthUpdateInterval: number;
+  setHealthUpdateInterval: (value: number) => void;
+  healthScreenEnabled: boolean;
+  setHealthScreenEnabled: (value: boolean) => void;
   // UI state
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
 
 const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
+  configVersion,
   deviceUpdateInterval,
   setDeviceUpdateInterval,
+  deviceTelemetryEnabled,
+  setDeviceTelemetryEnabled,
   environmentUpdateInterval,
   setEnvironmentUpdateInterval,
   environmentMeasurementEnabled,
@@ -53,66 +67,90 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
   setPowerUpdateInterval,
   powerScreenEnabled,
   setPowerScreenEnabled,
+  healthMeasurementEnabled,
+  setHealthMeasurementEnabled,
+  healthUpdateInterval,
+  setHealthUpdateInterval,
+  healthScreenEnabled,
+  setHealthScreenEnabled,
   isSaving,
   onSave
 }) => {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
-    deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+  // Store "saved" values as state - these represent what's on the device
+  const [savedValues, setSavedValues] = useState({
+    deviceUpdateInterval, deviceTelemetryEnabled, environmentUpdateInterval, environmentMeasurementEnabled,
     environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
-    airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled
+    airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled,
+    healthMeasurementEnabled, healthUpdateInterval, healthScreenEnabled
   });
 
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      deviceUpdateInterval !== initial.deviceUpdateInterval ||
-      environmentUpdateInterval !== initial.environmentUpdateInterval ||
-      environmentMeasurementEnabled !== initial.environmentMeasurementEnabled ||
-      environmentScreenEnabled !== initial.environmentScreenEnabled ||
-      environmentDisplayFahrenheit !== initial.environmentDisplayFahrenheit ||
-      airQualityEnabled !== initial.airQualityEnabled ||
-      airQualityInterval !== initial.airQualityInterval ||
-      powerMeasurementEnabled !== initial.powerMeasurementEnabled ||
-      powerUpdateInterval !== initial.powerUpdateInterval ||
-      powerScreenEnabled !== initial.powerScreenEnabled
-    );
-  }, [deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
-      environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
-      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled]);
+  // Sync savedValues when config is loaded from device (configVersion changes)
+  useEffect(() => {
+    if (configVersion !== undefined) {
+      setSavedValues({
+        deviceUpdateInterval, deviceTelemetryEnabled, environmentUpdateInterval, environmentMeasurementEnabled,
+        environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
+        airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled,
+        healthMeasurementEnabled, healthUpdateInterval, healthScreenEnabled
+      });
+    }
+  }, [configVersion]); // Only trigger on configVersion change, not on prop changes
 
-  // Reset to initial values (for SaveBar dismiss)
+  // Calculate if there are unsaved changes by comparing current props to saved values
+  const hasChanges =
+    deviceUpdateInterval !== savedValues.deviceUpdateInterval ||
+    deviceTelemetryEnabled !== savedValues.deviceTelemetryEnabled ||
+    environmentUpdateInterval !== savedValues.environmentUpdateInterval ||
+    environmentMeasurementEnabled !== savedValues.environmentMeasurementEnabled ||
+    environmentScreenEnabled !== savedValues.environmentScreenEnabled ||
+    environmentDisplayFahrenheit !== savedValues.environmentDisplayFahrenheit ||
+    airQualityEnabled !== savedValues.airQualityEnabled ||
+    airQualityInterval !== savedValues.airQualityInterval ||
+    powerMeasurementEnabled !== savedValues.powerMeasurementEnabled ||
+    powerUpdateInterval !== savedValues.powerUpdateInterval ||
+    powerScreenEnabled !== savedValues.powerScreenEnabled ||
+    healthMeasurementEnabled !== savedValues.healthMeasurementEnabled ||
+    healthUpdateInterval !== savedValues.healthUpdateInterval ||
+    healthScreenEnabled !== savedValues.healthScreenEnabled;
+
+  // Reset to saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setDeviceUpdateInterval(initial.deviceUpdateInterval);
-    setEnvironmentUpdateInterval(initial.environmentUpdateInterval);
-    setEnvironmentMeasurementEnabled(initial.environmentMeasurementEnabled);
-    setEnvironmentScreenEnabled(initial.environmentScreenEnabled);
-    setEnvironmentDisplayFahrenheit(initial.environmentDisplayFahrenheit);
-    setAirQualityEnabled(initial.airQualityEnabled);
-    setAirQualityInterval(initial.airQualityInterval);
-    setPowerMeasurementEnabled(initial.powerMeasurementEnabled);
-    setPowerUpdateInterval(initial.powerUpdateInterval);
-    setPowerScreenEnabled(initial.powerScreenEnabled);
-  }, [setDeviceUpdateInterval, setEnvironmentUpdateInterval, setEnvironmentMeasurementEnabled,
+    setDeviceUpdateInterval(savedValues.deviceUpdateInterval);
+    setDeviceTelemetryEnabled(savedValues.deviceTelemetryEnabled);
+    setEnvironmentUpdateInterval(savedValues.environmentUpdateInterval);
+    setEnvironmentMeasurementEnabled(savedValues.environmentMeasurementEnabled);
+    setEnvironmentScreenEnabled(savedValues.environmentScreenEnabled);
+    setEnvironmentDisplayFahrenheit(savedValues.environmentDisplayFahrenheit);
+    setAirQualityEnabled(savedValues.airQualityEnabled);
+    setAirQualityInterval(savedValues.airQualityInterval);
+    setPowerMeasurementEnabled(savedValues.powerMeasurementEnabled);
+    setPowerUpdateInterval(savedValues.powerUpdateInterval);
+    setPowerScreenEnabled(savedValues.powerScreenEnabled);
+    setHealthMeasurementEnabled(savedValues.healthMeasurementEnabled);
+    setHealthUpdateInterval(savedValues.healthUpdateInterval);
+    setHealthScreenEnabled(savedValues.healthScreenEnabled);
+  }, [savedValues, setDeviceUpdateInterval, setDeviceTelemetryEnabled, setEnvironmentUpdateInterval, setEnvironmentMeasurementEnabled,
       setEnvironmentScreenEnabled, setEnvironmentDisplayFahrenheit, setAirQualityEnabled,
-      setAirQualityInterval, setPowerMeasurementEnabled, setPowerUpdateInterval, setPowerScreenEnabled]);
+      setAirQualityInterval, setPowerMeasurementEnabled, setPowerUpdateInterval, setPowerScreenEnabled,
+      setHealthMeasurementEnabled, setHealthUpdateInterval, setHealthScreenEnabled]);
 
-  // Update initial values after successful save
+  // Update saved values after successful save
   const handleSave = useCallback(async () => {
     await onSave();
-    initialValuesRef.current = {
-      deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+    // Update savedValues to match current props - this clears hasChanges
+    setSavedValues({
+      deviceUpdateInterval, deviceTelemetryEnabled, environmentUpdateInterval, environmentMeasurementEnabled,
       environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
-      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled
-    };
-  }, [onSave, deviceUpdateInterval, environmentUpdateInterval, environmentMeasurementEnabled,
+      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled,
+      healthMeasurementEnabled, healthUpdateInterval, healthScreenEnabled
+    });
+  }, [onSave, deviceUpdateInterval, deviceTelemetryEnabled, environmentUpdateInterval, environmentMeasurementEnabled,
       environmentScreenEnabled, environmentDisplayFahrenheit, airQualityEnabled,
-      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled]);
+      airQualityInterval, powerMeasurementEnabled, powerUpdateInterval, powerScreenEnabled,
+      healthMeasurementEnabled, healthUpdateInterval, healthScreenEnabled]);
 
   // Register with SaveBar
   useSaveBar({
@@ -157,30 +195,49 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
         {t('telemetry_config.device_section')}
       </h4>
 
-      {/* Device Update Interval */}
+      {/* Device Telemetry Enabled */}
       <div className="setting-item">
-        <label htmlFor="deviceUpdateInterval">
-          {t('telemetry_config.device_interval')}
-          <span className="setting-description">
-            {t('telemetry_config.device_interval_description')}
-            {deviceUpdateInterval > 0 && (
-              <span style={{ marginLeft: '0.5rem', color: '#89b4fa' }}>
-                ({formatDuration(deviceUpdateInterval)})
-              </span>
-            )}
-          </span>
+        <label htmlFor="deviceTelemetryEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="deviceTelemetryEnabled"
+            type="checkbox"
+            checked={deviceTelemetryEnabled}
+            onChange={(e) => setDeviceTelemetryEnabled(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('telemetry_config.device_enabled')}</div>
+            <span className="setting-description">{t('telemetry_config.device_enabled_description')}</span>
+          </div>
         </label>
-        <input
-          id="deviceUpdateInterval"
-          type="number"
-          min="0"
-          max="4294967295"
-          value={deviceUpdateInterval}
-          onChange={(e) => setDeviceUpdateInterval(parseInt(e.target.value) || 0)}
-          className="setting-input"
-          placeholder="900"
-        />
       </div>
+
+      {/* Device Update Interval */}
+      {deviceTelemetryEnabled && (
+        <div className="setting-item">
+          <label htmlFor="deviceUpdateInterval">
+            {t('telemetry_config.device_interval')}
+            <span className="setting-description">
+              {t('telemetry_config.device_interval_description')}
+              {deviceUpdateInterval > 0 && (
+                <span style={{ marginLeft: '0.5rem', color: '#89b4fa' }}>
+                  ({formatDuration(deviceUpdateInterval)})
+                </span>
+              )}
+            </span>
+          </label>
+          <input
+            id="deviceUpdateInterval"
+            type="number"
+            min="0"
+            max="4294967295"
+            value={deviceUpdateInterval}
+            onChange={(e) => setDeviceUpdateInterval(parseInt(e.target.value) || 0)}
+            className="setting-input"
+            placeholder="900"
+          />
+        </div>
+      )}
 
       {/* Environment Telemetry Section */}
       <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
@@ -403,6 +460,74 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
               </div>
             </label>
           </div>
+
+          {/* Health Metrics Section */}
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+            {t('telemetry_config.health_section')}
+          </h4>
+
+          {/* Health Measurement Enabled */}
+          <div className="setting-item">
+            <label htmlFor="healthMeasurementEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                id="healthMeasurementEnabled"
+                type="checkbox"
+                checked={healthMeasurementEnabled}
+                onChange={(e) => setHealthMeasurementEnabled(e.target.checked)}
+                style={{ marginTop: '0.2rem', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('telemetry_config.health_enabled')}</div>
+                <span className="setting-description">{t('telemetry_config.health_enabled_description')}</span>
+              </div>
+            </label>
+          </div>
+
+          {/* Health Update Interval */}
+          {healthMeasurementEnabled && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="healthUpdateInterval">
+                  {t('telemetry_config.health_interval')}
+                  <span className="setting-description">
+                    {t('telemetry_config.health_interval_description')}
+                    {healthUpdateInterval > 0 && (
+                      <span style={{ marginLeft: '0.5rem', color: '#89b4fa' }}>
+                        ({formatDuration(healthUpdateInterval)})
+                      </span>
+                    )}
+                  </span>
+                </label>
+                <input
+                  id="healthUpdateInterval"
+                  type="number"
+                  min="0"
+                  max="4294967295"
+                  value={healthUpdateInterval}
+                  onChange={(e) => setHealthUpdateInterval(parseInt(e.target.value) || 0)}
+                  className="setting-input"
+                  placeholder="900"
+                />
+              </div>
+
+              {/* Health Screen Enabled */}
+              <div className="setting-item">
+                <label htmlFor="healthScreenEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    id="healthScreenEnabled"
+                    type="checkbox"
+                    checked={healthScreenEnabled}
+                    onChange={(e) => setHealthScreenEnabled(e.target.checked)}
+                    style={{ marginTop: '0.2rem', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('telemetry_config.health_screen')}</div>
+                    <span className="setting-description">{t('telemetry_config.health_screen_description')}</span>
+                  </div>
+                </label>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
