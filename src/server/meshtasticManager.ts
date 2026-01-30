@@ -1611,6 +1611,9 @@ class MeshtasticManager {
         return;
     }
 
+    const startTime = Date.now();
+    logger.info(`📍 Executing geofence script: "${trigger.name}" (${eventType}) -> ${scriptPath}`);
+
     try {
       const { execFile } = await import('child_process');
       const { promisify } = await import('util');
@@ -1664,7 +1667,7 @@ class MeshtasticManager {
         maxBuffer: 1024 * 1024,
       });
 
-      if (stderr) logger.debug(`📍 Geofence script stderr: ${stderr}`);
+      if (stderr) logger.warn(`📍 Geofence script "${trigger.name}" stderr: ${stderr}`);
 
       // Parse JSON output and send messages (same format as timer scripts)
       if (stdout && stdout.trim()) {
@@ -1701,14 +1704,19 @@ class MeshtasticManager {
             );
           }
         } else {
-          logger.debug(`📍 Geofence "${trigger.name}" script executed (channel=none, no mesh output)`);
+          logger.info(`📍 Geofence "${trigger.name}" script executed (channel=none, no mesh output)`);
         }
       }
 
+      const duration = Date.now() - startTime;
+      logger.info(`📍 Geofence "${trigger.name}" script completed successfully in ${duration}ms`);
       this.updateGeofenceTriggerResult(trigger.id, 'success');
     } catch (error: any) {
+      const duration = Date.now() - startTime;
       const errorMessage = error.message || 'Unknown error';
-      logger.error(`📍 Geofence "${trigger.name}" script failed: ${errorMessage}`);
+      logger.error(`📍 Geofence "${trigger.name}" script failed after ${duration}ms: ${errorMessage}`);
+      if (error.stderr) logger.error(`📍 Geofence script stderr: ${error.stderr}`);
+      if (error.stdout) logger.warn(`📍 Geofence script stdout before failure: ${error.stdout.substring(0, 200)}`);
       this.updateGeofenceTriggerResult(trigger.id, 'error', errorMessage);
     }
   }
@@ -1901,7 +1909,7 @@ class MeshtasticManager {
       });
 
       if (stderr) {
-        logger.debug(`⏱️ Timer script stderr: ${stderr}`);
+        logger.warn(`⏱️ Timer script "${triggerName}" stderr: ${stderr}`);
       }
 
       const duration = Date.now() - startTime;
@@ -1974,6 +1982,8 @@ class MeshtasticManager {
       const duration = Date.now() - startTime;
       const errorMessage = error.message || 'Unknown error';
       logger.error(`⏱️ Timer "${triggerName}" failed after ${duration}ms: ${errorMessage}`);
+      if (error.stderr) logger.error(`⏱️ Timer script stderr: ${error.stderr}`);
+      if (error.stdout) logger.warn(`⏱️ Timer script stdout before failure: ${error.stdout.substring(0, 200)}`);
       this.updateTimerTriggerResult(triggerId, 'error', errorMessage);
     }
   }
@@ -7441,16 +7451,18 @@ class MeshtasticManager {
               return;
             }
 
-            logger.info(`🔧 Executing script: ${scriptPath} -> ${resolvedPath}`);
+            const scriptStartTime = Date.now();
+            const triggerPattern = Array.isArray(trigger.trigger) ? trigger.trigger[0] : trigger.trigger;
+            logger.info(`🔧 Executing auto-responder script for pattern "${triggerPattern}" -> ${scriptPath}`);
 
             // Determine interpreter based on file extension
             const ext = scriptPath.split('.').pop()?.toLowerCase();
             let interpreter: string;
-            
+
             // In development, use system interpreters (node, python, sh)
             // In production, use absolute paths
             const isDev = process.env.NODE_ENV !== 'production';
-            
+
             switch (ext) {
               case 'js':
               case 'mjs':
@@ -7495,7 +7507,7 @@ class MeshtasticManager {
               });
 
               if (stderr) {
-                logger.debug(`📋 Script stderr: ${stderr}`);
+                logger.warn(`🔧 Auto-responder script for "${triggerPattern}" stderr: ${stderr}`);
               }
 
               // Parse JSON output
@@ -7531,7 +7543,8 @@ class MeshtasticManager {
 
               // Skip sending if channel is 'none' (script handles its own output)
               if (triggerChannel === 'none') {
-                logger.debug(`🤖 Script executed (channel=none, no mesh output)`);
+                const scriptDuration = Date.now() - scriptStartTime;
+                logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms (channel=none, no mesh output)`);
                 return;
               }
 
@@ -7556,17 +7569,22 @@ class MeshtasticManager {
                 );
               });
 
-              // Script responses queued, return early
+              // Script responses queued
+              const scriptDuration = Date.now() - scriptStartTime;
+              logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms, ${scriptResponses.length} response(s) queued to ${target}`);
               return;
 
             } catch (error: any) {
+              const scriptDuration = Date.now() - scriptStartTime;
               if (error.killed && error.signal === 'SIGTERM') {
-                logger.error('⏭️  Script execution timed out after 10 seconds');
+                logger.error(`🔧 Auto-responder script for "${triggerPattern}" timed out after ${scriptDuration}ms (10s limit)`);
               } else if (error.code === 'ENOENT') {
-                logger.error(`⏭️  Script not found: ${scriptPath}`);
+                logger.error(`🔧 Auto-responder script for "${triggerPattern}" not found: ${scriptPath}`);
               } else {
-                logger.error('⏭️  Script execution failed:', error.message);
+                logger.error(`🔧 Auto-responder script for "${triggerPattern}" failed after ${scriptDuration}ms: ${error.message}`);
               }
+              if (error.stderr) logger.error(`🔧 Script stderr: ${error.stderr}`);
+              if (error.stdout) logger.warn(`🔧 Script stdout before failure: ${error.stdout.substring(0, 200)}`);
               return;
             }
 
