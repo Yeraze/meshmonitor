@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NodePopupState } from '../../types/ui';
 import type { DeviceInfo } from '../../types/device';
@@ -8,6 +8,8 @@ import { getHardwareModelName, getRoleName, parseNodeId, TRACEROUTE_DISPLAY_HOUR
 import { formatDateTime, formatRelativeTime } from '../../utils/datetime';
 import { formatTracerouteRoute } from '../../utils/traceroute';
 import './NodePopup.css';
+
+type PopupTab = 'info' | 'traceroute';
 
 interface NodePopupProps {
   nodePopup: NodePopupState | null;
@@ -45,6 +47,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   tracerouteLoading,
 }) => {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<PopupTab>('info');
 
   // Find the most recent traceroute between current node and popup node
   const recentTraceroute = useMemo(() => {
@@ -85,6 +88,9 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   const node = nodes.find(n => n.user?.id === nodePopup.nodeId);
   if (!node) return null;
 
+  // Check if traceroute tab should be available
+  const hasTracerouteFeatures = hasPermission('traceroute', 'write') && onTraceroute;
+
   return (
     <div
       className="route-popup node-popup"
@@ -96,6 +102,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
         zIndex: 1000,
       }}
     >
+      {/* Header with node name */}
       <h4>{node.user?.longName || t('node_popup.node_fallback', { nodeNum: node.nodeNum })}</h4>
       {node.user?.shortName && (
         <div className="route-endpoints">
@@ -103,141 +110,178 @@ export const NodePopup: React.FC<NodePopupProps> = ({
         </div>
       )}
 
-      {node.user?.id && <div className="route-usage">{t('node_popup.id', 'ID')}: {node.user.id}</div>}
-
-      {node.user?.role !== undefined &&
-        (() => {
-          const roleNum = typeof node.user.role === 'string' ? parseInt(node.user.role, 10) : node.user.role;
-          const roleName = getRoleName(roleNum);
-          return roleName ? <div className="route-usage">{t('node_popup.role', 'Role')}: {roleName}</div> : null;
-        })()}
-
-      {node.user?.hwModel !== undefined &&
-        (() => {
-          const hwModelName = getHardwareModelName(node.user.hwModel);
-          return hwModelName ? <div className="route-usage">{t('node_popup.hardware', 'Hardware')}: {hwModelName}</div> : null;
-        })()}
-
-      {node.snr != null && (
-        <div className="route-usage">{t('node_popup.snr', 'SNR')}: {node.snr.toFixed(1)} dB</div>
-      )}
-
-      {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-        <div className="route-usage">
-          {node.deviceMetrics.batteryLevel === 101
-            ? t('node_popup.power_plugged', 'Power: Plugged In')
-            : t('node_popup.battery', 'Battery: {{level}}%', { level: node.deviceMetrics.batteryLevel })}
+      {/* Tab bar - only show if traceroute features are available */}
+      {hasTracerouteFeatures && (
+        <div className="node-popup-tabs">
+          <button
+            className={`node-popup-tab ${activeTab === 'info' ? 'active' : ''}`}
+            onClick={() => setActiveTab('info')}
+            title={t('node_popup.tab_info', 'Node Info')}
+          >
+            ℹ️
+          </button>
+          <button
+            className={`node-popup-tab ${activeTab === 'traceroute' ? 'active' : ''}`}
+            onClick={() => setActiveTab('traceroute')}
+            title={t('node_popup.tab_traceroute', 'Traceroute')}
+          >
+            📡
+          </button>
         </div>
       )}
 
-      {node.lastHeard && (
-        <div className="route-usage">
-          {t('node_popup.last_seen', 'Last Seen')}: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
-        </div>
-      )}
+      {/* Info Tab Content */}
+      {(activeTab === 'info' || !hasTracerouteFeatures) && (
+        <div className="node-popup-content">
+          {node.user?.id && <div className="route-usage">{t('node_popup.id', 'ID')}: {node.user.id}</div>}
 
-      {/* Traceroute Section */}
-      {recentTraceroute && (
-        <div className="node-popup-traceroute">
-          <div className="traceroute-header">
-            <strong>{t('node_popup.last_traceroute', 'Last Traceroute')}</strong>
-            <span className="traceroute-age">
-              ({formatRelativeTime(recentTraceroute.timestamp)})
-            </span>
-          </div>
-          {recentTraceroute.route && recentTraceroute.route !== 'null' ? (
-            <>
-              <div className="traceroute-path">
-                <span className="traceroute-label">{t('node_popup.forward_path', 'Forward')}:</span>
-                <span className="traceroute-route">
-                  {formatTracerouteRoute(
-                    recentTraceroute.route,
-                    recentTraceroute.snrTowards,
-                    recentTraceroute.fromNodeNum,
-                    recentTraceroute.toNodeNum,
-                    nodes,
-                    distanceUnit
-                  )}
-                </span>
-              </div>
-              {recentTraceroute.routeBack && recentTraceroute.routeBack !== 'null' && (
-                <div className="traceroute-path">
-                  <span className="traceroute-label">{t('node_popup.return_path', 'Return')}:</span>
-                  <span className="traceroute-route">
-                    {formatTracerouteRoute(
-                      recentTraceroute.routeBack,
-                      recentTraceroute.snrBack,
-                      recentTraceroute.toNodeNum,
-                      recentTraceroute.fromNodeNum,
-                      nodes,
-                      distanceUnit
-                    )}
-                  </span>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="traceroute-failed">
-              {t('node_popup.traceroute_failed', 'No response received')}
+          {node.user?.role !== undefined &&
+            (() => {
+              const roleNum = typeof node.user.role === 'string' ? parseInt(node.user.role, 10) : node.user.role;
+              const roleName = getRoleName(roleNum);
+              return roleName ? <div className="route-usage">{t('node_popup.role', 'Role')}: {roleName}</div> : null;
+            })()}
+
+          {node.user?.hwModel !== undefined &&
+            (() => {
+              const hwModelName = getHardwareModelName(node.user.hwModel);
+              return hwModelName ? <div className="route-usage">{t('node_popup.hardware', 'Hardware')}: {hwModelName}</div> : null;
+            })()}
+
+          {node.snr != null && (
+            <div className="route-usage">{t('node_popup.snr', 'SNR')}: {node.snr.toFixed(1)} dB</div>
+          )}
+
+          {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+            <div className="route-usage">
+              {node.deviceMetrics.batteryLevel === 101
+                ? t('node_popup.power_plugged', 'Power: Plugged In')
+                : t('node_popup.battery', 'Battery: {{level}}%', { level: node.deviceMetrics.batteryLevel })}
             </div>
           )}
-          {onViewTracerouteHistory && (
+
+          {node.lastHeard && (
+            <div className="route-usage">
+              {t('node_popup.last_seen', 'Last Seen')}: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
+            </div>
+          )}
+
+          {/* Action buttons for info tab */}
+          {node.user?.id && hasPermission('messages', 'read') && (
             <button
-              className="popup-dm-btn traceroute-history-btn"
+              className="popup-dm-btn"
               onClick={() => {
-                const localNodeName = nodes.find(n => n.user?.id === currentNodeId)?.user?.longName || currentNodeId || 'Local';
-                const remoteNodeName = node.user?.longName || nodePopup.nodeId;
-                onViewTracerouteHistory(
-                  recentTraceroute.fromNodeNum,
-                  recentTraceroute.toNodeNum,
-                  localNodeName,
-                  remoteNodeName
-                );
+                onDMNode(node.user!.id);
+                onClose();
               }}
             >
-              {t('node_popup.view_traceroute_history', 'View History')}
+              💬 {t('node_popup.direct_message', 'Direct Message')}
+            </button>
+          )}
+          {node.user?.id && node.position?.latitude != null && node.position?.longitude != null && (
+            <button
+              className="popup-dm-btn"
+              onClick={() => {
+                onShowOnMap(node);
+                onClose();
+              }}
+            >
+              🗺️ {t('node_popup.show_on_map', 'Show on Map')}
             </button>
           )}
         </div>
       )}
 
-      {node.user?.id && hasPermission('messages', 'read') && (
-        <button
-          className="popup-dm-btn"
-          onClick={() => {
-            onDMNode(node.user!.id);
-            onClose();
-          }}
-        >
-          💬 {t('node_popup.direct_message', 'Direct Message')}
-        </button>
-      )}
-      {node.user?.id && hasPermission('traceroute', 'write') && onTraceroute && (
-        <button
-          className="popup-dm-btn"
-          onClick={() => {
-            onTraceroute(node.user!.id);
-          }}
-          disabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
-        >
-          {tracerouteLoading === node.user?.id ? (
-            <span className="spinner"></span>
+      {/* Traceroute Tab Content */}
+      {activeTab === 'traceroute' && hasTracerouteFeatures && (
+        <div className="node-popup-content">
+          {/* Recent Traceroute Display */}
+          {recentTraceroute ? (
+            <div className="node-popup-traceroute">
+              <div className="traceroute-header">
+                <strong>{t('node_popup.last_traceroute', 'Last Traceroute')}</strong>
+                <span className="traceroute-age">
+                  ({formatRelativeTime(recentTraceroute.timestamp)})
+                </span>
+              </div>
+              {recentTraceroute.route && recentTraceroute.route !== 'null' ? (
+                <>
+                  <div className="traceroute-path">
+                    <span className="traceroute-label">{t('node_popup.forward_path', 'Forward')}:</span>
+                    <span className="traceroute-route">
+                      {formatTracerouteRoute(
+                        recentTraceroute.route,
+                        recentTraceroute.snrTowards,
+                        recentTraceroute.fromNodeNum,
+                        recentTraceroute.toNodeNum,
+                        nodes,
+                        distanceUnit
+                      )}
+                    </span>
+                  </div>
+                  {recentTraceroute.routeBack && recentTraceroute.routeBack !== 'null' && (
+                    <div className="traceroute-path">
+                      <span className="traceroute-label">{t('node_popup.return_path', 'Return')}:</span>
+                      <span className="traceroute-route">
+                        {formatTracerouteRoute(
+                          recentTraceroute.routeBack,
+                          recentTraceroute.snrBack,
+                          recentTraceroute.toNodeNum,
+                          recentTraceroute.fromNodeNum,
+                          nodes,
+                          distanceUnit
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="traceroute-failed">
+                  {t('node_popup.traceroute_failed', 'No response received')}
+                </div>
+              )}
+              {onViewTracerouteHistory && (
+                <button
+                  className="popup-dm-btn traceroute-history-btn"
+                  onClick={() => {
+                    const localNodeName = nodes.find(n => n.user?.id === currentNodeId)?.user?.longName || currentNodeId || 'Local';
+                    const remoteNodeName = node.user?.longName || nodePopup.nodeId;
+                    onViewTracerouteHistory(
+                      recentTraceroute.fromNodeNum,
+                      recentTraceroute.toNodeNum,
+                      localNodeName,
+                      remoteNodeName
+                    );
+                  }}
+                >
+                  {t('node_popup.view_traceroute_history', 'View History')}
+                </button>
+              )}
+            </div>
           ) : (
-            '📡'
-          )}{' '}
-          {t('node_popup.traceroute', 'Traceroute')}
-        </button>
-      )}
-      {node.user?.id && node.position?.latitude != null && node.position?.longitude != null && (
-        <button
-          className="popup-dm-btn"
-          onClick={() => {
-            onShowOnMap(node);
-            onClose();
-          }}
-        >
-          🗺️ {t('node_popup.show_on_map', 'Show on Map')}
-        </button>
+            <div className="node-popup-no-traceroute">
+              {t('node_popup.no_recent_traceroute', 'No recent traceroute data')}
+            </div>
+          )}
+
+          {/* Traceroute action button */}
+          {node.user?.id && onTraceroute && (
+            <button
+              className="popup-dm-btn"
+              onClick={() => {
+                onTraceroute(node.user!.id);
+              }}
+              disabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+            >
+              {tracerouteLoading === node.user?.id ? (
+                <span className="spinner"></span>
+              ) : (
+                '📡'
+              )}{' '}
+              {t('node_popup.traceroute', 'Traceroute')}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
