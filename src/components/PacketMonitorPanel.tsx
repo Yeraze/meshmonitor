@@ -512,6 +512,22 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               <option value="false">{t('packet_monitor.filter.decoded_only')}</option>
             </select>
 
+            <select
+              value={filters.from_node ?? ''}
+              onChange={e => setFilters({ ...filters, from_node: e.target.value ? parseInt(e.target.value) : undefined })}
+              title={t('packet_monitor.filter.from_node_tooltip')}
+            >
+              <option value="">{t('packet_monitor.filter.all_nodes')}</option>
+              {nodes
+                .filter(node => node.user?.id)
+                .sort((a, b) => (a.user?.longName || '').localeCompare(b.user?.longName || ''))
+                .map(node => (
+                  <option key={node.nodeNum} value={node.nodeNum}>
+                    {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`}
+                  </option>
+                ))}
+            </select>
+
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
               <input
                 type="checkbox"
