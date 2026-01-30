@@ -1065,6 +1065,8 @@
   "packet_monitor.filter.decoded_only": "Decoded Only",
   "packet_monitor.filter.hide_own": "Hide Own Packets",
   "packet_monitor.filter.clear": "Clear Filters",
+  "packet_monitor.filter.all_nodes": "All Nodes",
+  "packet_monitor.filter.from_node_tooltip": "Filter by source node",
   "packet_monitor.rate_limit_warning": "Rate limit reached. Infinite scrolling paused for 15 minutes. Current packets will continue to update.",
   "packet_monitor.loading": "Loading packets...",
   "packet_monitor.no_packets": "No packets logged yet",
