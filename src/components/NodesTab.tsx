@@ -57,6 +57,12 @@ interface NodesTabProps {
   tracerouteNodeNums?: Set<number> | null;
   /** Bounding box of the selected traceroute for zoom-to-fit */
   tracerouteBounds?: [[number, number], [number, number]] | null;
+  /** Handler for initiating a traceroute to a node */
+  onTraceroute?: (nodeId: string) => void;
+  /** Current connection status */
+  connectionStatus?: string;
+  /** Node ID currently being tracerouted (for loading state) */
+  tracerouteLoading?: string | null;
 }
 
 // Helper function to check if a date is today
@@ -180,6 +186,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   visibleNodeNums,
   tracerouteNodeNums,
   tracerouteBounds,
+  onTraceroute,
+  connectionStatus,
+  tracerouteLoading,
 }) => {
   const { t } = useTranslation();
   // Use context hooks
@@ -1697,6 +1706,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         💬 Direct Message
                       </button>
                     )}
+                    {node.user?.id && hasPermission('traceroute', 'write') && onTraceroute && (
+                      <button
+                        className="node-popup-btn"
+                        onClick={() => onTraceroute(node.user!.id)}
+                        disabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+                      >
+                        {tracerouteLoading === node.user?.id ? (
+                          <span className="spinner"></span>
+                        ) : (
+                          '📡'
+                        )}{' '}
+                        {t('node_popup.traceroute', 'Traceroute')}
+                      </button>
+                    )}
                   </div>
                 </Popup>
               </Marker>
@@ -2036,6 +2059,13 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
 
   // If tracerouteBounds changed (for zoom-to-fit), must re-render
   if (JSON.stringify(prevProps.tracerouteBounds) !== JSON.stringify(nextProps.tracerouteBounds)) {
+    return false; // Allow re-render
+  }
+
+  // If connection status or traceroute loading state changed, must re-render
+  // (for traceroute button disabled state and loading indicator)
+  if (prevProps.connectionStatus !== nextProps.connectionStatus ||
+      prevProps.tracerouteLoading !== nextProps.tracerouteLoading) {
     return false; // Allow re-render
   }
 

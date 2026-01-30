@@ -4189,6 +4189,9 @@ function App() {
             visibleNodeNums={visibleNodeNums}
             tracerouteNodeNums={tracerouteNodeNums}
             tracerouteBounds={tracerouteBounds}
+            onTraceroute={handleTraceroute}
+            connectionStatus={connectionStatus}
+            tracerouteLoading={tracerouteLoading}
           />
         )}
         {activeTab === 'channels' && (
@@ -4574,6 +4577,9 @@ function App() {
         traceroutes={traceroutes}
         currentNodeId={currentNodeId}
         distanceUnit={distanceUnit}
+        onTraceroute={handleTraceroute}
+        connectionStatus={connectionStatus}
+        tracerouteLoading={tracerouteLoading}
       />
 
       {/* News Popup */}

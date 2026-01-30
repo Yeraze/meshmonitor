@@ -22,6 +22,9 @@ interface NodePopupProps {
   currentNodeId?: string | null;
   distanceUnit?: 'km' | 'mi' | 'nm';
   onViewTracerouteHistory?: (fromNodeNum: number, toNodeNum: number, fromNodeName: string, toNodeName: string) => void;
+  onTraceroute?: (nodeId: string) => void;
+  connectionStatus?: string;
+  tracerouteLoading?: string | null;
 }
 
 export const NodePopup: React.FC<NodePopupProps> = ({
@@ -37,6 +40,9 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   currentNodeId,
   distanceUnit = 'km',
   onViewTracerouteHistory,
+  onTraceroute,
+  connectionStatus,
+  tracerouteLoading,
 }) => {
   const { t } = useTranslation();
 
@@ -204,6 +210,22 @@ export const NodePopup: React.FC<NodePopupProps> = ({
           }}
         >
           💬 {t('node_popup.direct_message', 'Direct Message')}
+        </button>
+      )}
+      {node.user?.id && hasPermission('traceroute', 'write') && onTraceroute && (
+        <button
+          className="popup-dm-btn"
+          onClick={() => {
+            onTraceroute(node.user!.id);
+          }}
+          disabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+        >
+          {tracerouteLoading === node.user?.id ? (
+            <span className="spinner"></span>
+          ) : (
+            '📡'
+          )}{' '}
+          {t('node_popup.traceroute', 'Traceroute')}
         </button>
       )}
       {node.user?.id && node.position?.latitude != null && node.position?.longitude != null && (
