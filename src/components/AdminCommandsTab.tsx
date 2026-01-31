@@ -126,6 +126,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     hasRemoteHardware: boolean;
   } | null>(null);
 
+  // Reboot and Set Time command states
+  const [isLoadingReboot, setIsLoadingReboot] = useState(false);
+  const [isLoadingSetTime, setIsLoadingSetTime] = useState(false);
+
   // Collapsible sections state - persist to localStorage
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const stored = localStorage.getItem('adminCommandsExpandedSections');
@@ -765,6 +769,52 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       showToast(error.message || t('admin_commands.failed_device_metadata'), 'error');
     } finally {
       setIsLoadingDeviceMetadata(false);
+    }
+  };
+
+  const handleSendReboot = async () => {
+    if (selectedNodeNum === null) {
+      showToast(t('admin_commands.please_select_node'), 'error');
+      return;
+    }
+
+    // Confirm before sending reboot
+    if (!window.confirm(t('admin_commands.confirm_reboot', 'Are you sure you want to reboot this node?'))) {
+      return;
+    }
+
+    setIsLoadingReboot(true);
+
+    try {
+      await apiService.post('/api/admin/reboot', {
+        nodeNum: selectedNodeNum,
+        seconds: 5
+      });
+      showToast(t('admin_commands.reboot_sent', 'Reboot command sent successfully'), 'success');
+    } catch (error: any) {
+      showToast(error.message || t('admin_commands.failed_reboot', 'Failed to send reboot command'), 'error');
+    } finally {
+      setIsLoadingReboot(false);
+    }
+  };
+
+  const handleSetTime = async () => {
+    if (selectedNodeNum === null) {
+      showToast(t('admin_commands.please_select_node'), 'error');
+      return;
+    }
+
+    setIsLoadingSetTime(true);
+
+    try {
+      await apiService.post('/api/admin/set-time', {
+        nodeNum: selectedNodeNum
+      });
+      showToast(t('admin_commands.set_time_sent', 'Time sync command sent successfully'), 'success');
+    } catch (error: any) {
+      showToast(error.message || t('admin_commands.failed_set_time', 'Failed to send set-time command'), 'error');
+    } finally {
+      setIsLoadingSetTime(false);
     }
   };
 
@@ -2237,6 +2287,33 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             >
               {isLoadingDeviceMetadata ? t('common.loading') : t('admin_commands.retrieve_device_metadata', 'Retrieve Device Metadata')}
             </button>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', maxWidth: '600px', width: '100%' }}>
+              <button
+                onClick={handleSendReboot}
+                disabled={isLoadingReboot || selectedNodeNum === null}
+                className="save-button"
+                style={{
+                  flex: 1,
+                  opacity: (isLoadingReboot || selectedNodeNum === null) ? 0.5 : 1,
+                  cursor: (isLoadingReboot || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
+                  backgroundColor: 'var(--ctp-red)'
+                }}
+              >
+                {isLoadingReboot ? t('common.loading') : t('admin_commands.send_reboot', 'Send Reboot')}
+              </button>
+              <button
+                onClick={handleSetTime}
+                disabled={isLoadingSetTime || selectedNodeNum === null}
+                className="save-button"
+                style={{
+                  flex: 1,
+                  opacity: (isLoadingSetTime || selectedNodeNum === null) ? 0.5 : 1,
+                  cursor: (isLoadingSetTime || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isLoadingSetTime ? t('common.loading') : t('admin_commands.set_time', 'Set Time')}
+              </button>
+            </div>
             {deviceMetadata && (
               <div
                 className="device-metadata-display"
