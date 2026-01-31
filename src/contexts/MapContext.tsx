@@ -53,6 +53,8 @@ interface MapContextType {
   setPositionHistory: (history: PositionHistoryItem[]) => void;
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
+  positionHistoryHours: number | null;
+  setPositionHistoryHours: (hours: number | null) => void;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -103,6 +105,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [positionHistoryHours, setPositionHistoryHoursState] = useState<number | null>(null);
 
   // Create wrapper setters that persist to server (no localStorage)
   const setShowPaths = React.useCallback((value: boolean) => {
@@ -148,7 +151,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   }, []);
 
   // Helper function to save preference to server
-  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean>) => {
+  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean | number | null>) => {
     try {
       const baseUrl = await api.getBaseUrl();
       const csrfToken = getCsrfToken();
@@ -179,6 +182,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       console.error('[MapContext] Failed to save map preference to server:', error);
     }
   }, [getCsrfToken]);
+
+  // Create wrapper setter for positionHistoryHours that persists to server
+  const setPositionHistoryHours = React.useCallback((value: number | null) => {
+    setPositionHistoryHoursState(value);
+    savePreferenceToServer({ positionHistoryHours: value });
+  }, [savePreferenceToServer]);
 
   // Load preferences from server on mount
   useEffect(() => {
@@ -220,6 +229,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
               setShowAccuracyRegionsState(preferences.showAccuracyRegions);
             } else if (preferences.showAccuracyCircles !== undefined) {
               setShowAccuracyRegionsState(preferences.showAccuracyCircles);
+            }
+            if (preferences.positionHistoryHours !== undefined) {
+              setPositionHistoryHoursState(preferences.positionHistoryHours);
             }
           }
           // If preferences is null (anonymous user), initial defaults are already set
@@ -296,6 +308,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setPositionHistory,
         selectedNodeId,
         setSelectedNodeId,
+        positionHistoryHours,
+        setPositionHistoryHours,
       }}
     >
       {children}
