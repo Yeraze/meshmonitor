@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     gosu \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && python3 -m venv /opt/apprise-venv \
     && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
 

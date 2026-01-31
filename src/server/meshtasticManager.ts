@@ -1604,7 +1604,7 @@ class MeshtasticManager {
 
     switch (ext) {
       case 'js': case 'mjs': interpreter = isDev ? 'node' : '/usr/local/bin/node'; break;
-      case 'py': interpreter = isDev ? 'python' : '/usr/bin/python'; break;
+      case 'py': interpreter = isDev ? 'python' : '/usr/bin/python3'; break;
       case 'sh': interpreter = isDev ? 'sh' : '/bin/sh'; break;
       default:
         this.updateGeofenceTriggerResult(trigger.id, 'error', `Unsupported script extension: ${ext}`);
@@ -1856,7 +1856,7 @@ class MeshtasticManager {
         interpreter = isDev ? 'node' : '/usr/local/bin/node';
         break;
       case 'py':
-        interpreter = isDev ? 'python' : '/usr/bin/python';
+        interpreter = isDev ? 'python' : '/usr/bin/python3';
         break;
       case 'sh':
         interpreter = isDev ? 'sh' : '/bin/sh';
@@ -7498,7 +7498,7 @@ class MeshtasticManager {
                 interpreter = isDev ? 'node' : '/usr/local/bin/node';
                 break;
               case 'py':
-                interpreter = isDev ? 'python' : '/usr/bin/python';
+                interpreter = isDev ? 'python' : '/usr/bin/python3';
                 break;
               case 'sh':
                 interpreter = isDev ? 'sh' : '/bin/sh';
