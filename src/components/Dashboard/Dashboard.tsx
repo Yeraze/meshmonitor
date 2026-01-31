@@ -33,7 +33,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
   }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
-    const { solarMonitoringEnabled } = useSettings();
+    const { solarMonitoringEnabled, preferredDashboardSortOption } = useSettings();
 
     // Modal state
     const [showAddWidgetModal, setShowAddWidgetModal] = useState(false);
@@ -115,6 +115,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       nodes,
       customOrder,
       favoriteTelemetryStorageDays,
+      defaultSortOption: preferredDashboardSortOption,
     });
 
     // Widgets hook

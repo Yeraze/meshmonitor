@@ -9,6 +9,7 @@ interface UseDashboardFiltersOptions {
   nodes: Map<string, NodeInfo>;
   customOrder: string[];
   favoriteTelemetryStorageDays: number;
+  defaultSortOption?: SortOption;
 }
 
 interface UseDashboardFiltersResult {
@@ -46,6 +47,7 @@ export function useDashboardFilters({
   nodes,
   customOrder,
   favoriteTelemetryStorageDays,
+  defaultSortOption = 'custom',
 }: UseDashboardFiltersOptions): UseDashboardFiltersResult {
   // Days to view control
   const [daysToView, setDaysToViewState] = useState<number>(() => {
@@ -67,7 +69,7 @@ export function useDashboardFilters({
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
   const [roleDropdownOpen, setRoleDropdownOpen] = useState<boolean>(false);
-  const [sortOption, setSortOption] = useState<SortOption>('custom');
+  const [sortOption, setSortOption] = useState<SortOption>(defaultSortOption);
 
   // Persist daysToView to localStorage
   const setDaysToView = useCallback((days: number) => {
