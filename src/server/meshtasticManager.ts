@@ -2672,6 +2672,35 @@ class MeshtasticManager {
       logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}, transmitOverLora=${neighborInfoConfigWithDefaults.transmitOverLora}`);
     }
 
+    // Apply Proto3 defaults to Telemetry module config
+    if (moduleConfig.telemetry) {
+      const telemetryConfigWithDefaults = {
+        ...moduleConfig.telemetry,
+        // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
+        deviceUpdateInterval: moduleConfig.telemetry.deviceUpdateInterval !== undefined ? moduleConfig.telemetry.deviceUpdateInterval : 0,
+        deviceTelemetryEnabled: moduleConfig.telemetry.deviceTelemetryEnabled !== undefined ? moduleConfig.telemetry.deviceTelemetryEnabled : false,
+        environmentUpdateInterval: moduleConfig.telemetry.environmentUpdateInterval !== undefined ? moduleConfig.telemetry.environmentUpdateInterval : 0,
+        environmentMeasurementEnabled: moduleConfig.telemetry.environmentMeasurementEnabled !== undefined ? moduleConfig.telemetry.environmentMeasurementEnabled : false,
+        environmentScreenEnabled: moduleConfig.telemetry.environmentScreenEnabled !== undefined ? moduleConfig.telemetry.environmentScreenEnabled : false,
+        environmentDisplayFahrenheit: moduleConfig.telemetry.environmentDisplayFahrenheit !== undefined ? moduleConfig.telemetry.environmentDisplayFahrenheit : false,
+        airQualityEnabled: moduleConfig.telemetry.airQualityEnabled !== undefined ? moduleConfig.telemetry.airQualityEnabled : false,
+        airQualityInterval: moduleConfig.telemetry.airQualityInterval !== undefined ? moduleConfig.telemetry.airQualityInterval : 0,
+        powerMeasurementEnabled: moduleConfig.telemetry.powerMeasurementEnabled !== undefined ? moduleConfig.telemetry.powerMeasurementEnabled : false,
+        powerUpdateInterval: moduleConfig.telemetry.powerUpdateInterval !== undefined ? moduleConfig.telemetry.powerUpdateInterval : 0,
+        powerScreenEnabled: moduleConfig.telemetry.powerScreenEnabled !== undefined ? moduleConfig.telemetry.powerScreenEnabled : false,
+        healthMeasurementEnabled: moduleConfig.telemetry.healthMeasurementEnabled !== undefined ? moduleConfig.telemetry.healthMeasurementEnabled : false,
+        healthUpdateInterval: moduleConfig.telemetry.healthUpdateInterval !== undefined ? moduleConfig.telemetry.healthUpdateInterval : 0,
+        healthScreenEnabled: moduleConfig.telemetry.healthScreenEnabled !== undefined ? moduleConfig.telemetry.healthScreenEnabled : false
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        telemetry: telemetryConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning Telemetry config with deviceTelemetryEnabled=${telemetryConfigWithDefaults.deviceTelemetryEnabled}, healthMeasurementEnabled=${telemetryConfigWithDefaults.healthMeasurementEnabled}`);
+    }
+
     // Convert network config IP addresses from uint32 to string format for frontend
     if (deviceConfig.network) {
       const networkConfigWithConvertedIps = {
@@ -9675,6 +9704,13 @@ class MeshtasticManager {
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_telemetry_config admin message');
+
+      // Update local cache with the config that was sent
+      if (!this.actualModuleConfig) {
+        this.actualModuleConfig = {};
+      }
+      this.actualModuleConfig.telemetry = { ...this.actualModuleConfig.telemetry, ...config };
+      logger.debug('⚙️ Updated actualModuleConfig.telemetry cache');
     } catch (error) {
       logger.error('❌ Error sending telemetry config:', error);
       throw error;
@@ -9962,6 +9998,16 @@ class MeshtasticManager {
 
     // Send want_config_id to trigger node to send updated info
     await this.sendWantConfigId();
+
+    // Also request all module configs to get fresh telemetry, mqtt, etc.
+    setTimeout(async () => {
+      try {
+        logger.info('📦 Requesting fresh module configs...');
+        await this.requestAllModuleConfigs();
+      } catch (error) {
+        logger.error('❌ Failed to request module configs during refresh:', error);
+      }
+    }, 1000);
   }
 
   /**

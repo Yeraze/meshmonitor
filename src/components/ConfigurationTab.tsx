@@ -154,6 +154,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
   // Telemetry Config State
   const [deviceUpdateInterval, setDeviceUpdateInterval] = useState(900);
+  const [deviceTelemetryEnabled, setDeviceTelemetryEnabled] = useState(false);
   const [environmentUpdateInterval, setEnvironmentUpdateInterval] = useState(900);
   const [environmentMeasurementEnabled, setEnvironmentMeasurementEnabled] = useState(false);
   const [environmentScreenEnabled, setEnvironmentScreenEnabled] = useState(false);
@@ -163,6 +164,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [powerMeasurementEnabled, setPowerMeasurementEnabled] = useState(false);
   const [powerUpdateInterval, setPowerUpdateInterval] = useState(900);
   const [powerScreenEnabled, setPowerScreenEnabled] = useState(false);
+  const [healthMeasurementEnabled, setHealthMeasurementEnabled] = useState(false);
+  const [healthUpdateInterval, setHealthUpdateInterval] = useState(900);
+  const [healthScreenEnabled, setHealthScreenEnabled] = useState(false);
+  const [telemetryConfigVersion, setTelemetryConfigVersion] = useState(0);
 
   // External Notification Config State
   const [extNotifEnabled, setExtNotifEnabled] = useState(false);
@@ -495,6 +500,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         // Populate Telemetry config
         if (config.moduleConfig?.telemetry) {
           setDeviceUpdateInterval(config.moduleConfig.telemetry.deviceUpdateInterval ?? 900);
+          setDeviceTelemetryEnabled(config.moduleConfig.telemetry.deviceTelemetryEnabled || false);
           setEnvironmentUpdateInterval(config.moduleConfig.telemetry.environmentUpdateInterval ?? 900);
           setEnvironmentMeasurementEnabled(config.moduleConfig.telemetry.environmentMeasurementEnabled || false);
           setEnvironmentScreenEnabled(config.moduleConfig.telemetry.environmentScreenEnabled || false);
@@ -504,6 +510,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setPowerMeasurementEnabled(config.moduleConfig.telemetry.powerMeasurementEnabled || false);
           setPowerUpdateInterval(config.moduleConfig.telemetry.powerUpdateInterval ?? 900);
           setPowerScreenEnabled(config.moduleConfig.telemetry.powerScreenEnabled || false);
+          setHealthMeasurementEnabled(config.moduleConfig.telemetry.healthMeasurementEnabled || false);
+          setHealthUpdateInterval(config.moduleConfig.telemetry.healthUpdateInterval ?? 900);
+          setHealthScreenEnabled(config.moduleConfig.telemetry.healthScreenEnabled || false);
+          // Increment version to signal config load to TelemetryConfigSection
+          setTelemetryConfigVersion(v => v + 1);
         }
 
         // Populate External Notification config
@@ -1012,6 +1023,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     try {
       await apiService.setTelemetryConfig({
         deviceUpdateInterval,
+        deviceTelemetryEnabled,
         environmentUpdateInterval,
         environmentMeasurementEnabled,
         environmentScreenEnabled,
@@ -1020,7 +1032,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         airQualityInterval,
         powerMeasurementEnabled,
         powerUpdateInterval,
-        powerScreenEnabled
+        powerScreenEnabled,
+        healthMeasurementEnabled,
+        healthUpdateInterval,
+        healthScreenEnabled
       });
       setStatusMessage(t('config.telemetry_saved'));
       showToast(t('config.telemetry_saved_toast'), 'success');
@@ -1626,6 +1641,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       if (config.moduleConfig?.telemetry) {
         const tel = config.moduleConfig.telemetry;
         if (tel.deviceUpdateInterval !== undefined) setDeviceUpdateInterval(tel.deviceUpdateInterval);
+        if (tel.deviceTelemetryEnabled !== undefined) setDeviceTelemetryEnabled(tel.deviceTelemetryEnabled);
         if (tel.environmentUpdateInterval !== undefined) setEnvironmentUpdateInterval(tel.environmentUpdateInterval);
         if (tel.environmentMeasurementEnabled !== undefined) setEnvironmentMeasurementEnabled(tel.environmentMeasurementEnabled);
         if (tel.environmentScreenEnabled !== undefined) setEnvironmentScreenEnabled(tel.environmentScreenEnabled);
@@ -1635,6 +1651,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (tel.powerMeasurementEnabled !== undefined) setPowerMeasurementEnabled(tel.powerMeasurementEnabled);
         if (tel.powerUpdateInterval !== undefined) setPowerUpdateInterval(tel.powerUpdateInterval);
         if (tel.powerScreenEnabled !== undefined) setPowerScreenEnabled(tel.powerScreenEnabled);
+        if (tel.healthMeasurementEnabled !== undefined) setHealthMeasurementEnabled(tel.healthMeasurementEnabled);
+        if (tel.healthUpdateInterval !== undefined) setHealthUpdateInterval(tel.healthUpdateInterval);
+        if (tel.healthScreenEnabled !== undefined) setHealthScreenEnabled(tel.healthScreenEnabled);
+        // Increment version to signal config update to TelemetryConfigSection
+        setTelemetryConfigVersion(v => v + 1);
       }
 
       // Update Node Identity
@@ -2052,8 +2073,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
         <div id="config-telemetry">
           <TelemetryConfigSection
+            configVersion={telemetryConfigVersion}
             deviceUpdateInterval={deviceUpdateInterval}
             setDeviceUpdateInterval={setDeviceUpdateInterval}
+            deviceTelemetryEnabled={deviceTelemetryEnabled}
+            setDeviceTelemetryEnabled={setDeviceTelemetryEnabled}
             environmentUpdateInterval={environmentUpdateInterval}
             setEnvironmentUpdateInterval={setEnvironmentUpdateInterval}
             environmentMeasurementEnabled={environmentMeasurementEnabled}
@@ -2072,6 +2096,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setPowerUpdateInterval={setPowerUpdateInterval}
             powerScreenEnabled={powerScreenEnabled}
             setPowerScreenEnabled={setPowerScreenEnabled}
+            healthMeasurementEnabled={healthMeasurementEnabled}
+            setHealthMeasurementEnabled={setHealthMeasurementEnabled}
+            healthUpdateInterval={healthUpdateInterval}
+            setHealthUpdateInterval={setHealthUpdateInterval}
+            healthScreenEnabled={healthScreenEnabled}
+            setHealthScreenEnabled={setHealthScreenEnabled}
             isSaving={isSaving}
             onSave={handleSaveTelemetryConfig}
           />

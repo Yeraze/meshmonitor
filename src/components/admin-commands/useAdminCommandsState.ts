@@ -119,6 +119,7 @@ export interface DeviceConfigState {
 // Telemetry Config State
 export interface TelemetryConfigState {
   deviceUpdateInterval: number;
+  deviceTelemetryEnabled: boolean;
   environmentUpdateInterval: number;
   environmentMeasurementEnabled: boolean;
   environmentScreenEnabled: boolean;
@@ -128,6 +129,9 @@ export interface TelemetryConfigState {
   powerMeasurementEnabled: boolean;
   powerUpdateInterval: number;
   powerScreenEnabled: boolean;
+  healthMeasurementEnabled: boolean;
+  healthUpdateInterval: number;
+  healthScreenEnabled: boolean;
 }
 
 // Combined Admin Commands State
@@ -257,6 +261,7 @@ const initialState: AdminCommandsState = {
   },
   telemetry: {
     deviceUpdateInterval: 900,
+    deviceTelemetryEnabled: false,
     environmentUpdateInterval: 900,
     environmentMeasurementEnabled: false,
     environmentScreenEnabled: false,
@@ -266,6 +271,9 @@ const initialState: AdminCommandsState = {
     powerMeasurementEnabled: false,
     powerUpdateInterval: 900,
     powerScreenEnabled: false,
+    healthMeasurementEnabled: false,
+    healthUpdateInterval: 900,
+    healthScreenEnabled: false,
   },
 };
 
