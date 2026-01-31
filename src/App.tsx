@@ -96,7 +96,7 @@ L.Icon.Default.mergeOptions({
 
 function App() {
   const { t } = useTranslation();
-  const { authStatus, hasPermission } = useAuth();
+  const { authStatus, hasPermission, loading: authLoading } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
@@ -544,6 +544,12 @@ function App() {
   // Check tab permissions and redirect if unauthorized
   // This prevents users from accessing protected tabs via direct URL navigation
   useEffect(() => {
+    // Wait for auth to finish loading before checking permissions
+    // This prevents false redirects when navigating via URL hash
+    if (authLoading) {
+      return;
+    }
+
     const isAdmin = authStatus?.user?.isAdmin || false;
     const isAuthenticated = authStatus?.authenticated || false;
 
@@ -566,7 +572,7 @@ function App() {
       logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
       setActiveTab('nodes');
     }
-  }, [activeTab, authStatus, hasPermission, setActiveTab]);
+  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab]);
 
   // Helper function to safely parse node IDs to node numbers
   const parseNodeId = useCallback((nodeId: string): number => {
