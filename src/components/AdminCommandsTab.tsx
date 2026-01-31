@@ -972,6 +972,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               case 'telemetry':
                 setTelemetryConfig({
                   deviceUpdateInterval: config.deviceUpdateInterval ?? 900,
+                  deviceTelemetryEnabled: config.deviceTelemetryEnabled ?? false,
                   environmentUpdateInterval: config.environmentUpdateInterval ?? 900,
                   environmentMeasurementEnabled: config.environmentMeasurementEnabled ?? false,
                   environmentScreenEnabled: config.environmentScreenEnabled ?? false,
@@ -980,7 +981,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   airQualityInterval: config.airQualityInterval ?? 900,
                   powerMeasurementEnabled: config.powerMeasurementEnabled ?? false,
                   powerUpdateInterval: config.powerUpdateInterval ?? 900,
-                  powerScreenEnabled: config.powerScreenEnabled ?? false
+                  powerScreenEnabled: config.powerScreenEnabled ?? false,
+                  healthMeasurementEnabled: config.healthMeasurementEnabled ?? false,
+                  healthUpdateInterval: config.healthUpdateInterval ?? 900,
+                  healthScreenEnabled: config.healthScreenEnabled ?? false
                 });
                 break;
             }
@@ -1635,6 +1639,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const handleSetTelemetryConfig = useCallback(async () => {
     const config: any = {
       deviceUpdateInterval: configState.telemetry.deviceUpdateInterval,
+      deviceTelemetryEnabled: configState.telemetry.deviceTelemetryEnabled,
       environmentUpdateInterval: configState.telemetry.environmentUpdateInterval,
       environmentMeasurementEnabled: configState.telemetry.environmentMeasurementEnabled,
       environmentScreenEnabled: configState.telemetry.environmentScreenEnabled,
@@ -1643,7 +1648,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       airQualityInterval: configState.telemetry.airQualityInterval,
       powerMeasurementEnabled: configState.telemetry.powerMeasurementEnabled,
       powerUpdateInterval: configState.telemetry.powerUpdateInterval,
-      powerScreenEnabled: configState.telemetry.powerScreenEnabled
+      powerScreenEnabled: configState.telemetry.powerScreenEnabled,
+      healthMeasurementEnabled: configState.telemetry.healthMeasurementEnabled,
+      healthUpdateInterval: configState.telemetry.healthUpdateInterval,
+      healthScreenEnabled: configState.telemetry.healthScreenEnabled
     };
 
     try {
@@ -2871,6 +2879,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onNeighborInfoConfigChange={handleNeighborInfoConfigChange}
         onSaveNeighborInfoConfig={handleSetNeighborInfoConfig}
         telemetryDeviceUpdateInterval={configState.telemetry.deviceUpdateInterval}
+        telemetryDeviceTelemetryEnabled={configState.telemetry.deviceTelemetryEnabled}
         telemetryEnvironmentUpdateInterval={configState.telemetry.environmentUpdateInterval}
         telemetryEnvironmentMeasurementEnabled={configState.telemetry.environmentMeasurementEnabled}
         telemetryEnvironmentScreenEnabled={configState.telemetry.environmentScreenEnabled}
@@ -2880,6 +2889,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         telemetryPowerMeasurementEnabled={configState.telemetry.powerMeasurementEnabled}
         telemetryPowerUpdateInterval={configState.telemetry.powerUpdateInterval}
         telemetryPowerScreenEnabled={configState.telemetry.powerScreenEnabled}
+        telemetryHealthMeasurementEnabled={configState.telemetry.healthMeasurementEnabled}
+        telemetryHealthUpdateInterval={configState.telemetry.healthUpdateInterval}
+        telemetryHealthScreenEnabled={configState.telemetry.healthScreenEnabled}
         onTelemetryConfigChange={handleTelemetryConfigChange}
         onSaveTelemetryConfig={handleSetTelemetryConfig}
         isExecuting={isExecuting}

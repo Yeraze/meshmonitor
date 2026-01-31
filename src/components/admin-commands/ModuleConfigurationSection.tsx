@@ -33,6 +33,7 @@ interface ModuleConfigurationSectionProps {
 
   // Telemetry Config
   telemetryDeviceUpdateInterval: number;
+  telemetryDeviceTelemetryEnabled: boolean;
   telemetryEnvironmentUpdateInterval: number;
   telemetryEnvironmentMeasurementEnabled: boolean;
   telemetryEnvironmentScreenEnabled: boolean;
@@ -42,6 +43,9 @@ interface ModuleConfigurationSectionProps {
   telemetryPowerMeasurementEnabled: boolean;
   telemetryPowerUpdateInterval: number;
   telemetryPowerScreenEnabled: boolean;
+  telemetryHealthMeasurementEnabled: boolean;
+  telemetryHealthUpdateInterval: number;
+  telemetryHealthScreenEnabled: boolean;
   onTelemetryConfigChange: (field: string, value: any) => void;
   onSaveTelemetryConfig: () => Promise<void>;
 
@@ -72,6 +76,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   onNeighborInfoConfigChange,
   onSaveNeighborInfoConfig,
   telemetryDeviceUpdateInterval,
+  telemetryDeviceTelemetryEnabled,
   telemetryEnvironmentUpdateInterval,
   telemetryEnvironmentMeasurementEnabled,
   telemetryEnvironmentScreenEnabled,
@@ -81,6 +86,9 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   telemetryPowerMeasurementEnabled,
   telemetryPowerUpdateInterval,
   telemetryPowerScreenEnabled,
+  telemetryHealthMeasurementEnabled,
+  telemetryHealthUpdateInterval,
+  telemetryHealthScreenEnabled,
   onTelemetryConfigChange,
   onSaveTelemetryConfig,
   isExecuting,
@@ -305,21 +313,38 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           {t('telemetry_config.device_section', 'Device Telemetry')}
         </h4>
         <div className="setting-item">
-          <label>
-            {t('telemetry_config.device_interval', 'Device Update Interval (seconds)')}
-            <span className="setting-description">{t('telemetry_config.device_interval_description', 'How often to collect and transmit device metrics (battery, voltage, etc.)')}</span>
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={telemetryDeviceTelemetryEnabled}
+              onChange={(e) => onTelemetryConfigChange('deviceTelemetryEnabled', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('telemetry_config.device_enabled', 'Device Telemetry Enabled')}</div>
+              <span className="setting-description">{t('telemetry_config.device_enabled_description', 'Enable sending device metrics (battery, voltage, etc.) to the mesh network')}</span>
+            </div>
           </label>
-          <input
-            type="number"
-            min="0"
-            value={telemetryDeviceUpdateInterval}
-            onChange={(e) => onTelemetryConfigChange('deviceUpdateInterval', parseInt(e.target.value) || 0)}
-            disabled={isExecuting}
-            className="setting-input"
-            style={{ width: '100%', maxWidth: '600px' }}
-            placeholder="900"
-          />
         </div>
+        {telemetryDeviceTelemetryEnabled && (
+          <div className="setting-item">
+            <label>
+              {t('telemetry_config.device_interval', 'Device Update Interval (seconds)')}
+              <span className="setting-description">{t('telemetry_config.device_interval_description', 'How often to collect and transmit device metrics (battery, voltage, etc.)')}</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={telemetryDeviceUpdateInterval}
+              onChange={(e) => onTelemetryConfigChange('deviceUpdateInterval', parseInt(e.target.value) || 0)}
+              disabled={isExecuting}
+              className="setting-input"
+              style={{ width: '100%', maxWidth: '600px' }}
+              placeholder="900"
+            />
+          </div>
+        )}
 
         {/* Environment Telemetry */}
         <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
@@ -484,6 +509,61 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                   <div style={{ flex: 1 }}>
                     <div>{t('telemetry_config.power_screen', 'Show Power on Screen')}</div>
                     <span className="setting-description">{t('telemetry_config.power_screen_description', 'Display power metrics on the device screen')}</span>
+                  </div>
+                </label>
+              </div>
+            </>
+          )}
+
+          {/* Health Metrics */}
+          <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+            {t('telemetry_config.health_section', 'Health Metrics')}
+          </h4>
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={telemetryHealthMeasurementEnabled}
+                onChange={(e) => onTelemetryConfigChange('healthMeasurementEnabled', e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('telemetry_config.health_enabled', 'Health Measurement Enabled')}</div>
+                <span className="setting-description">{t('telemetry_config.health_enabled_description', 'Enable collection of health telemetry data')}</span>
+              </div>
+            </label>
+          </div>
+          {telemetryHealthMeasurementEnabled && (
+            <>
+              <div className="setting-item">
+                <label>
+                  {t('telemetry_config.health_interval', 'Health Update Interval (seconds)')}
+                  <span className="setting-description">{t('telemetry_config.health_interval_description', 'How often to send health metrics to the mesh')}</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={telemetryHealthUpdateInterval}
+                  onChange={(e) => onTelemetryConfigChange('healthUpdateInterval', parseInt(e.target.value) || 0)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '100%', maxWidth: '600px' }}
+                  placeholder="900"
+                />
+              </div>
+              <div className="setting-item">
+                <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    type="checkbox"
+                    checked={telemetryHealthScreenEnabled}
+                    onChange={(e) => onTelemetryConfigChange('healthScreenEnabled', e.target.checked)}
+                    disabled={isExecuting}
+                    style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('telemetry_config.health_screen', 'Health Screen Enabled')}</div>
+                    <span className="setting-description">{t('telemetry_config.health_screen_description', 'Display health metrics on the device screen')}</span>
                   </div>
                 </label>
               </div>
