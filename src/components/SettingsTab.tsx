@@ -16,6 +16,7 @@ import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
+import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
@@ -135,7 +136,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     nodeDimmingMinOpacity,
     setNodeDimmingMinOpacity,
     nodeHopsCalculation,
-    setNodeHopsCalculation
+    setNodeHopsCalculation,
+    preferredDashboardSortOption,
+    setPreferredDashboardSortOption
   } = useSettings();
   const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
 
@@ -156,6 +159,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localNodeHopsCalculation, setLocalNodeHopsCalculation] = useState(nodeHopsCalculation);
+  const [localDashboardSortOption, setLocalDashboardSortOption] = useState<DashboardSortOption>(preferredDashboardSortOption);
   const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
@@ -259,13 +263,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalMapPinStyle(mapPinStyle);
     setLocalTheme(theme);
     setLocalNodeHopsCalculation(nodeHopsCalculation);
+    setLocalDashboardSortOption(preferredDashboardSortOption);
     setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
     setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
     setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -302,6 +307,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localMapPinStyle !== mapPinStyle ||
       localTheme !== theme ||
       localNodeHopsCalculation !== nodeHopsCalculation ||
+      localDashboardSortOption !== preferredDashboardSortOption ||
       localPacketLogEnabled !== initialPacketMonitorSettings.enabled ||
       localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
       localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours ||
@@ -312,8 +318,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localHideIncompleteNodes !== !showIncompleteNodes;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme, localNodeHopsCalculation,
-      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation,
+  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme, localNodeHopsCalculation, localDashboardSortOption,
+      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
@@ -337,6 +343,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalMapPinStyle(mapPinStyle);
     setLocalTheme(theme);
     setLocalNodeHopsCalculation(nodeHopsCalculation);
+    setLocalDashboardSortOption(preferredDashboardSortOption);
     setLocalPacketLogEnabled(initialPacketMonitorSettings.enabled);
     setLocalPacketLogMaxCount(initialPacketMonitorSettings.maxCount);
     setLocalPacketLogMaxAgeHours(initialPacketMonitorSettings.maxAgeHours);
@@ -349,7 +356,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
-      dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation,
+      dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
 
@@ -407,6 +414,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onMapPinStyleChange(localMapPinStyle);
       onThemeChange(localTheme);
       setNodeHopsCalculation(localNodeHopsCalculation);
+      setPreferredDashboardSortOption(localDashboardSortOption);
       onSolarMonitoringEnabledChange(localSolarMonitoringEnabled);
       onSolarMonitoringLatitudeChange(localSolarMonitoringLatitude);
       onSolarMonitoringLongitudeChange(localSolarMonitoringLongitude);
@@ -430,14 +438,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTemperatureUnit, localDistanceUnit, localTelemetryHours,
       localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
       localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
-      localNodeHopsCalculation, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
+      localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
       localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localHideIncompleteNodes,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
       onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
-      onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, onSolarMonitoringEnabledChange,
+      onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t]);
 
@@ -515,6 +523,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalMapPinStyle('meshmonitor');
       setLocalTheme('mocha');
       setLocalNodeHopsCalculation('nodeinfo');
+      setLocalDashboardSortOption('custom');
       setLocalPacketLogEnabled(false);
       setLocalPacketLogMaxCount(1000);
       setLocalPacketLogMaxAgeHours(24);
@@ -538,6 +547,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onMapPinStyleChange('meshmonitor');
       onThemeChange('mocha');
       setNodeHopsCalculation('nodeinfo');
+      setPreferredDashboardSortOption('custom');
       onSolarMonitoringEnabledChange(false);
       onSolarMonitoringLatitudeChange(0);
       onSolarMonitoringLongitudeChange(0);
@@ -881,6 +891,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <option value="asc">{t('settings.sort_ascending')}</option>
               <option value="desc">{t('settings.sort_descending')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="dashboardSortOption">
+              {t('settings.dashboard_sort_label')}
+              <span className="setting-description">{t('settings.dashboard_sort_description')}</span>
+            </label>
+            <select
+              id="dashboardSortOption"
+              value={localDashboardSortOption}
+              onChange={(e) => setLocalDashboardSortOption(e.target.value as DashboardSortOption)}
+              className="setting-input"
+            >
+              <option value="custom">{t('settings.dashboard_sort_custom')}</option>
+              <option value="node-asc">{t('settings.dashboard_sort_node_asc')}</option>
+              <option value="node-desc">{t('settings.dashboard_sort_node_desc')}</option>
+              <option value="type-asc">{t('settings.dashboard_sort_type_asc')}</option>
+              <option value="type-desc">{t('settings.dashboard_sort_type_desc')}</option>
             </select>
           </div>
           <div className="setting-item">

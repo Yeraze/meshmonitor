@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
+import { type SortOption as DashboardSortOption } from '../components/Dashboard/types';
 import { logger } from '../utils/logger';
 import { useCsrf } from './CsrfContext';
 import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
@@ -49,6 +50,7 @@ interface SettingsContextType {
   favoriteTelemetryStorageDays: number;
   preferredSortField: SortField;
   preferredSortDirection: SortDirection;
+  preferredDashboardSortOption: DashboardSortOption;
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   mapTileset: TilesetId;
@@ -83,6 +85,7 @@ interface SettingsContextType {
   setFavoriteTelemetryStorageDays: (days: number) => void;
   setPreferredSortField: (field: SortField) => void;
   setPreferredSortDirection: (direction: SortDirection) => void;
+  setPreferredDashboardSortOption: (option: DashboardSortOption) => void;
   setTimeFormat: (format: TimeFormat) => void;
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
@@ -170,6 +173,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [preferredSortDirection, setPreferredSortDirectionState] = useState<SortDirection>(() => {
     const saved = localStorage.getItem('preferredSortDirection');
     return (saved === 'desc' ? 'desc' : 'asc') as SortDirection;
+  });
+
+  const [preferredDashboardSortOption, setPreferredDashboardSortOptionState] = useState<DashboardSortOption>(() => {
+    const saved = localStorage.getItem('preferredDashboardSortOption');
+    const validOptions: DashboardSortOption[] = ['custom', 'node-asc', 'node-desc', 'type-asc', 'type-desc'];
+    return (saved && validOptions.includes(saved as DashboardSortOption) ? saved : 'custom') as DashboardSortOption;
   });
 
   const [timeFormat, setTimeFormatState] = useState<TimeFormat>(() => {
@@ -338,6 +347,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setPreferredSortDirection = (direction: SortDirection) => {
     setPreferredSortDirectionState(direction);
     localStorage.setItem('preferredSortDirection', direction);
+  };
+
+  const setPreferredDashboardSortOption = (option: DashboardSortOption) => {
+    setPreferredDashboardSortOptionState(option);
+    localStorage.setItem('preferredDashboardSortOption', option);
   };
 
   const setTimeFormat = (format: TimeFormat) => {
@@ -781,6 +795,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('preferredSortDirection', settings.preferredSortDirection);
           }
 
+          if (settings.preferredDashboardSortOption) {
+            const validOptions: DashboardSortOption[] = ['custom', 'node-asc', 'node-desc', 'type-asc', 'type-desc'];
+            if (validOptions.includes(settings.preferredDashboardSortOption as DashboardSortOption)) {
+              setPreferredDashboardSortOptionState(settings.preferredDashboardSortOption as DashboardSortOption);
+              localStorage.setItem('preferredDashboardSortOption', settings.preferredDashboardSortOption);
+            }
+          }
+
           if (settings.timeFormat) {
             setTimeFormatState(settings.timeFormat as TimeFormat);
             localStorage.setItem('timeFormat', settings.timeFormat);
@@ -954,6 +976,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     favoriteTelemetryStorageDays,
     preferredSortField,
     preferredSortDirection,
+    preferredDashboardSortOption,
     timeFormat,
     dateFormat,
     mapTileset,
@@ -988,6 +1011,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setFavoriteTelemetryStorageDays,
     setPreferredSortField,
     setPreferredSortDirection,
+    setPreferredDashboardSortOption,
     setTimeFormat,
     setDateFormat,
     setMapTileset,

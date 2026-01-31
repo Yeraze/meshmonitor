@@ -4681,6 +4681,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'timerTriggers',
       'preferredSortField',
       'preferredSortDirection',
+      'preferredDashboardSortOption',
       'timeFormat',
       'dateFormat',
       'mapTileset',
