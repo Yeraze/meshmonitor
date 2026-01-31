@@ -9330,6 +9330,125 @@ class MeshtasticManager {
   }
 
   /**
+   * Send reboot command to a node (local or remote)
+   * @param destinationNodeNum The target node number (0 or local node num for local)
+   * @param seconds Number of seconds before reboot (default: 5, use negative to cancel)
+   */
+  async sendRebootCommand(destinationNodeNum: number, seconds: number = 5): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    const localNodeNum = this.localNodeInfo.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    try {
+      const root = getProtobufRoot();
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      let sessionPasskey: Uint8Array | null = null;
+
+      // For remote nodes, get the session passkey
+      if (!isLocalNode) {
+        sessionPasskey = this.getSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+          sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
+          if (!sessionPasskey) {
+            throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+          }
+        }
+      }
+
+      const adminMsg = AdminMessage.create({
+        ...(sessionPasskey && { sessionPasskey }),
+        rebootSeconds: seconds
+      });
+      const encoded = AdminMessage.encode(adminMsg).finish();
+
+      const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
+      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
+      await this.transport.send(adminPacket);
+
+      logger.info(`🔄 Sent reboot command to node ${targetNodeNum} (reboot in ${seconds} seconds)`);
+    } catch (error) {
+      logger.error(`❌ Error sending reboot command to node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send set time command to a node (local or remote)
+   * Sets the node's time to the current server time
+   * @param destinationNodeNum The target node number (0 or local node num for local)
+   */
+  async sendSetTimeCommand(destinationNodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    const localNodeNum = this.localNodeInfo.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    try {
+      const root = getProtobufRoot();
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      let sessionPasskey: Uint8Array | null = null;
+
+      // For remote nodes, get the session passkey
+      if (!isLocalNode) {
+        sessionPasskey = this.getSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+          sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
+          if (!sessionPasskey) {
+            throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+          }
+        }
+      }
+
+      // Get current Unix timestamp
+      const currentTime = Math.floor(Date.now() / 1000);
+
+      const adminMsg = AdminMessage.create({
+        ...(sessionPasskey && { sessionPasskey }),
+        setTimeOnly: currentTime
+      });
+      const encoded = AdminMessage.encode(adminMsg).finish();
+
+      const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
+      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
+      await this.transport.send(adminPacket);
+
+      logger.info(`🕐 Sent set time command to node ${targetNodeNum} (time: ${currentTime} / ${new Date(currentTime * 1000).toISOString()})`);
+    } catch (error) {
+      logger.error(`❌ Error sending set time command to node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Request all module configurations from the device for complete backup
    * This requests all 13 module config types defined in the protobufs
    */

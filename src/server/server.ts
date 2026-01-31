@@ -6558,6 +6558,40 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
   }
 });
 
+// Admin reboot endpoint - sends reboot command to a node
+apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum, seconds = 5 } = req.body;
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+
+    await meshtasticManager.sendRebootCommand(destinationNodeNum, Number(seconds));
+
+    logger.info(`✅ Sent reboot command to node ${destinationNodeNum} (in ${seconds} seconds)`);
+    res.json({ success: true, message: `Reboot command sent (node will reboot in ${seconds} seconds)` });
+  } catch (error: any) {
+    logger.error('Error sending reboot command:', error);
+    res.status(500).json({ error: error.message || 'Failed to send reboot command' });
+  }
+});
+
+// Admin set-time endpoint - sets time on a node to current server time
+apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum } = req.body;
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+
+    await meshtasticManager.sendSetTimeCommand(destinationNodeNum);
+
+    logger.info(`✅ Sent set-time command to node ${destinationNodeNum}`);
+    res.json({ success: true, message: 'Time sync command sent successfully' });
+  } catch (error: any) {
+    logger.error('Error sending set-time command:', error);
+    res.status(500).json({ error: error.message || 'Failed to send set-time command' });
+  }
+});
+
 // Admin commands endpoint - requires admin role
 // Admin endpoint: Export configuration for remote nodes
 apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
