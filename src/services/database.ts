@@ -4568,12 +4568,9 @@ class DatabaseService {
     // For PostgreSQL/MySQL, fire-and-forget async insert
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
-        // Check if node exists in cache - if not, skip telemetry insert
-        // This prevents foreign key constraint violations during race conditions
-        if (!this.nodesCache.has(telemetryData.nodeNum)) {
-          logger.debug(`[DatabaseService] Skipping telemetry insert - node ${telemetryData.nodeNum} not in cache yet`);
-          return;
-        }
+        // Note: We removed the nodesCache check here because it was too aggressive -
+        // it would skip telemetry for nodes that exist in the DB but not in the in-memory cache
+        // (e.g., after server restart). The foreign key error handling below handles race conditions.
         this.telemetryRepo.insertTelemetry(telemetryData).catch((error) => {
           // Ignore foreign key violations - node might not be persisted yet
           const errorStr = String(error);
