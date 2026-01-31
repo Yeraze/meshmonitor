@@ -221,6 +221,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     neighborInfo,
     positionHistory,
     traceroutes,
+    positionHistoryHours,
+    setPositionHistoryHours,
   } = useMapContext();
 
   const { currentNodeId } = useDeviceConfig();
@@ -1408,6 +1410,42 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Show Position History</span>
                   </label>
+                  {showMotion && positionHistory.length > 1 && (() => {
+                    // Calculate max hours from oldest position in history
+                    const oldestTimestamp = positionHistory[0].timestamp;
+                    const now = Date.now();
+                    const maxHours = Math.max(1, Math.ceil((now - oldestTimestamp) / (1000 * 60 * 60)));
+
+                    // Current slider value (default to max if not set)
+                    const currentHours = positionHistoryHours ?? maxHours;
+
+                    // Format the display value
+                    const formatDuration = (hours: number, isMax: boolean): string => {
+                      if (isMax && hours === maxHours) return 'All';
+                      if (hours < 24) return `${hours}h`;
+                      const days = Math.floor(hours / 24);
+                      const remainingHours = hours % 24;
+                      if (remainingHours === 0) return `${days}d`;
+                      return `${days}d ${remainingHours}h`;
+                    };
+
+                    return (
+                      <div className="position-history-slider">
+                        <input
+                          type="range"
+                          min={1}
+                          max={maxHours}
+                          value={currentHours}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10);
+                            // Set to null if at max (show all)
+                            setPositionHistoryHours(value >= maxHours ? null : value);
+                          }}
+                        />
+                        <span className="slider-value">{formatDuration(currentHours, currentHours >= maxHours)}</span>
+                      </div>
+                    );
+                  })()}
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -1723,7 +1761,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* Draw position history for mobile nodes */}
               {showMotion && positionHistory.length > 1 && (() => {
-                const historyPositions: [number, number][] = positionHistory.map(p =>
+                // Filter position history based on slider value
+                const filteredHistory = positionHistoryHours != null
+                  ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
+                  : positionHistory;
+
+                // Need at least 2 positions to draw a line
+                if (filteredHistory.length < 2) return null;
+
+                const historyPositions: [number, number][] = filteredHistory.map(p =>
                   [p.latitude, p.longitude] as [number, number]
                 );
 
@@ -1742,10 +1788,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <div className="route-popup">
                         <h4>Position History</h4>
                         <div className="route-usage">
-                          {positionHistory.length} position{positionHistory.length !== 1 ? 's' : ''} recorded
+                          {filteredHistory.length} position{filteredHistory.length !== 1 ? 's' : ''} recorded
                         </div>
                         <div className="route-usage">
-                          {formatDateTime(new Date(positionHistory[0].timestamp), timeFormat, dateFormat)} - {formatDateTime(new Date(positionHistory[positionHistory.length - 1].timestamp), timeFormat, dateFormat)}
+                          {formatDateTime(new Date(filteredHistory[0].timestamp), timeFormat, dateFormat)} - {formatDateTime(new Date(filteredHistory[filteredHistory.length - 1].timestamp), timeFormat, dateFormat)}
                         </div>
                       </div>
                     </Popup>

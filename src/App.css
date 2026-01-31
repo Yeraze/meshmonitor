@@ -3763,6 +3763,15 @@ body {
     font-size: 0.8rem;
   }
 
+  .position-history-slider {
+    padding-left: 1rem;
+  }
+
+  .position-history-slider .slider-value {
+    font-size: 0.75rem;
+    min-width: 35px;
+  }
+
   /* Ensure zoom controls stay in bottom-right on mobile */
   .nodes-split-view .leaflet-top.leaflet-left {
     bottom: 10px !important;
@@ -4509,6 +4518,61 @@ body {
 .map-control-item span {
   color: var(--ctp-text);
   font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Position history slider */
+.position-history-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.25rem 1.5rem;
+}
+
+.position-history-slider input[type='range'] {
+  flex: 1;
+  height: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--ctp-surface1);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.position-history-slider input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--ctp-blue);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.position-history-slider input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--ctp-blue);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.position-history-slider input[type='range']:hover::-webkit-slider-thumb {
+  background: var(--ctp-sapphire);
+}
+
+.position-history-slider input[type='range']:hover::-moz-range-thumb {
+  background: var(--ctp-sapphire);
+}
+
+.position-history-slider .slider-value {
+  min-width: 40px;
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
   font-weight: 500;
 }
 
