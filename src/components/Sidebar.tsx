@@ -72,10 +72,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   React.useEffect(() => {
     const updateSidebarWidth = () => {
       const isMobile = window.matchMedia('(max-width: 768px)').matches;
-      const collapsedWidth = isMobile ? '48px' : '60px';
+      const baseCollapsedWidth = isMobile ? 48 : 60;
+      const baseExpandedWidth = 240;
+      const baseWidth = isCollapsed ? baseCollapsedWidth : baseExpandedWidth;
+      // Use calc() to include safe-area-inset-left for iPhone notch in landscape
       document.documentElement.style.setProperty(
         '--sidebar-width',
-        isCollapsed ? collapsedWidth : '240px'
+        `calc(${baseWidth}px + env(safe-area-inset-left, 0px))`
       );
     };
 
