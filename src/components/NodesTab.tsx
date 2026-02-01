@@ -6,8 +6,9 @@ import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
-import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
+import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows } from '../utils/mapHelpers.tsx';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
+import PositionHistoryLegend from './PositionHistoryLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
@@ -1764,7 +1765,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {/* Note: Selected node traceroute with separate forward and back paths */}
               {/* This is handled by traceroutePathsElements passed from parent */}
 
-              {/* Draw position history for mobile nodes */}
+              {/* Draw position history for mobile nodes with color gradient */}
               {showMotion && positionHistory.length > 1 && (() => {
                 // Filter position history based on slider value
                 const filteredHistory = positionHistoryHours != null
@@ -1779,40 +1780,87 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 );
 
                 const elements: React.ReactElement[] = [];
+                const segmentCount = filteredHistory.length - 1;
+                const segmentColors: string[] = [];
 
-                // Draw blue line for position history
-                elements.push(
-                  <Polyline
-                    key="position-history-line"
-                    positions={historyPositions}
-                    color="#0066ff"
-                    weight={3}
-                    opacity={0.7}
-                  >
-                    <Popup>
-                      <div className="route-popup">
-                        <h4>Position History</h4>
-                        <div className="route-usage">
-                          {filteredHistory.length} position{filteredHistory.length !== 1 ? 's' : ''} recorded
-                        </div>
-                        <div className="route-usage">
-                          {formatDateTime(new Date(filteredHistory[0].timestamp), timeFormat, dateFormat)} - {formatDateTime(new Date(filteredHistory[filteredHistory.length - 1].timestamp), timeFormat, dateFormat)}
-                        </div>
-                      </div>
-                    </Popup>
-                  </Polyline>
-                );
+                // Draw individual segments with gradient colors
+                for (let i = 0; i < segmentCount; i++) {
+                  const startPos = filteredHistory[i];
+                  const endPos = filteredHistory[i + 1];
+                  const color = getPositionHistoryColor(i, segmentCount);
+                  segmentColors.push(color);
 
-                // Generate arrow markers for position history
-                const historyArrows = generateArrowMarkers(
+                  // Generate path - use Bezier curve if heading data is available
+                  const segmentPath = startPos.groundTrack !== undefined
+                    ? generateHeadingAwarePath(
+                        [startPos.latitude, startPos.longitude],
+                        [endPos.latitude, endPos.longitude],
+                        startPos.groundTrack,
+                        startPos.groundSpeed,
+                        10
+                      )
+                    : [[startPos.latitude, startPos.longitude] as [number, number], [endPos.latitude, endPos.longitude] as [number, number]];
+
+                  elements.push(
+                    <Polyline
+                      key={`position-history-segment-${i}`}
+                      positions={segmentPath}
+                      color={color}
+                      weight={3}
+                      opacity={0.8}
+                    >
+                      <Popup>
+                        <div className="route-popup">
+                          <h4>Position Segment {i + 1}</h4>
+                          <div className="route-usage">
+                            <strong>From:</strong> {formatDateTime(new Date(startPos.timestamp), timeFormat, dateFormat)}
+                          </div>
+                          <div className="route-usage">
+                            <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
+                          </div>
+                          {startPos.groundSpeed !== undefined && (
+                            <div className="route-usage">
+                              <strong>Speed:</strong> {(startPos.groundSpeed * 3.6).toFixed(1)} km/h
+                            </div>
+                          )}
+                          {startPos.groundTrack !== undefined && (
+                            <div className="route-usage">
+                              <strong>Heading:</strong> {startPos.groundTrack.toFixed(0)}°
+                            </div>
+                          )}
+                        </div>
+                      </Popup>
+                    </Polyline>
+                  );
+                }
+
+                // Generate arrow markers with performance limiting (max 30 arrows)
+                const historyArrows = generatePositionHistoryArrows(
                   historyPositions,
-                  'position-history',
-                  '#0066ff',
-                  0
+                  segmentColors,
+                  30
                 );
                 elements.push(...historyArrows);
 
                 return elements;
+              })()}
+
+              {/* Position History Legend */}
+              {showMotion && positionHistory.length > 1 && (() => {
+                const filteredHistory = positionHistoryHours != null
+                  ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
+                  : positionHistory;
+
+                if (filteredHistory.length < 2) return null;
+
+                return (
+                  <PositionHistoryLegend
+                    oldestTime={filteredHistory[0].timestamp}
+                    newestTime={filteredHistory[filteredHistory.length - 1].timestamp}
+                    timeFormat={timeFormat}
+                    dateFormat={dateFormat}
+                  />
+                );
               })()}
           </MapContainer>
           <TilesetSelector

@@ -206,3 +206,153 @@ export const generateCurvedArrowMarkers = (
   return arrows;
 };
 
+// Position history color gradient constants
+const POSITION_HISTORY_COLOR_OLD = { r: 0, g: 191, b: 255 };   // Cyan-blue (#00bfff)
+const POSITION_HISTORY_COLOR_NEW = { r: 255, g: 69, b: 0 };    // Orange-red (#ff4500)
+
+/**
+ * Linear interpolation between two RGB colors
+ * @param colorA Starting color {r, g, b}
+ * @param colorB Ending color {r, g, b}
+ * @param ratio Interpolation ratio (0 = colorA, 1 = colorB)
+ * @returns Interpolated color as hex string
+ */
+export const interpolateColor = (
+  colorA: { r: number; g: number; b: number },
+  colorB: { r: number; g: number; b: number },
+  ratio: number
+): string => {
+  const r = Math.round(colorA.r + (colorB.r - colorA.r) * ratio);
+  const g = Math.round(colorA.g + (colorB.g - colorA.g) * ratio);
+  const b = Math.round(colorA.b + (colorB.b - colorA.b) * ratio);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
+
+/**
+ * Get color for a position history segment based on age
+ * @param index Segment index (0 = oldest)
+ * @param total Total number of segments
+ * @returns Hex color string
+ */
+export const getPositionHistoryColor = (index: number, total: number): string => {
+  if (total <= 1) return interpolateColor(POSITION_HISTORY_COLOR_OLD, POSITION_HISTORY_COLOR_NEW, 1);
+  const ratio = index / (total - 1);
+  return interpolateColor(POSITION_HISTORY_COLOR_OLD, POSITION_HISTORY_COLOR_NEW, ratio);
+};
+
+/**
+ * Generate curved path using actual heading data for accurate trajectory representation
+ * Uses heading to determine control point direction for more realistic path curves
+ *
+ * @param start Starting position [lat, lng]
+ * @param end Ending position [lat, lng]
+ * @param heading Ground track in degrees (0 = North, clockwise)
+ * @param speed Ground speed in m/s (affects control point distance)
+ * @param segments Number of segments to generate (default 10 for position history)
+ * @returns Array of [lat, lng] points forming the curved path
+ */
+export const generateHeadingAwarePath = (
+  start: [number, number],
+  end: [number, number],
+  heading?: number,
+  speed?: number,
+  segments: number = 10
+): [number, number][] => {
+  // If no heading data, fall back to straight line
+  if (heading === undefined) {
+    return [start, end];
+  }
+
+  const points: [number, number][] = [];
+
+  // Calculate direct distance between points
+  const dx = end[1] - start[1];
+  const dy = end[0] - start[0];
+  const directDistance = Math.sqrt(dx * dx + dy * dy);
+
+  if (directDistance === 0) return [start, end];
+
+  // Convert heading from degrees to radians (0 = North, clockwise)
+  // Geographic heading: 0 = North, 90 = East, 180 = South, 270 = West
+  // We need to convert to math angle where 0 = East, counter-clockwise
+  const headingRad = (90 - heading) * Math.PI / 180;
+
+  // Control point distance based on speed (faster = more lookahead)
+  // Default to 20% of direct distance, scale up with speed
+  const speedFactor = speed !== undefined ? Math.min(speed / 10, 2) : 1;
+  const controlDistance = directDistance * 0.3 * speedFactor;
+
+  // Calculate control point position based on heading from start point
+  const ctrlLat = start[0] + Math.sin(headingRad) * controlDistance;
+  const ctrlLng = start[1] + Math.cos(headingRad) * controlDistance;
+
+  // Generate points along quadratic bezier curve
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const t1 = 1 - t;
+
+    // Quadratic bezier: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+    const lat = t1 * t1 * start[0] + 2 * t1 * t * ctrlLat + t * t * end[0];
+    const lng = t1 * t1 * start[1] + 2 * t1 * t * ctrlLng + t * t * end[1];
+
+    points.push([lat, lng]);
+  }
+
+  return points;
+};
+
+/**
+ * Generate position history arrow markers with limited count for performance
+ * @param positions Array of segment positions
+ * @param colors Array of colors for each segment
+ * @param maxArrows Maximum number of arrows to generate
+ * @returns Array of Marker components
+ */
+export const generatePositionHistoryArrows = (
+  positions: [number, number][],
+  colors: string[],
+  maxArrows: number = 30
+): React.ReactElement[] => {
+  const arrows: React.ReactElement[] = [];
+  const segmentCount = positions.length - 1;
+
+  if (segmentCount <= 0) return arrows;
+
+  // Calculate how many segments to skip to stay under maxArrows
+  const step = Math.max(1, Math.ceil(segmentCount / maxArrows));
+
+  for (let i = 0; i < segmentCount && arrows.length < maxArrows; i += step) {
+    const start = positions[i];
+    const end = positions[i + 1];
+    const color = colors[Math.min(i, colors.length - 1)];
+
+    // Calculate midpoint
+    const midLat = (start[0] + end[0]) / 2;
+    const midLng = (start[1] + end[1]) / 2;
+
+    // Calculate angle for arrow direction
+    const latDiff = end[0] - start[0];
+    const lngDiff = end[1] - start[1];
+    const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI;
+
+    const arrowIcon = L.divIcon({
+      html: `<div style="transform: rotate(${angle}deg); font-size: 16px; font-weight: bold;">
+        <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
+      </div>`,
+      className: 'position-history-arrow-icon',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+
+    arrows.push(
+      <Marker
+        key={`position-history-arrow-${i}`}
+        position={[midLat, midLng]}
+        icon={arrowIcon}
+      />
+    );
+  }
+
+  return arrows;
+};
+

@@ -4777,7 +4777,7 @@ class DatabaseService {
     return this.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType);
   }
 
-  // Get only position-related telemetry (latitude, longitude, altitude) for a node
+  // Get only position-related telemetry (latitude, longitude, altitude, ground_speed, ground_track) for a node
   // This is much more efficient than fetching all telemetry types - reduces data fetched by ~70%
   getPositionTelemetryByNode(nodeId: string, limit: number = 1500, sinceTimestamp?: number): DbTelemetry[] {
     // For PostgreSQL/MySQL, telemetry is not cached - return empty for sync calls
@@ -4789,7 +4789,7 @@ class DatabaseService {
     let query = `
       SELECT * FROM telemetry
       WHERE nodeId = ?
-        AND telemetryType IN ('latitude', 'longitude', 'altitude')
+        AND telemetryType IN ('latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track')
     `;
     const params: any[] = [nodeId];
 
