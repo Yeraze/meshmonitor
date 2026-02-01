@@ -779,7 +779,11 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
 
     // Allow hours parameter for future use, but default to fetching ALL position history
     // This ensures we capture movement that may have happened long ago
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : null;
+    // Validate hours: must be positive integer, max 8760 (1 year)
+    const rawHours = req.query.hours ? parseInt(req.query.hours as string) : null;
+    const hoursParam = rawHours !== null && !isNaN(rawHours) && rawHours > 0
+      ? Math.min(rawHours, 8760)
+      : null;
     const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
 
     // Check privacy for position history

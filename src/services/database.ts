@@ -4780,11 +4780,15 @@ class DatabaseService {
     return this.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType);
   }
 
-  // Get only position-related telemetry (latitude, longitude, altitude, ground_speed, ground_track) for a node
-  // This is much more efficient than fetching all telemetry types - reduces data fetched by ~70%
+  /**
+   * Get only position-related telemetry (latitude, longitude, altitude, ground_speed, ground_track) for a node.
+   * This is much more efficient than fetching all telemetry types - reduces data fetched by ~70%.
+   *
+   * NOTE: This sync method only works for SQLite. For PostgreSQL/MySQL, use getPositionTelemetryByNodeAsync().
+   * Returns empty array for non-SQLite backends by design (sync DB access not supported).
+   */
   getPositionTelemetryByNode(nodeId: string, limit: number = 1500, sinceTimestamp?: number): DbTelemetry[] {
-    // For PostgreSQL/MySQL, telemetry is not cached - return empty for sync calls
-    // Position telemetry is fetched via API endpoints which can be async
+    // INTENTIONAL: PostgreSQL/MySQL require async queries - use getPositionTelemetryByNodeAsync() instead
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
