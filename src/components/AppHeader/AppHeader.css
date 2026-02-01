@@ -238,3 +238,58 @@
     margin-left: 8px;
   }
 }
+
+/* Mobile landscape - very limited vertical space */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app-header {
+    padding: 0.5rem 1rem;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    height: auto;
+    min-height: 40px;
+  }
+
+  .app-header h1 {
+    font-size: 1.2rem;
+  }
+
+  .header-logo {
+    height: 1.5rem;
+  }
+
+  .node-info {
+    font-size: 0.75rem;
+  }
+
+  .device-name {
+    max-width: 100px; /* More aggressive trimming in landscape */
+  }
+
+  .node-address {
+    padding: 0.15rem 0.35rem;
+    font-size: 0.75rem;
+  }
+
+  .connection-status {
+    font-size: 0.8rem;
+  }
+
+  .status-indicator {
+    width: 10px;
+    height: 10px;
+  }
+
+  .connection-control-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+
+  .login-button {
+    padding: 3px 8px;
+    font-size: 0.75em;
+    margin-left: 8px;
+  }
+
+  .update-method-indicator {
+    font-size: 0.75rem;
+  }
+}
