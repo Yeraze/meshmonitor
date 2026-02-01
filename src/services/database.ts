@@ -3955,7 +3955,7 @@ class DatabaseService {
 
   /**
    * Update node mobility status based on position telemetry
-   * Checks if a node has moved more than 100 meters based on its last 50 position records
+   * Checks if a node has moved more than 100 meters based on its last 500 position records
    * @param nodeId The node ID to check
    * @returns The updated mobility status (0 = stationary, 1 = mobile)
    */
@@ -3967,8 +3967,9 @@ class DatabaseService {
         return 0;
       }
 
-      // Get last 50 position telemetry records for this node
-      const positionTelemetry = this.getPositionTelemetryByNode(nodeId, 50);
+      // Get last 500 position telemetry records for this node
+      // Using a larger limit ensures we capture movement over a longer time period
+      const positionTelemetry = this.getPositionTelemetryByNode(nodeId, 500);
 
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
@@ -4020,8 +4021,10 @@ class DatabaseService {
    */
   async updateNodeMobilityAsync(nodeId: string): Promise<number> {
     try {
-      // Get last 50 position telemetry records for this node
-      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 50);
+      // Get last 500 position telemetry records for this node
+      // Using a larger limit ensures we capture movement over a longer time period
+      // (50 was too small - nodes parked for a while would show only recent stationary positions)
+      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 500);
 
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
