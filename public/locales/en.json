@@ -961,6 +961,9 @@
   "map.zoom_out": "Zoom Out",
   "map.legend.hops": "Hops:",
   "map.legend.local": "Local",
+  "map.legend.positionHistory": "Position History",
+  "map.legend.oldest": "Oldest",
+  "map.legend.newest": "Newest",
 
   "traceroute_history.title": "Traceroute History",
   "traceroute_history.from": "From",

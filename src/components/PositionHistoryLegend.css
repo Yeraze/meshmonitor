@@ -1,0 +1,86 @@
+.position-history-legend {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  user-select: none;
+  min-width: 120px;
+}
+
+.position-history-legend .legend-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 2px;
+  font-size: 11px;
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.position-history-legend .legend-title:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.position-history-legend .legend-title:active {
+  cursor: grabbing;
+}
+
+.gradient-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gradient-bar {
+  width: 100%;
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #00bfff, #ff4500);
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.gradient-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.gradient-label {
+  font-size: 10px;
+  color: #666;
+  font-weight: 500;
+}
+
+.gradient-label.oldest {
+  color: #0099cc;
+}
+
+.gradient-label.newest {
+  color: #cc3700;
+}
+
+.time-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 2px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.time-label {
+  font-size: 9px;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* Hide on mobile devices */
+@media (max-width: 768px) {
+  .position-history-legend-wrapper {
+    display: none;
+  }
+}
