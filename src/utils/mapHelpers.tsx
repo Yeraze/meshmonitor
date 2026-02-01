@@ -1,6 +1,7 @@
 import React from 'react';
 import L from 'leaflet';
-import { Marker, Tooltip } from 'react-leaflet';
+import { Marker, Tooltip, Popup } from 'react-leaflet';
+import { PositionHistoryItem } from '../contexts/MapContext';
 
 // Constants for arrow generation
 const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
@@ -272,10 +273,16 @@ export const generateHeadingAwarePath = (
 
   if (directDistance === 0) return [start, end];
 
+  // Data is stored in millidegrees (1/1000 degree) - detect and convert
+  let headingDegrees = heading;
+  if (headingDegrees > 360) {
+    headingDegrees = headingDegrees / 1000;
+  }
+
   // Convert heading from degrees to radians (0 = North, clockwise)
   // Geographic heading: 0 = North, 90 = East, 180 = South, 270 = West
   // We need to convert to math angle where 0 = East, counter-clockwise
-  const headingRad = (90 - heading) * Math.PI / 180;
+  const headingRad = (90 - headingDegrees) * Math.PI / 180;
 
   // Control point distance based on speed (faster = more lookahead)
   // Default to 20% of direct distance, scale up with speed
@@ -302,41 +309,65 @@ export const generateHeadingAwarePath = (
 };
 
 /**
+ * Format a compass heading to cardinal direction
+ */
+const getCardinalDirection = (heading: number): string => {
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const index = Math.round(heading / 22.5) % 16;
+  return directions[index];
+};
+
+/**
  * Generate position history arrow markers with limited count for performance
- * @param positions Array of segment positions
- * @param colors Array of colors for each segment
+ * Places arrow at each position point, rotated to match groundTrack (heading)
+ * @param historyItems Array of position history items with full data
+ * @param colors Array of colors for each position
  * @param maxArrows Maximum number of arrows to generate
- * @returns Array of Marker components
+ * @returns Array of Marker components with clickable popups
  */
 export const generatePositionHistoryArrows = (
-  positions: [number, number][],
+  historyItems: PositionHistoryItem[],
   colors: string[],
   maxArrows: number = 30
 ): React.ReactElement[] => {
   const arrows: React.ReactElement[] = [];
-  const segmentCount = positions.length - 1;
+  const itemCount = historyItems.length;
 
-  if (segmentCount <= 0) return arrows;
+  if (itemCount <= 0) return arrows;
 
-  // Calculate how many segments to skip to stay under maxArrows
-  const step = Math.max(1, Math.ceil(segmentCount / maxArrows));
+  // Calculate how many items to skip to stay under maxArrows
+  const step = Math.max(1, Math.ceil(itemCount / maxArrows));
 
-  for (let i = 0; i < segmentCount && arrows.length < maxArrows; i += step) {
-    const start = positions[i];
-    const end = positions[i + 1];
-    const color = colors[Math.min(i, colors.length - 1)];
+  for (let i = 0; i < itemCount && arrows.length < maxArrows; i += step) {
+    const item = historyItems[i];
+    // Safely get color - default to blue if colors array is empty
+    const color = colors.length > 0 ? colors[Math.min(i, colors.length - 1)] : '#3b82f6';
 
-    // Calculate midpoint
-    const midLat = (start[0] + end[0]) / 2;
-    const midLng = (start[1] + end[1]) / 2;
-
-    // Calculate angle for arrow direction
-    const latDiff = end[0] - start[0];
-    const lngDiff = end[1] - start[1];
-    const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI;
+    // Use groundTrack if available, otherwise calculate from next position
+    let angle: number;
+    if (item.groundTrack !== undefined) {
+      // groundTrack should be in degrees (0=North, 90=East)
+      // But data is stored in millidegrees (1/1000 degree) - detect and convert
+      let heading = item.groundTrack;
+      if (heading > 360) {
+        // Value is in millidegrees, convert to degrees
+        heading = heading / 1000;
+      }
+      angle = heading;
+    } else if (i < itemCount - 1) {
+      // Calculate angle from this position to next
+      const next = historyItems[i + 1];
+      const latDiff = next.latitude - item.latitude;
+      const lngDiff = next.longitude - item.longitude;
+      // atan2 returns radians with 0 = East, we need 0 = North
+      angle = (Math.atan2(lngDiff, latDiff) * 180 / Math.PI);
+    } else {
+      // Last point with no heading data - skip arrow
+      continue;
+    }
 
     const arrowIcon = L.divIcon({
-      html: `<div style="transform: rotate(${angle}deg); font-size: 16px; font-weight: bold;">
+      html: `<div style="transform: rotate(${angle}deg); font-size: 16px; font-weight: bold; cursor: pointer;">
         <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
       </div>`,
       className: 'position-history-arrow-icon',
@@ -344,12 +375,53 @@ export const generatePositionHistoryArrows = (
       iconAnchor: [10, 10]
     });
 
+    // Format date and time
+    const date = new Date(item.timestamp);
+    const dateStr = date.toLocaleDateString();
+    const timeStr = date.toLocaleTimeString();
+
+    // Format speed (convert from m/s to km/h)
+    // Some devices may report in different units - sanity check for reasonable values
+    let speedKmh: string | null = null;
+    if (item.groundSpeed !== undefined) {
+      const converted = item.groundSpeed * 3.6;
+      // If converted speed > 200 km/h, assume raw value is already in km/h
+      speedKmh = converted > 200 ? item.groundSpeed.toFixed(1) : converted.toFixed(1);
+    }
+
+    // Format heading
+    // Data is stored in millidegrees (1/1000 degree) - detect and convert
+    let headingStr: string | null = null;
+    if (item.groundTrack !== undefined) {
+      let heading = item.groundTrack;
+      if (heading > 360) {
+        heading = heading / 1000;
+      }
+      headingStr = `${heading.toFixed(0)}° ${getCardinalDirection(heading)}`;
+    }
+
     arrows.push(
       <Marker
         key={`position-history-arrow-${i}`}
-        position={[midLat, midLng]}
+        position={[item.latitude, item.longitude]}
         icon={arrowIcon}
-      />
+      >
+        <Popup>
+          <div className="position-history-popup">
+            <div><strong>Date:</strong> {dateStr}</div>
+            <div><strong>Time:</strong> {timeStr}</div>
+            {speedKmh !== null && (
+              <div><strong>Speed:</strong> {speedKmh} km/h</div>
+            )}
+            {headingStr !== null && (
+              <div><strong>Heading:</strong> {headingStr}</div>
+            )}
+            {item.altitude !== undefined && (
+              <div><strong>Altitude:</strong> {item.altitude} m</div>
+            )}
+          </div>
+        </Popup>
+      </Marker>
     );
   }
 

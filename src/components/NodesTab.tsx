@@ -1775,10 +1775,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 // Need at least 2 positions to draw a line
                 if (filteredHistory.length < 2) return null;
 
-                const historyPositions: [number, number][] = filteredHistory.map(p =>
-                  [p.latitude, p.longitude] as [number, number]
-                );
-
                 const elements: React.ReactElement[] = [];
                 const segmentCount = filteredHistory.length - 1;
                 const segmentColors: string[] = [];
@@ -1818,16 +1814,26 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           <div className="route-usage">
                             <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
                           </div>
-                          {startPos.groundSpeed !== undefined && (
-                            <div className="route-usage">
-                              <strong>Speed:</strong> {(startPos.groundSpeed * 3.6).toFixed(1)} km/h
-                            </div>
-                          )}
-                          {startPos.groundTrack !== undefined && (
-                            <div className="route-usage">
-                              <strong>Heading:</strong> {startPos.groundTrack.toFixed(0)}°
-                            </div>
-                          )}
+                          {startPos.groundSpeed !== undefined && (() => {
+                            const converted = startPos.groundSpeed * 3.6;
+                            // If converted > 200 km/h, assume raw is already in km/h
+                            const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
+                            return (
+                              <div className="route-usage">
+                                <strong>Speed:</strong> {speedKmh.toFixed(1)} km/h
+                              </div>
+                            );
+                          })()}
+                          {startPos.groundTrack !== undefined && (() => {
+                            // Data is stored in millidegrees - detect and convert
+                            let heading = startPos.groundTrack;
+                            if (heading > 360) heading = heading / 1000;
+                            return (
+                              <div className="route-usage">
+                                <strong>Heading:</strong> {heading.toFixed(0)}°
+                              </div>
+                            );
+                          })()}
                         </div>
                       </Popup>
                     </Polyline>
@@ -1835,8 +1841,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }
 
                 // Generate arrow markers with performance limiting (max 30 arrows)
+                // Pass full history items so arrows can show heading and popup info
                 const historyArrows = generatePositionHistoryArrows(
-                  historyPositions,
+                  filteredHistory,
                   segmentColors,
                   30
                 );
