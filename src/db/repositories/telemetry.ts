@@ -222,14 +222,14 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Get position telemetry (latitude, longitude, altitude) for a node
+   * Get position telemetry (latitude, longitude, altitude, groundSpeed, groundTrack) for a node
    */
   async getPositionTelemetryByNode(
     nodeId: string,
     limit: number = 1500,
     sinceTimestamp?: number
   ): Promise<DbTelemetry[]> {
-    const positionTypes = ['latitude', 'longitude', 'altitude'];
+    const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
 
     if (this.isSQLite()) {
       const db = this.getSqliteDb();

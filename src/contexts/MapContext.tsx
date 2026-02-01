@@ -7,6 +7,9 @@ export interface PositionHistoryItem {
   latitude: number;
   longitude: number;
   timestamp: number;
+  altitude?: number;
+  groundSpeed?: number;   // m/s
+  groundTrack?: number;   // degrees (0-360, 0=North)
 }
 
 export interface EnrichedNeighborInfo extends DbNeighborInfo {

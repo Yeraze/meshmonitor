@@ -5123,6 +5123,31 @@ body {
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
 }
 
+/* Position History Arrow Icons - clickable */
+.leaflet-marker-icon.position-history-arrow-icon {
+  background: transparent !important;
+  border: none !important;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.leaflet-marker-icon.position-history-arrow-icon div {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.position-history-popup {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.position-history-popup div {
+  margin: 2px 0;
+}
+
 /* ========================================
    Authentication Components
    ======================================== */
@@ -6255,5 +6280,50 @@ body {
   100% {
     box-shadow: 0 0 0 0 rgba(137, 180, 250, 0);
     background-color: transparent;
+  }
+}
+
+/* Mobile landscape - compact layout for limited vertical space */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --header-height: 40px !important;
+    --sidebar-width: 48px !important;
+  }
+
+  .app-main {
+    padding-top: calc(var(--header-height) + 0.25rem);
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+  }
+
+  /* Compact channel conversation for landscape */
+  .channels-tab-content {
+    height: calc(100vh - var(--header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
+    height: calc(100dvh - var(--header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
+  }
+
+  .channels-header h2 {
+    font-size: 1rem;
+    margin: 0.15rem 0;
+  }
+
+  /* Smaller message bubbles */
+  .message-bubble {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+  }
+
+  .sender-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 0.65rem;
+  }
+
+  /* Compact nodes tab */
+  .nodes-container {
+    gap: 0.5rem;
+  }
+
+  .nodes-header h2 {
+    font-size: 1rem;
   }
 }

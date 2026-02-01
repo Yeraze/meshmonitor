@@ -4,7 +4,8 @@
   top: 0; /* Full page height from top of viewport */
   bottom: 0;
   height: 100vh;
-  width: 60px; /* Default to narrow/icon-only on desktop */
+  height: 100dvh; /* Dynamic viewport height - accounts for mobile browser chrome */
+  width: calc(60px + env(safe-area-inset-left, 0px)); /* Add safe area to width so content has full 60px */
   background: var(--ctp-base);
   border-right: 1px solid var(--ctp-surface1);
   transition: width 0.3s ease, transform 0.3s ease;
@@ -18,12 +19,12 @@
 }
 
 .sidebar.collapsed {
-  width: 60px;
+  width: calc(60px + env(safe-area-inset-left, 0px));
 }
 
 /* When expanded on desktop, show full width */
 .sidebar:not(.collapsed) {
-  width: 240px;
+  width: calc(240px + env(safe-area-inset-left, 0px));
 }
 
 .sidebar-footer {
@@ -278,8 +279,8 @@
 /* Main content always accounts for narrow sidebar */
 /* Removed old layout-affecting rules - sidebar now floats over content */
 
-/* Mobile responsive */
-@media (max-width: 768px) {
+/* Mobile responsive - portrait only */
+@media (max-width: 768px) and (orientation: portrait) {
   .sidebar {
     /* Collapsed by default - show as hamburger icon only */
     width: 48px;
@@ -316,6 +317,29 @@
   }
 }
 
+/* Mobile responsive - landscape: minimal changes to fix layout */
+@media (orientation: landscape) and (max-height: 700px) {
+  .sidebar {
+    padding-top: max(4px, env(safe-area-inset-top));
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+  }
+
+  /* Only change: reduce nav bottom padding from 120px */
+  .sidebar-nav {
+    padding-bottom: 50px;
+  }
+
+  /* Hide footer to free up space */
+  .sidebar-footer {
+    display: none;
+  }
+
+  /* Adjust controls position since footer is hidden */
+  .sidebar-controls {
+    bottom: 8px;
+  }
+}
+
 /* Scrollbar styling for sidebar */
 .sidebar-nav::-webkit-scrollbar {
   width: 6px;
@@ -332,4 +356,144 @@
 
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
   background: var(--ctp-overlay0);
+}
+
+/* Mobile landscape - increased threshold to catch more devices */
+@media (max-height: 700px) and (orientation: landscape) {
+  .sidebar {
+    /* Reduce padding to maximize scrollable area */
+    padding-top: max(2px, env(safe-area-inset-top)) !important;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    height: 100dvh; /* Use dynamic viewport height */
+  }
+
+  .sidebar-header {
+    padding: 4px 6px;
+    min-height: 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-logo {
+    width: 20px;
+    height: 20px;
+  }
+
+  .sidebar-app-name {
+    font-size: 12px;
+  }
+
+  .sidebar-node-name {
+    display: none; /* Hide node name to save space */
+  }
+
+  .sidebar-nav {
+    padding: 2px 4px 40px 4px !important; /* Minimal padding - override mobile portrait */
+    gap: 1px;
+    flex: 1;
+    min-height: 0; /* Allow flex shrinking */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  }
+
+  .sidebar-nav-item {
+    padding: 5px 8px;
+    font-size: 12px;
+    min-height: 28px; /* Ensure minimum tap target */
+  }
+
+  .sidebar-nav-item .nav-icon {
+    font-size: 16px;
+    width: 20px;
+  }
+
+  .sidebar-section-header {
+    font-size: 9px;
+    padding: 4px 8px 2px 8px;
+    margin-top: 2px;
+  }
+
+  .sidebar-section {
+    gap: 1px;
+  }
+
+  /* Hide footer in landscape to maximize nav space */
+  .sidebar-footer {
+    display: none !important;
+  }
+
+  .sidebar-controls {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .sidebar-toggle,
+  .sidebar-pin {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  /* When collapsed in landscape, ensure icons are visible */
+  /* Width must include safe-area-inset-left for iPhone notch */
+  .sidebar.collapsed {
+    width: calc(48px + env(safe-area-inset-left, 0px)) !important;
+  }
+
+  .sidebar.collapsed .sidebar-nav {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar.collapsed .sidebar-nav-item {
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .sidebar.collapsed .sidebar-header {
+    padding: 4px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .sidebar.collapsed .sidebar-logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .sidebar.collapsed .sidebar-nav {
+    padding: 4px 4px 40px 4px !important;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sidebar.collapsed .sidebar-nav-item {
+    padding: 8px;
+    justify-content: center;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+  }
+
+  .sidebar.collapsed .sidebar-nav-item .nav-icon {
+    font-size: 18px;
+    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar.collapsed .sidebar-controls {
+    bottom: 4px;
+    right: 4px;
+  }
+
+  .sidebar.collapsed .sidebar-toggle {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
 }

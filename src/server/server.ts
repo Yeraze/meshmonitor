@@ -779,7 +779,11 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
 
     // Allow hours parameter for future use, but default to fetching ALL position history
     // This ensures we capture movement that may have happened long ago
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : null;
+    // Validate hours: must be positive integer, max 8760 (1 year)
+    const rawHours = req.query.hours ? parseInt(req.query.hours as string) : null;
+    const hoursParam = rawHours !== null && !isNaN(rawHours) && rawHours > 0
+      ? Math.min(rawHours, 8760)
+      : null;
     const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
 
     // Check privacy for position history
@@ -792,11 +796,11 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
       return;
     }
 
-    // Get only position-related telemetry (lat/lon/alt) for the node - much more efficient!
+    // Get only position-related telemetry (lat/lon/alt/speed/track) for the node - much more efficient!
     const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, 1500, cutoffTime);
 
-    // Group by timestamp to get lat/lon pairs
-    const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
+    // Group by timestamp to get lat/lon pairs with optional speed/track
+    const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number; groundSpeed?: number; groundTrack?: number }>();
 
     positionTelemetry.forEach(t => {
       if (!positionMap.has(t.timestamp)) {
@@ -810,6 +814,10 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
         pos.lon = t.value;
       } else if (t.telemetryType === 'altitude') {
         pos.alt = t.value;
+      } else if (t.telemetryType === 'ground_speed') {
+        pos.groundSpeed = t.value;
+      } else if (t.telemetryType === 'ground_track') {
+        pos.groundTrack = t.value;
       }
     });
 
@@ -821,6 +829,8 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
         latitude: pos.lat!,
         longitude: pos.lon!,
         altitude: pos.alt,
+        groundSpeed: pos.groundSpeed,
+        groundTrack: pos.groundTrack,
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
