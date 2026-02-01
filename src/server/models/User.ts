@@ -383,7 +383,8 @@ export class UserModel {
         show_route as showRoute,
         show_motion as showMotion,
         show_mqtt_nodes as showMqttNodes,
-        show_animations as showAnimations
+        show_animations as showAnimations,
+        position_history_hours as positionHistoryHours
       FROM user_map_preferences
       WHERE user_id = ?
     `);
@@ -398,7 +399,8 @@ export class UserModel {
       showRoute: Boolean(row.showRoute),
       showMotion: Boolean(row.showMotion),
       showMqttNodes: Boolean(row.showMqttNodes),
-      showAnimations: Boolean(row.showAnimations)
+      showAnimations: Boolean(row.showAnimations),
+      positionHistoryHours: row.positionHistoryHours ?? null,
     };
   }
 
@@ -413,6 +415,7 @@ export class UserModel {
     showMotion?: boolean;
     showMqttNodes?: boolean;
     showAnimations?: boolean;
+    positionHistoryHours?: number | null;
   }): void {
     const now = Date.now();
 
@@ -452,6 +455,10 @@ export class UserModel {
         updates.push('show_animations = ?');
         params.push(preferences.showAnimations ? 1 : 0);
       }
+      if (preferences.positionHistoryHours !== undefined) {
+        updates.push('position_history_hours = ?');
+        params.push(preferences.positionHistoryHours);
+      }
 
       if (updates.length > 0) {
         updates.push('updated_at = ?');
@@ -471,8 +478,8 @@ export class UserModel {
         INSERT INTO user_map_preferences (
           user_id, map_tileset, show_paths, show_neighbor_info,
           show_route, show_motion, show_mqtt_nodes, show_animations,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          position_history_hours, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -484,6 +491,7 @@ export class UserModel {
         preferences.showMotion !== undefined ? (preferences.showMotion ? 1 : 0) : 1, // default true
         preferences.showMqttNodes !== undefined ? (preferences.showMqttNodes ? 1 : 0) : 1, // default true
         preferences.showAnimations ? 1 : 0,
+        preferences.positionHistoryHours ?? null,
         now,
         now
       );

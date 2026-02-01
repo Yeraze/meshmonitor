@@ -65,6 +65,8 @@ import { migration as transportMechanismMigration, runMigration058Postgres, runM
 import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_add_channel_database_view_on_map.js';
 import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_add_auto_traceroute_enabled_column.js';
 import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
+import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
+import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -908,6 +910,8 @@ class DatabaseService {
     this.runChannelDbViewOnMapMigration();
     this.runAutoTracerouteEnabledMigration();
     this.runSpamDetectionMigration();
+    this.runPositionDoublePrecisionMigration();
+    this.runPositionHistoryHoursMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2116,6 +2120,46 @@ class DatabaseService {
       logger.debug('✅ Spam detection columns migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run spam detection columns migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionDoublePrecisionMigration(): void {
+    try {
+      const migrationKey = 'migration_062_position_double_precision';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position double precision migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 062: Position double precision (no-op for SQLite)...');
+      positionDoublePrecisionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position double precision migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position double precision migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionHistoryHoursMigration(): void {
+    try {
+      const migrationKey = 'migration_063_position_history_hours';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position history hours migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 063: Add position_history_hours column...');
+      positionHistoryHoursMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position history hours migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position history hours migration:', error);
       throw error;
     }
   }
@@ -3918,7 +3962,7 @@ class DatabaseService {
   updateNodeMobility(nodeId: string): number {
     try {
       // For PostgreSQL/MySQL, mobility detection requires async telemetry queries
-      // Skip for now - mobility will be detected via API endpoints
+      // Use updateNodeMobilityAsync instead
       if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
         return 0;
       }
@@ -3960,6 +4004,67 @@ class DatabaseService {
       // Update the mobile flag in the database
       const stmt = this.db.prepare('UPDATE nodes SET mobile = ? WHERE nodeId = ?');
       stmt.run(isMobile, nodeId);
+
+      return isMobile;
+    } catch (error) {
+      logger.error(`Failed to update mobility for node ${nodeId}:`, error);
+      return 0; // Default to non-mobile on error
+    }
+  }
+
+  /**
+   * Async version of updateNodeMobility - works for all database backends
+   * Detects if a node has moved more than 100 meters based on position history
+   * @param nodeId The node ID to check
+   * @returns The updated mobility status (0 = stationary, 1 = mobile)
+   */
+  async updateNodeMobilityAsync(nodeId: string): Promise<number> {
+    try {
+      // Get last 50 position telemetry records for this node
+      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 50);
+
+      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
+      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
+
+      let isMobile = 0;
+
+      // Need at least 2 position records to detect movement
+      if (latitudes.length >= 2 && longitudes.length >= 2) {
+        const latValues = latitudes.map(t => t.value);
+        const lonValues = longitudes.map(t => t.value);
+
+        const minLat = Math.min(...latValues);
+        const maxLat = Math.max(...latValues);
+        const minLon = Math.min(...lonValues);
+        const maxLon = Math.max(...lonValues);
+
+        // Calculate distance between min/max corners using Haversine formula
+        const R = 6371; // Earth's radius in km
+        const dLat = (maxLat - minLat) * Math.PI / 180;
+        const dLon = (maxLon - minLon) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+
+        // If movement is greater than 100 meters (0.1 km), mark as mobile
+        isMobile = distance > 0.1 ? 1 : 0;
+
+        logger.debug(`📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`);
+      }
+
+      // Update the mobile flag in the database using repository
+      await this.nodesRepo!.updateNodeMobility(nodeId, isMobile);
+
+      // Also update the cache so getAllNodes() returns the updated value
+      for (const [nodeNum, cachedNode] of this.nodesCache.entries()) {
+        if (cachedNode.nodeId === nodeId) {
+          cachedNode.mobile = isMobile;
+          this.nodesCache.set(nodeNum, cachedNode);
+          break;
+        }
+      }
 
       return isMobile;
     } catch (error) {
@@ -4568,12 +4673,9 @@ class DatabaseService {
     // For PostgreSQL/MySQL, fire-and-forget async insert
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
-        // Check if node exists in cache - if not, skip telemetry insert
-        // This prevents foreign key constraint violations during race conditions
-        if (!this.nodesCache.has(telemetryData.nodeNum)) {
-          logger.debug(`[DatabaseService] Skipping telemetry insert - node ${telemetryData.nodeNum} not in cache yet`);
-          return;
-        }
+        // Note: We removed the nodesCache check here because it was too aggressive -
+        // it would skip telemetry for nodes that exist in the DB but not in the in-memory cache
+        // (e.g., after server restart). The foreign key error handling below handles race conditions.
         this.telemetryRepo.insertTelemetry(telemetryData).catch((error) => {
           // Ignore foreign key violations - node might not be persisted yet
           const errorStr = String(error);
@@ -9612,6 +9714,12 @@ class DatabaseService {
       // Run migration 061: Add spam detection columns to nodes
       await runMigration061Postgres(client);
 
+      // Run migration 062: Upgrade position columns from REAL to DOUBLE PRECISION
+      await runMigration062Postgres(client);
+
+      // Run migration 063: Add position_history_hours column
+      await runMigration063Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9706,6 +9814,12 @@ class DatabaseService {
 
       // Run migration 061: Add spam detection columns to nodes
       await runMigration061Mysql(pool);
+
+      // Run migration 062: Position precision (no-op for MySQL, already uses DOUBLE)
+      await runMigration062Mysql(pool);
+
+      // Run migration 063: Add position_history_hours column
+      await runMigration063Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

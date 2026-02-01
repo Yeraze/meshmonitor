@@ -5271,7 +5271,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
     }
 
-    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showAnimations } = req.body;
+    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showAnimations, positionHistoryHours } = req.body;
 
     // Validate boolean values
     const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showAnimations };
@@ -5286,6 +5286,11 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
       return res.status(400).json({ error: 'mapTileset must be a string or null' });
     }
 
+    // Validate positionHistoryHours (optional number or null)
+    if (positionHistoryHours !== undefined && positionHistoryHours !== null && typeof positionHistoryHours !== 'number') {
+      return res.status(400).json({ error: 'positionHistoryHours must be a number or null' });
+    }
+
     // Save preferences
     databaseService.userModel.saveMapPreferences(req.user!.id, {
       mapTileset,
@@ -5295,6 +5300,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
       showMotion,
       showMqttNodes,
       showAnimations,
+      positionHistoryHours,
     });
 
     res.json({ success: true, message: 'Map preferences saved successfully' });

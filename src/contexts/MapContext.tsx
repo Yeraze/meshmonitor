@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { DbTraceroute, DbNeighborInfo } from '../services/database';
 import api from '../services/api';
 import { useCsrf } from './CsrfContext';
@@ -53,6 +53,8 @@ interface MapContextType {
   setPositionHistory: (history: PositionHistoryItem[]) => void;
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
+  positionHistoryHours: number | null;
+  setPositionHistoryHours: (hours: number | null) => void;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -103,6 +105,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [positionHistoryHours, setPositionHistoryHoursState] = useState<number | null>(null);
 
   // Create wrapper setters that persist to server (no localStorage)
   const setShowPaths = React.useCallback((value: boolean) => {
@@ -148,7 +151,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   }, []);
 
   // Helper function to save preference to server
-  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean>) => {
+  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean | number | null>) => {
     try {
       const baseUrl = await api.getBaseUrl();
       const csrfToken = getCsrfToken();
@@ -179,6 +182,19 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       console.error('[MapContext] Failed to save map preference to server:', error);
     }
   }, [getCsrfToken]);
+
+  // Create wrapper setter for positionHistoryHours that persists to server with debouncing
+  const positionHistoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const setPositionHistoryHours = React.useCallback((value: number | null) => {
+    setPositionHistoryHoursState(value);
+    // Debounce server save to avoid excessive API calls during slider dragging
+    if (positionHistoryDebounceRef.current) {
+      clearTimeout(positionHistoryDebounceRef.current);
+    }
+    positionHistoryDebounceRef.current = setTimeout(() => {
+      savePreferenceToServer({ positionHistoryHours: value });
+    }, 500);
+  }, [savePreferenceToServer]);
 
   // Load preferences from server on mount
   useEffect(() => {
@@ -220,6 +236,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
               setShowAccuracyRegionsState(preferences.showAccuracyRegions);
             } else if (preferences.showAccuracyCircles !== undefined) {
               setShowAccuracyRegionsState(preferences.showAccuracyCircles);
+            }
+            if (preferences.positionHistoryHours !== undefined) {
+              setPositionHistoryHoursState(preferences.positionHistoryHours);
             }
           }
           // If preferences is null (anonymous user), initial defaults are already set
@@ -296,6 +315,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setPositionHistory,
         selectedNodeId,
         setSelectedNodeId,
+        positionHistoryHours,
+        setPositionHistoryHours,
       }}
     >
       {children}
