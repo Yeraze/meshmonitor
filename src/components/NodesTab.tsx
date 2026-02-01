@@ -1818,9 +1818,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             const converted = startPos.groundSpeed * 3.6;
                             // If converted > 200 km/h, assume raw is already in km/h
                             const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
+                            // Convert to mph if user prefers miles
+                            const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
+                            const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
                             return (
                               <div className="route-usage">
-                                <strong>Speed:</strong> {speedKmh.toFixed(1)} km/h
+                                <strong>Speed:</strong> {speed.toFixed(1)} {unit}
                               </div>
                             );
                           })()}
@@ -1845,7 +1848,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 const historyArrows = generatePositionHistoryArrows(
                   filteredHistory,
                   segmentColors,
-                  30
+                  30,
+                  distanceUnit
                 );
                 elements.push(...historyArrows);
 

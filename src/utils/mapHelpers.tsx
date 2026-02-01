@@ -323,12 +323,14 @@ const getCardinalDirection = (heading: number): string => {
  * @param historyItems Array of position history items with full data
  * @param colors Array of colors for each position
  * @param maxArrows Maximum number of arrows to generate
+ * @param distanceUnit User's preferred distance unit ('km' or 'mi')
  * @returns Array of Marker components with clickable popups
  */
 export const generatePositionHistoryArrows = (
   historyItems: PositionHistoryItem[],
   colors: string[],
-  maxArrows: number = 30
+  maxArrows: number = 30,
+  distanceUnit: 'km' | 'mi' = 'km'
 ): React.ReactElement[] => {
   const arrows: React.ReactElement[] = [];
   const itemCount = historyItems.length;
@@ -380,13 +382,17 @@ export const generatePositionHistoryArrows = (
     const dateStr = date.toLocaleDateString();
     const timeStr = date.toLocaleTimeString();
 
-    // Format speed (convert from m/s to km/h)
+    // Format speed (convert from m/s to km/h, then to mph if needed)
     // Some devices may report in different units - sanity check for reasonable values
-    let speedKmh: string | null = null;
+    let speedDisplay: string | null = null;
+    let speedUnit = distanceUnit === 'mi' ? 'mph' : 'km/h';
     if (item.groundSpeed !== undefined) {
       const converted = item.groundSpeed * 3.6;
       // If converted speed > 200 km/h, assume raw value is already in km/h
-      speedKmh = converted > 200 ? item.groundSpeed.toFixed(1) : converted.toFixed(1);
+      const speedKmh = converted > 200 ? item.groundSpeed : converted;
+      // Convert to mph if user prefers miles
+      const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
+      speedDisplay = speed.toFixed(1);
     }
 
     // Format heading
@@ -410,8 +416,8 @@ export const generatePositionHistoryArrows = (
           <div className="position-history-popup">
             <div><strong>Date:</strong> {dateStr}</div>
             <div><strong>Time:</strong> {timeStr}</div>
-            {speedKmh !== null && (
-              <div><strong>Speed:</strong> {speedKmh} km/h</div>
+            {speedDisplay !== null && (
+              <div><strong>Speed:</strong> {speedDisplay} {speedUnit}</div>
             )}
             {headingStr !== null && (
               <div><strong>Heading:</strong> {headingStr}</div>
