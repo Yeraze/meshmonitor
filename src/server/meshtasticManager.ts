@@ -3435,6 +3435,28 @@ class MeshtasticManager {
           });
         }
 
+        // Store ground speed if available (in m/s)
+        const groundSpeed = position.groundSpeed ?? position.ground_speed;
+        if (groundSpeed !== undefined && groundSpeed > 0) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'ground_speed',
+            timestamp, value: groundSpeed, unit: 'm/s', createdAt: now, packetTimestamp,
+            channel: channelIndex
+          });
+        }
+
+        // Store ground track/heading if available (in 1/100 degrees, convert to degrees)
+        const groundTrack = position.groundTrack ?? position.ground_track;
+        if (groundTrack !== undefined && groundTrack > 0) {
+          // groundTrack is in 1/100 degrees per protobuf spec, convert to degrees
+          const headingDegrees = groundTrack / 100;
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'ground_track',
+            timestamp, value: headingDegrees, unit: '°', createdAt: now, packetTimestamp,
+            channel: channelIndex
+          });
+        }
+
         // Only update node's current position if precision check passes
         if (shouldUpdatePosition) {
           const nodeData: any = {
@@ -3466,8 +3488,10 @@ class MeshtasticManager {
           // Emit node update event to notify frontend via WebSocket
           dataEventEmitter.emitNodeUpdate(fromNum, nodeData);
 
-          // Update mobility detection for this node
-          databaseService.updateNodeMobility(nodeId);
+          // Update mobility detection for this node (fire and forget)
+          databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+            logger.error(`Failed to update mobility for ${nodeId}:`, err)
+          );
 
           // Check geofence triggers for this node's new position
           this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude);
@@ -4845,7 +4869,7 @@ class MeshtasticManager {
       }
 
       // Add position information if available
-      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number; precisionBits?: number; channel?: number } | null = null;
+      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number; precisionBits?: number; channel?: number; groundSpeed?: number; groundTrack?: number } | null = null;
       if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
         const coords = meshtasticProtobufService.convertCoordinates(
           nodeInfo.position.latitudeI,
@@ -4889,7 +4913,9 @@ class MeshtasticManager {
             longitude: coords.longitude,
             altitude: nodeInfo.position.altitude,
             precisionBits,
-            channel: channelIndex
+            channel: channelIndex,
+            groundSpeed: nodeInfo.position.groundSpeed ?? nodeInfo.position.ground_speed,
+            groundTrack: nodeInfo.position.groundTrack ?? nodeInfo.position.ground_track
           };
         } else {
           logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
@@ -4956,9 +4982,28 @@ class MeshtasticManager {
             channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
           });
         }
+        // Store ground speed if available (in m/s)
+        if (positionTelemetryData.groundSpeed !== undefined && positionTelemetryData.groundSpeed > 0) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'ground_speed',
+            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.groundSpeed, unit: 'm/s', createdAt: now,
+            channel: positionTelemetryData.channel
+          });
+        }
+        // Store ground track/heading if available (in 1/100 degrees, convert to degrees)
+        if (positionTelemetryData.groundTrack !== undefined && positionTelemetryData.groundTrack > 0) {
+          const headingDegrees = positionTelemetryData.groundTrack / 100;
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'ground_track',
+            timestamp: positionTelemetryData.timestamp, value: headingDegrees, unit: '°', createdAt: now,
+            channel: positionTelemetryData.channel
+          });
+        }
 
-        // Update mobility detection for this node
-        databaseService.updateNodeMobility(nodeId);
+        // Update mobility detection for this node (fire and forget)
+        databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+          logger.error(`Failed to update mobility for ${nodeId}:`, err)
+        );
       }
 
       // Insert device metrics telemetry if we have it (after node exists in database)

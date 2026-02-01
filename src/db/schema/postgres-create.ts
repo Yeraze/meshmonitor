@@ -17,9 +17,9 @@ export const POSTGRES_SCHEMA_SQL = `
     "lastMessageHops" INTEGER,
     "viaMqtt" BOOLEAN,
     macaddr TEXT,
-    latitude REAL,
-    longitude REAL,
-    altitude REAL,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    altitude DOUBLE PRECISION,
     "batteryLevel" INTEGER,
     voltage REAL,
     "channelUtilization" REAL,
@@ -48,9 +48,9 @@ export const POSTGRES_SCHEMA_SQL = `
     "positionHdop" REAL,
     "positionTimestamp" BIGINT,
     "positionOverrideEnabled" BOOLEAN DEFAULT false,
-    "latitudeOverride" REAL,
-    "longitudeOverride" REAL,
-    "altitudeOverride" REAL,
+    "latitudeOverride" DOUBLE PRECISION,
+    "longitudeOverride" DOUBLE PRECISION,
+    "altitudeOverride" DOUBLE PRECISION,
     "positionOverrideIsPrivate" BOOLEAN DEFAULT false,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL
@@ -102,13 +102,13 @@ export const POSTGRES_SCHEMA_SQL = `
     "nodeNum" BIGINT NOT NULL,
     "telemetryType" TEXT NOT NULL,
     timestamp BIGINT NOT NULL,
-    value REAL NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
     unit TEXT,
     "createdAt" BIGINT NOT NULL,
     "packetTimestamp" BIGINT,
     channel INTEGER,
     "precisionBits" INTEGER,
-    "gpsAccuracy" REAL
+    "gpsAccuracy" DOUBLE PRECISION
   );
 
   CREATE TABLE IF NOT EXISTS traceroutes (

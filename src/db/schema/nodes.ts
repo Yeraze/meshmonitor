@@ -3,7 +3,7 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, doublePrecision as pgDoublePrecision, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
 // SQLite schema
@@ -80,9 +80,10 @@ export const nodesPostgres = pgTable('nodes', {
   lastMessageHops: pgInteger('lastMessageHops'),
   viaMqtt: pgBoolean('viaMqtt'),
   macaddr: pgText('macaddr'),
-  latitude: pgReal('latitude'),
-  longitude: pgReal('longitude'),
-  altitude: pgReal('altitude'),
+  // Using doublePrecision for coordinates (REAL only has ~7 significant digits, causes position jumps)
+  latitude: pgDoublePrecision('latitude'),
+  longitude: pgDoublePrecision('longitude'),
+  altitude: pgDoublePrecision('altitude'),
   batteryLevel: pgInteger('batteryLevel'),
   voltage: pgReal('voltage'),
   channelUtilization: pgReal('channelUtilization'),
@@ -117,9 +118,9 @@ export const nodesPostgres = pgTable('nodes', {
   positionTimestamp: pgBigint('positionTimestamp', { mode: 'number' }),
   // Position override
   positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
-  latitudeOverride: pgReal('latitudeOverride'),
-  longitudeOverride: pgReal('longitudeOverride'),
-  altitudeOverride: pgReal('altitudeOverride'),
+  latitudeOverride: pgDoublePrecision('latitudeOverride'),
+  longitudeOverride: pgDoublePrecision('longitudeOverride'),
+  altitudeOverride: pgDoublePrecision('altitudeOverride'),
   positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
   // Remote admin discovery
   hasRemoteAdmin: pgBoolean('hasRemoteAdmin').default(false),

@@ -3,7 +3,7 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, integer as pgInteger, doublePrecision as pgDoublePrecision, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
 import { nodesSqlite, nodesPostgres, nodesMysql } from './nodes.js';
 
@@ -25,20 +25,21 @@ export const telemetrySqlite = sqliteTable('telemetry', {
 });
 
 // PostgreSQL schema
+// Note: Using doublePrecision for value to maintain coordinate precision (REAL only has ~7 significant digits)
 export const telemetryPostgres = pgTable('telemetry', {
   id: pgSerial('id').primaryKey(),
   nodeId: pgText('nodeId').notNull(),
   nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull().references(() => nodesPostgres.nodeNum),
   telemetryType: pgText('telemetryType').notNull(),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
-  value: pgReal('value').notNull(),
+  value: pgDoublePrecision('value').notNull(),
   unit: pgText('unit'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   packetTimestamp: pgBigint('packetTimestamp', { mode: 'number' }),
   // Position precision tracking metadata
   channel: pgInteger('channel'),
   precisionBits: pgInteger('precisionBits'),
-  gpsAccuracy: pgReal('gpsAccuracy'),
+  gpsAccuracy: pgDoublePrecision('gpsAccuracy'),
 });
 
 // MySQL schema
