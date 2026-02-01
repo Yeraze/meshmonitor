@@ -4013,6 +4013,15 @@ class DatabaseService {
       // Update the mobile flag in the database using repository
       await this.nodesRepo!.updateNodeMobility(nodeId, isMobile);
 
+      // Also update the cache so getAllNodes() returns the updated value
+      for (const [nodeNum, cachedNode] of this.nodesCache.entries()) {
+        if (cachedNode.nodeId === nodeId) {
+          cachedNode.mobile = isMobile;
+          this.nodesCache.set(nodeNum, cachedNode);
+          break;
+        }
+      }
+
       return isMobile;
     } catch (error) {
       logger.error(`Failed to update mobility for node ${nodeId}:`, error);
