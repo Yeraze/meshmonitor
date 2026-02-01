@@ -66,6 +66,7 @@ import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runM
 import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_add_auto_traceroute_enabled_column.js';
 import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
 import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
+import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -910,6 +911,7 @@ class DatabaseService {
     this.runAutoTracerouteEnabledMigration();
     this.runSpamDetectionMigration();
     this.runPositionDoublePrecisionMigration();
+    this.runPositionHistoryHoursMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2138,6 +2140,26 @@ class DatabaseService {
       logger.debug('✅ Position double precision migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run position double precision migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionHistoryHoursMigration(): void {
+    try {
+      const migrationKey = 'migration_063_position_history_hours';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position history hours migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 063: Add position_history_hours column...');
+      positionHistoryHoursMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position history hours migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position history hours migration:', error);
       throw error;
     }
   }
@@ -9695,6 +9717,9 @@ class DatabaseService {
       // Run migration 062: Upgrade position columns from REAL to DOUBLE PRECISION
       await runMigration062Postgres(client);
 
+      // Run migration 063: Add position_history_hours column
+      await runMigration063Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9792,6 +9817,9 @@ class DatabaseService {
 
       // Run migration 062: Position precision (no-op for MySQL, already uses DOUBLE)
       await runMigration062Mysql(pool);
+
+      // Run migration 063: Add position_history_hours column
+      await runMigration063Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

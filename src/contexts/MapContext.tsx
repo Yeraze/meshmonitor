@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { DbTraceroute, DbNeighborInfo } from '../services/database';
 import api from '../services/api';
 import { useCsrf } from './CsrfContext';
@@ -183,10 +183,17 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     }
   }, [getCsrfToken]);
 
-  // Create wrapper setter for positionHistoryHours that persists to server
+  // Create wrapper setter for positionHistoryHours that persists to server with debouncing
+  const positionHistoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const setPositionHistoryHours = React.useCallback((value: number | null) => {
     setPositionHistoryHoursState(value);
-    savePreferenceToServer({ positionHistoryHours: value });
+    // Debounce server save to avoid excessive API calls during slider dragging
+    if (positionHistoryDebounceRef.current) {
+      clearTimeout(positionHistoryDebounceRef.current);
+    }
+    positionHistoryDebounceRef.current = setTimeout(() => {
+      savePreferenceToServer({ positionHistoryHours: value });
+    }, 500);
   }, [savePreferenceToServer]);
 
   // Load preferences from server on mount

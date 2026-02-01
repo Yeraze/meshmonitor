@@ -3772,6 +3772,17 @@ body {
     min-width: 35px;
   }
 
+  /* Larger touch targets for mobile slider */
+  .position-history-slider input[type='range']::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .position-history-slider input[type='range']::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
   /* Ensure zoom controls stay in bottom-right on mobile */
   .nodes-split-view .leaflet-top.leaflet-left {
     bottom: 10px !important;

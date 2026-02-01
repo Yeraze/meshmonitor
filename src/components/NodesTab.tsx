@@ -1436,6 +1436,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           min={1}
                           max={maxHours}
                           value={currentHours}
+                          aria-label="Position history duration"
+                          aria-valuemin={1}
+                          aria-valuemax={maxHours}
+                          aria-valuenow={currentHours}
+                          aria-valuetext={formatDuration(currentHours, currentHours >= maxHours)}
                           onChange={(e) => {
                             const value = parseInt(e.target.value, 10);
                             // Set to null if at max (show all)
