@@ -65,6 +65,7 @@ import { migration as transportMechanismMigration, runMigration058Postgres, runM
 import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_add_channel_database_view_on_map.js';
 import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_add_auto_traceroute_enabled_column.js';
 import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
+import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -908,6 +909,7 @@ class DatabaseService {
     this.runChannelDbViewOnMapMigration();
     this.runAutoTracerouteEnabledMigration();
     this.runSpamDetectionMigration();
+    this.runPositionDoublePrecisionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2116,6 +2118,26 @@ class DatabaseService {
       logger.debug('✅ Spam detection columns migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run spam detection columns migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionDoublePrecisionMigration(): void {
+    try {
+      const migrationKey = 'migration_062_position_double_precision';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position double precision migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 062: Position double precision (no-op for SQLite)...');
+      positionDoublePrecisionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position double precision migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position double precision migration:', error);
       throw error;
     }
   }
@@ -9670,6 +9692,9 @@ class DatabaseService {
       // Run migration 061: Add spam detection columns to nodes
       await runMigration061Postgres(client);
 
+      // Run migration 062: Upgrade position columns from REAL to DOUBLE PRECISION
+      await runMigration062Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9764,6 +9789,9 @@ class DatabaseService {
 
       // Run migration 061: Add spam detection columns to nodes
       await runMigration061Mysql(pool);
+
+      // Run migration 062: Position precision (no-op for MySQL, already uses DOUBLE)
+      await runMigration062Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
