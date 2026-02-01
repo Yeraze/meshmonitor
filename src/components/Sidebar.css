@@ -333,3 +333,69 @@
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
   background: var(--ctp-overlay0);
 }
+
+/* Mobile landscape - very limited vertical space */
+@media (max-height: 500px) and (orientation: landscape) {
+  .sidebar {
+    /* Reduce padding to maximize scrollable area */
+    padding-top: max(4px, env(safe-area-inset-top));
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
+  }
+
+  .sidebar-header {
+    padding: 6px 8px;
+    min-height: 0;
+  }
+
+  .sidebar-logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sidebar-app-name {
+    font-size: 13px;
+  }
+
+  .sidebar-node-name {
+    font-size: 10px;
+  }
+
+  .sidebar-nav {
+    padding: 4px 6px 60px 6px; /* Reduced bottom padding */
+    gap: 2px;
+  }
+
+  .sidebar-nav-item {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .sidebar-nav-item .nav-icon {
+    font-size: 16px;
+  }
+
+  .sidebar-section-header {
+    font-size: 10px;
+    padding: 8px 10px 2px 10px;
+    margin-top: 4px;
+  }
+
+  .sidebar-footer {
+    padding: 6px 10px;
+  }
+
+  .sidebar-controls {
+    bottom: 50px;
+  }
+
+  .sidebar-toggle,
+  .sidebar-pin {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+
+  .version-text {
+    font-size: 10px;
+  }
+}
