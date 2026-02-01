@@ -3466,8 +3466,10 @@ class MeshtasticManager {
           // Emit node update event to notify frontend via WebSocket
           dataEventEmitter.emitNodeUpdate(fromNum, nodeData);
 
-          // Update mobility detection for this node
-          databaseService.updateNodeMobility(nodeId);
+          // Update mobility detection for this node (fire and forget)
+          databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+            logger.error(`Failed to update mobility for ${nodeId}:`, err)
+          );
 
           // Check geofence triggers for this node's new position
           this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude);
@@ -4957,8 +4959,10 @@ class MeshtasticManager {
           });
         }
 
-        // Update mobility detection for this node
-        databaseService.updateNodeMobility(nodeId);
+        // Update mobility detection for this node (fire and forget)
+        databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+          logger.error(`Failed to update mobility for ${nodeId}:`, err)
+        );
       }
 
       // Insert device metrics telemetry if we have it (after node exists in database)

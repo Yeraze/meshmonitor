@@ -3918,7 +3918,7 @@ class DatabaseService {
   updateNodeMobility(nodeId: string): number {
     try {
       // For PostgreSQL/MySQL, mobility detection requires async telemetry queries
-      // Skip for now - mobility will be detected via API endpoints
+      // Use updateNodeMobilityAsync instead
       if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
         return 0;
       }
@@ -3960,6 +3960,58 @@ class DatabaseService {
       // Update the mobile flag in the database
       const stmt = this.db.prepare('UPDATE nodes SET mobile = ? WHERE nodeId = ?');
       stmt.run(isMobile, nodeId);
+
+      return isMobile;
+    } catch (error) {
+      logger.error(`Failed to update mobility for node ${nodeId}:`, error);
+      return 0; // Default to non-mobile on error
+    }
+  }
+
+  /**
+   * Async version of updateNodeMobility - works for all database backends
+   * Detects if a node has moved more than 100 meters based on position history
+   * @param nodeId The node ID to check
+   * @returns The updated mobility status (0 = stationary, 1 = mobile)
+   */
+  async updateNodeMobilityAsync(nodeId: string): Promise<number> {
+    try {
+      // Get last 50 position telemetry records for this node
+      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 50);
+
+      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
+      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
+
+      let isMobile = 0;
+
+      // Need at least 2 position records to detect movement
+      if (latitudes.length >= 2 && longitudes.length >= 2) {
+        const latValues = latitudes.map(t => t.value);
+        const lonValues = longitudes.map(t => t.value);
+
+        const minLat = Math.min(...latValues);
+        const maxLat = Math.max(...latValues);
+        const minLon = Math.min(...lonValues);
+        const maxLon = Math.max(...lonValues);
+
+        // Calculate distance between min/max corners using Haversine formula
+        const R = 6371; // Earth's radius in km
+        const dLat = (maxLat - minLat) * Math.PI / 180;
+        const dLon = (maxLon - minLon) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+
+        // If movement is greater than 100 meters (0.1 km), mark as mobile
+        isMobile = distance > 0.1 ? 1 : 0;
+
+        logger.debug(`📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`);
+      }
+
+      // Update the mobile flag in the database using repository
+      await this.nodesRepo!.updateNodeMobility(nodeId, isMobile);
 
       return isMobile;
     } catch (error) {
