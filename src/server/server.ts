@@ -8196,12 +8196,45 @@ if (BASE_URL) {
 app.get('/api/scripts', scriptsEndpoint);
 
 // Script test endpoint - allows testing script execution with sample parameters
+// Supports triggerType: 'auto-responder' (default), 'geofence', or 'timer'
 apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (req, res) => {
+  const startTime = Date.now();
   try {
-    const { script, trigger, testMessage } = req.body;
+    const {
+      script,
+      triggerType = 'auto-responder',
+      // Auto-responder specific
+      trigger,
+      testMessage,
+      scriptArgs,
+      // Geofence specific
+      geofenceName,
+      geofenceId,
+      eventType,
+      nodeLat,
+      nodeLon,
+      // Timer specific
+      timerName,
+      timerId,
+      // Mock node info (optional)
+      mockNode,
+    } = req.body;
 
-    if (!script || !trigger || !testMessage) {
-      return res.status(400).json({ error: 'Missing required fields: script, trigger, testMessage' });
+    // Validate based on trigger type
+    if (triggerType === 'auto-responder') {
+      if (!script || !trigger || !testMessage) {
+        return res.status(400).json({ error: 'Missing required fields: script, trigger, testMessage' });
+      }
+    } else if (triggerType === 'geofence') {
+      if (!script) {
+        return res.status(400).json({ error: 'Missing required field: script' });
+      }
+    } else if (triggerType === 'timer') {
+      if (!script) {
+        return res.status(400).json({ error: 'Missing required field: script' });
+      }
+    } else {
+      return res.status(400).json({ error: `Invalid triggerType: ${triggerType}. Expected 'auto-responder', 'geofence', or 'timer'` });
     }
 
     // Validate script path (security check)
@@ -8220,132 +8253,134 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
       return res.status(404).json({ error: 'Script file not found' });
     }
 
-    // Extract parameters from test message using trigger pattern
-    // Handle both string and array types for trigger
-    const patterns = normalizeTriggerPatterns(trigger);
     let matchedPattern: string | null = null;
     let extractedParams: Record<string, string> = {};
 
-    // Try each pattern until one matches
-    for (const patternStr of patterns) {
-      interface ParamSpec {
-        name: string;
-        pattern?: string;
-      }
-      const params: ParamSpec[] = [];
-      let i = 0;
+    // Auto-responder: Extract parameters from test message using trigger pattern
+    if (triggerType === 'auto-responder') {
+      const patterns = normalizeTriggerPatterns(trigger);
 
-      // Extract parameter specifications
-      while (i < patternStr.length) {
-        if (patternStr[i] === '{') {
-          const startPos = i + 1;
-          let depth = 1;
-          let colonPos = -1;
-          let endPos = -1;
+      // Try each pattern until one matches
+      for (const patternStr of patterns) {
+        interface ParamSpec {
+          name: string;
+          pattern?: string;
+        }
+        const params: ParamSpec[] = [];
+        let i = 0;
 
-          for (let j = startPos; j < patternStr.length && depth > 0; j++) {
-            if (patternStr[j] === '{') {
-              depth++;
-            } else if (patternStr[j] === '}') {
-              depth--;
-              if (depth === 0) {
-                endPos = j;
+        // Extract parameter specifications
+        while (i < patternStr.length) {
+          if (patternStr[i] === '{') {
+            const startPos = i + 1;
+            let depth = 1;
+            let colonPos = -1;
+            let endPos = -1;
+
+            for (let j = startPos; j < patternStr.length && depth > 0; j++) {
+              if (patternStr[j] === '{') {
+                depth++;
+              } else if (patternStr[j] === '}') {
+                depth--;
+                if (depth === 0) {
+                  endPos = j;
+                }
+              } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
+                colonPos = j;
               }
-            } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
-              colonPos = j;
-            }
-          }
-
-          if (endPos !== -1) {
-            const paramName =
-              colonPos !== -1 ? patternStr.substring(startPos, colonPos) : patternStr.substring(startPos, endPos);
-            const paramPattern = colonPos !== -1 ? patternStr.substring(colonPos + 1, endPos) : undefined;
-
-            if (!params.find(p => p.name === paramName)) {
-              params.push({ name: paramName, pattern: paramPattern });
             }
 
-            i = endPos + 1;
+            if (endPos !== -1) {
+              const paramName =
+                colonPos !== -1 ? patternStr.substring(startPos, colonPos) : patternStr.substring(startPos, endPos);
+              const paramPattern = colonPos !== -1 ? patternStr.substring(colonPos + 1, endPos) : undefined;
+
+              if (!params.find(p => p.name === paramName)) {
+                params.push({ name: paramName, pattern: paramPattern });
+              }
+
+              i = endPos + 1;
+            } else {
+              i++;
+            }
           } else {
             i++;
           }
-        } else {
-          i++;
         }
-      }
 
-      // Build regex pattern
-      let regexPattern = '';
-      const replacements: Array<{ start: number; end: number; replacement: string }> = [];
-      i = 0;
+        // Build regex pattern
+        let regexPattern = '';
+        const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+        i = 0;
 
-      while (i < patternStr.length) {
-        if (patternStr[i] === '{') {
-          const startPos = i;
-          let depth = 1;
-          let endPos = -1;
+        while (i < patternStr.length) {
+          if (patternStr[i] === '{') {
+            const startPos = i;
+            let depth = 1;
+            let endPos = -1;
 
-          for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
-            if (patternStr[j] === '{') {
-              depth++;
-            } else if (patternStr[j] === '}') {
-              depth--;
-              if (depth === 0) {
-                endPos = j;
+            for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
+              if (patternStr[j] === '{') {
+                depth++;
+              } else if (patternStr[j] === '}') {
+                depth--;
+                if (depth === 0) {
+                  endPos = j;
+                }
               }
             }
-          }
 
-          if (endPos !== -1) {
-            const paramIndex = replacements.length;
-            if (paramIndex < params.length) {
-              const paramRegex = params[paramIndex].pattern || '[^\\s]+';
-              replacements.push({
-                start: startPos,
-                end: endPos + 1,
-                replacement: `(${paramRegex})`,
-              });
+            if (endPos !== -1) {
+              const paramIndex = replacements.length;
+              if (paramIndex < params.length) {
+                const paramRegex = params[paramIndex].pattern || '[^\\s]+';
+                replacements.push({
+                  start: startPos,
+                  end: endPos + 1,
+                  replacement: `(${paramRegex})`,
+                });
+              }
+              i = endPos + 1;
+            } else {
+              i++;
             }
-            i = endPos + 1;
           } else {
             i++;
           }
-        } else {
-          i++;
         }
-      }
 
-      // Build the final pattern by replacing placeholders
-      for (let i = 0; i < patternStr.length; i++) {
-        const replacement = replacements.find(r => r.start === i);
-        if (replacement) {
-          regexPattern += replacement.replacement;
-          i = replacement.end - 1;
-        } else {
-          const char = patternStr[i];
-          if (/[.*+?^${}()|[\]\\]/.test(char)) {
-            regexPattern += '\\' + char;
+        // Build the final pattern by replacing placeholders
+        for (let i = 0; i < patternStr.length; i++) {
+          const replacement = replacements.find(r => r.start === i);
+          if (replacement) {
+            regexPattern += replacement.replacement;
+            i = replacement.end - 1;
           } else {
-            regexPattern += char;
+            const char = patternStr[i];
+            if (/[.*+?^${}()|[\]\\]/.test(char)) {
+              regexPattern += '\\' + char;
+            } else {
+              regexPattern += char;
+            }
           }
         }
+
+        const triggerRegex = new RegExp(`^${regexPattern}$`, 'i');
+        const triggerMatch = testMessage.match(triggerRegex);
+
+        if (triggerMatch) {
+          extractedParams = {};
+          params.forEach((param, index) => {
+            extractedParams[param.name] = triggerMatch[index + 1];
+          });
+          matchedPattern = patternStr;
+          break;
+        }
       }
 
-      const triggerRegex = new RegExp(`^${regexPattern}$`, 'i');
-      const triggerMatch = testMessage.match(triggerRegex);
-
-      if (triggerMatch) {
-        extractedParams = {};
-        params.forEach((param, index) => {
-          extractedParams[param.name] = triggerMatch[index + 1];
-        });
-        matchedPattern = patternStr;
-        break;
+      if (!matchedPattern) {
+        return res.status(400).json({ error: `Test message does not match trigger pattern: "${trigger}"` });
       }
-    }
-
-    if (!matchedPattern) {
-      return res.status(400).json({ error: `Test message does not match trigger pattern: "${trigger}"` });
     }
 
     // Determine interpreter based on file extension
@@ -8374,43 +8409,134 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     const { promisify } = await import('util');
     const execFileAsync = promisify(execFile);
 
-    // Prepare environment variables (same as in meshtasticManager)
+    // Prepare base environment variables
     const scriptEnv: Record<string, string> = {
       ...(process.env as Record<string, string>),
-      MESSAGE: testMessage,
-      FROM_NODE: '12345', // Test node number
-      FROM_SHORT_NAME: 'TEST', // Test short name
-      FROM_LONG_NAME: 'Test Node', // Test long name
-      PACKET_ID: '99999', // Test packet ID
-      TRIGGER: trigger,
     };
 
-    // Add extracted parameters as PARAM_* environment variables
-    Object.entries(extractedParams).forEach(([key, value]) => {
-      scriptEnv[`PARAM_${key}`] = value;
-    });
+    // Default mock node info
+    const mockNodeNum = mockNode?.nodeNum?.toString() || '12345';
+    const mockShortName = mockNode?.shortName || 'TEST';
+    const mockLongName = mockNode?.longName || 'Test Node';
+    const mockNodeLat = mockNode?.lat?.toString() || nodeLat?.toString() || '37.7749';
+    const mockNodeLon = mockNode?.lon?.toString() || nodeLon?.toString() || '-122.4194';
+
+    // Set environment variables based on trigger type
+    if (triggerType === 'auto-responder') {
+      scriptEnv.MESSAGE = testMessage;
+      scriptEnv.FROM_NODE = mockNodeNum;
+      scriptEnv.FROM_SHORT_NAME = mockShortName;
+      scriptEnv.FROM_LONG_NAME = mockLongName;
+      scriptEnv.PACKET_ID = '99999';
+      scriptEnv.TRIGGER = Array.isArray(trigger) ? trigger.join(', ') : trigger;
+      // Add extracted parameters as PARAM_* environment variables
+      Object.entries(extractedParams).forEach(([key, value]) => {
+        scriptEnv[`PARAM_${key}`] = value;
+      });
+    } else if (triggerType === 'geofence') {
+      scriptEnv.GEOFENCE_NAME = geofenceName || 'Test Geofence';
+      scriptEnv.GEOFENCE_ID = geofenceId || 'test-geofence-id';
+      scriptEnv.GEOFENCE_EVENT = eventType || 'entry';
+      scriptEnv.EVENT = eventType || 'entry';
+      scriptEnv.NODE_LAT = mockNodeLat;
+      scriptEnv.NODE_LON = mockNodeLon;
+      scriptEnv.NODE_NUM = mockNodeNum;
+      scriptEnv.NODE_ID = mockNodeNum;
+      scriptEnv.SHORT_NAME = mockShortName;
+      scriptEnv.LONG_NAME = mockLongName;
+      scriptEnv.DISTANCE_TO_CENTER = '0.5'; // Test distance in km
+    } else if (triggerType === 'timer') {
+      scriptEnv.TIMER_NAME = timerName || 'Test Timer';
+      scriptEnv.TIMER_ID = timerId || 'test-timer-id';
+      scriptEnv.TIMER_SCRIPT = script;
+    }
+
+    // Common environment variables for all trigger types
+    scriptEnv.IP = process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
+    scriptEnv.PORT = process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
+    scriptEnv.VERSION = process.env.VERSION || 'test';
+
+    // Build script arguments if provided
+    const scriptArgList: string[] = [resolvedPath];
+    if (scriptArgs) {
+      // Token expansion for script args (basic expansion for test)
+      let expandedArgs = scriptArgs
+        .replace(/\{IP\}/g, scriptEnv.IP)
+        .replace(/\{PORT\}/g, scriptEnv.PORT)
+        .replace(/\{VERSION\}/g, scriptEnv.VERSION)
+        .replace(/\{NODE_ID\}/g, mockNodeNum)
+        .replace(/\{NODE_NUM\}/g, mockNodeNum)
+        .replace(/\{SHORT_NAME\}/g, mockShortName)
+        .replace(/\{LONG_NAME\}/g, mockLongName);
+
+      if (triggerType === 'geofence') {
+        expandedArgs = expandedArgs
+          .replace(/\{GEOFENCE_NAME\}/g, scriptEnv.GEOFENCE_NAME)
+          .replace(/\{EVENT\}/g, scriptEnv.GEOFENCE_EVENT)
+          .replace(/\{NODE_LAT\}/g, mockNodeLat)
+          .replace(/\{NODE_LON\}/g, mockNodeLon);
+      }
+
+      // Split args respecting quotes
+      const argParts = expandedArgs.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+      scriptArgList.push(...argParts.map((arg: string) => arg.replace(/^"|"$/g, '')));
+    }
 
     try {
-      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+      const { stdout, stderr } = await execFileAsync(interpreter, scriptArgList, {
         timeout: 10000,
         env: scriptEnv,
         maxBuffer: 1024 * 1024, // 1MB max output
       });
 
-      // Return both stdout and stderr
+      const executionTimeMs = Date.now() - startTime;
       const output = stdout.trim();
       const errorOutput = stderr.trim();
 
+      // Parse JSON output to extract "would send" messages
+      let wouldSendMessages: string[] = [];
+      let returnValue: unknown = null;
+
+      if (output) {
+        try {
+          const parsed = JSON.parse(output);
+          returnValue = parsed;
+          // Look for response/responses fields that indicate messages to send
+          if (parsed.response) {
+            wouldSendMessages = Array.isArray(parsed.response) ? parsed.response : [parsed.response];
+          } else if (parsed.responses) {
+            wouldSendMessages = Array.isArray(parsed.responses) ? parsed.responses : [parsed.responses];
+          } else if (typeof parsed === 'string') {
+            wouldSendMessages = [parsed];
+          }
+        } catch {
+          // Not JSON - the output itself might be the message
+          if (output && output !== '(no output)') {
+            wouldSendMessages = [output];
+          }
+        }
+      }
+
       return res.json({
-        output: output || '(no output)',
+        success: true,
+        stdout: output || '(no output)',
         stderr: errorOutput || undefined,
-        params: extractedParams,
-        matchedPattern: matchedPattern,
+        wouldSendMessages,
+        returnValue,
+        extractedParams: triggerType === 'auto-responder' ? extractedParams : undefined,
+        matchedPattern: triggerType === 'auto-responder' ? matchedPattern : undefined,
+        executionTimeMs,
       });
     } catch (error: any) {
+      const executionTimeMs = Date.now() - startTime;
+
       // Handle execution errors
       if (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM') {
-        return res.status(408).json({ error: 'Script execution timed out after 10 seconds' });
+        return res.status(408).json({
+          success: false,
+          error: 'Script execution timed out after 10 seconds',
+          executionTimeMs,
+        });
       }
 
       // Handle Windows EPERM errors gracefully (process may have already terminated)
@@ -8418,28 +8544,59 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
         // On Windows, EPERM can occur when trying to kill a process that's already dead
         // If we got stdout/stderr before the error, return that
         if (error.stdout || error.stderr) {
+          const output = error.stdout?.toString().trim() || '';
+          let wouldSendMessages: string[] = [];
+          let returnValue: unknown = null;
+
+          if (output) {
+            try {
+              const parsed = JSON.parse(output);
+              returnValue = parsed;
+              if (parsed.response) {
+                wouldSendMessages = Array.isArray(parsed.response) ? parsed.response : [parsed.response];
+              } else if (parsed.responses) {
+                wouldSendMessages = Array.isArray(parsed.responses) ? parsed.responses : [parsed.responses];
+              }
+            } catch {
+              if (output) wouldSendMessages = [output];
+            }
+          }
+
           return res.json({
-            output: error.stdout?.toString().trim() || '(no output)',
+            success: true,
+            stdout: output || '(no output)',
             stderr: error.stderr?.toString().trim() || undefined,
-            params: extractedParams,
-            matchedPattern: matchedPattern,
+            wouldSendMessages,
+            returnValue,
+            extractedParams: triggerType === 'auto-responder' ? extractedParams : undefined,
+            matchedPattern: triggerType === 'auto-responder' ? matchedPattern : undefined,
+            executionTimeMs,
           });
         }
         // Otherwise, return a more user-friendly error
         return res.status(500).json({
+          success: false,
           error: 'Script execution completed but encountered a cleanup error (this is usually harmless)',
           stderr: error.stderr?.toString() || undefined,
+          executionTimeMs,
         });
       }
 
       return res.status(500).json({
+        success: false,
         error: error.message || 'Script execution failed',
         stderr: error.stderr?.toString() || undefined,
+        executionTimeMs,
       });
     }
   } catch (error: any) {
+    const executionTimeMs = Date.now() - startTime;
     logger.error('❌ Error testing script:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+      executionTimeMs,
+    });
   }
 });
 

@@ -1504,6 +1504,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   localEnabled={localEnabled}
                   availableScripts={availableScripts}
                   channels={channels}
+                  baseUrl={baseUrl}
                   onStartEdit={() => startEditing(trigger.id)}
                   onCancelEdit={cancelEditing}
                   onSaveEdit={(t, rt, r, m, v, c, sa) => saveEdit(trigger.id, t, rt, r, m, v, c, sa)}

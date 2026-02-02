@@ -98,6 +98,7 @@ export interface TriggerItemProps {
   localEnabled: boolean;
   availableScripts: ScriptMetadata[];
   channels: Channel[];
+  baseUrl: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm' | 'none', scriptArgs?: string) => void;

@@ -34,6 +34,39 @@
 
 ## Current Sprint
 
+### Script Test Feature (#1748)
+
+**Completed:**
+- [x] Extend `/api/scripts/test` endpoint to support all trigger types (auto-responder, geofence, timer)
+  - Added `triggerType` parameter (default: 'auto-responder' for backward compatibility)
+  - Different environment variables based on trigger type (MESSAGE, GEOFENCE_NAME, TIMER_NAME, etc.)
+  - Parse JSON output to extract `wouldSendMessages` from response/responses fields
+  - Track execution time in milliseconds
+  - Support optional mock node info (nodeNum, shortName, longName, lat, lon)
+  - Script arguments with token expansion
+- [x] Create ScriptTestModal component (`src/components/ScriptTestModal.tsx`)
+  - Modal with mock context form fields per trigger type
+  - Collapsible sections: Console Output, Would Send to Mesh, Environment Variables
+  - Shows execution time and success/error status
+  - Displays extracted parameters for auto-responder
+- [x] Add Test button to TriggerItem component (auto-responder)
+  - Button appears when responseType is 'script'
+  - Opens ScriptTestModal with trigger configuration
+- [x] Add Test button to GeofenceTriggerItem component
+  - Button appears when responseType is 'script'
+  - Includes geofence event type selector (entry/exit/while_inside)
+- [x] Add Test button to TimerTriggerItem component
+  - Button appears when responseType is 'script'
+- [x] Add i18n keys to `public/locales/en.json`
+  - `script_test.*` keys for modal labels, descriptions, and messages
+- [x] Build passes with no TypeScript errors
+- [x] All unit tests pass (2351 passed)
+
+**Summary:**
+Added a "Test" button to script-based automation triggers that executes the script in a sandbox without broadcasting to the mesh. Shows a modal with console output, the messages that would be sent, extracted parameters, and environment variables.
+
+---
+
 ### Remote Admin Telemetry Configuration (#1589)
 
 **Completed:**
