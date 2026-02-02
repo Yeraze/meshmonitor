@@ -3442,7 +3442,7 @@
     "security.top_broadcasters": "Топ узлов (последний час)",
     "security.packets_hour": "Пакеты/Час",
     "map.legend.positionHistory": "История местоположения",
-    "node_popup.tab_info": "",
+    "node_popup.tab_info": "Информация о узле",
     "node_popup.no_recent_traceroute": "Отсутствуют свежие данные трассировок",
     "packet_monitor.filter.from_node_tooltip": "Фильтровать по исходному узлу",
     "settings.dashboard_sort_label": "Предпочтительная сортировка панели",
