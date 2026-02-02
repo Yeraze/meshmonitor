@@ -1558,6 +1558,11 @@
   "info.device_config_unavailable": "Device configuration not available. Ensure connection is established.",
   "info.local_telemetry": "Local Node Telemetry",
 
+  "info.node_count_chart": "Node Count Over Time",
+  "info.node_count_chart_description": "Compares MeshMonitor's active node count (based on maxNodeAgeHours setting) with the device's reported online nodes (from LocalStats).",
+  "info.active_nodes_meshmonitor": "Active Nodes (MeshMonitor)",
+  "info.online_nodes_device": "Online Nodes (Device)",
+
   "info.packet_rate_graphs": "Packet Rate Trends (per minute)",
   "info.rx_rates": "RX Rates (packets/min)",
   "info.tx_rates": "TX Rates (packets/min)",
