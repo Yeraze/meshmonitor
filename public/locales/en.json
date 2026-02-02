@@ -3708,6 +3708,8 @@
   "channel_database.toast_decryption_started": "Retroactive decryption started",
   "channel_database.toast_decryption_failed": "Failed to start retroactive decryption",
   "channel_database.toast_decryption_completed": "Decryption completed: {{decrypted}} of {{total}} packets decrypted",
+  "channel_database.enforce_name_validation": "Enforce Channel Name Validation",
+  "channel_database.enforce_name_validation_description": "Only attempt decryption if the packet's channel hash matches. Allows multiple virtual channels with the same key but different names.",
 
   "common.never": "Never",
   "common.importing": "Importing...",

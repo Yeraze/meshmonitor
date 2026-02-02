@@ -2862,7 +2862,8 @@ class MeshtasticManager {
         const decryptionResult = await channelDecryptionService.tryDecrypt(
           meshPacket.encrypted,
           packetId,
-          fromNum
+          fromNum,
+          meshPacket.channel
         );
 
         if (decryptionResult.success) {

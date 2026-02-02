@@ -30,6 +30,7 @@ function transformChannelForResponse(channel: any, includeFullPsk: boolean = fal
     psk: includeFullPsk ? channel.psk : undefined,
     description: channel.description,
     isEnabled: channel.isEnabled,
+    enforceNameValidation: channel.enforceNameValidation ?? false,
     decryptedPacketCount: channel.decryptedPacketCount,
     lastDecryptedAt: channel.lastDecryptedAt,
     createdBy: channel.createdBy,
@@ -144,7 +145,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const { name, psk, pskLength, description, isEnabled } = req.body;
+    const { name, psk, pskLength, description, isEnabled, enforceNameValidation } = req.body;
 
     // Validate required fields
     if (!name || typeof name !== 'string') {
@@ -197,6 +198,7 @@ router.post('/', async (req: Request, res: Response) => {
       pskLength: pskLength ?? Buffer.from(psk, 'base64').length,
       description: description ?? null,
       isEnabled: isEnabled ?? true,
+      enforceNameValidation: enforceNameValidation ?? false,
       createdBy: user?.id ?? null,
     });
 
@@ -267,7 +269,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const { name, psk, pskLength, description, isEnabled } = req.body;
+    const { name, psk, pskLength, description, isEnabled, enforceNameValidation } = req.body;
     const updates: any = {};
 
     if (name !== undefined) {
@@ -324,6 +326,10 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     if (isEnabled !== undefined) {
       updates.isEnabled = Boolean(isEnabled);
+    }
+
+    if (enforceNameValidation !== undefined) {
+      updates.enforceNameValidation = Boolean(enforceNameValidation);
     }
 
     if (Object.keys(updates).length === 0) {
