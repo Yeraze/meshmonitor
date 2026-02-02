@@ -39,6 +39,7 @@ impl Default for Config {
             setup_completed: false,
             enable_virtual_node: false,
             virtual_node_allow_admin: false,
+            allowed_origins: None,
         }
     }
 }
