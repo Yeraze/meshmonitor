@@ -27,7 +27,8 @@ const AVAILABLE_TOKENS = [
   { token: '{DISTANCE_TO_CENTER}', description: 'Distance to geofence center (km)' },
   { token: '{IP}', description: 'Connected Meshtastic node IP address' },
   { token: '{VERSION}', description: 'MeshMonitor version' },
-  { token: '{NODECOUNT}', description: 'Total active nodes' },
+  { token: '{NODECOUNT}', description: 'Active nodes (filtered by maxNodeAgeHours)' },
+  { token: '{TOTALNODES}', description: 'Total nodes ever seen' },
 ];
 
 const getLanguageEmoji = (language: string): string => {

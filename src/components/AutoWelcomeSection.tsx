@@ -189,6 +189,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     sample = sample.replace(/{FEATURES}/g, '🗺️ 🤖 📢');
     sample = sample.replace(/{NODECOUNT}/g, '15');
     sample = sample.replace(/{DIRECTCOUNT}/g, '3');
+    sample = sample.replace(/{TOTALNODES}/g, '156');
 
     return sample;
   };
@@ -321,7 +322,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
           <label htmlFor="welcomeMessage">
             {t('automation.auto_welcome.message_label')}
             <span className="setting-description">
-              {t('automation.auto_welcome.message_description')} {t('automation.available_tokens')}: {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}
+              {t('automation.auto_welcome.message_description')} {t('automation.available_tokens')}: {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}
             </span>
           </label>
           <textarea
@@ -346,7 +347,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               '{DURATION}',
               '{FEATURES}',
               '{NODECOUNT}',
-              '{DIRECTCOUNT}'
+              '{DIRECTCOUNT}',
+              '{TOTALNODES}'
             ].map(token => (
               <button
                 key={token}
