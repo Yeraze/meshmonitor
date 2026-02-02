@@ -1156,7 +1156,9 @@ class MeshtasticManager {
         logger.error('❌ Error requesting initial LocalStats:', error);
       });
       // Also save system node metrics on initial request
-      this.saveSystemNodeMetrics();
+      this.saveSystemNodeMetrics().catch(error => {
+        logger.error('❌ Error saving initial system node metrics:', error);
+      });
     }
 
     this.localStatsInterval = setInterval(async () => {
@@ -1164,7 +1166,7 @@ class MeshtasticManager {
         try {
           await this.requestLocalStats();
           // Save MeshMonitor's system node metrics alongside LocalStats
-          this.saveSystemNodeMetrics();
+          await this.saveSystemNodeMetrics();
         } catch (error) {
           logger.error('❌ Error in auto-LocalStats collection:', error);
         }
@@ -1210,7 +1212,7 @@ class MeshtasticManager {
    * Save MeshMonitor's system node metrics as telemetry
    * This allows graphing the system's active node count over time
    */
-  private saveSystemNodeMetrics(): void {
+  private async saveSystemNodeMetrics(): Promise<void> {
     if (!this.localNodeInfo?.nodeId || !this.localNodeInfo?.nodeNum) {
       logger.debug('📊 Cannot save system node metrics: no local node info');
       return;
@@ -1225,7 +1227,7 @@ class MeshtasticManager {
       const now = Date.now();
 
       // Save as telemetry so it can be graphed over time
-      databaseService.insertTelemetry({
+      await databaseService.insertTelemetryAsync({
         nodeId: this.localNodeInfo.nodeId,
         nodeNum: this.localNodeInfo.nodeNum,
         telemetryType: 'systemNodeCount',
@@ -1233,7 +1235,7 @@ class MeshtasticManager {
         value: nodeCount,
         createdAt: now,
       });
-      databaseService.insertTelemetry({
+      await databaseService.insertTelemetryAsync({
         nodeId: this.localNodeInfo.nodeId,
         nodeNum: this.localNodeInfo.nodeNum,
         telemetryType: 'systemDirectNodeCount',
@@ -8195,9 +8197,13 @@ class MeshtasticManager {
     if (result.includes('{ONLINENODES}')) {
       let onlineNodes = 0;
       if (this.localNodeInfo?.nodeId) {
-        const telemetry = databaseService.getLatestTelemetryForType(this.localNodeInfo.nodeId, 'numOnlineNodes');
-        if (telemetry?.value !== undefined && telemetry.value !== null) {
-          onlineNodes = Math.floor(telemetry.value);
+        try {
+          const telemetry = await databaseService.getLatestTelemetryForTypeAsync(this.localNodeInfo.nodeId, 'numOnlineNodes');
+          if (telemetry?.value !== undefined && telemetry.value !== null) {
+            onlineNodes = Math.floor(telemetry.value);
+          }
+        } catch (error) {
+          logger.error('❌ Error fetching numOnlineNodes telemetry:', error);
         }
       }
       result = result.replace(/{ONLINENODES}/g, onlineNodes.toString());
@@ -8355,9 +8361,13 @@ class MeshtasticManager {
     if (result.includes('{ONLINENODES}')) {
       let onlineNodes = 0;
       if (this.localNodeInfo?.nodeId) {
-        const telemetry = databaseService.getLatestTelemetryForType(this.localNodeInfo.nodeId, 'numOnlineNodes');
-        if (telemetry?.value !== undefined && telemetry.value !== null) {
-          onlineNodes = Math.floor(telemetry.value);
+        try {
+          const telemetry = await databaseService.getLatestTelemetryForTypeAsync(this.localNodeInfo.nodeId, 'numOnlineNodes');
+          if (telemetry?.value !== undefined && telemetry.value !== null) {
+            onlineNodes = Math.floor(telemetry.value);
+          }
+        } catch (error) {
+          logger.error('❌ Error fetching numOnlineNodes telemetry:', error);
         }
       }
       logger.info(`📢 Token replacement - ONLINENODES: ${onlineNodes} online nodes (from device LocalStats)`);

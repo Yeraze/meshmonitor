@@ -6805,6 +6805,33 @@ class DatabaseService {
     return telemetry ? this.normalizeBigInts(telemetry) : null;
   }
 
+  /**
+   * Async version of getLatestTelemetryForType - works with all database backends
+   */
+  async getLatestTelemetryForTypeAsync(nodeId: string, telemetryType: string): Promise<DbTelemetry | null> {
+    if (this.telemetryRepo) {
+      const result = await this.telemetryRepo.getLatestTelemetryForType(nodeId, telemetryType);
+      if (!result) return null;
+      // Normalize the result to match DbTelemetry interface (convert null to undefined)
+      return {
+        id: result.id,
+        nodeId: result.nodeId,
+        nodeNum: result.nodeNum,
+        telemetryType: result.telemetryType,
+        timestamp: result.timestamp,
+        value: result.value,
+        unit: result.unit ?? undefined,
+        createdAt: result.createdAt,
+        packetTimestamp: result.packetTimestamp ?? undefined,
+        channel: result.channel ?? undefined,
+        precisionBits: result.precisionBits ?? undefined,
+        gpsAccuracy: result.gpsAccuracy ?? undefined,
+      };
+    }
+    // Fallback to sync for SQLite if repo not ready
+    return this.getLatestTelemetryForType(nodeId, telemetryType);
+  }
+
   // Get distinct telemetry types per node (efficient for checking capabilities)
   getNodeTelemetryTypes(nodeId: string): string[] {
     // For PostgreSQL/MySQL, return empty array for sync calls
