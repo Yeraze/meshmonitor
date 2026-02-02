@@ -2543,7 +2543,7 @@
     "automation.auto_welcome.tokens_info": "Используйте токены для персонализации сообщений: {LONG_NAME}, {SHORT_NAME}, {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT}",
     "power_config.disabled": "Отключен",
     "automation.auto_traceroute.filter_by_role": "Фильтровать по роли",
-    "rangetest_config.save_button": "",
+    "rangetest_config.save_button": "Сохранить настройки теста дальности",
     "channels_config.description": "Устройства Meshtastic поддерживают до 8 каналов (0-7). Канал 0 обычно является основным каналом. Вы можете настроить имя каждого канала, ключ шифрования (PSK) и параметры восходящего/нисходящего канала.",
     "telemetry_config.advanced_settings": "Расширенные настройки",
     "admin_commands.position_flag_geoidal_separation": "Включать геоидальное разделение",
