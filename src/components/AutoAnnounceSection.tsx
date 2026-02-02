@@ -271,6 +271,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
     sample = sample.replace(/{NODECOUNT}/g, '42');
     sample = sample.replace(/{DIRECTCOUNT}/g, '8');
+    sample = sample.replace(/{TOTALNODES}/g, '156');
 
     return sample;
   };
@@ -612,6 +613,22 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               }}
             >
               + {'{DIRECTCOUNT}'}
+            </button>
+            <button
+              type="button"
+              onClick={createInsertTokenHandler('{TOTALNODES}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{TOTALNODES}'}
             </button>
           </div>
         </div>
