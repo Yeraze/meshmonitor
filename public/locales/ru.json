@@ -3450,5 +3450,7 @@
     "automation.timer_triggers.channel_none": "Нет (нет выходных данных сетки)",
     "automation.geofence_triggers.channel_none": "Нет (нет выходных данных сетки)",
     "telemetry_config.device_enabled": "Телеметрия устройства включена",
-    "telemetry_config.device_enabled_description": "Включите отправку метрик устройства (заряд батареи, напряжение и т. д.) в сеть"
+    "telemetry_config.device_enabled_description": "Включите отправку метрик устройства (заряд батареи, напряжение и т. д.) в сеть",
+    "security.node": "Узел",
+    "security.node_id": "ID узла"
 }
