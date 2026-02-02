@@ -3134,6 +3134,41 @@ body {
   color: var(--ctp-overlay1);
 }
 
+/* Filter input wrapper with clear button */
+.filter-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-input-wrapper .filter-input-small {
+  padding-right: 2rem;
+}
+
+.filter-clear-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--ctp-overlay1);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.2s, background-color 0.2s;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.filter-clear-btn:hover {
+  color: var(--ctp-text);
+  background-color: var(--ctp-surface2);
+}
+
 .sort-controls {
   display: flex;
   gap: 0.5rem;

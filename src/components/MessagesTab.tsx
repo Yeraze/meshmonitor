@@ -606,13 +606,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           )}
           {!isMessagesNodeListCollapsed && (
             <div className="node-controls">
-              <input
-                type="text"
-                placeholder={t('messages.filter_placeholder')}
-                value={messagesNodeFilter}
-                onChange={e => setMessagesNodeFilter(e.target.value)}
-                className="filter-input-small"
-              />
+              <div className="filter-input-wrapper">
+                <input
+                  type="text"
+                  placeholder={t('messages.filter_placeholder')}
+                  value={messagesNodeFilter}
+                  onChange={e => setMessagesNodeFilter(e.target.value)}
+                  className="filter-input-small"
+                />
+                {messagesNodeFilter && (
+                  <button
+                    className="filter-clear-btn"
+                    onClick={() => setMessagesNodeFilter('')}
+                    title={t('common.clear_filter')}
+                    type="button"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
               <div className="sort-controls">
                 <select
                   value={dmFilter}
