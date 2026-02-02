@@ -10277,6 +10277,7 @@ class DatabaseService {
     pskLength?: number;
     description?: string | null;
     isEnabled?: boolean;
+    enforceNameValidation?: boolean;
   }): Promise<void> {
     if (!this.channelDatabaseRepo) {
       throw new Error('Channel database repository not initialized');
