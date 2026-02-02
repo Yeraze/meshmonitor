@@ -422,6 +422,9 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         numTxDropped: 'Dropped TX (Device)',
         heapTotalBytes: 'Heap Total (Device)',
         heapFreeBytes: 'Heap Free (Device)',
+        // MeshMonitor system metrics (calculated by MeshMonitor)
+        systemNodeCount: 'Active Nodes (MeshMonitor)',
+        systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
         // HostMetrics (for Linux devices)
         hostUptimeSeconds: 'Host Uptime',
         hostFreememBytes: 'Host Free Memory',
@@ -503,6 +506,9 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         paxcounterWifi: '#ff9500', // Orange
         paxcounterBle: '#17c0fa', // Cyan
         paxcounterUptime: '#9c88ff', // Purple
+        // MeshMonitor system metrics
+        systemNodeCount: '#89b4fa', // Blue - system active nodes
+        systemDirectNodeCount: '#a6e3a1', // Green - system direct nodes
         // Extended Environment metrics
         gasResistance: '#cba6f7', // Mauve - air quality related
         iaq: '#f38ba8', // Red - important air quality indicator

@@ -1155,12 +1155,18 @@ class MeshtasticManager {
       this.requestLocalStats().catch(error => {
         logger.error('❌ Error requesting initial LocalStats:', error);
       });
+      // Also save system node metrics on initial request
+      this.saveSystemNodeMetrics().catch(error => {
+        logger.error('❌ Error saving initial system node metrics:', error);
+      });
     }
 
     this.localStatsInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
           await this.requestLocalStats();
+          // Save MeshMonitor's system node metrics alongside LocalStats
+          await this.saveSystemNodeMetrics();
         } catch (error) {
           logger.error('❌ Error in auto-LocalStats collection:', error);
         }
@@ -1199,6 +1205,48 @@ class MeshtasticManager {
     // Restart scheduler with new interval if connected
     if (this.isConnected) {
       this.startLocalStatsScheduler();
+    }
+  }
+
+  /**
+   * Save MeshMonitor's system node metrics as telemetry
+   * This allows graphing the system's active node count over time
+   */
+  private async saveSystemNodeMetrics(): Promise<void> {
+    if (!this.localNodeInfo?.nodeId || !this.localNodeInfo?.nodeNum) {
+      logger.debug('📊 Cannot save system node metrics: no local node info');
+      return;
+    }
+
+    try {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      const nodeCount = nodes.length;
+      const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
+      const now = Date.now();
+
+      // Save as telemetry so it can be graphed over time
+      await databaseService.insertTelemetryAsync({
+        nodeId: this.localNodeInfo.nodeId,
+        nodeNum: this.localNodeInfo.nodeNum,
+        telemetryType: 'systemNodeCount',
+        timestamp: now,
+        value: nodeCount,
+        createdAt: now,
+      });
+      await databaseService.insertTelemetryAsync({
+        nodeId: this.localNodeInfo.nodeId,
+        nodeNum: this.localNodeInfo.nodeNum,
+        telemetryType: 'systemDirectNodeCount',
+        timestamp: now,
+        value: directCount,
+        createdAt: now,
+      });
+
+      logger.debug(`📊 Saved system node metrics: ${nodeCount} active nodes, ${directCount} direct nodes`);
+    } catch (error) {
+      logger.error('❌ Error saving system node metrics:', error);
     }
   }
 
@@ -8146,6 +8194,22 @@ class MeshtasticManager {
       result = result.replace(/{TOTALNODES}/g, allNodes.length.toString());
     }
 
+    // {ONLINENODES} - Online nodes as reported by the connected Meshtastic device (from LocalStats)
+    if (result.includes('{ONLINENODES}')) {
+      let onlineNodes = 0;
+      if (this.localNodeInfo?.nodeId) {
+        try {
+          const telemetry = await databaseService.getLatestTelemetryForTypeAsync(this.localNodeInfo.nodeId, 'numOnlineNodes');
+          if (telemetry?.value !== undefined && telemetry.value !== null) {
+            onlineNodes = Math.floor(telemetry.value);
+          }
+        } catch (error) {
+          logger.error('❌ Error fetching numOnlineNodes telemetry:', error);
+        }
+      }
+      result = result.replace(/{ONLINENODES}/g, onlineNodes.toString());
+    }
+
     return result;
   }
 
@@ -8292,6 +8356,23 @@ class MeshtasticManager {
       const allNodes = databaseService.getAllNodes();
       logger.info(`📢 Token replacement - TOTALNODES: ${allNodes.length} total nodes`);
       result = result.replace(/{TOTALNODES}/g, allNodes.length.toString());
+    }
+
+    // {ONLINENODES} - Online nodes as reported by the connected Meshtastic device (from LocalStats)
+    if (result.includes('{ONLINENODES}')) {
+      let onlineNodes = 0;
+      if (this.localNodeInfo?.nodeId) {
+        try {
+          const telemetry = await databaseService.getLatestTelemetryForTypeAsync(this.localNodeInfo.nodeId, 'numOnlineNodes');
+          if (telemetry?.value !== undefined && telemetry.value !== null) {
+            onlineNodes = Math.floor(telemetry.value);
+          }
+        } catch (error) {
+          logger.error('❌ Error fetching numOnlineNodes telemetry:', error);
+        }
+      }
+      logger.info(`📢 Token replacement - ONLINENODES: ${onlineNodes} online nodes (from device LocalStats)`);
+      result = result.replace(/{ONLINENODES}/g, onlineNodes.toString());
     }
 
     // {IP} - Meshtastic node IP address

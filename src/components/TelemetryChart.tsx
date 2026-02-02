@@ -90,6 +90,9 @@ const TELEMETRY_LABELS: Record<string, string> = {
   numTxDropped: 'Dropped TX (Device)',
   heapTotalBytes: 'Heap Total (Device)',
   heapFreeBytes: 'Heap Free (Device)',
+  // MeshMonitor system metrics (calculated by MeshMonitor)
+  systemNodeCount: 'Active Nodes (MeshMonitor)',
+  systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
 };
 
 // Export for external use (returns English labels for sorting/filtering compatibility)
@@ -108,6 +111,9 @@ const TELEMETRY_COLORS: Record<string, string> = {
   paxcounterWifi: '#ff9500',
   paxcounterBle: '#17c0fa',
   paxcounterUptime: '#9c88ff',
+  // MeshMonitor system metrics
+  systemNodeCount: '#89b4fa',
+  systemDirectNodeCount: '#a6e3a1',
 };
 
 const getColor = (type: string): string => TELEMETRY_COLORS[type] || '#8884d8';
