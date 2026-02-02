@@ -6,6 +6,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { Channel } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
+import ScriptTestModal from './ScriptTestModal';
 
 /**
  * Get language emoji for display
@@ -520,6 +521,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 isEditing={editingId === trigger.id}
                 availableScripts={availableScripts}
                 channels={channels}
+                baseUrl={baseUrl}
                 onStartEdit={() => setEditingId(trigger.id)}
                 onCancelEdit={() => setEditingId(null)}
                 onSaveEdit={(updates) => {
@@ -557,6 +559,7 @@ interface TimerTriggerItemProps {
   isEditing: boolean;
   availableScripts: ScriptMetadata[];
   channels: Channel[];
+  baseUrl: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (updates: Partial<TimerTrigger>) => void;
@@ -571,6 +574,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   isEditing,
   availableScripts,
   channels,
+  baseUrl,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -588,6 +592,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   const [editChannel, setEditChannel] = useState<number | 'none'>(trigger.channel ?? 0);
   const [editCronError, setEditCronError] = useState<string | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [showTestModal, setShowTestModal] = useState(false);
 
   useEffect(() => {
     if (isEditing) {
@@ -877,6 +882,23 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
             >
               {trigger.enabled ? 'Disable' : 'Enable'}
             </button>
+            {(trigger.responseType || 'script') === 'script' && (
+              <button
+                onClick={() => setShowTestModal(true)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '12px',
+                  background: 'var(--ctp-teal)',
+                  color: 'var(--ctp-base)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+                title={t('script_test.run_test', 'Run Test')}
+              >
+                {t('common.test', 'Test')}
+              </button>
+            )}
             <button
               onClick={onStartEdit}
               style={{
@@ -969,6 +991,19 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Script Test Modal */}
+      {(trigger.responseType || 'script') === 'script' && (
+        <ScriptTestModal
+          isOpen={showTestModal}
+          onClose={() => setShowTestModal(false)}
+          triggerType="timer"
+          scriptPath={trigger.scriptPath || ''}
+          scriptArgs={trigger.scriptArgs}
+          timerName={trigger.name}
+          timerId={trigger.id}
+          baseUrl={baseUrl}
+        />
       )}
     </div>
   );
