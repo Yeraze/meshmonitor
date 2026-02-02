@@ -243,4 +243,70 @@ describe('TelemetryRepository', () => {
       expect(remaining[0].telemetryType).toBe('metric0');
     });
   });
+
+  describe('getLatestTelemetryForType', () => {
+    const NOW = Date.now();
+    const HOUR = 60 * 60 * 1000;
+
+    it('should return the most recent telemetry entry for a given node and type', async () => {
+      // Insert multiple entries for the same node and type
+      await insertTelemetry(NODE1, NODE1_NUM, 'numOnlineNodes', NOW - 3 * HOUR, 10);
+      await insertTelemetry(NODE1, NODE1_NUM, 'numOnlineNodes', NOW - 2 * HOUR, 15);
+      await insertTelemetry(NODE1, NODE1_NUM, 'numOnlineNodes', NOW - 1 * HOUR, 20);
+
+      const result = await repo.getLatestTelemetryForType(NODE1, 'numOnlineNodes');
+
+      expect(result).not.toBeNull();
+      expect(result!.value).toBe(20);
+      expect(result!.nodeId).toBe(NODE1);
+      expect(result!.telemetryType).toBe('numOnlineNodes');
+    });
+
+    it('should return null when no matching telemetry exists', async () => {
+      // Insert telemetry for different type
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 1 * HOUR, 80);
+
+      const result = await repo.getLatestTelemetryForType(NODE1, 'numOnlineNodes');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when node has no telemetry', async () => {
+      const result = await repo.getLatestTelemetryForType(NODE1, 'numOnlineNodes');
+
+      expect(result).toBeNull();
+    });
+
+    it('should only return telemetry for the specified node', async () => {
+      // Insert telemetry for two different nodes
+      await insertTelemetry(NODE1, NODE1_NUM, 'numOnlineNodes', NOW - 1 * HOUR, 10);
+      await insertTelemetry(NODE2, NODE2_NUM, 'numOnlineNodes', NOW - 30 * 60 * 1000, 25);
+
+      const result = await repo.getLatestTelemetryForType(NODE1, 'numOnlineNodes');
+
+      expect(result).not.toBeNull();
+      expect(result!.value).toBe(10);
+      expect(result!.nodeId).toBe(NODE1);
+    });
+
+    it('should work with systemNodeCount telemetry type', async () => {
+      await insertTelemetry(NODE1, NODE1_NUM, 'systemNodeCount', NOW - 1 * HOUR, 42);
+
+      const result = await repo.getLatestTelemetryForType(NODE1, 'systemNodeCount');
+
+      expect(result).not.toBeNull();
+      expect(result!.value).toBe(42);
+      expect(result!.telemetryType).toBe('systemNodeCount');
+    });
+
+    it('should work with systemDirectNodeCount telemetry type', async () => {
+      await insertTelemetry(NODE1, NODE1_NUM, 'systemDirectNodeCount', NOW - 1 * HOUR, 15);
+
+      const result = await repo.getLatestTelemetryForType(NODE1, 'systemDirectNodeCount');
+
+      expect(result).not.toBeNull();
+      expect(result!.value).toBe(15);
+      expect(result!.telemetryType).toBe('systemDirectNodeCount');
+    });
+  });
 });
