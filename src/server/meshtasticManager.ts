@@ -8139,6 +8139,12 @@ class MeshtasticManager {
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
 
+    // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard)
+    if (result.includes('{TOTALNODES}')) {
+      const allNodes = databaseService.getAllNodes();
+      result = result.replace(/{TOTALNODES}/g, allNodes.length.toString());
+    }
+
     return result;
   }
 
@@ -8278,6 +8284,13 @@ class MeshtasticManager {
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
+    }
+
+    // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard)
+    if (result.includes('{TOTALNODES}')) {
+      const allNodes = databaseService.getAllNodes();
+      logger.info(`📢 Token replacement - TOTALNODES: ${allNodes.length} total nodes`);
+      result = result.replace(/{TOTALNODES}/g, allNodes.length.toString());
     }
 
     // {IP} - Meshtastic node IP address
