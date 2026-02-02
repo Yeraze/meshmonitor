@@ -22,6 +22,10 @@ pub struct Config {
     /// Allow admin commands via virtual node
     #[serde(default)]
     pub virtual_node_allow_admin: bool,
+    /// Additional allowed origins for CORS (comma-separated)
+    /// Localhost is always included automatically
+    #[serde(default)]
+    pub allowed_origins: Option<String>,
 }
 
 impl Default for Config {
@@ -35,6 +39,7 @@ impl Default for Config {
             setup_completed: false,
             enable_virtual_node: false,
             virtual_node_allow_admin: false,
+            allowed_origins: None,
         }
     }
 }

@@ -159,10 +159,19 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .env("MESHTASTIC_TCP_PORT", config.meshtastic_port.to_string())
         .env("DATABASE_PATH", db_path.to_string_lossy().to_string())
         .env("SESSION_SECRET", &config.session_secret)
-        .env(
-            "ALLOWED_ORIGINS",
-            format!("http://localhost:{}", config.web_port),
-        )
+        .env("ALLOWED_ORIGINS", {
+            // Always include localhost
+            let mut origins = format!("http://localhost:{}", config.web_port);
+            // Add user-configured origins if provided
+            if let Some(ref extra_origins) = config.allowed_origins {
+                let trimmed = extra_origins.trim();
+                if !trimmed.is_empty() {
+                    origins.push(',');
+                    origins.push_str(trimmed);
+                }
+            }
+            origins
+        })
         .env(
             "ENABLE_VIRTUAL_NODE",
             if config.enable_virtual_node {
@@ -185,6 +194,18 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     log_to_file(
         &logs_path,
         &format!("MESHTASTIC_NODE_IP: {}", config.meshtastic_ip),
+    );
+    log_to_file(
+        &logs_path,
+        &format!(
+            "ALLOWED_ORIGINS: http://localhost:{}{}",
+            config.web_port,
+            config
+                .allowed_origins
+                .as_ref()
+                .map(|o| format!(",{}", o))
+                .unwrap_or_default()
+        ),
     );
     log_to_file(
         &logs_path,
