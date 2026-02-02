@@ -14,6 +14,7 @@ import { Channel, DeviceInfo } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
 import GeofenceMapEditor from './GeofenceMapEditor';
 import GeofenceNodeSelector from './GeofenceNodeSelector';
+import ScriptTestModal from './ScriptTestModal';
 
 // Available tokens for geofence text message expansion
 const AVAILABLE_TOKENS = [
@@ -660,6 +661,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 key={trigger.id}
                 trigger={trigger}
                 channels={channels}
+                baseUrl={baseUrl}
                 onEdit={() => handleStartEdit(trigger)}
                 onRemove={() => handleRemoveTrigger(trigger.id)}
                 onToggleEnabled={() => handleToggleEnabled(trigger.id)}
@@ -691,6 +693,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 interface GeofenceTriggerItemProps {
   trigger: GeofenceTrigger;
   channels: Channel[];
+  baseUrl: string;
   onEdit: () => void;
   onRemove: () => void;
   onToggleEnabled: () => void;
@@ -702,6 +705,7 @@ interface GeofenceTriggerItemProps {
 const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
   trigger,
   channels,
+  baseUrl,
   onEdit,
   onRemove,
   onToggleEnabled,
@@ -709,7 +713,9 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
   eventLabel,
   shapeLabel,
 }) => {
+  const { t } = useTranslation();
   const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [showTestModal, setShowTestModal] = useState(false);
 
   return (
     <div
@@ -797,6 +803,23 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
         >
           {trigger.enabled ? 'Disable' : 'Enable'}
         </button>
+        {trigger.responseType === 'script' && (
+          <button
+            onClick={() => setShowTestModal(true)}
+            style={{
+              padding: '0.25rem 0.5rem',
+              fontSize: '12px',
+              background: 'var(--ctp-teal)',
+              color: 'var(--ctp-base)',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+            title={t('script_test.run_test', 'Run Test')}
+          >
+            {t('common.test', 'Test')}
+          </button>
+        )}
         <button
           onClick={onEdit}
           style={{
@@ -887,6 +910,19 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Script Test Modal */}
+      {trigger.responseType === 'script' && (
+        <ScriptTestModal
+          isOpen={showTestModal}
+          onClose={() => setShowTestModal(false)}
+          triggerType="geofence"
+          scriptPath={trigger.scriptPath || ''}
+          scriptArgs={trigger.scriptArgs}
+          geofenceName={trigger.name}
+          geofenceId={trigger.id}
+          baseUrl={baseUrl}
+        />
       )}
     </div>
   );

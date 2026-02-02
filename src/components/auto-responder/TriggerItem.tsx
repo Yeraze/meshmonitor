@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TriggerItemProps, ResponseType, ScriptMetadata } from './types';
 import { splitTriggerPatterns, formatTriggerPatterns } from './utils';
+import ScriptTestModal from '../ScriptTestModal';
 
 /**
  * Format script for dropdown display
@@ -21,6 +22,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   localEnabled,
   availableScripts,
   channels,
+  baseUrl,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -29,6 +31,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [showTestModal, setShowTestModal] = useState(false);
   // Format trigger for editing (convert array to comma-separated string)
   const formatTriggerForEdit = (trigger: string | string[]): string => {
     if (Array.isArray(trigger)) {
@@ -654,6 +657,23 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {trigger.responseType === 'script' && (
+                <button
+                  onClick={() => setShowTestModal(true)}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '12px',
+                    background: 'var(--ctp-teal)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                  title={t('script_test.run_test', 'Run Test')}
+                >
+                  {t('common.test', 'Test')}
+                </button>
+              )}
               <button
                 onClick={onStartEdit}
                 disabled={!localEnabled}
@@ -780,6 +800,18 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Script Test Modal */}
+      {trigger.responseType === 'script' && (
+        <ScriptTestModal
+          isOpen={showTestModal}
+          onClose={() => setShowTestModal(false)}
+          triggerType="auto-responder"
+          scriptPath={trigger.response}
+          scriptArgs={trigger.scriptArgs}
+          trigger={trigger.trigger}
+          baseUrl={baseUrl}
+        />
       )}
     </div>
   );
