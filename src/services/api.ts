@@ -1250,6 +1250,7 @@ class ApiService {
     pskLength?: number;
     description?: string;
     isEnabled?: boolean;
+    enforceNameValidation?: boolean;
   }): Promise<{
     success: boolean;
     data: ChannelDatabaseEntry;
@@ -1268,6 +1269,7 @@ class ApiService {
       psk?: string;
       description?: string;
       isEnabled?: boolean;
+      enforceNameValidation?: boolean;
     }
   ): Promise<{
     success: boolean;
@@ -1386,6 +1388,7 @@ export interface ChannelDatabaseEntry {
   psk?: string;
   description: string | null;
   isEnabled: boolean;
+  enforceNameValidation: boolean;
   decryptedPacketCount: number;
   lastDecryptedAt: number | null;
   createdBy: number | null;

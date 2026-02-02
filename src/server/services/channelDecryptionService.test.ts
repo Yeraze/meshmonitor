@@ -422,4 +422,218 @@ describe('ChannelDecryptionService', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('Channel Hash Validation', () => {
+    const packetId = 12345;
+    const fromNode = 0x12345678;
+
+    function encryptTestData(plaintext: Buffer, psk: Buffer, packetId: number, fromNode: number): Buffer {
+      const nonce = Buffer.alloc(16);
+      nonce.writeUInt32LE(packetId >>> 0, 0);
+      nonce.writeUInt32LE(0, 4);
+      nonce.writeUInt32LE(fromNode >>> 0, 8);
+      nonce.writeUInt32LE(0, 12);
+
+      const algorithm = psk.length === 16 ? 'aes-128-ctr' : 'aes-256-ctr';
+      const cipher = createCipheriv(algorithm, psk, nonce);
+      return Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    }
+
+    it('should skip channel when hash does not match and enforceNameValidation is true', async () => {
+      // Channel with enforceNameValidation enabled
+      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
+      ]);
+
+      const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
+      const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
+
+      // Provide a non-matching channel hash (any value that won't match)
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        255 // Non-matching hash
+      );
+
+      // Should fail because hash doesn't match (channel is skipped)
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('0 channel'); // No channels attempted
+    });
+
+    it('should try channel when hash matches and enforceNameValidation is true', async () => {
+      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
+      ]);
+      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+
+      const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
+      const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
+
+      mockDataType.decode.mockReturnValue({ portnum: 1, payload: Buffer.from('test') });
+
+      // Compute the expected hash for 'Test Channel' with testPsk
+      // xorHash('Test Channel') ^ xorHash(testPsk)
+      const nameBytes = Buffer.from('Test Channel', 'utf8');
+      let nameHash = 0;
+      for (let i = 0; i < nameBytes.length; i++) {
+        nameHash ^= nameBytes[i];
+      }
+      let pskHash = 0;
+      for (let i = 0; i < testPsk.length; i++) {
+        pskHash ^= testPsk[i];
+      }
+      const expectedHash = (nameHash ^ pskHash) & 0xff;
+
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        expectedHash // Matching hash
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(1);
+    });
+
+    it('should ignore hash validation when enforceNameValidation is false', async () => {
+      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: false }
+      ]);
+      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+
+      const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
+      const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
+
+      mockDataType.decode.mockReturnValue({ portnum: 1, payload: Buffer.from('test') });
+
+      // Provide any hash - should be ignored
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        255 // Any hash value
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(1);
+    });
+
+    it('should ignore hash validation when channelHash is undefined (backward compatibility)', async () => {
+      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
+      ]);
+      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+
+      const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
+      const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
+
+      mockDataType.decode.mockReturnValue({ portnum: 1, payload: Buffer.from('test') });
+
+      // Don't provide channel hash (undefined)
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode
+        // channelHash is undefined
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(1);
+    });
+
+    it('should select correct channel from multiple when using hash validation', async () => {
+      const wrongPsk = Buffer.from('wrongkey12345678wrongkey12345678', 'utf8');
+
+      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Wrong Channel', psk: wrongPsk.toString('base64'), pskLength: 32, enforceNameValidation: true },
+        { id: 2, name: 'Correct Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
+      ]);
+      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+
+      const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
+      const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
+
+      mockDataType.decode.mockReturnValue({ portnum: 1, payload: Buffer.from('test') });
+
+      // Compute hash for 'Correct Channel' with testPsk
+      const nameBytes = Buffer.from('Correct Channel', 'utf8');
+      let nameHash = 0;
+      for (let i = 0; i < nameBytes.length; i++) {
+        nameHash ^= nameBytes[i];
+      }
+      let pskHash = 0;
+      for (let i = 0; i < testPsk.length; i++) {
+        pskHash ^= testPsk[i];
+      }
+      const expectedHash = (nameHash ^ pskHash) & 0xff;
+
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        expectedHash
+      );
+
+      // Should find the second channel (id=2) because hash matches
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(2);
+      expect(result.channelName).toBe('Correct Channel');
+    });
+  });
+
+  describe('Hash Functions', () => {
+    // Import the exported hash functions
+    it('should compute xorHash correctly', async () => {
+      const { xorHash } = await import('./channelDecryptionService.js');
+
+      // Empty buffer
+      expect(xorHash(Buffer.from([]))).toBe(0);
+
+      // Single byte
+      expect(xorHash(Buffer.from([0x42]))).toBe(0x42);
+
+      // Multiple bytes
+      expect(xorHash(Buffer.from([0x01, 0x02, 0x03]))).toBe(0x01 ^ 0x02 ^ 0x03);
+
+      // Result should be 8-bit (& 0xff)
+      expect(xorHash(Buffer.from([0xff, 0xff]))).toBe(0);
+    });
+
+    it('should compute channel hash correctly', async () => {
+      const { computeChannelHash, xorHash } = await import('./channelDecryptionService.js');
+
+      const name = 'TestChannel';
+      const psk = Buffer.from('0123456789abcdef', 'utf8');
+
+      const expectedNameHash = xorHash(Buffer.from(name, 'utf8'));
+      const expectedPskHash = xorHash(psk);
+      const expectedChannelHash = expectedNameHash ^ expectedPskHash;
+
+      expect(computeChannelHash(name, psk)).toBe(expectedChannelHash);
+    });
+
+    it('should compute consistent hash for same inputs', async () => {
+      const { computeChannelHash } = await import('./channelDecryptionService.js');
+
+      const name = 'MyChannel';
+      const psk = Buffer.from('secretkeysecret!', 'utf8');
+
+      const hash1 = computeChannelHash(name, psk);
+      const hash2 = computeChannelHash(name, psk);
+
+      expect(hash1).toBe(hash2);
+    });
+
+    it('should compute different hashes for different names', async () => {
+      const { computeChannelHash } = await import('./channelDecryptionService.js');
+
+      const psk = Buffer.from('secretkeysecret!', 'utf8');
+
+      const hash1 = computeChannelHash('Channel1', psk);
+      const hash2 = computeChannelHash('Channel2', psk);
+
+      expect(hash1).not.toBe(hash2);
+    });
+  });
 });

@@ -67,6 +67,7 @@ import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, r
 import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
 import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
 import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
+import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -912,6 +913,7 @@ class DatabaseService {
     this.runSpamDetectionMigration();
     this.runPositionDoublePrecisionMigration();
     this.runPositionHistoryHoursMigration();
+    this.runEnforceNameValidationMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2160,6 +2162,25 @@ class DatabaseService {
       logger.debug('✅ Position history hours migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run position history hours migration:', error);
+      throw error;
+    }
+  }
+
+  private runEnforceNameValidationMigration(): void {
+    const migrationKey = 'migration_064_enforce_name_validation';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 064 (enforce_name_validation) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 064: Add enforce_name_validation column...');
+      enforceNameValidationMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Enforce name validation migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run enforce name validation migration:', error);
       throw error;
     }
   }
@@ -9727,6 +9748,9 @@ class DatabaseService {
       // Run migration 063: Add position_history_hours column
       await runMigration063Postgres(client);
 
+      // Run migration 064: Add enforce_name_validation column to channel_database
+      await runMigration064Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9827,6 +9851,9 @@ class DatabaseService {
 
       // Run migration 063: Add position_history_hours column
       await runMigration063Mysql(pool);
+
+      // Run migration 064: Add enforce_name_validation column to channel_database
+      await runMigration064Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -10205,6 +10232,7 @@ class DatabaseService {
     pskLength: number;
     description?: string | null;
     isEnabled?: boolean;
+    enforceNameValidation?: boolean;
     createdBy?: number | null;
   }): Promise<number> {
     if (!this.channelDatabaseRepo) {

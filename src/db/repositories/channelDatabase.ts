@@ -26,6 +26,7 @@ export interface ChannelDatabaseInput {
   pskLength: number; // 16 for AES-128, 32 for AES-256
   description?: string | null;
   isEnabled?: boolean;
+  enforceNameValidation?: boolean;
   createdBy?: number | null;
 }
 
@@ -38,6 +39,7 @@ export interface ChannelDatabaseUpdate {
   pskLength?: number;
   description?: string | null;
   isEnabled?: boolean;
+  enforceNameValidation?: boolean;
 }
 
 /**
@@ -174,6 +176,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         pskLength: data.pskLength,
         description: data.description ?? null,
         isEnabled: data.isEnabled ?? true,
+        enforceNameValidation: data.enforceNameValidation ?? false,
         decryptedPacketCount: 0,
         lastDecryptedAt: null,
         createdBy: data.createdBy ?? null,
@@ -192,6 +195,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         pskLength: data.pskLength,
         description: data.description ?? null,
         isEnabled: data.isEnabled ?? true,
+        enforceNameValidation: data.enforceNameValidation ?? false,
         decryptedPacketCount: 0,
         lastDecryptedAt: null,
         createdBy: data.createdBy ?? null,
@@ -209,6 +213,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         pskLength: data.pskLength,
         description: data.description ?? null,
         isEnabled: data.isEnabled ?? true,
+        enforceNameValidation: data.enforceNameValidation ?? false,
         decryptedPacketCount: 0,
         lastDecryptedAt: null,
         createdBy: data.createdBy ?? null,
@@ -569,6 +574,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       pskLength: row.pskLength,
       description: row.description,
       isEnabled: Boolean(row.isEnabled),
+      enforceNameValidation: Boolean(row.enforceNameValidation),
       decryptedPacketCount: row.decryptedPacketCount,
       lastDecryptedAt: row.lastDecryptedAt,
       createdBy: row.createdBy,
@@ -585,6 +591,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       pskLength: row.pskLength,
       description: row.description,
       isEnabled: row.isEnabled,
+      enforceNameValidation: row.enforceNameValidation,
       decryptedPacketCount: row.decryptedPacketCount,
       lastDecryptedAt: row.lastDecryptedAt ? Number(row.lastDecryptedAt) : null,
       createdBy: row.createdBy,
@@ -601,6 +608,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       pskLength: row.pskLength,
       description: row.description,
       isEnabled: Boolean(row.isEnabled),
+      enforceNameValidation: Boolean(row.enforceNameValidation),
       decryptedPacketCount: row.decryptedPacketCount,
       lastDecryptedAt: row.lastDecryptedAt ? Number(row.lastDecryptedAt) : null,
       createdBy: row.createdBy,
