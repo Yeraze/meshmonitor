@@ -1068,14 +1068,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           )}
           {!isNodeListCollapsed && (
           <div className="node-controls">
-            <input
-              type="text"
-              placeholder={t('nodes.filter_placeholder')}
-              value={nodesNodeFilter}
-              onChange={(e) => setNodesNodeFilter(e.target.value)}
-              onMouseDown={stopPropagation}
-              className="filter-input-small"
-            />
+            <div className="filter-input-wrapper">
+              <input
+                type="text"
+                placeholder={t('nodes.filter_placeholder')}
+                value={nodesNodeFilter}
+                onChange={(e) => setNodesNodeFilter(e.target.value)}
+                onMouseDown={stopPropagation}
+                className="filter-input-small"
+              />
+              {nodesNodeFilter && (
+                <button
+                  className="filter-clear-btn"
+                  onClick={() => setNodesNodeFilter('')}
+                  onMouseDown={stopPropagation}
+                  title={t('common.clear_filter')}
+                  type="button"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <div className="sort-controls">
               <button
                 className="filter-popup-btn"

@@ -75,6 +75,7 @@
   "common.export": "Export",
   "common.import": "Import",
   "common.clear": "Clear",
+  "common.clear_filter": "Clear filter",
   "common.reset": "Reset",
   "common.apply": "Apply",
   "common.confirm": "Confirm",
