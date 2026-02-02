@@ -275,6 +275,7 @@ export interface DbChannelDatabase {
   pskLength: number; // 16 for AES-128, 32 for AES-256
   description?: string | null;
   isEnabled: boolean;
+  enforceNameValidation: boolean;
   decryptedPacketCount: number;
   lastDecryptedAt?: number | null;
   createdBy?: number | null;

@@ -60,6 +60,7 @@ interface ChannelEditState {
   psk: string;
   description: string;
   isEnabled: boolean;
+  enforceNameValidation: boolean;
 }
 
 const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin, rebroadcastMode }) => {
@@ -141,7 +142,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       name: '',
       psk: '',
       description: '',
-      isEnabled: true
+      isEnabled: true,
+      enforceNameValidation: false
     });
     setShowEditModal(true);
   };
@@ -152,7 +154,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       name: channel.name,
       psk: channel.psk || '',
       description: channel.description || '',
-      isEnabled: channel.isEnabled
+      isEnabled: channel.isEnabled,
+      enforceNameValidation: channel.enforceNameValidation ?? false
     });
     setShowEditModal(true);
   };
@@ -210,7 +213,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           name: editingChannel.name,
           psk: finalPsk,
           description: editingChannel.description || undefined,
-          isEnabled: editingChannel.isEnabled
+          isEnabled: editingChannel.isEnabled,
+          enforceNameValidation: editingChannel.enforceNameValidation
         });
         showToast(t('channel_database.toast_channel_updated'), 'success');
       } else {
@@ -219,7 +223,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           name: editingChannel.name,
           psk: finalPsk,
           description: editingChannel.description || undefined,
-          isEnabled: editingChannel.isEnabled
+          isEnabled: editingChannel.isEnabled,
+          enforceNameValidation: editingChannel.enforceNameValidation
         });
         showToast(t('channel_database.toast_channel_created'), 'success');
 
@@ -727,6 +732,22 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 </div>
                 <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
                   {t('channel_database.is_enabled_description')}
+                </span>
+              </label>
+            </div>
+
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={editingChannel.enforceNameValidation}
+                    onChange={(e) => setEditingChannel({ ...editingChannel, enforceNameValidation: e.target.checked })}
+                  />
+                  <span>{t('channel_database.enforce_name_validation')}</span>
+                </div>
+                <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
+                  {t('channel_database.enforce_name_validation_description')}
                 </span>
               </label>
             </div>
