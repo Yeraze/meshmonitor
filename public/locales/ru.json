@@ -3408,7 +3408,7 @@
     "automation.geofence_triggers.script_args_help": "Необязательные аргументы командной строки. Токены: {IP}, {NODE_ID}, {EVENT}, {GEOFENCE_NAME} и т. д.",
     "automation.geofence_triggers.verify_response": "Подтвердить ответ (включить подтверждение доставки с 3 попытками — только в личных сообщениях)",
     "header.clickForNodeInfo": "Нажмите, чтобы просмотреть информацию об узле",
-    "node_info.title": "Информация о узле",
+    "node_info.title": "",
     "node_info.node_name": "Имя узла",
     "node_info.default_address": "Адре по умолчанию",
     "node_info.overridden": "Переопределено",
@@ -3437,5 +3437,18 @@
     "security.packets_per_hour": "пакетов/час",
     "security.packet_rate": "Скорость передачи пакетов",
     "security.recommendation_excessive_packets": "Этот узел отправляет необычно большое количество пакетов, что может указывать на спам или неправильную настройку устройства.",
-    "security.recommendation_investigate_spam": "Необходимо проверить, является ли этот трафик легитимным или требуется перенастройка узла."
+    "security.recommendation_investigate_spam": "Необходимо проверить, является ли этот трафик легитимным или требуется перенастройка узла.",
+    "security.top_broadcasters_description": "Узлы с наибольшим количеством пакетов за последний час, независимо от статуса спама.",
+    "security.top_broadcasters": "Топ узлов (последний час)",
+    "security.packets_hour": "Пакеты/Час",
+    "map.legend.positionHistory": "История местоположения",
+    "node_popup.tab_info": "",
+    "node_popup.no_recent_traceroute": "Отсутствуют свежие данные трассировок",
+    "packet_monitor.filter.from_node_tooltip": "Фильтровать по исходному узлу",
+    "settings.dashboard_sort_label": "Предпочтительная сортировка панели",
+    "settings.dashboard_sort_description": "Сортировка по умолчанию для телеметрических диаграмм на панели мониторинга",
+    "automation.timer_triggers.channel_none": "Нет (нет выходных данных сетки)",
+    "automation.geofence_triggers.channel_none": "Нет (нет выходных данных сетки)",
+    "telemetry_config.device_enabled": "Телеметрия устройства включена",
+    "telemetry_config.device_enabled_description": "Включите отправку метрик устройства (заряд батареи, напряжение и т. д.) в сеть"
 }
