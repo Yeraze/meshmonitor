@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
 import { TemperatureUnit } from '../utils/temperature';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
-import { formatDateTime, formatChartAxisTimestamp } from '../utils/datetime';
+import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
 import PacketRateGraphs from './PacketRateGraphs';
 import { version } from '../../package.json';
@@ -15,7 +15,6 @@ import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { getDeviceRoleName } from '../utils/deviceRole';
-import { useTelemetry } from '../hooks/useTelemetry';
 
 // Chart data entry interface
 interface ChartDataEntry {
@@ -100,148 +99,6 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
 });
 
 PacketStatsChart.displayName = 'PacketStatsChart';
-
-// Node Count Chart component - shows MeshMonitor vs Device node counts over time
-interface NodeCountChartProps {
-  nodeId: string;
-  hours: number;
-  baseUrl: string;
-  timeFormat: TimeFormat;
-}
-
-interface NodeCountDataPoint {
-  timestamp: number;
-  formattedTime: string;
-  systemNodeCount?: number;
-  numOnlineNodes?: number;
-}
-
-const NodeCountChart: React.FC<NodeCountChartProps> = React.memo(({ nodeId, hours, baseUrl, timeFormat }) => {
-  const { t } = useTranslation();
-  const { data: telemetryData, isLoading } = useTelemetry({ nodeId, hours, baseUrl });
-
-  // Process telemetry data into chart format
-  const chartData = useMemo(() => {
-    if (!telemetryData || telemetryData.length === 0) return [];
-
-    // Group by timestamp and collect both metrics
-    const timestampMap = new Map<number, NodeCountDataPoint>();
-
-    telemetryData.forEach(item => {
-      const telemetryType = item.telemetryType;
-      if (telemetryType !== 'systemNodeCount' && telemetryType !== 'numOnlineNodes') return;
-
-      // Round timestamp to nearest minute for grouping
-      const roundedTimestamp = Math.floor(item.timestamp / 60000) * 60000;
-
-      if (!timestampMap.has(roundedTimestamp)) {
-        timestampMap.set(roundedTimestamp, {
-          timestamp: roundedTimestamp,
-          formattedTime: formatChartAxisTimestamp(roundedTimestamp, null, timeFormat),
-        });
-      }
-
-      const point = timestampMap.get(roundedTimestamp)!;
-      if (telemetryType === 'systemNodeCount') {
-        point.systemNodeCount = item.value;
-      } else if (telemetryType === 'numOnlineNodes') {
-        point.numOnlineNodes = item.value;
-      }
-    });
-
-    // Sort by timestamp and return array
-    return Array.from(timestampMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-  }, [telemetryData, timeFormat]);
-
-  // Check if we have any node count data
-  const hasData = chartData.length > 0 && chartData.some(d => d.systemNodeCount !== undefined || d.numOnlineNodes !== undefined);
-
-  if (isLoading) {
-    return (
-      <div className="info-section-full-width">
-        <h3>{t('info.node_count_chart')}</h3>
-        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)' }}>
-          {t('common.loading')}...
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasData) {
-    return null; // Don't show section if no node count data
-  }
-
-  return (
-    <div className="info-section-full-width">
-      <h3>{t('info.node_count_chart')}</h3>
-      <div style={{ width: '100%', height: 250 }}>
-        <ResponsiveContainer>
-          <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface1)" />
-            <XAxis
-              dataKey="formattedTime"
-              stroke="var(--ctp-subtext0)"
-              tick={{ fill: 'var(--ctp-subtext0)', fontSize: 11 }}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              stroke="var(--ctp-subtext0)"
-              tick={{ fill: 'var(--ctp-subtext0)', fontSize: 11 }}
-              allowDecimals={false}
-              domain={[0, 'auto']}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'var(--ctp-surface0)',
-                border: '1px solid var(--ctp-surface2)',
-                borderRadius: '4px',
-              }}
-              labelStyle={{ color: 'var(--ctp-text)' }}
-              formatter={(value, name) => {
-                if (value === undefined || value === null) return ['-', ''];
-                const label = name === 'systemNodeCount'
-                  ? t('info.active_nodes_meshmonitor')
-                  : t('info.online_nodes_device');
-                return [value, label];
-              }}
-            />
-            <Legend
-              wrapperStyle={{ paddingTop: '10px' }}
-              formatter={(value) => {
-                if (value === 'systemNodeCount') return t('info.active_nodes_meshmonitor');
-                if (value === 'numOnlineNodes') return t('info.online_nodes_device');
-                return value;
-              }}
-            />
-            <Line
-              type="monotone"
-              dataKey="systemNodeCount"
-              stroke="#89b4fa"
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-              name="systemNodeCount"
-            />
-            <Line
-              type="monotone"
-              dataKey="numOnlineNodes"
-              stroke="#f9e2af"
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-              name="numOnlineNodes"
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
-        {t('info.node_count_chart_description')}
-      </div>
-    </div>
-  );
-});
-
-NodeCountChart.displayName = 'NodeCountChart';
 
 interface RouteSegment {
   id: number;
@@ -826,10 +683,6 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           <h3>{t('info.local_telemetry')}</h3>
           <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} />
         </div>
-      )}
-
-      {currentNodeId && connectionStatus === 'connected' && (
-        <NodeCountChart nodeId={currentNodeId} hours={telemetryHours} baseUrl={baseUrl} timeFormat={timeFormat} />
       )}
 
       {currentNodeId && connectionStatus === 'connected' && (
