@@ -3738,6 +3738,10 @@
   "channel_database.toast_decryption_completed": "Decryption completed: {{decrypted}} of {{total}} packets decrypted",
   "channel_database.enforce_name_validation": "Enforce Channel Name Validation",
   "channel_database.enforce_name_validation_description": "Only attempt decryption if the packet's channel hash matches. Allows multiple virtual channels with the same key but different names.",
+  "channel_database.sort_order_note": "Channels are tried in order during decryption. Only the first matching channel will be used. Drag to reorder.",
+  "channel_database.drag_to_reorder": "Drag to reorder",
+  "channel_database.reorder_success": "Channel order updated",
+  "channel_database.reorder_error": "Failed to update channel order",
 
   "common.never": "Never",
   "common.importing": "Importing...",

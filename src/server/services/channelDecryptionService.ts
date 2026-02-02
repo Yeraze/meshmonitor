@@ -31,6 +31,7 @@ interface CachedChannel {
   pskLength: number;
   enforceNameValidation: boolean;
   expectedChannelHash?: number;
+  sortOrder: number;
 }
 
 /**
@@ -148,6 +149,7 @@ class ChannelDecryptionService {
             pskLength: channel.pskLength,
             enforceNameValidation,
             expectedChannelHash,
+            sortOrder: channel.sortOrder ?? 0,
           });
         } catch (err) {
           logger.warn(`Failed to process channel "${channel.name}" (id=${channel.id}):`, err);
