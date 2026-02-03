@@ -68,3 +68,23 @@ export interface PacketMonitorSettings {
   showPanel: boolean;
   autoScroll: boolean;
 }
+
+export interface PacketCountByDevice {
+  from_node: number;
+  from_node_id: string | null;
+  from_node_longName: string | null;
+  count: number;
+}
+
+export interface PacketCountByType {
+  portnum: number;
+  portnum_name: string;
+  count: number;
+}
+
+export interface PacketDistributionStats {
+  byDevice: PacketCountByDevice[];
+  byType: PacketCountByType[];
+  total: number;
+  enabled: boolean;
+}
