@@ -400,6 +400,13 @@
   "channels.purge_messages_title": "Purge all messages from this channel",
   "channels.purge_all_messages": "Purge All Messages",
   "channels.cannot_undo": "This action cannot be undone",
+  "channels.virtual_channel_info_title": "Virtual Channel Info",
+  "channels.description": "Description:",
+  "channels.source": "Source:",
+  "channels.channel_database": "Channel Database",
+  "channels.access_mode": "Access Mode:",
+  "channels.read_only": "Read-only",
+  "channels.packets_decrypted": "Packets Decrypted:",
 
   "dashboard.title": "Telemetry Dashboard",
   "dashboard.add_widget": "Add Widget",
