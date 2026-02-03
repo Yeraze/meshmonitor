@@ -3379,7 +3379,7 @@
     "admin_commands.hardware_model": "Модель оборудования",
     "admin_commands.firmware_version": "Версия прошивки",
     "admin_commands.failed_device_metadata": "Не удалось загрузить метаданные",
-    "news.category.maintenance": "Содержание",
+    "news.category.maintenance": "",
     "news.title": "Новости",
     "news.important": "Важно",
     "news.category.feature": "Особенность",
@@ -3531,5 +3531,9 @@
     "script_test.mock.node_lon": "Долгота узла",
     "automation.geofence_triggers.center_lng": "Центр долготы:",
     "channel_database.enforce_name_validation": "Принудительная проверка названия канала",
-    "channel_database.enforce_name_validation_description": "Расшифровка должна выполняться только в том случае, если хэш канала пакета совпадает. Допускается использование нескольких виртуальных каналов с одним и тем же ключом, но разными именами."
+    "channel_database.enforce_name_validation_description": "Расшифровка должна выполняться только в том случае, если хэш канала пакета совпадает. Допускается использование нескольких виртуальных каналов с одним и тем же ключом, но разными именами.",
+    "channel_database.sort_order_note": "При расшифровке каналы проверяются по порядку. Будет использован только первый подходящий канал. Перетащите, чтобы изменить порядок.",
+    "channel_database.drag_to_reorder": "Перетащите, чтобы изменить порядок",
+    "channel_database.reorder_success": "Порядок каналов обновлен",
+    "channel_database.reorder_error": "Не удалось обновить порядок каналов"
 }
