@@ -133,6 +133,47 @@ router.get('/stats', requirePacketPermissions, async (_req, res) => {
 });
 
 /**
+ * GET /api/packets/stats/distribution
+ * Get packet distribution by device and by type
+ * Query params:
+ *   - since: Unix timestamp (seconds) to filter packets from
+ */
+router.get('/stats/distribution', requirePacketPermissions, async (req, res) => {
+  try {
+    const enabled = packetLogService.isEnabled();
+
+    // If not enabled, return empty data
+    if (!enabled) {
+      return res.json({
+        byDevice: [],
+        byType: [],
+        total: 0,
+        enabled: false
+      });
+    }
+
+    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+
+    // Fetch distribution data - limit to top 10 devices
+    const [byDevice, byType, total] = await Promise.all([
+      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10 }),
+      packetLogService.getPacketCountsByPortnumAsync({ since }),
+      packetLogService.getPacketCountAsync({ since })
+    ]);
+
+    res.json({
+      byDevice,
+      byType,
+      total,
+      enabled: true
+    });
+  } catch (error) {
+    logger.error('❌ Error fetching packet distribution:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/packets/export
  * Export packet logs as JSONL with optional filtering
  * IMPORTANT: Must be registered before /:id route to avoid route matching conflicts

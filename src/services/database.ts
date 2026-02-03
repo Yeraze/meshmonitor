@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
+import { getPortNumName } from '../server/constants/meshtastic.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
@@ -290,6 +291,19 @@ export interface DbPacketLog {
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
   transport_mechanism?: number;
+}
+
+export interface DbPacketCountByNode {
+  from_node: number;
+  from_node_id: string | null;
+  from_node_longName: string | null;
+  count: number;
+}
+
+export interface DbPacketCountByPortnum {
+  portnum: number;
+  portnum_name: string;
+  count: number;
 }
 
 export interface DbCustomTheme {
@@ -9602,6 +9616,221 @@ class DatabaseService {
     const result = stmt.run(cutoffTimestamp);
     logger.debug(`🧹 Cleaned up ${result.changes} packet log entries older than ${maxAgeHours} hours`);
     return Number(result.changes);
+  }
+
+  /**
+   * Get packet counts grouped by from_node (for distribution charts)
+   * Returns top N nodes by packet count, plus counts for remainder grouped as "Other"
+   */
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number }): Promise<DbPacketCountByNode[]> {
+    const { since, limit = 10 } = options || {};
+
+    // For PostgreSQL
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const params: any[] = [];
+        let paramIndex = 1;
+
+        let query = `
+          SELECT
+            pl.from_node,
+            n."nodeId" as from_node_id,
+            n."longName" as from_node_longName,
+            COUNT(*) as count
+          FROM packet_log pl
+          LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
+        `;
+
+        if (since !== undefined) {
+          query += ` WHERE pl.timestamp >= $${paramIndex++}`;
+          params.push(since);
+        }
+
+        query += ` GROUP BY pl.from_node, n."nodeId", n."longName" ORDER BY count DESC LIMIT $${paramIndex++}`;
+        params.push(limit);
+
+        const result = await this.postgresPool.query(query, params);
+        return (result.rows ?? []).map((row: any) => ({
+          from_node: Number(row.from_node),
+          from_node_id: row.from_node_id,
+          from_node_longName: row.from_node_longName,
+          count: Number(row.count),
+        }));
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet counts by node:', error);
+        return [];
+      }
+    }
+
+    // For MySQL
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const params: any[] = [];
+
+        let query = `
+          SELECT
+            pl.from_node,
+            n.nodeId as from_node_id,
+            n.longName as from_node_longName,
+            COUNT(*) as count
+          FROM packet_log pl
+          LEFT JOIN nodes n ON pl.from_node = n.nodeNum
+        `;
+
+        if (since !== undefined) {
+          query += ` WHERE pl.timestamp >= ?`;
+          params.push(since);
+        }
+
+        query += ` GROUP BY pl.from_node, n.nodeId, n.longName ORDER BY count DESC LIMIT ?`;
+        params.push(limit);
+
+        const [rows] = await this.mysqlPool.query(query, params);
+        return ((rows as any[]) ?? []).map((row: any) => ({
+          from_node: Number(row.from_node),
+          from_node_id: row.from_node_id,
+          from_node_longName: row.from_node_longName,
+          count: Number(row.count),
+        }));
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet counts by node:', error);
+        return [];
+      }
+    }
+
+    // For SQLite
+    try {
+      let query = `
+        SELECT
+          pl.from_node,
+          n.nodeId as from_node_id,
+          n.longName as from_node_longName,
+          COUNT(*) as count
+        FROM packet_log pl
+        LEFT JOIN nodes n ON pl.from_node = n.nodeNum
+      `;
+
+      const params: any[] = [];
+      if (since !== undefined) {
+        query += ` WHERE pl.timestamp >= ?`;
+        params.push(since);
+      }
+
+      query += ` GROUP BY pl.from_node ORDER BY count DESC LIMIT ?`;
+      params.push(limit);
+
+      const stmt = this.db.prepare(query);
+      const rows = stmt.all(...params) as any[];
+      return rows.map((row: any) => ({
+        from_node: Number(row.from_node),
+        from_node_id: row.from_node_id,
+        from_node_longName: row.from_node_longName,
+        count: Number(row.count),
+      }));
+    } catch (error) {
+      logger.error('[DatabaseService] Failed to get packet counts by node:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get packet counts grouped by portnum (for distribution charts)
+   * Includes port name from meshtastic constants
+   */
+  async getPacketCountsByPortnumAsync(options?: { since?: number }): Promise<DbPacketCountByPortnum[]> {
+    const { since } = options || {};
+
+    // For PostgreSQL
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const params: any[] = [];
+        let paramIndex = 1;
+
+        let query = `
+          SELECT
+            portnum,
+            COUNT(*) as count
+          FROM packet_log
+        `;
+
+        if (since !== undefined) {
+          query += ` WHERE timestamp >= $${paramIndex++}`;
+          params.push(since);
+        }
+
+        query += ` GROUP BY portnum ORDER BY count DESC`;
+
+        const result = await this.postgresPool.query(query, params);
+        return (result.rows ?? []).map((row: any) => ({
+          portnum: Number(row.portnum),
+          portnum_name: getPortNumName(Number(row.portnum)),
+          count: Number(row.count),
+        }));
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
+        return [];
+      }
+    }
+
+    // For MySQL
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const params: any[] = [];
+
+        let query = `
+          SELECT
+            portnum,
+            COUNT(*) as count
+          FROM packet_log
+        `;
+
+        if (since !== undefined) {
+          query += ` WHERE timestamp >= ?`;
+          params.push(since);
+        }
+
+        query += ` GROUP BY portnum ORDER BY count DESC`;
+
+        const [rows] = await this.mysqlPool.query(query, params);
+        return ((rows as any[]) ?? []).map((row: any) => ({
+          portnum: Number(row.portnum),
+          portnum_name: getPortNumName(Number(row.portnum)),
+          count: Number(row.count),
+        }));
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
+        return [];
+      }
+    }
+
+    // For SQLite
+    try {
+      let query = `
+        SELECT
+          portnum,
+          COUNT(*) as count
+        FROM packet_log
+      `;
+
+      const params: any[] = [];
+      if (since !== undefined) {
+        query += ` WHERE timestamp >= ?`;
+        params.push(since);
+      }
+
+      query += ` GROUP BY portnum ORDER BY count DESC`;
+
+      const stmt = this.db.prepare(query);
+      const rows = stmt.all(...params) as any[];
+      return rows.map((row: any) => ({
+        portnum: Number(row.portnum),
+        portnum_name: getPortNumName(Number(row.portnum)),
+        count: Number(row.count),
+      }));
+    } catch (error) {
+      logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
+      return [];
+    }
   }
 
   // Custom Themes Methods

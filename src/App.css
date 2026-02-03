@@ -867,8 +867,23 @@ body {
   width: 100%;
 }
 
+.info-section-wide {
+  background: var(--ctp-surface0);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid var(--ctp-surface1);
+  grid-column: span 2;
+}
+
+@media (max-width: 700px) {
+  .info-section-wide {
+    grid-column: span 1;
+  }
+}
+
 .info-section h3,
-.info-section-full-width h3 {
+.info-section-full-width h3,
+.info-section-wide h3 {
   color: var(--ctp-lavender);
   margin-bottom: 1rem;
   font-size: 1.25rem;

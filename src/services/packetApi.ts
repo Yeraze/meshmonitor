@@ -1,5 +1,5 @@
 import api from './api';
-import { PacketLog, PacketLogResponse, PacketStats, PacketFilters } from '../types/packet';
+import { PacketLog, PacketLogResponse, PacketStats, PacketFilters, PacketDistributionStats } from '../types/packet';
 
 /**
  * Fetch packet logs with optional filters
@@ -107,6 +107,18 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(blobUrl);
+};
+
+/**
+ * Fetch packet distribution statistics (by device and by type)
+ */
+export const getPacketDistributionStats = async (since?: number): Promise<PacketDistributionStats> => {
+  const params = new URLSearchParams();
+  if (since !== undefined) {
+    params.append('since', since.toString());
+  }
+  const query = params.toString();
+  return api.get<PacketDistributionStats>(`/api/packets/stats/distribution${query ? `?${query}` : ''}`);
 };
 
 /**
