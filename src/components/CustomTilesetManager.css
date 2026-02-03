@@ -442,3 +442,243 @@
   font-size: 0.85rem;
   border: none;
 }
+
+/* Autodetect section */
+.autodetect-section {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: var(--ctp-surface0);
+  border-radius: 6px;
+  border: 1px solid var(--ctp-overlay0);
+}
+
+.autodetect-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+  color: var(--ctp-text);
+}
+
+.autodetect-icon {
+  font-size: 1.1rem;
+}
+
+.autodetect-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.autodetect-input-row input {
+  flex: 1;
+  padding: 0.6rem;
+  background-color: var(--ctp-base);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 4px;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+}
+
+.autodetect-input-row input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.btn-autodetect {
+  padding: 0.6rem 1rem;
+  background-color: var(--ctp-mauve);
+  border: none;
+  border-radius: 4px;
+  color: var(--ctp-base);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-autodetect:hover:not(:disabled) {
+  background-color: var(--ctp-pink);
+}
+
+.btn-autodetect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.autodetect-section small {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext1);
+}
+
+/* Autodetect progress */
+.autodetect-progress {
+  margin-top: 0.75rem;
+}
+
+.progress-bar {
+  height: 6px;
+  background-color: var(--ctp-overlay0);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--ctp-mauve);
+  transition: width 0.2s ease-out;
+}
+
+.progress-text {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
+  text-align: center;
+}
+
+/* Autodetect results */
+.autodetect-result {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+}
+
+.autodetect-result.success {
+  background-color: rgba(var(--ctp-green-rgb, 166, 227, 161), 0.15);
+  border: 1px solid var(--ctp-green);
+}
+
+.autodetect-result.error {
+  background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.15);
+  border: 1px solid var(--ctp-red);
+}
+
+.autodetect-result-header {
+  font-weight: 500;
+  color: var(--ctp-text);
+  margin-bottom: 0.75rem;
+}
+
+.autodetect-url-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.autodetect-url-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--ctp-base);
+  border-radius: 4px;
+  border: 1px solid var(--ctp-overlay0);
+}
+
+.autodetect-url-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.autodetect-url-text {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--ctp-blue);
+  word-break: break-all;
+}
+
+.btn-use-url {
+  padding: 0.4rem 0.8rem;
+  background-color: var(--ctp-green);
+  border: none;
+  border-radius: 4px;
+  color: var(--ctp-base);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-use-url:hover {
+  background-color: var(--ctp-teal);
+}
+
+.autodetect-error {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.1);
+  border-radius: 4px;
+  color: var(--ctp-red);
+  font-size: 0.85rem;
+}
+
+/* Reload notice */
+.reload-notice {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
+  border: 1px solid var(--ctp-yellow);
+  border-radius: 6px;
+}
+
+.reload-notice-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.reload-notice-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.reload-notice-text {
+  flex: 1;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  min-width: 200px;
+}
+
+.btn-reload {
+  padding: 0.4rem 0.8rem;
+  background-color: var(--ctp-yellow);
+  border: none;
+  border-radius: 4px;
+  color: var(--ctp-base);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-reload:hover {
+  background-color: var(--ctp-peach);
+}
+
+.btn-dismiss {
+  padding: 0.3rem 0.5rem;
+  background: none;
+  border: none;
+  color: var(--ctp-subtext0);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-dismiss:hover {
+  color: var(--ctp-text);
+}
