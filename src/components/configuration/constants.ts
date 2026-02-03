@@ -74,13 +74,14 @@ export const ROLE_OPTIONS: RoleOption[] = [
 
 export const MODEM_PRESET_OPTIONS: ModemPresetOption[] = [
   { value: 0, name: 'LONG_FAST', description: 'Long Range - Fast (Default)', params: 'BW: 250kHz, SF: 11, CR: 4/5' },
-  { value: 1, name: 'LONG_SLOW', description: 'Long Range - Slow', params: 'BW: 125kHz, SF: 12, CR: 4/8' },
+  { value: 1, name: 'LONG_SLOW', description: 'Long Range - Slow (Deprecated)', params: 'BW: 125kHz, SF: 12, CR: 4/8' },
   { value: 3, name: 'MEDIUM_SLOW', description: 'Medium Range - Slow', params: 'BW: 250kHz, SF: 10, CR: 4/5' },
   { value: 4, name: 'MEDIUM_FAST', description: 'Medium Range - Fast', params: 'BW: 250kHz, SF: 9, CR: 4/5' },
   { value: 5, name: 'SHORT_SLOW', description: 'Short Range - Slow', params: 'BW: 250kHz, SF: 8, CR: 4/5' },
   { value: 6, name: 'SHORT_FAST', description: 'Short Range - Fast', params: 'BW: 250kHz, SF: 7, CR: 4/5' },
   { value: 7, name: 'LONG_MODERATE', description: 'Long Range - Moderately Fast', params: 'BW: 125kHz, SF: 11, CR: 4/8' },
-  { value: 8, name: 'SHORT_TURBO', description: 'Short Range - Turbo (Fastest, widest bandwidth)', params: 'BW: 500kHz, SF: 7, CR: 4/5' }
+  { value: 8, name: 'SHORT_TURBO', description: 'Short Range - Turbo (Fastest, widest bandwidth)', params: 'BW: 500kHz, SF: 7, CR: 4/5' },
+  { value: 9, name: 'LONG_TURBO', description: 'Long Range - Turbo (Similar to LongFast)', params: 'BW: 500kHz, SF: 11, CR: 4/5' }
 ];
 
 export const REGION_OPTIONS: RegionOption[] = [
@@ -137,7 +138,8 @@ export const PRESET_MAP: Record<string, number> = {
   'SHORT_SLOW': 5,
   'SHORT_FAST': 6,
   'LONG_MODERATE': 7,
-  'SHORT_TURBO': 8
+  'SHORT_TURBO': 8,
+  'LONG_TURBO': 9
 };
 
 // Mapping from string region names to numeric values
