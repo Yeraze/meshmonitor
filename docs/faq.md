@@ -111,6 +111,38 @@ docker compose up -d
 
 ---
 
+### Emoji appear as blank squares in offline/air-gapped deployments
+
+**Problem:** Icons in the sidebar and throughout the UI appear as blank white squares (☐) instead of emoji like 🗺️ 💬 ✉️.
+
+**Cause:** MeshMonitor uses native **Unicode emoji** which are rendered by your operating system's emoji font. In offline or air-gapped environments, the system may not have an emoji font installed.
+
+**Solution:** Install an emoji font on the system running the browser (or the Docker host if using a local browser):
+
+| Operating System | Command |
+|-----------------|---------|
+| **Debian/Ubuntu** | `sudo apt install fonts-noto-color-emoji` |
+| **Fedora/RHEL** | `sudo dnf install google-noto-emoji-color-fonts` |
+| **Arch Linux** | `sudo pacman -S noto-fonts-emoji` |
+| **Alpine Linux** | `apk add font-noto-emoji` |
+| **Windows** | Segoe UI Emoji (included by default) |
+| **macOS** | Apple Color Emoji (included by default) |
+
+**After installing:**
+
+1. Refresh the font cache (Linux only):
+   ```bash
+   fc-cache -fv
+   ```
+
+2. Restart your browser
+
+3. Reload MeshMonitor
+
+**Note:** This is a client-side issue - the emoji font needs to be installed on the machine running the web browser, not necessarily on the MeshMonitor server (unless they're the same machine).
+
+---
+
 ## 📡 Node Management
 
 ### Can I monitor multiple Meshtastic nodes with one MeshMonitor instance?
@@ -908,4 +940,4 @@ If your issue isn't covered here:
 
 ---
 
-**Last updated:** 2026-01-19
+**Last updated:** 2026-02-03
