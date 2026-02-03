@@ -3867,9 +3867,9 @@ function App() {
     const sidebarElement = document.querySelector('.sidebar');
     const sidebarWidth = sidebarElement ? sidebarElement.getBoundingClientRect().width : 60;
 
-    // Popup max-width is 280px, and it's centered with translateX(-50%)
-    // So the left edge will be at x - 140px
-    const popupHalfWidth = 140;
+    // Popup max-width is 300px, and it's centered with translateX(-50%)
+    // So the left edge will be at x - 150px
+    const popupHalfWidth = 150;
     let x = rect.left + rect.width / 2;
     let y = rect.top;
 
