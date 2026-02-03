@@ -3228,7 +3228,7 @@
     "settings.tapback_emoji_placeholder": "Эмодзи",
     "channel_database.toast_fetch_failed": "Не удалось загрузить базу данных каналов",
     "channel_database.channel_description": "Описание",
-    "channel_database.generate_key_title": "",
+    "channel_database.generate_key_title": "Сгенерировать случайный ключ AES256",
     "channel_database.disable": "Отключить",
     "channel_database.last_decrypted": "Последняя расшифровка",
     "channel_database.edit_channel": "Редактировать канал",
@@ -3379,7 +3379,7 @@
     "admin_commands.hardware_model": "Модель оборудования",
     "admin_commands.firmware_version": "Версия прошивки",
     "admin_commands.failed_device_metadata": "Не удалось загрузить метаданные",
-    "news.category.maintenance": "",
+    "news.category.maintenance": "Обслуживание",
     "news.title": "Новости",
     "news.important": "Важно",
     "news.category.feature": "Особенность",
@@ -3535,5 +3535,6 @@
     "channel_database.sort_order_note": "При расшифровке каналы проверяются по порядку. Будет использован только первый подходящий канал. Перетащите, чтобы изменить порядок.",
     "channel_database.drag_to_reorder": "Перетащите, чтобы изменить порядок",
     "channel_database.reorder_success": "Порядок каналов обновлен",
-    "channel_database.reorder_error": "Не удалось обновить порядок каналов"
+    "channel_database.reorder_error": "Не удалось обновить порядок каналов",
+    "telemetry_config.health_interval": "Интервал обновления (в секундах)"
 }
