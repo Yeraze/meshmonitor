@@ -1,0 +1,352 @@
+/**
+ * MeshCore Tab Styles
+ * Uses Catppuccin Mocha theme colors for consistency
+ */
+
+.meshcore-tab {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.meshcore-tab h2 {
+  color: var(--ctp-text);
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.meshcore-tab h3 {
+  color: var(--ctp-subtext1);
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Error banner */
+.meshcore-error {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.meshcore-error button {
+  background: transparent;
+  border: 1px solid var(--ctp-base);
+  color: var(--ctp-base);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Sections */
+.meshcore-section {
+  background: var(--ctp-surface0);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Connection Form */
+.meshcore-connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-group label {
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+}
+
+.form-group input,
+.form-group select {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--ctp-mauve);
+}
+
+/* Buttons */
+.meshcore-tab button {
+  background: var(--ctp-mauve);
+  color: var(--ctp-base);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.meshcore-tab button:hover {
+  background: var(--ctp-pink);
+}
+
+.meshcore-tab button:disabled {
+  background: var(--ctp-surface2);
+  color: var(--ctp-overlay0);
+  cursor: not-allowed;
+}
+
+.meshcore-tab button.disconnect {
+  background: var(--ctp-red);
+}
+
+.meshcore-tab button.disconnect:hover {
+  background: var(--ctp-maroon);
+}
+
+.refresh-btn {
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem;
+  margin-left: auto;
+}
+
+/* Connection Status */
+.meshcore-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.status-connected {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: var(--ctp-text);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ctp-overlay0);
+}
+
+.status-dot.connected {
+  background: var(--ctp-green);
+  box-shadow: 0 0 8px var(--ctp-green);
+}
+
+.status-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+}
+
+.status-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Node List */
+.meshcore-node-list,
+.meshcore-contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.meshcore-node-item,
+.meshcore-contact-item {
+  background: var(--ctp-surface1);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.meshcore-contact-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.node-name,
+.contact-name {
+  color: var(--ctp-text);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.node-type {
+  background: var(--ctp-surface2);
+  color: var(--ctp-subtext0);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: normal;
+}
+
+.node-details,
+.contact-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.8rem;
+}
+
+.contact-select {
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem;
+}
+
+/* Messages */
+.meshcore-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+
+.meshcore-message {
+  background: var(--ctp-surface1);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.message-from {
+  color: var(--ctp-mauve);
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.message-time {
+  color: var(--ctp-overlay0);
+  font-size: 0.75rem;
+}
+
+.message-text {
+  color: var(--ctp-text);
+}
+
+/* Send Form */
+.meshcore-send-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.meshcore-send-form select {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.5rem;
+  border-radius: 6px;
+  min-width: 150px;
+}
+
+.meshcore-send-form input {
+  flex: 1;
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+}
+
+.meshcore-send-form input:focus {
+  outline: none;
+  border-color: var(--ctp-mauve);
+}
+
+/* Admin Section */
+.meshcore-admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.meshcore-admin-status {
+  background: var(--ctp-surface1);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.meshcore-admin-status h4 {
+  color: var(--ctp-text);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.admin-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+}
+
+/* Empty state */
+.meshcore-empty {
+  color: var(--ctp-overlay0);
+  text-align: center;
+  padding: 1.5rem;
+  font-style: italic;
+}
+
+/* Scrollbar styling */
+.meshcore-node-list::-webkit-scrollbar,
+.meshcore-contact-list::-webkit-scrollbar,
+.meshcore-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.meshcore-node-list::-webkit-scrollbar-track,
+.meshcore-contact-list::-webkit-scrollbar-track,
+.meshcore-messages::-webkit-scrollbar-track {
+  background: var(--ctp-surface0);
+  border-radius: 3px;
+}
+
+.meshcore-node-list::-webkit-scrollbar-thumb,
+.meshcore-contact-list::-webkit-scrollbar-thumb,
+.meshcore-messages::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface2);
+  border-radius: 3px;
+}
+
+.meshcore-node-list::-webkit-scrollbar-thumb:hover,
+.meshcore-contact-list::-webkit-scrollbar-thumb:hover,
+.meshcore-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--ctp-overlay0);
+}

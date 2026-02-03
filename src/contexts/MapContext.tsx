@@ -23,6 +23,18 @@ export interface EnrichedNeighborInfo extends DbNeighborInfo {
   neighborLongitude?: number;
 }
 
+// MeshCore node for map display
+export interface MeshCoreMapNode {
+  publicKey: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  rssi?: number;
+  snr?: number;
+  lastSeen?: number;
+  advType?: number;
+}
+
 interface MapContextType {
   showPaths: boolean;
   setShowPaths: (show: boolean) => void;
@@ -34,6 +46,8 @@ interface MapContextType {
   setShowMotion: (show: boolean) => void;
   showMqttNodes: boolean;
   setShowMqttNodes: (show: boolean) => void;
+  showMeshCoreNodes: boolean;
+  setShowMeshCoreNodes: (show: boolean) => void;
   showAnimations: boolean;
   setShowAnimations: (show: boolean) => void;
   showEstimatedPositions: boolean;
@@ -58,6 +72,8 @@ interface MapContextType {
   setSelectedNodeId: (id: string | null) => void;
   positionHistoryHours: number | null;
   setPositionHistoryHours: (hours: number | null) => void;
+  meshCoreNodes: MeshCoreMapNode[];
+  setMeshCoreNodes: (nodes: MeshCoreMapNode[]) => void;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -75,7 +91,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showRoute, setShowRouteState] = useState<boolean>(true);
   const [showMotion, setShowMotionState] = useState<boolean>(true);
   const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(true);
+  const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
+  const [meshCoreNodes, setMeshCoreNodes] = useState<MeshCoreMapNode[]>([]);
   const [showEstimatedPositions, setShowEstimatedPositionsState] = useState<boolean>(() => {
     const saved = localStorage.getItem('showEstimatedPositions');
     return saved !== null ? saved === 'true' : true; // Default to true
@@ -135,6 +153,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowMqttNodes = React.useCallback((value: boolean) => {
     setShowMqttNodesState(value);
     savePreferenceToServer({ showMqttNodes: value });
+  }, []);
+
+  const setShowMeshCoreNodes = React.useCallback((value: boolean) => {
+    setShowMeshCoreNodesState(value);
+    savePreferenceToServer({ showMeshCoreNodes: value });
   }, []);
 
   const setShowAnimations = React.useCallback((value: boolean) => {
@@ -228,6 +251,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showMqttNodes !== undefined) {
               setShowMqttNodesState(preferences.showMqttNodes);
             }
+            if (preferences.showMeshCoreNodes !== undefined) {
+              setShowMeshCoreNodesState(preferences.showMeshCoreNodes);
+            }
             if (preferences.showAnimations !== undefined) {
               setShowAnimationsState(preferences.showAnimations);
             }
@@ -296,6 +322,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowMotion,
         showMqttNodes,
         setShowMqttNodes,
+        showMeshCoreNodes,
+        setShowMeshCoreNodes,
+        meshCoreNodes,
+        setMeshCoreNodes,
         showAnimations,
         setShowAnimations,
         showEstimatedPositions,
