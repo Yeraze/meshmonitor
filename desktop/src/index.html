@@ -200,6 +200,31 @@
         .advanced-options.show {
             display: block;
         }
+
+        .checkbox-group {
+            margin-bottom: 16px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #d4d4d8;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #67e8f9;
+            cursor: pointer;
+        }
+
+        .checkbox-group .hint {
+            margin-left: 28px;
+        }
     </style>
 </head>
 <body>
@@ -254,6 +279,53 @@
                         >
                     </div>
                 </div>
+
+                <div class="form-group">
+                    <label for="allowedOrigins">Allowed Origins (CORS)</label>
+                    <input
+                        type="text"
+                        id="allowedOrigins"
+                        name="allowedOrigins"
+                        placeholder="http://192.168.1.50:8080"
+                    >
+                    <p class="hint">Comma-separated URLs to allow access from other devices (localhost is always included)</p>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            id="enableVirtualNode"
+                            name="enableVirtualNode"
+                        >
+                        <span>Enable Virtual Node Server</span>
+                    </label>
+                    <p class="hint">Allow Meshtastic mobile app to connect via TCP port 4403</p>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            id="virtualNodeAllowAdmin"
+                            name="virtualNodeAllowAdmin"
+                        >
+                        <span>Allow Admin Commands via Virtual Node</span>
+                    </label>
+                    <p class="hint">Allow mobile app to send admin commands (requires Virtual Node)</p>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            id="autoStart"
+                            name="autoStart"
+                        >
+                        <span>Start with Windows</span>
+                    </label>
+                    <p class="hint">Automatically start MeshMonitor when Windows starts</p>
+                </div>
             </div>
 
             <button type="submit" class="primary" id="submitBtn">
@@ -279,6 +351,10 @@
                 document.getElementById('meshtasticIp').value = config.meshtastic_ip || '';
                 document.getElementById('meshtasticPort').value = config.meshtastic_port || 4403;
                 document.getElementById('webPort').value = config.web_port || 8080;
+                document.getElementById('allowedOrigins').value = config.allowed_origins || '';
+                document.getElementById('enableVirtualNode').checked = config.enable_virtual_node || false;
+                document.getElementById('virtualNodeAllowAdmin').checked = config.virtual_node_allow_admin || false;
+                document.getElementById('autoStart').checked = config.auto_start || false;
             } catch (e) {
                 console.error('Failed to load config:', e);
             }
@@ -321,16 +397,25 @@
             }
 
             try {
-                // Get existing config to preserve session_secret
+                // Get existing config to preserve all fields not in the form
                 const existingConfig = await invoke('get_config');
 
-                // Save config
+                // Get form values
+                const allowedOrigins = document.getElementById('allowedOrigins').value.trim();
+                const enableVirtualNode = document.getElementById('enableVirtualNode').checked;
+                const virtualNodeAllowAdmin = document.getElementById('virtualNodeAllowAdmin').checked;
+                const autoStart = document.getElementById('autoStart').checked;
+
+                // Save config - spread existing config to preserve all fields, then override with form values
                 const config = {
+                    ...existingConfig,
                     meshtastic_ip: meshtasticIp,
                     meshtastic_port: meshtasticPort,
                     web_port: webPort,
-                    auto_start: false,
-                    session_secret: existingConfig.session_secret,
+                    auto_start: autoStart,
+                    allowed_origins: allowedOrigins || null,
+                    enable_virtual_node: enableVirtualNode,
+                    virtual_node_allow_admin: virtualNodeAllowAdmin,
                     setup_completed: true
                 };
 
