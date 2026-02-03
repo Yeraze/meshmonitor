@@ -2508,7 +2508,7 @@
     "device_config.advanced_settings": "Расширенные настройки",
     "notifications.vapid_not_configured": "Не настроено",
     "config.ambientlighting_saved": "Настройки подсветки сохранены",
-    "channels_config.generate_key_title": "Сгенерировать случайный ключ AES256",
+    "channels_config.generate_key_title": "Создание случайных Ключ AES256",
     "auto_upgrade_test.note_failed": "Обновление не удалось. Подробности см. в сообщении об ошибке выше и в системных журналах.",
     "node_details.uptime": "Время работы",
     "auto_responder.clear_fields": "В разделе «Добавить триггер» очистите все поля",
