@@ -666,7 +666,12 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                       tick={{ fontSize: 12 }}
                       tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
                     />
-                    <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
+                    <YAxis
+                      yAxisId="left"
+                      tick={{ fontSize: 12 }}
+                      domain={['auto', 'auto']}
+                      allowDecimals={type !== 'sats_in_view'}
+                    />
                     <YAxis
                       yAxisId="right"
                       orientation="right"
