@@ -62,3 +62,15 @@ When tests mock DatabaseService, they must provide async method mocks for authMi
 - Prior to creating a PR, make sure to run the tests/system-tests.sh to ensure success and post the output report
 - When testing, our webserver has BASE_URL configured for /meshmonitor
   Completely shut down the container and tileserver before running system tests
+
+## API Testing Helper Script
+
+Use `scripts/api-test.sh` for authenticated API testing against the running dev container:
+```bash
+./scripts/api-test.sh login                    # Login and store session
+./scripts/api-test.sh get /api/endpoint        # Authenticated GET request
+./scripts/api-test.sh post /api/endpoint '{"data":"value"}'  # POST request
+./scripts/api-test.sh delete /api/endpoint     # DELETE request
+./scripts/api-test.sh logout                   # Clear stored session
+```
+Default credentials: admin/changeme1. Override with `API_USER` and `API_PASS` env vars.
