@@ -31,6 +31,7 @@ interface CachedChannel {
   pskLength: number;
   enforceNameValidation: boolean;
   expectedChannelHash?: number;
+  sortOrder: number;
 }
 
 /**
@@ -148,6 +149,7 @@ class ChannelDecryptionService {
             pskLength: channel.pskLength,
             enforceNameValidation,
             expectedChannelHash,
+            sortOrder: channel.sortOrder ?? 0,
           });
         } catch (err) {
           logger.warn(`Failed to process channel "${channel.name}" (id=${channel.id}):`, err);
@@ -298,9 +300,13 @@ class ChannelDecryptionService {
     // Build the nonce once (same for all attempts)
     const nonce = this.buildNonce(packetId, fromNode);
 
-    // Try each channel, up to maxDecryptionAttempts
+    // Try each channel in sortOrder, up to maxDecryptionAttempts
+    // Sort by sortOrder to ensure proper decryption priority
+    const sortedChannels = Array.from(this.channelCache.entries())
+      .sort(([, a], [, b]) => a.sortOrder - b.sortOrder);
+
     let attempts = 0;
-    for (const [id, channel] of this.channelCache) {
+    for (const [id, channel] of sortedChannels) {
       // If channel has name validation enabled and packet has a channel hash,
       // skip this channel if the hash doesn't match (don't count as an attempt)
       if (

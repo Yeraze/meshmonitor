@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import apiService, { ChannelDatabaseEntry, RetroactiveDecryptionProgress } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
@@ -63,6 +80,167 @@ interface ChannelEditState {
   enforceNameValidation: boolean;
 }
 
+// Sortable channel card props
+interface SortableChannelCardProps {
+  channel: ChannelDatabaseEntry;
+  onToggleEnabled: (channel: ChannelDatabaseEntry) => void;
+  onEdit: (channel: ChannelDatabaseEntry) => void;
+  onTriggerDecryption: (channelId: number) => void;
+  onDelete: (channelId: number) => void;
+  decryptionRunning: boolean;
+  formatTimestamp: (timestamp: number | null) => string;
+  t: (key: string, options?: any) => string;
+}
+
+// Sortable channel card component
+const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
+  channel,
+  onToggleEnabled,
+  onEdit,
+  onTriggerDecryption,
+  onDelete,
+  decryptionRunning,
+  formatTimestamp,
+  t
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: channel.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    border: channel.isEnabled
+      ? '2px solid var(--ctp-green)'
+      : '1px solid var(--ctp-surface1)',
+    borderRadius: '8px',
+    padding: '1rem',
+    backgroundColor: channel.isEnabled ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+    opacity: isDragging ? 0.5 : (channel.isEnabled ? 1 : 0.7),
+    cursor: isDragging ? 'grabbing' : 'default'
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        {/* Drag handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          style={{
+            cursor: 'grab',
+            padding: '0.5rem',
+            marginRight: '0.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            color: 'var(--ctp-overlay0)',
+            touchAction: 'none'
+          }}
+          title={t('channel_database.drag_to_reorder')}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="5" cy="3" r="1.5" />
+            <circle cx="11" cy="3" r="1.5" />
+            <circle cx="5" cy="8" r="1.5" />
+            <circle cx="11" cy="8" r="1.5" />
+            <circle cx="5" cy="13" r="1.5" />
+            <circle cx="11" cy="13" r="1.5" />
+          </svg>
+        </div>
+        <div style={{ flex: 1 }}>
+          <h4 style={{ margin: 0, color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {channel.name}
+            {channel.isEnabled ? (
+              <span style={{ color: 'var(--ctp-green)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
+            ) : (
+              <span style={{ color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>{t('channel_database.disabled')}</span>
+            )}
+          </h4>
+          {channel.description && (
+            <p style={{ margin: '0.25rem 0', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
+              {channel.description}
+            </p>
+          )}
+          <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <div>PSK: {channel.pskPreview} ({channel.pskLength === 16 ? 'AES-128' : 'AES-256'})</div>
+            <div>{t('channel_database.decrypted_count')}: {channel.decryptedPacketCount}</div>
+            <div>{t('channel_database.last_decrypted')}: {formatTimestamp(channel.lastDecryptedAt)}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onToggleEnabled(channel)}
+            style={{
+              padding: '0.4rem 0.6rem',
+              fontSize: '0.85rem',
+              backgroundColor: channel.isEnabled ? 'var(--ctp-yellow)' : 'var(--ctp-green)',
+              color: 'var(--ctp-base)',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            title={channel.isEnabled ? t('channel_database.disable') : t('channel_database.enable')}
+          >
+            {channel.isEnabled ? t('channel_database.disable') : t('channel_database.enable')}
+          </button>
+          <button
+            onClick={() => onEdit(channel)}
+            style={{
+              padding: '0.4rem 0.6rem',
+              fontSize: '0.85rem',
+              backgroundColor: 'var(--ctp-blue)',
+              color: 'var(--ctp-base)',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            {t('common.edit')}
+          </button>
+          {channel.isEnabled && (
+            <button
+              onClick={() => onTriggerDecryption(channel.id)}
+              disabled={decryptionRunning}
+              style={{
+                padding: '0.4rem 0.6rem',
+                fontSize: '0.85rem',
+                backgroundColor: 'var(--ctp-mauve)',
+                color: 'var(--ctp-base)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: decryptionRunning ? 'not-allowed' : 'pointer',
+                opacity: decryptionRunning ? 0.6 : 1
+              }}
+              title={t('channel_database.run_retroactive')}
+            >
+              {t('channel_database.decrypt')}
+            </button>
+          )}
+          <button
+            onClick={() => onDelete(channel.id)}
+            style={{
+              padding: '0.4rem 0.6rem',
+              fontSize: '0.85rem',
+              backgroundColor: 'var(--ctp-red)',
+              color: 'var(--ctp-base)',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            {t('common.delete')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin, rebroadcastMode }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -80,6 +258,49 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
   const [isSaving, setIsSaving] = useState(false);
   const [decryptionProgress, setDecryptionProgress] = useState<RetroactiveDecryptionProgress | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle drag end for reordering
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = channels.findIndex((ch) => ch.id === active.id);
+      const newIndex = channels.findIndex((ch) => ch.id === over.id);
+
+      // Optimistically update UI
+      const newChannels = arrayMove(channels, oldIndex, newIndex);
+      setChannels(newChannels);
+
+      // Build reorder updates with new sortOrder values
+      const updates = newChannels.map((ch, index) => ({
+        id: ch.id,
+        sortOrder: index,
+      }));
+
+      try {
+        await apiService.reorderChannelDatabaseEntries(updates);
+        showToast(t('channel_database.reorder_success'), 'success');
+      } catch (error) {
+        logger.error('Error reordering channels:', error);
+        const errorMsg = error instanceof Error ? error.message : t('channel_database.reorder_error');
+        showToast(errorMsg, 'error');
+        // Revert on error
+        fetchChannels();
+      }
+    }
+  };
 
   // Fetch channels on mount
   useEffect(() => {
@@ -498,6 +719,26 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           </button>
         </div>
 
+        {/* Sort Order Note */}
+        {channels.length > 1 && (
+          <div
+            style={{
+              backgroundColor: 'var(--ctp-surface0)',
+              color: 'var(--ctp-subtext1)',
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
+              marginBottom: '1rem',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <span style={{ fontSize: '1rem' }}>ℹ️</span>
+            <span>{t('channel_database.sort_order_note')}</span>
+          </div>
+        )}
+
         {/* Channel List */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -516,109 +757,32 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             {t('channel_database.no_channels')}
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            {channels.map((channel) => (
-              <div
-                key={channel.id}
-                style={{
-                  border: channel.isEnabled
-                    ? '2px solid var(--ctp-green)'
-                    : '1px solid var(--ctp-surface1)',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  backgroundColor: channel.isEnabled ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
-                  opacity: channel.isEnabled ? 1 : 0.7
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <h4 style={{ margin: 0, color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {channel.name}
-                      {channel.isEnabled ? (
-                        <span style={{ color: 'var(--ctp-green)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
-                      ) : (
-                        <span style={{ color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>{t('channel_database.disabled')}</span>
-                      )}
-                    </h4>
-                    {channel.description && (
-                      <p style={{ margin: '0.25rem 0', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
-                        {channel.description}
-                      </p>
-                    )}
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
-                      <div>PSK: {channel.pskPreview} ({channel.pskLength === 16 ? 'AES-128' : 'AES-256'})</div>
-                      <div>{t('channel_database.decrypted_count')}: {channel.decryptedPacketCount}</div>
-                      <div>{t('channel_database.last_decrypted')}: {formatTimestamp(channel.lastDecryptedAt)}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => handleToggleEnabled(channel)}
-                      style={{
-                        padding: '0.4rem 0.6rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: channel.isEnabled ? 'var(--ctp-yellow)' : 'var(--ctp-green)',
-                        color: 'var(--ctp-base)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                      title={channel.isEnabled ? t('channel_database.disable') : t('channel_database.enable')}
-                    >
-                      {channel.isEnabled ? t('channel_database.disable') : t('channel_database.enable')}
-                    </button>
-                    <button
-                      onClick={() => handleEditChannel(channel)}
-                      style={{
-                        padding: '0.4rem 0.6rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: 'var(--ctp-blue)',
-                        color: 'var(--ctp-base)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    {channel.isEnabled && (
-                      <button
-                        onClick={() => handleTriggerDecryption(channel.id)}
-                        disabled={decryptionProgress?.status === 'running'}
-                        style={{
-                          padding: '0.4rem 0.6rem',
-                          fontSize: '0.85rem',
-                          backgroundColor: 'var(--ctp-mauve)',
-                          color: 'var(--ctp-base)',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: decryptionProgress?.status === 'running' ? 'not-allowed' : 'pointer',
-                          opacity: decryptionProgress?.status === 'running' ? 0.6 : 1
-                        }}
-                        title={t('channel_database.run_retroactive')}
-                      >
-                        {t('channel_database.decrypt')}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setShowDeleteConfirm(channel.id)}
-                      style={{
-                        padding: '0.4rem 0.6rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: 'var(--ctp-red)',
-                        color: 'var(--ctp-base)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {t('common.delete')}
-                    </button>
-                  </div>
-                </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={channels.map(ch => ch.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div style={{ display: 'grid', gap: '1rem' }}>
+                {channels.map((channel) => (
+                  <SortableChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    onToggleEnabled={handleToggleEnabled}
+                    onEdit={handleEditChannel}
+                    onTriggerDecryption={handleTriggerDecryption}
+                    onDelete={(id) => setShowDeleteConfirm(id)}
+                    decryptionRunning={decryptionProgress?.status === 'running'}
+                    formatTimestamp={formatTimestamp}
+                    t={t}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
