@@ -2111,7 +2111,7 @@
     "users.write": "Запись",
     "admin_commands.local_node_short": "ЛОКАЛЬНЫЙ",
     "audio_config.i2s_section": "Настройка I2C",
-    "serial_config.advanced_settings": "",
+    "serial_config.advanced_settings": "Расширенные настройки",
     "automation.auto_ack.hop_emojis": "Эмодзи прыжков",
     "admin_commands.position_flag_hvdop": "Используйте HDOP/VDOP вместо PDOP",
     "tileset_manager.attribution_help": "",
