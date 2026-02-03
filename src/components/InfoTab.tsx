@@ -15,6 +15,8 @@ import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { getDeviceRoleName } from '../utils/deviceRole';
+import { getPacketDistributionStats } from '../services/packetApi';
+import { PacketDistributionStats } from '../types/packet';
 
 // Chart data entry interface
 interface ChartDataEntry {
@@ -30,26 +32,32 @@ interface PacketStatsChartProps {
   data: ChartDataEntry[];
   total: number;
   chartId: string;
+  wide?: boolean;
 }
 
-const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId }) => {
+const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId, wide = false }) => {
   const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
   if (filteredData.length === 0) return null;
 
+  // Larger charts for wide sections
+  const chartSize = wide ? 180 : 140;
+  const innerRadius = wide ? 40 : 30;
+  const outerRadius = wide ? 70 : 55;
+
   return (
-    <div className="info-section">
+    <div className={wide ? "info-section-wide" : "info-section"}>
       <h3>{title}</h3>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ width: '140px', height: '140px' }}>
+        <div style={{ width: `${chartSize}px`, height: `${chartSize}px` }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={filteredData}
                 cx="50%"
                 cy="50%"
-                innerRadius={30}
-                outerRadius={55}
+                innerRadius={innerRadius}
+                outerRadius={outerRadius}
                 paddingAngle={2}
                 dataKey="value"
               >
@@ -58,12 +66,13 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value) => {
+                formatter={(value, _name, props) => {
                   if (value === null || value === undefined) return ['-', ''];
                   const numValue = typeof value === 'number' ? value : parseFloat(String(value));
                   if (isNaN(numValue)) return ['-', ''];
                   const pct = total > 0 ? ((numValue / total) * 100).toFixed(1) : '0';
-                  return [`${numValue.toLocaleString()} (${pct}%)`, ''];
+                  const entryName = props?.payload?.name || '';
+                  return [`${numValue.toLocaleString()} (${pct}%)`, entryName];
                 }}
                 contentStyle={{
                   backgroundColor: 'var(--ctp-surface0)',
@@ -164,6 +173,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [localStats, setLocalStats] = useState<any>(null);
   const [securityKeys, setSecurityKeys] = useState<{ publicKey: string | null; privateKey: string | null } | null>(null);
   const [loadingSecurityKeys, setLoadingSecurityKeys] = useState(false);
+  const [packetDistribution, setPacketDistribution] = useState<PacketDistributionStats | null>(null);
+  const [distributionTimeRange, setDistributionTimeRange] = useState<'hour' | '24h' | 'all'>('24h');
+  const [loadingDistribution, setLoadingDistribution] = useState(false);
 
   const fetchVirtualNodeStatus = async () => {
     if (connectionStatus !== 'connected') return;
@@ -265,6 +277,30 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     }
   };
 
+  const fetchPacketDistribution = useCallback(async () => {
+    if (connectionStatus !== 'connected') return;
+
+    setLoadingDistribution(true);
+    try {
+      // Calculate 'since' timestamp based on time range
+      let since: number | undefined;
+      const now = Math.floor(Date.now() / 1000);
+      if (distributionTimeRange === 'hour') {
+        since = now - 3600; // 1 hour ago
+      } else if (distributionTimeRange === '24h') {
+        since = now - 86400; // 24 hours ago
+      }
+      // 'all' = undefined (no since filter)
+
+      const distribution = await getPacketDistributionStats(since);
+      setPacketDistribution(distribution);
+    } catch (error) {
+      logger.error('Error fetching packet distribution:', error);
+    } finally {
+      setLoadingDistribution(false);
+    }
+  }, [connectionStatus, distributionTimeRange]);
+
   const handleClearRecordHolder = async () => {
     setShowConfirmDialog(true);
   };
@@ -313,6 +349,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     fetchSecurityKeys();
     // Only fetch once when connected and authenticated - keys don't change frequently
   }, [connectionStatus, isAuthenticated]);
+
+  useEffect(() => {
+    fetchPacketDistribution();
+    const interval = setInterval(fetchPacketDistribution, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [fetchPacketDistribution]);
 
   // Helper function to format uptime
   const formatUptime = (uptimeSeconds: number): string => {
@@ -574,6 +616,97 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               total={txTotal}
               chartId="tx"
             />
+          );
+        })()}
+
+        {/* Packet Distribution Charts - only shown when packet monitor is enabled */}
+        {packetDistribution?.enabled && (() => {
+          // Color palette for distribution charts (Catppuccin-compatible)
+          const DISTRIBUTION_COLORS = [
+            '#89b4fa', '#a6e3a1', '#fab387', '#f5c2e7', '#cba6f7',
+            '#94e2d5', '#f9e2af', '#f38ba8', '#89dceb', '#b4befe', '#9399b2'
+          ];
+
+          // Prepare device data with "Other" grouping
+          const deviceData: ChartDataEntry[] = packetDistribution.byDevice.map((d, i) => ({
+            name: d.from_node_longName || d.from_node_id || `Node ${d.from_node}`,
+            value: d.count,
+            color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length]
+          }));
+
+          // Calculate "Other" if there are more devices beyond top 10
+          const deviceTotal = deviceData.reduce((sum, d) => sum + d.value, 0);
+          const otherCount = packetDistribution.total - deviceTotal;
+          if (otherCount > 0) {
+            deviceData.push({
+              name: t('info.other_devices'),
+              value: otherCount,
+              color: DISTRIBUTION_COLORS[10] // Use the gray color for "Other"
+            });
+          }
+
+          // Prepare type data
+          const typeData: ChartDataEntry[] = packetDistribution.byType.map((p, i) => ({
+            name: p.portnum_name.replace(/_APP$/, '').replace(/_/g, ' '),
+            value: p.count,
+            color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length]
+          }));
+
+          return (
+            <>
+              <div className="info-section">
+                <h3>{t('info.packet_distribution')}</h3>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <button
+                    className={`btn btn-sm ${distributionTimeRange === 'hour' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setDistributionTimeRange('hour')}
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.85em' }}
+                  >
+                    {t('info.last_hour')}
+                  </button>
+                  <button
+                    className={`btn btn-sm ${distributionTimeRange === '24h' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setDistributionTimeRange('24h')}
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.85em' }}
+                  >
+                    {t('info.last_24_hours')}
+                  </button>
+                  <button
+                    className={`btn btn-sm ${distributionTimeRange === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setDistributionTimeRange('all')}
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.85em' }}
+                  >
+                    {t('info.all_data')}
+                  </button>
+                </div>
+                {loadingDistribution && <p>{t('common.loading_indicator')}</p>}
+              </div>
+
+              {!loadingDistribution && packetDistribution.total > 0 && (
+                <>
+                  <PacketStatsChart
+                    title={t('info.packets_by_device')}
+                    data={deviceData}
+                    total={packetDistribution.total}
+                    chartId="dist-device"
+                    wide
+                  />
+                  <PacketStatsChart
+                    title={t('info.packets_by_type')}
+                    data={typeData}
+                    total={packetDistribution.total}
+                    chartId="dist-type"
+                    wide
+                  />
+                </>
+              )}
+
+              {!loadingDistribution && packetDistribution.total === 0 && (
+                <div className="info-section">
+                  <p style={{ color: '#888', fontStyle: 'italic' }}>{t('info.no_packet_data')}</p>
+                </div>
+              )}
+            </>
           );
         })()}
 

@@ -1601,6 +1601,15 @@
   "info.private_key": "Private Key:",
   "info.secrets_unavailable": "Security keys not available",
 
+  "info.packet_distribution": "Packet Distribution",
+  "info.packets_by_device": "Packets by Device",
+  "info.packets_by_type": "Packets by Type",
+  "info.last_hour": "Last Hour",
+  "info.last_24_hours": "Last 24 Hours",
+  "info.all_data": "All Data",
+  "info.other_devices": "Other",
+  "info.no_packet_data": "No packet data available",
+
   "config.loading": "Loading configuration...",
   "config.warning_title": "WARNING",
   "config.warning_text": "Modifying these settings can break your Meshtastic node configuration.",
