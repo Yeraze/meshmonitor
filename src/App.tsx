@@ -1845,15 +1845,21 @@ function App() {
   }, [connectionStatus]);
 
   // Timer to update message status indicators (timeout detection after 30s)
+  // Only runs when on channels/messages tabs to reduce CPU usage on mobile (#1769)
   const [, setStatusTick] = useState(0);
   useEffect(() => {
+    // Only run timer when viewing messaging tabs where status indicators are visible
+    if (activeTab !== 'channels' && activeTab !== 'messages') {
+      return;
+    }
+
     const interval = setInterval(() => {
       // Force re-render to update message status indicators
       setStatusTick(prev => prev + 1);
-    }, 1000); // Update every second
+    }, 5000); // Update every 5 seconds (reduced from 1s for mobile performance)
 
     return () => clearInterval(interval);
-  }, []);
+  }, [activeTab]);
 
   const requestFullNodeDatabase = async () => {
     try {
