@@ -9,7 +9,7 @@ import { MODEM_PRESET_OPTIONS } from './constants';
 describe('LoRaConfigSection', () => {
   describe('Modem Preset Constants', () => {
     it('should have correct number of modem presets', () => {
-      expect(MODEM_PRESET_OPTIONS).toHaveLength(8);
+      expect(MODEM_PRESET_OPTIONS).toHaveLength(9);
     });
 
     it('should have LONG_FAST as first preset', () => {
@@ -21,13 +21,13 @@ describe('LoRaConfigSection', () => {
       });
     });
 
-    it('should have SHORT_TURBO as last preset', () => {
+    it('should have LONG_TURBO as last preset', () => {
       const lastPreset = MODEM_PRESET_OPTIONS[MODEM_PRESET_OPTIONS.length - 1];
       expect(lastPreset).toEqual({
-        value: 8,
-        name: 'SHORT_TURBO',
-        description: 'Short Range - Turbo (Fastest, widest bandwidth)',
-        params: 'BW: 500kHz, SF: 7, CR: 4/5'
+        value: 9,
+        name: 'LONG_TURBO',
+        description: 'Long Range - Turbo (Similar to LongFast)',
+        params: 'BW: 500kHz, SF: 11, CR: 4/5'
       });
     });
 

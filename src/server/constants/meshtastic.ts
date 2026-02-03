@@ -21,9 +21,13 @@ export const PortNum = {
   WAYPOINT_APP: 8,
   AUDIO_APP: 9,
   DETECTION_SENSOR_APP: 10,
+  ALERT_APP: 11,
+  KEY_VERIFICATION_APP: 12,
   REPLY_APP: 32,
   IP_TUNNEL_APP: 33,
   PAXCOUNTER_APP: 34,
+  STORE_FORWARD_PLUSPLUS_APP: 35,
+  NODE_STATUS_APP: 36,
   SERIAL_APP: 64,
   STORE_FORWARD_APP: 65,
   RANGE_TEST_APP: 66,
@@ -35,6 +39,8 @@ export const PortNum = {
   ATAK_PLUGIN: 72,
   MAP_REPORT_APP: 73,
   POWERSTRESS_APP: 74,
+  RETICULUM_TUNNEL_APP: 76,
+  CAYENNE_APP: 77,
   PRIVATE_APP: 256,
   ATAK_FORWARDER: 257,
   MAX: 511,
@@ -64,6 +70,7 @@ export const RoutingError = {
   ADMIN_BAD_SESSION_KEY: 36,
   ADMIN_PUBLIC_KEY_UNAUTHORIZED: 37,
   RATE_LIMIT_EXCEEDED: 38,
+  PKI_SEND_FAIL_PUBLIC_KEY: 39,
 } as const;
 
 export type RoutingErrorType = typeof RoutingError[keyof typeof RoutingError];
@@ -151,7 +158,9 @@ export function isInternalPortNum(portnum: number): boolean {
  * Check if a routing error indicates a PKI key mismatch
  */
 export function isPkiError(errorReason: number): boolean {
-  return errorReason === RoutingError.PKI_FAILED || errorReason === RoutingError.PKI_UNKNOWN_PUBKEY;
+  return errorReason === RoutingError.PKI_FAILED ||
+    errorReason === RoutingError.PKI_UNKNOWN_PUBKEY ||
+    errorReason === RoutingError.PKI_SEND_FAIL_PUBLIC_KEY;
 }
 
 /**
