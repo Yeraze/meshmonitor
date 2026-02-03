@@ -35,6 +35,7 @@ export const channelDatabaseSqlite = sqliteTable('channel_database', {
   description: text('description'),
   isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
   enforceNameValidation: integer('enforce_name_validation', { mode: 'boolean' }).notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0), // Order for decryption priority
   decryptedPacketCount: integer('decrypted_packet_count').notNull().default(0),
   lastDecryptedAt: integer('last_decrypted_at'),
   createdBy: integer('created_by').references(() => usersSqlite.id, { onDelete: 'set null' }),
@@ -68,6 +69,7 @@ export const channelDatabasePostgres = pgTable('channel_database', {
   description: pgText('description'),
   isEnabled: pgBoolean('isEnabled').notNull().default(true),
   enforceNameValidation: pgBoolean('enforceNameValidation').notNull().default(false),
+  sortOrder: pgInteger('sortOrder').notNull().default(0), // Order for decryption priority
   decryptedPacketCount: pgInteger('decryptedPacketCount').notNull().default(0),
   lastDecryptedAt: pgBigint('lastDecryptedAt', { mode: 'number' }),
   createdBy: pgInteger('createdBy').references(() => usersPostgres.id, { onDelete: 'set null' }),
@@ -101,6 +103,7 @@ export const channelDatabaseMysql = mysqlTable('channel_database', {
   description: myText('description'),
   isEnabled: myBoolean('isEnabled').notNull().default(true),
   enforceNameValidation: myBoolean('enforceNameValidation').notNull().default(false),
+  sortOrder: myInt('sortOrder').notNull().default(0), // Order for decryption priority
   decryptedPacketCount: myInt('decryptedPacketCount').notNull().default(0),
   lastDecryptedAt: myBigint('lastDecryptedAt', { mode: 'number' }),
   createdBy: myInt('createdBy').references(() => usersMysql.id, { onDelete: 'set null' }),

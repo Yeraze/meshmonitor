@@ -68,6 +68,7 @@ import { migration as spamDetectionMigration, runMigration061Postgres, runMigrat
 import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
 import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
 import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
+import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -914,6 +915,7 @@ class DatabaseService {
     this.runPositionDoublePrecisionMigration();
     this.runPositionHistoryHoursMigration();
     this.runEnforceNameValidationMigration();
+    this.runSortOrderMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2181,6 +2183,25 @@ class DatabaseService {
       logger.debug('✅ Enforce name validation migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run enforce name validation migration:', error);
+      throw error;
+    }
+  }
+
+  private runSortOrderMigration(): void {
+    const migrationKey = 'migration_065_sortorder';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 065 (sortOrder) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 065: Add sort_order column...');
+      sortOrderMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Sort order migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run sort order migration:', error);
       throw error;
     }
   }
@@ -9778,6 +9799,9 @@ class DatabaseService {
       // Run migration 064: Add enforce_name_validation column to channel_database
       await runMigration064Postgres(client);
 
+      // Run migration 065: Add sortOrder column to channel_database
+      await runMigration065Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -9881,6 +9905,9 @@ class DatabaseService {
 
       // Run migration 064: Add enforce_name_validation column to channel_database
       await runMigration064Mysql(pool);
+
+      // Run migration 065: Add sortOrder column to channel_database
+      await runMigration065Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -10277,6 +10304,8 @@ class DatabaseService {
     pskLength?: number;
     description?: string | null;
     isEnabled?: boolean;
+    enforceNameValidation?: boolean;
+    sortOrder?: number;
   }): Promise<void> {
     if (!this.channelDatabaseRepo) {
       throw new Error('Channel database repository not initialized');
@@ -10292,6 +10321,17 @@ class DatabaseService {
       throw new Error('Channel database repository not initialized');
     }
     return this.channelDatabaseRepo.deleteAsync(id);
+  }
+
+  /**
+   * Reorder channel database entries
+   * Updates the sortOrder for each entry in the provided array
+   */
+  async reorderChannelDatabaseEntriesAsync(updates: { id: number; sortOrder: number }[]): Promise<void> {
+    if (!this.channelDatabaseRepo) {
+      throw new Error('Channel database repository not initialized');
+    }
+    return this.channelDatabaseRepo.reorderAsync(updates);
   }
 
   /**

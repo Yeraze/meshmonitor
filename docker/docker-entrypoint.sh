@@ -121,5 +121,45 @@ if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
     fi
 fi
 
-# Execute the original supervisord command
-exec "$@"
+# When running as non-root, we need to modify supervisord.conf
+# because it has user=root and uses su-exec which won't work
+if [ "$RUNNING_AS_ROOT" = "false" ]; then
+    echo "Configuring supervisord for non-root execution..."
+    # Create a modified supervisord.conf without user=root and su-exec
+    cat > /tmp/supervisord-nonroot.conf << 'SUPERVISORD_EOF'
+[supervisord]
+nodaemon=true
+logfile=/dev/null
+logfile_maxbytes=0
+pidfile=/tmp/supervisord.pid
+
+[program:meshmonitor]
+command=npm start
+directory=/app
+autostart=true
+autorestart=true
+startretries=3
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+environment=NODE_ENV="production",PORT="3001"
+
+[program:apprise]
+command=/opt/apprise-venv/bin/python /app/apprise-api.py
+directory=/app
+autostart=true
+autorestart=true
+startretries=3
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+environment=APPRISE_CONFIG_DIR="/data/apprise-config",APPRISE_STATEFUL_MODE="simple"
+SUPERVISORD_EOF
+    # Use the non-root config
+    exec /usr/bin/supervisord -c /tmp/supervisord-nonroot.conf
+else
+    # Execute the original supervisord command (as root)
+    exec "$@"
+fi

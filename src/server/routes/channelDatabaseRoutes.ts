@@ -34,6 +34,8 @@ function transformChannelForResponse(channel: any, includeFullPsk: boolean = fal
     psk: includeFullPsk ? channel.psk : undefined,
     description: channel.description,
     isEnabled: channel.isEnabled,
+    enforceNameValidation: channel.enforceNameValidation ?? false,
+    sortOrder: channel.sortOrder ?? 0,
     decryptedPacketCount: channel.decryptedPacketCount,
     lastDecryptedAt: channel.lastDecryptedAt,
     createdBy: channel.createdBy,
@@ -74,6 +76,43 @@ router.get('/', async (req: Request, res: Response) => {
       success: false,
       error: 'Internal Server Error',
       message: 'Failed to retrieve channel database entries'
+    });
+  }
+});
+
+/**
+ * GET /api/channel-database/retroactive-decrypt/progress
+ * Get progress of current retroactive decryption process
+ * Admin only
+ * NOTE: This route must be defined BEFORE /:id to avoid route matching issues
+ */
+router.get('/retroactive-decrypt/progress', async (req: Request, res: Response) => {
+  try {
+    const user = req.user;
+    const isAdmin = user?.isAdmin ?? false;
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Admin access required'
+      });
+    }
+
+    const progress = retroactiveDecryptionService.getProgress();
+    const isRunning = retroactiveDecryptionService.isRunning();
+
+    res.json({
+      success: true,
+      isRunning,
+      progress
+    });
+  } catch (error) {
+    logger.error('Error getting retroactive decryption progress:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to get retroactive decryption progress'
     });
   }
 });
@@ -233,6 +272,85 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * PUT /api/channel-database/reorder
+ * Reorder channel database entries
+ * Admin only
+ * NOTE: This route must be defined BEFORE /:id to avoid route matching issues
+ */
+router.put('/reorder', async (req: Request, res: Response) => {
+  try {
+    const user = req.user;
+    const isAdmin = user?.isAdmin ?? false;
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Admin access required to reorder channel database entries'
+      });
+    }
+
+    const { channels } = req.body;
+
+    // Validate request body
+    if (!Array.isArray(channels)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'channels must be an array'
+      });
+    }
+
+    // Validate each entry
+    const updates: { id: number; sortOrder: number }[] = [];
+    for (const entry of channels) {
+      if (typeof entry.id !== 'number' || !Number.isInteger(entry.id)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'Each channel entry must have a numeric id'
+        });
+      }
+      if (typeof entry.sortOrder !== 'number' || !Number.isInteger(entry.sortOrder)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'Each channel entry must have a numeric sortOrder'
+        });
+      }
+      updates.push({ id: entry.id, sortOrder: entry.sortOrder });
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'At least one channel entry is required'
+      });
+    }
+
+    await databaseService.reorderChannelDatabaseEntriesAsync(updates);
+
+    // Invalidate the decryption cache
+    channelDecryptionService.invalidateCache();
+
+    logger.info(`Channel database reordered (${updates.length} entries) by user ${user?.username ?? 'unknown'}`);
+
+    res.json({
+      success: true,
+      message: `Channel database order updated for ${updates.length} entries`
+    });
+  } catch (error) {
+    logger.error('Error reordering channel database entries:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to reorder channel database entries'
+    });
+  }
+});
+
+/**
  * PUT /api/channel-database/:id
  * Update an existing channel database entry
  * Admin only
@@ -326,6 +444,21 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     if (isEnabled !== undefined) {
       updates.isEnabled = Boolean(isEnabled);
+    }
+
+    if (req.body.sortOrder !== undefined) {
+      if (typeof req.body.sortOrder !== 'number' || !Number.isInteger(req.body.sortOrder)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'sortOrder must be an integer'
+        });
+      }
+      updates.sortOrder = req.body.sortOrder;
+    }
+
+    if (req.body.enforceNameValidation !== undefined) {
+      updates.enforceNameValidation = Boolean(req.body.enforceNameValidation);
     }
 
     if (Object.keys(updates).length === 0) {
@@ -497,42 +630,6 @@ router.post('/:id/retroactive-decrypt', async (req: Request, res: Response) => {
       success: false,
       error: 'Internal Server Error',
       message: 'Failed to trigger retroactive decryption'
-    });
-  }
-});
-
-/**
- * GET /api/channel-database/retroactive-decrypt/progress
- * Get progress of current retroactive decryption process
- * Admin only
- */
-router.get('/retroactive-decrypt/progress', async (req: Request, res: Response) => {
-  try {
-    const user = req.user;
-    const isAdmin = user?.isAdmin ?? false;
-
-    if (!isAdmin) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Admin access required'
-      });
-    }
-
-    const progress = retroactiveDecryptionService.getProgress();
-    const isRunning = retroactiveDecryptionService.isRunning();
-
-    res.json({
-      success: true,
-      isRunning,
-      progress
-    });
-  } catch (error) {
-    logger.error('Error getting retroactive decryption progress:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal Server Error',
-      message: 'Failed to get retroactive decryption progress'
     });
   }
 });

@@ -1290,6 +1290,16 @@ class ApiService {
   }
 
   /**
+   * Reorder channel database entries
+   */
+  async reorderChannelDatabaseEntries(channels: { id: number; sortOrder: number }[]): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    return this.put('/api/channel-database/reorder', { channels });
+  }
+
+  /**
    * Trigger retroactive decryption for a specific channel
    */
   async triggerRetroactiveDecryption(channelId: number): Promise<{
@@ -1389,6 +1399,7 @@ export interface ChannelDatabaseEntry {
   description: string | null;
   isEnabled: boolean;
   enforceNameValidation: boolean;
+  sortOrder: number;
   decryptedPacketCount: number;
   lastDecryptedAt: number | null;
   createdBy: number | null;

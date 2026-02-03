@@ -6607,13 +6607,26 @@ class MeshtasticManager {
     }
 
     try {
-      // Get local node's position from database for position exchange
-      const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
-      const localPosition = (localNode?.latitude && localNode?.longitude) ? {
-        latitude: localNode.latitude,
-        longitude: localNode.longitude,
-        altitude: localNode.altitude
-      } : undefined;
+      // Check if the local node has a valid position source
+      // GpsMode enum: 0 = DISABLED, 1 = ENABLED, 2 = NOT_PRESENT
+      const positionConfig = this.actualDeviceConfig?.position;
+      const hasFixedPosition = positionConfig?.fixedPosition === true;
+      const hasGpsEnabled = positionConfig?.gpsMode === 1; // GpsMode.ENABLED
+      const hasValidPositionSource = hasFixedPosition || hasGpsEnabled;
+
+      let localPosition: { latitude: number; longitude: number; altitude?: number | null } | undefined;
+
+      // Only include position data if the node has a valid position source
+      if (hasValidPositionSource) {
+        const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
+        localPosition = (localNode?.latitude && localNode?.longitude) ? {
+          latitude: localNode.latitude,
+          longitude: localNode.longitude,
+          altitude: localNode.altitude
+        } : undefined;
+      }
+
+      logger.info(`📍 Position exchange: fixedPosition=${hasFixedPosition}, gpsMode=${positionConfig?.gpsMode}, hasValidPositionSource=${hasValidPositionSource}, willSendPosition=${!!localPosition}`);
 
       const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
         destination,
