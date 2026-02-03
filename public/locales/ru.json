@@ -3550,5 +3550,10 @@
     "tileset_manager.autodetect_none_found": "Рабочие URL-адреса плиток не найдены",
     "tileset_manager.use_this_url": "Использовать",
     "tileset_manager.reload_required": "Для корректной работы нового сервера тайлов требуется перезагрузка страницы из-за ограничений безопасности браузера.",
-    "auto_responder.script_args_placeholder": "--arg value --flag"
+    "auto_responder.script_args_placeholder": "--arg value --flag",
+    "channels.description": "Описание:",
+    "channels.source": "Источник:",
+    "channels.channel_database": "База данных каналов",
+    "tileset_manager.autodetecting": "Обнаружение...",
+    "tileset_manager.reload_now": "Перезагрузить страницу"
 }
