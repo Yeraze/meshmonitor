@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../contexts/SettingsContext';
 import { validateTileUrl, isVectorTileUrl, type CustomTileset } from '../config/tilesets';
-import { testTileServer, formatTileSize, type TileTestResult } from '../utils/tileServerTest';
+import { testTileServer, formatTileSize, autodetectTileServer, type TileTestResult, type AutodetectResult, type AutodetectProgress } from '../utils/tileServerTest';
 import './CustomTilesetManager.css';
 
 interface FormData {
@@ -31,6 +31,11 @@ export function CustomTilesetManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TileTestResult | null>(null);
+  const [isAutodetecting, setIsAutodetecting] = useState(false);
+  const [autodetectProgress, setAutodetectProgress] = useState<AutodetectProgress | null>(null);
+  const [autodetectResult, setAutodetectResult] = useState<AutodetectResult | null>(null);
+  const [autodetectBaseUrl, setAutodetectBaseUrl] = useState('');
+  const [showReloadNotice, setShowReloadNotice] = useState(false);
 
   const validateForm = (): boolean => {
     if (!formData.name.trim()) {
@@ -104,6 +109,7 @@ export function CustomTilesetManager() {
 
       setFormData(DEFAULT_FORM_DATA);
       setUrlValidation(null);
+      setShowReloadNotice(true);
     } catch (error) {
       console.error('Failed to save custom tileset:', error);
       alert(t('tileset_manager.save_failed'));
@@ -118,6 +124,46 @@ export function CustomTilesetManager() {
     setFormData(DEFAULT_FORM_DATA);
     setUrlValidation(null);
     setTestResult(null);
+    setAutodetectResult(null);
+    setAutodetectBaseUrl('');
+  };
+
+  const handleAutodetect = async () => {
+    if (!autodetectBaseUrl.trim()) {
+      return;
+    }
+
+    setIsAutodetecting(true);
+    setAutodetectProgress(null);
+    setAutodetectResult(null);
+    setTestResult(null);
+
+    try {
+      const result = await autodetectTileServer(
+        autodetectBaseUrl,
+        (progress) => setAutodetectProgress(progress)
+      );
+      setAutodetectResult(result);
+    } catch (error) {
+      console.error('Autodetect failed:', error);
+      setAutodetectResult({
+        success: false,
+        detectedUrls: [],
+        baseUrl: autodetectBaseUrl,
+        testedPatterns: 0,
+        errors: [error instanceof Error ? error.message : 'Unknown error']
+      });
+    } finally {
+      setIsAutodetecting(false);
+      setAutodetectProgress(null);
+    }
+  };
+
+  const handleSelectAutodetectedUrl = (url: string) => {
+    setFormData({ ...formData, url });
+    handleUrlChange(url);
+    setAutodetectResult(null);
+    setAutodetectBaseUrl('');
   };
 
   const handleEdit = (tileset: CustomTileset) => {
@@ -165,6 +211,28 @@ export function CustomTilesetManager() {
           </a>
         </span>
       </div>
+
+      {showReloadNotice && (
+        <div className="reload-notice">
+          <div className="reload-notice-content">
+            <span className="reload-notice-icon">⚠️</span>
+            <span className="reload-notice-text">{t('tileset_manager.reload_required')}</span>
+            <button
+              className="btn-reload"
+              onClick={() => window.location.reload()}
+            >
+              {t('tileset_manager.reload_now')}
+            </button>
+            <button
+              className="btn-dismiss"
+              onClick={() => setShowReloadNotice(false)}
+              title={t('common.dismiss')}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {customTilesets.length === 0 && !isAdding && !editingId && (
         <div className="no-custom-tilesets">
@@ -276,6 +344,92 @@ export function CustomTilesetManager() {
                 {urlValidation.error}
               </div>
             )}
+
+            {/* Autodetect Section */}
+            <div className="autodetect-section">
+              <div className="autodetect-header">
+                <span className="autodetect-icon">🔍</span>
+                <span>{t('tileset_manager.autodetect_title')}</span>
+              </div>
+              <div className="autodetect-input-row">
+                <input
+                  type="text"
+                  value={autodetectBaseUrl}
+                  onChange={(e) => setAutodetectBaseUrl(e.target.value)}
+                  placeholder={t('tileset_manager.autodetect_placeholder')}
+                  disabled={isSaving || isAutodetecting}
+                />
+                <button
+                  type="button"
+                  className="btn-autodetect"
+                  onClick={handleAutodetect}
+                  disabled={isSaving || isAutodetecting || !autodetectBaseUrl.trim()}
+                >
+                  {isAutodetecting ? t('tileset_manager.autodetecting') : t('tileset_manager.autodetect_button')}
+                </button>
+              </div>
+              <small>{t('tileset_manager.autodetect_help')}</small>
+
+              {/* Autodetect Progress */}
+              {isAutodetecting && autodetectProgress && (
+                <div className="autodetect-progress">
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${(autodetectProgress.current / autodetectProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  <div className="progress-text">
+                    {t('tileset_manager.autodetect_testing', {
+                      current: autodetectProgress.current,
+                      total: autodetectProgress.total
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Autodetect Results */}
+              {autodetectResult && (
+                <div className={`autodetect-result ${autodetectResult.success ? 'success' : 'error'}`}>
+                  {autodetectResult.success ? (
+                    <>
+                      <div className="autodetect-result-header">
+                        ✅ {t('tileset_manager.autodetect_found', { count: autodetectResult.detectedUrls.length })}
+                      </div>
+                      <div className="autodetect-url-list">
+                        {autodetectResult.detectedUrls.map((detected, index) => (
+                          <div key={index} className="autodetect-url-item">
+                            <div className="autodetect-url-info">
+                              <span className={`tileset-badge ${detected.type}`}>
+                                {detected.type === 'vector' ? t('tileset_manager.vector') : t('tileset_manager.raster')}
+                              </span>
+                              <span className="autodetect-url-text">{detected.url}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-use-url"
+                              onClick={() => handleSelectAutodetectedUrl(detected.url)}
+                            >
+                              {t('tileset_manager.use_this_url')}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="autodetect-result-header">
+                        ❌ {t('tileset_manager.autodetect_none_found')}
+                      </div>
+                      {autodetectResult.errors.map((error, i) => (
+                        <div key={i} className="autodetect-error">{error}</div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {testResult && (
               <div className={`test-result test-result-${testResult.status}`}>
                 <div className="test-result-header">

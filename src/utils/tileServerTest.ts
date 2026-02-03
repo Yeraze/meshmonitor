@@ -333,3 +333,80 @@ export function formatTileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 }
+
+export interface AutodetectResult {
+  success: boolean;
+  detectedUrls: Array<{
+    url: string;
+    type: 'vector' | 'raster';
+    protocol: 'http' | 'https';
+    testResult: TileTestResult;
+  }>;
+  baseUrl: string;
+  testedPatterns: number;
+  errors: string[];
+}
+
+export interface AutodetectProgress {
+  current: number;
+  total: number;
+  currentUrl: string;
+  phase: 'http' | 'https';
+}
+
+/**
+ * Autodetect tile server URL by testing common patterns
+ * Uses backend API to avoid CORS restrictions
+ *
+ * @param baseUrl - Base URL or hostname:port to test
+ * @param _onProgress - Optional callback for progress updates (not used with backend API)
+ * @returns AutodetectResult with all working URLs found
+ */
+export async function autodetectTileServer(
+  baseUrl: string,
+  _onProgress?: (progress: AutodetectProgress) => void
+): Promise<AutodetectResult> {
+  try {
+    // Dynamically import api to avoid circular dependencies
+    const { default: api } = await import('../services/api.js');
+    const apiBase = await api.getBaseUrl();
+
+    // Get CSRF token from sessionStorage
+    const csrfToken = sessionStorage.getItem('csrfToken');
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
+
+    const response = await fetch(`${apiBase}/api/tile-server/autodetect`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ baseUrl })
+    });
+
+    if (!response.ok) {
+      return {
+        success: false,
+        detectedUrls: [],
+        baseUrl,
+        testedPatterns: 0,
+        errors: [`Server error: ${response.status} ${response.statusText}`]
+      };
+    }
+
+    return await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      detectedUrls: [],
+      baseUrl,
+      testedPatterns: 0,
+      errors: [error instanceof Error ? error.message : 'Failed to connect to server']
+    };
+  }
+}

@@ -635,6 +635,7 @@ import scriptContentRoutes from './routes/scriptContentRoutes.js';
 import apiTokenRoutes from './routes/apiTokenRoutes.js';
 import channelDatabaseRoutes from './routes/channelDatabaseRoutes.js';
 import newsRoutes from './routes/newsRoutes.js';
+import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -715,6 +716,9 @@ apiRouter.use('/', linkPreviewRoutes);
 
 // Script content proxy routes (for User Scripts Gallery)
 apiRouter.use('/', scriptContentRoutes);
+
+// Tile server testing routes (for Custom Tileset Manager autodetect)
+apiRouter.use('/tile-server', optionalAuth(), tileServerRoutes);
 
 // API Routes
 /**
