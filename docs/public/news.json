@@ -1,7 +1,15 @@
 {
   "version": "1",
-  "lastUpdated": "2026-01-28T18:00:00Z",
+  "lastUpdated": "2026-02-02T18:00:00Z",
   "items": [
+    {
+      "id": "news-2026-02-02-channel-database-improvements",
+      "title": "Channel Database: Priority Ordering & Name Validation",
+      "content": "MeshMonitor v3.4.4 enhances the **Channel Database** feature with priority-based ordering and name validation for server-side decryption.\n\n## Drag-and-Drop Priority Ordering\n\nChannel Database entries can now be reordered using **drag-and-drop**. This controls the decryption priority - when multiple channels could potentially decrypt a packet, only the **first matching channel** in sort order will be used.\n\n### Why This Matters\n\n- If multiple channels share the same PSK, the order determines which channel name is associated with decrypted packets\n- Higher-priority channels (earlier in the list) are tried first during decryption\n- Reduces unnecessary decryption attempts by trying likely channels first\n\n## Enforce Name Validation\n\nA new **Enforce Name Validation** option ensures that a channel only decrypts packets that have a matching channel hash. This is useful when:\n\n- Multiple channels share the same PSK (e.g., default keys)\n- You want packets attributed to the correct channel name\n- You're monitoring networks where channel naming conventions matter\n\n**Note:** If the sending device doesn't include channel hash information in packets, enabling this option may prevent decryption even with a valid PSK.\n\n[Read more about Channel Database](https://meshmonitor.org/features/channel-database)",
+      "date": "2026-02-02T18:00:00Z",
+      "category": "feature",
+      "priority": "normal"
+    },
     {
       "id": "news-2026-01-28-geofence-triggers",
       "title": "New Feature: Geofence Triggers",
