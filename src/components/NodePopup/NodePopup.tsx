@@ -99,7 +99,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
         left: nodePopup.position.x,
         top: nodePopup.position.y - 10,
         transform: 'translateX(-50%) translateY(-100%)',
-        zIndex: 1000,
+        zIndex: 10002, // Above sidebar (10001)
       }}
     >
       {/* Header with node name */}
