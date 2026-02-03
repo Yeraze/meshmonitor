@@ -2527,7 +2527,7 @@
     "telemetry.no_data": "Для этого узла отсутствуют данные телеметрии",
     "admin_commands.gps_tx_gpio": "GPS TX GPIО",
     "channels_config.toast_export_failed": "Не удалось экспортировать канал",
-    "serial_config.timeout": "",
+    "serial_config.timeout": "Таймаут (мс)",
     "device_config.rebroadcast_mode_description": "Как устройство обрабатывает ретрансляцию пакетов от других узлов.",
     "node_details.signal_snr": "Сигнал (отношение сигнал/шум)",
     "admin_commands.save_mqtt_config": "Сохранить настройки MQTT",
