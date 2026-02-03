@@ -3548,7 +3548,9 @@ function App() {
   const processedNodes = useMemo((): DeviceInfo[] => {
     const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
 
+    // Age filter (favorites are always visible)
     const ageFiltered = nodes.filter(node => {
+      if (node.isFavorite) return true;
       if (!node.lastHeard) return false;
       return node.lastHeard >= cutoffTime;
     });
