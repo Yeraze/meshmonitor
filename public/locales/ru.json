@@ -2588,7 +2588,7 @@
     "automation.auto_announce.scheduled_sends_description": "Используйте cron-выражение для планирования объявлений вместо фиксированного интервала",
     "position_config.smart_broadcast_description": "Транслировать только при существенном изменении местоположения",
     "backup_management.manual_description": "Создайте резервную копию и загрузите её на свой компьютер.",
-    "serial_config.save_button": "",
+    "serial_config.save_button": "Сохранить настройки последовательного порта",
     "mqtt_config.map_publish_interval_description": "Как часто публиковать обновления местоположения на карте (0 — значение по умолчанию)",
     "theme_editor.export": "Экспорт",
     "notifications.apprise_about": "О Apprise:",
