@@ -38,13 +38,26 @@ The Channel Database is located in the **Configuration** tab under **Channel Dat
 Enter the PSK in Base64 format, the same format used by Meshtastic. You can find channel PSKs in your device's channel configuration or exported settings.
 :::
 
+## Channel Priority and Ordering
+
+Channels in the database are tried in **sort order** during decryption. The first channel that successfully decrypts a packet wins. You can control the order using drag-and-drop:
+
+1. Navigate to **Configuration** > **Channel Database**
+2. Drag channels using the handle on the left side of each channel card
+3. Drop to reorder - channels higher in the list are tried first
+4. The new order is saved automatically
+
+::: tip Decryption Priority
+If multiple channels could potentially decrypt the same packet (e.g., same PSK with different names), only the first matching channel in sort order will be credited with the decryption.
+:::
+
 ## How Server-Side Decryption Works
 
 When MeshMonitor receives an encrypted packet:
 
 1. The packet is first processed by your connected Meshtastic node
 2. If your node can decrypt it (channel is in device slots), you see the decrypted content
-3. If your node cannot decrypt it, MeshMonitor tries each enabled Channel Database entry
+3. If your node cannot decrypt it, MeshMonitor tries each enabled Channel Database entry **in sort order**
 4. On successful decryption, the packet content is decoded and displayed
 5. The Packet Monitor shows a special indicator for server-decrypted packets
 
@@ -90,6 +103,18 @@ The Channel Database uses a permission system to control access:
 ### Enabling/Disabling Channels
 
 Toggle channels on or off without deleting them. Disabled channels are not used for decryption but remain in the database.
+
+### Enforce Name Validation
+
+When enabled, this option ensures that a channel will only decrypt packets that have a matching channel hash. This is useful when:
+
+- Multiple channels share the same PSK (e.g., default keys)
+- You want to ensure packets are attributed to the correct channel name
+- You're monitoring networks where channel naming conventions matter
+
+::: warning
+If the sending device doesn't include channel hash information in packets, enabling this option may prevent decryption even with a valid PSK.
+:::
 
 ### Editing Channels
 
