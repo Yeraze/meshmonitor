@@ -3864,15 +3864,16 @@ function App() {
   const handleSenderClick = useCallback((nodeId: string, event: React.MouseEvent) => {
     const rect = event.currentTarget.getBoundingClientRect();
 
-    // Get sidebar width from CSS variable to avoid overlap
-    const sidebarWidth = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width') || '60px'
-    );
+    // Get actual sidebar width from the sidebar element itself
+    // This handles expanded sidebar (240px) and calc() with safe-area-inset
+    const sidebarElement = document.querySelector('.sidebar');
+    const sidebarWidth = sidebarElement ? sidebarElement.getBoundingClientRect().width : 60;
 
-    // Popup max-width is 280px, and it's centered with translateX(-50%)
-    // So the left edge will be at x - 140px
-    const popupHalfWidth = 140;
+    // Popup max-width is 300px, and it's centered with translateX(-50%)
+    // So the left edge will be at x - 150px
+    const popupHalfWidth = 150;
     let x = rect.left + rect.width / 2;
+    let y = rect.top;
 
     // Ensure popup doesn't go under the sidebar (with 10px padding for safety)
     const minX = sidebarWidth + popupHalfWidth + 10;
@@ -3880,11 +3881,24 @@ function App() {
       x = minX;
     }
 
+    // Ensure popup doesn't go off the right edge of the screen
+    const maxX = window.innerWidth - popupHalfWidth - 10;
+    if (x > maxX) {
+      x = maxX;
+    }
+
+    // Ensure popup doesn't go above the viewport (popup appears above click point)
+    // Popup is approximately 300px tall max, and uses translateY(-100%)
+    const minY = 320; // Approximate popup height + padding
+    if (y < minY) {
+      y = minY;
+    }
+
     setNodePopup({
       nodeId,
       position: {
         x,
-        y: rect.top,
+        y,
       },
     });
   }, []);
