@@ -5079,7 +5079,12 @@ class DatabaseService {
     // Calculate the interval in milliseconds
     const intervalMs = actualIntervalMinutes * 60 * 1000;
 
+    // Telemetry types that should use raw values instead of averaging
+    // These are discrete integer values where averaging produces meaningless floats
+    const rawValueTypes = ['sats_in_view'];
+
     // Build the query to group and average telemetry data by time intervals
+    // Exclude raw value types from this query - they'll be fetched separately
     let query = `
       SELECT
         nodeId,
@@ -5091,8 +5096,9 @@ class DatabaseService {
         MIN(createdAt) as createdAt
       FROM telemetry
       WHERE nodeId = ?
+        AND telemetryType NOT IN (${rawValueTypes.map(() => '?').join(', ')})
     `;
-    const params: any[] = [intervalMs, intervalMs, nodeId];
+    const params: any[] = [intervalMs, intervalMs, nodeId, ...rawValueTypes];
 
     if (sinceTimestamp !== undefined) {
       query += ` AND timestamp >= ?`;
@@ -5143,7 +5149,44 @@ class DatabaseService {
 
     const stmt = this.db.prepare(query);
     const telemetry = stmt.all(...params) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+
+    // Fetch raw values for types that shouldn't be averaged (sparse integer data)
+    let rawQuery = `
+      SELECT
+        nodeId,
+        nodeNum,
+        telemetryType,
+        timestamp,
+        value,
+        unit,
+        createdAt
+      FROM telemetry
+      WHERE nodeId = ?
+        AND telemetryType IN (${rawValueTypes.map(() => '?').join(', ')})
+    `;
+    const rawParams: any[] = [nodeId, ...rawValueTypes];
+
+    if (sinceTimestamp !== undefined) {
+      rawQuery += ` AND timestamp >= ?`;
+      rawParams.push(sinceTimestamp);
+    }
+
+    rawQuery += ` ORDER BY timestamp DESC`;
+
+    // Apply same limit logic for raw data
+    if (maxHours !== undefined) {
+      // For raw data, limit based on expected frequency (~10 per hour max for position data)
+      const rawLimit = Math.ceil((maxHours + 1) * 10 * rawValueTypes.length * 1.5);
+      rawQuery += ` LIMIT ?`;
+      rawParams.push(rawLimit);
+    }
+
+    const rawStmt = this.db.prepare(rawQuery);
+    const rawTelemetry = rawStmt.all(...rawParams) as DbTelemetry[];
+
+    // Combine averaged and raw telemetry
+    const combined = [...telemetry, ...rawTelemetry];
+    return combined.map(t => this.normalizeBigInts(t));
   }
 
   /**
