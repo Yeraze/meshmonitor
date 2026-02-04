@@ -33,9 +33,10 @@ interface PacketStatsChartProps {
   total: number;
   chartId: string;
   wide?: boolean;
+  headerExtra?: React.ReactNode;
 }
 
-const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId, wide = false }) => {
+const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId, wide = false, headerExtra }) => {
   const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
   if (filteredData.length === 0) return null;
@@ -48,6 +49,7 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
   return (
     <div className={wide ? "info-section-wide" : "info-section"}>
       <h3>{title}</h3>
+      {headerExtra}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <div style={{ width: `${chartSize}px`, height: `${chartSize}px` }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -652,35 +654,47 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length]
           }));
 
+          const timeRangeButtonStyle = (active: boolean): React.CSSProperties => ({
+            padding: '0.25rem 0.75rem',
+            fontSize: '0.85em',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: active ? 600 : 400,
+            background: active ? 'var(--ctp-blue)' : 'var(--ctp-surface1)',
+            color: active ? 'var(--ctp-crust)' : 'var(--ctp-subtext0)',
+          });
+
+          const timeRangeButtons = (
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <button
+                onClick={() => setDistributionTimeRange('hour')}
+                style={timeRangeButtonStyle(distributionTimeRange === 'hour')}
+              >
+                {t('info.last_hour')}
+              </button>
+              <button
+                onClick={() => setDistributionTimeRange('24h')}
+                style={timeRangeButtonStyle(distributionTimeRange === '24h')}
+              >
+                {t('info.last_24_hours')}
+              </button>
+              <button
+                onClick={() => setDistributionTimeRange('all')}
+                style={timeRangeButtonStyle(distributionTimeRange === 'all')}
+              >
+                {t('info.all_data')}
+              </button>
+            </div>
+          );
+
           return (
             <>
-              <div className="info-section">
-                <h3>{t('info.packet_distribution')}</h3>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <button
-                    className={`btn btn-sm ${distributionTimeRange === 'hour' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setDistributionTimeRange('hour')}
-                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.85em' }}
-                  >
-                    {t('info.last_hour')}
-                  </button>
-                  <button
-                    className={`btn btn-sm ${distributionTimeRange === '24h' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setDistributionTimeRange('24h')}
-                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.85em' }}
-                  >
-                    {t('info.last_24_hours')}
-                  </button>
-                  <button
-                    className={`btn btn-sm ${distributionTimeRange === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setDistributionTimeRange('all')}
-                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.85em' }}
-                  >
-                    {t('info.all_data')}
-                  </button>
+              {loadingDistribution && (
+                <div className="info-section">
+                  <p>{t('common.loading_indicator')}</p>
                 </div>
-                {loadingDistribution && <p>{t('common.loading_indicator')}</p>}
-              </div>
+              )}
 
               {!loadingDistribution && packetDistribution.total > 0 && (
                 <>
@@ -689,6 +703,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                     data={deviceData}
                     total={packetDistribution.total}
                     chartId="dist-device"
+                    headerExtra={timeRangeButtons}
                     wide
                   />
                   <PacketStatsChart
