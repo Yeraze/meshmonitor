@@ -28,8 +28,11 @@ Usage as a standalone script:
     ./remote-admin.py --ip 192.168.1.100 --dest !abcd1234 --reboot
 
 Environment variables (set automatically by MeshMonitor):
-    MESHTASTIC_IP      - IP address of the connected Meshtastic node
-    MESHTASTIC_PORT    - TCP port (usually 4403)
+    MESHTASTIC_IP      - IP address to connect to. When the Virtual Node is enabled,
+                         this points to 127.0.0.1 (the Virtual Node) so commands are
+                         relayed through MeshMonitor's existing connection instead of
+                         opening a second TCP connection to the physical node.
+    MESHTASTIC_PORT    - TCP port (physical node port, or Virtual Node port when enabled)
     NODE_ID            - Node ID that triggered the event
     NODE_NUM           - Node number (decimal)
     NODE_LONG_NAME     - Node's long name (if known)

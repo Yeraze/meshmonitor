@@ -417,6 +417,24 @@ class MeshtasticManager {
   }
 
   /**
+   * Get connection config for scripts. When Virtual Node is enabled, returns
+   * localhost + virtual node port so scripts connect through the Virtual Node
+   * instead of opening a second TCP connection to the physical node (which would
+   * kill MeshMonitor's connection). Falls back to getConfig() when Virtual Node
+   * is disabled.
+   */
+  private getScriptConnectionConfig(): MeshtasticConfig {
+    const env = getEnvironmentConfig();
+    if (env.enableVirtualNode) {
+      return {
+        nodeIp: '127.0.0.1',
+        tcpPort: env.virtualNodePort,
+      };
+    }
+    return this.getConfig();
+  }
+
+  /**
    * Set a runtime IP (and optionally port) override and reconnect
    * Accepts formats: "192.168.1.100", "192.168.1.100:4403", "hostname", "hostname:4403"
    * This setting is temporary and will reset when the container restarts
@@ -1670,7 +1688,7 @@ class MeshtasticManager {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       const node = databaseService.getNode(nodeNum);
       const dist = distanceToGeofenceCenter(lat, lng, trigger.shape);
-      const config = this.getConfig();
+      const config = this.getScriptConnectionConfig();
 
       const scriptEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
@@ -1921,7 +1939,7 @@ class MeshtasticManager {
       const execFileAsync = promisify(execFile);
 
       // Prepare environment variables for timer scripts
-      const config = this.getConfig();
+      const config = this.getScriptConnectionConfig();
       const scriptEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
         TIMER_NAME: triggerName,
@@ -7808,7 +7826,7 @@ class MeshtasticManager {
    * - PARAM_*: Extracted parameters from trigger pattern
    */
   private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: AutoResponderTrigger, packetId?: number) {
-    const config = this.getConfig();
+    const config = this.getScriptConnectionConfig();
     const scriptEnv: Record<string, string> = {
       ...process.env as Record<string, string>,
       MESSAGE: message.text,

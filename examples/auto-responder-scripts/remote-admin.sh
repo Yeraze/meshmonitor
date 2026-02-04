@@ -26,8 +26,10 @@
 #   ./remote-admin.sh --set lora.region US
 #
 # Environment variables (set automatically by MeshMonitor):
-#   MESHTASTIC_IP   - IP address of connected node
-#   MESHTASTIC_PORT - TCP port (usually 4403)
+#   MESHTASTIC_IP   - IP address to connect to. When the Virtual Node is enabled,
+#                     this points to 127.0.0.1 (the Virtual Node) so commands are
+#                     relayed through MeshMonitor's existing connection.
+#   MESHTASTIC_PORT - TCP port (physical node port, or Virtual Node port when enabled)
 #   NODE_ID         - Destination node ID (e.g., !abcd1234) - for Geofence/AutoResponder
 #
 # All arguments are passed directly to the meshtastic CLI.

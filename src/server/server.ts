@@ -8460,9 +8460,17 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     }
 
     // Common environment variables for all trigger types
-    // Support both MESHTASTIC_IP and IP for compatibility with different scripts
-    const meshtasticIp = process.env.MESHTASTIC_NODE_IP || process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
-    const meshtasticPort = process.env.MESHTASTIC_NODE_PORT || process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
+    // When Virtual Node is enabled, route scripts through it to avoid opening a
+    // second TCP connection to the physical node (which kills MeshMonitor's connection)
+    let meshtasticIp: string;
+    let meshtasticPort: string;
+    if (env.enableVirtualNode) {
+      meshtasticIp = '127.0.0.1';
+      meshtasticPort = String(env.virtualNodePort);
+    } else {
+      meshtasticIp = process.env.MESHTASTIC_NODE_IP || process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
+      meshtasticPort = process.env.MESHTASTIC_NODE_PORT || process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
+    }
     scriptEnv.IP = meshtasticIp;
     scriptEnv.PORT = meshtasticPort;
     scriptEnv.MESHTASTIC_IP = meshtasticIp;

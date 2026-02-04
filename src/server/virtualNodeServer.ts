@@ -76,6 +76,15 @@ export class VirtualNodeServer extends EventEmitter {
   }
 
   /**
+   * Check if a connected client is from localhost (container-internal).
+   * Localhost clients are trusted (e.g. scripts executed by MeshMonitor itself).
+   */
+  private isLocalhostClient(client: ConnectedClient): boolean {
+    const remoteAddress = client.socket.remoteAddress;
+    return remoteAddress === '127.0.0.1' || remoteAddress === '::1' || remoteAddress === '::ffff:127.0.0.1';
+  }
+
+  /**
    * Start the virtual node server
    */
   async start(): Promise<void> {
@@ -337,30 +346,35 @@ export class VirtualNodeServer extends EventEmitter {
 
         // Only enforce blocking if allowAdminCommands is false (default)
         if (!this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
-          // Even for self-addressed admin commands, we need to check for dangerous commands
-          // like addContact which can corrupt the physical node's PKI key store (fixes #1487)
-          if (isSelfAddressed && normalizedPortNum === 6) { // ADMIN_APP
-            const adminPayload = toRadio.packet.decoded?.payload;
-            if (adminPayload) {
+          // Universal check: block addContact from ALL clients (including localhost)
+          // addContact can corrupt the physical node's PKI key store (fixes #1487)
+          if (normalizedPortNum === 6) { // ADMIN_APP
+            const adminPayloadForContactCheck = toRadio.packet.decoded?.payload;
+            if (adminPayloadForContactCheck) {
               try {
                 const adminMsg = protobufService.decodeAdminMessage(
-                  adminPayload instanceof Uint8Array ? adminPayload : new Uint8Array(adminPayload)
+                  adminPayloadForContactCheck instanceof Uint8Array ? adminPayloadForContactCheck : new Uint8Array(adminPayloadForContactCheck)
                 );
                 if (adminMsg && adminMsg.addContact !== undefined && adminMsg.addContact !== null) {
-                  // Block addContact - it can corrupt PKI keys on the physical node
-                  // Virtual node clients may send garbage public keys that overwrite valid ones
                   logger.warn(`Virtual node: Blocked addContact admin message from ${clientId} - this would corrupt PKI keys on the physical node`);
                   return;
                 }
               } catch (decodeError) {
-                // If we can't decode, allow it through (might be a legitimate query)
-                logger.debug(`Virtual node: Could not decode self-addressed admin message, allowing through`);
+                // If we can't decode, continue with other checks
+                logger.debug(`Virtual node: Could not decode admin message for addContact check, continuing`);
               }
             }
-            logger.debug(`Virtual node: Allowing self-addressed admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
-            // Allow this message to be queued and forwarded
+          }
+
+          // Localhost bypass: scripts running inside the container connect through
+          // the Virtual Node and need admin command access (fixes #1766)
+          const client = this.clients.get(clientId);
+          if (client && this.isLocalhostClient(client)) {
+            logger.info(`Virtual node: Allowing admin command from localhost client ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
+            // Fall through to queue the message
           } else if (isSelfAddressed) {
-            // Non-ADMIN_APP self-addressed blocked portnum - allow through
+            // Self-addressed blocked portnum - allow through (self-addressed admin
+            // queries like getConfig are safe; addContact was already blocked above)
             logger.debug(`Virtual node: Allowing self-addressed command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
           } else {
             // Check if this is a favorite/unfavorite command - these should be intercepted
