@@ -2397,6 +2397,9 @@ class MeshtasticManager {
             }
           }
           break;
+        default:
+          logger.debug(`⚠️ Unhandled message type: ${parsed.type}`);
+          break;
       }
 
       logger.debug(`✅ Processed message type: ${parsed.type}`);
@@ -9151,7 +9154,8 @@ class MeshtasticManager {
         const moduleConfigMap: { [key: number]: string } = {
           0: 'mqtt',
           5: 'telemetry',
-          9: 'neighborInfo'
+          9: 'neighborInfo',
+          13: 'statusmessage'
         };
         const configKey = moduleConfigMap[configType];
         if (configKey) {
@@ -9200,7 +9204,8 @@ class MeshtasticManager {
             const moduleConfigMap: { [key: number]: string } = {
               0: 'mqtt',
               5: 'telemetry',
-              9: 'neighborInfo'
+              9: 'neighborInfo',
+              13: 'statusmessage'
             };
             const configKey = moduleConfigMap[configType];
             if (configKey && nodeConfig.moduleConfig?.[configKey]) {
@@ -9624,7 +9629,8 @@ class MeshtasticManager {
       9,  // NEIGHBORINFO_CONFIG
       10, // AMBIENTLIGHTING_CONFIG
       11, // DETECTIONSENSOR_CONFIG
-      12  // PAXCOUNTER_CONFIG
+      12, // PAXCOUNTER_CONFIG
+      13  // STATUSMESSAGE_CONFIG
     ];
 
     logger.info('📦 Requesting all module configs for complete backup...');

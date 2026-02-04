@@ -5866,7 +5866,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               'neighborinfo': 'neighborInfo',
               'ambientlighting': 'ambientLighting',
               'detectionsensor': 'detectionSensor',
-              'paxcounter': 'paxcounter'
+              'paxcounter': 'paxcounter',
+              'statusmessage': 'statusmessage'
             };
             const moduleKey = moduleConfigMap[configType];
             if (moduleKey && !currentConfig?.moduleConfig?.[moduleKey]) needsRequest = true;
@@ -6068,6 +6069,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'ambientlighting':
           case 'detectionsensor':
           case 'paxcounter':
+          case 'statusmessage':
             const moduleConfigMap: { [key: string]: string } = {
               'serial': 'serial',
               'extnotif': 'externalNotification',
@@ -6080,7 +6082,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               'neighborinfo': 'neighborInfo',
               'ambientlighting': 'ambientLighting',
               'detectionsensor': 'detectionSensor',
-              'paxcounter': 'paxcounter'
+              'paxcounter': 'paxcounter',
+              'statusmessage': 'statusmessage'
             };
             const moduleKey = moduleConfigMap[configType];
             if (moduleKey && finalConfig.moduleConfig?.[moduleKey]) {
@@ -6119,7 +6122,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'neighborinfo': { type: 9, isModule: true }, // NEIGHBORINFO_CONFIG (module)
           'ambientlighting': { type: 10, isModule: true }, // AMBIENTLIGHTING_CONFIG (module)
           'detectionsensor': { type: 11, isModule: true }, // DETECTIONSENSOR_CONFIG (module)
-          'paxcounter': { type: 12, isModule: true } // PAXCOUNTER_CONFIG (module)
+          'paxcounter': { type: 12, isModule: true }, // PAXCOUNTER_CONFIG (module)
+          'statusmessage': { type: 13, isModule: true } // STATUSMESSAGE_CONFIG (module)
         };
 
         const configInfo = configTypeMap[configType];
