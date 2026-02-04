@@ -3555,5 +3555,12 @@
     "channels.source": "Источник:",
     "channels.channel_database": "База данных каналов",
     "tileset_manager.autodetecting": "Обнаружение...",
-    "tileset_manager.reload_now": "Перезагрузить страницу"
+    "tileset_manager.reload_now": "Перезагрузить страницу",
+    "auto_responder.script_args": "Аргументы",
+    "info.last_hour": "Последний час",
+    "info.last_24_hours": "Последние 24 часа",
+    "info.all_data": "Все данные",
+    "info.other_devices": "Другой",
+    "info.no_packet_data": "Данные недоступны",
+    "automation.timer_triggers.script_args": "Аргументы"
 }
