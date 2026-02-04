@@ -6963,12 +6963,28 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         }
         adminMessage = protobufService.createSetLoRaConfigMessage(params.config, sessionPasskey || undefined);
         break;
-      case 'setPositionConfig':
+      case 'setPositionConfig': {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setPositionConfig' });
         }
-        adminMessage = protobufService.createSetPositionConfigMessage(params.config, sessionPasskey || undefined);
+        // Extract position coordinates from config - these must be sent via a separate
+        // setFixedPosition admin message, as Config.PositionConfig has no lat/lon/alt fields.
+        // Per protobuf docs, set_fixed_position automatically sets fixedPosition=true on the device.
+        // No delay needed: the local node queues both packets and the mesh protocol guarantees
+        // FIFO delivery from the same source, with natural spacing from radio transmission time.
+        const { latitude, longitude, altitude, ...positionConfig } = params.config;
+        if (latitude !== undefined && longitude !== undefined && positionConfig.fixedPosition) {
+          const setPositionMsg = protobufService.createSetFixedPositionMessage(
+            latitude,
+            longitude,
+            altitude || 0,
+            sessionPasskey || undefined
+          );
+          await meshtasticManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
+        }
+        adminMessage = protobufService.createSetPositionConfigMessage(positionConfig, sessionPasskey || undefined);
         break;
+      }
       case 'setMQTTConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setMQTTConfig' });
