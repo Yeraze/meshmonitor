@@ -6968,7 +6968,10 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'config is required for setPositionConfig' });
         }
         // Extract position coordinates from config - these must be sent via a separate
-        // setFixedPosition admin message, as Config.PositionConfig has no lat/lon/alt fields
+        // setFixedPosition admin message, as Config.PositionConfig has no lat/lon/alt fields.
+        // Per protobuf docs, set_fixed_position automatically sets fixedPosition=true on the device.
+        // No delay needed: the local node queues both packets and the mesh protocol guarantees
+        // FIFO delivery from the same source, with natural spacing from radio transmission time.
         const { latitude, longitude, altitude, ...positionConfig } = params.config;
         if (latitude !== undefined && longitude !== undefined && positionConfig.fixedPosition) {
           const setPositionMsg = protobufService.createSetFixedPositionMessage(
@@ -6978,8 +6981,6 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
             sessionPasskey || undefined
           );
           await meshtasticManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
-          // Brief delay to let the device process the position before receiving the config
-          await new Promise(resolve => setTimeout(resolve, 1000));
         }
         adminMessage = protobufService.createSetPositionConfigMessage(positionConfig, sessionPasskey || undefined);
         break;

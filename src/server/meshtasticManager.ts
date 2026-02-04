@@ -9869,10 +9869,11 @@ class MeshtasticManager {
       // Extract position data if provided
       const { latitude, longitude, altitude, ...positionConfig } = config;
 
-      // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag
-      // If lat/long provided, send position update first
+      // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag.
+      // set_fixed_position automatically sets fixedPosition=true on the device.
+      // No delay needed: firmware processes incoming messages sequentially from its receive buffer.
       if (latitude !== undefined && longitude !== undefined) {
-        logger.debug(`⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
+        logger.debug(`⚙️ Setting fixed position coordinates: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
         const setPositionMsg = protobufService.createSetFixedPositionMessage(
           latitude,
           longitude,
@@ -9883,9 +9884,6 @@ class MeshtasticManager {
 
         await this.transport.send(positionPacket);
         logger.debug('⚙️ Sent set_fixed_position admin message');
-
-        // Add delay to ensure device processes the position before the config
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
