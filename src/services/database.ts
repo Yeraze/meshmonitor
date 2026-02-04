@@ -7489,7 +7489,7 @@ class DatabaseService {
   }
 
   getLongestActiveRouteSegment(): DbRouteSegment | null {
-    // For PostgreSQL/MySQL, route segments not yet implemented
+    // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
@@ -7505,8 +7505,17 @@ class DatabaseService {
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
+  async getLongestActiveRouteSegmentAsync(): Promise<DbRouteSegment | null> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
+      const segment = await this.traceroutesRepo.getLongestActiveRouteSegment();
+      if (!segment) return null;
+      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
+    }
+    return this.getLongestActiveRouteSegment();
+  }
+
   getRecordHolderRouteSegment(): DbRouteSegment | null {
-    // For PostgreSQL/MySQL, route segments not yet implemented
+    // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
@@ -7518,6 +7527,15 @@ class DatabaseService {
     `);
     const segment = stmt.get() as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
+  }
+
+  async getRecordHolderRouteSegmentAsync(): Promise<DbRouteSegment | null> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
+      const segment = await this.traceroutesRepo.getRecordHolderRouteSegment();
+      if (!segment) return null;
+      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
+    }
+    return this.getRecordHolderRouteSegment();
   }
 
   updateRecordHolderSegment(newSegment: DbRouteSegment): void {

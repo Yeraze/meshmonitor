@@ -2914,9 +2914,9 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', (req, res) => {
 });
 
 // Get longest active route segment (within last 7 days)
-apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), (_req, res) => {
+apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (_req, res) => {
   try {
-    const segment = databaseService.getLongestActiveRouteSegment();
+    const segment = await databaseService.getLongestActiveRouteSegmentAsync();
     if (!segment) {
       res.json(null);
       return;
@@ -2940,9 +2940,9 @@ apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'
 });
 
 // Get record holder route segment
-apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), (_req, res) => {
+apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (_req, res) => {
   try {
-    const segment = databaseService.getRecordHolderRouteSegment();
+    const segment = await databaseService.getRecordHolderRouteSegmentAsync();
     if (!segment) {
       res.json(null);
       return;
