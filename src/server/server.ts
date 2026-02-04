@@ -6963,12 +6963,27 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         }
         adminMessage = protobufService.createSetLoRaConfigMessage(params.config, sessionPasskey || undefined);
         break;
-      case 'setPositionConfig':
+      case 'setPositionConfig': {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setPositionConfig' });
         }
-        adminMessage = protobufService.createSetPositionConfigMessage(params.config, sessionPasskey || undefined);
+        // Extract position coordinates from config - these must be sent via a separate
+        // setFixedPosition admin message, as Config.PositionConfig has no lat/lon/alt fields
+        const { latitude, longitude, altitude, ...positionConfig } = params.config;
+        if (latitude !== undefined && longitude !== undefined && positionConfig.fixedPosition) {
+          const setPositionMsg = protobufService.createSetFixedPositionMessage(
+            latitude,
+            longitude,
+            altitude || 0,
+            sessionPasskey || undefined
+          );
+          await meshtasticManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
+          // Brief delay to let the device process the position before receiving the config
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        adminMessage = protobufService.createSetPositionConfigMessage(positionConfig, sessionPasskey || undefined);
         break;
+      }
       case 'setMQTTConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setMQTTConfig' });
