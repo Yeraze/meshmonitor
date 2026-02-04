@@ -9634,8 +9634,8 @@ class DatabaseService {
         let query = `
           SELECT
             pl.from_node,
-            n."nodeId" as from_node_id,
-            n."longName" as from_node_longName,
+            n."nodeId" as "from_node_id",
+            n."longName" as "from_node_longName",
             COUNT(*) as count
           FROM packet_log pl
           LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
