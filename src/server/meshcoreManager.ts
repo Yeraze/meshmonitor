@@ -372,12 +372,23 @@ class MeshCoreManager extends EventEmitter {
       this.bridgeReader!.once('line', readyHandler);
     });
 
-    // Connect via bridge
-    const serialPort = this.sanitizeSerialPort(this.config?.serialPort || '');
-    const response = await this.sendBridgeCommand('connect', {
-      port: serialPort,
-      baud: this.config?.baudRate || 115200,
-    });
+    // Connect via bridge - supports both serial and TCP
+    let connectParams: Record<string, any>;
+    if (this.config?.connectionType === ConnectionType.TCP) {
+      connectParams = {
+        type: 'tcp',
+        host: this.config.tcpHost || 'localhost',
+        tcp_port: this.config.tcpPort || 4403,
+      };
+    } else {
+      const serialPort = this.sanitizeSerialPort(this.config?.serialPort || '');
+      connectParams = {
+        type: 'serial',
+        port: serialPort,
+        baud: this.config?.baudRate || 115200,
+      };
+    }
+    const response = await this.sendBridgeCommand('connect', connectParams);
 
     if (!response.success) {
       throw new Error(response.error || 'Bridge connect failed');

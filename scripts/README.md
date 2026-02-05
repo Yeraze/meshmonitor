@@ -13,7 +13,11 @@ A long-lived Python bridge process that communicates with MeshCore devices via t
 
 Commands are sent as single-line JSON objects:
 ```json
-{"id": "1", "cmd": "connect", "port": "/dev/ttyACM0", "baud": 115200}
+# Serial connection
+{"id": "1", "cmd": "connect", "type": "serial", "port": "/dev/ttyACM0", "baud": 115200}
+
+# TCP connection
+{"id": "1", "cmd": "connect", "type": "tcp", "host": "192.168.1.100", "tcp_port": 4403}
 ```
 
 Responses are single-line JSON:

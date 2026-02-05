@@ -35,11 +35,19 @@ from typing import Optional, Any
 # Try to import meshcore - will fail gracefully if not installed
 try:
     from meshcore import MeshCore, SerialConnection
+    try:
+        from meshcore import TCPConnection
+        TCP_AVAILABLE = True
+    except ImportError:
+        TCPConnection = None
+        TCP_AVAILABLE = False
     MESHCORE_AVAILABLE = True
 except ImportError:
     MESHCORE_AVAILABLE = False
+    TCP_AVAILABLE = False
     MeshCore = None
     SerialConnection = None
+    TCPConnection = None
 
 
 class MeshCoreBridge:
@@ -87,17 +95,26 @@ class MeshCoreBridge:
             return {'id': cmd_id, 'success': False, 'error': str(e), 'traceback': traceback.format_exc()}
 
     async def cmd_connect(self, cmd_id: str, cmd_data: dict) -> dict:
-        """Connect to MeshCore device"""
+        """Connect to MeshCore device (serial or TCP)"""
         if not MESHCORE_AVAILABLE:
             return {'id': cmd_id, 'success': False, 'error': 'meshcore library not installed. Run: pip install meshcore'}
 
         if self.connected:
             await self.cmd_disconnect(cmd_id)
 
-        port = cmd_data.get('port', '/dev/ttyACM0')
-        baud = cmd_data.get('baud', 115200)
+        connection_type = cmd_data.get('type', 'serial')
 
-        self.connection = SerialConnection(port, baudrate=baud)
+        if connection_type == 'tcp':
+            if not TCP_AVAILABLE:
+                return {'id': cmd_id, 'success': False, 'error': 'TCP not supported - meshcore TCPConnection not available'}
+            host = cmd_data.get('host', 'localhost')
+            port = cmd_data.get('tcp_port', 4403)
+            self.connection = TCPConnection(host, port)
+        else:
+            port = cmd_data.get('port', '/dev/ttyACM0')
+            baud = cmd_data.get('baud', 115200)
+            self.connection = SerialConnection(port, baudrate=baud)
+
         self.meshcore = MeshCore(self.connection)
         await self.meshcore.connect()
         self.connected = True
@@ -280,7 +297,11 @@ class MeshCoreBridge:
             loop.add_signal_handler(sig, lambda: asyncio.create_task(self.shutdown_handler()))
 
         # Send ready message
-        print(json.dumps({'type': 'ready', 'meshcore_available': MESHCORE_AVAILABLE}), flush=True)
+        print(json.dumps({
+            'type': 'ready',
+            'meshcore_available': MESHCORE_AVAILABLE,
+            'tcp_available': TCP_AVAILABLE
+        }), flush=True)
 
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
