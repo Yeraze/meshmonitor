@@ -1687,7 +1687,7 @@
     "extnotif_config.output_vibra_gpio_description": "Номер GPIO для вибромотора",
     "tileset_manager.field_max_zoom": "Максимальный зум",
     "gpio_summary.vibra_output": "Выход на вибромотор",
-    "info.most_active_node": "Самая активная нода:",
+    "info.most_active_node": "Последняя услышанная нода:",
     "rangetest_config.title": "Тест дальности",
     "admin_commands.ambientlighting_configuration": "Настройка освещения",
     "notifications.apprise_description": "Discord, Slack, электронная почта, SMS и т. д. (HTTPS не требуется)",

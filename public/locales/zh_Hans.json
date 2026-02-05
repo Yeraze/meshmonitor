@@ -1296,7 +1296,7 @@
     "info.load_average": "负载平均值：",
     "info.recent_activity": "近期活动",
     "info.last_message": "最后消息：",
-    "info.most_active_node": "最活跃节点：",
+    "info.most_active_node": "最近听到的节点：",
     "info.longest_route": "最长活跃路由段",
     "info.distance": "距离：",
     "info.from": "起点：",
