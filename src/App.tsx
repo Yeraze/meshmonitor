@@ -28,6 +28,7 @@ import AutoKeyManagementSection from './components/AutoKeyManagementSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
 import GeofenceTriggersSection from './components/GeofenceTriggersSection';
 import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
+import IgnoredNodesSection from './components/IgnoredNodesSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
@@ -4428,6 +4429,7 @@ function App() {
                 { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management') },
                 { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
                 { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
+                { id: 'ignored-nodes', label: t('automation.ignored_nodes.title', 'Ignored Nodes') },
               ]}
             />
             <div className="settings-content">
@@ -4551,6 +4553,11 @@ function App() {
                   nodes={nodes}
                   baseUrl={baseUrl}
                   onTriggersChange={setGeofenceTriggers}
+                />
+              </div>
+              <div id="ignored-nodes">
+                <IgnoredNodesSection
+                  baseUrl={baseUrl}
                 />
               </div>
             </div>

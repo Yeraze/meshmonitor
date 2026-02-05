@@ -479,4 +479,5 @@ export const MYSQL_TABLE_NAMES = [
   'auto_key_repair_log',
   'channel_database',
   'channel_database_permissions',
+  'ignored_nodes',
 ];

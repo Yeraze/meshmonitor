@@ -26,3 +26,6 @@ export * from './misc.js';
 
 // Channel Database tables
 export * from './channelDatabase.js';
+
+// Ignored Nodes table
+export * from './ignoredNodes.js';

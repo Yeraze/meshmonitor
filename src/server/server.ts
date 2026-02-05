@@ -1179,6 +1179,65 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
   }
 });
 
+// Get persistent ignored nodes list
+apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (_req, res) => {
+  try {
+    const ignoredNodes = await databaseService.getIgnoredNodesAsync();
+    res.json(ignoredNodes);
+  } catch (error) {
+    logger.error('Error fetching ignored nodes:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to fetch ignored nodes',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Remove node from persistent ignore list and un-ignore it
+apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Remove from persistent ignore list
+    await databaseService.removeIgnoredNodeAsync(nodeNum);
+
+    // Also un-ignore the node record if it still exists
+    try {
+      databaseService.setNodeIgnored(nodeNum, false);
+    } catch {
+      // Node may not exist in nodes table - that's OK
+    }
+
+    res.json({ success: true, nodeNum });
+  } catch (error) {
+    logger.error('Error removing ignored node:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to remove ignored node',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
 // Get node position override
 apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, res) => {
   try {
