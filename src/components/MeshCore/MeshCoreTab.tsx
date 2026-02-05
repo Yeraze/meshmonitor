@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { useMapContext, MeshCoreMapNode } from '../../contexts/MapContext';
 import './MeshCoreTab.css';
 
 // Types
@@ -82,8 +83,12 @@ const DEVICE_TYPE_KEYS: Record<number, string> = {
   3: 'meshcore.device_type.room_server',
 };
 
+// Small offset to prevent exact overlap on map when local node is at same location as contacts
+const LOCAL_NODE_OFFSET = 0.0005; // ~55m
+
 export const MeshCoreTab: React.FC = () => {
   const { t } = useTranslation();
+  const { setMeshCoreNodes } = useMapContext();
 
   // State
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
@@ -137,18 +142,36 @@ export const MeshCoreTab: React.FC = () => {
     }
   }, [csrfFetch]);
 
-  // Fetch contacts
+  // Fetch contacts and update map nodes
   const fetchContacts = useCallback(async () => {
     try {
       const response = await csrfFetch('/api/meshcore/contacts');
       const data = await response.json();
       if (data.success) {
         setContacts(data.data);
+
+        // Update map nodes - apply offset for local node to prevent overlap
+        const mapNodes: MeshCoreMapNode[] = data.data
+          .filter((c: MeshCoreContact) => c.latitude && c.longitude)
+          .map((c: MeshCoreContact) => {
+            const isLocalNode = c.advName?.includes('(local)');
+            return {
+              publicKey: c.publicKey,
+              name: c.advName || c.name || 'Unknown',
+              latitude: c.latitude! + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
+              longitude: c.longitude! + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
+              rssi: c.rssi,
+              snr: c.snr,
+              lastSeen: c.lastSeen,
+              advType: c.advType,
+            };
+          });
+        setMeshCoreNodes(mapNodes);
       }
     } catch (err) {
       console.error('Failed to fetch contacts:', err);
     }
-  }, [csrfFetch]);
+  }, [csrfFetch, setMeshCoreNodes]);
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
