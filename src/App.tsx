@@ -19,6 +19,7 @@ import Dashboard from './components/Dashboard';
 import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
+import { MeshCoreTab } from './components/MeshCore';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
@@ -4643,6 +4644,7 @@ function App() {
         {activeTab === 'security' && (
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
         )}
+        {activeTab === 'meshcore' && <MeshCoreTab />}
       </main>
 
       {/* Node Popup */}
