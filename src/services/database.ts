@@ -73,6 +73,8 @@ import { migration as sortOrderMigration, runMigration065Postgres, runMigration0
 import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
 import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
 import { migration as mfaColumnsMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_add_mfa_columns.js';
+import { migration as meshcoreTablesMigration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_add_meshcore_tables.js';
+import { migration as meshcorePermissionMigration, runMigration070Postgres, runMigration070Mysql } from '../server/migrations/070_add_meshcore_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -939,6 +941,8 @@ class DatabaseService {
     this.runIgnoredNodesTableMigration();
     this.runAutoTimeSyncMigration();
     this.runMfaColumnsMigration();
+    this.runMeshcoreTablesMigration();
+    this.runMeshcorePermissionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2293,6 +2297,44 @@ class DatabaseService {
       logger.debug('Migration 068 (MFA columns) completed successfully');
     } catch (error) {
       logger.error('Failed to run MFA columns migration:', error);
+      throw error;
+    }
+  }
+
+  private runMeshcoreTablesMigration(): void {
+    const migrationKey = 'migration_069_meshcore_tables';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 069 (meshcore tables) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 069: Add MeshCore tables...');
+      meshcoreTablesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ MeshCore tables migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run MeshCore tables migration:', error);
+      throw error;
+    }
+  }
+
+  private runMeshcorePermissionMigration(): void {
+    const migrationKey = 'migration_070_meshcore_permission';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 070 (meshcore permission) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 070: Add meshcore permission resource...');
+      meshcorePermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ MeshCore permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run MeshCore permission migration:', error);
       throw error;
     }
   }
@@ -10318,6 +10360,12 @@ class DatabaseService {
       // Run migration 068: Add MFA columns to users table
       await runMigration068Postgres(client);
 
+      // Run migration 069: Add MeshCore tables
+      await runMigration069Postgres(client);
+
+      // Run migration 070: Add meshcore permission resource
+      await runMigration070Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10433,6 +10481,12 @@ class DatabaseService {
 
       // Run migration 068: Add MFA columns to users table
       await runMigration068Mysql(pool);
+
+      // Run migration 069: Add MeshCore tables
+      await runMigration069Mysql(pool);
+
+      // Run migration 070: Add meshcore permission resource
+      await runMigration070Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

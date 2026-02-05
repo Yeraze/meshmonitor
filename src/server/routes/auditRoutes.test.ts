@@ -20,6 +20,7 @@ import { migration as passwordLockedMigration } from '../migrations/023_add_pass
 import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
 import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
 import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
+import { migration as meshcorePermissionMigration } from '../migrations/067_add_meshcore_permission.js';
 import auditRoutes from './auditRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -88,6 +89,7 @@ describe('Audit Log Routes', () => {
     perChannelPermissionsMigration.up(db);
     nodesPrivatePermissionMigration.up(db);
     viewOnMapPermissionMigration.up(db);
+    meshcorePermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
