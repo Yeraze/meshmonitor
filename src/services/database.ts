@@ -70,6 +70,8 @@ import { migration as positionDoublePrecisionMigration, runMigration062Postgres,
 import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
 import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
 import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
+import { migration as meshcoreTablesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_meshcore_tables.js';
+import { migration as meshcorePermissionMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_meshcore_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -930,6 +932,8 @@ class DatabaseService {
     this.runPositionHistoryHoursMigration();
     this.runEnforceNameValidationMigration();
     this.runSortOrderMigration();
+    this.runMeshcoreTablesMigration();
+    this.runMeshcorePermissionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2216,6 +2220,44 @@ class DatabaseService {
       logger.debug('✅ Sort order migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run sort order migration:', error);
+      throw error;
+    }
+  }
+
+  private runMeshcoreTablesMigration(): void {
+    const migrationKey = 'migration_066_meshcore_tables';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 066 (meshcore tables) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 066: Add MeshCore tables...');
+      meshcoreTablesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ MeshCore tables migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run MeshCore tables migration:', error);
+      throw error;
+    }
+  }
+
+  private runMeshcorePermissionMigration(): void {
+    const migrationKey = 'migration_067_meshcore_permission';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 067 (meshcore permission) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 067: Add meshcore permission resource...');
+      meshcorePermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ MeshCore permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run MeshCore permission migration:', error);
       throw error;
     }
   }
@@ -10074,6 +10116,12 @@ class DatabaseService {
       // Run migration 065: Add sortOrder column to channel_database
       await runMigration065Postgres(client);
 
+      // Run migration 066: Add MeshCore tables
+      await runMigration066Postgres(client);
+
+      // Run migration 067: Add meshcore permission resource
+      await runMigration067Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10180,6 +10228,12 @@ class DatabaseService {
 
       // Run migration 065: Add sortOrder column to channel_database
       await runMigration065Mysql(pool);
+
+      // Run migration 066: Add MeshCore tables
+      await runMigration066Mysql(pool);
+
+      // Run migration 067: Add meshcore permission resource
+      await runMigration067Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
