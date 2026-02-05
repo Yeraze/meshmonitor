@@ -89,3 +89,21 @@ export const messageLimiter = rateLimit({
   },
   ...rateLimitConfig,
 });
+
+// Rate limiting for MeshCore device operations (connect, disconnect, config changes)
+// More restrictive than general API to prevent device abuse
+// Default: 10 operations per minute in production, 60 in development
+export const meshcoreDeviceLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 10 : 60,
+  message: 'Too many device operations, please slow down',
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for MESHCORE DEVICE - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many device operations, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...rateLimitConfig,
+});

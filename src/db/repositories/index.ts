@@ -30,3 +30,5 @@ export type {
 export { MiscRepository } from './misc.js';
 export type { SolarEstimate, AutoTracerouteNode, UpgradeHistoryRecord, NewUpgradeHistory, NewsCache, UserNewsStatus, BackupHistory } from './misc.js';
 export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatabaseUpdate, type ChannelDatabasePermissionInput } from './channelDatabase.js';
+export { MeshCoreRepository } from './meshcore.js';
+export type { DbMeshCoreNode, DbMeshCoreMessage } from './meshcore.js';
