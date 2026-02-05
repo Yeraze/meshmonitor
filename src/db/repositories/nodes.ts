@@ -864,9 +864,15 @@ export class NodesRepository extends BaseRepository {
         .select({ nodeNum: nodesSqlite.nodeNum })
         .from(nodesSqlite)
         .where(
-          or(
-            lt(nodesSqlite.lastHeard, cutoff),
-            isNull(nodesSqlite.lastHeard)
+          and(
+            or(
+              lt(nodesSqlite.lastHeard, cutoff),
+              isNull(nodesSqlite.lastHeard)
+            ),
+            or(
+              eq(nodesSqlite.isIgnored, false),
+              isNull(nodesSqlite.isIgnored)
+            )
           )
         );
 
@@ -880,9 +886,15 @@ export class NodesRepository extends BaseRepository {
         .select({ nodeNum: nodesMysql.nodeNum })
         .from(nodesMysql)
         .where(
-          or(
-            lt(nodesMysql.lastHeard, cutoff),
-            isNull(nodesMysql.lastHeard)
+          and(
+            or(
+              lt(nodesMysql.lastHeard, cutoff),
+              isNull(nodesMysql.lastHeard)
+            ),
+            or(
+              eq(nodesMysql.isIgnored, false),
+              isNull(nodesMysql.isIgnored)
+            )
           )
         );
 
@@ -896,9 +908,15 @@ export class NodesRepository extends BaseRepository {
         .select({ nodeNum: nodesPostgres.nodeNum })
         .from(nodesPostgres)
         .where(
-          or(
-            lt(nodesPostgres.lastHeard, cutoff),
-            isNull(nodesPostgres.lastHeard)
+          and(
+            or(
+              lt(nodesPostgres.lastHeard, cutoff),
+              isNull(nodesPostgres.lastHeard)
+            ),
+            or(
+              eq(nodesPostgres.isIgnored, false),
+              isNull(nodesPostgres.isIgnored)
+            )
           )
         );
 
@@ -1024,7 +1042,12 @@ export class NodesRepository extends BaseRepository {
       const toDelete = await db
         .select({ nodeNum: nodesSqlite.nodeNum })
         .from(nodesSqlite)
-        .where(or(lt(nodesSqlite.lastHeard, cutoffTimestamp), isNull(nodesSqlite.lastHeard)));
+        .where(
+          and(
+            or(lt(nodesSqlite.lastHeard, cutoffTimestamp), isNull(nodesSqlite.lastHeard)),
+            or(eq(nodesSqlite.isIgnored, false), isNull(nodesSqlite.isIgnored))
+          )
+        );
 
       for (const node of toDelete) {
         await db.delete(nodesSqlite).where(eq(nodesSqlite.nodeNum, node.nodeNum));
@@ -1035,7 +1058,12 @@ export class NodesRepository extends BaseRepository {
       const toDelete = await db
         .select({ nodeNum: nodesMysql.nodeNum })
         .from(nodesMysql)
-        .where(or(lt(nodesMysql.lastHeard, cutoffTimestamp), isNull(nodesMysql.lastHeard)));
+        .where(
+          and(
+            or(lt(nodesMysql.lastHeard, cutoffTimestamp), isNull(nodesMysql.lastHeard)),
+            or(eq(nodesMysql.isIgnored, false), isNull(nodesMysql.isIgnored))
+          )
+        );
 
       for (const node of toDelete) {
         await db.delete(nodesMysql).where(eq(nodesMysql.nodeNum, node.nodeNum));
@@ -1046,7 +1074,12 @@ export class NodesRepository extends BaseRepository {
       const toDelete = await db
         .select({ nodeNum: nodesPostgres.nodeNum })
         .from(nodesPostgres)
-        .where(or(lt(nodesPostgres.lastHeard, cutoffTimestamp), isNull(nodesPostgres.lastHeard)));
+        .where(
+          and(
+            or(lt(nodesPostgres.lastHeard, cutoffTimestamp), isNull(nodesPostgres.lastHeard)),
+            or(eq(nodesPostgres.isIgnored, false), isNull(nodesPostgres.isIgnored))
+          )
+        );
 
       for (const node of toDelete) {
         await db.delete(nodesPostgres).where(eq(nodesPostgres.nodeNum, node.nodeNum));
