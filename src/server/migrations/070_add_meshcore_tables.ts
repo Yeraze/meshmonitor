@@ -105,7 +105,7 @@ export const migration = {
 /**
  * PostgreSQL migration: Add MeshCore tables
  */
-export async function runMigration066Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration070Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.debug('Running migration 066 (PostgreSQL): Add MeshCore tables');
 
   try {
@@ -191,7 +191,7 @@ export async function runMigration066Postgres(client: import('pg').PoolClient): 
 /**
  * MySQL migration: Add MeshCore tables
  */
-export async function runMigration066Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration070Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.debug('Running migration 066 (MySQL): Add MeshCore tables');
 
   try {
