@@ -231,15 +231,14 @@ router.get('/contacts', optionalAuth(), async (_req: Request, res: Response) => 
     const localNode = meshcoreManager.getLocalNode();
 
     // Include local node in contacts list if it has coordinates
-    // Add small offset to prevent exact overlap with contacts at same location
     const allContacts = [...contacts];
     if (localNode && localNode.latitude && localNode.longitude) {
       allContacts.unshift({
         publicKey: localNode.publicKey,
         advName: `${localNode.name} (local)`,
         name: localNode.name,
-        latitude: localNode.latitude + 0.0005,  // ~55m offset north
-        longitude: localNode.longitude + 0.0005, // ~45m offset east
+        latitude: localNode.latitude,
+        longitude: localNode.longitude,
         advType: localNode.advType,
         rssi: undefined,
         snr: undefined,
