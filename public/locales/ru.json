@@ -2357,7 +2357,7 @@
     "neighbor_info.view_docs": "Просмотреть документацию с информацией о соседях",
     "config.display_saved_toast": "Настройка сохранена! Устройство перезагрузится, чтобы применить изменения.",
     "network_config.wifi_psk": "Пароль Wi-Fi",
-    "admin_commands.sessionkey_configuration": "",
+    "admin_commands.sessionkey_configuration": "Настройка ключа сеанса",
     "notifications.unsubscribing": "Отписка...",
     "telemetry_config.environment_fahrenheit_description": "Отображение температуры в градусах Фаренгейта вместо Цельсия",
     "settings.sort_field_label": "Сортировка списка предпочтительных узлов - По полям",
