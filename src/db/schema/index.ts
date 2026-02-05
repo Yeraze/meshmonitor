@@ -26,3 +26,7 @@ export * from './misc.js';
 
 // Channel Database tables
 export * from './channelDatabase.js';
+
+// MeshCore tables
+export * from './meshcoreNodes.js';
+export * from './meshcoreMessages.js';

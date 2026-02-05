@@ -13,9 +13,27 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { SerialPort } from 'serialport';
-import { ReadlineParser } from '@serialport/parser-readline';
 import { logger } from '../utils/logger.js';
+
+// Dynamic imports for optional serialport dependency
+// These are loaded only when MeshCore is enabled to avoid requiring native build tools
+let SerialPort: typeof import('serialport').SerialPort | null = null;
+let ReadlineParser: typeof import('@serialport/parser-readline').ReadlineParser | null = null;
+
+async function loadSerialPort(): Promise<boolean> {
+  if (SerialPort !== null) return true;
+  try {
+    const serialportModule = await import('serialport');
+    const parserModule = await import('@serialport/parser-readline');
+    SerialPort = serialportModule.SerialPort;
+    ReadlineParser = parserModule.ReadlineParser;
+    logger.info('[MeshCore] Serial port support loaded');
+    return true;
+  } catch (error) {
+    logger.warn('[MeshCore] Serial port not available - install serialport package for serial support');
+    return false;
+  }
+}
 
 // MeshCore device types
 export enum MeshCoreDeviceType {
@@ -98,8 +116,8 @@ class MeshCoreManager extends EventEmitter {
   private config: MeshCoreConfig | null = null;
   private connected: boolean = false;
   private deviceType: MeshCoreDeviceType = MeshCoreDeviceType.UNKNOWN;
-  private serialPort: SerialPort | null = null;
-  private parser: ReadlineParser | null = null;
+  private serialPort: InstanceType<typeof import('serialport').SerialPort> | null = null;
+  private parser: InstanceType<typeof import('@serialport/parser-readline').ReadlineParser> | null = null;
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
   private messages: MeshCoreMessage[] = [];
@@ -133,6 +151,12 @@ class MeshCoreManager extends EventEmitter {
 
     try {
       if (this.config.connectionType === ConnectionType.SERIAL) {
+        // Load serialport dynamically
+        const serialAvailable = await loadSerialPort();
+        if (!serialAvailable) {
+          logger.error('[MeshCore] Serial port support not available. Install serialport package.');
+          return false;
+        }
         await this.connectSerial();
       } else if (this.config.connectionType === ConnectionType.TCP) {
         await this.connectTcp();
@@ -225,13 +249,21 @@ class MeshCoreManager extends EventEmitter {
       throw new Error('Serial port not configured');
     }
 
+    if (!SerialPort || !ReadlineParser) {
+      throw new Error('Serial port support not loaded');
+    }
+
+    // Capture non-null values for use in closure
+    const SerialPortClass = SerialPort;
+    const ReadlineParserClass = ReadlineParser;
+
     return new Promise((resolve, reject) => {
-      this.serialPort = new SerialPort({
+      this.serialPort = new SerialPortClass({
         path: this.config!.serialPort!,
         baudRate: this.config!.baudRate || 115200,
       });
 
-      this.parser = this.serialPort.pipe(new ReadlineParser({ delimiter: '\n' }));
+      this.parser = this.serialPort.pipe(new ReadlineParserClass({ delimiter: '\n' }));
 
       this.serialPort.on('open', () => {
         logger.info(`[MeshCore] Serial port opened: ${this.config!.serialPort}`);

@@ -51,7 +51,8 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
 
   // Admin status
   hasAdminAccess: integer('hasAdminAccess', { mode: 'boolean' }).default(false),
-  adminPassword: text('adminPassword'), // Stored for convenience (optional)
+  // Note: adminPassword intentionally NOT stored - security risk to store plaintext passwords
+  // Users should enter the password each time they need admin access
   lastAdminCheck: integer('lastAdminCheck'),
 
   // Local node indicator
@@ -89,7 +90,7 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   lastHeard: pgBigint('lastHeard', { mode: 'number' }),
 
   hasAdminAccess: pgBoolean('hasAdminAccess').default(false),
-  adminPassword: pgText('adminPassword'),
+  // Note: adminPassword intentionally NOT stored - security risk
   lastAdminCheck: pgBigint('lastAdminCheck', { mode: 'number' }),
 
   isLocalNode: pgBoolean('isLocalNode').default(false),
@@ -125,7 +126,7 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   lastHeard: myBigint('lastHeard', { mode: 'number' }),
 
   hasAdminAccess: myBoolean('hasAdminAccess').default(false),
-  adminPassword: myVarchar('adminPassword', { length: 255 }),
+  // Note: adminPassword intentionally NOT stored - security risk
   lastAdminCheck: myBigint('lastAdminCheck', { mode: 'number' }),
 
   isLocalNode: myBoolean('isLocalNode').default(false),
