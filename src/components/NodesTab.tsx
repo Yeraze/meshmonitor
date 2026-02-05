@@ -43,6 +43,13 @@ const SPIDERFIER_INIT = {
   RETRY_INTERVAL_MS: 100,
 } as const;
 
+/**
+ * MeshCore theming constants
+ * Note: These are hardcoded because they're used in Leaflet divIcon template strings
+ * where CSS variables are not available. This matches var(--ctp-mauve) from Catppuccin Mocha.
+ */
+const MESHCORE_COLOR = '#cba6f7'; // Catppuccin Mocha mauve
+
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
   shouldShowData: () => boolean;
@@ -1181,18 +1188,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <div className="meshcore-section">
               <div className="meshcore-section-header" style={{
                 padding: '8px 12px',
-                background: 'rgba(147, 51, 234, 0.1)',
-                borderBottom: '1px solid rgba(147, 51, 234, 0.3)',
+                background: 'color-mix(in srgb, var(--ctp-mauve) 10%, transparent)',
+                borderBottom: '1px solid color-mix(in srgb, var(--ctp-mauve) 30%, transparent)',
                 fontSize: '12px',
                 fontWeight: 'bold',
-                color: '#9333ea',
+                color: 'var(--ctp-mauve)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px'
               }}>
                 <span style={{
-                  background: '#9333ea',
-                  color: 'white',
+                  background: 'var(--ctp-mauve)',
+                  color: 'var(--ctp-base)',
                   padding: '2px 6px',
                   borderRadius: '4px',
                   fontSize: '10px'
@@ -1212,13 +1219,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       }
                       setSelectedNodeId(`mc-${mcNode.publicKey}`);
                     }}
-                    style={{ borderLeft: '3px solid #9333ea' }}
+                    style={{ borderLeft: '3px solid var(--ctp-mauve)' }}
                   >
                     <div className="node-header">
                       <div className="node-name">
                         <span style={{
-                          background: '#9333ea',
-                          color: 'white',
+                          background: 'var(--ctp-mauve)',
+                          color: 'var(--ctp-base)',
                           padding: '1px 4px',
                           borderRadius: '3px',
                           fontSize: '9px',
@@ -1234,7 +1241,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </div>
                       </div>
                       <div className="node-actions">
-                        <div className="node-short" style={{ color: '#9333ea' }}>
+                        <div className="node-short" style={{ color: 'var(--ctp-mauve)' }}>
                           {mcNode.publicKey.substring(0, 4)}...
                         </div>
                       </div>
@@ -1775,21 +1782,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 .filter(node => node.latitude && node.longitude)
                 .map(node => {
                   const position: [number, number] = [node.latitude, node.longitude];
-                  // Use a distinct purple/magenta color for MeshCore nodes
+                  // Use MeshCore theme color (Catppuccin mauve) for MeshCore nodes
                   const meshCoreIcon = L.divIcon({
                     className: 'meshcore-marker',
                     html: `
                       <div style="
                         width: 24px;
                         height: 24px;
-                        background: #9333ea;
+                        background: ${MESHCORE_COLOR};
                         border: 2px solid white;
                         border-radius: 50%;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        color: white;
+                        color: var(--ctp-base, #1e1e2e);
                         font-size: 10px;
                         font-weight: bold;
                       ">MC</div>
@@ -1798,8 +1805,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         top: -20px;
                         left: 50%;
                         transform: translateX(-50%);
-                        background: rgba(147, 51, 234, 0.9);
-                        color: white;
+                        background: ${MESHCORE_COLOR}e6;
+                        color: var(--ctp-base, #1e1e2e);
                         padding: 2px 6px;
                         border-radius: 3px;
                         font-size: 11px;
@@ -1825,7 +1832,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </Tooltip>
                       <Popup>
                         <div style={{ minWidth: '200px' }}>
-                          <h3 style={{ margin: '0 0 8px 0', color: '#9333ea' }}>
+                          <h3 style={{ margin: '0 0 8px 0', color: 'var(--ctp-mauve)' }}>
                             {node.name || 'MeshCore Node'}
                           </h3>
                           <div style={{ fontSize: '12px', color: '#666' }}>

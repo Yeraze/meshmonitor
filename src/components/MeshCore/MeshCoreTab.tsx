@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import './MeshCoreTab.css';
 
@@ -63,15 +64,27 @@ interface ConnectionStatus {
   localNode: MeshCoreNode | null;
 }
 
-// Device type labels
-const DEVICE_TYPE_LABELS: Record<number, string> = {
-  0: 'Unknown',
-  1: 'Companion',
-  2: 'Repeater',
-  3: 'Room Server',
+interface RemoteNodeStatus {
+  batteryMv?: number;
+  uptimeSecs?: number;
+  txPower?: number;
+  radioFreq?: number;
+  radioBw?: number;
+  radioSf?: number;
+  radioCr?: number;
+}
+
+// Device type translation keys
+const DEVICE_TYPE_KEYS: Record<number, string> = {
+  0: 'meshcore.device_type.unknown',
+  1: 'meshcore.device_type.companion',
+  2: 'meshcore.device_type.repeater',
+  3: 'meshcore.device_type.room_server',
 };
 
 export const MeshCoreTab: React.FC = () => {
+  const { t } = useTranslation();
+
   // State
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [nodes, setNodes] = useState<MeshCoreNode[]>([]);
@@ -79,11 +92,6 @@ export const MeshCoreTab: React.FC = () => {
   const [messages, setMessages] = useState<MeshCoreMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Track mount for debugging
-  useEffect(() => {
-    console.log('MeshCoreTab mounted');
-    return () => console.log('MeshCoreTab unmounted');
-  }, []);
 
   // Connection form state
   const [connectionType, setConnectionType] = useState<'serial' | 'tcp'>('serial');
@@ -98,7 +106,7 @@ export const MeshCoreTab: React.FC = () => {
   // Admin form state
   const [adminPublicKey, setAdminPublicKey] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [adminStatus, setAdminStatus] = useState<any>(null);
+  const [adminStatus, setAdminStatus] = useState<RemoteNodeStatus | null>(null);
 
   // CSRF-protected fetch
   const csrfFetch = useCsrfFetch();
@@ -319,34 +327,34 @@ export const MeshCoreTab: React.FC = () => {
 
   return (
     <div className="meshcore-tab">
-      <h2>MeshCore Monitor</h2>
+      <h2>{t('meshcore.title')}</h2>
 
       {error && (
         <div className="meshcore-error">
           {error}
-          <button onClick={() => setError(null)}>Dismiss</button>
+          <button onClick={() => setError(null)}>{t('common.dismiss')}</button>
         </div>
       )}
 
       {/* Connection Section */}
       <section className="meshcore-section">
-        <h3>Connection</h3>
+        <h3>{t('meshcore.connection')}</h3>
         {!status?.connected ? (
           <div className="meshcore-connect-form">
             <div className="form-group">
-              <label>Connection Type:</label>
+              <label>{t('meshcore.connection_type')}:</label>
               <select
                 value={connectionType}
                 onChange={(e) => setConnectionType(e.target.value as 'serial' | 'tcp')}
               >
-                <option value="serial">Serial Port</option>
-                <option value="tcp">TCP/IP</option>
+                <option value="serial">{t('meshcore.serial_port')}</option>
+                <option value="tcp">{t('meshcore.tcp_ip')}</option>
               </select>
             </div>
 
             {connectionType === 'serial' ? (
               <div className="form-group">
-                <label>Serial Port:</label>
+                <label>{t('meshcore.serial_port')}:</label>
                 <input
                   type="text"
                   value={serialPort}
@@ -357,7 +365,7 @@ export const MeshCoreTab: React.FC = () => {
             ) : (
               <>
                 <div className="form-group">
-                  <label>Host:</label>
+                  <label>{t('meshcore.host')}:</label>
                   <input
                     type="text"
                     value={tcpHost}
@@ -366,7 +374,7 @@ export const MeshCoreTab: React.FC = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Port:</label>
+                  <label>{t('meshcore.port')}:</label>
                   <input
                     type="text"
                     value={tcpPort}
@@ -378,28 +386,28 @@ export const MeshCoreTab: React.FC = () => {
             )}
 
             <button onClick={handleConnect} disabled={loading}>
-              {loading ? 'Connecting...' : 'Connect'}
+              {loading ? t('meshcore.connecting') : t('meshcore.connect')}
             </button>
           </div>
         ) : (
           <div className="meshcore-status">
             <div className="status-connected">
               <span className="status-dot connected"></span>
-              Connected to {status.localNode?.name || 'Unknown'}
+              {t('meshcore.connected_to', { name: status.localNode?.name || t('meshcore.unknown') })}
             </div>
             <div className="status-details">
-              <div>Type: {status.deviceTypeName}</div>
+              <div>{t('meshcore.type')}: {status.deviceTypeName}</div>
               {status.localNode?.radioFreq && (
                 <div>
-                  Radio: {status.localNode.radioFreq} MHz, BW{status.localNode.radioBw}, SF{status.localNode.radioSf}
+                  {t('meshcore.radio')}: {status.localNode.radioFreq} MHz, BW{status.localNode.radioBw}, SF{status.localNode.radioSf}
                 </div>
               )}
-              <div>Public Key: {status.localNode?.publicKey?.substring(0, 16)}...</div>
+              <div>{t('meshcore.public_key')}: {status.localNode?.publicKey?.substring(0, 16)}...</div>
             </div>
             <div className="status-actions">
-              <button onClick={handleSendAdvert}>Send Advert</button>
+              <button onClick={handleSendAdvert}>{t('meshcore.send_advert')}</button>
               <button onClick={handleDisconnect} className="disconnect">
-                Disconnect
+                {t('meshcore.disconnect')}
               </button>
             </div>
           </div>
@@ -410,25 +418,25 @@ export const MeshCoreTab: React.FC = () => {
         <>
           {/* Nodes Section */}
           <section className="meshcore-section">
-            <h3>Nodes ({nodes.length})</h3>
+            <h3>{t('meshcore.nodes_count', { count: nodes.length })}</h3>
             <div className="meshcore-node-list">
               {nodes.map((node) => (
                 <div key={node.publicKey} className="meshcore-node-item">
                   <div className="node-name">
-                    {node.name || 'Unknown'}
-                    <span className="node-type">{DEVICE_TYPE_LABELS[node.advType] || 'Unknown'}</span>
+                    {node.name || t('meshcore.unknown')}
+                    <span className="node-type">{t(DEVICE_TYPE_KEYS[node.advType] || 'meshcore.device_type.unknown')}</span>
                   </div>
                   <div className="node-details">
-                    <span>Key: {node.publicKey.substring(0, 12)}...</span>
-                    {node.rssi && <span>RSSI: {node.rssi} dBm</span>}
-                    {node.snr && <span>SNR: {node.snr} dB</span>}
-                    {node.batteryMv && <span>Battery: {(node.batteryMv / 1000).toFixed(2)}V</span>}
-                    {node.lastHeard && <span>Last: {formatTime(node.lastHeard)}</span>}
+                    <span>{t('meshcore.key')}: {node.publicKey.substring(0, 12)}...</span>
+                    {node.rssi && <span>{t('meshcore.rssi')}: {node.rssi} dBm</span>}
+                    {node.snr && <span>{t('meshcore.snr')}: {node.snr} dB</span>}
+                    {node.batteryMv && <span>{t('meshcore.battery')}: {(node.batteryMv / 1000).toFixed(2)}V</span>}
+                    {node.lastHeard && <span>{t('meshcore.last_heard')}: {formatTime(node.lastHeard)}</span>}
                   </div>
                 </div>
               ))}
               {nodes.length === 0 && (
-                <div className="meshcore-empty">No nodes discovered yet</div>
+                <div className="meshcore-empty">{t('meshcore.no_nodes')}</div>
               )}
             </div>
           </section>
@@ -436,21 +444,21 @@ export const MeshCoreTab: React.FC = () => {
           {/* Contacts Section */}
           <section className="meshcore-section">
             <h3>
-              Contacts ({contacts.length})
+              {t('meshcore.contacts_count', { count: contacts.length })}
               <button onClick={handleRefreshContacts} disabled={loading} className="refresh-btn">
-                Refresh
+                {t('meshcore.refresh')}
               </button>
             </h3>
             <div className="meshcore-contact-list">
               {contacts.map((contact) => (
                 <div key={contact.publicKey} className="meshcore-contact-item">
                   <div className="contact-name">
-                    {contact.advName || contact.name || 'Unknown'}
+                    {contact.advName || contact.name || t('meshcore.unknown')}
                   </div>
                   <div className="contact-details">
-                    <span>Key: {contact.publicKey.substring(0, 12)}...</span>
-                    {contact.rssi && <span>RSSI: {contact.rssi}</span>}
-                    {contact.snr && <span>SNR: {contact.snr}</span>}
+                    <span>{t('meshcore.key')}: {contact.publicKey.substring(0, 12)}...</span>
+                    {contact.rssi && <span>{t('meshcore.rssi')}: {contact.rssi}</span>}
+                    {contact.snr && <span>{t('meshcore.snr')}: {contact.snr}</span>}
                   </div>
                   <button
                     className="contact-select"
@@ -459,19 +467,19 @@ export const MeshCoreTab: React.FC = () => {
                       setAdminPublicKey(contact.publicKey);
                     }}
                   >
-                    Select
+                    {t('meshcore.select')}
                   </button>
                 </div>
               ))}
               {contacts.length === 0 && (
-                <div className="meshcore-empty">No contacts yet. Send an advert to discover nodes.</div>
+                <div className="meshcore-empty">{t('meshcore.no_contacts')}</div>
               )}
             </div>
           </section>
 
           {/* Messages Section */}
           <section className="meshcore-section">
-            <h3>Messages</h3>
+            <h3>{t('meshcore.messages')}</h3>
             <div className="meshcore-messages">
               {messages.map((msg) => (
                 <div key={msg.id} className="meshcore-message">
@@ -483,7 +491,7 @@ export const MeshCoreTab: React.FC = () => {
                 </div>
               ))}
               {messages.length === 0 && (
-                <div className="meshcore-empty">No messages yet</div>
+                <div className="meshcore-empty">{t('meshcore.no_messages')}</div>
               )}
             </div>
             <div className="meshcore-send-form">
@@ -491,7 +499,7 @@ export const MeshCoreTab: React.FC = () => {
                 value={selectedContact}
                 onChange={(e) => setSelectedContact(e.target.value)}
               >
-                <option value="">Broadcast</option>
+                <option value="">{t('meshcore.broadcast')}</option>
                 {contacts.map((c) => (
                   <option key={c.publicKey} value={c.publicKey}>
                     {c.advName || c.name || c.publicKey.substring(0, 12)}
@@ -502,52 +510,52 @@ export const MeshCoreTab: React.FC = () => {
                 type="text"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Type a message..."
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder={t('meshcore.type_message')}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               />
-              <button onClick={handleSendMessage}>Send</button>
+              <button onClick={handleSendMessage}>{t('meshcore.send')}</button>
             </div>
           </section>
 
           {/* Admin Section */}
           <section className="meshcore-section">
-            <h3>Remote Admin</h3>
+            <h3>{t('meshcore.remote_admin')}</h3>
             <div className="meshcore-admin-form">
               <div className="form-group">
-                <label>Target Public Key:</label>
+                <label>{t('meshcore.target_public_key')}:</label>
                 <input
                   type="text"
                   value={adminPublicKey}
                   onChange={(e) => setAdminPublicKey(e.target.value)}
-                  placeholder="Public key of target node"
+                  placeholder={t('meshcore.target_key_placeholder')}
                 />
               </div>
               <div className="form-group">
-                <label>Admin Password:</label>
+                <label>{t('meshcore.admin_password')}:</label>
                 <input
                   type="password"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Admin password"
+                  placeholder={t('meshcore.admin_password_placeholder')}
                 />
               </div>
-              <button onClick={handleAdminLogin}>Login & Get Status</button>
+              <button onClick={handleAdminLogin}>{t('meshcore.login_status')}</button>
             </div>
             {adminStatus && (
               <div className="meshcore-admin-status">
-                <h4>Remote Node Status</h4>
+                <h4>{t('meshcore.remote_node_status')}</h4>
                 <div className="admin-status-grid">
                   {adminStatus.batteryMv && (
-                    <div>Battery: {(adminStatus.batteryMv / 1000).toFixed(2)}V</div>
+                    <div>{t('meshcore.battery')}: {(adminStatus.batteryMv / 1000).toFixed(2)}V</div>
                   )}
                   {adminStatus.uptimeSecs && (
-                    <div>Uptime: {formatUptime(adminStatus.uptimeSecs)}</div>
+                    <div>{t('meshcore.uptime')}: {formatUptime(adminStatus.uptimeSecs)}</div>
                   )}
                   {adminStatus.txPower && (
-                    <div>TX Power: {adminStatus.txPower} dBm</div>
+                    <div>{t('meshcore.tx_power')}: {adminStatus.txPower} dBm</div>
                   )}
                   {adminStatus.radioFreq && (
-                    <div>Frequency: {adminStatus.radioFreq} MHz</div>
+                    <div>{t('meshcore.frequency')}: {adminStatus.radioFreq} MHz</div>
                   )}
                 </div>
               </div>
