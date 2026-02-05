@@ -717,9 +717,10 @@ apiRouter.use('/upgrade', upgradeRoutes);
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
 
 // MeshCore routes (for MeshCore device monitoring)
+// Authentication handled per-route in meshcoreRoutes.ts
 // Enable with MESHCORE_ENABLED=true in .env
 if (process.env.MESHCORE_ENABLED === 'true') {
-  apiRouter.use('/meshcore', optionalAuth(), meshcoreRoutes);
+  apiRouter.use('/meshcore', meshcoreRoutes);
 }
 
 // Link preview routes

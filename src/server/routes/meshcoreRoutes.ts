@@ -2,11 +2,16 @@
  * MeshCore API Routes
  *
  * RESTful endpoints for MeshCore device interaction
+ *
+ * Authentication:
+ * - Read-only endpoints use optionalAuth() (status, nodes, contacts, messages)
+ * - Write operations require authentication (connect, disconnect, send, config)
  */
 
 import { Router, Request, Response } from 'express';
 import meshcoreManager, { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
 import { logger } from '../../utils/logger.js';
+import { requireAuth, optionalAuth } from '../auth/authMiddleware.js';
 
 const router = Router();
 
@@ -14,7 +19,7 @@ const router = Router();
  * GET /api/meshcore/status
  * Get connection status and local node info
  */
-router.get('/status', async (_req: Request, res: Response) => {
+router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
   try {
     const status = meshcoreManager.getConnectionStatus();
     const localNode = meshcoreManager.getLocalNode();
@@ -36,8 +41,9 @@ router.get('/status', async (_req: Request, res: Response) => {
 /**
  * POST /api/meshcore/connect
  * Connect to a MeshCore device
+ * Requires authentication - connects to hardware
  */
-router.post('/connect', async (req: Request, res: Response) => {
+router.post('/connect', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { connectionType, serialPort, tcpHost, tcpPort, baudRate } = req.body;
 
@@ -72,8 +78,9 @@ router.post('/connect', async (req: Request, res: Response) => {
 /**
  * POST /api/meshcore/disconnect
  * Disconnect from the device
+ * Requires authentication - disconnects hardware
  */
-router.post('/disconnect', async (_req: Request, res: Response) => {
+router.post('/disconnect', requireAuth(), async (_req: Request, res: Response) => {
   try {
     await meshcoreManager.disconnect();
     res.json({ success: true, message: 'Disconnected' });
@@ -87,7 +94,7 @@ router.post('/disconnect', async (_req: Request, res: Response) => {
  * GET /api/meshcore/nodes
  * Get all known nodes (local + contacts)
  */
-router.get('/nodes', async (_req: Request, res: Response) => {
+router.get('/nodes', optionalAuth(), async (_req: Request, res: Response) => {
   try {
     const nodes = meshcoreManager.getAllNodes();
     res.json({
@@ -105,7 +112,7 @@ router.get('/nodes', async (_req: Request, res: Response) => {
  * GET /api/meshcore/contacts
  * Get contacts list
  */
-router.get('/contacts', async (_req: Request, res: Response) => {
+router.get('/contacts', optionalAuth(), async (_req: Request, res: Response) => {
   try {
     const contacts = meshcoreManager.getContacts();
     const localNode = meshcoreManager.getLocalNode();
@@ -141,8 +148,9 @@ router.get('/contacts', async (_req: Request, res: Response) => {
 /**
  * POST /api/meshcore/contacts/refresh
  * Refresh contacts from device
+ * Requires authentication - triggers device communication
  */
-router.post('/contacts/refresh', async (_req: Request, res: Response) => {
+router.post('/contacts/refresh', requireAuth(), async (_req: Request, res: Response) => {
   try {
     const contacts = await meshcoreManager.refreshContacts();
     res.json({
@@ -160,7 +168,7 @@ router.post('/contacts/refresh', async (_req: Request, res: Response) => {
  * GET /api/meshcore/messages
  * Get recent messages
  */
-router.get('/messages', async (req: Request, res: Response) => {
+router.get('/messages', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string || '50', 10);
     const messages = meshcoreManager.getRecentMessages(limit);
@@ -178,8 +186,9 @@ router.get('/messages', async (req: Request, res: Response) => {
 /**
  * POST /api/meshcore/messages/send
  * Send a message
+ * Requires authentication - sends data over mesh network
  */
-router.post('/messages/send', async (req: Request, res: Response) => {
+router.post('/messages/send', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { text, toPublicKey } = req.body;
 
@@ -203,8 +212,9 @@ router.post('/messages/send', async (req: Request, res: Response) => {
 /**
  * POST /api/meshcore/advert
  * Send an advertisement
+ * Requires authentication - broadcasts on mesh network
  */
-router.post('/advert', async (_req: Request, res: Response) => {
+router.post('/advert', requireAuth(), async (_req: Request, res: Response) => {
   try {
     const success = await meshcoreManager.sendAdvert();
 
@@ -222,8 +232,9 @@ router.post('/advert', async (_req: Request, res: Response) => {
 /**
  * POST /api/meshcore/admin/login
  * Login to a remote node for admin access
+ * Requires authentication - sensitive admin operation
  */
-router.post('/admin/login', async (req: Request, res: Response) => {
+router.post('/admin/login', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { publicKey, password } = req.body;
 
@@ -247,8 +258,9 @@ router.post('/admin/login', async (req: Request, res: Response) => {
 /**
  * GET /api/meshcore/admin/status/:publicKey
  * Get status from a remote node (requires prior login)
+ * Requires authentication - queries remote node
  */
-router.get('/admin/status/:publicKey', async (req: Request, res: Response) => {
+router.get('/admin/status/:publicKey', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.params;
 
@@ -268,8 +280,9 @@ router.get('/admin/status/:publicKey', async (req: Request, res: Response) => {
 /**
  * POST /api/meshcore/config/name
  * Set device name
+ * Requires authentication - modifies device configuration
  */
-router.post('/config/name', async (req: Request, res: Response) => {
+router.post('/config/name', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
 
@@ -293,8 +306,9 @@ router.post('/config/name', async (req: Request, res: Response) => {
 /**
  * POST /api/meshcore/config/radio
  * Set radio parameters
+ * Requires authentication - modifies device radio configuration
  */
-router.post('/config/radio', async (req: Request, res: Response) => {
+router.post('/config/radio', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { freq, bw, sf, cr } = req.body;
 
