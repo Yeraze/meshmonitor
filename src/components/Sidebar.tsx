@@ -174,6 +174,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('dashboard', 'read') && (
             <NavItem id="dashboard" label={t('nav.dashboard')} icon="📊" />
           )}
+          {hasPermission('meshcore', 'read') && (
+            <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon="📶" />
+          )}
         </div>
 
         <SectionHeader title={t('nav.section_configuration')} />
