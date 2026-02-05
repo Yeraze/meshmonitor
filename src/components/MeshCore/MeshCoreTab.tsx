@@ -9,7 +9,7 @@
  * - Admin commands
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import './MeshCoreTab.css';
 
@@ -114,7 +114,7 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch status:', err);
     }
-  }, []);
+  }, [csrfFetch]);
 
   // Fetch nodes
   const fetchNodes = useCallback(async () => {
@@ -127,7 +127,7 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch nodes:', err);
     }
-  }, []);
+  }, [csrfFetch]);
 
   // Fetch contacts
   const fetchContacts = useCallback(async () => {
@@ -140,7 +140,7 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch contacts:', err);
     }
-  }, []);
+  }, [csrfFetch]);
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
@@ -153,21 +153,28 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch messages:', err);
     }
-  }, []);
+  }, [csrfFetch]);
+
+  // Track connected state in ref to avoid dependency in effect
+  const connectedRef = useRef(false);
+  useEffect(() => {
+    connectedRef.current = status?.connected ?? false;
+  }, [status?.connected]);
 
   // Initial load and polling
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(() => {
       fetchStatus();
-      if (status?.connected) {
+      // Use ref to check connected state without causing re-renders
+      if (connectedRef.current) {
         fetchNodes();
         fetchContacts();
         fetchMessages();
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchNodes, fetchContacts, fetchMessages, status?.connected]);
+  }, [fetchStatus, fetchNodes, fetchContacts, fetchMessages]);
 
   // Connect handler
   const handleConnect = async () => {
