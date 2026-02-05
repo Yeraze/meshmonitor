@@ -236,15 +236,24 @@ export class TraceroutesRepository extends BaseRepository {
    * Get traceroutes between two nodes
    */
   async getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): Promise<DbTraceroute[]> {
+    // Search bidirectionally to capture traceroutes initiated from either direction
+    // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
+    // where the stored direction might be reversed from what's being queried
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       const result = await db
         .select()
         .from(traceroutesSqlite)
         .where(
-          and(
-            eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
-            eq(traceroutesSqlite.toNodeNum, toNodeNum)
+          or(
+            and(
+              eq(traceroutesSqlite.fromNodeNum, fromNodeNum),
+              eq(traceroutesSqlite.toNodeNum, toNodeNum)
+            ),
+            and(
+              eq(traceroutesSqlite.fromNodeNum, toNodeNum),
+              eq(traceroutesSqlite.toNodeNum, fromNodeNum)
+            )
           )
         )
         .orderBy(desc(traceroutesSqlite.timestamp))
@@ -257,9 +266,15 @@ export class TraceroutesRepository extends BaseRepository {
         .select()
         .from(traceroutesMysql)
         .where(
-          and(
-            eq(traceroutesMysql.fromNodeNum, fromNodeNum),
-            eq(traceroutesMysql.toNodeNum, toNodeNum)
+          or(
+            and(
+              eq(traceroutesMysql.fromNodeNum, fromNodeNum),
+              eq(traceroutesMysql.toNodeNum, toNodeNum)
+            ),
+            and(
+              eq(traceroutesMysql.fromNodeNum, toNodeNum),
+              eq(traceroutesMysql.toNodeNum, fromNodeNum)
+            )
           )
         )
         .orderBy(desc(traceroutesMysql.timestamp))
@@ -272,9 +287,15 @@ export class TraceroutesRepository extends BaseRepository {
         .select()
         .from(traceroutesPostgres)
         .where(
-          and(
-            eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
-            eq(traceroutesPostgres.toNodeNum, toNodeNum)
+          or(
+            and(
+              eq(traceroutesPostgres.fromNodeNum, fromNodeNum),
+              eq(traceroutesPostgres.toNodeNum, toNodeNum)
+            ),
+            and(
+              eq(traceroutesPostgres.fromNodeNum, toNodeNum),
+              eq(traceroutesPostgres.toNodeNum, fromNodeNum)
+            )
           )
         )
         .orderBy(desc(traceroutesPostgres.timestamp))
