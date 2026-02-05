@@ -487,6 +487,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const setSelectedNodeIdRef = useRef(setSelectedNodeId);
   const centerMapOnNodeRef = useRef(centerMapOnNode);
   const showRouteRef = useRef(showRoute);
+  const traceroutesRef = useRef(traceroutes);
 
   // Stable ref callback for markers to prevent unnecessary re-renders
   const handleMarkerRef = React.useCallback((ref: LeafletMarker | null, nodeId: string | undefined) => {
@@ -783,6 +784,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setSelectedNodeIdRef.current = setSelectedNodeId;
     centerMapOnNodeRef.current = centerMapOnNode;
     showRouteRef.current = showRoute;
+    traceroutesRef.current = traceroutes;
   });
 
   // Track if listeners have been set up
@@ -807,11 +809,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           const nodeId = nodeEntry[0];
           setSelectedNodeIdRef.current(nodeId);
           // When showRoute is enabled, let TracerouteBoundsController handle the zoom
-          // Otherwise, center on the clicked node
+          // to fit the entire traceroute path instead of just centering on the node.
+          // But if the node has no valid traceroute, fall back to centering on it.
           if (!showRouteRef.current) {
             const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
             if (node) {
               centerMapOnNodeRef.current(node);
+            }
+          } else {
+            // Check if this node has a valid traceroute
+            const hasTraceroute = traceroutesRef.current.some(tr => {
+              const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
+              if (!matches) return false;
+              return tr.route && tr.route !== 'null' && tr.route !== '' &&
+                     tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
+            });
+            // If no valid traceroute, still center on the node
+            if (!hasTraceroute) {
+              const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
+              if (node) {
+                centerMapOnNodeRef.current(node);
+              }
             }
           }
         }
@@ -1603,23 +1621,32 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     </div>
                   </Tooltip>
                 )}
-                <Popup autoPan={false}>
-                  <MapNodePopupContent
-                    node={node}
-                    nodes={nodes}
-                    currentNodeId={currentNodeId}
-                    timeFormat={timeFormat}
-                    dateFormat={dateFormat}
-                    distanceUnit={distanceUnit}
-                    traceroutes={traceroutes}
-                    hasPermission={hasPermission}
-                    onDMNode={handlePopupDMClick(node)}
-                    onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
-                    connectionStatus={connectionStatus}
-                    tracerouteLoading={tracerouteLoading}
-                    getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
-                  />
-                </Popup>
+                {/* Hide popup when showRoute is enabled and node has a valid traceroute,
+                    since TracerouteBoundsController zooms to fit the route */}
+                {!(showRoute && traceroutes.some(tr => {
+                  const matches = tr.toNodeId === node.user?.id || tr.fromNodeId === node.user?.id;
+                  if (!matches) return false;
+                  return tr.route && tr.route !== 'null' && tr.route !== '' &&
+                         tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
+                })) && (
+                  <Popup autoPan={false}>
+                    <MapNodePopupContent
+                      node={node}
+                      nodes={nodes}
+                      currentNodeId={currentNodeId}
+                      timeFormat={timeFormat}
+                      dateFormat={dateFormat}
+                      distanceUnit={distanceUnit}
+                      traceroutes={traceroutes}
+                      hasPermission={hasPermission}
+                      onDMNode={handlePopupDMClick(node)}
+                      onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
+                      connectionStatus={connectionStatus}
+                      tracerouteLoading={tracerouteLoading}
+                      getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
+                    />
+                  </Popup>
+                )}
               </Marker>
                 );
               })}
