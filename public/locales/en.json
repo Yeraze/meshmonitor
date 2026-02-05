@@ -3785,5 +3785,18 @@
   "news.category.release": "Release",
   "news.category.security": "Security",
   "news.category.feature": "Feature",
-  "news.category.maintenance": "Maintenance"
+  "news.category.maintenance": "Maintenance",
+
+  "automation.ignored_nodes.title": "Ignored Nodes",
+  "automation.ignored_nodes.description": "Nodes on this list will remain ignored even after being pruned by inactive node cleanup. When they reappear, their ignored status will be automatically restored.",
+  "automation.ignored_nodes.total_ignored": "Ignored Nodes",
+  "automation.ignored_nodes.empty": "No nodes are currently ignored.",
+  "automation.ignored_nodes.col_node_id": "Node ID",
+  "automation.ignored_nodes.col_long_name": "Long Name",
+  "automation.ignored_nodes.col_short_name": "Short Name",
+  "automation.ignored_nodes.col_ignored_at": "Ignored At",
+  "automation.ignored_nodes.col_actions": "Actions",
+  "automation.ignored_nodes.unignore": "Un-ignore",
+  "automation.ignored_nodes.removed": "{{name}} has been un-ignored.",
+  "automation.ignored_nodes.remove_failed": "Failed to un-ignore node. Please try again."
 }

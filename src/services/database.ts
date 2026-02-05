@@ -70,6 +70,7 @@ import { migration as positionDoublePrecisionMigration, runMigration062Postgres,
 import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
 import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
 import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
+import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -91,6 +92,7 @@ import {
   NotificationsRepository,
   MiscRepository,
   ChannelDatabaseRepository,
+  IgnoredNodesRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType } from '../db/types.js';
 import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
@@ -464,6 +466,7 @@ class DatabaseService {
   public notificationsRepo: NotificationsRepository | null = null;
   public miscRepo: MiscRepository | null = null;
   public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
+  public ignoredNodesRepo: IgnoredNodesRepository | null = null;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -729,6 +732,7 @@ class DatabaseService {
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
       this.miscRepo = new MiscRepository(drizzleDb, this.drizzleDbType);
       this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
+      this.ignoredNodesRepo = new IgnoredNodesRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -930,6 +934,7 @@ class DatabaseService {
     this.runPositionHistoryHoursMigration();
     this.runEnforceNameValidationMigration();
     this.runSortOrderMigration();
+    this.runIgnoredNodesTableMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2220,6 +2225,25 @@ class DatabaseService {
     }
   }
 
+  private runIgnoredNodesTableMigration(): void {
+    const migrationKey = 'migration_066_ignored_nodes_table';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 066 (ignored_nodes table) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 066: Add ignored_nodes table...');
+      ignoredNodesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Migration 066 (ignored_nodes table) completed successfully');
+    } catch (error) {
+      logger.error('Failed to run ignored_nodes table migration:', error);
+      throw error;
+    }
+  }
+
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
     try {
@@ -2915,8 +2939,25 @@ class DatabaseService {
           logger.error('Failed to upsert node:', err);
         });
 
-        // Send notification for newly discovered node (only if not broadcast node)
+        // For newly discovered nodes, check persistent ignore list and restore status
         if (!existingNode && nodeData.nodeNum !== 4294967295) {
+          // Check if this node was previously ignored
+          if (this.ignoredNodesRepo) {
+            this.ignoredNodesRepo.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
+              if (wasIgnored) {
+                logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum}`);
+                updatedNode.isIgnored = true;
+                this.nodesCache.set(nodeData.nodeNum!, updatedNode);
+                if (this.nodesRepo) {
+                  this.nodesRepo.setNodeIgnored(nodeData.nodeNum!, true).catch(err => {
+                    logger.error('Failed to restore ignored status:', err);
+                  });
+                }
+              }
+            }).catch(err => logger.error('Failed to check persistent ignore list:', err));
+          }
+
+          // Send notification for newly discovered node
           import('../server/services/notificationService.js').then(({ notificationService }) => {
             notificationService.notifyNewNode(
               nodeData.nodeId!,
@@ -3012,6 +3053,15 @@ class DatabaseService {
         nodeData.nodeNum
       );
     } else {
+      // Check if this node was previously ignored (persistent ignore list)
+      let wasIgnored = false;
+      try {
+        const ignoreCheck = this.db.prepare('SELECT nodeNum FROM ignored_nodes WHERE nodeNum = ?');
+        wasIgnored = !!ignoreCheck.get(nodeData.nodeNum);
+      } catch {
+        // Table may not exist yet during initial setup
+      }
+
       const stmt = this.db.prepare(`
         INSERT INTO nodes (
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
@@ -3020,8 +3070,9 @@ class DatabaseService {
           isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt,
           keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, keySecurityIssueDetails,
           positionChannel, positionPrecisionBits, positionTimestamp,
+          isIgnored,
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -3059,9 +3110,14 @@ class DatabaseService {
         nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
         nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
         nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
+        wasIgnored ? 1 : 0,
         now,
         now
       );
+
+      if (wasIgnored) {
+        logger.debug(`Restored ignored status for returning node ${nodeData.nodeNum}`);
+      }
 
       // Send notification for newly discovered node (only if not broadcast node)
       if (nodeData.nodeNum !== 4294967295 && nodeData.nodeId) {
@@ -4187,7 +4243,8 @@ class DatabaseService {
     }
 
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const stmt = this.db.prepare('DELETE FROM nodes WHERE lastHeard < ? OR lastHeard IS NULL');
+    // Skip nodes that are ignored - they should persist even if inactive
+    const stmt = this.db.prepare('DELETE FROM nodes WHERE (lastHeard < ? OR lastHeard IS NULL) AND (isIgnored = 0 OR isIgnored IS NULL)');
     const result = stmt.run(cutoff);
     return Number(result.changes);
   }
@@ -7867,6 +7924,41 @@ class DatabaseService {
 
   // Ignored operations
   setNodeIgnored(nodeNum: number, isIgnored: boolean): void {
+    // Get the node info for the persistent ignore list
+    const node = this.getNode(nodeNum);
+    const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
+
+    // Persist to/remove from the ignored_nodes table
+    if (this.ignoredNodesRepo) {
+      if (isIgnored) {
+        this.ignoredNodesRepo.addIgnoredNodeAsync(
+          nodeNum, nodeId, node?.longName, node?.shortName
+        ).catch(err => {
+          logger.error('Failed to add node to persistent ignore list:', err);
+        });
+      } else {
+        this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum).catch(err => {
+          logger.error('Failed to remove node from persistent ignore list:', err);
+        });
+      }
+    } else {
+      // SQLite fallback: use raw SQL for the ignored_nodes table
+      try {
+        if (isIgnored) {
+          const stmt = this.db.prepare(`
+            INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt)
+            VALUES (?, ?, ?, ?, ?)
+          `);
+          stmt.run(nodeNum, nodeId, node?.longName || null, node?.shortName || null, Date.now());
+        } else {
+          const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
+          stmt.run(nodeNum);
+        }
+      } catch (err) {
+        logger.error('Failed to update persistent ignore list:', err);
+      }
+    }
+
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const cachedNode = this.nodesCache.get(nodeNum);
@@ -7896,12 +7988,65 @@ class DatabaseService {
     const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum);
 
     if (result.changes === 0) {
-      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update ignored status for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`Failed to update ignored status for node ${nodeId} (${nodeNum}): node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
     logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
+  }
+
+  // Persistent ignored nodes operations
+  async addIgnoredNodeAsync(
+    nodeNum: number,
+    nodeId: string,
+    longName?: string | null,
+    shortName?: string | null,
+    ignoredBy?: string | null,
+  ): Promise<void> {
+    if (this.ignoredNodesRepo) {
+      await this.ignoredNodesRepo.addIgnoredNodeAsync(nodeNum, nodeId, longName, shortName, ignoredBy);
+    } else {
+      const stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt, ignoredBy)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(nodeNum, nodeId, longName || null, shortName || null, Date.now(), ignoredBy || null);
+    }
+  }
+
+  async removeIgnoredNodeAsync(nodeNum: number): Promise<void> {
+    if (this.ignoredNodesRepo) {
+      await this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum);
+    } else {
+      const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
+      stmt.run(nodeNum);
+    }
+  }
+
+  async getIgnoredNodesAsync(): Promise<Array<{
+    nodeNum: number;
+    nodeId: string;
+    longName: string | null;
+    shortName: string | null;
+    ignoredAt: number;
+    ignoredBy: string | null;
+  }>> {
+    if (this.ignoredNodesRepo) {
+      return this.ignoredNodesRepo.getIgnoredNodesAsync();
+    }
+    // SQLite fallback
+    const stmt = this.db.prepare('SELECT * FROM ignored_nodes');
+    return stmt.all() as any[];
+  }
+
+  async isNodeIgnoredAsync(nodeNum: number): Promise<boolean> {
+    if (this.ignoredNodesRepo) {
+      return this.ignoredNodesRepo.isNodeIgnoredAsync(nodeNum);
+    }
+    // SQLite fallback
+    const stmt = this.db.prepare('SELECT nodeNum FROM ignored_nodes WHERE nodeNum = ?');
+    const row = stmt.get(nodeNum);
+    return !!row;
   }
 
   // Position override operations
@@ -10092,6 +10237,9 @@ class DatabaseService {
       // Run migration 065: Add sortOrder column to channel_database
       await runMigration065Postgres(client);
 
+      // Run migration 066: Add ignored_nodes table
+      await runMigration066Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10198,6 +10346,9 @@ class DatabaseService {
 
       // Run migration 065: Add sortOrder column to channel_database
       await runMigration065Mysql(pool);
+
+      // Run migration 066: Add ignored_nodes table
+      await runMigration066Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
