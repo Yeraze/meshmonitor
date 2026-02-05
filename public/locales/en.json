@@ -1544,7 +1544,7 @@
 
   "info.recent_activity": "Recent Activity",
   "info.last_message": "Last Message:",
-  "info.most_active_node": "Most Active Node:",
+  "info.most_active_node": "Most Recently Heard:",
 
   "info.longest_route": "Longest Active Route Segment",
   "info.distance": "Distance:",
