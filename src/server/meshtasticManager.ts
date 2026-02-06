@@ -1721,14 +1721,17 @@ class MeshtasticManager {
         const truncated = this.truncateMessageForMeshtastic(expanded, 200);
 
         const isDM = trigger.channel === 'dm';
-        logger.info(`📍 Geofence "${trigger.name}" sending text to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}`);
+        // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
+        const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
+        logger.info(`📍 Geofence "${trigger.name}" sending text to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}${trigger.verifyResponse ? ' (with verification)' : ''}`);
         messageQueueService.enqueue(
           truncated,
           isDM ? nodeNum : 0,
           undefined,
           () => logger.info(`✅ Geofence "${trigger.name}" message delivered to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}`),
           (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" message failed: ${reason}`),
-          isDM ? undefined : trigger.channel as number
+          isDM ? undefined : trigger.channel as number,
+          maxAttempts
         );
 
         this.updateGeofenceTriggerResult(trigger.id, 'success');
@@ -1865,6 +1868,8 @@ class MeshtasticManager {
         // Skip sending if channel is 'none' (script handles its own output)
         if (trigger.channel !== 'none') {
           const isDM = trigger.channel === 'dm';
+          // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
+          const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
           for (const resp of scriptResponses) {
             const truncated = this.truncateMessageForMeshtastic(resp, 200);
             messageQueueService.enqueue(
@@ -1873,7 +1878,8 @@ class MeshtasticManager {
               undefined,
               () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
               (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
-              isDM ? undefined : trigger.channel as number
+              isDM ? undefined : trigger.channel as number,
+              maxAttempts
             );
           }
         } else {
@@ -7812,8 +7818,11 @@ class MeshtasticManager {
                 return;
               }
 
-              const target = triggerChannel === 'dm' ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
-              logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}`);
+              const isDM = triggerChannel === 'dm';
+              // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
+              const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
+              const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+              logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}${trigger.verifyResponse ? ' (with verification)' : ''}`);
 
               scriptResponses.forEach((resp, index) => {
                 const truncated = this.truncateMessageForMeshtastic(resp, 200);
@@ -7821,7 +7830,7 @@ class MeshtasticManager {
 
                 messageQueueService.enqueue(
                   truncated,
-                  triggerChannel === 'dm' ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
+                  isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
                   isFirstMessage ? packetId : undefined, // Reply to original message for first response
                   () => {
                     logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to ${target}`);
@@ -7829,7 +7838,8 @@ class MeshtasticManager {
                   (reason: string) => {
                     logger.warn(`❌ Script response ${index + 1}/${scriptResponses.length} failed to ${target}: ${reason}`);
                   },
-                  triggerChannel === 'dm' ? undefined : triggerChannel as number // channel: undefined for DM, channel number for channel
+                  isDM ? undefined : triggerChannel as number, // channel: undefined for DM, channel number for channel
+                  maxAttempts
                 );
               });
 
@@ -7886,14 +7896,17 @@ class MeshtasticManager {
 
           // Enqueue all messages for delivery with retry logic
           const triggerChannel = trigger.channel ?? 'dm';
-          const target = triggerChannel === 'dm' ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
-          logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${target}`);
+          const isDM = triggerChannel === 'dm';
+          // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
+          const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
+          const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+          logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${target}${trigger.verifyResponse ? ' (with verification)' : ''}`);
 
           messagesToSend.forEach((msg, index) => {
             const isFirstMessage = index === 0;
             messageQueueService.enqueue(
               msg,
-              triggerChannel === 'dm' ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
+              isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
               isFirstMessage ? packetId : undefined, // Reply to original message for first response
               () => {
                 logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to ${target}`);
@@ -7901,7 +7914,8 @@ class MeshtasticManager {
               (reason: string) => {
                 logger.warn(`❌ Auto-response ${index + 1}/${messagesToSend.length} failed to ${target}: ${reason}`);
               },
-              triggerChannel === 'dm' ? undefined : triggerChannel as number // channel: undefined for DM, channel number for channel
+              isDM ? undefined : triggerChannel as number, // channel: undefined for DM, channel number for channel
+              maxAttempts
             );
           });
 
