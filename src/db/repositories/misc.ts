@@ -12,6 +12,9 @@ import {
   autoTracerouteNodesSqlite,
   autoTracerouteNodesPostgres,
   autoTracerouteNodesMysql,
+  autoTimeSyncNodesSqlite,
+  autoTimeSyncNodesPostgres,
+  autoTimeSyncNodesMysql,
   upgradeHistorySqlite,
   upgradeHistoryPostgres,
   upgradeHistoryMysql,
@@ -1116,6 +1119,124 @@ export class MiscRepository extends BaseRepository {
         oldestTimestamp: row?.oldestTimestamp ? Number(row.oldestTimestamp) : null,
         newestTimestamp: row?.newestTimestamp ? Number(row.newestTimestamp) : null,
       };
+    }
+  }
+
+  // ============ AUTO TIME SYNC NODES ============
+
+  /**
+   * Get all auto time sync nodes
+   */
+  async getAutoTimeSyncNodes(): Promise<number[]> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const results = await db
+        .select({ nodeNum: autoTimeSyncNodesSqlite.nodeNum })
+        .from(autoTimeSyncNodesSqlite)
+        .orderBy(asc(autoTimeSyncNodesSqlite.createdAt));
+      return results.map(r => Number(r.nodeNum));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const results = await db
+        .select({ nodeNum: autoTimeSyncNodesMysql.nodeNum })
+        .from(autoTimeSyncNodesMysql)
+        .orderBy(asc(autoTimeSyncNodesMysql.createdAt));
+      return results.map(r => Number(r.nodeNum));
+    } else {
+      const db = this.getPostgresDb();
+      const results = await db
+        .select({ nodeNum: autoTimeSyncNodesPostgres.nodeNum })
+        .from(autoTimeSyncNodesPostgres)
+        .orderBy(asc(autoTimeSyncNodesPostgres.createdAt));
+      return results.map(r => Number(r.nodeNum));
+    }
+  }
+
+  /**
+   * Set auto time sync nodes (replaces existing)
+   */
+  async setAutoTimeSyncNodes(nodeNums: number[]): Promise<void> {
+    const now = this.now();
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      // Delete all existing entries
+      await db.delete(autoTimeSyncNodesSqlite);
+      // Insert new entries
+      for (const nodeNum of nodeNums) {
+        await db
+          .insert(autoTimeSyncNodesSqlite)
+          .values({ nodeNum, createdAt: now })
+          .onConflictDoNothing();
+      }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      // Delete all existing entries
+      await db.delete(autoTimeSyncNodesMysql);
+      // Insert new entries
+      for (const nodeNum of nodeNums) {
+        await db
+          .insert(autoTimeSyncNodesMysql)
+          .values({ nodeNum, createdAt: now });
+      }
+    } else {
+      const db = this.getPostgresDb();
+      // Delete all existing entries
+      await db.delete(autoTimeSyncNodesPostgres);
+      // Insert new entries
+      for (const nodeNum of nodeNums) {
+        await db
+          .insert(autoTimeSyncNodesPostgres)
+          .values({ nodeNum, createdAt: now })
+          .onConflictDoNothing();
+      }
+    }
+  }
+
+  /**
+   * Add a single auto time sync node
+   */
+  async addAutoTimeSyncNode(nodeNum: number): Promise<void> {
+    const now = this.now();
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db
+        .insert(autoTimeSyncNodesSqlite)
+        .values({ nodeNum, createdAt: now })
+        .onConflictDoNothing();
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      // MySQL doesn't have onConflictDoNothing, use try/catch
+      try {
+        await db
+          .insert(autoTimeSyncNodesMysql)
+          .values({ nodeNum, createdAt: now });
+      } catch {
+        // Ignore duplicate key errors
+      }
+    } else {
+      const db = this.getPostgresDb();
+      await db
+        .insert(autoTimeSyncNodesPostgres)
+        .values({ nodeNum, createdAt: now })
+        .onConflictDoNothing();
+    }
+  }
+
+  /**
+   * Remove a single auto time sync node
+   */
+  async removeAutoTimeSyncNode(nodeNum: number): Promise<void> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db.delete(autoTimeSyncNodesSqlite).where(eq(autoTimeSyncNodesSqlite.nodeNum, nodeNum));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db.delete(autoTimeSyncNodesMysql).where(eq(autoTimeSyncNodesMysql.nodeNum, nodeNum));
+    } else {
+      const db = this.getPostgresDb();
+      await db.delete(autoTimeSyncNodesPostgres).where(eq(autoTimeSyncNodesPostgres.nodeNum, nodeNum));
     }
   }
 }

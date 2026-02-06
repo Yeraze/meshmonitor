@@ -4,7 +4,7 @@
  * Handles all node-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, isNull, or, desc, and, isNotNull, ne, sql } from 'drizzle-orm';
+import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray } from 'drizzle-orm';
 import { nodesSqlite, nodesPostgres, nodesMysql } from '../schema/nodes.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
@@ -1265,7 +1265,7 @@ export class NodesRepository extends BaseRepository {
    */
   async getNodeNeedingRemoteAdminCheckAsync(
     localNodeNum: number,
-    activeNodeCutoffMs: number,
+    activeNodeCutoff: number,
     expirationMsAgo: number
   ): Promise<DbNode | null> {
     if (this.isSQLite()) {
@@ -1278,7 +1278,7 @@ export class NodesRepository extends BaseRepository {
             ne(nodesSqlite.nodeNum, localNodeNum),
             isNotNull(nodesSqlite.publicKey),
             ne(nodesSqlite.publicKey, ''),
-            gt(nodesSqlite.lastHeard, activeNodeCutoffMs),
+            gt(nodesSqlite.lastHeard, activeNodeCutoff),
             or(
               isNull(nodesSqlite.lastRemoteAdminCheck),
               lt(nodesSqlite.lastRemoteAdminCheck, expirationMsAgo)
@@ -1300,7 +1300,7 @@ export class NodesRepository extends BaseRepository {
             ne(nodesMysql.nodeNum, localNodeNum),
             isNotNull(nodesMysql.publicKey),
             ne(nodesMysql.publicKey, ''),
-            gt(nodesMysql.lastHeard, activeNodeCutoffMs),
+            gt(nodesMysql.lastHeard, activeNodeCutoff),
             or(
               isNull(nodesMysql.lastRemoteAdminCheck),
               lt(nodesMysql.lastRemoteAdminCheck, expirationMsAgo)
@@ -1323,7 +1323,7 @@ export class NodesRepository extends BaseRepository {
             ne(nodesPostgres.nodeNum, localNodeNum),
             isNotNull(nodesPostgres.publicKey),
             ne(nodesPostgres.publicKey, ''),
-            gt(nodesPostgres.lastHeard, activeNodeCutoffMs),
+            gt(nodesPostgres.lastHeard, activeNodeCutoff),
             or(
               isNull(nodesPostgres.lastRemoteAdminCheck),
               lt(nodesPostgres.lastRemoteAdminCheck, expirationMsAgo)
@@ -1385,6 +1385,124 @@ export class NodesRepository extends BaseRepository {
       await db
         .update(nodesPostgres)
         .set(updateData as any)
+        .where(eq(nodesPostgres.nodeNum, nodeNum));
+    }
+  }
+
+  /**
+   * Get a node that needs time sync
+   * @param activeNodeCutoff Only consider nodes heard after this timestamp (in seconds, since lastHeard is in seconds)
+   * @param expirationMsAgo Only consider nodes with lastTimeSync before this timestamp (in ms, since lastTimeSync is in ms)
+   * @param filterNodeNums Optional list of node numbers to filter to (if empty, all nodes with remote admin)
+   * @returns A node needing time sync, or null if none found
+   */
+  async getNodeNeedingTimeSyncAsync(
+    activeNodeCutoff: number,
+    expirationMsAgo: number,
+    filterNodeNums?: number[]
+  ): Promise<DbNode | null> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const baseConditions = [
+        eq(nodesSqlite.hasRemoteAdmin, true),
+        gt(nodesSqlite.lastHeard, activeNodeCutoff),
+        or(
+          isNull(nodesSqlite.lastTimeSync),
+          lt(nodesSqlite.lastTimeSync, expirationMsAgo)
+        )
+      ];
+
+      // Add filter condition if specific nodes are provided
+      if (filterNodeNums && filterNodeNums.length > 0) {
+        baseConditions.push(inArray(nodesSqlite.nodeNum, filterNodeNums));
+      }
+
+      const results = await db
+        .select()
+        .from(nodesSqlite)
+        .where(and(...baseConditions))
+        .orderBy(asc(nodesSqlite.lastTimeSync))
+        .limit(1);
+
+      if (results.length === 0) return null;
+      return this.normalizeNode(results[0] as DbNode);
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const baseConditions = [
+        eq(nodesMysql.hasRemoteAdmin, true),
+        gt(nodesMysql.lastHeard, activeNodeCutoff),
+        or(
+          isNull(nodesMysql.lastTimeSync),
+          lt(nodesMysql.lastTimeSync, expirationMsAgo)
+        )
+      ];
+
+      if (filterNodeNums && filterNodeNums.length > 0) {
+        baseConditions.push(inArray(nodesMysql.nodeNum, filterNodeNums));
+      }
+
+      const results = await db
+        .select()
+        .from(nodesMysql)
+        .where(and(...baseConditions))
+        .orderBy(asc(nodesMysql.lastTimeSync))
+        .limit(1);
+
+      if (results.length === 0) return null;
+      return this.normalizeNode(results[0] as DbNode);
+    } else {
+      // PostgreSQL
+      const db = this.getPostgresDb();
+      const baseConditions = [
+        eq(nodesPostgres.hasRemoteAdmin, true),
+        gt(nodesPostgres.lastHeard, activeNodeCutoff),
+        or(
+          isNull(nodesPostgres.lastTimeSync),
+          lt(nodesPostgres.lastTimeSync, expirationMsAgo)
+        )
+      ];
+
+      if (filterNodeNums && filterNodeNums.length > 0) {
+        baseConditions.push(inArray(nodesPostgres.nodeNum, filterNodeNums));
+      }
+
+      const results = await db
+        .select()
+        .from(nodesPostgres)
+        .where(and(...baseConditions))
+        .orderBy(asc(nodesPostgres.lastTimeSync))
+        .limit(1);
+
+      if (results.length === 0) return null;
+      return this.normalizeNode(results[0] as DbNode);
+    }
+  }
+
+  /**
+   * Update a node's lastTimeSync timestamp
+   * @param nodeNum The node number to update
+   * @param timestamp The timestamp to set
+   */
+  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
+    const now = this.now();
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db
+        .update(nodesSqlite)
+        .set({ lastTimeSync: timestamp, updatedAt: now })
+        .where(eq(nodesSqlite.nodeNum, nodeNum));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .update(nodesMysql)
+        .set({ lastTimeSync: timestamp, updatedAt: now })
+        .where(eq(nodesMysql.nodeNum, nodeNum));
+    } else {
+      const db = this.getPostgresDb();
+      await db
+        .update(nodesPostgres)
+        .set({ lastTimeSync: timestamp, updatedAt: now })
         .where(eq(nodesPostgres.nodeNum, nodeNum));
     }
   }

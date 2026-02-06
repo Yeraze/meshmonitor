@@ -28,6 +28,7 @@ import AutoKeyManagementSection from './components/AutoKeyManagementSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
 import GeofenceTriggersSection from './components/GeofenceTriggersSection';
 import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
+import AutoTimeSyncSection from './components/AutoTimeSyncSection';
 import IgnoredNodesSection from './components/IgnoredNodesSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
@@ -4423,6 +4424,7 @@ function App() {
                 { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
                 { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
                 { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },
+                { id: 'auto-time-sync', label: t('automation.time_sync.title', 'Auto Time Sync') },
                 { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
                 { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
                 { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
@@ -4458,6 +4460,11 @@ function App() {
               </div>
               <div id="remote-admin-scanner">
                 <RemoteAdminScannerSection
+                  baseUrl={baseUrl}
+                />
+              </div>
+              <div id="auto-time-sync">
+                <AutoTimeSyncSection
                   baseUrl={baseUrl}
                 />
               </div>

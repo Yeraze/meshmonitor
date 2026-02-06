@@ -181,6 +181,22 @@ export const autoTracerouteNodesPostgres = pgTable('auto_traceroute_nodes', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
+// ============ AUTO TIME SYNC NODES ============
+
+export const autoTimeSyncNodesSqlite = sqliteTable('auto_time_sync_nodes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nodeNum: integer('nodeNum').notNull().unique(),
+  enabled: integer('enabled', { mode: 'boolean' }).default(true),
+  createdAt: integer('createdAt').notNull(),
+});
+
+export const autoTimeSyncNodesPostgres = pgTable('auto_time_sync_nodes', {
+  id: pgSerial('id').primaryKey(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull().unique(),
+  enabled: pgBoolean('enabled').default(true),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
 // ============ MYSQL SCHEMAS ============
 
 export const backupHistoryMysql = mysqlTable('backup_history', {
@@ -256,6 +272,13 @@ export const solarEstimatesMysql = mysqlTable('solar_estimates', {
 });
 
 export const autoTracerouteNodesMysql = mysqlTable('auto_traceroute_nodes', {
+  id: mySerial('id').primaryKey(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull().unique(),
+  enabled: myBoolean('enabled').default(true),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
+export const autoTimeSyncNodesMysql = mysqlTable('auto_time_sync_nodes', {
   id: mySerial('id').primaryKey(),
   nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull().unique(),
   enabled: myBoolean('enabled').default(true),
@@ -350,6 +373,13 @@ export type AutoTracerouteNodePostgres = typeof autoTracerouteNodesPostgres.$inf
 export type NewAutoTracerouteNodePostgres = typeof autoTracerouteNodesPostgres.$inferInsert;
 export type AutoTracerouteNodeMysql = typeof autoTracerouteNodesMysql.$inferSelect;
 export type NewAutoTracerouteNodeMysql = typeof autoTracerouteNodesMysql.$inferInsert;
+
+export type AutoTimeSyncNodeSqlite = typeof autoTimeSyncNodesSqlite.$inferSelect;
+export type NewAutoTimeSyncNodeSqlite = typeof autoTimeSyncNodesSqlite.$inferInsert;
+export type AutoTimeSyncNodePostgres = typeof autoTimeSyncNodesPostgres.$inferSelect;
+export type NewAutoTimeSyncNodePostgres = typeof autoTimeSyncNodesPostgres.$inferInsert;
+export type AutoTimeSyncNodeMysql = typeof autoTimeSyncNodesMysql.$inferSelect;
+export type NewAutoTimeSyncNodeMysql = typeof autoTimeSyncNodesMysql.$inferInsert;
 
 export type BackupHistoryMysql = typeof backupHistoryMysql.$inferSelect;
 export type NewBackupHistoryMysql = typeof backupHistoryMysql.$inferInsert;
