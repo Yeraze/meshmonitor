@@ -63,6 +63,8 @@ export const nodesSqlite = sqliteTable('nodes', {
   hasRemoteAdmin: integer('hasRemoteAdmin', { mode: 'boolean' }).default(false),
   lastRemoteAdminCheck: integer('lastRemoteAdminCheck'),
   remoteAdminMetadata: text('remoteAdminMetadata'),
+  // Time sync
+  lastTimeSync: integer('lastTimeSync'),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -126,6 +128,8 @@ export const nodesPostgres = pgTable('nodes', {
   hasRemoteAdmin: pgBoolean('hasRemoteAdmin').default(false),
   lastRemoteAdminCheck: pgBigint('lastRemoteAdminCheck', { mode: 'number' }),
   remoteAdminMetadata: pgText('remoteAdminMetadata'),
+  // Time sync
+  lastTimeSync: pgBigint('lastTimeSync', { mode: 'number' }),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -188,6 +192,8 @@ export const nodesMysql = mysqlTable('nodes', {
   hasRemoteAdmin: myBoolean('hasRemoteAdmin').default(false),
   lastRemoteAdminCheck: myBigint('lastRemoteAdminCheck', { mode: 'number' }),
   remoteAdminMetadata: myVarchar('remoteAdminMetadata', { length: 4096 }),
+  // Time sync
+  lastTimeSync: myBigint('lastTimeSync', { mode: 'number' }),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
