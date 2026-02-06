@@ -55,12 +55,17 @@ class MessageQueueService {
    * Add a message to the queue
    * For DMs: destination = node number, channel = undefined
    * For channels: destination = 0, channel = channel index (0-7)
+   * @param maxAttemptsOverride - Override the default max attempts (1 for channels, 3 for DMs).
+   *                              Use 1 to disable retries, or 3 for retry with verification.
    */
-  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number): string {
+  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number): string {
     const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Channel messages don't support ACKs, so only attempt once
-    const maxAttempts = channel !== undefined ? 1 : this.MAX_ATTEMPTS;
+    // For DMs, use override if provided, otherwise default to MAX_ATTEMPTS
+    const maxAttempts = maxAttemptsOverride !== undefined
+      ? maxAttemptsOverride
+      : (channel !== undefined ? 1 : this.MAX_ATTEMPTS);
 
     const queuedMessage: QueuedMessage = {
       id: messageId,
