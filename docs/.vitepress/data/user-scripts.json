@@ -429,5 +429,28 @@
       "Easy to create wrapper scripts for specific actions",
       "JSON output for integration with MeshMonitor"
     ]
+  },
+  {
+    "name": "MeMon - Network Health Monitor",
+    "filename": "memon.py",
+    "icon": "🌐",
+    "description": "Monitors router and DNS resolver health with intelligent alerting. Supports Auto Responder (on-demand status checks) and Timer Trigger (scheduled monitoring with failure streak tracking, alert backoff, and recovery detection). Prevents alert spam through configurable thresholds.",
+    "language": "Python",
+    "tags": ["Network", "Monitoring", "DNS", "Router", "Health Check", "Auto Responder", "Timer Trigger", "Alerting"],
+    "githubPath": "DagBertelsen/MeMon/memon.py",
+    "exampleTrigger": "netcheck status, netcheck router, netcheck dns",
+    "requirements": [
+      "Python 3.5+ (standard library only, zero external dependencies)",
+      "memon.config.json configuration file (see README for examples)"
+    ],
+    "author": "DagBertelsen",
+    "features": [
+      "Router health checks (HTTPS, HTTP, or TCP socket)",
+      "DNS resolver monitoring with multiple servers",
+      "Failure streak tracking with alert backoff",
+      "Dual mode: Auto Responder (stateless) or Timer Trigger (stateful)",
+      "Recovery detection and notifications",
+      "UTF-8 config with emoji support"
+    ]
   }
 ]
