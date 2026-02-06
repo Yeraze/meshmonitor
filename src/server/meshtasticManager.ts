@@ -259,7 +259,9 @@ class MeshtasticManager {
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
+  private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 0;
+  private lastTracerouteSentTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
   private localStatsIntervalMinutes: number = 5;  // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
@@ -789,6 +791,11 @@ class MeshtasticManager {
       this.transport = null;
     }
 
+    if (this.tracerouteJitterTimeout) {
+      clearTimeout(this.tracerouteJitterTimeout);
+      this.tracerouteJitterTimeout = null;
+    }
+
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
@@ -814,6 +821,12 @@ class MeshtasticManager {
   }
 
   private startTracerouteScheduler(): void {
+    // Clear any pending jitter timeout to prevent leaked timers
+    if (this.tracerouteJitterTimeout) {
+      clearTimeout(this.tracerouteJitterTimeout);
+      this.tracerouteJitterTimeout = null;
+    }
+
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
@@ -836,10 +849,20 @@ class MeshtasticManager {
 
     logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval (initial jitter: ${jitterSeconds}s)`);
 
+    // Minimum 30 seconds between traceroute sends (Meshtastic firmware enforces this limit)
+    const MIN_TRACEROUTE_INTERVAL_MS = 30 * 1000;
+
     // The traceroute execution logic
     const executeTraceroute = async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
+          // Enforce minimum 30-second interval between traceroute sends
+          const timeSinceLastSend = Date.now() - this.lastTracerouteSentTime;
+          if (this.lastTracerouteSentTime > 0 && timeSinceLastSend < MIN_TRACEROUTE_INTERVAL_MS) {
+            logger.debug(`🗺️ Auto-traceroute: Skipping - only ${Math.round(timeSinceLastSend / 1000)}s since last send (minimum ${MIN_TRACEROUTE_INTERVAL_MS / 1000}s)`);
+            return;
+          }
+
           // Use async version which supports PostgreSQL/MySQL
           const targetNode = await databaseService.getNodeNeedingTracerouteAsync(this.localNodeInfo.nodeNum);
           if (targetNode) {
@@ -852,6 +875,7 @@ class MeshtasticManager {
             this.pendingAutoTraceroutes.add(targetNode.nodeNum);
             this.pendingTracerouteTimestamps.set(targetNode.nodeNum, Date.now());
 
+            this.lastTracerouteSentTime = Date.now();
             await this.sendTraceroute(targetNode.nodeNum, channel);
 
             // Check for timed-out traceroutes (> 5 minutes old)
@@ -868,7 +892,8 @@ class MeshtasticManager {
     };
 
     // Delay first execution by jitter, then start regular interval
-    setTimeout(() => {
+    this.tracerouteJitterTimeout = setTimeout(() => {
+      this.tracerouteJitterTimeout = null;
       // Execute first traceroute
       executeTraceroute();
 
@@ -10326,7 +10351,12 @@ class MeshtasticManager {
 
     this.isConnected = false;
 
-    // Clear any active intervals
+    // Clear any active intervals and pending jitter timeouts
+    if (this.tracerouteJitterTimeout) {
+      clearTimeout(this.tracerouteJitterTimeout);
+      this.tracerouteJitterTimeout = null;
+    }
+
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
