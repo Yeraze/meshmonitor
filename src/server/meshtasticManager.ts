@@ -17,7 +17,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -849,14 +849,11 @@ class MeshtasticManager {
 
     logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval (initial jitter: ${jitterSeconds}s)`);
 
-    // Minimum 30 seconds between traceroute sends (Meshtastic firmware enforces this limit)
-    const MIN_TRACEROUTE_INTERVAL_MS = 30 * 1000;
-
     // The traceroute execution logic
     const executeTraceroute = async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
-          // Enforce minimum 30-second interval between traceroute sends
+          // Enforce minimum interval between traceroute sends (Meshtastic firmware rate limit)
           const timeSinceLastSend = Date.now() - this.lastTracerouteSentTime;
           if (this.lastTracerouteSentTime > 0 && timeSinceLastSend < MIN_TRACEROUTE_INTERVAL_MS) {
             logger.debug(`🗺️ Auto-traceroute: Skipping - only ${Math.round(timeSinceLastSend / 1000)}s since last send (minimum ${MIN_TRACEROUTE_INTERVAL_MS / 1000}s)`);

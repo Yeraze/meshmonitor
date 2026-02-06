@@ -191,6 +191,12 @@ export const DEFAULT_RETROACTIVE_BATCH_SIZE = 10000;
 export const CHANNEL_CACHE_TTL_MS = 60000;
 
 /**
+ * Minimum interval between traceroute sends in milliseconds.
+ * The Meshtastic firmware enforces a 30-second rate limit on traceroute requests.
+ */
+export const MIN_TRACEROUTE_INTERVAL_MS = 30 * 1000;
+
+/**
  * Maximum message size in bytes for Meshtastic text messages.
  * This is the payload limit for TEXT_MESSAGE_APP packets.
  * Messages longer than this will be truncated or need to be split.
