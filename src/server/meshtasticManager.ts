@@ -273,6 +273,9 @@ class MeshtasticManager {
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
   private remoteAdminScannerIntervalMinutes: number = 0; // 0 = disabled
   private pendingRemoteAdminScans: Set<number> = new Set(); // Track nodes being scanned
+  private timeSyncInterval: NodeJS.Timeout | null = null;
+  private timeSyncIntervalMinutes: number = 0; // 0 = disabled
+  private pendingTimeSyncs: Set<number> = new Set(); // Track nodes being synced
   private keyRepairInterval: NodeJS.Timeout | null = null;
   private keyRepairEnabled: boolean = false;
   private keyRepairIntervalMinutes: number = 5;  // Default 5 minutes
@@ -619,6 +622,9 @@ class MeshtasticManager {
         // Start remote admin discovery scanner
         this.startRemoteAdminScanner();
 
+        // Start automatic time sync scheduler
+        this.startTimeSyncScheduler();
+
         // Start automatic LocalStats collection
         this.startLocalStatsScheduler();
 
@@ -799,6 +805,11 @@ class MeshtasticManager {
       this.remoteAdminScannerInterval = null;
     }
 
+    if (this.timeSyncInterval) {
+      clearInterval(this.timeSyncInterval);
+      this.timeSyncInterval = null;
+    }
+
     // Stop LocalStats collection
     this.stopLocalStatsScheduler();
 
@@ -953,6 +964,102 @@ class MeshtasticManager {
         logger.debug('🔑 Remote admin scanner: Skipping - not connected or no local node info');
       }
     }, intervalMs);
+  }
+
+  /**
+   * Set the auto time sync interval in minutes
+   * @param minutes Interval in minutes (15-1440), 0 to disable
+   */
+  setTimeSyncInterval(minutes: number): void {
+    if (minutes !== 0 && (minutes < 15 || minutes > 1440)) {
+      throw new Error('Time sync interval must be 0 (disabled) or between 15 and 1440 minutes');
+    }
+    this.timeSyncIntervalMinutes = minutes;
+
+    if (minutes === 0) {
+      logger.debug('🕐 Time sync scheduler set to 0 (disabled)');
+    } else {
+      logger.debug(`🕐 Time sync scheduler interval updated to ${minutes} minutes`);
+    }
+
+    if (this.isConnected) {
+      this.startTimeSyncScheduler();
+    }
+  }
+
+  /**
+   * Start the automatic time sync scheduler
+   */
+  private startTimeSyncScheduler(): void {
+    if (this.timeSyncInterval) {
+      clearInterval(this.timeSyncInterval);
+      this.timeSyncInterval = null;
+    }
+
+    // Load settings from database if not already set
+    if (this.timeSyncIntervalMinutes === 0) {
+      if (databaseService.isAutoTimeSyncEnabled()) {
+        this.timeSyncIntervalMinutes = databaseService.getAutoTimeSyncIntervalMinutes();
+      }
+    }
+
+    // If interval is 0 or time sync is disabled, scheduler is disabled
+    if (this.timeSyncIntervalMinutes === 0 || !databaseService.isAutoTimeSyncEnabled()) {
+      logger.info('🕐 Time sync scheduler is disabled');
+      return;
+    }
+
+    const intervalMs = this.timeSyncIntervalMinutes * 60 * 1000;
+    logger.info(`🕐 Starting time sync scheduler with ${this.timeSyncIntervalMinutes} minute interval`);
+
+    this.timeSyncInterval = setInterval(async () => {
+      if (this.isConnected && this.localNodeInfo) {
+        try {
+          await this.syncNextNodeTime();
+        } catch (error) {
+          logger.error('❌ Error in time sync scheduler:', error);
+        }
+      } else {
+        logger.debug('🕐 Time sync scheduler: Skipping - not connected or no local node info');
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Sync the next eligible node's time
+   */
+  private async syncNextNodeTime(): Promise<void> {
+    if (!this.localNodeInfo) {
+      logger.debug('🕐 Time sync: No local node info');
+      return;
+    }
+
+    const targetNode = await databaseService.getNodeNeedingTimeSyncAsync();
+    if (!targetNode) {
+      logger.info('🕐 Time sync: No nodes available for syncing');
+      return;
+    }
+
+    // Skip if already being synced
+    if (this.pendingTimeSyncs.has(targetNode.nodeNum)) {
+      logger.debug(`🕐 Time sync: Node ${targetNode.nodeNum} already being synced`);
+      return;
+    }
+
+    const targetName = targetNode.longName || targetNode.nodeId;
+    logger.info(`🕐 Time sync: Syncing time to ${targetName} (${targetNode.nodeId})`);
+
+    this.pendingTimeSyncs.add(targetNode.nodeNum);
+
+    try {
+      await this.sendSetTimeCommand(targetNode.nodeNum);
+      await databaseService.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now());
+      logger.info(`🕐 Time sync: Successfully synced time to ${targetName}`);
+    } catch (error) {
+      logger.error(`🕐 Time sync: Failed to sync time to ${targetName}:`, error);
+    } finally {
+      this.pendingTimeSyncs.delete(targetNode.nodeNum);
+    }
   }
 
   /**
@@ -2545,15 +2652,14 @@ class MeshtasticManager {
         isLocked: true  // Lock it to prevent overwrites
       } as any;
 
-      // Update rebootCount in the database since it changes over time
-      if (myNodeInfo.rebootCount !== undefined) {
-        databaseService.upsertNode({
-          nodeNum: nodeNum,
-          nodeId: nodeId,
-          rebootCount: myNodeInfo.rebootCount
-        });
-        logger.debug(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
-      }
+      // Update rebootCount and ensure hasRemoteAdmin is set for local node
+      databaseService.upsertNode({
+        nodeNum: nodeNum,
+        nodeId: nodeId,
+        rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
+        hasRemoteAdmin: true  // Local node always has remote admin access
+      });
+      logger.debug(`📱 Updated local device: ${existingNode.longName} (${nodeId}), rebootCount: ${myNodeInfo.rebootCount}, hasRemoteAdmin: true`);
 
       logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED, rebootCount: ${myNodeInfo.rebootCount}`);
     } else {
@@ -2563,6 +2669,7 @@ class MeshtasticManager {
         nodeId: nodeId,
         hwModel: myNodeInfo.hwModel || 0,
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
+        hasRemoteAdmin: true,  // Local node always has remote admin access
         lastHeard: Date.now() / 1000,
         createdAt: Date.now(),
         updatedAt: Date.now()
@@ -10335,6 +10442,11 @@ class MeshtasticManager {
     if (this.remoteAdminScannerInterval) {
       clearInterval(this.remoteAdminScannerInterval);
       this.remoteAdminScannerInterval = null;
+    }
+
+    if (this.timeSyncInterval) {
+      clearInterval(this.timeSyncInterval);
+      this.timeSyncInterval = null;
     }
 
     if (this.announceInterval) {

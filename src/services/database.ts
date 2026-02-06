@@ -71,6 +71,7 @@ import { migration as positionHistoryHoursMigration, runMigration063Postgres, ru
 import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
 import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
 import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
+import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -935,6 +936,7 @@ class DatabaseService {
     this.runEnforceNameValidationMigration();
     this.runSortOrderMigration();
     this.runIgnoredNodesTableMigration();
+    this.runAutoTimeSyncMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -971,7 +973,11 @@ class DatabaseService {
         autoAnnounceUseSchedule: 'false',
         autoAnnounceSchedule: '0 */6 * * *',
         tracerouteIntervalMinutes: '0',
-        autoUpgradeImmediate: 'false'
+        autoUpgradeImmediate: 'false',
+        autoTimeSyncEnabled: 'false',
+        autoTimeSyncIntervalMinutes: '15',
+        autoTimeSyncExpirationHours: '24',
+        autoTimeSyncNodeFilterEnabled: 'false'
       };
 
       Object.entries(automationSettings).forEach(([key, defaultValue]) => {
@@ -2240,6 +2246,25 @@ class DatabaseService {
       logger.debug('Migration 066 (ignored_nodes table) completed successfully');
     } catch (error) {
       logger.error('Failed to run ignored_nodes table migration:', error);
+      throw error;
+    }
+  }
+
+  private runAutoTimeSyncMigration(): void {
+    const migrationKey = 'migration_067_auto_time_sync';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 067 (auto time sync) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 067: Add auto time sync schema...');
+      autoTimeSyncMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Migration 067 (auto time sync) completed successfully');
+    } catch (error) {
+      logger.error('Failed to run auto time sync migration:', error);
       throw error;
     }
   }
@@ -10240,6 +10265,9 @@ class DatabaseService {
       // Run migration 066: Add ignored_nodes table
       await runMigration066Postgres(client);
 
+      // Run migration 067: Add auto time sync schema
+      await runMigration067Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10349,6 +10377,9 @@ class DatabaseService {
 
       // Run migration 066: Add ignored_nodes table
       await runMigration066Mysql(pool);
+
+      // Run migration 067: Add auto time sync schema
+      await runMigration067Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -11042,6 +11073,178 @@ class DatabaseService {
       oldestBackup: stats.oldestTimestamp ? new Date(stats.oldestTimestamp).toISOString() : null,
       newestBackup: stats.newestTimestamp ? new Date(stats.newestTimestamp).toISOString() : null,
     };
+  }
+
+  // ============ AUTO TIME SYNC SETTINGS ============
+
+  /**
+   * Check if auto time sync is enabled
+   */
+  isAutoTimeSyncEnabled(): boolean {
+    const value = this.getSetting('autoTimeSyncEnabled');
+    return value === 'true';
+  }
+
+  /**
+   * Enable or disable auto time sync
+   */
+  setAutoTimeSyncEnabled(enabled: boolean): void {
+    this.setSetting('autoTimeSyncEnabled', enabled ? 'true' : 'false');
+  }
+
+  /**
+   * Get auto time sync interval in minutes
+   */
+  getAutoTimeSyncIntervalMinutes(): number {
+    const value = this.getSetting('autoTimeSyncIntervalMinutes');
+    return value ? parseInt(value, 10) : 15;
+  }
+
+  /**
+   * Set auto time sync interval in minutes
+   */
+  setAutoTimeSyncIntervalMinutes(minutes: number): void {
+    this.setSetting('autoTimeSyncIntervalMinutes', String(minutes));
+  }
+
+  /**
+   * Get auto time sync expiration hours
+   */
+  getAutoTimeSyncExpirationHours(): number {
+    const value = this.getSetting('autoTimeSyncExpirationHours');
+    return value ? parseInt(value, 10) : 24;
+  }
+
+  /**
+   * Set auto time sync expiration hours
+   */
+  setAutoTimeSyncExpirationHours(hours: number): void {
+    this.setSetting('autoTimeSyncExpirationHours', String(hours));
+  }
+
+  /**
+   * Check if auto time sync node filter is enabled
+   */
+  isAutoTimeSyncNodeFilterEnabled(): boolean {
+    const value = this.getSetting('autoTimeSyncNodeFilterEnabled');
+    return value === 'true';
+  }
+
+  /**
+   * Enable or disable auto time sync node filter
+   */
+  setAutoTimeSyncNodeFilterEnabled(enabled: boolean): void {
+    this.setSetting('autoTimeSyncNodeFilterEnabled', enabled ? 'true' : 'false');
+  }
+
+  /**
+   * Get auto time sync nodes
+   */
+  async getAutoTimeSyncNodesAsync(): Promise<number[]> {
+    if (this.miscRepo) {
+      return await this.miscRepo.getAutoTimeSyncNodes();
+    }
+    return [];
+  }
+
+  /**
+   * Set auto time sync nodes
+   */
+  async setAutoTimeSyncNodesAsync(nodeNums: number[]): Promise<void> {
+    if (this.miscRepo) {
+      await this.miscRepo.setAutoTimeSyncNodes(nodeNums);
+      logger.debug(`✅ Set auto-time-sync filter to ${nodeNums.length} nodes`);
+    }
+  }
+
+  /**
+   * Get time sync filter settings
+   */
+  async getTimeSyncFilterSettingsAsync(): Promise<{
+    enabled: boolean;
+    nodeNums: number[];
+    filterEnabled: boolean;
+    expirationHours: number;
+    intervalMinutes: number;
+  }> {
+    const nodeNums = await this.getAutoTimeSyncNodesAsync();
+    return {
+      enabled: this.isAutoTimeSyncEnabled(),
+      nodeNums,
+      filterEnabled: this.isAutoTimeSyncNodeFilterEnabled(),
+      expirationHours: this.getAutoTimeSyncExpirationHours(),
+      intervalMinutes: this.getAutoTimeSyncIntervalMinutes(),
+    };
+  }
+
+  /**
+   * Set time sync filter settings
+   */
+  async setTimeSyncFilterSettingsAsync(settings: {
+    enabled?: boolean;
+    nodeNums?: number[];
+    filterEnabled?: boolean;
+    expirationHours?: number;
+    intervalMinutes?: number;
+  }): Promise<void> {
+    if (settings.enabled !== undefined) {
+      this.setAutoTimeSyncEnabled(settings.enabled);
+    }
+    if (settings.nodeNums !== undefined) {
+      await this.setAutoTimeSyncNodesAsync(settings.nodeNums);
+    }
+    if (settings.filterEnabled !== undefined) {
+      this.setAutoTimeSyncNodeFilterEnabled(settings.filterEnabled);
+    }
+    if (settings.expirationHours !== undefined) {
+      this.setAutoTimeSyncExpirationHours(settings.expirationHours);
+    }
+    if (settings.intervalMinutes !== undefined) {
+      this.setAutoTimeSyncIntervalMinutes(settings.intervalMinutes);
+    }
+    logger.debug('✅ Updated time sync filter settings');
+  }
+
+  /**
+   * Get a node that needs time sync
+   */
+  async getNodeNeedingTimeSyncAsync(): Promise<DbNode | null> {
+    if (!this.nodesRepo) {
+      return null;
+    }
+
+    const activeHours = 48; // Only consider nodes heard in last 48 hours
+    // lastHeard is stored in seconds, so convert cutoff to seconds
+    const activeNodeCutoff = Math.floor((Date.now() - (activeHours * 60 * 60 * 1000)) / 1000);
+    const expirationHours = this.getAutoTimeSyncExpirationHours();
+    // lastTimeSync is stored in milliseconds
+    const expirationMsAgo = Date.now() - (expirationHours * 60 * 60 * 1000);
+
+    // Get filter settings
+    let filterNodeNums: number[] | undefined;
+    if (this.isAutoTimeSyncNodeFilterEnabled()) {
+      filterNodeNums = await this.getAutoTimeSyncNodesAsync();
+      if (filterNodeNums.length === 0) {
+        // Filter is enabled but no nodes selected - skip
+        return null;
+      }
+    }
+
+    const node = await this.nodesRepo.getNodeNeedingTimeSyncAsync(
+      activeNodeCutoff,
+      expirationMsAgo,
+      filterNodeNums
+    );
+    return node as DbNode | null;
+  }
+
+  /**
+   * Update a node's lastTimeSync timestamp
+   */
+  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
+    if (this.nodesRepo) {
+      await this.nodesRepo.updateNodeTimeSyncAsync(nodeNum, timestamp);
+    }
   }
 }
 

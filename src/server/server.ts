@@ -4606,6 +4606,89 @@ apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'),
   }
 });
 
+// Get auto time sync settings
+apiRouter.get('/settings/time-sync-nodes', requirePermission('settings', 'read'), async (_req, res) => {
+  try {
+    const settings = await databaseService.getTimeSyncFilterSettingsAsync();
+    res.json(settings);
+  } catch (error) {
+    logger.error('Error fetching auto time sync settings:', error);
+    res.status(500).json({ error: 'Failed to fetch auto time sync settings' });
+  }
+});
+
+// Update auto time sync settings
+apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const { enabled, nodeNums, filterEnabled, expirationHours, intervalMinutes } = req.body;
+
+    // Validate input
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+    }
+
+    if (nodeNums !== undefined && !Array.isArray(nodeNums)) {
+      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+    }
+
+    // Validate all node numbers are valid integers
+    if (nodeNums) {
+      for (const nodeNum of nodeNums) {
+        if (!Number.isInteger(nodeNum) || nodeNum < 0) {
+          return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+        }
+      }
+    }
+
+    if (filterEnabled !== undefined && typeof filterEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid filterEnabled value. Must be a boolean.' });
+    }
+
+    if (expirationHours !== undefined) {
+      const hours = Number(expirationHours);
+      if (!Number.isInteger(hours) || hours < 1 || hours > 24) {
+        return res.status(400).json({ error: 'Expiration hours must be an integer between 1 and 24.' });
+      }
+    }
+
+    if (intervalMinutes !== undefined) {
+      const minutes = Number(intervalMinutes);
+      if (!Number.isInteger(minutes) || (minutes !== 0 && (minutes < 15 || minutes > 1440))) {
+        return res.status(400).json({ error: 'Interval must be 0 (disabled) or between 15 and 1440 minutes.' });
+      }
+    }
+
+    // Update settings
+    await databaseService.setTimeSyncFilterSettingsAsync({
+      enabled,
+      nodeNums,
+      filterEnabled,
+      expirationHours: expirationHours !== undefined ? Number(expirationHours) : undefined,
+      intervalMinutes: intervalMinutes !== undefined ? Number(intervalMinutes) : undefined,
+    });
+
+    // Update the meshtastic manager interval if connected
+    if (intervalMinutes !== undefined) {
+      meshtasticManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
+    } else if (enabled !== undefined) {
+      // If only enabled/disabled changed, use existing interval
+      const currentInterval = databaseService.getAutoTimeSyncIntervalMinutes();
+      meshtasticManager.setTimeSyncInterval(enabled ? currentInterval : 0);
+    }
+
+    // Get the updated settings to return
+    const updatedSettings = await databaseService.getTimeSyncFilterSettingsAsync();
+
+    res.json({
+      success: true,
+      ...updatedSettings,
+    });
+  } catch (error) {
+    logger.error('Error updating auto time sync settings:', error);
+    res.status(500).json({ error: 'Failed to update auto time sync settings' });
+  }
+});
+
 // Get auto key repair log (recent key repair attempts with success/fail status)
 apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), (_req, res) => {
   try {

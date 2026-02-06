@@ -55,6 +55,10 @@ export const MYSQL_SCHEMA_SQL = `
     longitudeOverride DOUBLE,
     altitudeOverride DOUBLE,
     positionOverrideIsPrivate BOOLEAN DEFAULT false,
+    hasRemoteAdmin BOOLEAN DEFAULT false,
+    lastRemoteAdminCheck BIGINT,
+    remoteAdminMetadata TEXT,
+    lastTimeSync BIGINT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -386,6 +390,14 @@ export const MYSQL_SCHEMA_SQL = `
     INDEX idx_auto_traceroute_nodenum (nodeNum)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+  CREATE TABLE IF NOT EXISTS auto_time_sync_nodes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nodeNum BIGINT NOT NULL UNIQUE,
+    enabled BOOLEAN DEFAULT true,
+    createdAt BIGINT NOT NULL,
+    INDEX idx_auto_time_sync_nodenum (nodeNum)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
   CREATE TABLE IF NOT EXISTS auto_traceroute_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
     timestamp BIGINT NOT NULL,
@@ -474,6 +486,7 @@ export const MYSQL_TABLE_NAMES = [
   'user_map_preferences',
   'solar_estimates',
   'auto_traceroute_nodes',
+  'auto_time_sync_nodes',
   'auto_traceroute_log',
   'auto_key_repair_state',
   'auto_key_repair_log',
