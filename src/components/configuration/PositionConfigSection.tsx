@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GPS_MODE_OPTIONS, POSITION_FLAGS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
@@ -79,9 +79,41 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
     positionFlags, rxGpio, txGpio, gpsEnGpio
   });
 
+  // Track whether data has been loaded from server (use state to trigger re-render)
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Update initial values when data is loaded from server
+  // This is detected by lat/long changing from default (0) to real values
+  useEffect(() => {
+    if (isDataLoaded) return; // Already loaded
+
+    const initial = initialValuesRef.current;
+    const latChanged = initial.fixedLatitude === 0 && fixedLatitude !== 0;
+    const lonChanged = initial.fixedLongitude === 0 && fixedLongitude !== 0;
+
+    // When position data loads from server, update the initial values
+    if (latChanged || lonChanged) {
+      initialValuesRef.current = {
+        positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
+        fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
+        broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
+        positionFlags, rxGpio, txGpio, gpsEnGpio
+      };
+      setIsDataLoaded(true); // Trigger re-render to recalculate hasChanges
+    }
+  }, [isDataLoaded, fixedLatitude, fixedLongitude, positionBroadcastSecs, positionSmartEnabled, fixedPosition,
+      fixedAltitude, gpsUpdateInterval, gpsMode, broadcastSmartMinimumDistance,
+      broadcastSmartMinimumIntervalSecs, positionFlags, rxGpio, txGpio, gpsEnGpio]);
+
   // Calculate if there are unsaved changes
   const hasChanges = useMemo(() => {
+    // Check if data is still loading (lat/long will change from 0 to real values)
+    // Don't report changes until data has been loaded from the server
     const initial = initialValuesRef.current;
+    const stillLoading = !isDataLoaded && initial.fixedLatitude === 0 && initial.fixedLongitude === 0 &&
+                         (fixedLatitude !== 0 || fixedLongitude !== 0);
+    if (stillLoading) return false;
+
     return (
       positionBroadcastSecs !== initial.positionBroadcastSecs ||
       positionSmartEnabled !== initial.positionSmartEnabled ||
@@ -98,7 +130,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
       txGpio !== initial.txGpio ||
       gpsEnGpio !== initial.gpsEnGpio
     );
-  }, [positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
+  }, [isDataLoaded, positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
       fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
       broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
       positionFlags, rxGpio, txGpio, gpsEnGpio]);
