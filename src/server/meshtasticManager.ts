@@ -2847,7 +2847,10 @@ class MeshtasticManager {
         // IMPORTANT: Proto3 omits boolean false values from JSON serialization
         enabled: moduleConfig.mqtt.enabled !== undefined ? moduleConfig.mqtt.enabled : false,
         encryptionEnabled: moduleConfig.mqtt.encryptionEnabled !== undefined ? moduleConfig.mqtt.encryptionEnabled : false,
-        jsonEnabled: moduleConfig.mqtt.jsonEnabled !== undefined ? moduleConfig.mqtt.jsonEnabled : false
+        jsonEnabled: moduleConfig.mqtt.jsonEnabled !== undefined ? moduleConfig.mqtt.jsonEnabled : false,
+        tlsEnabled: moduleConfig.mqtt.tlsEnabled !== undefined ? moduleConfig.mqtt.tlsEnabled : false,
+        proxyToClientEnabled: moduleConfig.mqtt.proxyToClientEnabled !== undefined ? moduleConfig.mqtt.proxyToClientEnabled : false,
+        mapReportingEnabled: moduleConfig.mqtt.mapReportingEnabled !== undefined ? moduleConfig.mqtt.mapReportingEnabled : false
       };
 
       moduleConfig = {
@@ -6531,7 +6534,9 @@ class MeshtasticManager {
       enabled: mqttConfig.enabled !== undefined ? mqttConfig.enabled : false,
       encryptionEnabled: mqttConfig.encryptionEnabled !== undefined ? mqttConfig.encryptionEnabled : false,
       jsonEnabled: mqttConfig.jsonEnabled !== undefined ? mqttConfig.jsonEnabled : false,
-      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false
+      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false,
+      proxyToClientEnabled: mqttConfig.proxyToClientEnabled !== undefined ? mqttConfig.proxyToClientEnabled : false,
+      mapReportingEnabled: mqttConfig.mapReportingEnabled !== undefined ? mqttConfig.mapReportingEnabled : false
     };
 
     logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
