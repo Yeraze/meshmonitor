@@ -7313,13 +7313,31 @@ class MeshtasticManager {
           ? message.hopStart - message.hopLimit
           : 0;
 
-      // Get response type settings
-      const autoAckTapbackEnabled = databaseService.getSetting('autoAckTapbackEnabled') === 'true';
-      const autoAckReplyEnabled = databaseService.getSetting('autoAckReplyEnabled') !== 'false'; // Default true for backward compatibility
+      // Determine if this is a direct message (0 hops) or multi-hop
+      const isDirect = hopsTraveled === 0;
 
-      // If neither tapback nor reply is enabled, skip
+      // Check if this message type is enabled
+      const typeEnabled = isDirect
+        ? databaseService.getSetting('autoAckDirectEnabled') !== 'false'
+        : databaseService.getSetting('autoAckMultihopEnabled') !== 'false';
+
+      if (!typeEnabled) {
+        logger.debug(`⏭️ Skipping auto-acknowledge: ${isDirect ? 'direct' : 'multihop'} messages disabled`);
+        return;
+      }
+
+      // Get tapback/reply settings for this message type
+      const autoAckTapbackEnabled = isDirect
+        ? databaseService.getSetting('autoAckDirectTapbackEnabled') !== 'false'
+        : databaseService.getSetting('autoAckMultihopTapbackEnabled') !== 'false';
+
+      const autoAckReplyEnabled = isDirect
+        ? databaseService.getSetting('autoAckDirectReplyEnabled') !== 'false'
+        : databaseService.getSetting('autoAckMultihopReplyEnabled') !== 'false';
+
+      // If neither tapback nor reply is enabled for this type, skip
       if (!autoAckTapbackEnabled && !autoAckReplyEnabled) {
-        logger.debug('⏭️  Skipping auto-acknowledge: both tapback and reply are disabled');
+        logger.debug(`⏭️ Skipping auto-acknowledge: both tapback and reply are disabled for ${isDirect ? 'direct' : 'multihop'} messages`);
         return;
       }
 
@@ -7353,6 +7371,8 @@ class MeshtasticManager {
             1 // emoji flag = 1 for tapback/reaction
           );
           logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${target}`);
+          // Record the send so that the message reply respects the 30s rate limit
+          messageQueueService.recordExternalSend();
         } catch (error) {
           logger.warn(`❌ Auto-acknowledge tapback failed to ${target}:`, error);
         }

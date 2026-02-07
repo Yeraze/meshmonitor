@@ -965,6 +965,13 @@ class DatabaseService {
         autoAckUseDM: 'false',
         autoAckTapbackEnabled: 'false',
         autoAckReplyEnabled: 'true',
+        // New direct/multihop settings - default to true for backward compatibility
+        autoAckDirectEnabled: 'true',
+        autoAckDirectTapbackEnabled: 'true',
+        autoAckDirectReplyEnabled: 'true',
+        autoAckMultihopEnabled: 'true',
+        autoAckMultihopTapbackEnabled: 'true',
+        autoAckMultihopReplyEnabled: 'true',
         autoAnnounceEnabled: 'false',
         autoAnnounceIntervalHours: '6',
         autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
