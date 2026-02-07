@@ -5569,6 +5569,25 @@ class DatabaseService {
     return traceroutes.map(t => this.normalizeBigInts(t));
   }
 
+  /**
+   * Async version of getTraceroutesByNodes for PostgreSQL/MySQL
+   */
+  async getTraceroutesByNodesAsync(fromNodeNum: number, toNodeNum: number, limit: number = 10): Promise<DbTraceroute[]> {
+    if (this.traceroutesRepo) {
+      const traceroutes = await this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
+      return traceroutes.map(t => ({
+        ...t,
+        route: t.route || '',
+        routeBack: t.routeBack || '',
+        snrTowards: t.snrTowards || '',
+        snrBack: t.snrBack || '',
+      })) as DbTraceroute[];
+    }
+
+    // Fallback to sync for SQLite
+    return this.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
+  }
+
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
     // For PostgreSQL/MySQL, use cached traceroutes or return empty
     // Traceroute data is primarily real-time from mesh traffic
