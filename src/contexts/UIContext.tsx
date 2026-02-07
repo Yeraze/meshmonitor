@@ -55,6 +55,18 @@ interface UIContextType {
   setAutoAckTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckReplyEnabled: boolean;
   setAutoAckReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckDirectEnabled: boolean;
+  setAutoAckDirectEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckDirectTapbackEnabled: boolean;
+  setAutoAckDirectTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckDirectReplyEnabled: boolean;
+  setAutoAckDirectReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckMultihopEnabled: boolean;
+  setAutoAckMultihopEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckMultihopTapbackEnabled: boolean;
+  setAutoAckMultihopTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckMultihopReplyEnabled: boolean;
+  setAutoAckMultihopReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceEnabled: boolean;
   setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceIntervalHours: number;
@@ -173,6 +185,12 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes] = useState<boolean>(false);
   const [autoAckTapbackEnabled, setAutoAckTapbackEnabled] = useState<boolean>(false);
   const [autoAckReplyEnabled, setAutoAckReplyEnabled] = useState<boolean>(true); // Default true for backward compatibility
+  const [autoAckDirectEnabled, setAutoAckDirectEnabled] = useState<boolean>(true);
+  const [autoAckDirectTapbackEnabled, setAutoAckDirectTapbackEnabled] = useState<boolean>(true);
+  const [autoAckDirectReplyEnabled, setAutoAckDirectReplyEnabled] = useState<boolean>(true);
+  const [autoAckMultihopEnabled, setAutoAckMultihopEnabled] = useState<boolean>(true);
+  const [autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled] = useState<boolean>(true);
+  const [autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled] = useState<boolean>(true);
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
@@ -285,6 +303,18 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckTapbackEnabled,
         autoAckReplyEnabled,
         setAutoAckReplyEnabled,
+        autoAckDirectEnabled,
+        setAutoAckDirectEnabled,
+        autoAckDirectTapbackEnabled,
+        setAutoAckDirectTapbackEnabled,
+        autoAckDirectReplyEnabled,
+        setAutoAckDirectReplyEnabled,
+        autoAckMultihopEnabled,
+        setAutoAckMultihopEnabled,
+        autoAckMultihopTapbackEnabled,
+        setAutoAckMultihopTapbackEnabled,
+        autoAckMultihopReplyEnabled,
+        setAutoAckMultihopReplyEnabled,
         autoAnnounceEnabled,
         setAutoAnnounceEnabled,
         autoAnnounceIntervalHours,

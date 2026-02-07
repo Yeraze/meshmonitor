@@ -19,6 +19,13 @@ interface AutoAcknowledgeSectionProps {
   skipIncompleteNodes: boolean;
   tapbackEnabled: boolean;
   replyEnabled: boolean;
+  // New direct/multihop settings
+  directEnabled: boolean;
+  directTapbackEnabled: boolean;
+  directReplyEnabled: boolean;
+  multihopEnabled: boolean;
+  multihopTapbackEnabled: boolean;
+  multihopReplyEnabled: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
@@ -30,6 +37,13 @@ interface AutoAcknowledgeSectionProps {
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
   onTapbackEnabledChange: (enabled: boolean) => void;
   onReplyEnabledChange: (enabled: boolean) => void;
+  // New direct/multihop callbacks
+  onDirectEnabledChange: (enabled: boolean) => void;
+  onDirectTapbackEnabledChange: (enabled: boolean) => void;
+  onDirectReplyEnabledChange: (enabled: boolean) => void;
+  onMultihopEnabledChange: (enabled: boolean) => void;
+  onMultihopTapbackEnabledChange: (enabled: boolean) => void;
+  onMultihopReplyEnabledChange: (enabled: boolean) => void;
 }
 
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
@@ -50,6 +64,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   skipIncompleteNodes,
   tapbackEnabled,
   replyEnabled,
+  directEnabled,
+  directTapbackEnabled,
+  directReplyEnabled,
+  multihopEnabled,
+  multihopTapbackEnabled,
+  multihopReplyEnabled,
   baseUrl,
   onEnabledChange,
   onRegexChange,
@@ -61,6 +81,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onSkipIncompleteNodesChange,
   onTapbackEnabledChange,
   onReplyEnabledChange,
+  onDirectEnabledChange,
+  onDirectTapbackEnabledChange,
+  onDirectReplyEnabledChange,
+  onMultihopEnabledChange,
+  onMultihopTapbackEnabledChange,
+  onMultihopReplyEnabledChange,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -76,6 +102,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
   const [localTapbackEnabled, setLocalTapbackEnabled] = useState(tapbackEnabled);
   const [localReplyEnabled, setLocalReplyEnabled] = useState(replyEnabled);
+  const [localDirectEnabled, setLocalDirectEnabled] = useState(directEnabled);
+  const [localDirectTapbackEnabled, setLocalDirectTapbackEnabled] = useState(directTapbackEnabled);
+  const [localDirectReplyEnabled, setLocalDirectReplyEnabled] = useState(directReplyEnabled);
+  const [localMultihopEnabled, setLocalMultihopEnabled] = useState(multihopEnabled);
+  const [localMultihopTapbackEnabled, setLocalMultihopTapbackEnabled] = useState(multihopTapbackEnabled);
+  const [localMultihopReplyEnabled, setLocalMultihopReplyEnabled] = useState(multihopReplyEnabled);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -94,14 +126,20 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
     setLocalTapbackEnabled(tapbackEnabled);
     setLocalReplyEnabled(replyEnabled);
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
+    setLocalDirectEnabled(directEnabled);
+    setLocalDirectTapbackEnabled(directTapbackEnabled);
+    setLocalDirectReplyEnabled(directReplyEnabled);
+    setLocalMultihopEnabled(multihopEnabled);
+    setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
+    setLocalMultihopReplyEnabled(multihopReplyEnabled);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled || localDirectEnabled !== directEnabled || localDirectTapbackEnabled !== directTapbackEnabled || localDirectReplyEnabled !== directReplyEnabled || localMultihopEnabled !== multihopEnabled || localMultihopTapbackEnabled !== multihopTapbackEnabled || localMultihopReplyEnabled !== multihopReplyEnabled;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -115,7 +153,13 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
     setLocalTapbackEnabled(tapbackEnabled);
     setLocalReplyEnabled(replyEnabled);
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
+    setLocalDirectEnabled(directEnabled);
+    setLocalDirectTapbackEnabled(directTapbackEnabled);
+    setLocalDirectReplyEnabled(directReplyEnabled);
+    setLocalMultihopEnabled(multihopEnabled);
+    setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
+    setLocalMultihopReplyEnabled(multihopReplyEnabled);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -151,30 +195,6 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       // Invalid regex
       return false;
     }
-  };
-
-  const insertToken = (token: string, isDirect: boolean = false) => {
-    const textarea = isDirect ? textareaDirectRef.current : textareaRef.current;
-    const currentMessage = isDirect ? localMessageDirect : localMessage;
-    const setMessage = isDirect ? setLocalMessageDirect : setLocalMessage;
-
-    if (!textarea) {
-      // Fallback: append to end if textarea ref not available
-      setMessage(currentMessage + token);
-      return;
-    }
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newMessage = currentMessage.substring(0, start) + token + currentMessage.substring(end);
-
-    setMessage(newMessage);
-
-    // Set cursor position after the inserted token
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + token.length, start + token.length);
-    }, 0);
   };
 
   // Generate sample message with example token values
@@ -235,7 +255,13 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckUseDM: String(localUseDM),
           autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes),
           autoAckTapbackEnabled: String(localTapbackEnabled),
-          autoAckReplyEnabled: String(localReplyEnabled)
+          autoAckReplyEnabled: String(localReplyEnabled),
+          autoAckDirectEnabled: String(localDirectEnabled),
+          autoAckDirectTapbackEnabled: String(localDirectTapbackEnabled),
+          autoAckDirectReplyEnabled: String(localDirectReplyEnabled),
+          autoAckMultihopEnabled: String(localMultihopEnabled),
+          autoAckMultihopTapbackEnabled: String(localMultihopTapbackEnabled),
+          autoAckMultihopReplyEnabled: String(localMultihopReplyEnabled)
         })
       });
 
@@ -258,6 +284,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
       onTapbackEnabledChange(localTapbackEnabled);
       onReplyEnabledChange(localReplyEnabled);
+      onDirectEnabledChange(localDirectEnabled);
+      onDirectTapbackEnabledChange(localDirectTapbackEnabled);
+      onDirectReplyEnabledChange(localDirectReplyEnabled);
+      onMultihopEnabledChange(localMultihopEnabled);
+      onMultihopTapbackEnabledChange(localMultihopTapbackEnabled);
+      onMultihopReplyEnabledChange(localMultihopReplyEnabled);
 
       setHasChanges(false);
       showToast(t('automation.settings_saved'), 'success');
@@ -267,7 +299,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onTapbackEnabledChange, onReplyEnabledChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onTapbackEnabledChange, onReplyEnabledChange, onDirectEnabledChange, onDirectTapbackEnabledChange, onDirectReplyEnabledChange, onMultihopEnabledChange, onMultihopTapbackEnabledChange, onMultihopReplyEnabledChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -435,402 +467,209 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           </div>
         </div>
 
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-          <label>
-            {t('automation.auto_ack.response_type')}
-            <span className="setting-description">
-              {t('automation.auto_ack.response_type_description')}
-            </span>
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {/* Direct Messages Section (0 hops) */}
+        <div className="setting-item" style={{
+          marginTop: '1.5rem',
+          padding: '1rem',
+          background: 'var(--ctp-surface0)',
+          border: '2px solid var(--ctp-green)',
+          borderRadius: '8px',
+          opacity: localEnabled ? 1 : 0.5
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <input
+              type="checkbox"
+              id="autoAckDirectEnabled"
+              checked={localDirectEnabled}
+              onChange={(e) => setLocalDirectEnabled(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            <label htmlFor="autoAckDirectEnabled" style={{ margin: 0, fontWeight: 'bold', fontSize: '1.1rem' }}>
+              {t('automation.auto_ack.direct_section')}
+            </label>
+          </div>
+          <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)', marginLeft: '1.75rem' }}>
+            {t('automation.auto_ack.direct_section_description')}
+          </p>
+
+          <div style={{ marginLeft: '1.75rem', opacity: localDirectEnabled ? 1 : 0.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <input
                 type="checkbox"
-                id="autoAckTapback"
-                checked={localTapbackEnabled}
-                onChange={(e) => setLocalTapbackEnabled(e.target.checked)}
-                disabled={!localEnabled}
-                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                id="autoAckDirectTapback"
+                checked={localDirectTapbackEnabled}
+                onChange={(e) => setLocalDirectTapbackEnabled(e.target.checked)}
+                disabled={!localEnabled || !localDirectEnabled}
+                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed' }}
               />
-              <label htmlFor="autoAckTapback" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+              <label htmlFor="autoAckDirectTapback" style={{ margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
                 {t('automation.auto_ack.tapback_with_hop_count')}
               </label>
+              <span style={{ marginLeft: '0.5rem', fontSize: '1.2rem' }} title="Direct (0 hops)">*️⃣</span>
             </div>
-            <div style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-              {t('automation.auto_ack.tapback_with_hop_count_description')}
-              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ marginRight: '0.5rem' }}>{t('automation.auto_ack.hop_emojis')}:</span>
-                {HOP_COUNT_EMOJIS.map((emoji, idx) => (
-                  <span key={idx} title={idx === 0 ? 'Direct (0 hops)' : `${idx} hop${idx > 1 ? 's' : ''}`} style={{ fontSize: '1.2rem' }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <input
+                type="checkbox"
+                id="autoAckDirectReply"
+                checked={localDirectReplyEnabled}
+                onChange={(e) => setLocalDirectReplyEnabled(e.target.checked)}
+                disabled={!localEnabled || !localDirectEnabled}
+                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed' }}
+              />
+              <label htmlFor="autoAckDirectReply" style={{ margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                {t('automation.auto_ack.reply_with_message')}
+              </label>
+            </div>
+
+            {localDirectReplyEnabled && (
+              <>
+                <label htmlFor="autoAckMessageDirect" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                  {t('automation.auto_ack.message_direct')}
+                  <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
+                    {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{SNR}'}, {'{RSSI}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{TRANSPORT}'}
+                  </span>
+                </label>
+                <textarea
+                  id="autoAckMessageDirect"
+                  ref={textareaDirectRef}
+                  value={localMessageDirect}
+                  onChange={(e) => setLocalMessageDirect(e.target.value)}
+                  disabled={!localEnabled || !localDirectEnabled || !localDirectReplyEnabled}
+                  className="setting-input"
+                  rows={3}
+                  style={{
+                    fontFamily: 'monospace',
+                    resize: 'vertical',
+                    minHeight: '60px'
+                  }}
+                />
+                <div style={{ marginTop: '0.5rem' }}>
+                  <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('automation.auto_ack.sample_preview_direct')}:
+                  </label>
+                  <div style={{
+                    marginTop: '0.25rem',
+                    padding: '0.5rem',
+                    background: 'var(--ctp-base)',
+                    border: '1px solid var(--ctp-green)',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    color: 'var(--ctp-text)'
+                  }}>
+                    {generateSampleMessage(true)}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Multi-hop Messages Section (1+ hops) */}
+        <div className="setting-item" style={{
+          marginTop: '1.5rem',
+          padding: '1rem',
+          background: 'var(--ctp-surface0)',
+          border: '2px solid var(--ctp-blue)',
+          borderRadius: '8px',
+          opacity: localEnabled ? 1 : 0.5
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <input
+              type="checkbox"
+              id="autoAckMultihopEnabled"
+              checked={localMultihopEnabled}
+              onChange={(e) => setLocalMultihopEnabled(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            <label htmlFor="autoAckMultihopEnabled" style={{ margin: 0, fontWeight: 'bold', fontSize: '1.1rem' }}>
+              {t('automation.auto_ack.multihop_section')}
+            </label>
+          </div>
+          <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)', marginLeft: '1.75rem' }}>
+            {t('automation.auto_ack.multihop_section_description')}
+          </p>
+
+          <div style={{ marginLeft: '1.75rem', opacity: localMultihopEnabled ? 1 : 0.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <input
+                type="checkbox"
+                id="autoAckMultihopTapback"
+                checked={localMultihopTapbackEnabled}
+                onChange={(e) => setLocalMultihopTapbackEnabled(e.target.checked)}
+                disabled={!localEnabled || !localMultihopEnabled}
+                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed' }}
+              />
+              <label htmlFor="autoAckMultihopTapback" style={{ margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                {t('automation.auto_ack.tapback_with_hop_count')}
+              </label>
+              <div style={{ marginLeft: '0.5rem', display: 'flex', gap: '0.15rem' }}>
+                {HOP_COUNT_EMOJIS.slice(1).map((emoji, idx) => (
+                  <span key={idx} title={`${idx + 1} hop${idx > 0 ? 's' : ''}`} style={{ fontSize: '1rem' }}>
                     {emoji}
                   </span>
                 ))}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
               <input
                 type="checkbox"
-                id="autoAckReply"
-                checked={localReplyEnabled}
-                onChange={(e) => setLocalReplyEnabled(e.target.checked)}
-                disabled={!localEnabled}
-                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                id="autoAckMultihopReply"
+                checked={localMultihopReplyEnabled}
+                onChange={(e) => setLocalMultihopReplyEnabled(e.target.checked)}
+                disabled={!localEnabled || !localMultihopEnabled}
+                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed' }}
               />
-              <label htmlFor="autoAckReply" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+              <label htmlFor="autoAckMultihopReply" style={{ margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
                 {t('automation.auto_ack.reply_with_message')}
               </label>
             </div>
-            <div style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-              {t('automation.auto_ack.reply_with_message_description')}
-            </div>
-          </div>
-        </div>
 
-        <div className="setting-item" style={{ marginTop: '1.5rem', opacity: localReplyEnabled ? 1 : 0.5 }}>
-          <label htmlFor="autoAckMessage">
-            {t('automation.auto_ack.message_multihop')}
-            <span className="setting-description">
-              {t('automation.auto_ack.message_multihop_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}
-            </span>
-          </label>
-          <textarea
-            id="autoAckMessage"
-            ref={textareaRef}
-            value={localMessage}
-            onChange={(e) => setLocalMessage(e.target.value)}
-            disabled={!localEnabled || !localReplyEnabled}
-            className="setting-input"
-            rows={3}
-            style={{
-              fontFamily: 'monospace',
-              resize: 'vertical',
-              minHeight: '60px'
-            }}
-          />
-          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => insertToken('{NODE_ID}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{NODE_ID}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{NUMBER_HOPS}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{NUMBER_HOPS}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{RABBIT_HOPS}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{RABBIT_HOPS}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{DATE}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{DATE}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{TIME}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{TIME}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{VERSION}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{VERSION}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{DURATION}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{DURATION}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{FEATURES}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{FEATURES}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{NODECOUNT}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{NODECOUNT}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{DIRECTCOUNT}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{DIRECTCOUNT}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{TOTALNODES}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{TOTALNODES}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{LONG_NAME}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{LONG_NAME}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{SHORT_NAME}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{SHORT_NAME}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{SNR}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{SNR}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{RSSI}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{RSSI}'}
-            </button>
-            <button
-              type="button"
-              onClick={() => insertToken('{TRANSPORT}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{TRANSPORT}'}
-            </button>
-          </div>
-        </div>
-
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
-          <label>
-            {t('automation.auto_ack.sample_preview_multihop')}
-            <span className="setting-description">
-              {t('automation.auto_ack.sample_preview_multihop_description')}
-            </span>
-          </label>
-          <div style={{
-            padding: '0.75rem',
-            background: 'var(--ctp-surface0)',
-            border: '2px solid var(--ctp-blue)',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontSize: '0.95rem',
-            color: 'var(--ctp-text)',
-            lineHeight: '1.5',
-            minHeight: '50px'
-          }}>
-            {generateSampleMessage(false)}
-          </div>
-        </div>
-
-        <div className="setting-item" style={{ marginTop: '1.5rem', opacity: localReplyEnabled ? 1 : 0.5 }}>
-          <label htmlFor="autoAckMessageDirect">
-            {t('automation.auto_ack.message_direct')}
-            <span className="setting-description">
-              {t('automation.auto_ack.message_direct_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{HOPS}'}, {'{NUMBER_HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}
-            </span>
-          </label>
-          <textarea
-            id="autoAckMessageDirect"
-            ref={textareaDirectRef}
-            value={localMessageDirect}
-            onChange={(e) => setLocalMessageDirect(e.target.value)}
-            disabled={!localEnabled || !localReplyEnabled}
-            className="setting-input"
-            rows={3}
-            style={{
-              fontFamily: 'monospace',
-              resize: 'vertical',
-              minHeight: '60px'
-            }}
-          />
-        </div>
-
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
-          <label>
-            {t('automation.auto_ack.sample_preview_direct')}
-            <span className="setting-description">
-              {t('automation.auto_ack.sample_preview_direct_description')}
-            </span>
-          </label>
-          <div style={{
-            padding: '0.75rem',
-            background: 'var(--ctp-surface0)',
-            border: '2px solid var(--ctp-green)',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontSize: '0.95rem',
-            color: 'var(--ctp-text)',
-            lineHeight: '1.5',
-            minHeight: '50px'
-          }}>
-            {generateSampleMessage(true)}
+            {localMultihopReplyEnabled && (
+              <>
+                <label htmlFor="autoAckMessage" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                  {t('automation.auto_ack.message_multihop')}
+                  <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
+                    {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}
+                  </span>
+                </label>
+                <textarea
+                  id="autoAckMessage"
+                  ref={textareaRef}
+                  value={localMessage}
+                  onChange={(e) => setLocalMessage(e.target.value)}
+                  disabled={!localEnabled || !localMultihopEnabled || !localMultihopReplyEnabled}
+                  className="setting-input"
+                  rows={3}
+                  style={{
+                    fontFamily: 'monospace',
+                    resize: 'vertical',
+                    minHeight: '60px'
+                  }}
+                />
+                <div style={{ marginTop: '0.5rem' }}>
+                  <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+                    {t('automation.auto_ack.sample_preview_multihop')}:
+                  </label>
+                  <div style={{
+                    marginTop: '0.25rem',
+                    padding: '0.5rem',
+                    background: 'var(--ctp-base)',
+                    border: '1px solid var(--ctp-blue)',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    color: 'var(--ctp-text)'
+                  }}>
+                    {generateSampleMessage(false)}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

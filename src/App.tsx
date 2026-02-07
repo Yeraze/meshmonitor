@@ -489,6 +489,18 @@ function App() {
     setAutoAckTapbackEnabled,
     autoAckReplyEnabled,
     setAutoAckReplyEnabled,
+    autoAckDirectEnabled,
+    setAutoAckDirectEnabled,
+    autoAckDirectTapbackEnabled,
+    setAutoAckDirectTapbackEnabled,
+    autoAckDirectReplyEnabled,
+    setAutoAckDirectReplyEnabled,
+    autoAckMultihopEnabled,
+    setAutoAckMultihopEnabled,
+    autoAckMultihopTapbackEnabled,
+    setAutoAckMultihopTapbackEnabled,
+    autoAckMultihopReplyEnabled,
+    setAutoAckMultihopReplyEnabled,
     autoAnnounceEnabled,
     setAutoAnnounceEnabled,
     autoAnnounceIntervalHours,
@@ -943,6 +955,26 @@ function App() {
 
           if (settings.autoAckReplyEnabled !== undefined) {
             setAutoAckReplyEnabled(settings.autoAckReplyEnabled !== 'false'); // Default true for backward compatibility
+          }
+
+          // New direct/multihop settings
+          if (settings.autoAckDirectEnabled !== undefined) {
+            setAutoAckDirectEnabled(settings.autoAckDirectEnabled !== 'false');
+          }
+          if (settings.autoAckDirectTapbackEnabled !== undefined) {
+            setAutoAckDirectTapbackEnabled(settings.autoAckDirectTapbackEnabled !== 'false');
+          }
+          if (settings.autoAckDirectReplyEnabled !== undefined) {
+            setAutoAckDirectReplyEnabled(settings.autoAckDirectReplyEnabled !== 'false');
+          }
+          if (settings.autoAckMultihopEnabled !== undefined) {
+            setAutoAckMultihopEnabled(settings.autoAckMultihopEnabled !== 'false');
+          }
+          if (settings.autoAckMultihopTapbackEnabled !== undefined) {
+            setAutoAckMultihopTapbackEnabled(settings.autoAckMultihopTapbackEnabled !== 'false');
+          }
+          if (settings.autoAckMultihopReplyEnabled !== undefined) {
+            setAutoAckMultihopReplyEnabled(settings.autoAckMultihopReplyEnabled !== 'false');
           }
 
           if (settings.autoAnnounceEnabled !== undefined) {
@@ -4481,6 +4513,12 @@ function App() {
                   skipIncompleteNodes={autoAckSkipIncompleteNodes}
                   tapbackEnabled={autoAckTapbackEnabled}
                   replyEnabled={autoAckReplyEnabled}
+                  directEnabled={autoAckDirectEnabled}
+                  directTapbackEnabled={autoAckDirectTapbackEnabled}
+                  directReplyEnabled={autoAckDirectReplyEnabled}
+                  multihopEnabled={autoAckMultihopEnabled}
+                  multihopTapbackEnabled={autoAckMultihopTapbackEnabled}
+                  multihopReplyEnabled={autoAckMultihopReplyEnabled}
                   baseUrl={baseUrl}
                   onEnabledChange={setAutoAckEnabled}
                   onRegexChange={setAutoAckRegex}
@@ -4492,6 +4530,12 @@ function App() {
                   onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
                   onTapbackEnabledChange={setAutoAckTapbackEnabled}
                   onReplyEnabledChange={setAutoAckReplyEnabled}
+                  onDirectEnabledChange={setAutoAckDirectEnabled}
+                  onDirectTapbackEnabledChange={setAutoAckDirectTapbackEnabled}
+                  onDirectReplyEnabledChange={setAutoAckDirectReplyEnabled}
+                  onMultihopEnabledChange={setAutoAckMultihopEnabled}
+                  onMultihopTapbackEnabledChange={setAutoAckMultihopTapbackEnabled}
+                  onMultihopReplyEnabledChange={setAutoAckMultihopReplyEnabled}
                 />
               </div>
               <div id="auto-announce">

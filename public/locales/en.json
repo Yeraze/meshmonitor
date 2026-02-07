@@ -1979,6 +1979,10 @@
   "automation.auto_ack.hop_emojis": "Hop emojis",
   "automation.auto_ack.reply_with_message": "Reply with Message",
   "automation.auto_ack.reply_with_message_description": "Send a customizable text message response using the templates below.",
+  "automation.auto_ack.direct_section": "Direct Messages (0 hops)",
+  "automation.auto_ack.direct_section_description": "Configure responses for direct connections (messages received with 0 hops).",
+  "automation.auto_ack.multihop_section": "Multi-hop Messages (1+ hops)",
+  "automation.auto_ack.multihop_section_description": "Configure responses for relayed messages (received via 1 or more hops).",
 
   "automation.auto_welcome.title": "Auto Welcome",
   "automation.auto_welcome.description": "When enabled, automatically send a welcome message when a new node joins the mesh network.",

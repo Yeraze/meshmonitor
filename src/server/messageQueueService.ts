@@ -52,6 +52,16 @@ class MessageQueueService {
   }
 
   /**
+   * Record an external send to update rate limiting
+   * Call this after sending a message outside the queue (e.g., tapback)
+   * to ensure queued messages respect the send interval
+   */
+  recordExternalSend() {
+    this.lastSendTime = Date.now();
+    logger.debug('📝 Recorded external send for rate limiting');
+  }
+
+  /**
    * Add a message to the queue
    * For DMs: destination = node number, channel = undefined
    * For channels: destination = 0, channel = channel index (0-7)
