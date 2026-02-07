@@ -2922,7 +2922,7 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
 });
 
 // Get traceroute history for a specific source-destination pair
-apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', (req, res) => {
+apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) => {
   try {
     const fromNodeNum = parseInt(req.params.fromNodeNum);
     const toNodeNum = parseInt(req.params.toNodeNum);
@@ -2946,7 +2946,7 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', (req, res) => {
       return;
     }
 
-    const traceroutes = databaseService.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
+    const traceroutes = await databaseService.getTraceroutesByNodesAsync(fromNodeNum, toNodeNum, limit);
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;
