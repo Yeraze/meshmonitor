@@ -6,8 +6,12 @@
  */
 
 import * as cron from 'node-cron';
+import { createRequire } from 'module';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+
+const require = createRequire(import.meta.url);
+const appVersion: string = require('../../../package.json').version;
 
 // News feed types
 export interface NewsItem {
@@ -17,6 +21,7 @@ export interface NewsItem {
   date: string;
   category: 'release' | 'security' | 'feature' | 'maintenance';
   priority: 'normal' | 'important';
+  minVersion?: string;
 }
 
 export interface NewsFeed {
@@ -30,6 +35,22 @@ const DEFAULT_NEWS_URL = 'https://meshmonitor.org/news.json';
 class NewsService {
   private cronJob: cron.ScheduledTask | null = null;
   private isInitialized = false;
+
+  /**
+   * Compare semver versions. Returns true if current >= required.
+   */
+  private isVersionAtLeast(current: string, required: string): boolean {
+    const parse = (v: string) => v.split('.').map(Number);
+    const cur = parse(current);
+    const req = parse(required);
+    for (let i = 0; i < Math.max(cur.length, req.length); i++) {
+      const c = cur[i] || 0;
+      const r = req[i] || 0;
+      if (c > r) return true;
+      if (c < r) return false;
+    }
+    return true; // equal
+  }
 
   /**
    * Initialize the news service
@@ -146,6 +167,12 @@ class NewsService {
       }
 
       const feed = JSON.parse(cache.feedData) as NewsFeed;
+
+      // Filter out items that require a newer version than currently installed
+      feed.items = feed.items.filter(item =>
+        !item.minVersion || this.isVersionAtLeast(appVersion, item.minVersion)
+      );
+
       return feed;
     } catch (error) {
       logger.error('Error retrieving cached news:', error);

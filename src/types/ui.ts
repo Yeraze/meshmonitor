@@ -103,6 +103,7 @@ export interface NewsItem {
   date: string;
   category: 'release' | 'security' | 'feature' | 'maintenance';
   priority: 'normal' | 'important';
+  minVersion?: string;
 }
 
 /**
