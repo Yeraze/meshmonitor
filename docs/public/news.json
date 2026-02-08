@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-02-08T18:00:00Z",
+  "lastUpdated": "2026-02-08T22:00:00Z",
   "items": [
+    {
+      "minVersion": "3.4.9",
+      "id": "news-2026-02-08-hotfix-mfa-sqlite",
+      "title": "MeshMonitor v3.4.9 - Hotfix: MFA on SQLite",
+      "content": "MeshMonitor v3.4.9 is a hotfix release addressing two bugs:\n\n- **MFA on SQLite** (#1828) - Two-factor authentication setup, enable, disable, and backup code operations failed on SQLite (the default database) with \"Auth repository not initialized\". MFA now works correctly on all database backends.\n- **News popup dismiss** (#1827) - The news popup dismiss checkbox was not persisting correctly.",
+      "date": "2026-02-08T22:00:00Z",
+      "category": "bugfix",
+      "priority": "important"
+    },
     {
       "minVersion": "3.4.8",
       "id": "news-2026-02-08-autoack-mfa",
