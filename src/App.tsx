@@ -277,6 +277,8 @@ function App() {
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
+    positionHistoryLineStyle,
+    setPositionHistoryLineStyle,
     setTelemetryVisualizationHours,
     setFavoriteTelemetryStorageDays,
     setPreferredSortField,
@@ -4408,6 +4410,7 @@ function App() {
             inactiveNodeCooldownHours={inactiveNodeCooldownHours}
             temperatureUnit={temperatureUnit}
             distanceUnit={distanceUnit}
+            positionHistoryLineStyle={positionHistoryLineStyle}
             telemetryVisualizationHours={telemetryVisualizationHours}
             favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
             preferredSortField={preferredSortField}
@@ -4432,6 +4435,7 @@ function App() {
             onInactiveNodeCooldownHoursChange={setInactiveNodeCooldownHours}
             onTemperatureUnitChange={setTemperatureUnit}
             onDistanceUnitChange={setDistanceUnit}
+            onPositionHistoryLineStyleChange={setPositionHistoryLineStyle}
             onTelemetryVisualizationChange={setTelemetryVisualizationHours}
             onFavoriteTelemetryStorageDaysChange={setFavoriteTelemetryStorageDays}
             onPreferredSortFieldChange={setPreferredSortField}
