@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-02-02T18:00:00Z",
+  "lastUpdated": "2026-02-08T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.4.8",
+      "id": "news-2026-02-08-autoack-mfa",
+      "title": "MeshMonitor v3.4.8 - Auto-Acknowledge Settings & Two-Factor Authentication",
+      "content": "MeshMonitor v3.4.8 brings two major features: a comprehensive **Auto-Acknowledge** settings panel and **Two-Factor Authentication (MFA)** for account security.\n\n## Auto-Acknowledge Settings\n\nThe new Auto-Acknowledge feature automatically responds to incoming messages that match a configurable pattern, making it ideal for network testing and mesh diagnostics.\n\n### Key Capabilities\n\n- **Regex Pattern Matching** - Define which messages trigger auto-responses (default: `^(test|ping)`)\n- **Per-Channel Control** - Enable/disable on individual channels and direct messages\n- **Separate Direct & Multi-Hop Templates** - Customize responses based on connection type\n- **Dynamic Tokens** - Use `{SNR}`, `{RSSI}`, `{HOPS}`, `{LONG_NAME}`, `{TIME}`, and more in response templates\n- **Tapback Reactions** - Optionally react with emoji based on hop count\n- **Always DM Option** - Force responses via direct message even for channel triggers\n- **Security** - Skip incomplete nodes that haven't sent full NODEINFO\n- **Built-in Pattern Tester** - Validate your regex patterns with live preview before deploying\n\n## Two-Factor Authentication (MFA)\n\nProtect your MeshMonitor account with **TOTP-based two-factor authentication**.\n\n### Setup\n\n1. Navigate to **Settings > Security**\n2. Click **Enable MFA** and scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)\n3. Enter the verification code to confirm setup\n4. Save your **backup codes** in a secure location\n\n### How It Works\n\n- After entering your password, you'll be prompted for a 6-digit code from your authenticator app\n- **10 backup codes** are generated during setup for emergency access\n- Each backup code can only be used once\n- Administrators can disable MFA for other users if needed\n\n[Read more about Auto-Acknowledge](https://meshmonitor.org/features/automation#auto-acknowledge)",
+      "date": "2026-02-08T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "minVersion": "3.4.4",
       "id": "news-2026-02-02-channel-database-improvements",
