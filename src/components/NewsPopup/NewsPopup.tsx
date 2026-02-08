@@ -112,13 +112,14 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
   }, [isOpen]);
 
   const handleClose = useCallback(async () => {
-    // If "don't show again" is checked and we're authenticated, dismiss the current item
+    // If "don't show again" is checked and we're authenticated, dismiss ALL currently shown items
     if (dontShowAgain && isAuthenticated && newsItems.length > 0) {
-      const currentItem = newsItems[currentIndex];
       try {
-        await api.dismissNewsItem(currentItem.id);
+        for (const item of newsItems) {
+          await api.dismissNewsItem(item.id);
+        }
       } catch (error) {
-        console.error('Error dismissing news item:', error);
+        console.error('Error dismissing news items:', error);
       }
     }
 
@@ -141,26 +142,15 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
     onClose();
   }, [dontShowAgain, isAuthenticated, newsItems, currentIndex, onClose, fullFeed, forceShowAll]);
 
-  const handleNext = useCallback(async () => {
-    // Dismiss current item if checkbox is checked
-    if (dontShowAgain && isAuthenticated && newsItems.length > 0) {
-      const currentItem = newsItems[currentIndex];
-      try {
-        await api.dismissNewsItem(currentItem.id);
-      } catch (error) {
-        console.error('Error dismissing news item:', error);
-      }
-    }
-
+  const handleNext = useCallback(() => {
     if (currentIndex < newsItems.length - 1) {
       setCurrentIndex(prev => prev + 1);
-      setDontShowAgain(false);
       // Scroll content to top for new item
       contentRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     } else {
       onClose();
     }
-  }, [currentIndex, newsItems.length, dontShowAgain, isAuthenticated, newsItems, onClose]);
+  }, [currentIndex, newsItems.length, onClose]);
 
   const handlePrevious = useCallback(() => {
     if (currentIndex > 0) {
@@ -290,7 +280,7 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
                   checked={dontShowAgain}
                   onChange={e => setDontShowAgain(e.target.checked)}
                 />
-                {t('news.do_not_show_again', "Don't show this again")}
+                {t('news.do_not_show_again', "Don't show these again")}
               </label>
             )}
           </div>
