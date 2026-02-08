@@ -183,6 +183,40 @@
   text-decoration: underline;
 }
 
+/* MFA Prompt */
+.mfa-prompt {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.mfa-prompt p {
+  color: #4a5568;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* MFA Actions */
+.mfa-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.button-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+  padding: 4px;
+}
+
+.button-link:hover {
+  color: #5568d3;
+}
+
 /* Mobile Responsive */
 @media (max-width: 480px) {
   .login-container {

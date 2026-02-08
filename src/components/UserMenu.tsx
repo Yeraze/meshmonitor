@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
 import APITokenManagement from './APITokenManagement';
+import MFAManagement from './MFAManagement';
 
 interface UserMenuProps {
   onLogout?: () => void;
@@ -21,6 +22,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showAPIToken, setShowAPIToken] = useState(false);
+  const [showMFA, setShowMFA] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!authStatus?.authenticated || !authStatus.user) {
@@ -51,6 +53,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const handleAPIToken = () => {
     setShowMenu(false);
     setShowAPIToken(true);
+  };
+
+  const handleMFA = () => {
+    setShowMenu(false);
+    setShowMFA(true);
   };
 
   const displayName = authStatus.user.displayName || authStatus.user.username;
@@ -100,6 +107,16 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
               </button>
             )}
 
+            {isLocalAuth && (
+              <button
+                className="user-menu-item"
+                onClick={handleMFA}
+                disabled={loading}
+              >
+                {t('user_menu.mfa')}
+              </button>
+            )}
+
             <button
               className="user-menu-item"
               onClick={handleAPIToken}
@@ -133,6 +150,20 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
             </div>
             <div className="modal-body">
               <APITokenManagement />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMFA && (
+        <div className="modal-overlay" onClick={() => setShowMFA(false)}>
+          <div className="modal-content api-token-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('mfa.title')}</h2>
+              <button className="modal-close" onClick={() => setShowMFA(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <MFAManagement />
             </div>
           </div>
         </div>

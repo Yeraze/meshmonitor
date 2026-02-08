@@ -31,8 +31,8 @@ router.get('/', async (_req: Request, res: Response) => {
       users = databaseService.userModel.findAll();
     }
 
-    // Remove password hashes and normalize field names (authMethod -> authProvider for frontend)
-    const usersWithoutPasswords = users.map(({ passwordHash, authMethod, ...user }) => ({
+    // Remove sensitive fields and normalize field names (authMethod -> authProvider for frontend)
+    const usersWithoutPasswords = users.map(({ passwordHash, authMethod, mfaSecret, mfaBackupCodes, ...user }) => ({
       ...user,
       authProvider: authMethod || user.authProvider || 'local'
     }));
@@ -60,8 +60,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Remove password hash and normalize field names (authMethod -> authProvider for frontend)
-    const { passwordHash, authMethod, ...userWithoutPassword } = user;
+    // Remove sensitive fields and normalize field names (authMethod -> authProvider for frontend)
+    const { passwordHash, authMethod, mfaSecret, mfaBackupCodes, ...userWithoutPassword } = user;
 
     return res.json({
       user: {
@@ -626,6 +626,41 @@ router.put('/:id/channel-database-permissions', async (req: Request, res: Respon
   } catch (error) {
     logger.error('Error updating channel database permissions:', error);
     return res.status(500).json({ error: 'Failed to update channel database permissions' });
+  }
+});
+
+// Force-disable MFA for a user (admin only)
+router.delete('/:id/mfa', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const targetUser = await databaseService.findUserByIdAsync(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!targetUser.mfaEnabled) {
+      return res.status(400).json({ error: 'MFA is not enabled for this user' });
+    }
+
+    await databaseService.clearUserMfaAsync(userId);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'mfa_admin_disabled',
+      'auth',
+      JSON.stringify({ targetUserId: userId, targetUsername: targetUser.username, adminUsername: req.user!.username }),
+      req.ip || null
+    );
+
+    return res.json({ success: true, message: `MFA disabled for user ${targetUser.username}` });
+  } catch (error) {
+    logger.error('Error force-disabling MFA:', error);
+    return res.status(500).json({ error: 'Failed to disable MFA' });
   }
 });
 

@@ -18,6 +18,7 @@ export interface User {
   isAdmin: boolean;
   isActive: boolean;
   passwordLocked: boolean;
+  mfaEnabled: boolean;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -36,10 +37,16 @@ export interface AuthStatus {
   anonymousDisabled: boolean;
 }
 
+export interface LoginResult {
+  requireMfa?: boolean;
+  success?: boolean;
+}
+
 interface AuthContextType {
   authStatus: AuthStatus | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  verifyMfa: (code: string, isBackupCode?: boolean) => Promise<void>;
   loginWithOIDC: () => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -106,12 +113,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refreshAuth]);
 
   // Local authentication
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     try {
-      const response = await api.post<{ success: boolean; user: User }>('/api/auth/login', {
+      const response = await api.post<{ success?: boolean; requireMfa?: boolean; user?: User }>('/api/auth/login', {
         username,
         password
       });
+
+      // MFA required - return signal to caller
+      if (response.requireMfa) {
+        return { requireMfa: true };
+      }
 
       if (response.success) {
         // Refresh auth status to get permissions
@@ -134,9 +146,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Reload the page to apply user-specific preferences
         window.location.reload();
+        return { success: true };
       }
+
+      return {};
     } catch (error) {
       logger.error('Login failed:', error);
+      throw error;
+    }
+  }, [refreshAuth]);
+
+  // MFA verification
+  const verifyMfa = useCallback(async (code: string, isBackupCode: boolean = false) => {
+    try {
+      const body = isBackupCode ? { backupCode: code } : { token: code };
+      const response = await api.post<{ success: boolean; user: User }>('/api/auth/verify-mfa', body);
+
+      if (response.success) {
+        await refreshAuth();
+
+        // Check session cookie is working
+        const statusCheck = await api.get<AuthStatus>('/api/auth/status');
+        if (!statusCheck.authenticated) {
+          throw new Error('Session cookie not working after MFA verification.');
+        }
+
+        logger.debug('MFA verification successful - reloading page');
+        window.location.reload();
+      }
+    } catch (error) {
+      logger.error('MFA verification failed:', error);
       throw error;
     }
   }, [refreshAuth]);
@@ -217,6 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     authStatus,
     loading,
     login,
+    verifyMfa,
     loginWithOIDC,
     logout,
     refreshAuth,

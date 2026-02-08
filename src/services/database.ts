@@ -72,6 +72,7 @@ import { migration as enforceNameValidationMigration, runMigration064Postgres, r
 import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
 import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
 import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
+import { migration as mfaColumnsMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_add_mfa_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -937,6 +938,7 @@ class DatabaseService {
     this.runSortOrderMigration();
     this.runIgnoredNodesTableMigration();
     this.runAutoTimeSyncMigration();
+    this.runMfaColumnsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2272,6 +2274,25 @@ class DatabaseService {
       logger.debug('Migration 067 (auto time sync) completed successfully');
     } catch (error) {
       logger.error('Failed to run auto time sync migration:', error);
+      throw error;
+    }
+  }
+
+  private runMfaColumnsMigration(): void {
+    const migrationKey = 'migration_068_mfa_columns';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 068 (MFA columns) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 068: Add MFA columns to users table...');
+      mfaColumnsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Migration 068 (MFA columns) completed successfully');
+    } catch (error) {
+      logger.error('Failed to run MFA columns migration:', error);
       throw error;
     }
   }
@@ -10294,6 +10315,9 @@ class DatabaseService {
       // Run migration 067: Add auto time sync schema
       await runMigration067Postgres(client);
 
+      // Run migration 068: Add MFA columns to users table
+      await runMigration068Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10407,6 +10431,9 @@ class DatabaseService {
       // Run migration 067: Add auto time sync schema
       await runMigration067Mysql(pool);
 
+      // Run migration 068: Add MFA columns to users table
+      await runMigration068Mysql(pool);
+
       // Verify all expected tables exist
       const [rows] = await connection.query(`
         SELECT table_name FROM information_schema.tables
@@ -10448,6 +10475,9 @@ class DatabaseService {
         isAdmin: dbUser.isAdmin,
         isActive: dbUser.isActive,
         passwordLocked: dbUser.passwordLocked,
+        mfaEnabled: dbUser.mfaEnabled ?? false,
+        mfaSecret: dbUser.mfaSecret ?? null,
+        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
         createdAt: dbUser.createdAt,
         lastLoginAt: dbUser.lastLoginAt,
       };
@@ -10486,6 +10516,9 @@ class DatabaseService {
         isAdmin: dbUser.isAdmin,
         isActive: dbUser.isActive,
         passwordLocked: dbUser.passwordLocked,
+        mfaEnabled: dbUser.mfaEnabled ?? false,
+        mfaSecret: dbUser.mfaSecret ?? null,
+        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
         createdAt: dbUser.createdAt,
         lastLoginAt: Date.now(),
       };
@@ -10545,6 +10578,9 @@ class DatabaseService {
         isAdmin: dbUser.isAdmin,
         isActive: dbUser.isActive,
         passwordLocked: dbUser.passwordLocked,
+        mfaEnabled: dbUser.mfaEnabled ?? false,
+        mfaSecret: dbUser.mfaSecret ?? null,
+        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
         createdAt: dbUser.createdAt,
         lastLoginAt: dbUser.lastLoginAt,
       };
@@ -10740,6 +10776,48 @@ class DatabaseService {
     }
     // Fallback to sync for SQLite
     await this.userModel.updatePassword(userId, newPassword);
+  }
+
+  // ============ ASYNC MFA METHODS ============
+
+  /**
+   * Update MFA secret and backup codes for a user.
+   */
+  async updateUserMfaSecretAsync(userId: number, secret: string, backupCodes: string): Promise<void> {
+    if (!this.authRepo) {
+      throw new Error('Auth repository not initialized');
+    }
+    await this.authRepo.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
+  }
+
+  /**
+   * Clear MFA data for a user (disable MFA).
+   */
+  async clearUserMfaAsync(userId: number): Promise<void> {
+    if (!this.authRepo) {
+      throw new Error('Auth repository not initialized');
+    }
+    await this.authRepo.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
+  }
+
+  /**
+   * Enable MFA for a user (set mfaEnabled to true).
+   */
+  async enableUserMfaAsync(userId: number): Promise<void> {
+    if (!this.authRepo) {
+      throw new Error('Auth repository not initialized');
+    }
+    await this.authRepo.updateUser(userId, { mfaEnabled: true });
+  }
+
+  /**
+   * Update backup codes for a user (after one is consumed).
+   */
+  async consumeBackupCodeAsync(userId: number, remainingCodes: string): Promise<void> {
+    if (!this.authRepo) {
+      throw new Error('Auth repository not initialized');
+    }
+    await this.authRepo.updateUser(userId, { mfaBackupCodes: remainingCodes });
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============

@@ -633,6 +633,7 @@ import messageRoutes from './routes/messageRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
 import apiTokenRoutes from './routes/apiTokenRoutes.js';
+import mfaRoutes from './routes/mfaRoutes.js';
 import channelDatabaseRoutes from './routes/channelDatabaseRoutes.js';
 import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
@@ -680,6 +681,9 @@ apiRouter.use('/auth', authRoutes);
 
 // API Token management routes (requires auth)
 apiRouter.use('/token', apiTokenRoutes);
+
+// MFA management routes (requires auth)
+apiRouter.use('/mfa', mfaRoutes);
 
 // v1 API routes (requires API token)
 apiRouter.use('/v1', v1Router);

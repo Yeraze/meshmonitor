@@ -36,6 +36,9 @@ export interface DbUser {
   isAdmin: boolean;
   isActive: boolean;
   passwordLocked: boolean | null;
+  mfaEnabled: boolean;
+  mfaSecret: string | null;
+  mfaBackupCodes: string | null;
   createdAt: number;
   updatedAt?: number; // PostgreSQL only
   lastLoginAt: number | null;
@@ -72,6 +75,9 @@ export interface UpdateUserInput {
   isAdmin?: boolean;
   isActive?: boolean;
   passwordLocked?: boolean;
+  mfaEnabled?: boolean;
+  mfaSecret?: string | null;
+  mfaBackupCodes?: string | null;
   updatedAt?: number;
   lastLoginAt?: number | null;
 }

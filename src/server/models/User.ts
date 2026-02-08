@@ -513,6 +513,9 @@ export class UserModel {
       isAdmin: Boolean(row.isAdmin),
       isActive: Boolean(row.isActive),
       passwordLocked: Boolean(row.passwordLocked),
+      mfaEnabled: Boolean(row.mfaEnabled || row.mfa_enabled),
+      mfaSecret: row.mfaSecret || row.mfa_secret || null,
+      mfaBackupCodes: row.mfaBackupCodes || row.mfa_backup_codes || null,
       createdAt: row.createdAt,
       lastLoginAt: row.lastLoginAt || null,
       createdBy: row.createdBy || null
