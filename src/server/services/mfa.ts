@@ -24,7 +24,7 @@ export class MfaService {
     const otpauthUrl = generateURI({
       secret,
       issuer: SERVICE_NAME,
-      label: `${SERVICE_NAME}:${username}`
+      label: username
     });
     return { secret, otpauthUrl };
   }

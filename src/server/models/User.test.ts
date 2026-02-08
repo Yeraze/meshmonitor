@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { UserModel } from './User.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
 import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
+import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
 
 describe('UserModel', () => {
   let db: Database.Database;
@@ -20,6 +21,7 @@ describe('UserModel', () => {
     // Run migrations
     authMigration.up(db);
     passwordLockedMigration.up(db);
+    mfaMigration.up(db);
 
     // Create model instance
     userModel = new UserModel(db);
@@ -143,6 +145,46 @@ describe('UserModel', () => {
     it('should return null for non-existent users', () => {
       const found = userModel.findById(9999);
       expect(found).toBeNull();
+    });
+
+    it('should return MFA fields from findById', async () => {
+      const created = await userModel.create({
+        username: 'mfauser',
+        password: 'pass123',
+        authProvider: 'local'
+      });
+
+      const found = userModel.findById(created.id);
+      expect(found).toBeTruthy();
+      expect(found?.mfaEnabled).toBe(false);
+      expect(found?.mfaSecret).toBeNull();
+      expect(found?.mfaBackupCodes).toBeNull();
+    });
+
+    it('should return MFA fields from findByUsername', async () => {
+      await userModel.create({
+        username: 'mfauser2',
+        password: 'pass123',
+        authProvider: 'local'
+      });
+
+      const found = userModel.findByUsername('mfauser2');
+      expect(found).toBeTruthy();
+      expect(found?.mfaEnabled).toBe(false);
+      expect(found?.mfaSecret).toBeNull();
+    });
+
+    it('should return MFA fields from findAll', async () => {
+      await userModel.create({
+        username: 'mfauser3',
+        password: 'pass123',
+        authProvider: 'local'
+      });
+
+      const users = userModel.findAll();
+      expect(users.length).toBeGreaterThan(0);
+      expect(users[0].mfaEnabled).toBe(false);
+      expect(users[0].mfaSecret).toBeNull();
     });
   });
 
