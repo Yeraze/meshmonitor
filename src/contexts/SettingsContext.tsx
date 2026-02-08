@@ -9,6 +9,7 @@ import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 
 export type DistanceUnit = 'km' | 'mi';
+export type PositionHistoryLineStyle = 'linear' | 'spline';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
@@ -46,6 +47,7 @@ interface SettingsContextType {
   tracerouteIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
+  positionHistoryLineStyle: PositionHistoryLineStyle;
   telemetryVisualizationHours: number;
   favoriteTelemetryStorageDays: number;
   preferredSortField: SortField;
@@ -81,6 +83,7 @@ interface SettingsContextType {
   setTracerouteIntervalMinutes: (minutes: number) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
+  setPositionHistoryLineStyle: (style: PositionHistoryLineStyle) => void;
   setTelemetryVisualizationHours: (hours: number) => void;
   setFavoriteTelemetryStorageDays: (days: number) => void;
   setPreferredSortField: (field: SortField) => void;
@@ -153,6 +156,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [distanceUnit, setDistanceUnitState] = useState<DistanceUnit>(() => {
     const saved = localStorage.getItem('distanceUnit');
     return (saved === 'mi' ? 'mi' : 'km') as DistanceUnit;
+  });
+
+  const [positionHistoryLineStyle, setPositionHistoryLineStyleState] = useState<PositionHistoryLineStyle>(() => {
+    const saved = localStorage.getItem('positionHistoryLineStyle');
+    return (saved === 'linear' ? 'linear' : 'spline') as PositionHistoryLineStyle;
   });
 
   const [telemetryVisualizationHours, setTelemetryVisualizationHoursState] = useState<number>(() => {
@@ -327,6 +335,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setDistanceUnit = (unit: DistanceUnit) => {
     setDistanceUnitState(unit);
     localStorage.setItem('distanceUnit', unit);
+  };
+
+  const setPositionHistoryLineStyle = (style: PositionHistoryLineStyle) => {
+    setPositionHistoryLineStyleState(style);
+    localStorage.setItem('positionHistoryLineStyle', style);
   };
 
   const setTelemetryVisualizationHours = (hours: number) => {
@@ -769,6 +782,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('distanceUnit', settings.distanceUnit);
           }
 
+          if (settings.positionHistoryLineStyle) {
+            setPositionHistoryLineStyleState(settings.positionHistoryLineStyle as PositionHistoryLineStyle);
+            localStorage.setItem('positionHistoryLineStyle', settings.positionHistoryLineStyle);
+          }
+
           if (settings.telemetryVisualizationHours) {
             const value = parseInt(settings.telemetryVisualizationHours);
             if (!isNaN(value)) {
@@ -972,6 +990,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     tracerouteIntervalMinutes,
     temperatureUnit,
     distanceUnit,
+    positionHistoryLineStyle,
     telemetryVisualizationHours,
     favoriteTelemetryStorageDays,
     preferredSortField,
@@ -1007,6 +1026,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
+    setPositionHistoryLineStyle,
     setTelemetryVisualizationHours,
     setFavoriteTelemetryStorageDays,
     setPreferredSortField,

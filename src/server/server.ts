@@ -4807,6 +4807,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'tracerouteIntervalMinutes',
       'temperatureUnit',
       'distanceUnit',
+      'positionHistoryLineStyle',
       'telemetryVisualizationHours',
       'telemetryFavorites',
       'telemetryCustomOrder',

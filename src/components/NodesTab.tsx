@@ -260,6 +260,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapPinStyle,
     customTilesets,
     distanceUnit,
+    positionHistoryLineStyle,
     nodeDimmingEnabled,
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
@@ -1827,7 +1828,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   segmentColors.push(color);
 
                   // Generate path - use Bezier curve if heading data is available
-                  const segmentPath = startPos.groundTrack !== undefined
+                  const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
                     ? generateHeadingAwarePath(
                         [startPos.latitude, startPos.longitude],
                         [endPos.latitude, endPos.longitude],
