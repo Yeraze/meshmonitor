@@ -53,6 +53,14 @@ describe('MfaService', () => {
       expect(result.otpauthUrl).toContain('alice');
     });
 
+    it('should not produce a double-issuer in the label', () => {
+      const result = service.generateSecret('testuser');
+
+      // The URI should NOT contain MeshMonitor:MeshMonitor (double issuer)
+      expect(result.otpauthUrl).not.toContain('MeshMonitor%3AMeshMonitor');
+      expect(result.otpauthUrl).not.toContain('MeshMonitor:MeshMonitor');
+    });
+
     it('should return a non-empty secret', () => {
       const result = service.generateSecret('testuser');
 
