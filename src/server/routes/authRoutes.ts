@@ -15,6 +15,7 @@ import {
 } from '../auth/oidcAuth.js';
 import { requireAuth } from '../auth/authMiddleware.js';
 import { authLimiter } from '../middleware/rateLimiters.js';
+import { mfaService } from '../services/mfa.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
@@ -88,12 +89,12 @@ router.get('/status', async (req: Request, res: Response) => {
     // Get user permissions
     const permissions = await databaseService.getUserPermissionSetAsync(user.id);
 
-    // Don't send password hash to client
-    const { passwordHash, ...userWithoutPassword } = user;
+    // Don't send sensitive fields to client
+    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
 
     return res.json({
       authenticated: true,
-      user: userWithoutPassword,
+      user: safeUser,
       permissions,
       oidcEnabled: isOIDCEnabled(),
       localAuthDisabled,
@@ -239,7 +240,26 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       });
     }
 
-    // Create session
+    // Check if MFA is enabled for this user
+    if (user.mfaEnabled) {
+      // Don't create full session yet - store pending MFA verification
+      req.session.pendingMfaUserId = user.id;
+
+      databaseService.auditLog(
+        user.id,
+        'login_mfa_required',
+        'auth',
+        JSON.stringify({ username }),
+        req.ip || null
+      );
+
+      return res.json({
+        requireMfa: true,
+        userId: user.id
+      });
+    }
+
+    // Create session (no MFA required)
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.authProvider = 'local';
@@ -254,12 +274,12 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       req.ip || null
     );
 
-    // Don't send password hash to client
-    const { passwordHash, ...userWithoutPassword } = user;
+    // Don't send sensitive fields to client
+    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
 
     return res.json({
       success: true,
-      user: userWithoutPassword
+      user: safeUser
     });
   } catch (error) {
     logger.error('Login error:', error);
@@ -291,6 +311,84 @@ router.post('/logout', (req: Request, res: Response) => {
 
     return res.json({ success: true });
   });
+});
+
+// Verify MFA code during two-step login
+router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
+  try {
+    const pendingUserId = req.session.pendingMfaUserId;
+    if (!pendingUserId) {
+      return res.status(400).json({ error: 'No pending MFA verification' });
+    }
+
+    const { token, backupCode } = req.body;
+    if (!token && !backupCode) {
+      return res.status(400).json({ error: 'A TOTP code or backup code is required' });
+    }
+
+    const user = await databaseService.findUserByIdAsync(pendingUserId);
+    if (!user || !user.isActive || !user.mfaEnabled || !user.mfaSecret) {
+      req.session.pendingMfaUserId = undefined;
+      return res.status(401).json({ error: 'Invalid MFA state' });
+    }
+
+    let verified = false;
+
+    if (token) {
+      verified = mfaService.verifyToken(user.mfaSecret, token);
+    } else if (backupCode) {
+      const hashedCodes: string[] = JSON.parse(user.mfaBackupCodes || '[]');
+      const remaining = await mfaService.verifyBackupCode(backupCode, hashedCodes);
+      if (remaining !== null) {
+        verified = true;
+        await databaseService.consumeBackupCodeAsync(user.id, JSON.stringify(remaining));
+        databaseService.auditLog(
+          user.id,
+          'mfa_backup_code_used',
+          'auth',
+          JSON.stringify({ username: user.username, action: 'login' }),
+          req.ip || null
+        );
+      }
+    }
+
+    if (!verified) {
+      databaseService.auditLog(
+        user.id,
+        'mfa_verify_failed',
+        'auth',
+        JSON.stringify({ username: user.username }),
+        req.ip || null
+      );
+      return res.status(401).json({ error: 'Invalid code' });
+    }
+
+    // MFA verified - create full session
+    req.session.pendingMfaUserId = undefined;
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    req.session.authProvider = 'local';
+    req.session.isAdmin = user.isAdmin;
+
+    databaseService.auditLog(
+      user.id,
+      'login_success',
+      'auth',
+      JSON.stringify({ username: user.username, authProvider: 'local', mfa: true }),
+      req.ip || null
+    );
+
+    // Don't send sensitive fields to client
+    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+
+    return res.json({
+      success: true,
+      user: safeUser
+    });
+  } catch (error) {
+    logger.error('MFA verification error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Change password

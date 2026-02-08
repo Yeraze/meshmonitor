@@ -54,6 +54,7 @@
     "mysql2": "^3.16.2",
     "node-cron": "^4.2.1",
     "openid-client": "^6.8.1",
+    "otplib": "^13.2.1",
     "pbf": "^4.0.1",
     "pg": "^8.18.0",
     "protobufjs": "^7.5.4",

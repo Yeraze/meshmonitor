@@ -26,6 +26,8 @@ declare module 'express-session' {
     oidcNonce?: string;
     // CSRF protection
     csrfToken?: string;
+    // MFA pending verification
+    pendingMfaUserId?: number;
   }
 }
 

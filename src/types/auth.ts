@@ -15,6 +15,9 @@ export interface User {
   isAdmin: boolean;
   isActive: boolean;
   passwordLocked: boolean; // Prevents password changes when true
+  mfaEnabled: boolean; // Whether TOTP MFA is enabled
+  mfaSecret: string | null; // NEVER sent to frontend
+  mfaBackupCodes: string | null; // NEVER sent to frontend
   createdAt: number; // Unix timestamp
   lastLoginAt: number | null; // Unix timestamp
   createdBy: number | null; // User ID who created this account
