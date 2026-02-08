@@ -10784,40 +10784,48 @@ class DatabaseService {
    * Update MFA secret and backup codes for a user.
    */
   async updateUserMfaSecretAsync(userId: number, secret: string, backupCodes: string): Promise<void> {
-    if (!this.authRepo) {
-      throw new Error('Auth repository not initialized');
+    if (this.authRepo) {
+      await this.authRepo.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
+      return;
     }
-    await this.authRepo.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
+    // Fallback to sync for SQLite
+    this.userModel.update(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
   }
 
   /**
    * Clear MFA data for a user (disable MFA).
    */
   async clearUserMfaAsync(userId: number): Promise<void> {
-    if (!this.authRepo) {
-      throw new Error('Auth repository not initialized');
+    if (this.authRepo) {
+      await this.authRepo.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
+      return;
     }
-    await this.authRepo.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
+    // Fallback to sync for SQLite
+    this.userModel.update(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
   }
 
   /**
    * Enable MFA for a user (set mfaEnabled to true).
    */
   async enableUserMfaAsync(userId: number): Promise<void> {
-    if (!this.authRepo) {
-      throw new Error('Auth repository not initialized');
+    if (this.authRepo) {
+      await this.authRepo.updateUser(userId, { mfaEnabled: true });
+      return;
     }
-    await this.authRepo.updateUser(userId, { mfaEnabled: true });
+    // Fallback to sync for SQLite
+    this.userModel.update(userId, { mfaEnabled: true });
   }
 
   /**
    * Update backup codes for a user (after one is consumed).
    */
   async consumeBackupCodeAsync(userId: number, remainingCodes: string): Promise<void> {
-    if (!this.authRepo) {
-      throw new Error('Auth repository not initialized');
+    if (this.authRepo) {
+      await this.authRepo.updateUser(userId, { mfaBackupCodes: remainingCodes });
+      return;
     }
-    await this.authRepo.updateUser(userId, { mfaBackupCodes: remainingCodes });
+    // Fallback to sync for SQLite
+    this.userModel.update(userId, { mfaBackupCodes: remainingCodes });
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============

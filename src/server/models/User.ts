@@ -174,6 +174,21 @@ export class UserModel {
       params.push(input.passwordLocked ? 1 : 0);
     }
 
+    if (input.mfaEnabled !== undefined) {
+      updates.push('mfa_enabled = ?');
+      params.push(input.mfaEnabled ? 1 : 0);
+    }
+
+    if (input.mfaSecret !== undefined) {
+      updates.push('mfa_secret = ?');
+      params.push(input.mfaSecret);
+    }
+
+    if (input.mfaBackupCodes !== undefined) {
+      updates.push('mfa_backup_codes = ?');
+      params.push(input.mfaBackupCodes);
+    }
+
     if (updates.length === 0) {
       return this.findById(id);
     }
