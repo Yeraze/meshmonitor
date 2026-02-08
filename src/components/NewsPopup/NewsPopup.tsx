@@ -148,9 +148,9 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
       // Scroll content to top for new item
       contentRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     } else {
-      onClose();
+      handleClose();
     }
-  }, [currentIndex, newsItems.length, onClose]);
+  }, [currentIndex, newsItems.length, handleClose]);
 
   const handlePrevious = useCallback(() => {
     if (currentIndex > 0) {
