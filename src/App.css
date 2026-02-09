@@ -881,6 +881,18 @@ body {
   }
 }
 
+.packet-distribution-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 700px) {
+  .packet-distribution-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .info-section h3,
 .info-section-full-width h3,
 .info-section-wide h3 {

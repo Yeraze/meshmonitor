@@ -33,80 +33,127 @@ interface PacketStatsChartProps {
   total: number;
   chartId: string;
   wide?: boolean;
+  bare?: boolean;
+  stacked?: boolean;
   headerExtra?: React.ReactNode;
 }
 
-const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId, wide = false, headerExtra }) => {
+const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId, wide = false, bare = false, stacked = false, headerExtra }) => {
   const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
   if (filteredData.length === 0) return null;
 
-  // Larger charts for wide sections
-  const chartSize = wide ? 180 : 140;
-  const innerRadius = wide ? 40 : 30;
-  const outerRadius = wide ? 70 : 55;
+  const chartSize = 140;
+  const innerRadius = 30;
+  const outerRadius = 55;
 
-  return (
-    <div className={wide ? "info-section-wide" : "info-section"}>
+  const pieChart = (
+    <div style={{ width: `${chartSize}px`, height: `${chartSize}px`, flexShrink: 0 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={filteredData}
+            cx="50%"
+            cy="50%"
+            innerRadius={innerRadius}
+            outerRadius={outerRadius}
+            paddingAngle={2}
+            dataKey="value"
+          >
+            {filteredData.map((entry, index) => (
+              <Cell key={`${chartId}-cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip
+            formatter={(value, _name, props) => {
+              if (value === null || value === undefined) return ['-', ''];
+              const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+              if (isNaN(numValue)) return ['-', ''];
+              const pct = total > 0 ? ((numValue / total) * 100).toFixed(1) : '0';
+              const entryName = props?.payload?.name || '';
+              return [`${numValue.toLocaleString()} (${pct}%)`, entryName];
+            }}
+            contentStyle={{
+              backgroundColor: 'var(--ctp-surface0)',
+              border: '1px solid var(--ctp-surface2)',
+              borderRadius: '4px',
+              fontSize: '0.85em',
+            }}
+            itemStyle={{
+              color: 'var(--ctp-text)',
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+
+  const legend = (
+    <div style={{ fontSize: '0.85em', minWidth: 0, overflow: 'hidden' }}>
+      {filteredData.map((entry, index) => {
+        const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+        return (
+          <p key={`${chartId}-legend-${index}`} style={{ margin: '0.25rem 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{
+              display: 'inline-block',
+              width: '10px',
+              height: '10px',
+              backgroundColor: entry.color,
+              marginRight: '0.5rem',
+              borderRadius: '2px',
+              flexShrink: 0,
+            }}></span>
+            {entry.name}: {pct}% ({entry.value.toLocaleString()})
+          </p>
+        );
+      })}
+    </div>
+  );
+
+  // Bare mode: no wrapper div, used inside a parent combined section
+  if (bare) {
+    // Stacked: chart above legend (for distribution charts in side-by-side grid)
+    if (stacked) {
+      return (
+        <div style={{ overflow: 'hidden' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>{title}</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+            {pieChart}
+            {legend}
+          </div>
+        </div>
+      );
+    }
+    // Horizontal: chart left, legend right (for RX/TX in stacked box)
+    return (
+      <div style={{ overflow: 'hidden' }}>
+        <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>{title}</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {pieChart}
+          {legend}
+        </div>
+      </div>
+    );
+  }
+
+  // Standalone mode: horizontal layout (chart left, legend right)
+  const content = (
+    <>
       <h3>{title}</h3>
       {headerExtra}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ width: `${chartSize}px`, height: `${chartSize}px` }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={filteredData}
-                cx="50%"
-                cy="50%"
-                innerRadius={innerRadius}
-                outerRadius={outerRadius}
-                paddingAngle={2}
-                dataKey="value"
-              >
-                {filteredData.map((entry, index) => (
-                  <Cell key={`${chartId}-cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value, _name, props) => {
-                  if (value === null || value === undefined) return ['-', ''];
-                  const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                  if (isNaN(numValue)) return ['-', ''];
-                  const pct = total > 0 ? ((numValue / total) * 100).toFixed(1) : '0';
-                  const entryName = props?.payload?.name || '';
-                  return [`${numValue.toLocaleString()} (${pct}%)`, entryName];
-                }}
-                contentStyle={{
-                  backgroundColor: 'var(--ctp-surface0)',
-                  border: '1px solid var(--ctp-surface2)',
-                  borderRadius: '4px',
-                  fontSize: '0.85em',
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ fontSize: '0.85em' }}>
-          {filteredData.map((entry, index) => {
-            const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
-            return (
-              <p key={`${chartId}-legend-${index}`} style={{ margin: '0.25rem 0' }}>
-                <span style={{
-                  display: 'inline-block',
-                  width: '10px',
-                  height: '10px',
-                  backgroundColor: entry.color,
-                  marginRight: '0.5rem',
-                  borderRadius: '2px'
-                }}></span>
-                {entry.name}: {pct}% ({entry.value.toLocaleString()})
-              </p>
-            );
-          })}
-        </div>
+        {pieChart}
+        {legend}
       </div>
-    </div>
+    </>
   );
+
+  // When used standalone, wrap in info-section
+  if (wide) {
+    return <div className="info-section-wide">{content}</div>;
+  }
+
+  return <div className="info-section">{content}</div>;
 });
 
 PacketStatsChart.displayName = 'PacketStatsChart';
@@ -579,7 +626,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           )}
         </div>
 
-        {localStats?.numPacketsRx > 0 && (() => {
+        {(localStats?.numPacketsRx > 0 || localStats?.numPacketsTx > 0) && (() => {
           const rxTotal = localStats.numPacketsRx || 0;
           const rxBad = localStats.numPacketsRxBad || 0;
           const rxDupe = localStats.numRxDupe || 0;
@@ -589,17 +636,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             { name: t('info.rx_bad_short'), value: rxBad, color: '#f38ba8' },
             { name: t('info.rx_dupe_short'), value: rxDupe, color: '#fab387' },
           ];
-          return (
-            <PacketStatsChart
-              title={t('info.rx_statistics')}
-              data={rxData}
-              total={rxTotal}
-              chartId="rx"
-            />
-          );
-        })()}
 
-        {localStats?.numPacketsTx > 0 && (() => {
           const txTotal = localStats.numPacketsTx || 0;
           const txDropped = localStats.numTxDropped || 0;
           const txRelay = localStats.numTxRelay || 0;
@@ -611,13 +648,31 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             { name: t('info.tx_relay_short'), value: txRelay, color: '#a6e3a1' },
             { name: t('info.tx_dropped_short'), value: txDropped, color: '#f38ba8' },
           ];
+
           return (
-            <PacketStatsChart
-              title={t('info.tx_statistics')}
-              data={txData}
-              total={txTotal}
-              chartId="tx"
-            />
+            <div className="info-section">
+              <h3>{t('info.radio_statistics', 'Radio Statistics')}</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {rxTotal > 0 && (
+                  <PacketStatsChart
+                    title={t('info.rx_statistics')}
+                    data={rxData}
+                    total={rxTotal}
+                    chartId="rx"
+                    bare
+                  />
+                )}
+                {txTotal > 0 && (
+                  <PacketStatsChart
+                    title={t('info.tx_statistics')}
+                    data={txData}
+                    total={txTotal}
+                    chartId="tx"
+                    bare
+                  />
+                )}
+              </div>
+            </div>
           );
         })()}
 
@@ -666,7 +721,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           });
 
           const timeRangeButtons = (
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 onClick={() => setDistributionTimeRange('hour')}
                 style={timeRangeButtonStyle(distributionTimeRange === 'hour')}
@@ -697,23 +752,30 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               )}
 
               {!loadingDistribution && packetDistribution.total > 0 && (
-                <>
-                  <PacketStatsChart
-                    title={t('info.packets_by_device')}
-                    data={deviceData}
-                    total={packetDistribution.total}
-                    chartId="dist-device"
-                    headerExtra={timeRangeButtons}
-                    wide
-                  />
-                  <PacketStatsChart
-                    title={t('info.packets_by_type')}
-                    data={typeData}
-                    total={packetDistribution.total}
-                    chartId="dist-type"
-                    wide
-                  />
-                </>
+                <div className="info-section-wide">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
+                    {timeRangeButtons}
+                  </div>
+                  <div className="packet-distribution-grid">
+                    <PacketStatsChart
+                      title={t('info.packets_by_device')}
+                      data={deviceData}
+                      total={packetDistribution.total}
+                      chartId="dist-device"
+                      bare
+                      stacked
+                    />
+                    <PacketStatsChart
+                      title={t('info.packets_by_type')}
+                      data={typeData}
+                      total={packetDistribution.total}
+                      chartId="dist-type"
+                      bare
+                      stacked
+                    />
+                  </div>
+                </div>
               )}
 
               {!loadingDistribution && packetDistribution.total === 0 && (
