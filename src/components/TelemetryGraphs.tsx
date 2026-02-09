@@ -586,6 +586,11 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         return false;
       }
 
+      // paxcounterBle is combined into the paxcounterWifi chart
+      if (type === 'paxcounterBle') {
+        return false;
+      }
+
       // For altitude, only show if values have changed
       if (type === 'altitude') {
         const values = data.map(d => d.value);
@@ -602,11 +607,42 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         <h3 className="telemetry-title">{t('telemetry.title', { count: telemetryHours })}</h3>
         <div className="graphs-grid">
           {filteredData.map(([type, data]) => {
+            const isPaxcounterCombined = type === 'paxcounterWifi';
             const isTemperature = type === 'temperature';
             const chartData = prepareChartData(data, isTemperature, globalMinTime);
             const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : data[0]?.unit || '';
-            const label = getTelemetryLabel(type);
+            const label = isPaxcounterCombined ? 'Paxcounter' : getTelemetryLabel(type);
             const color = getColor(type);
+
+            // For paxcounter combined chart, merge BLE data into the same chart data
+            if (isPaxcounterCombined) {
+              const bleData = groupedData.get('paxcounterBle');
+              // Re-key: rename 'value' to 'paxWifi', add 'paxBle' from BLE data
+              const bleByTimestamp = new Map<number, number>();
+              if (bleData) {
+                bleData.forEach(item => bleByTimestamp.set(item.timestamp, item.value));
+              }
+              chartData.forEach(point => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const p = point as any;
+                p.paxWifi = point.value;
+                p.paxBle = bleByTimestamp.get(point.timestamp) ?? null;
+                bleByTimestamp.delete(point.timestamp);
+              });
+              // Add BLE-only timestamps
+              bleByTimestamp.forEach((value, timestamp) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const point: any = {
+                  timestamp,
+                  value: null,
+                  time: formatTime(new Date(timestamp), timeFormat),
+                  paxWifi: null,
+                  paxBle: value,
+                };
+                chartData.push(point);
+              });
+              chartData.sort((a, b) => a.timestamp - b.timestamp);
+            }
 
             return (
               <div key={type} className="graph-container">
@@ -712,16 +748,43 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                         isAnimationActive={false}
                       />
                     )}
-                    <Line
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="value"
-                      stroke={color}
-                      strokeWidth={2}
-                      dot={{ fill: color, r: 3 }}
-                      activeDot={{ r: 5 }}
-                      connectNulls={true}
-                    />
+                    {isPaxcounterCombined ? (
+                      <>
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="paxWifi"
+                          name="WiFi"
+                          stroke={getColor('paxcounterWifi')}
+                          strokeWidth={2}
+                          dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
+                          activeDot={{ r: 5 }}
+                          connectNulls={true}
+                        />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="paxBle"
+                          name="BLE"
+                          stroke={getColor('paxcounterBle')}
+                          strokeWidth={2}
+                          dot={{ fill: getColor('paxcounterBle'), r: 3 }}
+                          activeDot={{ r: 5 }}
+                          connectNulls={true}
+                        />
+                      </>
+                    ) : (
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="value"
+                        stroke={color}
+                        strokeWidth={2}
+                        dot={{ fill: color, r: 3 }}
+                        activeDot={{ r: 5 }}
+                        connectNulls={true}
+                      />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
