@@ -3,26 +3,17 @@
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface0);
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem;
   min-width: 200px;
   max-width: 300px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .node-popup h4 {
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.25rem 0;
   color: var(--ctp-text);
   font-size: 1rem;
   font-weight: 600;
-}
-
-.node-popup .route-endpoints {
-  margin-bottom: 0.5rem;
-  color: var(--ctp-subtext1);
-}
-
-.node-popup .route-endpoints strong {
-  color: var(--ctp-blue);
 }
 
 .node-popup .route-usage {
@@ -51,7 +42,7 @@
 }
 
 .popup-dm-btn:first-of-type {
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 /* Route popup shared styles */
@@ -59,14 +50,14 @@
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface0);
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem;
   min-width: 200px;
   max-width: 300px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .route-popup h4 {
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.25rem 0;
   color: var(--ctp-text);
   font-size: 1rem;
   font-weight: 600;
