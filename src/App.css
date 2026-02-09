@@ -4739,6 +4739,15 @@ body {
   animation: node-pulse 1s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.node-icon-highlight {
+  animation: node-highlight-pulse 2s ease-in-out infinite;
+}
+
+@keyframes node-highlight-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(137, 180, 250, 0.6)); }
+  50% { filter: drop-shadow(0 0 12px rgba(137, 180, 250, 1)); }
+}
+
 /* Footer Styles */
 .app-footer {
   background: var(--ctp-crust);
