@@ -115,7 +115,7 @@
     "globals": "^17.3.0",
     "jsdom": "^27.4.0",
     "prismjs": "^1.30.0",
-    "puppeteer": "^24.36.1",
+    "puppeteer": "^24.37.2",
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
