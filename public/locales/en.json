@@ -1564,6 +1564,7 @@
   "info.tx_dropped": "TX Dropped:",
   "info.tx_relay": "TX Relay:",
   "info.tx_relay_canceled": "TX Relay Canceled:",
+  "info.radio_statistics": "Radio Statistics",
   "info.rx_statistics": "RX Statistics",
   "info.tx_statistics": "TX Statistics",
   "info.rx_good": "Good",

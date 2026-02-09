@@ -2583,6 +2583,7 @@
     "position_config.gps_en_gpio": "Включение GPS GPIO",
     "backup_management.modal_title": "Сохраненные резервные копии",
     "telemetry_config.environment_interval": "Интервал обновления окружения (секунды)",
+    "info.radio_statistics": "Статистика радио",
     "info.rx_statistics": "Статистика RX",
     "automation.auto_ack.title": "Автоматическое подтверждение",
     "automation.auto_announce.scheduled_sends_description": "Используйте cron-выражение для планирования объявлений вместо фиксированного интервала",
