@@ -1565,6 +1565,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   shortName: node.user?.shortName,
                   showLabel: showLabel || shouldAnimate, // Show label when animating OR zoomed in
                   animate: shouldAnimate,
+                  highlightSelected: showRoute && isSelected,
                   pinStyle: mapPinStyle
                 });
 
