@@ -113,7 +113,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.0",
     "globals": "^17.3.0",
-    "jsdom": "^27.4.0",
+    "jsdom": "^28.0.0",
     "prismjs": "^1.30.0",
     "puppeteer": "^24.37.2",
     "supertest": "^7.1.4",
