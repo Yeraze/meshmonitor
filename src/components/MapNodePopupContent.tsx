@@ -68,10 +68,10 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
   return (
     <div className="node-popup">
       {/* Header */}
-      <div className="node-popup-header">
-        <div className="node-popup-title">{node.user?.longName || `Node ${node.nodeNum}`}</div>
+      <div className="node-popup-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="node-popup-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.user?.longName || `Node ${node.nodeNum}`}</div>
         {node.user?.shortName && (
-          <div className="node-popup-subtitle">{node.user.shortName}</div>
+          <div className="node-popup-subtitle" style={{ flexShrink: 0 }}>{node.user.shortName}</div>
         )}
       </div>
 
@@ -129,10 +129,14 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
               ) : null;
             })()}
 
-            {node.snr != null && (
-              <div className="node-popup-item">
-                <span className="node-popup-icon">📶</span>
-                <span className="node-popup-value">{node.snr.toFixed(1)} dB</span>
+            {(node.snr != null || (node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null)) && (
+              <div className="node-popup-item" style={{ gridColumn: '1 / -1' }}>
+                <span className="node-popup-value" style={{ display: 'flex', gap: '1rem' }}>
+                  {node.snr != null && <span>📶 {node.snr.toFixed(1)} dB</span>}
+                  {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                    <span>{node.deviceMetrics.batteryLevel === 101 ? '🔌 Plugged In' : `🔋 ${node.deviceMetrics.batteryLevel}%`}</span>
+                  )}
+                </span>
               </div>
             )}
 
@@ -150,15 +154,6 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
               <div className="node-popup-item">
                 <span className="node-popup-icon">⛰️</span>
                 <span className="node-popup-value">{node.position.altitude}m</span>
-              </div>
-            )}
-
-            {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-              <div className="node-popup-item">
-                <span className="node-popup-icon">{node.deviceMetrics.batteryLevel === 101 ? '🔌' : '🔋'}</span>
-                <span className="node-popup-value">
-                  {node.deviceMetrics.batteryLevel === 101 ? 'Plugged In' : `${node.deviceMetrics.batteryLevel}%`}
-                </span>
               </div>
             )}
           </div>

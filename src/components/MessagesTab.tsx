@@ -664,9 +664,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="node-header">
                         <div className="node-name">
                           {node.isFavorite && <span className="favorite-indicator">⭐</span>}
-                          <span className="node-name-text">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</span>
+                          <div className="node-name-text">
+                            <div className="node-longname">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</div>
+                          </div>
                         </div>
                         <div className="node-actions">
+                          {node.position && node.position.latitude != null && node.position.longitude != null && (
+                            <span className="node-indicator-icon" title={t('nodes.location')}>📍</span>
+                          )}
+                          {node.viaMqtt && (
+                            <span className="node-indicator-icon" title={t('nodes.via_mqtt')}>🌐</span>
+                          )}
+                          {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
+                            <span className="node-indicator-icon" title={t('nodes.has_telemetry')}>📊</span>
+                          )}
+                          {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
+                            <span className="node-indicator-icon" title={t('nodes.has_weather')}>☀️</span>
+                          )}
+                          {node.user?.id && nodesWithPKC.has(node.user.id) && (
+                            <span className="node-indicator-icon" title={t('nodes.has_pkc')}>🔐</span>
+                          )}
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
                             <span
                               className="security-warning-icon"
@@ -780,38 +797,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         />
                       </div>
 
-                      <div className="node-indicators">
-                        {node.position && node.position.latitude != null && node.position.longitude != null && (
-                          <div className="node-location" title={t('nodes.location')}>
-                            📍
-                            {node.isMobile && (
-                              <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>
-                                🚶
-                              </span>
-                            )}
-                            {node.position.altitude != null && (
-                              <span title={t('nodes.elevation')} style={{ marginLeft: '4px' }}>
-                                ⛰️ {Math.round(node.position.altitude)}m
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                          <div className="node-telemetry" title={t('nodes.has_telemetry')}>
-                            📊
-                          </div>
-                        )}
-                        {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                          <div className="node-weather" title={t('nodes.has_weather')}>
-                            ☀️
-                          </div>
-                        )}
-                        {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                          <div className="node-pkc" title={t('nodes.has_pkc')}>
-                            🔐
-                          </div>
-                        )}
-                      </div>
                     </div>
                   ))}
                 </>
