@@ -452,5 +452,29 @@
       "Recovery detection and notifications",
       "UTF-8 config with emoji support"
     ]
+  },
+  {
+    "name": "EQ (Earthquake Alerts)",
+    "filename": "mm_earthquake.py",
+    "icon": "🌎",
+    "description": "Automatically broadcasts USGS earthquake alerts for a configured location using Timer Triggers. Posts bulletins for NEW, UPDATED, and CLEARED alerts with smart deduplication to prevent mesh spam. Supports on-demand commands for earthquake summaries and detailed event info.",
+    "language": "Python",
+    "tags": ["Earthquake", "USGS", "Alerts", "Automation", "Timer Trigger", "GPS"],
+    "gistId": "1a8822b43981cab682c138fc4365cb90",
+    "exampleTrigger": "!eq, !eq detail 1, !eq help",
+    "requirements": [
+      "Python 3.8+",
+      "Internet connection for earthquake.usgs.gov",
+      "Configure EQ_LAT/EQ_LON in script"
+    ],
+    "author": "jeepnjonny",
+    "features": [
+      "Automatic alerts via Timer Triggers",
+      "Smart deduplication (NEW, UPDATED, CLEARED only)",
+      "On-demand earthquake summary queries",
+      "Configurable radius, magnitude threshold, and lookback window",
+      "Lightweight messages optimized for LoRa",
+      "No external dependencies (stdlib only)"
+    ]
   }
 ]

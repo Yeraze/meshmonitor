@@ -78,6 +78,7 @@ export class UserModel {
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
         is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
+        mfa_enabled as mfaEnabled, mfa_secret as mfaSecret, mfa_backup_codes as mfaBackupCodes,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE id = ?
@@ -98,6 +99,7 @@ export class UserModel {
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
         is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
+        mfa_enabled as mfaEnabled, mfa_secret as mfaSecret, mfa_backup_codes as mfaBackupCodes,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE username = ?
@@ -118,6 +120,7 @@ export class UserModel {
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
         is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
+        mfa_enabled as mfaEnabled, mfa_secret as mfaSecret, mfa_backup_codes as mfaBackupCodes,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE oidc_subject = ?
@@ -138,6 +141,7 @@ export class UserModel {
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
         is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
+        mfa_enabled as mfaEnabled, mfa_secret as mfaSecret, mfa_backup_codes as mfaBackupCodes,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       ORDER BY created_at DESC
@@ -172,6 +176,21 @@ export class UserModel {
     if (input.passwordLocked !== undefined) {
       updates.push('password_locked = ?');
       params.push(input.passwordLocked ? 1 : 0);
+    }
+
+    if (input.mfaEnabled !== undefined) {
+      updates.push('mfa_enabled = ?');
+      params.push(input.mfaEnabled ? 1 : 0);
+    }
+
+    if (input.mfaSecret !== undefined) {
+      updates.push('mfa_secret = ?');
+      params.push(input.mfaSecret);
+    }
+
+    if (input.mfaBackupCodes !== undefined) {
+      updates.push('mfa_backup_codes = ?');
+      params.push(input.mfaBackupCodes);
     }
 
     if (updates.length === 0) {
@@ -286,6 +305,7 @@ export class UserModel {
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
         is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
+        mfa_enabled as mfaEnabled, mfa_secret as mfaSecret, mfa_backup_codes as mfaBackupCodes,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE LOWER(email) = LOWER(?)

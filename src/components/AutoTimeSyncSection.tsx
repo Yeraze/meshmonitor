@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { useData } from '../contexts/DataContext';
 
 interface AutoTimeSyncSectionProps {
   baseUrl: string;
@@ -36,6 +37,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
+  const { currentNodeId } = useData();
   const [localEnabled, setLocalEnabled] = useState(false);
   const [localInterval, setLocalInterval] = useState(15);
   const [expirationHours, setExpirationHours] = useState(24);
@@ -60,15 +62,18 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
         const response = await csrfFetch(`${baseUrl}/api/nodes`);
         if (response.ok) {
           const data = await response.json();
-          // Filter to only nodes with remote admin capability
-          setAvailableNodes(data.filter((n: Node) => n.hasRemoteAdmin));
+          // Filter to only nodes with remote admin capability, always include local node
+          setAvailableNodes(data.filter((n: Node) => {
+            const nodeId = n.user?.id || n.nodeId;
+            return n.hasRemoteAdmin || nodeId === currentNodeId;
+          }));
         }
       } catch (error) {
         console.error('Failed to fetch nodes:', error);
       }
     };
     fetchNodes();
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, currentNodeId]);
 
   // Fetch current settings
   useEffect(() => {

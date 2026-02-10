@@ -68,10 +68,10 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
   return (
     <div className="node-popup">
       {/* Header */}
-      <div className="node-popup-header">
-        <div className="node-popup-title">{node.user?.longName || `Node ${node.nodeNum}`}</div>
+      <div className="node-popup-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="node-popup-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.user?.longName || `Node ${node.nodeNum}`}</div>
         {node.user?.shortName && (
-          <div className="node-popup-subtitle">{node.user.shortName}</div>
+          <div className="node-popup-subtitle" style={{ flexShrink: 0 }}>{node.user.shortName}</div>
         )}
       </div>
 
@@ -99,6 +99,7 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
       {(activeTab === 'info' || !hasTracerouteFeatures) && (
         <div className="node-popup-content">
           <div className="node-popup-grid">
+            {/* Row 1: Node ID (left) + Role (right) */}
             {node.user?.id && (
               <div className="node-popup-item">
                 <span className="node-popup-icon">🆔</span>
@@ -119,27 +120,23 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
               ) : null;
             })()}
 
+            {/* Row 2: Hardware Model - full width (can be long text) */}
             {node.user?.hwModel !== undefined && (() => {
               const hwModelName = getHardwareModelName(node.user.hwModel);
               return hwModelName ? (
-                <div className="node-popup-item">
+                <div className="node-popup-item node-popup-item-full">
                   <span className="node-popup-icon">🖥️</span>
                   <span className="node-popup-value">{hwModelName}</span>
                 </div>
               ) : null;
             })()}
 
-            {node.snr != null && (
-              <div className="node-popup-item">
-                <span className="node-popup-icon">📶</span>
-                <span className="node-popup-value">{node.snr.toFixed(1)} dB</span>
-              </div>
-            )}
-
+            {/* Row 3: Hops (left) + Altitude (right) - hops spans full width if alone */}
             {(() => {
               const popupHops = getEffectiveHops(node);
+              const hasAltitude = node.position?.altitude != null;
               return popupHops < 999 ? (
-                <div className="node-popup-item">
+                <div className={`node-popup-item${!hasAltitude ? ' node-popup-item-full' : ''}`}>
                   <span className="node-popup-icon">🔗</span>
                   <span className="node-popup-value">{popupHops} hop{popupHops !== 1 ? 's' : ''}</span>
                 </div>
@@ -150,15 +147,6 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
               <div className="node-popup-item">
                 <span className="node-popup-icon">⛰️</span>
                 <span className="node-popup-value">{node.position.altitude}m</span>
-              </div>
-            )}
-
-            {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-              <div className="node-popup-item">
-                <span className="node-popup-icon">{node.deviceMetrics.batteryLevel === 101 ? '🔌' : '🔋'}</span>
-                <span className="node-popup-value">
-                  {node.deviceMetrics.batteryLevel === 101 ? 'Plugged In' : `${node.deviceMetrics.batteryLevel}%`}
-                </span>
               </div>
             )}
           </div>

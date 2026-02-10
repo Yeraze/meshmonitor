@@ -103,12 +103,12 @@ export const NodePopup: React.FC<NodePopupProps> = ({
       }}
     >
       {/* Header with node name */}
-      <h4>{node.user?.longName || t('node_popup.node_fallback', { nodeNum: node.nodeNum })}</h4>
-      {node.user?.shortName && (
-        <div className="route-endpoints">
-          <strong>{node.user.shortName}</strong>
-        </div>
-      )}
+      <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.user?.longName || t('node_popup.node_fallback', { nodeNum: node.nodeNum })}</span>
+        {node.user?.shortName && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--ctp-blue)', background: 'var(--ctp-surface1)', padding: '0.1rem 0.4rem', borderRadius: '4px', flexShrink: 0 }}>{node.user.shortName}</span>
+        )}
+      </h4>
 
       {/* Tab bar - only show if traceroute features are available */}
       {hasTracerouteFeatures && (
@@ -148,15 +148,14 @@ export const NodePopup: React.FC<NodePopupProps> = ({
               return hwModelName ? <div className="route-usage">{t('node_popup.hardware', 'Hardware')}: {hwModelName}</div> : null;
             })()}
 
-          {node.snr != null && (
-            <div className="route-usage">{t('node_popup.snr', 'SNR')}: {node.snr.toFixed(1)} dB</div>
-          )}
-
-          {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-            <div className="route-usage">
-              {node.deviceMetrics.batteryLevel === 101
-                ? t('node_popup.power_plugged', 'Power: Plugged In')
-                : t('node_popup.battery', 'Battery: {{level}}%', { level: node.deviceMetrics.batteryLevel })}
+          {(node.snr != null || (node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null)) && (
+            <div className="route-usage" style={{ display: 'flex', gap: '1rem' }}>
+              {node.snr != null && (
+                <span>📶 {node.snr.toFixed(1)} dB</span>
+              )}
+              {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                <span>{node.deviceMetrics.batteryLevel === 101 ? '🔌 Plugged In' : `🔋 ${node.deviceMetrics.batteryLevel}%`}</span>
+              )}
             </div>
           )}
 

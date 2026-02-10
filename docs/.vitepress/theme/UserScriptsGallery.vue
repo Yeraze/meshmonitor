@@ -564,8 +564,13 @@ const getLanguageAlias = (language) => {
  * @returns {string} GitHub URL for viewing the file
  */
 const getSourceUrl = (script) => {
+  // Gist-hosted scripts: use gist.github.com URL
+  if (script.gistId) {
+    return `https://gist.github.com/${script.author}/${script.gistId}`
+  }
+
   if (!script.githubPath) return '#'
-  
+
   // If path starts with "examples/", it's in the main meshmonitor repo
   if (script.githubPath.startsWith('examples/')) {
     return `https://github.com/yeraze/meshmonitor/blob/main/${script.githubPath}`
@@ -611,8 +616,18 @@ const getSourceUrl = (script) => {
  * @returns {string|null} GitHub API URL for fetching file content, or null if invalid
  */
 const getGitHubApiUrl = (script) => {
+  // Gist-hosted scripts: use GitHub Gist API (CORS-friendly for public gists)
+  if (script.gistId) {
+    // Validate gistId format (hexadecimal string)
+    if (!/^[a-f0-9]+$/.test(script.gistId)) {
+      console.warn('Invalid gist ID format:', script.gistId)
+      return null
+    }
+    return `https://api.github.com/gists/${script.gistId}`
+  }
+
   if (!script.githubPath) return null
-  
+
   // Security: Validate path to prevent SSRF attacks
   if (!validateGitHubPath(script.githubPath)) {
     console.warn('Invalid GitHub path detected, rejecting:', script.githubPath)
@@ -749,38 +764,60 @@ const fetchScriptCode = async (script) => {
       throw new Error(`Failed to fetch code: ${response.status} ${response.statusText}`)
     }
     
-    // GitHub API returns JSON with base64-encoded content
+    // Parse JSON response
     const data = await response.json()
-    
-    // Security: Validate response structure
-    if (!data || typeof data !== 'object' || !data.content) {
-      throw new Error('Invalid response format from GitHub API')
-    }
-    
-    // Security: Check file size (GitHub API provides size in bytes)
-    if (data.size && data.size > MAX_FILE_SIZE) {
-      throw new Error(`File too large: ${data.size} bytes. Maximum size is ${MAX_FILE_SIZE} bytes (500KB)`)
-    }
-    
-    // Decode base64 content with proper UTF-8 handling
+
     let text
-    try {
-      // GitHub API returns base64-encoded content with newlines, remove them
-      const base64Content = data.content.replace(/\n/g, '')
 
-      // Decode base64 to binary string
-      const binaryString = atob(base64Content)
-
-      // Convert binary string to UTF-8
-      // Use TextDecoder for proper UTF-8 decoding
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
+    // Gist API returns { files: { "filename": { content: "..." } } } (raw, not base64)
+    if (script.gistId) {
+      if (!data || typeof data !== 'object' || !data.files) {
+        throw new Error('Invalid response format from GitHub Gist API')
       }
-      const decoder = new TextDecoder('utf-8')
-      text = decoder.decode(bytes)
-    } catch (decodeErr) {
-      throw new Error('Failed to decode file content from GitHub API')
+
+      // Find the file by filename, or take the first file
+      const gistFile = data.files[script.filename] || Object.values(data.files)[0]
+      if (!gistFile || !gistFile.content) {
+        throw new Error('No file content found in gist')
+      }
+
+      // Check file size
+      if (gistFile.size && gistFile.size > MAX_FILE_SIZE) {
+        throw new Error(`File too large: ${gistFile.size} bytes. Maximum size is ${MAX_FILE_SIZE} bytes (500KB)`)
+      }
+
+      text = gistFile.content
+    } else {
+      // GitHub Contents API returns JSON with base64-encoded content
+      // Security: Validate response structure
+      if (!data || typeof data !== 'object' || !data.content) {
+        throw new Error('Invalid response format from GitHub API')
+      }
+
+      // Security: Check file size (GitHub API provides size in bytes)
+      if (data.size && data.size > MAX_FILE_SIZE) {
+        throw new Error(`File too large: ${data.size} bytes. Maximum size is ${MAX_FILE_SIZE} bytes (500KB)`)
+      }
+
+      // Decode base64 content with proper UTF-8 handling
+      try {
+        // GitHub API returns base64-encoded content with newlines, remove them
+        const base64Content = data.content.replace(/\n/g, '')
+
+        // Decode base64 to binary string
+        const binaryString = atob(base64Content)
+
+        // Convert binary string to UTF-8
+        // Use TextDecoder for proper UTF-8 decoding
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        const decoder = new TextDecoder('utf-8')
+        text = decoder.decode(bytes)
+      } catch (decodeErr) {
+        throw new Error('Failed to decode file content from GitHub API')
+      }
     }
     
     // Security: Double-check size after decoding

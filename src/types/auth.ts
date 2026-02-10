@@ -39,6 +39,9 @@ export interface UpdateUserInput {
   displayName?: string;
   isActive?: boolean;
   passwordLocked?: boolean;
+  mfaEnabled?: boolean;
+  mfaSecret?: string | null;
+  mfaBackupCodes?: string | null;
 }
 
 export interface UserSession {

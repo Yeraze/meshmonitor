@@ -44,9 +44,10 @@ export function createNodeIcon(options: {
   shortName?: string;
   showLabel: boolean;
   animate?: boolean;
+  highlightSelected?: boolean;
   pinStyle?: 'meshmonitor' | 'official';
 }): L.DivIcon {
-  const { hops, isSelected, isRouter, shortName, showLabel, animate = false, pinStyle = 'meshmonitor' } = options;
+  const { hops, isSelected, isRouter, shortName, showLabel, animate = false, highlightSelected = false, pinStyle = 'meshmonitor' } = options;
   const color = getHopColor(hops);
   const size = isSelected ? 60 : 48;
   const strokeWidth = isSelected ? 3 : 2;
@@ -63,8 +64,13 @@ export function createNodeIcon(options: {
       </svg>
     `;
 
+    const classes = [
+      animate ? 'node-icon-pulse' : '',
+      highlightSelected ? 'node-icon-highlight' : ''
+    ].filter(Boolean).join(' ');
+
     const html = `
-      <div class="${animate ? 'node-icon-pulse' : ''}" style="position: relative; width: ${circleSize}px; height: ${circleSize}px;">
+      <div class="${classes}" style="position: relative; width: ${circleSize}px; height: ${circleSize}px;">
         ${markerSvg}
       </div>
     `;
@@ -125,8 +131,13 @@ export function createNodeIcon(options: {
     ">${shortName}</div>
   ` : '';
 
+  const classes = [
+    animate ? 'node-icon-pulse' : '',
+    highlightSelected ? 'node-icon-highlight' : ''
+  ].filter(Boolean).join(' ');
+
   const html = `
-    <div class="${animate ? 'node-icon-pulse' : ''}" style="position: relative; width: ${size}px; height: ${size}px;">
+    <div class="${classes}" style="position: relative; width: ${size}px; height: ${size}px;">
       ${markerSvg}
       ${label}
     </div>

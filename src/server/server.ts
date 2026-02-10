@@ -6001,6 +6001,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'bluetooth': { type: 6, isModule: false }, // BLUETOOTH_CONFIG
           'security': { type: 7, isModule: false },  // SECURITY_CONFIG
           'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
+          'telemetry': { type: 5, isModule: true },  // TELEMETRY_CONFIG (module)
           'neighborinfo': { type: 9, isModule: true } // NEIGHBORINFO_CONFIG (module)
         };
 

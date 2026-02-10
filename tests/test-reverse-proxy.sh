@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 
 COMPOSE_FILE="docker-compose.reverse-proxy-test.yml"
 CONTAINER_NAME="meshmonitor-reverse-proxy-test"
-TEST_PORT="8081"
+TEST_PORT="8080"
 
 # Configuration
 if [ -n "$TEST_EXTERNAL_PROXY_URL" ]; then
@@ -83,7 +83,7 @@ services:
       dockerfile: Dockerfile
     container_name: meshmonitor-reverse-proxy-test
     ports:
-      - "8081:3001"
+      - "8080:3001"
     volumes:
       - meshmonitor-reverse-proxy-test-data:/data
     environment:

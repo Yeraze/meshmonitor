@@ -68,6 +68,36 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 
 **Token Insertion**: Click on any token button to insert it at your cursor position, making it easy to build complex templates.
 
+**Sample Message Preview**: The interface shows a live preview of what your auto-ack response will look like with example token values filled in. Separate previews are shown for direct and multi-hop messages, so you can see exactly how each template will render before saving.
+
+### Channel Selection
+
+Control which channels and message types trigger auto-acknowledgment:
+
+**Direct Messages**: A separate toggle enables or disables auto-ack responses for direct messages (DMs). When disabled, DMs are ignored even if they match the pattern.
+
+**Channels 0–7**: Individual checkboxes for each channel allow you to enable or disable auto-ack on a per-channel basis. Only messages received on enabled channels will trigger a response.
+
+This granular control lets you respond on your primary channel while ignoring traffic on other channels, or vice versa.
+
+### Response Modes
+
+Auto Acknowledge supports two independent response modes, each with separate toggles for **direct** and **multi-hop** messages:
+
+**Tapback (Emoji Reaction)**: React to the triggering message with an emoji instead of (or in addition to) a text reply:
+- Direct messages receive a 🎯 reaction
+- Multi-hop messages receive a keycap digit emoji indicating the hop count (0️⃣ through 7️⃣)
+
+**Text Reply**: Send the configured message template as a text response. This is the traditional auto-ack behavior.
+
+Both modes can be enabled simultaneously — for example, you can send a tapback reaction *and* a text reply to every matched message. Each mode has independent toggles for direct and multi-hop, giving you full control over which connection types get which response.
+
+### Always Use Direct Message
+
+When enabled, auto-ack responses are sent as direct messages (DMs) to the sender, even when the triggering message was received on a channel.
+
+**Use case**: Avoid cluttering shared channels with automated responses. For example, if someone sends "ping" on a busy group channel, the auto-ack reply goes only to them instead of the entire channel.
+
 ### Skip Incomplete Nodes {#skip-incomplete-nodes-ack}
 
 **Description**: When enabled, Auto Acknowledge will not respond to messages from incomplete nodes.

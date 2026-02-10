@@ -36,6 +36,16 @@ const options = {
   }
 };
 
+// Serve raw OpenAPI spec as JSON
+router.get('/openapi.json', (_req, res) => {
+  res.json(swaggerDocument);
+});
+
+// Serve raw OpenAPI spec as YAML
+router.get('/openapi.yaml', (_req, res) => {
+  res.type('text/yaml').sendFile(openapiPath);
+});
+
 // Serve Swagger UI
 router.use('/', swaggerUi.serve);
 router.get('/', swaggerUi.setup(swaggerDocument, options));

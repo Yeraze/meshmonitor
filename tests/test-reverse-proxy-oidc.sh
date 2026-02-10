@@ -19,7 +19,7 @@ NC='\033[0m' # No Color
 COMPOSE_FILE="docker-compose.oidc-test.yml"
 MESHMONITOR_CONTAINER="meshmonitor-oidc-test"
 OIDC_CONTAINER="mock-oidc-provider"
-TEST_PORT="8081"  # Same port as reverse-proxy test (tests run sequentially)
+TEST_PORT="8080"  # Must match the port meshdev.yeraze.online proxies to
 TEST_DOMAIN="https://meshdev.yeraze.online"
 TEST_URL="$TEST_DOMAIN"
 OIDC_ISSUER="https://oidc-mock.yeraze.online"
@@ -76,7 +76,7 @@ services:
       dockerfile: Dockerfile
     container_name: meshmonitor-oidc-test
     ports:
-      - "8081:3001"
+      - "8080:3001"
     volumes:
       - meshmonitor-oidc-test-data:/data
     environment:
