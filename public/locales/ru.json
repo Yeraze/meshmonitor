@@ -3619,5 +3619,6 @@
     "automation.time_sync.no_nodes_available": "Узлы с удаленным доступом к администрированию не найдены. Включите сканер удаленного доступа к администрированию, чтобы обнаружить узлы.",
     "automation.time_sync.eligible_nodes": "Подходящие узлы",
     "automation.time_sync.nodes_with_remote_admin": "узлы с удалённым доступом",
-    "automation.time_sync.settings_saved": "Настройки автоматической синхронизации времени успешно сохранены"
+    "automation.time_sync.settings_saved": "Настройки автоматической синхронизации времени успешно сохранены",
+    "mfa.title": "Двухфакторная аутентификация"
 }
