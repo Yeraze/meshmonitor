@@ -389,13 +389,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       mqtt: 'loading',
       security: 'loading',
       bluetooth: 'loading',
+      network: 'loading',
       neighborinfo: 'loading',
+      telemetry: 'loading',
       owner: 'loading',
       channels: 'loading'
     });
     const errors: string[] = [];
     const loaded: string[] = [];
-    const totalConfigs = 9; // device, lora, position, mqtt, security, bluetooth, neighborinfo, owner, channels
+    const totalConfigs = 11; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, owner, channels
 
     try {
       // Load all config types sequentially to avoid conflicts and timeouts
@@ -544,7 +546,24 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      await loadConfig('neighborinfo', 7, (result) => {
+      await loadConfig('network', 7, (result) => {
+        const config = result.config;
+        const ipv4 = config.ipv4Config || {};
+        setNetworkConfig({
+          wifiEnabled: config.wifiEnabled || false,
+          wifiSsid: config.wifiSsid || '',
+          wifiPsk: config.wifiPsk || '',
+          ntpServer: config.ntpServer || '',
+          addressMode: config.addressMode || 0,
+          ipv4Address: ipv4.ip || '',
+          ipv4Gateway: ipv4.gateway || '',
+          ipv4Subnet: ipv4.subnet || '',
+          ipv4Dns: ipv4.dns || ''
+        });
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('neighborinfo', 8, (result) => {
         const config = result.config;
         setNeighborInfoConfig({
           enabled: config.enabled,
@@ -554,12 +573,33 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
+      await loadConfig('telemetry', 9, (result) => {
+        const config = result.config;
+        setTelemetryConfig({
+          deviceUpdateInterval: config.deviceUpdateInterval ?? 900,
+          deviceTelemetryEnabled: config.deviceTelemetryEnabled ?? false,
+          environmentUpdateInterval: config.environmentUpdateInterval ?? 900,
+          environmentMeasurementEnabled: config.environmentMeasurementEnabled ?? false,
+          environmentScreenEnabled: config.environmentScreenEnabled ?? false,
+          environmentDisplayFahrenheit: config.environmentDisplayFahrenheit ?? false,
+          airQualityEnabled: config.airQualityEnabled ?? false,
+          airQualityInterval: config.airQualityInterval ?? 900,
+          powerMeasurementEnabled: config.powerMeasurementEnabled ?? false,
+          powerUpdateInterval: config.powerUpdateInterval ?? 900,
+          powerScreenEnabled: config.powerScreenEnabled ?? false,
+          healthMeasurementEnabled: config.healthMeasurementEnabled ?? false,
+          healthUpdateInterval: config.healthUpdateInterval ?? 900,
+          healthScreenEnabled: config.healthScreenEnabled ?? false
+        });
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Load owner info
-      await loadOwner(8);
+      await loadOwner(10);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Load channels (extracted logic to avoid duplicate loading state and toasts)
-      setLoadingProgress({ current: 9, total: totalConfigs, configType: 'channels' });
+      setLoadingProgress({ current: 11, total: totalConfigs, configType: 'channels' });
       try {
         const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
         const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
