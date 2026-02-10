@@ -378,37 +378,75 @@ components:
           example: "!e5f6g7h8"
         channel:
           type: integer
-          description: Channel number
+          description: Channel number (-1 for direct messages)
           example: 0
-        messageType:
-          type: string
-          description: Type of message
-          example: "text"
+        portnum:
+          type: integer
+          description: Port number (Meshtastic app type, e.g. 1=TEXT_MESSAGE_APP)
+          example: 1
         text:
           type: string
           description: Message text content
           example: "Hello from the mesh!"
         timestamp:
-          type: integer
-          description: Unix timestamp
-          example: 1699564800
+          type: string
+          format: date-time
+          description: Message timestamp (ISO 8601)
+          example: "2024-11-09T14:00:00.000Z"
         rxTime:
           type: integer
-          description: Receive timestamp
+          description: Receive timestamp (Unix seconds from radio)
           example: 1699564802
         rxSnr:
           type: number
           format: float
-          description: Receive SNR
+          description: Receive SNR (signal-to-noise ratio in dB)
           example: 9.5
         rxRssi:
           type: integer
           description: Receive RSSI in dBm
           example: -95
+        hopStart:
+          type: integer
+          description: Original hop count when the packet was sent
+          example: 3
         hopLimit:
           type: integer
-          description: Hop limit
-          example: 3
+          description: Remaining hop count when received
+          example: 1
+        relayNode:
+          type: integer
+          description: Node number of the last node that relayed this message (0 if received directly)
+          example: 2715451348
+        replyId:
+          type: integer
+          description: Request ID of the message this is a reply to
+          example: 123456789
+        emoji:
+          type: integer
+          description: Emoji reaction (Unicode code point)
+          example: 0
+        viaMqtt:
+          type: boolean
+          description: Whether the message was received via MQTT bridge
+          example: false
+        deliveryState:
+          type: string
+          description: Delivery state for outbound messages
+          enum: [delivered, confirmed, failed]
+          example: "delivered"
+        wantAck:
+          type: boolean
+          description: Whether the message requested acknowledgment
+          example: false
+        ackFailed:
+          type: boolean
+          description: Whether acknowledgment failed
+          example: false
+        routingErrorReceived:
+          type: boolean
+          description: Whether a routing error was received for this message
+          example: false
 
     MessageListResponse:
       type: object
