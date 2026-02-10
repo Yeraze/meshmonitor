@@ -4280,6 +4280,10 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.node-popup-item-full {
+  grid-column: 1 / -1;
+}
+
 .node-popup-item {
   display: flex;
   align-items: center;

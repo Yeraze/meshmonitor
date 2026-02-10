@@ -99,6 +99,7 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
       {(activeTab === 'info' || !hasTracerouteFeatures) && (
         <div className="node-popup-content">
           <div className="node-popup-grid">
+            {/* Row 1: Node ID (left) + Role (right) */}
             {node.user?.id && (
               <div className="node-popup-item">
                 <span className="node-popup-icon">🆔</span>
@@ -119,31 +120,23 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
               ) : null;
             })()}
 
+            {/* Row 2: Hardware Model - full width (can be long text) */}
             {node.user?.hwModel !== undefined && (() => {
               const hwModelName = getHardwareModelName(node.user.hwModel);
               return hwModelName ? (
-                <div className="node-popup-item">
+                <div className="node-popup-item node-popup-item-full">
                   <span className="node-popup-icon">🖥️</span>
                   <span className="node-popup-value">{hwModelName}</span>
                 </div>
               ) : null;
             })()}
 
-            {(node.snr != null || (node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null)) && (
-              <div className="node-popup-item" style={{ gridColumn: '1 / -1' }}>
-                <span className="node-popup-value" style={{ display: 'flex', gap: '1rem' }}>
-                  {node.snr != null && <span>📶 {node.snr.toFixed(1)} dB</span>}
-                  {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                    <span>{node.deviceMetrics.batteryLevel === 101 ? '🔌 Plugged In' : `🔋 ${node.deviceMetrics.batteryLevel}%`}</span>
-                  )}
-                </span>
-              </div>
-            )}
-
+            {/* Row 3: Hops (left) + Altitude (right) - hops spans full width if alone */}
             {(() => {
               const popupHops = getEffectiveHops(node);
+              const hasAltitude = node.position?.altitude != null;
               return popupHops < 999 ? (
-                <div className="node-popup-item">
+                <div className={`node-popup-item${!hasAltitude ? ' node-popup-item-full' : ''}`}>
                   <span className="node-popup-icon">🔗</span>
                   <span className="node-popup-value">{popupHops} hop{popupHops !== 1 ? 's' : ''}</span>
                 </div>
