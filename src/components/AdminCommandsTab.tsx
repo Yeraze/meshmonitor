@@ -2402,6 +2402,28 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         )}
       </div>
 
+      {selectedNode?.isLocal && (
+        <div style={{
+          padding: '0.75rem 1rem',
+          marginBottom: '1rem',
+          backgroundColor: 'var(--ctp-surface0)',
+          border: '1px solid var(--ctp-blue)',
+          borderRadius: '8px',
+          color: 'var(--ctp-subtext1)',
+          fontSize: '0.9rem',
+          lineHeight: '1.4'
+        }}>
+          {t('admin_commands.local_node_config_hint', 'All local device configuration, including many features not available in Remote Admin, is available on the')}{' '}
+          <a
+            href="#configuration"
+            style={{ color: 'var(--ctp-blue)', textDecoration: 'underline', cursor: 'pointer' }}
+          >
+            {t('admin_commands.device_configuration_page_link', 'Device Configuration')}
+          </a>{' '}
+          {t('admin_commands.local_node_config_hint_suffix', 'page.')}
+        </div>
+      )}
+
       {/* Radio Configuration Section */}
       <CollapsibleSection
         id="radio-config"
