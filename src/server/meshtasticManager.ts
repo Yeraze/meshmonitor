@@ -6703,6 +6703,29 @@ class MeshtasticManager {
         }
       }
 
+      // Broadcast outgoing text message to virtual node clients as a proper FromRadio
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer && localNodeNum) {
+        try {
+          const fromRadioData = await meshtasticProtobufService.createFromRadioTextMessage({
+            fromNodeNum: parseInt(localNodeNum),
+            toNodeNum: destination || 0xffffffff,
+            text: text,
+            channel: destination ? -1 : channel,
+            timestamp: Date.now(),
+            requestId: messageId,
+            replyId: replyId || null,
+            emoji: emoji || null,
+          });
+          if (fromRadioData) {
+            await virtualNodeServer.broadcastToClients(fromRadioData);
+            logger.debug(`📡 Broadcasted outgoing text message to virtual node clients`);
+          }
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing text message:', error);
+        }
+      }
+
       return messageId;
     } catch (error) {
       logger.error('Error sending message:', error);
