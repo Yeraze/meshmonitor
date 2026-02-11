@@ -7754,6 +7754,13 @@ class MeshtasticManager {
               url = url.replace(new RegExp(`\\{${key}\\}`, 'g'), encodeURIComponent(value));
             });
 
+            // Replace acknowledgement/announcement tokens in URL (URI-encoded) - Issue #1865
+            url = await this.replaceAcknowledgementTokens(
+              url, nodeId, message.fromNodeNum, hopsTraveled,
+              receivedDate, receivedTime, message.channel, isDirectMessage,
+              message.rxSnr, message.rxRssi, message.viaMqtt, true
+            );
+
             logger.debug(`🌐 Fetching HTTP response from: ${url}`);
 
             try {
@@ -8535,19 +8542,20 @@ class MeshtasticManager {
     return args;
   }
 
-  private async replaceAnnouncementTokens(message: string): Promise<string> {
+  private async replaceAnnouncementTokens(message: string, urlEncode: boolean = false): Promise<string> {
     let result = message;
+    const encode = (v: string) => urlEncode ? encodeURIComponent(v) : v;
 
     // {VERSION} - MeshMonitor version
     if (result.includes('{VERSION}')) {
-      result = result.replace(/{VERSION}/g, packageJson.version);
+      result = result.replace(/{VERSION}/g, encode(packageJson.version));
     }
 
     // {DURATION} - Uptime
     if (result.includes('{DURATION}')) {
       const uptimeMs = Date.now() - this.serverStartTime;
       const duration = this.formatDuration(uptimeMs);
-      result = result.replace(/{DURATION}/g, duration);
+      result = result.replace(/{DURATION}/g, encode(duration));
     }
 
     // {FEATURES} - Enabled features as emojis
@@ -8578,7 +8586,7 @@ class MeshtasticManager {
         features.push('👋');
       }
 
-      result = result.replace(/{FEATURES}/g, features.join(' '));
+      result = result.replace(/{FEATURES}/g, encode(features.join(' ')));
     }
 
     // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
@@ -8587,7 +8595,7 @@ class MeshtasticManager {
       const maxNodeAgeDays = maxNodeAgeHours / 24;
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
       logger.info(`📢 Token replacement - NODECOUNT: ${nodes.length} active nodes (maxNodeAgeHours: ${maxNodeAgeHours})`);
-      result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
+      result = result.replace(/{NODECOUNT}/g, encode(nodes.length.toString()));
     }
 
     // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
@@ -8597,14 +8605,14 @@ class MeshtasticManager {
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
-      result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
+      result = result.replace(/{DIRECTCOUNT}/g, encode(directCount.toString()));
     }
 
     // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard)
     if (result.includes('{TOTALNODES}')) {
       const allNodes = databaseService.getAllNodes();
       logger.info(`📢 Token replacement - TOTALNODES: ${allNodes.length} total nodes`);
-      result = result.replace(/{TOTALNODES}/g, allNodes.length.toString());
+      result = result.replace(/{TOTALNODES}/g, encode(allNodes.length.toString()));
     }
 
     // {ONLINENODES} - Online nodes as reported by the connected Meshtastic device (from LocalStats)
@@ -8621,53 +8629,54 @@ class MeshtasticManager {
         }
       }
       logger.info(`📢 Token replacement - ONLINENODES: ${onlineNodes} online nodes (from device LocalStats)`);
-      result = result.replace(/{ONLINENODES}/g, onlineNodes.toString());
+      result = result.replace(/{ONLINENODES}/g, encode(onlineNodes.toString()));
     }
 
     // {IP} - Meshtastic node IP address
     if (result.includes('{IP}')) {
       const config = this.getConfig();
-      result = result.replace(/{IP}/g, config.nodeIp);
+      result = result.replace(/{IP}/g, encode(config.nodeIp));
     }
 
     // {PORT} - Meshtastic node TCP port
     if (result.includes('{PORT}')) {
       const config = this.getConfig();
-      result = result.replace(/{PORT}/g, String(config.tcpPort));
+      result = result.replace(/{PORT}/g, encode(String(config.tcpPort)));
     }
 
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean): Promise<string> {
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean, urlEncode: boolean = false): Promise<string> {
     // Start with base announcement tokens (includes {IP}, {PORT}, {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT})
-    let result = await this.replaceAnnouncementTokens(message);
+    let result = await this.replaceAnnouncementTokens(message, urlEncode);
+    const encode = (v: string) => urlEncode ? encodeURIComponent(v) : v;
 
     // {NODE_ID} - Sender node ID
     if (result.includes('{NODE_ID}')) {
-      result = result.replace(/{NODE_ID}/g, nodeId);
+      result = result.replace(/{NODE_ID}/g, encode(nodeId));
     }
 
     // {LONG_NAME} - Sender node long name
     if (result.includes('{LONG_NAME}')) {
       const node = databaseService.getNode(fromNum);
       const longName = node?.longName || 'Unknown';
-      result = result.replace(/{LONG_NAME}/g, longName);
+      result = result.replace(/{LONG_NAME}/g, encode(longName));
     }
 
     // {SHORT_NAME} - Sender node short name
     if (result.includes('{SHORT_NAME}')) {
       const node = databaseService.getNode(fromNum);
       const shortName = node?.shortName || '????';
-      result = result.replace(/{SHORT_NAME}/g, shortName);
+      result = result.replace(/{SHORT_NAME}/g, encode(shortName));
     }
 
     // {NUMBER_HOPS} and {HOPS} - Number of hops
     if (result.includes('{NUMBER_HOPS}')) {
-      result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result = result.replace(/{NUMBER_HOPS}/g, encode(numberHops.toString()));
     }
     if (result.includes('{HOPS}')) {
-      result = result.replace(/{HOPS}/g, numberHops.toString());
+      result = result.replace(/{HOPS}/g, encode(numberHops.toString()));
     }
 
     // {RABBIT_HOPS} - Rabbit emojis equal to hop count (or 🎯 for direct/0 hops)
@@ -8675,17 +8684,17 @@ class MeshtasticManager {
       // Ensure numberHops is valid (>= 0) to prevent String.repeat() errors
       const validHops = Math.max(0, numberHops);
       const rabbitEmojis = validHops === 0 ? '🎯' : '🐇'.repeat(validHops);
-      result = result.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
+      result = result.replace(/{RABBIT_HOPS}/g, encode(rabbitEmojis));
     }
 
     // {DATE} - Date
     if (result.includes('{DATE}')) {
-      result = result.replace(/{DATE}/g, date);
+      result = result.replace(/{DATE}/g, encode(date));
     }
 
     // {TIME} - Time
     if (result.includes('{TIME}')) {
-      result = result.replace(/{TIME}/g, time);
+      result = result.replace(/{TIME}/g, encode(time));
     }
 
     // Note: {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT}, {IP}, {PORT}
@@ -8696,7 +8705,7 @@ class MeshtasticManager {
       const snrValue = (rxSnr !== undefined && rxSnr !== null && rxSnr !== 0)
         ? rxSnr.toFixed(1)
         : 'N/A';
-      result = result.replace(/{SNR}/g, snrValue);
+      result = result.replace(/{SNR}/g, encode(snrValue));
     }
 
     // {RSSI} - Received Signal Strength Indicator
@@ -8704,7 +8713,7 @@ class MeshtasticManager {
       const rssiValue = (rxRssi !== undefined && rxRssi !== null && rxRssi !== 0)
         ? rxRssi.toString()
         : 'N/A';
-      result = result.replace(/{RSSI}/g, rssiValue);
+      result = result.replace(/{RSSI}/g, encode(rssiValue));
     }
 
     // {CHANNEL} - Channel name (or index if no name or DM)
@@ -8717,13 +8726,13 @@ class MeshtasticManager {
         // Use channel name if available and not empty, otherwise fall back to channel number
         channelName = (channel?.name && channel.name.trim()) ? channel.name.trim() : channelIndex.toString();
       }
-      result = result.replace(/{CHANNEL}/g, channelName);
+      result = result.replace(/{CHANNEL}/g, encode(channelName));
     }
 
     // {TRANSPORT} - Transport type (LoRa or MQTT)
     if (result.includes('{TRANSPORT}')) {
       const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
-      result = result.replace(/{TRANSPORT}/g, transport);
+      result = result.replace(/{TRANSPORT}/g, encode(transport));
     }
 
     return result;

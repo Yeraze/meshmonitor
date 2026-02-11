@@ -278,6 +278,84 @@ describe('Auto-Announce Token Replacement', () => {
       expect(message).toBe('Network: 4 nodes, 2 direct');
     });
   });
+
+  describe('URL encoding (urlEncode=true)', () => {
+    it('should URI-encode token values when urlEncode is true', () => {
+      const encode = (v: string) => encodeURIComponent(v);
+
+      // Simulate replacing tokens in a URL with encoding
+      let url = 'https://api.example.com/node?name={LONG_NAME}&channel={CHANNEL}';
+      const longName = "Alice's Node";
+      const channel = 'Long Fast';
+
+      url = url.replace(/{LONG_NAME}/g, encode(longName));
+      url = url.replace(/{CHANNEL}/g, encode(channel));
+
+      expect(url).toBe("https://api.example.com/node?name=Alice's%20Node&channel=Long%20Fast");
+    });
+
+    it('should not encode values when urlEncode is false', () => {
+      const encode = (v: string) => v; // no-op when urlEncode=false
+
+      let message = 'Node: {LONG_NAME} on {CHANNEL}';
+      const longName = "Alice's Node";
+      const channel = 'Long Fast';
+
+      message = message.replace(/{LONG_NAME}/g, encode(longName));
+      message = message.replace(/{CHANNEL}/g, encode(channel));
+
+      expect(message).toBe("Node: Alice's Node on Long Fast");
+    });
+
+    it('should encode special URL characters in token values', () => {
+      const encode = (v: string) => encodeURIComponent(v);
+
+      let url = 'https://api.example.com/log?snr={SNR}&time={TIME}&date={DATE}';
+      const snr = '7.5';
+      const time = '2:30:00 PM';
+      const date = '01/15/2025';
+
+      url = url.replace(/{SNR}/g, encode(snr));
+      url = url.replace(/{TIME}/g, encode(time));
+      url = url.replace(/{DATE}/g, encode(date));
+
+      expect(url).toBe('https://api.example.com/log?snr=7.5&time=2%3A30%3A00%20PM&date=01%2F15%2F2025');
+    });
+
+    it('should encode emoji values for URL safety', () => {
+      const encode = (v: string) => encodeURIComponent(v);
+
+      let url = 'https://api.example.com/features?f={FEATURES}';
+      const features = '🗺️ 🤖 📢';
+
+      url = url.replace(/{FEATURES}/g, encode(features));
+
+      // Verify the emojis are encoded
+      expect(url).not.toContain('🗺️');
+      expect(url).not.toContain('🤖');
+      expect(url).toContain('api.example.com/features?f=');
+      // Verify it decodes back correctly
+      const encodedPart = url.split('f=')[1];
+      expect(decodeURIComponent(encodedPart)).toBe(features);
+    });
+
+    it('should handle extractedParams encoding before token encoding', () => {
+      // Simulates the order: extractedParams first (already encoded), then tokens
+      let url = 'https://api.example.com/weather?city={city}&node={NODE_ID}';
+
+      // Step 1: extractedParams (already uses encodeURIComponent)
+      const extractedParams: Record<string, string> = { city: 'New York' };
+      Object.entries(extractedParams).forEach(([key, value]) => {
+        url = url.replace(new RegExp(`\\{${key}\\}`, 'g'), encodeURIComponent(value));
+      });
+
+      // Step 2: system tokens (with urlEncode=true)
+      const encode = (v: string) => encodeURIComponent(v);
+      url = url.replace(/{NODE_ID}/g, encode('!a1b2c3d4'));
+
+      expect(url).toBe('https://api.example.com/weather?city=New%20York&node=!a1b2c3d4');
+    });
+  });
 });
 
 // Helper function to test duration formatting
