@@ -2125,14 +2125,10 @@ class DatabaseService {
   private runAutoTracerouteEnabledMigration(): void {
     try {
       const migrationKey = 'migration_060_auto_traceroute_enabled';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto traceroute enabled column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 060: Add enabled column to auto_traceroute_nodes...');
+      // Always run the migration check - it's idempotent and verifies
+      // the column exists regardless of whether it was previously marked complete.
+      // This guards against edge cases where the setting was marked complete
+      // but the column is actually missing (e.g., restored backups).
       autoTracerouteEnabledMigration.up(this.db);
       this.setSetting(migrationKey, 'completed');
       logger.debug('✅ Auto traceroute enabled column migration completed successfully');
