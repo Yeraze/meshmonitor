@@ -252,6 +252,8 @@ When someone sends "admin reboot", the script is called as:
 | `{DATE}` | Current date | `1/15/2025` |
 | `{TIME}` | Current time | `2:30:00 PM` |
 
+> **Note:** These tokens are also supported in HTTP response URLs. When used in URLs, token values are automatically URI-encoded for safety (e.g., spaces become `%20`, slashes become `%2F`). Extracted parameters from regex capture groups take precedence over built-in tokens of the same name.
+
 ### Accessing Arguments in Scripts
 
 **Python:**

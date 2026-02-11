@@ -557,10 +557,12 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 **HTTP Response**: Makes an HTTP GET request to an external service
 
 - URL can include extracted parameters using `{parameter}` syntax
+- URL also supports all acknowledgement/announcement tokens (e.g., `{NODE_ID}`, `{SHORT_NAME}`, `{HOPS}`, `{SNR}`, `{RSSI}`, `{CHANNEL}`, `{VERSION}`, etc.) - token values are automatically URI-encoded for URL safety
+- Extracted parameters from regex capture groups take precedence over built-in tokens of the same name
 - **Multiline Support**: Enable to automatically split long responses into multiple messages
 - Useful for triggering webhooks, APIs, or external automation
 - Example trigger: `alert {message}`
-- Example response: `https://api.example.com/alert?msg={message}`
+- Example response: `https://api.example.com/alert?msg={message}&node={NODE_ID}&snr={SNR}`
 
 **Script Response**: Executes a custom script for advanced logic
 
