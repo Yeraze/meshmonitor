@@ -587,6 +587,14 @@ components:
           type: string
           description: JSON array of SNR values for each hop
           example: '[8.5, 7.2, 9.1]'
+        routePositions:
+          type: string
+          nullable: true
+          description: >
+            JSON object mapping node numbers to their positions at traceroute completion time.
+            Used to render historical traceroutes at the correct positions even when nodes have moved.
+            Null for traceroutes recorded before this feature was added.
+          example: '{"123456789":{"lat":33.1234,"lng":-117.5678,"alt":150},"987654321":{"lat":33.2345,"lng":-117.6789}}'
         timestamp:
           type: integer
           description: Unix timestamp

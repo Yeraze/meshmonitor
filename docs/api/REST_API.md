@@ -517,11 +517,18 @@ Retrieves recent traceroute data with route paths and SNR information for networ
     "routeBack": "[987654321,555555555,123456789]",
     "snrTowards": "[12.5,8.3,10.1]",
     "snrBack": "[10.5,9.2,11.3]",
+    "routePositions": "{\"123456789\":{\"lat\":33.1234,\"lng\":-117.5678,\"alt\":150},\"555555555\":{\"lat\":33.1500,\"lng\":-117.6000},\"987654321\":{\"lat\":33.2345,\"lng\":-117.6789}}",
     "timestamp": 1640995200000,
     "createdAt": 1640995201000
   }
 ]
 ```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `routePositions` | string (nullable) | JSON object mapping node numbers to `{lat, lng, alt?}` positions at traceroute completion time. Used to render historical traceroutes at correct positions even when nodes move. Null for traceroutes recorded before v3.5.0. |
 
 **Example:**
 ```bash
