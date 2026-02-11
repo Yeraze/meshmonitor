@@ -180,9 +180,17 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     }
   };
 
-  // Get node position by nodeNum
+  // Get node position by nodeNum, optionally preferring snapshot positions
   const getNodePosition = useCallback(
-    (nodeNum: number): [number, number] | null => {
+    (nodeNum: number, snapshotPositions?: Record<number, { lat: number; lng: number; alt?: number }>): [number, number] | null => {
+      // Prefer historical snapshot position if available
+      if (snapshotPositions) {
+        const snapshot = snapshotPositions[nodeNum];
+        if (snapshot?.lat && snapshot?.lng) {
+          return [snapshot.lat, snapshot.lng];
+        }
+      }
+      // Fall back to current position
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       const node = nodes.get(nodeId);
       // Check for both formats: latitudeI/longitudeI (integer) or latitude/longitude (float)
@@ -203,6 +211,12 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   const mapData = useMemo(() => {
     if (!traceroute) return null;
 
+    // Parse snapshot positions (Issue #1862) - prefer historical positions over current
+    let snapshotPositions: Record<number, { lat: number; lng: number; alt?: number }> = {};
+    if (traceroute.routePositions) {
+      try { snapshotPositions = JSON.parse(traceroute.routePositions); } catch { /* ignore */ }
+    }
+
     // Parse routes
     const forwardHops =
       traceroute.route && traceroute.route !== 'null' && traceroute.route !== ''
@@ -221,11 +235,11 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     const backPath = [traceroute.toNodeNum, ...backHops.map(h => h.nodeNum), traceroute.fromNodeNum];
     const backSnrs = backHops.map(h => h.snr);
 
-    // Collect unique nodes with positions
+    // Collect unique nodes with positions (prefer snapshot positions)
     const uniqueNodes = new Map<number, { nodeNum: number; position: [number, number]; name: string }>();
     [...forwardPath, ...backPath].forEach(nodeNum => {
       if (!uniqueNodes.has(nodeNum)) {
-        const pos = getNodePosition(nodeNum);
+        const pos = getNodePosition(nodeNum, snapshotPositions);
         if (pos) {
           uniqueNodes.set(nodeNum, {
             nodeNum,

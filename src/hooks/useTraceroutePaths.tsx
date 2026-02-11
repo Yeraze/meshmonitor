@@ -47,6 +47,7 @@ export interface TracerouteDigest {
   routeBack: string;
   snrTowards?: string;
   snrBack?: string;
+  routePositions?: string; // JSON: { [nodeNum]: { lat, lng, alt? } } - position snapshot at traceroute time
   timestamp?: number;
   createdAt?: number;
 }
@@ -118,6 +119,41 @@ const isValidRouteNode = (nodeNum: number): boolean => {
   if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
   if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
   return true;
+};
+
+/**
+ * Parse routePositions JSON string into a position map
+ * Returns empty object if parsing fails or data is missing
+ */
+const parseRoutePositions = (routePositions?: string): Record<number, { lat: number; lng: number; alt?: number }> => {
+  if (!routePositions) return {};
+  try {
+    return JSON.parse(routePositions);
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * Get node position, preferring snapshot positions over current positions
+ * This ensures historical traceroutes render where nodes were at the time
+ */
+const getNodePositionWithSnapshot = (
+  nodeNum: number,
+  snapshotPositions: Record<number, { lat: number; lng: number; alt?: number }>,
+  nodesPositionDigest: NodePositionDigest[]
+): [number, number] | null => {
+  // Prefer historical snapshot position
+  const snapshot = snapshotPositions[nodeNum];
+  if (snapshot?.lat && snapshot?.lng) {
+    return [snapshot.lat, snapshot.lng];
+  }
+  // Fall back to current position
+  const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
+  if (node?.position?.latitude && node?.position?.longitude) {
+    return [node.position.latitude, node.position.longitude];
+  }
+  return null;
 };
 
 /**
@@ -207,18 +243,18 @@ export function useTraceroutePaths({
           tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== '' ? JSON.parse(tr.snrTowards) : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
 
+        // Parse snapshot positions (Issue #1862) - prefer historical positions over current
+        const snapshotPositions = parseRoutePositions(tr.routePositions);
+
         // Build forward path: responder -> route -> requester (fromNodeNum -> toNodeNum)
         const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
         const forwardPositions: Array<{ nodeNum: number; pos: [number, number] }> = [];
 
-        // Build forward sequence with positions
+        // Build forward sequence with positions (prefer snapshot positions)
         forwardSequence.forEach(nodeNum => {
-          const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
-          if (node?.position?.latitude && node?.position?.longitude) {
-            forwardPositions.push({
-              nodeNum,
-              pos: [node.position.latitude, node.position.longitude],
-            });
+          const pos = getNodePositionWithSnapshot(nodeNum, snapshotPositions, nodesPositionDigest);
+          if (pos) {
+            forwardPositions.push({ nodeNum, pos });
           }
         });
 
@@ -257,14 +293,11 @@ export function useTraceroutePaths({
         const backSequence: number[] = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
         const backPositions: Array<{ nodeNum: number; pos: [number, number] }> = [];
 
-        // Build back sequence with positions
+        // Build back sequence with positions (prefer snapshot positions)
         backSequence.forEach(nodeNum => {
-          const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
-          if (node?.position?.latitude && node?.position?.longitude) {
-            backPositions.push({
-              nodeNum,
-              pos: [node.position.latitude, node.position.longitude],
-            });
+          const pos = getNodePositionWithSnapshot(nodeNum, snapshotPositions, nodesPositionDigest);
+          if (pos) {
+            backPositions.push({ nodeNum, pos });
           }
         });
 
@@ -628,8 +661,8 @@ export function useTraceroutePaths({
       const snrForward = selectedTrace.snrTowards && selectedTrace.snrTowards !== 'null' ? JSON.parse(selectedTrace.snrTowards) : [];
       const snrBack = selectedTrace.snrBack && selectedTrace.snrBack !== 'null' ? JSON.parse(selectedTrace.snrBack) : [];
 
-
-
+      // Parse snapshot positions (Issue #1862) - prefer historical positions over current
+      const snapshotPositions = parseRoutePositions(selectedTrace.routePositions);
 
       const fromNode = nodesPositionDigest.find(n => n.nodeNum === selectedTrace.fromNodeNum);
       const toNode = nodesPositionDigest.find(n => n.nodeNum === selectedTrace.toNodeNum);
@@ -642,30 +675,20 @@ export function useTraceroutePaths({
         const forwardPositions: [number, number][] = [];
 
         forwardSequence.forEach(nodeNum => {
-          const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
-          if (node?.position?.latitude && node?.position?.longitude) {
-            forwardPositions.push([node.position.latitude, node.position.longitude]);
+          const pos = getNodePositionWithSnapshot(nodeNum, snapshotPositions, nodesPositionDigest);
+          if (pos) {
+            forwardPositions.push(pos);
           }
         });
 
         if (forwardPositions.length >= 2) {
-          // Calculate total distance for forward path
+          // Calculate total distance for forward path (use snapshot positions)
           let forwardTotalDistanceKm = 0;
           for (let i = 0; i < forwardSequence.length - 1; i++) {
-            const node1 = nodesPositionDigest.find(n => n.nodeNum === forwardSequence[i]);
-            const node2 = nodesPositionDigest.find(n => n.nodeNum === forwardSequence[i + 1]);
-            if (
-              node1?.position?.latitude &&
-              node1?.position?.longitude &&
-              node2?.position?.latitude &&
-              node2?.position?.longitude
-            ) {
-              forwardTotalDistanceKm += calculateDistance(
-                node1.position.latitude,
-                node1.position.longitude,
-                node2.position.latitude,
-                node2.position.longitude
-              );
+            const pos1 = getNodePositionWithSnapshot(forwardSequence[i], snapshotPositions, nodesPositionDigest);
+            const pos2 = getNodePositionWithSnapshot(forwardSequence[i + 1], snapshotPositions, nodesPositionDigest);
+            if (pos1 && pos2) {
+              forwardTotalDistanceKm += calculateDistance(pos1[0], pos1[1], pos2[0], pos2[1]);
             }
           }
 
@@ -759,30 +782,20 @@ export function useTraceroutePaths({
         const backPositions: [number, number][] = [];
 
         backSequence.forEach(nodeNum => {
-          const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
-          if (node?.position?.latitude && node?.position?.longitude) {
-            backPositions.push([node.position.latitude, node.position.longitude]);
+          const pos = getNodePositionWithSnapshot(nodeNum, snapshotPositions, nodesPositionDigest);
+          if (pos) {
+            backPositions.push(pos);
           }
         });
 
         if (backPositions.length >= 2) {
-          // Calculate total distance for back path
+          // Calculate total distance for back path (use snapshot positions)
           let backTotalDistanceKm = 0;
           for (let i = 0; i < backSequence.length - 1; i++) {
-            const node1 = nodesPositionDigest.find(n => n.nodeNum === backSequence[i]);
-            const node2 = nodesPositionDigest.find(n => n.nodeNum === backSequence[i + 1]);
-            if (
-              node1?.position?.latitude &&
-              node1?.position?.longitude &&
-              node2?.position?.latitude &&
-              node2?.position?.longitude
-            ) {
-              backTotalDistanceKm += calculateDistance(
-                node1.position.latitude,
-                node1.position.longitude,
-                node2.position.latitude,
-                node2.position.longitude
-              );
+            const pos1 = getNodePositionWithSnapshot(backSequence[i], snapshotPositions, nodesPositionDigest);
+            const pos2 = getNodePositionWithSnapshot(backSequence[i + 1], snapshotPositions, nodesPositionDigest);
+            if (pos1 && pos2) {
+              backTotalDistanceKm += calculateDistance(pos1[0], pos1[1], pos2[0], pos2[1]);
             }
           }
 
@@ -923,6 +936,12 @@ export function useTraceroutePaths({
   const tracerouteBounds = useMemo((): [[number, number], [number, number]] | null => {
     if (!tracerouteNodeNums || tracerouteNodeNums.size === 0) return null;
 
+    // Parse snapshot positions from the selected traceroute
+    const selectedTrace = traceroutesDigest.find(
+      tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
+    );
+    const snapshotPositions = parseRoutePositions(selectedTrace?.routePositions);
+
     let minLat = Infinity;
     let maxLat = -Infinity;
     let minLng = Infinity;
@@ -930,13 +949,13 @@ export function useTraceroutePaths({
     let hasValidPositions = false;
 
     tracerouteNodeNums.forEach(nodeNum => {
-      const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
-      if (node?.position?.latitude != null && node?.position?.longitude != null) {
+      const pos = getNodePositionWithSnapshot(nodeNum, snapshotPositions, nodesPositionDigest);
+      if (pos) {
         hasValidPositions = true;
-        minLat = Math.min(minLat, node.position.latitude);
-        maxLat = Math.max(maxLat, node.position.latitude);
-        minLng = Math.min(minLng, node.position.longitude);
-        maxLng = Math.max(maxLng, node.position.longitude);
+        minLat = Math.min(minLat, pos[0]);
+        maxLat = Math.max(maxLat, pos[0]);
+        minLng = Math.min(minLng, pos[1]);
+        maxLng = Math.max(maxLng, pos[1]);
       }
     });
 
@@ -950,7 +969,7 @@ export function useTraceroutePaths({
       [minLat - latPadding, minLng - lngPadding],
       [maxLat + latPadding, maxLng + lngPadding]
     ];
-  }, [tracerouteNodeNums, nodesPositionDigest]);
+  }, [tracerouteNodeNums, nodesPositionDigest, traceroutesDigest, selectedNodeId]);
 
   return {
     traceroutePathsElements,

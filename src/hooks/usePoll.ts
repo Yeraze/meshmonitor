@@ -108,6 +108,7 @@ export interface PollTraceroute {
   routeBack: string;
   snrTowards: string;
   snrBack: string;
+  routePositions?: string; // JSON: { [nodeNum]: { lat, lng, alt? } } - position snapshot at traceroute time
   timestamp: number;
   createdAt: number;
   hopCount: number;
