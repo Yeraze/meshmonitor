@@ -73,6 +73,7 @@ import { migration as sortOrderMigration, runMigration065Postgres, runMigration0
 import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
 import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
 import { migration as mfaColumnsMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_add_mfa_columns.js';
+import { migration as traceroutePositionsMigration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_add_traceroute_positions.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -939,6 +940,7 @@ class DatabaseService {
     this.runIgnoredNodesTableMigration();
     this.runAutoTimeSyncMigration();
     this.runMfaColumnsMigration();
+    this.runTraceroutePositionsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2289,6 +2291,25 @@ class DatabaseService {
       logger.debug('Migration 068 (MFA columns) completed successfully');
     } catch (error) {
       logger.error('Failed to run MFA columns migration:', error);
+      throw error;
+    }
+  }
+
+  private runTraceroutePositionsMigration(): void {
+    const migrationKey = 'migration_069_traceroute_positions';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 069 (traceroute positions) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 069: Add position snapshot columns to traceroutes and route_segments...');
+      traceroutePositionsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Migration 069 (traceroute positions) completed successfully');
+    } catch (error) {
+      logger.error('Failed to run traceroute positions migration:', error);
       throw error;
     }
   }
@@ -10314,6 +10335,9 @@ class DatabaseService {
       // Run migration 068: Add MFA columns to users table
       await runMigration068Postgres(client);
 
+      // Run migration 069: Add position snapshot columns to traceroutes and route_segments
+      await runMigration069Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10429,6 +10453,9 @@ class DatabaseService {
 
       // Run migration 068: Add MFA columns to users table
       await runMigration068Mysql(pool);
+
+      // Run migration 069: Add position snapshot columns to traceroutes and route_segments
+      await runMigration069Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

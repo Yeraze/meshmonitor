@@ -4489,6 +4489,25 @@ class MeshtasticManager {
 
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
+      // Build position snapshot for all nodes in the traceroute path (Issue #1862)
+      // This captures where each node was at traceroute time so historical traceroutes
+      // render correctly even when nodes move
+      const routePositions: Record<number, { lat: number; lng: number; alt?: number }> = {};
+      const allPathNodes = [toNum, ...route, fromNum];
+      const allBackNodes = routeBack || [];
+      const allUniqueNodes = [...new Set([...allPathNodes, ...allBackNodes])];
+
+      for (const nodeNum of allUniqueNodes) {
+        const node = databaseService.getNode(nodeNum);
+        if (node?.latitude && node?.longitude) {
+          routePositions[nodeNum] = {
+            lat: node.latitude,
+            lng: node.longitude,
+            ...(node.altitude ? { alt: node.altitude } : {}),
+          };
+        }
+      }
+
       // Save to traceroutes table (save raw data including broadcast addresses)
       // Store traceroute data exactly as Meshtastic provides it (no transformations)
       // fromNodeNum = responder (remote), toNodeNum = requester (local)
@@ -4503,6 +4522,7 @@ class MeshtasticManager {
         routeBack: JSON.stringify(routeBack),
         snrTowards: JSON.stringify(snrTowards),
         snrBack: JSON.stringify(snrBack),
+        routePositions: JSON.stringify(routePositions),
         timestamp: timestamp,
         createdAt: Date.now()
       };
@@ -4566,7 +4586,7 @@ class MeshtasticManager {
             const node1Id = `!${node1Num.toString(16).padStart(8, '0')}`;
             const node2Id = `!${node2Num.toString(16).padStart(8, '0')}`;
 
-            // Store the segment
+            // Store the segment with position snapshot (Issue #1862)
             const segment = {
               fromNodeNum: node1Num,
               toNodeNum: node2Num,
@@ -4574,6 +4594,10 @@ class MeshtasticManager {
               toNodeId: node2Id,
               distanceKm: distanceKm,
               isRecordHolder: false,
+              fromLatitude: node1.latitude,
+              fromLongitude: node1.longitude,
+              toLatitude: node2.latitude,
+              toLongitude: node2.longitude,
               timestamp: timestamp,
               createdAt: Date.now()
             };
