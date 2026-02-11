@@ -355,6 +355,7 @@ CREATE TABLE traceroutes (
   routeBack TEXT,
   snrTowards TEXT,
   snrBack TEXT,
+  routePositions TEXT,
   timestamp INTEGER NOT NULL,
   createdAt INTEGER NOT NULL,
   FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
@@ -375,6 +376,7 @@ CREATE TABLE traceroutes (
 | `routeBack` | TEXT | JSON array of node numbers in return path | `[987654321,555555555,123456789]` |
 | `snrTowards` | TEXT | JSON array of SNR values for forward path | `[12.5,8.3,10.1]` |
 | `snrBack` | TEXT | JSON array of SNR values for return path | `[10.5,9.2,11.3]` |
+| `routePositions` | TEXT | JSON object mapping node numbers to `{lat, lng, alt?}` positions at traceroute time | `{"123456789":{"lat":33.12,"lng":-117.56}}` |
 | `timestamp` | INTEGER | When traceroute was completed | `1640995200000` |
 | `createdAt` | INTEGER | Database insertion timestamp | `1640995201000` |
 
@@ -383,8 +385,59 @@ CREATE TABLE traceroutes (
 - `fromNodeNum` and `toNodeNum` must reference valid nodes
 - `route` and `routeBack` are stored as JSON arrays
 - `snrTowards` and `snrBack` arrays should match route array lengths
+- `routePositions` snapshots all node positions at traceroute completion time (added in migration 069)
+- `routePositions` is null for traceroutes recorded before this feature was added; the frontend falls back to current positions
 - `timestamp` is in milliseconds
 - Used for network topology mapping and visualization
+
+### ROUTE_SEGMENTS Table
+
+Stores individual route segment distances between consecutive nodes in traceroute paths, with position snapshots for historical accuracy.
+
+```sql
+CREATE TABLE route_segments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fromNodeNum INTEGER NOT NULL,
+  toNodeNum INTEGER NOT NULL,
+  fromNodeId TEXT NOT NULL,
+  toNodeId TEXT NOT NULL,
+  distanceKm REAL NOT NULL,
+  isRecordHolder INTEGER DEFAULT 0,
+  fromLatitude REAL,
+  fromLongitude REAL,
+  toLatitude REAL,
+  toLongitude REAL,
+  timestamp INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL,
+  FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+  FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+);
+```
+
+#### Field Descriptions
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `id` | INTEGER | Auto-incrementing primary key | `1` |
+| `fromNodeNum` | INTEGER | Source node number (Foreign Key) | `123456789` |
+| `toNodeNum` | INTEGER | Destination node number (Foreign Key) | `987654321` |
+| `fromNodeId` | TEXT | Source node hex ID | `!075bcd15` |
+| `toNodeId` | TEXT | Destination node hex ID | `!3ade68b1` |
+| `distanceKm` | REAL | Distance between the two nodes in kilometers | `12.34` |
+| `isRecordHolder` | INTEGER | Whether this is the longest recorded segment | `0` |
+| `fromLatitude` | REAL | Latitude of source node at recording time | `33.1234` |
+| `fromLongitude` | REAL | Longitude of source node at recording time | `-117.5678` |
+| `toLatitude` | REAL | Latitude of destination node at recording time | `33.2345` |
+| `toLongitude` | REAL | Longitude of destination node at recording time | `-117.6789` |
+| `timestamp` | INTEGER | When the segment was recorded (ms) | `1640995200000` |
+| `createdAt` | INTEGER | Database insertion timestamp (ms) | `1640995201000` |
+
+#### Business Rules
+
+- Position columns (`fromLatitude`, `fromLongitude`, `toLatitude`, `toLongitude`) snapshot node positions at recording time (added in migration 069)
+- Position columns are null for segments recorded before this feature was added
+- `isRecordHolder` is automatically updated when a new longest segment is recorded
+- Both nodes must have position data for a segment to be stored
 
 #### Field Descriptions
 

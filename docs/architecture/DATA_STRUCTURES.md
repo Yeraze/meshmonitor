@@ -415,6 +415,9 @@ interface TracerouteData {
   routeBack: string;       // JSON array: "[987654321,555555555,123456789]"
   snrTowards: string;      // JSON array: "[12.5,8.3,10.1]"
   snrBack: string;         // JSON array: "[10.5,9.2,11.3]"
+  routePositions?: string; // JSON object: '{"123456789":{"lat":33.12,"lng":-117.56,"alt":150}}'
+                           // Snapshots node positions at traceroute completion time
+                           // Null for traceroutes recorded before this feature was added
   timestamp: number;
   createdAt: number;
 }
@@ -638,6 +641,10 @@ interface RouteSegment {
   toNodeNum: number;
   snr?: number;
   distance?: number;
+  fromLatitude?: number;   // Position snapshot at recording time
+  fromLongitude?: number;
+  toLatitude?: number;
+  toLongitude?: number;
 }
 ```
 
