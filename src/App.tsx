@@ -182,6 +182,7 @@ function App() {
       minHops: 0,
       maxHops: 10,
       showPKI: false,
+      showRemoteAdmin: false,
       showUnknown: false,
       showIgnored: false,
       deviceRoles: [] as number[], // Empty array means show all roles
@@ -3657,6 +3658,13 @@ function App() {
       // PKI filter
       if (nodeFilters.showPKI) {
         const matches = nodeId && nodesWithPKC.has(nodeId);
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
+      // Remote Admin filter
+      if (nodeFilters.showRemoteAdmin) {
+        const matches = !!node.hasRemoteAdmin;
         if (isShowMode && !matches) return false;
         if (!isShowMode && matches) return false;
       }

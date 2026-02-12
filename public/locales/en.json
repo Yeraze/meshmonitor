@@ -188,6 +188,7 @@
   "nodes.has_telemetry": "Has Telemetry Data",
   "nodes.has_weather": "Has Weather Data",
   "nodes.has_pkc": "Has Public Key Cryptography",
+  "nodes.has_remote_admin": "Remote Admin Verified",
   "nodes.mobile_node": "Mobile Node (position varies > 1km)",
   "nodes.node_address": "Node Address",
   "nodes.last_heard": "Last Heard",
@@ -999,6 +1000,9 @@
   "node_filter.secure_channel_warning": "Recommended for secure channels.",
   "node_filter.hide_ignored": "Hide ignored nodes",
   "node_filter.ignored_help": "Ignored nodes can be un-ignored from the Node Details page.",
+  "node_filter.remote_admin_only": "Remote Admin available only",
+  "node_filter.remote_admin_help": "Show only nodes with verified Remote Admin capability.",
+  "node_filter.remote_admin": "Remote Admin",
 
   "relay_modal.title_ack": "Message Acknowledgment",
   "relay_modal.title_relay": "Message Relay Information",

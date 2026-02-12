@@ -82,6 +82,7 @@ export interface NodeFilters {
   minHops: number;
   maxHops: number;
   showPKI: boolean;
+  showRemoteAdmin: boolean;
   showUnknown: boolean;
   showIgnored: boolean;
   deviceRoles: number[];

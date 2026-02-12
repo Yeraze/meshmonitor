@@ -22,6 +22,8 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
     setShowIncompleteNodes,
     showIgnoredNodes,
     setShowIgnoredNodes,
+    filterRemoteAdminOnly,
+    setFilterRemoteAdminOnly,
   } = useUI();
   const { channels } = useChannels();
 
@@ -126,6 +128,21 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
             </label>
             <div className="filter-help-text">
               {t('node_filter.ignored_help')}
+            </div>
+          </div>
+
+          {/* Remote Admin Filter */}
+          <div className="filter-section">
+            <label className="filter-checkbox-label">
+              <input
+                type="checkbox"
+                checked={filterRemoteAdminOnly}
+                onChange={(e) => setFilterRemoteAdminOnly(e.target.checked)}
+              />
+              <span>{t('node_filter.remote_admin_only')}</span>
+            </label>
+            <div className="filter-help-text">
+              {t('node_filter.remote_admin_help')}
             </div>
           </div>
         </div>

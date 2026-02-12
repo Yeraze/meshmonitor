@@ -25,6 +25,7 @@ const DEFAULT_FILTERS: NodeFilters = {
   minHops: 0,
   maxHops: 10,
   showPKI: false,
+  showRemoteAdmin: false,
   showUnknown: false,
   showIgnored: false,
   deviceRoles: [],
@@ -226,6 +227,18 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
               <span className="filter-label-with-icon">
                 <span className="filter-icon">🔐</span>
                 <span>{t('node_filter.pkc', 'Public Key Crypto')}</span>
+              </span>
+            </label>
+
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={nodeFilters.showRemoteAdmin}
+                onChange={e => onNodeFiltersChange({ ...nodeFilters, showRemoteAdmin: e.target.checked })}
+              />
+              <span className="filter-label-with-icon">
+                <span className="filter-icon">🛠️</span>
+                <span>{t('node_filter.remote_admin', 'Remote Admin')}</span>
               </span>
             </label>
 

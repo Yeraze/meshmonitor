@@ -250,6 +250,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowNodeFilterPopup,
     isNodeListCollapsed,
     setIsNodeListCollapsed,
+    filterRemoteAdminOnly,
   } = useUI();
 
   const {
@@ -1078,9 +1079,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 if (!showIncompleteNodes && !isNodeComplete(node)) {
                   return false;
                 }
+                // Remote admin filter
+                if (filterRemoteAdminOnly && !node.hasRemoteAdmin) {
+                  return false;
+                }
                 return true;
               }).length;
-              const isFiltered = securityFilter !== 'all' || !showIncompleteNodes;
+              const isFiltered = securityFilter !== 'all' || !showIncompleteNodes || filterRemoteAdminOnly;
               return isFiltered ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
             })()})</h3>
           </div>
@@ -1186,6 +1191,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 return false;
               }
 
+              // Remote admin filter
+              if (filterRemoteAdminOnly && !node.hasRemoteAdmin) {
+                return false;
+              }
+
               return true;
             });
 
@@ -1237,6 +1247,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       )}
                       {node.user?.id && nodesWithPKC.has(node.user.id) && (
                         <span className="node-indicator-icon" title={t('nodes.has_pkc')}>🔐</span>
+                      )}
+                      {node.hasRemoteAdmin && (
+                        <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}>🛠️</span>
                       )}
                       {hasPermission('messages', 'read') && (
                         <button
