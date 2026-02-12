@@ -289,6 +289,59 @@ Scan results appear in the Node Details panel for each node:
 - [Admin Commands](/features/admin-commands) - Use remote admin to configure nodes
 - [Security](/features/security) - Learn about node security and encryption
 
+## Auto Time Sync
+
+Automatically synchronizes the MeshMonitor server's clock to nodes in your mesh network that support remote administration. This keeps node clocks accurate, which is important for proper message ordering and timestamp display.
+
+### How It Works
+
+When enabled, MeshMonitor periodically selects one eligible node that needs a time sync and sends it a **Set Time** admin command with the server's current time. The scheduler processes one node per interval tick, cycling through all eligible nodes over time.
+
+A node is eligible for time sync if:
+- It has been discovered by the [Remote Admin Scanner](#remote-admin-scanner) (has remote admin capability), **or** it is the local node
+- Its last time sync is older than the configured **expiration** period (or it has never been synced)
+- Optionally, it is included in the node filter list (when filtering is enabled)
+
+### Configuration
+
+Navigate to **Settings > Automation** and find the **Auto Time Sync** section.
+
+| Setting | Description | Default | Range |
+|---------|-------------|---------|-------|
+| **Enable** | Turn auto time sync on or off | Off | - |
+| **Interval** | How often to sync the next eligible node (in minutes) | 60 | 15 - 1440 |
+| **Expiration** | How many hours before a previously synced node becomes eligible again | 24 | 1 - 24 |
+| **Filter to specific nodes** | When enabled, only sync nodes in the selected list | Off | - |
+
+### Node Filter
+
+When the node filter is enabled, you can select which specific nodes should receive time syncs. The node list shows only nodes with remote admin capability. Use the **Select All** / **Deselect All** buttons and the search field to manage the list.
+
+When the filter is disabled (default), all eligible nodes are included automatically.
+
+### Prerequisites
+
+- **Remote Admin Scanner** must be enabled and must have discovered nodes with remote admin capability before Auto Time Sync can target them
+- MeshMonitor must be connected to a Meshtastic node
+
+### Use Cases
+
+- **Keeping node clocks accurate** - Nodes without GPS or NTP may drift over time; periodic syncing corrects this
+- **Consistent timestamps** - Ensures messages across the mesh have accurate, comparable timestamps
+- **Automated maintenance** - Set it and forget it; the scheduler handles all nodes over time
+
+### Best Practices
+
+- Start with the default 60-minute interval; there is no need to sync more frequently unless nodes drift quickly
+- Use a 24-hour expiration so each node gets synced roughly once per day
+- If you have a large mesh, the scheduler will cycle through all nodes automatically — one per interval tick
+- Use the node filter if you only want to sync specific nodes (e.g., solar-powered nodes that lose time on reboot)
+
+### Related Documentation
+
+- [Remote Admin Scanner](#remote-admin-scanner) - Required to discover nodes with remote admin capability
+- [Admin Commands](/features/admin-commands) - Manual admin commands including Set Time
+
 ## Auto Welcome
 
 Automatically sends a personalized welcome message to new nodes when they join your mesh network.
