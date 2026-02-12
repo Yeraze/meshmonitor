@@ -2146,6 +2146,8 @@
   "automation.auto_traceroute.no_log_entries": "No auto-traceroutes logged yet. Entries will appear here as traceroutes are sent.",
   "automation.auto_traceroute.sort_by_hops": "Prioritize Closer Nodes",
   "automation.auto_traceroute.sort_by_hops_description": "When enabled, nodes with fewer hops are tracerouted first. This is useful in dense networks where traceroutes to distant nodes often fail. When disabled, nodes are selected randomly.",
+  "automation.auto_traceroute.schedule_window": "Restrict to Time Window",
+  "automation.auto_traceroute.schedule_window_description": "Only run auto-traceroutes during the specified time window. Uses server-local time.",
 
   "automation.remote_admin_scanner.title": "Remote Admin Scanner",
   "automation.remote_admin_scanner.description": "Automatically scan mesh nodes to discover which ones have remote admin access enabled. Nodes with admin access can be remotely configured and monitored. The scanner sends DeviceMetadata requests and stores firmware information for successful responses.",
@@ -2165,6 +2167,11 @@
   "automation.remote_admin_scanner.status_has_admin": "Has remote admin access",
   "automation.remote_admin_scanner.status_no_admin": "No remote admin access",
   "automation.remote_admin_scanner.no_log_entries": "No scan results yet. Entries will appear here as nodes are scanned.",
+  "automation.remote_admin_scanner.schedule_window": "Restrict to Time Window",
+  "automation.remote_admin_scanner.schedule_window_description": "Only run remote admin scans during the specified time window. Uses server-local time.",
+
+  "automation.schedule.starting_at": "Starting At",
+  "automation.schedule.ending_at": "Ending At",
 
   "automation.time_sync.title": "Auto Time Sync",
   "automation.time_sync.description": "Automatically synchronize the MeshMonitor server time to nodes that have remote admin access. Useful for nodes without NTP or GPS time sync capabilities. Each interval syncs one eligible node.",

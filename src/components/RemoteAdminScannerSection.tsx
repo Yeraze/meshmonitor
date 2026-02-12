@@ -19,6 +19,9 @@ interface ScanLogEntry {
 interface ScannerSettings {
   intervalMinutes: number;
   expirationHours: number;
+  scheduleEnabled: boolean;
+  scheduleStart: string;
+  scheduleEnd: string;
 }
 
 const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
@@ -32,6 +35,9 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
   const [localEnabled, setLocalEnabled] = useState(false);
   const [localInterval, setLocalInterval] = useState(5);
   const [expirationHours, setExpirationHours] = useState(168);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleStart, setScheduleStart] = useState('00:00');
+  const [scheduleEnd, setScheduleEnd] = useState('00:00');
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,10 +65,17 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
           const interval = parseInt(data.remoteAdminScannerIntervalMinutes) || 0;
           const expiration = parseInt(data.remoteAdminScannerExpirationHours) || 168;
 
+          const schedEnabled = data.remoteAdminScheduleEnabled === 'true';
+          const schedStart = data.remoteAdminScheduleStart || '00:00';
+          const schedEnd = data.remoteAdminScheduleEnd || '00:00';
+
           setLocalEnabled(interval > 0);
           setLocalInterval(interval > 0 ? interval : 5);
           setExpirationHours(expiration);
-          setInitialSettings({ intervalMinutes: interval, expirationHours: expiration });
+          setScheduleEnabled(schedEnabled);
+          setScheduleStart(schedStart);
+          setScheduleEnd(schedEnd);
+          setInitialSettings({ intervalMinutes: interval, expirationHours: expiration, scheduleEnabled: schedEnabled, scheduleStart: schedStart, scheduleEnd: schedEnd });
         }
       } catch (error) {
         console.error('Failed to fetch scanner settings:', error);
@@ -152,9 +165,12 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
     const currentInterval = localEnabled ? localInterval : 0;
     const intervalChanged = currentInterval !== initialSettings.intervalMinutes;
     const expirationChanged = expirationHours !== initialSettings.expirationHours;
+    const scheduleEnabledChanged = scheduleEnabled !== (initialSettings.scheduleEnabled || false);
+    const scheduleStartChanged = scheduleStart !== (initialSettings.scheduleStart || '00:00');
+    const scheduleEndChanged = scheduleEnd !== (initialSettings.scheduleEnd || '00:00');
 
-    setHasChanges(intervalChanged || expirationChanged);
-  }, [localEnabled, localInterval, expirationHours, initialSettings]);
+    setHasChanges(intervalChanged || expirationChanged || scheduleEnabledChanged || scheduleStartChanged || scheduleEndChanged);
+  }, [localEnabled, localInterval, expirationHours, scheduleEnabled, scheduleStart, scheduleEnd, initialSettings]);
 
   // Reset local state to initial settings (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -162,6 +178,9 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
       setLocalEnabled(initialSettings.intervalMinutes > 0);
       setLocalInterval(initialSettings.intervalMinutes > 0 ? initialSettings.intervalMinutes : 5);
       setExpirationHours(initialSettings.expirationHours);
+      setScheduleEnabled(initialSettings.scheduleEnabled || false);
+      setScheduleStart(initialSettings.scheduleStart || '00:00');
+      setScheduleEnd(initialSettings.scheduleEnd || '00:00');
     }
   }, [initialSettings]);
 
@@ -176,6 +195,9 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
         body: JSON.stringify({
           remoteAdminScannerIntervalMinutes: intervalToSave.toString(),
           remoteAdminScannerExpirationHours: expirationHours.toString(),
+          remoteAdminScheduleEnabled: scheduleEnabled.toString(),
+          remoteAdminScheduleStart: scheduleStart,
+          remoteAdminScheduleEnd: scheduleEnd,
         }),
       });
 
@@ -187,7 +209,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
         throw new Error(`Server returned ${response.status}`);
       }
 
-      setInitialSettings({ intervalMinutes: intervalToSave, expirationHours });
+      setInitialSettings({ intervalMinutes: intervalToSave, expirationHours, scheduleEnabled, scheduleStart, scheduleEnd });
       setHasChanges(false);
       showToast(t('automation.remote_admin_scanner.settings_saved'), 'success');
     } catch (error) {
@@ -196,7 +218,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localInterval, expirationHours, baseUrl, csrfFetch, showToast, t]);
+  }, [localEnabled, localInterval, expirationHours, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t]);
 
   // Register with SaveBar
   useSaveBar({
@@ -335,6 +357,50 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
             disabled={!localEnabled}
             className="setting-input"
           />
+        </div>
+
+        {/* Schedule Time Window */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              id="remoteAdminScheduleEnabled"
+              checked={scheduleEnabled}
+              onChange={(e) => setScheduleEnabled(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            <label htmlFor="remoteAdminScheduleEnabled" style={{ margin: 0, cursor: 'pointer' }}>
+              {t('automation.remote_admin_scanner.schedule_window')}
+              <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
+                {t('automation.remote_admin_scanner.schedule_window_description')}
+              </span>
+            </label>
+          </div>
+          {scheduleEnabled && localEnabled && (
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', marginLeft: '1.75rem', alignItems: 'center' }}>
+              <label style={{ margin: 0, fontSize: '13px' }}>
+                {t('automation.schedule.starting_at')}
+                <input
+                  type="time"
+                  value={scheduleStart}
+                  onChange={(e) => setScheduleStart(e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                  className="setting-input"
+                />
+              </label>
+              <label style={{ margin: 0, fontSize: '13px' }}>
+                {t('automation.schedule.ending_at')}
+                <input
+                  type="time"
+                  value={scheduleEnd}
+                  onChange={(e) => setScheduleEnd(e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                  className="setting-input"
+                />
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Scan Log */}
