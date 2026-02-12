@@ -135,13 +135,17 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     fetchNodes();
   }, [baseUrl, csrfFetch]);
 
-  // Fetch current filter settings
+  // Fetch current filter settings and schedule settings together to avoid race conditions
   useEffect(() => {
-    const fetchFilterSettings = async () => {
+    const fetchAllSettings = async () => {
       try {
-        const response = await csrfFetch(`${baseUrl}/api/settings/traceroute-nodes`);
-        if (response.ok) {
-          const data: FilterSettings = await response.json();
+        const [filterResponse, settingsResponse] = await Promise.all([
+          csrfFetch(`${baseUrl}/api/settings/traceroute-nodes`),
+          csrfFetch(`${baseUrl}/api/settings`),
+        ]);
+
+        if (filterResponse.ok) {
+          const data: FilterSettings = await filterResponse.json();
           setFilterEnabled(data.enabled);
           setSelectedNodeNums(data.nodeNums || []);
           setFilterChannels(data.filterChannels || []);
@@ -158,35 +162,34 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           setExpirationHours(data.expirationHours || 24);
           // Load sort by hops setting (default to false)
           setSortByHops(data.sortByHops || false);
-          setInitialSettings({ ...data, scheduleEnabled: false, scheduleStart: '00:00', scheduleEnd: '00:00' });
-        }
-      } catch (error) {
-        console.error('Failed to fetch filter settings:', error);
-      }
-    };
-    fetchFilterSettings();
-  }, [baseUrl, csrfFetch]);
 
-  // Fetch schedule settings from general settings endpoint
-  useEffect(() => {
-    const fetchScheduleSettings = async () => {
-      try {
-        const response = await csrfFetch(`${baseUrl}/api/settings`);
-        if (response.ok) {
-          const data = await response.json();
-          const enabled = data.tracerouteScheduleEnabled === 'true';
-          const start = data.tracerouteScheduleStart || '00:00';
-          const end = data.tracerouteScheduleEnd || '00:00';
-          setScheduleEnabled(enabled);
-          setScheduleStart(start);
-          setScheduleEnd(end);
-          setInitialSettings(prev => prev ? { ...prev, scheduleEnabled: enabled, scheduleStart: start, scheduleEnd: end } : prev);
+          // Load schedule settings from general settings
+          let schedEnabled = false;
+          let schedStart = '00:00';
+          let schedEnd = '00:00';
+          if (settingsResponse.ok) {
+            const settingsData = await settingsResponse.json();
+            schedEnabled = settingsData.tracerouteScheduleEnabled === 'true';
+            schedStart = settingsData.tracerouteScheduleStart || '00:00';
+            schedEnd = settingsData.tracerouteScheduleEnd || '00:00';
+          }
+          setScheduleEnabled(schedEnabled);
+          setScheduleStart(schedStart);
+          setScheduleEnd(schedEnd);
+
+          // Set initial settings once with all data
+          setInitialSettings({
+            ...data,
+            scheduleEnabled: schedEnabled,
+            scheduleStart: schedStart,
+            scheduleEnd: schedEnd,
+          });
         }
       } catch (error) {
-        console.error('Failed to fetch schedule settings:', error);
+        console.error('Failed to fetch settings:', error);
       }
     };
-    fetchScheduleSettings();
+    fetchAllSettings();
   }, [baseUrl, csrfFetch]);
 
   // Fetch auto-traceroute log
