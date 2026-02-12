@@ -121,6 +121,8 @@ interface UIContextType {
   setIsNodeListCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   showIgnoredNodes: boolean;
   setShowIgnoredNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  filterRemoteAdminOnly: boolean;
+  setFilterRemoteAdminOnly: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -222,6 +224,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   });
   // Default to hiding ignored nodes
   const [showIgnoredNodes, setShowIgnoredNodes] = useState<boolean>(false);
+  const [filterRemoteAdminOnly, setFilterRemoteAdminOnly] = useState<boolean>(false);
 
   // Wrapper setter for showMqttMessages that persists to localStorage
   const setShowMqttMessages = React.useCallback((value: React.SetStateAction<boolean>) => {
@@ -369,6 +372,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setIsNodeListCollapsed,
         showIgnoredNodes,
         setShowIgnoredNodes,
+        filterRemoteAdminOnly,
+        setFilterRemoteAdminOnly,
       }}
     >
       {children}
