@@ -92,10 +92,9 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
           });
 
           // Build scan log from recent checks
-          const recentlyChecked = nodesWithPublicKey
+          // Show successful nodes first, then fill remaining slots with failed entries
+          const checkedNodes = nodesWithPublicKey
             .filter((n: any) => n.lastRemoteAdminCheck)
-            .sort((a: any, b: any) => (b.lastRemoteAdminCheck || 0) - (a.lastRemoteAdminCheck || 0))
-            .slice(0, 20)
             .map((n: any) => {
               let firmwareVersion = null;
               if (n.remoteAdminMetadata) {
@@ -114,7 +113,20 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
                 firmwareVersion,
               };
             });
-          setScanLog(recentlyChecked);
+
+          const successEntries = checkedNodes
+            .filter((e: ScanLogEntry) => e.hasRemoteAdmin)
+            .sort((a: ScanLogEntry, b: ScanLogEntry) => b.timestamp - a.timestamp);
+          const failedEntries = checkedNodes
+            .filter((e: ScanLogEntry) => !e.hasRemoteAdmin)
+            .sort((a: ScanLogEntry, b: ScanLogEntry) => b.timestamp - a.timestamp);
+
+          const maxEntries = 20;
+          const combined = [
+            ...successEntries,
+            ...failedEntries.slice(0, Math.max(0, maxEntries - successEntries.length)),
+          ];
+          setScanLog(combined);
         }
       } catch (error) {
         console.error('Failed to fetch scan log:', error);
