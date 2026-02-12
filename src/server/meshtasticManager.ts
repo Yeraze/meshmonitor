@@ -16,6 +16,7 @@ import { channelDecryptionService } from './services/channelDecryptionService.js
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
+import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { createRequire } from 'module';
@@ -862,6 +863,17 @@ class MeshtasticManager {
 
     // The traceroute execution logic
     const executeTraceroute = async () => {
+      // Check time window schedule
+      const scheduleEnabled = databaseService.getSetting('tracerouteScheduleEnabled');
+      if (scheduleEnabled === 'true') {
+        const start = databaseService.getSetting('tracerouteScheduleStart') || '00:00';
+        const end = databaseService.getSetting('tracerouteScheduleEnd') || '00:00';
+        if (!isWithinTimeWindow(start, end)) {
+          logger.debug(`🗺️ Auto-traceroute: Skipping - outside schedule window (${start}-${end})`);
+          return;
+        }
+      }
+
       if (this.isConnected && this.localNodeInfo) {
         try {
           // Enforce minimum interval between traceroute sends (Meshtastic firmware rate limit)
@@ -976,6 +988,17 @@ class MeshtasticManager {
     logger.info(`🔑 Starting remote admin scanner with ${this.remoteAdminScannerIntervalMinutes} minute interval`);
 
     this.remoteAdminScannerInterval = setInterval(async () => {
+      // Check time window schedule
+      const scheduleEnabled = databaseService.getSetting('remoteAdminScheduleEnabled');
+      if (scheduleEnabled === 'true') {
+        const start = databaseService.getSetting('remoteAdminScheduleStart') || '00:00';
+        const end = databaseService.getSetting('remoteAdminScheduleEnd') || '00:00';
+        if (!isWithinTimeWindow(start, end)) {
+          logger.debug(`🔑 Remote admin scanner: Skipping - outside schedule window (${start}-${end})`);
+          return;
+        }
+      }
+
       if (this.isConnected && this.localNodeInfo) {
         try {
           await this.scanNextNodeForRemoteAdmin();

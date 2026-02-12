@@ -4881,6 +4881,12 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoKeyManagementAutoPurge',
       'remoteAdminScannerIntervalMinutes',
       'remoteAdminScannerExpirationHours',
+      'tracerouteScheduleEnabled',
+      'tracerouteScheduleStart',
+      'tracerouteScheduleEnd',
+      'remoteAdminScheduleEnabled',
+      'remoteAdminScheduleStart',
+      'remoteAdminScheduleEnd',
       'geofenceTriggers',
     ];
     const filteredSettings: Record<string, string> = {};
