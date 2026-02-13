@@ -67,6 +67,8 @@ interface UIContextType {
   setAutoAckMultihopTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckMultihopReplyEnabled: boolean;
   setAutoAckMultihopReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckTestMessages: string;
+  setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceEnabled: boolean;
   setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceIntervalHours: number;
@@ -193,6 +195,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAckMultihopEnabled, setAutoAckMultihopEnabled] = useState<boolean>(true);
   const [autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled] = useState<boolean>(true);
   const [autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled] = useState<boolean>(true);
+  const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
@@ -318,6 +321,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckMultihopTapbackEnabled,
         autoAckMultihopReplyEnabled,
         setAutoAckMultihopReplyEnabled,
+        autoAckTestMessages,
+        setAutoAckTestMessages,
         autoAnnounceEnabled,
         setAutoAnnounceEnabled,
         autoAnnounceIntervalHours,

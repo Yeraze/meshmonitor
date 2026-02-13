@@ -4837,6 +4837,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoAckMultihopEnabled',
       'autoAckMultihopTapbackEnabled',
       'autoAckMultihopReplyEnabled',
+      'autoAckTestMessages',
       'customTapbackEmojis',
       'autoAnnounceEnabled',
       'autoAnnounceIntervalHours',

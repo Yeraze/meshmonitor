@@ -505,6 +505,8 @@ function App() {
     setAutoAckMultihopTapbackEnabled,
     autoAckMultihopReplyEnabled,
     setAutoAckMultihopReplyEnabled,
+    autoAckTestMessages,
+    setAutoAckTestMessages,
     autoAnnounceEnabled,
     setAutoAnnounceEnabled,
     autoAnnounceIntervalHours,
@@ -979,6 +981,10 @@ function App() {
           }
           if (settings.autoAckMultihopReplyEnabled !== undefined) {
             setAutoAckMultihopReplyEnabled(settings.autoAckMultihopReplyEnabled !== 'false');
+          }
+
+          if (settings.autoAckTestMessages) {
+            setAutoAckTestMessages(settings.autoAckTestMessages);
           }
 
           if (settings.autoAnnounceEnabled !== undefined) {
@@ -4532,6 +4538,7 @@ function App() {
                   multihopEnabled={autoAckMultihopEnabled}
                   multihopTapbackEnabled={autoAckMultihopTapbackEnabled}
                   multihopReplyEnabled={autoAckMultihopReplyEnabled}
+                  testMessages={autoAckTestMessages}
                   baseUrl={baseUrl}
                   onEnabledChange={setAutoAckEnabled}
                   onRegexChange={setAutoAckRegex}
@@ -4549,6 +4556,7 @@ function App() {
                   onMultihopEnabledChange={setAutoAckMultihopEnabled}
                   onMultihopTapbackEnabledChange={setAutoAckMultihopTapbackEnabled}
                   onMultihopReplyEnabledChange={setAutoAckMultihopReplyEnabled}
+                  onTestMessagesChange={setAutoAckTestMessages}
                 />
               </div>
               <div id="auto-announce">
