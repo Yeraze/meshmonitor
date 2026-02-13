@@ -26,7 +26,7 @@ import { migration as perChannelPermissionsMigration } from '../migrations/024_a
 import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
 import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
-import { migration as meshcorePermissionMigration } from '../migrations/070_add_meshcore_permission.js';
+import { migration as meshcorePermissionMigration } from '../migrations/071_add_meshcore_permission.js';
 
 // Mock dependencies before importing routes
 vi.mock('../../services/database.js', () => ({
