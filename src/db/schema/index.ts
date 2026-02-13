@@ -29,3 +29,7 @@ export * from './channelDatabase.js';
 
 // Ignored Nodes table
 export * from './ignoredNodes.js';
+
+// MeshCore tables
+export * from './meshcoreNodes.js';
+export * from './meshcoreMessages.js';

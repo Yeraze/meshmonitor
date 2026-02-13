@@ -1,3 +1,46 @@
+# Scripts
+
+## meshcore-bridge.py
+
+A long-lived Python bridge process that communicates with MeshCore devices via the `meshcore` Python library. The Node.js server spawns this bridge and sends JSON commands over stdin, receiving JSON responses over stdout.
+
+### Requirements
+
+- Python 3.8+
+- `meshcore` library: `pip install meshcore`
+
+### Protocol
+
+Commands are sent as single-line JSON objects:
+```json
+# Serial connection
+{"id": "1", "cmd": "connect", "type": "serial", "port": "/dev/ttyACM0", "baud": 115200}
+
+# TCP connection
+{"id": "1", "cmd": "connect", "type": "tcp", "host": "192.168.1.100", "tcp_port": 4403}
+```
+
+Responses are single-line JSON:
+```json
+{"id": "1", "success": true, "data": {"connected": true, "self_info": {...}}}
+```
+
+### Supported Commands
+
+- `connect` - Connect to a MeshCore device (serial port)
+- `disconnect` - Disconnect from device
+- `get_self_info` - Get local node information
+- `get_contacts` - Get known contacts list
+- `send_message` - Send a message (broadcast or direct)
+- `send_advert` - Send an advertisement packet
+- `login` - Login to a remote node for admin access
+- `get_status` - Get status from a remote node
+- `set_name` - Set device name
+- `set_radio` - Set radio parameters (freq, bw, sf, cr)
+- `shutdown` - Gracefully terminate the bridge
+
+---
+
 # Test Utilities
 
 ## insert-test-node.js

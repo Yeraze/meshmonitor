@@ -74,6 +74,8 @@ import { migration as ignoredNodesMigration, runMigration066Postgres, runMigrati
 import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
 import { migration as mfaColumnsMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_add_mfa_columns.js';
 import { migration as traceroutePositionsMigration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_add_traceroute_positions.js';
+import { migration as meshcoreTablesMigration, runMigration070Postgres as runMigration070MeshcorePostgres, runMigration070Mysql as runMigration070MeshcoreMysql } from '../server/migrations/070_add_meshcore_tables.js';
+import { migration as meshcorePermissionMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_add_meshcore_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -941,6 +943,8 @@ class DatabaseService {
     this.runAutoTimeSyncMigration();
     this.runMfaColumnsMigration();
     this.runTraceroutePositionsMigration();
+    this.runMeshcoreTablesMigration();
+    this.runMeshcorePermissionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2310,6 +2314,44 @@ class DatabaseService {
       logger.debug('Migration 069 (traceroute positions) completed successfully');
     } catch (error) {
       logger.error('Failed to run traceroute positions migration:', error);
+      throw error;
+    }
+  }
+
+  private runMeshcoreTablesMigration(): void {
+    const migrationKey = 'migration_070_meshcore_tables';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 070 (meshcore tables) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 070: Add MeshCore tables...');
+      meshcoreTablesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('MeshCore tables migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run MeshCore tables migration:', error);
+      throw error;
+    }
+  }
+
+  private runMeshcorePermissionMigration(): void {
+    const migrationKey = 'migration_071_meshcore_permission';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 071 (meshcore permission) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 071: Add meshcore permission resource...');
+      meshcorePermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('MeshCore permission migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run MeshCore permission migration:', error);
       throw error;
     }
   }
@@ -10338,6 +10380,13 @@ class DatabaseService {
       // Run migration 069: Add position snapshot columns to traceroutes and route_segments
       await runMigration069Postgres(client);
 
+      // Run migration 070: Add MeshCore tables
+      await runMigration070MeshcorePostgres(client);
+
+      // Run migration 071: Add meshcore permission resource
+      await runMigration071Postgres(client);
+
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -10456,6 +10505,13 @@ class DatabaseService {
 
       // Run migration 069: Add position snapshot columns to traceroutes and route_segments
       await runMigration069Mysql(pool);
+
+      // Run migration 070: Add MeshCore tables
+      await runMigration070MeshcoreMysql(pool);
+
+      // Run migration 071: Add meshcore permission resource
+      await runMigration071Mysql(pool);
+
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

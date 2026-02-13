@@ -12,7 +12,8 @@ export type TabType =
   | 'audit'
   | 'security'
   | 'themes'
-  | 'admin';
+  | 'admin'
+  | 'meshcore';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
 
