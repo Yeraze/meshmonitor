@@ -65,7 +65,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(intervalMinutes > 0);
-  const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 3);
+  const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 15);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -116,7 +116,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // Update local state when props change
   useEffect(() => {
     setLocalEnabled(intervalMinutes > 0);
-    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 3);
+    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 15);
   }, [intervalMinutes]);
 
   // Fetch available nodes
@@ -261,7 +261,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // Reset local state to initial settings (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
     setLocalEnabled(intervalMinutes > 0);
-    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 3);
+    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 15);
     if (initialSettings) {
       setFilterEnabled(initialSettings.enabled);
       setSelectedNodeNums(initialSettings.nodeNums || []);
