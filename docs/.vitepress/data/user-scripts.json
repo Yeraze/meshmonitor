@@ -362,7 +362,7 @@
     ]
   },
   {
-    "name": "✈️ 🛥️ Sky and Sea Alert",
+    "name": "Sky and Sea Alert",
     "filename": "sky_and_sea_alert.py",
     "icon": "✈️",
     "description": "A script that delivers simple, emoji-based alerts when aircraft fly overhead or vessels pass nearby, using local ADS-B/AIS receivers or official cloud APIs.",
