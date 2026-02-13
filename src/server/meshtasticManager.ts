@@ -264,6 +264,8 @@ class MeshtasticManager {
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
+  private timeOffsetSamples: number[] = [];
+  private timeOffsetInterval: NodeJS.Timeout | null = null;
   private localStatsIntervalMinutes: number = 5;  // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
@@ -631,6 +633,9 @@ class MeshtasticManager {
         // Start automatic LocalStats collection
         this.startLocalStatsScheduler();
 
+        // Start time-offset telemetry scheduler
+        this.startTimeOffsetScheduler();
+
         // Start automatic announcement scheduler
         this.startAnnounceScheduler();
 
@@ -820,6 +825,10 @@ class MeshtasticManager {
 
     // Stop LocalStats collection
     this.stopLocalStatsScheduler();
+
+    // Stop time-offset telemetry collection
+    this.stopTimeOffsetScheduler();
+    this.timeOffsetSamples = [];
 
     logger.debug('Disconnected from Meshtastic node');
   }
@@ -1354,6 +1363,55 @@ class MeshtasticManager {
       clearInterval(this.localStatsInterval);
       this.localStatsInterval = null;
       logger.debug('📊 LocalStats scheduler stopped');
+    }
+  }
+
+  private startTimeOffsetScheduler(): void {
+    if (this.timeOffsetInterval) {
+      clearInterval(this.timeOffsetInterval);
+      this.timeOffsetInterval = null;
+    }
+
+    const intervalMs = 5 * 60 * 1000; // 5 minutes
+    logger.debug('⏱️ Starting time-offset scheduler (5-minute interval)');
+
+    this.timeOffsetInterval = setInterval(async () => {
+      await this.flushTimeOffsetTelemetry();
+    }, intervalMs);
+  }
+
+  private stopTimeOffsetScheduler(): void {
+    if (this.timeOffsetInterval) {
+      clearInterval(this.timeOffsetInterval);
+      this.timeOffsetInterval = null;
+      logger.debug('⏱️ Time-offset scheduler stopped');
+    }
+  }
+
+  private async flushTimeOffsetTelemetry(): Promise<void> {
+    if (this.timeOffsetSamples.length === 0 || !this.localNodeInfo) {
+      return;
+    }
+
+    const sum = this.timeOffsetSamples.reduce((a, b) => a + b, 0);
+    const avg = sum / this.timeOffsetSamples.length;
+    const sampleCount = this.timeOffsetSamples.length;
+    this.timeOffsetSamples = [];
+
+    const now = Date.now();
+    try {
+      await databaseService.insertTelemetryAsync({
+        nodeId: this.localNodeInfo.nodeId,
+        nodeNum: this.localNodeInfo.nodeNum,
+        telemetryType: 'timeOffset',
+        timestamp: now,
+        value: Math.round(avg * 100) / 100,
+        unit: 's',
+        createdAt: now,
+      });
+      logger.debug(`⏱️ Saved time-offset telemetry: avg=${avg.toFixed(2)}s (${sampleCount} samples)`);
+    } catch (error) {
+      logger.error('❌ Error saving time-offset telemetry:', error);
     }
   }
 
@@ -3298,6 +3356,14 @@ class MeshtasticManager {
         nodeData.rssi = meshPacket.rxRssi;
       }
       databaseService.upsertNode(nodeData);
+
+      // Capture server-vs-node clock offset for time-offset telemetry
+      if (meshPacket.rxTime && Number(meshPacket.rxTime) > 1600000000) {
+        const offset = Date.now() / 1000 - Number(meshPacket.rxTime);
+        if (Math.abs(offset) < 86400) {
+          this.timeOffsetSamples.push(offset);
+        }
+      }
 
       // Track message hops (hopStart - hopLimit) for "All messages" hop calculation mode
       const hopStart = meshPacket.hopStart ?? meshPacket.hop_start;
