@@ -9100,6 +9100,44 @@ class DatabaseService {
     return Number(result.changes) > 0;
   }
 
+  // Update message rxTime and timestamp when ACK is received (fixes outgoing message ordering)
+  updateMessageTimestamps(requestId: number, rxTime: number): boolean {
+    // For PostgreSQL/MySQL, fire-and-forget async update
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.updateMessageTimestamps(requestId, rxTime).catch((error) => {
+          logger.debug(`[DatabaseService] Message timestamp update skipped for requestId ${requestId}: ${error}`);
+        });
+      }
+      // Also update the cache immediately so poll returns updated state
+      for (const msg of this._messagesCache) {
+        if ((msg as any).requestId === requestId) {
+          (msg as any).rxTime = rxTime;
+          (msg as any).timestamp = rxTime;
+          break;
+        }
+      }
+      // Update channel-specific caches too
+      for (const [_channel, messages] of this._messagesCacheChannel) {
+        for (const msg of messages) {
+          if ((msg as any).requestId === requestId) {
+            (msg as any).rxTime = rxTime;
+            (msg as any).timestamp = rxTime;
+            break;
+          }
+        }
+      }
+      return true; // Optimistic return
+    }
+    const stmt = this.db.prepare(`
+      UPDATE messages
+      SET rxTime = ?, timestamp = ?
+      WHERE requestId = ?
+    `);
+    const result = stmt.run(rxTime, rxTime, requestId);
+    return Number(result.changes) > 0;
+  }
+
   getUnreadMessageIds(userId: number | null): string[] {
     const stmt = this.db.prepare(`
       SELECT m.id FROM messages m

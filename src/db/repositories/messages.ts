@@ -635,6 +635,52 @@ export class MessagesRepository extends BaseRepository {
     }
   }
 
+  async updateMessageTimestamps(requestId: number, rxTime: number): Promise<boolean> {
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const existing = await db
+        .select({ id: messagesSqlite.id })
+        .from(messagesSqlite)
+        .where(eq(messagesSqlite.requestId, requestId));
+
+      if (existing.length === 0) return false;
+
+      await db
+        .update(messagesSqlite)
+        .set({ rxTime, timestamp: rxTime })
+        .where(eq(messagesSqlite.requestId, requestId));
+      return true;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const existing = await db
+        .select({ id: messagesMysql.id })
+        .from(messagesMysql)
+        .where(eq(messagesMysql.requestId, requestId));
+
+      if (existing.length === 0) return false;
+
+      await db
+        .update(messagesMysql)
+        .set({ rxTime, timestamp: rxTime })
+        .where(eq(messagesMysql.requestId, requestId));
+      return true;
+    } else {
+      const db = this.getPostgresDb();
+      const existing = await db
+        .select({ id: messagesPostgres.id })
+        .from(messagesPostgres)
+        .where(eq(messagesPostgres.requestId, requestId));
+
+      if (existing.length === 0) return false;
+
+      await db
+        .update(messagesPostgres)
+        .set({ rxTime, timestamp: rxTime })
+        .where(eq(messagesPostgres.requestId, requestId));
+      return true;
+    }
+  }
+
   /**
    * Delete all messages
    */

@@ -4680,6 +4680,13 @@ class MeshtasticManager {
             const updated = databaseService.updateMessageDeliveryState(requestId, 'delivered');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as delivered (transmitted)`);
+              // Update message timestamps to node time so outgoing messages sort correctly
+              // relative to incoming messages (which use node rxTime)
+              const ackRxTime = Number(meshPacket.rxTime);
+              if (ackRxTime > 0) {
+                databaseService.updateMessageTimestamps(requestId, ackRxTime * 1000);
+                logger.debug(`🕐 Updated message ${requestId} timestamps to node time: ${ackRxTime}`);
+              }
               // Emit WebSocket event for real-time delivery status update
               dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
             }
