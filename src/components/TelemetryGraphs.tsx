@@ -425,6 +425,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         // MeshMonitor system metrics (calculated by MeshMonitor)
         systemNodeCount: 'Active Nodes (MeshMonitor)',
         systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
+        timeOffset: 'Clock Offset (Server \u2212 Node)',
         // HostMetrics (for Linux devices)
         hostUptimeSeconds: 'Host Uptime',
         hostFreememBytes: 'Host Free Memory',
@@ -509,6 +510,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         // MeshMonitor system metrics
         systemNodeCount: '#89b4fa', // Blue - system active nodes
         systemDirectNodeCount: '#a6e3a1', // Green - system direct nodes
+        timeOffset: '#f2cdcd', // Catppuccin flamingo - clock offset
         // Extended Environment metrics
         gasResistance: '#cba6f7', // Mauve - air quality related
         iaq: '#f38ba8', // Red - important air quality indicator
