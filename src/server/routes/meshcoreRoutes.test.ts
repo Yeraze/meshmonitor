@@ -78,7 +78,7 @@ describe('MeshCore Routes', () => {
   let permissionModel: PermissionModel;
   let authenticatedAgent: any;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     // Setup express app for testing
     app = express();
     app.use(express.json());
@@ -133,6 +133,19 @@ describe('MeshCore Routes', () => {
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
     };
+
+    // Create anonymous user with meshcore read permission for unauthenticated access
+    const anonymousUser = await userModel.create({
+      username: 'anonymous',
+      password: 'anonymous123',
+      authProvider: 'local',
+    });
+    permissionModel.grant({
+      userId: anonymousUser.id,
+      resource: 'meshcore',
+      canRead: true,
+      canWrite: false,
+    });
 
     // Mount routes
     app.use('/api/auth', authRoutes);

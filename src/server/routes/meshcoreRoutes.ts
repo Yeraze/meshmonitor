@@ -11,7 +11,7 @@
 import { Router, Request, Response } from 'express';
 import meshcoreManager, { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, optionalAuth } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
@@ -118,7 +118,7 @@ function isValidConnectionParams(params: {
  * GET /api/meshcore/status
  * Get connection status and local node info
  */
-router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
+router.get('/status', optionalAuth(), requirePermission('meshcore', 'read'), async (_req: Request, res: Response) => {
   try {
     const status = meshcoreManager.getConnectionStatus();
     const localNode = meshcoreManager.getLocalNode();
@@ -142,7 +142,7 @@ router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
  * Connect to a MeshCore device
  * Requires authentication - connects to hardware
  */
-router.post('/connect', meshcoreDeviceLimiter, requireAuth(), async (req: Request, res: Response) => {
+router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
     const { connectionType, serialPort, tcpHost, tcpPort, baudRate } = req.body;
 
@@ -193,7 +193,7 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), async (req: Reques
  * Disconnect from the device
  * Requires authentication - disconnects hardware
  */
-router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), async (_req: Request, res: Response) => {
+router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (_req: Request, res: Response) => {
   try {
     await meshcoreManager.disconnect();
     res.json({ success: true, message: 'Disconnected' });
@@ -207,7 +207,7 @@ router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), async (_req: Re
  * GET /api/meshcore/nodes
  * Get all known nodes (local + contacts)
  */
-router.get('/nodes', optionalAuth(), async (_req: Request, res: Response) => {
+router.get('/nodes', optionalAuth(), requirePermission('meshcore', 'read'), async (_req: Request, res: Response) => {
   try {
     const nodes = meshcoreManager.getAllNodes();
     res.json({
@@ -225,7 +225,7 @@ router.get('/nodes', optionalAuth(), async (_req: Request, res: Response) => {
  * GET /api/meshcore/contacts
  * Get contacts list
  */
-router.get('/contacts', optionalAuth(), async (_req: Request, res: Response) => {
+router.get('/contacts', optionalAuth(), requirePermission('meshcore', 'read'), async (_req: Request, res: Response) => {
   try {
     const contacts = meshcoreManager.getContacts();
     const localNode = meshcoreManager.getLocalNode();
@@ -262,7 +262,7 @@ router.get('/contacts', optionalAuth(), async (_req: Request, res: Response) => 
  * Refresh contacts from device
  * Requires authentication - triggers device communication
  */
-router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), async (_req: Request, res: Response) => {
+router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (_req: Request, res: Response) => {
   try {
     const contacts = await meshcoreManager.refreshContacts();
     res.json({
@@ -280,7 +280,7 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), async (_r
  * GET /api/meshcore/messages
  * Get recent messages
  */
-router.get('/messages', optionalAuth(), async (req: Request, res: Response) => {
+router.get('/messages', optionalAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
     let limit = parseInt(req.query.limit as string || '50', 10);
     // Validate and clamp limit to reasonable bounds
@@ -306,7 +306,7 @@ router.get('/messages', optionalAuth(), async (req: Request, res: Response) => {
  * Send a message
  * Requires authentication - sends data over mesh network
  */
-router.post('/messages/send', messageLimiter, requireAuth(), async (req: Request, res: Response) => {
+router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
     const { text, toPublicKey } = req.body;
 
@@ -341,7 +341,7 @@ router.post('/messages/send', messageLimiter, requireAuth(), async (req: Request
  * Send an advertisement
  * Requires authentication - broadcasts on mesh network
  */
-router.post('/advert', meshcoreDeviceLimiter, requireAuth(), async (_req: Request, res: Response) => {
+router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (_req: Request, res: Response) => {
   try {
     const success = await meshcoreManager.sendAdvert();
 
@@ -361,7 +361,7 @@ router.post('/advert', meshcoreDeviceLimiter, requireAuth(), async (_req: Reques
  * Login to a remote node for admin access
  * Requires authentication - sensitive admin operation
  */
-router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), async (req: Request, res: Response) => {
+router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
     const { publicKey, password } = req.body;
 
@@ -392,7 +392,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), async (req: Re
  * Get status from a remote node (requires prior login)
  * Requires authentication - queries remote node
  */
-router.get('/admin/status/:publicKey', requireAuth(), async (req: Request, res: Response) => {
+router.get('/admin/status/:publicKey', requireAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.params;
 
@@ -419,7 +419,7 @@ router.get('/admin/status/:publicKey', requireAuth(), async (req: Request, res: 
  * Set device name
  * Requires authentication - modifies device configuration
  */
-router.post('/config/name', meshcoreDeviceLimiter, requireAuth(), async (req: Request, res: Response) => {
+router.post('/config/name', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
 
@@ -447,7 +447,7 @@ router.post('/config/name', meshcoreDeviceLimiter, requireAuth(), async (req: Re
  * Set radio parameters
  * Requires authentication - modifies device radio configuration
  */
-router.post('/config/radio', meshcoreDeviceLimiter, requireAuth(), async (req: Request, res: Response) => {
+router.post('/config/radio', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
     const { freq, bw, sf, cr } = req.body;
 
