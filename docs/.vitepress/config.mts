@@ -47,6 +47,7 @@ export default defineConfig({
             { text: 'Channel Database', link: '/features/channel-database' },
             { text: 'Security', link: '/features/security' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
+            { text: 'MeshCore (Experimental)', link: '/features/meshcore' },
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
             { text: '🌐 Site Gallery', link: '/site-gallery' },
