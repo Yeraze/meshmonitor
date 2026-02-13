@@ -388,20 +388,10 @@ export class MeshCoreRepository extends BaseRepository {
       await db.insert(meshcoreMessagesSqlite).values(message);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      // MySQL uses integer for boolean fields
-      const mysqlMessage = {
-        ...message,
-        delivered: message.delivered ? 1 : (message.delivered === false ? 0 : null),
-      };
-      await db.insert(meshcoreMessagesMysql).values(mysqlMessage);
+      await db.insert(meshcoreMessagesMysql).values(message);
     } else {
       const db = this.getPostgresDb();
-      // PostgreSQL uses integer for boolean fields in this schema
-      const pgMessage = {
-        ...message,
-        delivered: message.delivered ? 1 : (message.delivered === false ? 0 : null),
-      };
-      await db.insert(meshcoreMessagesPostgres).values(pgMessage);
+      await db.insert(meshcoreMessagesPostgres).values(message);
     }
   }
 
@@ -420,13 +410,13 @@ export class MeshCoreRepository extends BaseRepository {
       const db = this.getMysqlDb();
       await db
         .update(meshcoreMessagesMysql)
-        .set({ delivered: 1, deliveredAt: now })
+        .set({ delivered: true, deliveredAt: now })
         .where(eq(meshcoreMessagesMysql.id, messageId));
     } else {
       const db = this.getPostgresDb();
       await db
         .update(meshcoreMessagesPostgres)
-        .set({ delivered: 1, deliveredAt: now })
+        .set({ delivered: true, deliveredAt: now })
         .where(eq(meshcoreMessagesPostgres.id, messageId));
     }
   }

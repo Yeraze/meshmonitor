@@ -250,7 +250,7 @@ export async function runMigration070Mysql(pool: import('mysql2/promise').Pool):
             rssi INT,
             snr INT,
             messageType VARCHAR(32) DEFAULT 'text',
-            delivered INT DEFAULT 0,
+            delivered BOOLEAN DEFAULT FALSE,
             deliveredAt BIGINT,
             createdAt BIGINT NOT NULL,
             INDEX idx_meshcore_messages_timestamp (timestamp),

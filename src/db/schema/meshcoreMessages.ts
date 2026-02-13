@@ -3,8 +3,8 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, bigint as pgBigint } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, bigint as myBigint, text as myText } from 'drizzle-orm/mysql-core';
+import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, boolean as myBoolean, bigint as myBigint, text as myText } from 'drizzle-orm/mysql-core';
 
 // ============ SQLite Schema ============
 
@@ -50,7 +50,7 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   rssi: pgInteger('rssi'),
   snr: pgInteger('snr'),
   messageType: pgText('messageType').default('text'),
-  delivered: pgInteger('delivered'),
+  delivered: pgBoolean('delivered').default(false),
   deliveredAt: pgBigint('deliveredAt', { mode: 'number' }),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
@@ -66,7 +66,7 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   rssi: myInt('rssi'),
   snr: myInt('snr'),
   messageType: myVarchar('messageType', { length: 32 }).default('text'),
-  delivered: myInt('delivered'),
+  delivered: myBoolean('delivered').default(false),
   deliveredAt: myBigint('deliveredAt', { mode: 'number' }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });
