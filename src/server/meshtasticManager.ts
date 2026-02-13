@@ -7437,13 +7437,12 @@ class MeshtasticManager {
 
         logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${target}`);
 
-        // Send tapback reaction using sendTextMessage with emoji flag
-        // Use same routing logic as message reply: respect alwaysUseDM flag
+        // Tapbacks always reply on the original channel (not affected by alwaysUseDM)
         try {
           await this.sendTextMessage(
             hopEmoji,
-            (alwaysUseDM || isDirectMessage) ? 0 : channelIndex,
-            (alwaysUseDM || isDirectMessage) ? fromNum : undefined,
+            isDirectMessage ? 0 : channelIndex,
+            isDirectMessage ? fromNum : undefined,
             packetId, // replyId - react to the original message
             1 // emoji flag = 1 for tapback/reaction
           );
