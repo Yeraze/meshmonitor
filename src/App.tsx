@@ -4236,6 +4236,7 @@ function App() {
         }}
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
+        meshcoreEnabled={authStatus?.meshcoreEnabled || false}
       />
 
       <main className="app-main">

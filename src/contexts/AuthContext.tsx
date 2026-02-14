@@ -35,6 +35,7 @@ export interface AuthStatus {
   oidcEnabled: boolean;
   localAuthDisabled: boolean;
   anonymousDisabled: boolean;
+  meshcoreEnabled: boolean;
 }
 
 export interface LoginResult {
@@ -100,7 +101,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         channelDbPermissions: {},
         oidcEnabled: false,
         localAuthDisabled: false,
-        anonymousDisabled: false
+        anonymousDisabled: false,
+        meshcoreEnabled: false
       });
     } finally {
       setLoading(false);
