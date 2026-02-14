@@ -57,7 +57,8 @@ router.get('/status', async (req: Request, res: Response) => {
         permissions: anonymousPermissions,
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled,
-        anonymousDisabled
+        anonymousDisabled,
+        meshcoreEnabled: process.env.MESHCORE_ENABLED === 'true'
       });
     }
 
@@ -82,7 +83,8 @@ router.get('/status', async (req: Request, res: Response) => {
         permissions: anonymousPermissions,
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled,
-        anonymousDisabled
+        anonymousDisabled,
+        meshcoreEnabled: process.env.MESHCORE_ENABLED === 'true'
       });
     }
 
@@ -98,7 +100,8 @@ router.get('/status', async (req: Request, res: Response) => {
       permissions,
       oidcEnabled: isOIDCEnabled(),
       localAuthDisabled,
-      anonymousDisabled
+      anonymousDisabled,
+      meshcoreEnabled: process.env.MESHCORE_ENABLED === 'true'
     });
   } catch (error) {
     logger.error('Error getting auth status:', error);
