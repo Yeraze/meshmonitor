@@ -499,5 +499,28 @@
       "HTTP retry logic with configurable timeout",
       "Environment variable configuration for all settings"
     ]
+  },
+  {
+    "name": "RayHunter Monitor",
+    "filename": "rayhunter-monitor.py",
+    "icon": "📡",
+    "description": "Monitors an EFF RayHunter device for IMSI catcher / cell-site simulator warnings and broadcasts alerts on the mesh. Polls the current analysis for Low, Medium, and High severity events and formats a concise alert message.",
+    "language": "Python",
+    "tags": ["Security", "Monitoring", "Timer Trigger", "Alerting", "RayHunter", "IMSI Catcher"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/rayhunter-monitor.py",
+    "exampleTrigger": "Timer Trigger (e.g. every 5 minutes)",
+    "requirements": [
+      "Python 3.8+ (standard library only, zero external dependencies)",
+      "EFF RayHunter device on the network (default http://192.168.1.1:8080)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Polls RayHunter current recording for active warnings",
+      "Parses NDJSON analysis reports for Low/Medium/High severity events",
+      "Formatted mesh-friendly alert messages with severity counts",
+      "Silent when no warnings (no unnecessary mesh traffic)",
+      "Configurable RayHunter URL via --url flag or RAYHUNTER_URL env var",
+      "--always-report flag for testing"
+    ]
   }
 ]
