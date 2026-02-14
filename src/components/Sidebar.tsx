@@ -23,6 +23,7 @@ interface SidebarProps {
   onNewsClick?: () => void;
   baseUrl: string;
   connectedNodeName?: string;
+  meshcoreEnabled?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -36,7 +37,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onChannelsClick,
   onNewsClick,
   baseUrl,
-  connectedNodeName
+  connectedNodeName,
+  meshcoreEnabled
 }) => {
   const { t } = useTranslation();
   // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
@@ -174,7 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('dashboard', 'read') && (
             <NavItem id="dashboard" label={t('nav.dashboard')} icon="📊" />
           )}
-          {hasPermission('meshcore', 'read') && (
+          {meshcoreEnabled && hasPermission('meshcore', 'read') && (
             <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon="📶" />
           )}
         </div>
