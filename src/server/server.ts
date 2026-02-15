@@ -8588,7 +8588,7 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
         interpreter = isDev ? 'node' : '/usr/local/bin/node';
         break;
       case 'py':
-        interpreter = isDev ? 'python' : '/usr/bin/python3';
+        interpreter = isDev ? 'python' : '/opt/apprise-venv/bin/python3';
         break;
       case 'sh':
         interpreter = isDev ? 'sh' : '/bin/sh';

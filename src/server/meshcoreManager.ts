@@ -320,7 +320,8 @@ class MeshCoreManager extends EventEmitter {
 
     logger.info(`[MeshCore] Starting Python bridge: ${bridgeScript}`);
 
-    this.bridgeProcess = spawn('python3', [bridgeScript], {
+    const pythonPath = process.env.NODE_ENV !== 'production' ? 'python3' : '/opt/apprise-venv/bin/python3';
+    this.bridgeProcess = spawn(pythonPath, [bridgeScript], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
