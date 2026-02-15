@@ -9250,7 +9250,7 @@ class MeshtasticManager {
   /**
    * Send admin message to set a node as favorite on the device
    */
-  async sendFavoriteNode(nodeNum: number): Promise<void> {
+  async sendFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -9260,15 +9260,26 @@ class MeshtasticManager {
       throw new Error('FIRMWARE_NOT_SUPPORTED');
     }
 
-    try {
-      // For local TCP connections, try sending without session passkey first
-      // (there's a known bug where session keys don't work properly over TCP)
-      logger.debug('⭐ Attempting to send favorite without session key (local TCP admin)');
-      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+    const destNode = destinationNodeNum || localNodeNum;
+    const isRemote = destNode !== localNodeNum && destNode !== 0;
 
-      await this.transport.send(adminPacket);
-      logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    try {
+      let sessionPasskey: Uint8Array = new Uint8Array();
+      if (isRemote) {
+        const cached = this.getSessionPasskey(destNode);
+        if (cached) {
+          sessionPasskey = cached;
+        } else {
+          const requested = await this.requestRemoteSessionPasskey(destNode);
+          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
+          sessionPasskey = requested;
+        }
+      }
+
+      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
+      await this.sendAdminCommand(setFavoriteMsg, destNode);
+      logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
     } catch (error) {
       logger.error('❌ Error sending favorite node admin message:', error);
       throw error;
@@ -9278,7 +9289,7 @@ class MeshtasticManager {
   /**
    * Send admin message to remove a node from favorites on the device
    */
-  async sendRemoveFavoriteNode(nodeNum: number): Promise<void> {
+  async sendRemoveFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -9288,15 +9299,26 @@ class MeshtasticManager {
       throw new Error('FIRMWARE_NOT_SUPPORTED');
     }
 
-    try {
-      // For local TCP connections, try sending without session passkey first
-      // (there's a known bug where session keys don't work properly over TCP)
-      logger.debug('☆ Attempting to remove favorite without session key (local TCP admin)');
-      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+    const destNode = destinationNodeNum || localNodeNum;
+    const isRemote = destNode !== localNodeNum && destNode !== 0;
 
-      await this.transport.send(adminPacket);
-      logger.debug(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    try {
+      let sessionPasskey: Uint8Array = new Uint8Array();
+      if (isRemote) {
+        const cached = this.getSessionPasskey(destNode);
+        if (cached) {
+          sessionPasskey = cached;
+        } else {
+          const requested = await this.requestRemoteSessionPasskey(destNode);
+          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
+          sessionPasskey = requested;
+        }
+      }
+
+      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, sessionPasskey);
+      await this.sendAdminCommand(removeFavoriteMsg, destNode);
+      logger.debug(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
     } catch (error) {
       logger.error('❌ Error sending remove favorite node admin message:', error);
       throw error;
@@ -9306,7 +9328,7 @@ class MeshtasticManager {
   /**
    * Send admin message to set a node as ignored on the device
    */
-  async sendIgnoredNode(nodeNum: number): Promise<void> {
+  async sendIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -9316,15 +9338,26 @@ class MeshtasticManager {
       throw new Error('FIRMWARE_NOT_SUPPORTED');
     }
 
-    try {
-      // For local TCP connections, try sending without session passkey first
-      // (there's a known bug where session keys don't work properly over TCP)
-      logger.debug('🚫 Attempting to set ignored node without session key (local TCP admin)');
-      const setIgnoredMsg = protobufService.createSetIgnoredNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(setIgnoredMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+    const destNode = destinationNodeNum || localNodeNum;
+    const isRemote = destNode !== localNodeNum && destNode !== 0;
 
-      await this.transport.send(adminPacket);
-      logger.debug(`🚫 Sent set_ignored_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    try {
+      let sessionPasskey: Uint8Array = new Uint8Array();
+      if (isRemote) {
+        const cached = this.getSessionPasskey(destNode);
+        if (cached) {
+          sessionPasskey = cached;
+        } else {
+          const requested = await this.requestRemoteSessionPasskey(destNode);
+          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
+          sessionPasskey = requested;
+        }
+      }
+
+      const setIgnoredMsg = protobufService.createSetIgnoredNodeMessage(nodeNum, sessionPasskey);
+      await this.sendAdminCommand(setIgnoredMsg, destNode);
+      logger.debug(`🚫 Sent set_ignored_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
     } catch (error) {
       logger.error('❌ Error sending ignored node admin message:', error);
       throw error;
@@ -9334,7 +9367,7 @@ class MeshtasticManager {
   /**
    * Send admin message to remove a node from ignored list on the device
    */
-  async sendRemoveIgnoredNode(nodeNum: number): Promise<void> {
+  async sendRemoveIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -9344,15 +9377,26 @@ class MeshtasticManager {
       throw new Error('FIRMWARE_NOT_SUPPORTED');
     }
 
-    try {
-      // For local TCP connections, try sending without session passkey first
-      // (there's a known bug where session keys don't work properly over TCP)
-      logger.debug('✅ Attempting to remove ignored node without session key (local TCP admin)');
-      const removeIgnoredMsg = protobufService.createRemoveIgnoredNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeIgnoredMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+    const destNode = destinationNodeNum || localNodeNum;
+    const isRemote = destNode !== localNodeNum && destNode !== 0;
 
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent remove_ignored_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    try {
+      let sessionPasskey: Uint8Array = new Uint8Array();
+      if (isRemote) {
+        const cached = this.getSessionPasskey(destNode);
+        if (cached) {
+          sessionPasskey = cached;
+        } else {
+          const requested = await this.requestRemoteSessionPasskey(destNode);
+          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
+          sessionPasskey = requested;
+        }
+      }
+
+      const removeIgnoredMsg = protobufService.createRemoveIgnoredNodeMessage(nodeNum, sessionPasskey);
+      await this.sendAdminCommand(removeIgnoredMsg, destNode);
+      logger.debug(`✅ Sent remove_ignored_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
     } catch (error) {
       logger.error('❌ Error sending remove ignored node admin message:', error);
       throw error;

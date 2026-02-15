@@ -913,7 +913,7 @@ interface ApiErrorResponse {
 apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { isFavorite, syncToDevice = true } = req.body;
+    const { isFavorite, syncToDevice = true, destinationNodeNum } = req.body;
 
     if (typeof isFavorite !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
@@ -1007,9 +1007,9 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     if (syncToDevice) {
       try {
         if (isFavorite) {
-          await meshtasticManager.sendFavoriteNode(nodeNum);
+          await meshtasticManager.sendFavoriteNode(nodeNum, destinationNodeNum);
         } else {
-          await meshtasticManager.sendRemoveFavoriteNode(nodeNum);
+          await meshtasticManager.sendRemoveFavoriteNode(nodeNum, destinationNodeNum);
         }
         deviceSyncStatus = 'success';
         logger.debug(`✅ Synced favorite status to device for node ${nodeNum}`);
@@ -1054,7 +1054,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { isIgnored, syncToDevice = true } = req.body;
+    const { isIgnored, syncToDevice = true, destinationNodeNum } = req.body;
 
     if (typeof isIgnored !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
@@ -1148,9 +1148,9 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     if (syncToDevice) {
       try {
         if (isIgnored) {
-          await meshtasticManager.sendIgnoredNode(nodeNum);
+          await meshtasticManager.sendIgnoredNode(nodeNum, destinationNodeNum);
         } else {
-          await meshtasticManager.sendRemoveIgnoredNode(nodeNum);
+          await meshtasticManager.sendRemoveIgnoredNode(nodeNum, destinationNodeNum);
         }
         deviceSyncStatus = 'success';
         logger.debug(`✅ Synced ignored status to device for node ${nodeNum}`);
