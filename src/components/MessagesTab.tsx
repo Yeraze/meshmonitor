@@ -5,7 +5,7 @@
  * Handles the Messages/DM tab with node list and conversation view.
  */
 
-import React, { useRef, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import { useResizable } from '../hooks/useResizable';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
@@ -33,6 +33,9 @@ import NodeDetailsBlock from './NodeDetailsBlock';
 import TelemetryGraphs from './TelemetryGraphs';
 import SmartHopsGraphs from './SmartHopsGraphs';
 import LinkQualityGraph from './LinkQualityGraph';
+import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
+import { getPacketDistributionStats } from '../services/packetApi';
+import { PacketDistributionStats } from '../types/packet';
 import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
@@ -443,6 +446,44 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     },
     [nodes, baseUrl, csrfFetch, showToast, t]
   );
+
+  // Packet type distribution for selected node (last 24h)
+  const selectedNodeNum = useMemo(() => {
+    if (!selectedDMNode) return undefined;
+    const node = nodes.find(n => n.user?.id === selectedDMNode);
+    return node?.nodeNum;
+  }, [selectedDMNode, nodes]);
+
+  const [nodePacketDistribution, setNodePacketDistribution] = useState<PacketDistributionStats | null>(null);
+
+  const fetchNodePacketDistribution = useCallback(async () => {
+    if (selectedNodeNum === undefined) {
+      setNodePacketDistribution(null);
+      return;
+    }
+    try {
+      const since = Math.floor(Date.now() / 1000) - 86400; // Last 24 hours
+      const distribution = await getPacketDistributionStats(since, selectedNodeNum);
+      setNodePacketDistribution(distribution);
+    } catch (error) {
+      console.error('Failed to fetch node packet distribution:', error);
+    }
+  }, [selectedNodeNum]);
+
+  useEffect(() => {
+    fetchNodePacketDistribution();
+    const interval = setInterval(fetchNodePacketDistribution, 60000);
+    return () => clearInterval(interval);
+  }, [fetchNodePacketDistribution]);
+
+  const nodePacketTypeData: ChartDataEntry[] = useMemo(() => {
+    if (!nodePacketDistribution?.byType) return [];
+    return nodePacketDistribution.byType.map((p, i) => ({
+      name: p.portnum_name.replace(/_APP$/, '').replace(/_/g, ' '),
+      value: p.count,
+      color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length],
+    }));
+  }, [nodePacketDistribution]);
 
   // Permission check
   if (!hasPermission('messages', 'read')) {
@@ -1666,6 +1707,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 telemetryHours={telemetryVisualizationHours}
                 baseUrl={baseUrl}
               />
+              {nodePacketDistribution?.enabled && nodePacketTypeData.length > 0 && (
+                <PacketStatsChart
+                  title={t('messages.packet_type_distribution')}
+                  data={nodePacketTypeData}
+                  total={nodePacketDistribution.total}
+                  chartId="node-packet-type"
+                />
+              )}
             </div>
             {/* End of dm-send-section */}
           </div>

@@ -112,10 +112,16 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
 /**
  * Fetch packet distribution statistics (by device and by type)
  */
-export const getPacketDistributionStats = async (since?: number): Promise<PacketDistributionStats> => {
+export const getPacketDistributionStats = async (since?: number, from_node?: number, portnum?: number): Promise<PacketDistributionStats> => {
   const params = new URLSearchParams();
   if (since !== undefined) {
     params.append('since', since.toString());
+  }
+  if (from_node !== undefined) {
+    params.append('from_node', from_node.toString());
+  }
+  if (portnum !== undefined) {
+    params.append('portnum', portnum.toString());
   }
   const query = params.toString();
   return api.get<PacketDistributionStats>(`/api/packets/stats/distribution${query ? `?${query}` : ''}`);
