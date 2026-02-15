@@ -222,6 +222,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [localStats, setLocalStats] = useState<any>(null);
   const [securityKeys, setSecurityKeys] = useState<{ publicKey: string | null; privateKey: string | null } | null>(null);
   const [loadingSecurityKeys, setLoadingSecurityKeys] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [packetDistribution, setPacketDistribution] = useState<PacketDistributionStats | null>(null);
   const [distributionTimeRange, setDistributionTimeRange] = useState<'hour' | '24h' | 'all'>('24h');
   const [loadingDistribution, setLoadingDistribution] = useState(false);
@@ -520,21 +521,44 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                     </div>
                     <div>
                       <p><strong>{t('info.private_key')}</strong></p>
-                      <input
-                        type="text"
-                        readOnly
-                        value={securityKeys.privateKey || t('info.not_available')}
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem',
-                          fontSize: '0.85rem',
-                          fontFamily: 'monospace',
-                          backgroundColor: 'var(--ctp-surface0)',
-                          border: '1px solid var(--ctp-surface2)',
-                          borderRadius: '4px',
-                          color: 'var(--ctp-text)'
-                        }}
-                      />
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showPrivateKey ? 'text' : 'password'}
+                          readOnly
+                          value={securityKeys.privateKey || t('info.not_available')}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            paddingRight: '2.5rem',
+                            fontSize: '0.85rem',
+                            fontFamily: 'monospace',
+                            backgroundColor: 'var(--ctp-surface0)',
+                            border: '1px solid var(--ctp-surface2)',
+                            borderRadius: '4px',
+                            color: 'var(--ctp-text)'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPrivateKey(!showPrivateKey)}
+                          title={showPrivateKey ? t('info.hide_private_key', 'Hide') : t('info.show_private_key', 'Show')}
+                          style={{
+                            position: 'absolute',
+                            right: '0.5rem',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '0.25rem',
+                            fontSize: '1rem',
+                            color: 'var(--ctp-subtext0)',
+                            lineHeight: 1
+                          }}
+                        >
+                          {showPrivateKey ? '\u{1F648}' : '\u{1F441}\uFE0F'}
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
