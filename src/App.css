@@ -1486,11 +1486,8 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden; /* Must be hidden so .messages-container is the scroll target for infinite scroll */
     min-height: 0;
-    /* Prevent scroll chaining to parent */
-    overscroll-behavior: contain;
   }
 
   /* Messages container fills available space and scrolls */
@@ -3679,12 +3676,13 @@ body {
     order: -2; /* Keep header at top when using flexbox order */
   }
 
-  /* Messages container should have minimum height and allow scrolling */
+  /* Messages container: constrain height so it scrolls independently from parent panel */
   .messages-split-view .dm-conversation-panel .messages-container {
-    flex: 1;
-    min-height: 200px; /* Ensure messages get reasonable space */
+    flex: 0 0 auto;
+    min-height: 200px;
     overflow-y: auto;
-    max-height: none;
+    max-height: 60vh; /* Constrain so messages-container is the scroll target for infinite scroll */
+    overscroll-behavior: contain;
   }
 
   /* Send form should be sticky at bottom of viewport */

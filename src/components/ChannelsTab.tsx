@@ -265,6 +265,11 @@ export default function ChannelsTab({
     // Add channels from channel configurations first (these are authoritative)
     channels.forEach(ch => channelSet.add(ch.id));
 
+    // Add virtual channels from Channel Database
+    channelDatabaseEntries.forEach(entry => {
+      channelSet.add(CHANNEL_DB_OFFSET + entry.id);
+    });
+
     // Add channels from messages
     messages.forEach(msg => {
       channelSet.add(msg.channel);
