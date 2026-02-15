@@ -3670,6 +3670,6 @@
     "automation.schedule.ending_at": "Заканчивая в",
     "meshcore.connection": "Подключение",
     "meshcore.connection_type": "Тип подключения",
-    "meshcore.serial_port": "",
+    "meshcore.serial_port": "Последовательный порт",
     "meshcore.host": "Хост"
 }
