@@ -9967,7 +9967,8 @@ class MeshtasticManager {
       10, // AMBIENTLIGHTING_CONFIG
       11, // DETECTIONSENSOR_CONFIG
       12, // PAXCOUNTER_CONFIG
-      13  // STATUSMESSAGE_CONFIG
+      13, // STATUSMESSAGE_CONFIG
+      14  // TRAFFICMANAGEMENT_CONFIG
     ];
 
     logger.info('📦 Requesting all module configs for complete backup...');
