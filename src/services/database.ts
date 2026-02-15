@@ -9954,14 +9954,24 @@ class DatabaseService {
    * Get packet counts grouped by from_node (for distribution charts)
    * Returns top N nodes by packet count, plus counts for remainder grouped as "Other"
    */
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number }): Promise<DbPacketCountByNode[]> {
-    const { since, limit = 10 } = options || {};
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
+    const { since, limit = 10, portnum } = options || {};
 
     // For PostgreSQL
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
       try {
         const params: any[] = [];
         let paramIndex = 1;
+        const conditions: string[] = [];
+
+        if (since !== undefined) {
+          conditions.push(`pl.timestamp >= $${paramIndex++}`);
+          params.push(since);
+        }
+        if (portnum !== undefined) {
+          conditions.push(`pl.portnum = $${paramIndex++}`);
+          params.push(portnum);
+        }
 
         let query = `
           SELECT
@@ -9973,9 +9983,8 @@ class DatabaseService {
           LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
         `;
 
-        if (since !== undefined) {
-          query += ` WHERE pl.timestamp >= $${paramIndex++}`;
-          params.push(since);
+        if (conditions.length > 0) {
+          query += ` WHERE ${conditions.join(' AND ')}`;
         }
 
         query += ` GROUP BY pl.from_node, n."nodeId", n."longName" ORDER BY count DESC LIMIT $${paramIndex++}`;
@@ -9998,6 +10007,16 @@ class DatabaseService {
     if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
       try {
         const params: any[] = [];
+        const conditions: string[] = [];
+
+        if (since !== undefined) {
+          conditions.push(`pl.timestamp >= ?`);
+          params.push(since);
+        }
+        if (portnum !== undefined) {
+          conditions.push(`pl.portnum = ?`);
+          params.push(portnum);
+        }
 
         let query = `
           SELECT
@@ -10009,9 +10028,8 @@ class DatabaseService {
           LEFT JOIN nodes n ON pl.from_node = n.nodeNum
         `;
 
-        if (since !== undefined) {
-          query += ` WHERE pl.timestamp >= ?`;
-          params.push(since);
+        if (conditions.length > 0) {
+          query += ` WHERE ${conditions.join(' AND ')}`;
         }
 
         query += ` GROUP BY pl.from_node, n.nodeId, n.longName ORDER BY count DESC LIMIT ?`;
@@ -10032,6 +10050,18 @@ class DatabaseService {
 
     // For SQLite
     try {
+      const params: any[] = [];
+      const conditions: string[] = [];
+
+      if (since !== undefined) {
+        conditions.push(`pl.timestamp >= ?`);
+        params.push(since);
+      }
+      if (portnum !== undefined) {
+        conditions.push(`pl.portnum = ?`);
+        params.push(portnum);
+      }
+
       let query = `
         SELECT
           pl.from_node,
@@ -10042,10 +10072,8 @@ class DatabaseService {
         LEFT JOIN nodes n ON pl.from_node = n.nodeNum
       `;
 
-      const params: any[] = [];
-      if (since !== undefined) {
-        query += ` WHERE pl.timestamp >= ?`;
-        params.push(since);
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(' AND ')}`;
       }
 
       query += ` GROUP BY pl.from_node ORDER BY count DESC LIMIT ?`;
@@ -10069,14 +10097,24 @@ class DatabaseService {
    * Get packet counts grouped by portnum (for distribution charts)
    * Includes port name from meshtastic constants
    */
-  async getPacketCountsByPortnumAsync(options?: { since?: number }): Promise<DbPacketCountByPortnum[]> {
-    const { since } = options || {};
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
+    const { since, from_node } = options || {};
 
     // For PostgreSQL
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
       try {
         const params: any[] = [];
         let paramIndex = 1;
+        const conditions: string[] = [];
+
+        if (since !== undefined) {
+          conditions.push(`timestamp >= $${paramIndex++}`);
+          params.push(since);
+        }
+        if (from_node !== undefined) {
+          conditions.push(`from_node = $${paramIndex++}`);
+          params.push(from_node);
+        }
 
         let query = `
           SELECT
@@ -10085,9 +10123,8 @@ class DatabaseService {
           FROM packet_log
         `;
 
-        if (since !== undefined) {
-          query += ` WHERE timestamp >= $${paramIndex++}`;
-          params.push(since);
+        if (conditions.length > 0) {
+          query += ` WHERE ${conditions.join(' AND ')}`;
         }
 
         query += ` GROUP BY portnum ORDER BY count DESC`;
@@ -10108,6 +10145,16 @@ class DatabaseService {
     if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
       try {
         const params: any[] = [];
+        const conditions: string[] = [];
+
+        if (since !== undefined) {
+          conditions.push(`timestamp >= ?`);
+          params.push(since);
+        }
+        if (from_node !== undefined) {
+          conditions.push(`from_node = ?`);
+          params.push(from_node);
+        }
 
         let query = `
           SELECT
@@ -10116,9 +10163,8 @@ class DatabaseService {
           FROM packet_log
         `;
 
-        if (since !== undefined) {
-          query += ` WHERE timestamp >= ?`;
-          params.push(since);
+        if (conditions.length > 0) {
+          query += ` WHERE ${conditions.join(' AND ')}`;
         }
 
         query += ` GROUP BY portnum ORDER BY count DESC`;
@@ -10137,6 +10183,18 @@ class DatabaseService {
 
     // For SQLite
     try {
+      const conditions: string[] = [];
+      const params: any[] = [];
+
+      if (since !== undefined) {
+        conditions.push(`timestamp >= ?`);
+        params.push(since);
+      }
+      if (from_node !== undefined) {
+        conditions.push(`from_node = ?`);
+        params.push(from_node);
+      }
+
       let query = `
         SELECT
           portnum,
@@ -10144,10 +10202,8 @@ class DatabaseService {
         FROM packet_log
       `;
 
-      const params: any[] = [];
-      if (since !== undefined) {
-        query += ` WHERE timestamp >= ?`;
-        params.push(since);
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(' AND ')}`;
       }
 
       query += ` GROUP BY portnum ORDER BY count DESC`;

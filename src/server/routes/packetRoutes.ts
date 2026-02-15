@@ -153,12 +153,14 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
     }
 
     const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
+    const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
 
     // Fetch distribution data - limit to top 10 devices
     const [byDevice, byType, total] = await Promise.all([
-      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10 }),
-      packetLogService.getPacketCountsByPortnumAsync({ since }),
-      packetLogService.getPacketCountAsync({ since })
+      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, portnum }),
+      packetLogService.getPacketCountsByPortnumAsync({ since, from_node }),
+      packetLogService.getPacketCountAsync({ since, from_node })
     ]);
 
     res.json({

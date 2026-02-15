@@ -347,6 +347,7 @@
   "messages.shared_key_with": "This key is shared with: ",
   "messages.switch_to_title": "Switch to {{name}}",
   "messages.select_from_list": "Select a conversation from the list to view messages",
+  "messages.packet_type_distribution": "Packet Type Distribution (24h)",
 
   "channels.title": "Channels",
   "channels.title_with_count": "Channels ({{count}})",
@@ -1657,6 +1658,10 @@
   "info.all_data": "All Data",
   "info.other_devices": "Other",
   "info.no_packet_data": "No packet data available",
+  "info.select_packet_type": "Select a packet type to see which nodes are sending it",
+  "info.packets_by_type_nodes": "Nodes by Packet Type",
+  "info.nodes_sending_type": "Nodes Sending {{type}}",
+  "info.no_packets_for_type": "No packets found for this type in the selected time range",
 
   "config.loading": "Loading configuration...",
   "config.warning_title": "WARNING",

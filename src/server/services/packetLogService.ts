@@ -2,7 +2,7 @@ import databaseService, { DbPacketLog, DbPacketCountByNode, DbPacketCountByPortn
 import { logger } from '../../utils/logger.js';
 
 class PacketLogService {
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private readonly CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
   constructor() {
@@ -157,14 +157,14 @@ class PacketLogService {
   /**
    * Get packet counts grouped by node (for distribution charts)
    */
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
     return databaseService.getPacketCountsByNodeAsync(options);
   }
 
   /**
    * Get packet counts grouped by portnum (for distribution charts)
    */
-  async getPacketCountsByPortnumAsync(options?: { since?: number }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
     return databaseService.getPacketCountsByPortnumAsync(options);
   }
 
