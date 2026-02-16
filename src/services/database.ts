@@ -9292,7 +9292,52 @@ class DatabaseService {
       }
     }
 
-    // MySQL not yet implemented, return empty
+    // MySQL implementation using mysqlPool
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        let query: string;
+        let params: any[];
+
+        if (userId === null) {
+          query = `
+            SELECT m.channel, COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm.messageId
+            WHERE rm.messageId IS NULL
+              AND m.channel != -1
+              AND m.portnum = 1
+              ${localNodeId ? 'AND m.fromNodeId != ?' : ''}
+            GROUP BY m.channel
+          `;
+          params = localNodeId ? [localNodeId] : [];
+        } else {
+          query = `
+            SELECT m.channel, COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm.messageId AND rm.userId = ?
+            WHERE rm.messageId IS NULL
+              AND m.channel != -1
+              AND m.portnum = 1
+              ${localNodeId ? 'AND m.fromNodeId != ?' : ''}
+            GROUP BY m.channel
+          `;
+          params = localNodeId ? [userId, localNodeId] : [userId];
+        }
+
+        const [rows] = await this.mysqlPool.query(query, params) as any;
+        const counts: {[channelId: number]: number} = {};
+
+        for (const row of rows) {
+          counts[Number(row.channel)] = Number(row.count);
+        }
+
+        return counts;
+      } catch (error) {
+        logger.error('Error getting unread counts by channel:', error);
+        return {};
+      }
+    }
+
     return {};
   }
 
@@ -9350,7 +9395,51 @@ class DatabaseService {
       }
     }
 
-    // MySQL not yet implemented, return 0
+    // MySQL implementation using mysqlPool
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        let query: string;
+        let params: any[];
+
+        if (userId === null) {
+          query = `
+            SELECT COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm.messageId
+            WHERE rm.messageId IS NULL
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m.fromNodeId = ?
+              AND m.toNodeId = ?
+          `;
+          params = [remoteNodeId, localNodeId];
+        } else {
+          query = `
+            SELECT COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm.messageId AND rm.userId = ?
+            WHERE rm.messageId IS NULL
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m.fromNodeId = ?
+              AND m.toNodeId = ?
+          `;
+          params = [userId, remoteNodeId, localNodeId];
+        }
+
+        const [rows] = await this.mysqlPool.query(query, params) as any;
+
+        if (rows.length > 0) {
+          return Number(rows[0].count);
+        }
+
+        return 0;
+      } catch (error) {
+        logger.error('Error getting unread DM count:', error);
+        return 0;
+      }
+    }
+
     return 0;
   }
 
@@ -9440,7 +9529,50 @@ class DatabaseService {
       }
     }
 
-    // MySQL not yet implemented
+    // MySQL implementation using mysqlPool
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        let query: string;
+        let params: any[];
+
+        if (userId === null) {
+          query = `
+            SELECT m.fromNodeId, COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm.messageId
+            WHERE rm.messageId IS NULL
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m.toNodeId = ?
+            GROUP BY m.fromNodeId
+          `;
+          params = [localNodeId];
+        } else {
+          query = `
+            SELECT m.fromNodeId, COUNT(*) as count
+            FROM messages m
+            LEFT JOIN read_messages rm ON m.id = rm.messageId AND rm.userId = ?
+            WHERE rm.messageId IS NULL
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m.toNodeId = ?
+            GROUP BY m.fromNodeId
+          `;
+          params = [userId, localNodeId];
+        }
+
+        const [rows] = await this.mysqlPool.query(query, params) as any;
+        const counts: { [fromNodeId: string]: number } = {};
+        for (const row of rows) {
+          counts[row.fromNodeId] = Number(row.count);
+        }
+        return counts;
+      } catch (error) {
+        logger.error('Error getting batch unread DM counts:', error);
+        return {};
+      }
+    }
+
     return {};
   }
 
