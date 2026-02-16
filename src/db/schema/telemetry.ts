@@ -18,6 +18,7 @@ export const telemetrySqlite = sqliteTable('telemetry', {
   unit: text('unit'),
   createdAt: integer('createdAt').notNull(),
   packetTimestamp: integer('packetTimestamp'),
+  packetId: integer('packetId'),
   // Position precision tracking metadata
   channel: integer('channel'),
   precisionBits: integer('precisionBits'),
@@ -36,6 +37,7 @@ export const telemetryPostgres = pgTable('telemetry', {
   unit: pgText('unit'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   packetTimestamp: pgBigint('packetTimestamp', { mode: 'number' }),
+  packetId: pgInteger('packetId'),
   // Position precision tracking metadata
   channel: pgInteger('channel'),
   precisionBits: pgInteger('precisionBits'),
@@ -53,6 +55,7 @@ export const telemetryMysql = mysqlTable('telemetry', {
   unit: myVarchar('unit', { length: 32 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   packetTimestamp: myBigint('packetTimestamp', { mode: 'number' }),
+  packetId: myInt('packetId'),
   // Position precision tracking metadata
   channel: myInt('channel'),
   precisionBits: myInt('precisionBits'),

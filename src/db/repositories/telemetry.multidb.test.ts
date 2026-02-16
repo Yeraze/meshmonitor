@@ -42,6 +42,7 @@ describe('TelemetryRepository - SQLite Backend', () => {
         unit TEXT,
         createdAt INTEGER NOT NULL,
         packetTimestamp INTEGER,
+        packetId INTEGER,
         channel INTEGER,
         precisionBits INTEGER,
         gpsAccuracy INTEGER
@@ -142,6 +143,7 @@ describe('TelemetryRepository - PostgreSQL Backend', () => {
           unit TEXT,
           "createdAt" BIGINT NOT NULL,
           "packetTimestamp" BIGINT,
+          "packetId" INTEGER,
           channel INTEGER,
           "precisionBits" INTEGER,
           "gpsAccuracy" INTEGER

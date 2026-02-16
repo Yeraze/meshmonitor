@@ -329,6 +329,11 @@ components:
           format: float
           description: Barometric pressure in hPa
           example: 1013.25
+        packetId:
+          type: integer
+          nullable: true
+          description: Meshtastic mesh packet ID for deduplication. Null for computed/derived telemetry.
+          example: 1234567890
 
     TelemetryListResponse:
       type: object

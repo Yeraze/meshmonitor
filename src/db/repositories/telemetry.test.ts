@@ -31,6 +31,7 @@ describe('TelemetryRepository', () => {
         unit TEXT,
         createdAt INTEGER NOT NULL,
         packetTimestamp INTEGER,
+        packetId INTEGER,
         channel INTEGER,
         precisionBits INTEGER,
         gpsAccuracy INTEGER
@@ -307,6 +308,122 @@ describe('TelemetryRepository', () => {
       expect(result).not.toBeNull();
       expect(result!.value).toBe(15);
       expect(result!.telemetryType).toBe('systemDirectNodeCount');
+    });
+  });
+
+  describe('packetId support', () => {
+    const NOW = Date.now();
+    const HOUR = 60 * 60 * 1000;
+
+    it('should store and retrieve packetId when provided', async () => {
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'batteryLevel',
+        timestamp: NOW,
+        value: 85,
+        unit: '%',
+        createdAt: NOW,
+        packetId: 1234567890,
+      });
+
+      const results = await repo.getTelemetryByNode(NODE1, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0].packetId).toBe(1234567890);
+    });
+
+    it('should store null packetId when not provided', async () => {
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'voltage',
+        timestamp: NOW,
+        value: 3.7,
+        unit: 'V',
+        createdAt: NOW,
+      });
+
+      const results = await repo.getTelemetryByNode(NODE1, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0].packetId).toBeNull();
+    });
+
+    it('should store null packetId when explicitly set to null', async () => {
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'temperature',
+        timestamp: NOW,
+        value: 25.5,
+        unit: '°C',
+        createdAt: NOW,
+        packetId: null,
+      });
+
+      const results = await repo.getTelemetryByNode(NODE1, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0].packetId).toBeNull();
+    });
+
+    it('should preserve distinct packetIds for different telemetry from the same packet', async () => {
+      const packetId = 987654321;
+
+      // Same packet produces multiple telemetry entries (e.g., device metrics)
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'batteryLevel',
+        timestamp: NOW, value: 85, unit: '%', createdAt: NOW, packetId,
+      });
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'voltage',
+        timestamp: NOW, value: 3.7, unit: 'V', createdAt: NOW, packetId,
+      });
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'channelUtilization',
+        timestamp: NOW, value: 12.5, unit: '%', createdAt: NOW, packetId,
+      });
+
+      const results = await repo.getTelemetryByNode(NODE1, 10);
+      expect(results).toHaveLength(3);
+      // All entries from the same packet should share the same packetId
+      expect(results.every(r => r.packetId === packetId)).toBe(true);
+    });
+
+    it('should allow querying telemetry that mixes entries with and without packetId', async () => {
+      // Telemetry from a real packet (has packetId)
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'batteryLevel',
+        timestamp: NOW, value: 85, unit: '%', createdAt: NOW, packetId: 111222333,
+      });
+      // Derived telemetry (no packetId)
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'linkQuality',
+        timestamp: NOW - 1 * HOUR, value: 80, unit: 'quality', createdAt: NOW,
+      });
+
+      const results = await repo.getTelemetryByNode(NODE1, 10);
+      expect(results).toHaveLength(2);
+
+      const withPacketId = results.find(r => r.telemetryType === 'batteryLevel');
+      const withoutPacketId = results.find(r => r.telemetryType === 'linkQuality');
+
+      expect(withPacketId!.packetId).toBe(111222333);
+      expect(withoutPacketId!.packetId).toBeNull();
+    });
+
+    it('should retrieve packetId through getLatestTelemetryForType', async () => {
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'batteryLevel',
+        timestamp: NOW - 2 * HOUR, value: 80, unit: '%', createdAt: NOW, packetId: 100,
+      });
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'batteryLevel',
+        timestamp: NOW - 1 * HOUR, value: 85, unit: '%', createdAt: NOW, packetId: 200,
+      });
+
+      const result = await repo.getLatestTelemetryForType(NODE1, 'batteryLevel');
+      expect(result).not.toBeNull();
+      expect(result!.value).toBe(85);
+      expect(result!.packetId).toBe(200);
     });
   });
 });
