@@ -4695,6 +4695,82 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
   }
 });
 
+// Get auto-ping settings and active sessions
+apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), (_req, res) => {
+  try {
+    const settings = {
+      autoPingEnabled: databaseService.getSetting('autoPingEnabled') === 'true',
+      autoPingIntervalSeconds: parseInt(databaseService.getSetting('autoPingIntervalSeconds') || '30', 10),
+      autoPingMaxPings: parseInt(databaseService.getSetting('autoPingMaxPings') || '20', 10),
+      autoPingTimeoutSeconds: parseInt(databaseService.getSetting('autoPingTimeoutSeconds') || '60', 10),
+    };
+    const sessions = meshtasticManager.getAutoPingSessions();
+    res.json({ settings, sessions });
+  } catch (error) {
+    logger.error('Error fetching auto-ping settings:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-ping settings' });
+  }
+});
+
+// Update auto-ping settings
+apiRouter.post('/settings/auto-ping', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const { autoPingEnabled, autoPingIntervalSeconds, autoPingMaxPings, autoPingTimeoutSeconds } = req.body;
+
+    if (autoPingEnabled !== undefined) {
+      databaseService.setSetting('autoPingEnabled', String(autoPingEnabled));
+    }
+    if (autoPingIntervalSeconds !== undefined) {
+      const val = parseInt(String(autoPingIntervalSeconds), 10);
+      if (isNaN(val) || val < 10) {
+        return res.status(400).json({ error: 'Interval must be at least 10 seconds.' });
+      }
+      databaseService.setSetting('autoPingIntervalSeconds', String(val));
+    }
+    if (autoPingMaxPings !== undefined) {
+      const val = parseInt(String(autoPingMaxPings), 10);
+      if (isNaN(val) || val < 1 || val > 100) {
+        return res.status(400).json({ error: 'Max pings must be between 1 and 100.' });
+      }
+      databaseService.setSetting('autoPingMaxPings', String(val));
+    }
+    if (autoPingTimeoutSeconds !== undefined) {
+      const val = parseInt(String(autoPingTimeoutSeconds), 10);
+      if (isNaN(val) || val < 10) {
+        return res.status(400).json({ error: 'Timeout must be at least 10 seconds.' });
+      }
+      databaseService.setSetting('autoPingTimeoutSeconds', String(val));
+    }
+
+    const settings = {
+      autoPingEnabled: databaseService.getSetting('autoPingEnabled') === 'true',
+      autoPingIntervalSeconds: parseInt(databaseService.getSetting('autoPingIntervalSeconds') || '30', 10),
+      autoPingMaxPings: parseInt(databaseService.getSetting('autoPingMaxPings') || '20', 10),
+      autoPingTimeoutSeconds: parseInt(databaseService.getSetting('autoPingTimeoutSeconds') || '60', 10),
+    };
+
+    res.json({ success: true, settings });
+  } catch (error) {
+    logger.error('Error updating auto-ping settings:', error);
+    res.status(500).json({ error: 'Failed to update auto-ping settings' });
+  }
+});
+
+// Force-stop an active auto-ping session
+apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'Invalid node number.' });
+    }
+    meshtasticManager.stopAutoPingSession(nodeNum, 'force_stopped');
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error stopping auto-ping session:', error);
+    res.status(500).json({ error: 'Failed to stop auto-ping session' });
+  }
+});
+
 // Get auto key repair log (recent key repair attempts with success/fail status)
 apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), (_req, res) => {
   try {
@@ -4891,6 +4967,10 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'remoteAdminScheduleStart',
       'remoteAdminScheduleEnd',
       'geofenceTriggers',
+      'autoPingEnabled',
+      'autoPingIntervalSeconds',
+      'autoPingMaxPings',
+      'autoPingTimeoutSeconds',
     ];
     const filteredSettings: Record<string, string> = {};
 

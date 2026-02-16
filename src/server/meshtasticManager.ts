@@ -255,6 +255,22 @@ interface GeofenceTriggerConfig {
   lastError?: string;
 }
 
+interface AutoPingSession {
+  requestedBy: number;      // nodeNum of the user who requested
+  channel: number;           // channel the DM came on
+  totalPings: number;
+  completedPings: number;
+  successfulPings: number;
+  failedPings: number;
+  intervalMs: number;
+  timer: ReturnType<typeof setInterval> | null;
+  pendingRequestId: number | null;
+  pendingTimeout: ReturnType<typeof setTimeout> | null;
+  startTime: number;
+  lastPingSentAt: number;
+  results: Array<{ pingNum: number; status: 'ack' | 'nak' | 'timeout'; durationMs?: number; sentAt: number }>;
+}
+
 class MeshtasticManager {
   private transport: TcpTransport | null = null;
   private isConnected = false;
@@ -320,6 +336,9 @@ class MeshtasticManager {
   private remoteNodeDeviceMetadata: Map<number, any> = new Map();
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
+
+  // Auto-ping session tracking
+  private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
 
   // Auto-welcome tracking to prevent race conditions
   private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
@@ -3577,6 +3596,9 @@ class MeshtasticManager {
         // Auto-acknowledge matching messages
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
 
+        // Check for auto-ping DM command (before auto-responder so it takes priority)
+        if (await this.handleAutoPingCommand(message, isDirectMessage)) return;
+
         // Auto-respond to matching messages
         await this.checkAutoResponder(message, isDirectMessage, meshPacket.id);
       }
@@ -4729,6 +4751,15 @@ class MeshtasticManager {
       const requestId = meshPacket.decoded?.requestId;
 
       const errorName = getRoutingErrorName(errorReason);
+
+      // Check if this routing update is for an auto-ping session
+      if (requestId) {
+        if (errorReason === 0) {
+          this.handleAutoPingResponse(requestId, 'ack');
+        } else {
+          this.handleAutoPingResponse(requestId, 'nak');
+        }
+      }
 
       // Handle successful ACKs (error_reason = 0 means success)
       if (errorReason === 0 && requestId) {
@@ -7616,6 +7647,361 @@ class MeshtasticManager {
     logger.debug(`📂 Resolved script path: ${scriptPath} -> ${normalizedResolved} (exists: ${fs.existsSync(normalizedResolved)})`);
     
     return normalizedResolved;
+  }
+
+  // ==========================================
+  // Auto-Ping Methods
+  // ==========================================
+
+  /**
+   * Handle auto-ping DM commands: "ping N" to start, "ping stop" to cancel
+   * Returns true if the command was handled, false otherwise
+   */
+  async handleAutoPingCommand(message: TextMessage, isDirectMessage: boolean): Promise<boolean> {
+    // Only handle DMs
+    if (!isDirectMessage) return false;
+
+    const text = (message.text || '').trim().toLowerCase();
+
+    // Check if this matches a ping command
+    const pingStartMatch = text.match(/^ping\s+(\d+)$/);
+    const pingStopMatch = text.match(/^ping\s+stop$/);
+
+    if (!pingStartMatch && !pingStopMatch) return false;
+
+    // Check if auto-ping is enabled
+    const autoPingEnabled = databaseService.getSetting('autoPingEnabled');
+    if (autoPingEnabled !== 'true') {
+      logger.debug('⏭️  Auto-ping command received but feature is disabled');
+      return false;
+    }
+
+    const fromNum = message.fromNodeNum;
+    const channelIndex = message.channel ?? 0;
+
+    if (pingStopMatch) {
+      // Handle "ping stop"
+      const session = this.autoPingSessions.get(fromNum);
+      if (session) {
+        logger.info(`🛑 Auto-ping stop requested by !${fromNum.toString(16).padStart(8, '0')}`);
+        this.stopAutoPingSession(fromNum, 'cancelled');
+      } else {
+        await this.sendTextMessage('No active ping session to stop.', 0, fromNum);
+        messageQueueService.recordExternalSend();
+      }
+      return true;
+    }
+
+    if (pingStartMatch) {
+      const count = parseInt(pingStartMatch[1], 10);
+      const maxPings = parseInt(databaseService.getSetting('autoPingMaxPings') || '20', 10);
+      const intervalSeconds = parseInt(databaseService.getSetting('autoPingIntervalSeconds') || '30', 10);
+
+      // Validate count
+      if (count <= 0) {
+        await this.sendTextMessage('Ping count must be at least 1.', 0, fromNum);
+        messageQueueService.recordExternalSend();
+        return true;
+      }
+
+      const actualCount = Math.min(count, maxPings);
+
+      // Check for existing session
+      if (this.autoPingSessions.has(fromNum)) {
+        await this.sendTextMessage(`You already have an active ping session. Send "ping stop" to cancel it first.`, 0, fromNum);
+        messageQueueService.recordExternalSend();
+        return true;
+      }
+
+      // Create session
+      const session: AutoPingSession = {
+        requestedBy: fromNum,
+        channel: channelIndex,
+        totalPings: actualCount,
+        completedPings: 0,
+        successfulPings: 0,
+        failedPings: 0,
+        intervalMs: intervalSeconds * 1000,
+        timer: null,
+        pendingRequestId: null,
+        pendingTimeout: null,
+        startTime: Date.now(),
+        lastPingSentAt: 0,
+        results: [],
+      };
+
+      this.autoPingSessions.set(fromNum, session);
+
+      const cappedMsg = count > maxPings ? ` (capped to ${maxPings})` : '';
+      await this.sendTextMessage(
+        `Starting ${actualCount} pings every ${intervalSeconds}s${cappedMsg}. Send "ping stop" to cancel.`,
+        0, fromNum
+      );
+      messageQueueService.recordExternalSend();
+
+      logger.info(`📡 Auto-ping session started for !${fromNum.toString(16).padStart(8, '0')}: ${actualCount} pings every ${intervalSeconds}s`);
+
+      // Emit session started event
+      this.emitAutoPingUpdate(session, 'started');
+
+      // Start pinging
+      this.startAutoPingSession(session);
+
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Start the auto-ping session — waits one full interval before the first ping
+   */
+  private startAutoPingSession(session: AutoPingSession): void {
+    session.timer = setInterval(() => {
+      this.sendNextAutoPing(session);
+    }, session.intervalMs);
+  }
+
+  /**
+   * Send the next ping in the auto-ping session
+   */
+  private async sendNextAutoPing(session: AutoPingSession): Promise<void> {
+    // Check if session is complete — send summary as the final message
+    if (session.completedPings >= session.totalPings) {
+      this.finalizeAutoPingSession(session.requestedBy);
+      return;
+    }
+
+    // Don't send another ping if one is still pending
+    if (session.pendingRequestId !== null) {
+      return;
+    }
+
+    try {
+      const pingNum = session.completedPings + 1;
+      const pingMessage = `Ping ${pingNum}/${session.totalPings}`;
+
+      const requestId = await this.sendTextMessage(pingMessage, 0, session.requestedBy);
+      messageQueueService.recordExternalSend();
+      session.pendingRequestId = requestId;
+      session.lastPingSentAt = Date.now();
+
+      logger.debug(`📡 Auto-ping ${pingNum}/${session.totalPings} sent to !${session.requestedBy.toString(16).padStart(8, '0')} (requestId: ${requestId})`);
+
+      // Set timeout for this ping
+      const timeoutSeconds = parseInt(databaseService.getSetting('autoPingTimeoutSeconds') || '60', 10);
+      session.pendingTimeout = setTimeout(() => {
+        this.handleAutoPingTimeout(session);
+      }, timeoutSeconds * 1000);
+    } catch (error) {
+      logger.error(`❌ Auto-ping failed to send to !${session.requestedBy.toString(16).padStart(8, '0')}:`, error);
+      // Record as failed
+      session.results.push({
+        pingNum: session.completedPings + 1,
+        status: 'timeout',
+        sentAt: Date.now(),
+      });
+      session.completedPings++;
+      session.failedPings++;
+      this.emitAutoPingUpdate(session, 'ping_result');
+
+      // Session completion is handled by the next interval tick
+    }
+  }
+
+  /**
+   * Handle an ACK or NAK response for a pending auto-ping
+   */
+  handleAutoPingResponse(requestId: number, status: 'ack' | 'nak'): void {
+    // Find session with matching pendingRequestId
+    for (const [nodeNum, session] of this.autoPingSessions) {
+      if (session.pendingRequestId === requestId) {
+        // Clear the timeout
+        if (session.pendingTimeout) {
+          clearTimeout(session.pendingTimeout);
+          session.pendingTimeout = null;
+        }
+
+        const durationMs = Date.now() - session.lastPingSentAt;
+        session.results.push({
+          pingNum: session.completedPings + 1,
+          status,
+          durationMs,
+          sentAt: session.lastPingSentAt,
+        });
+
+        session.completedPings++;
+        if (status === 'ack') {
+          session.successfulPings++;
+        } else {
+          session.failedPings++;
+        }
+        session.pendingRequestId = null;
+
+        logger.info(`📡 Auto-ping ${session.completedPings}/${session.totalPings} ${status.toUpperCase()} from !${nodeNum.toString(16).padStart(8, '0')} (${durationMs}ms)`);
+
+        this.emitAutoPingUpdate(session, 'ping_result');
+
+        // Session completion is handled by the next interval tick in sendNextAutoPing
+        return;
+      }
+    }
+  }
+
+  /**
+   * Handle a timeout for a pending auto-ping (no response received in time)
+   */
+  private handleAutoPingTimeout(session: AutoPingSession): void {
+    if (session.pendingRequestId === null) return;
+
+    session.results.push({
+      pingNum: session.completedPings + 1,
+      status: 'timeout',
+      sentAt: session.lastPingSentAt,
+    });
+
+    session.completedPings++;
+    session.failedPings++;
+    session.pendingRequestId = null;
+    session.pendingTimeout = null;
+
+    logger.info(`⏰ Auto-ping ${session.completedPings}/${session.totalPings} TIMEOUT for !${session.requestedBy.toString(16).padStart(8, '0')}`);
+
+    this.emitAutoPingUpdate(session, 'ping_result');
+
+    // Session completion is handled by the next interval tick in sendNextAutoPing
+  }
+
+  /**
+   * Finalize an auto-ping session (all pings completed)
+   */
+  private async finalizeAutoPingSession(requestedBy: number): Promise<void> {
+    const session = this.autoPingSessions.get(requestedBy);
+    if (!session) return;
+
+    // Remove from map immediately to prevent double-finalize
+    this.autoPingSessions.delete(requestedBy);
+
+    // Clear timers
+    if (session.timer) {
+      clearInterval(session.timer);
+      session.timer = null;
+    }
+    if (session.pendingTimeout) {
+      clearTimeout(session.pendingTimeout);
+      session.pendingTimeout = null;
+    }
+
+    // Build summary with statistics
+    const ackDurations = session.results
+      .filter(r => r.status === 'ack' && r.durationMs)
+      .map(r => r.durationMs!);
+    const timeouts = session.results.filter(r => r.status === 'timeout').length;
+    const naks = session.results.filter(r => r.status === 'nak').length;
+
+    let summary = `Auto-ping done: ${session.successfulPings}/${session.totalPings} ok`;
+    if (ackDurations.length > 0) {
+      const min = Math.min(...ackDurations);
+      const max = Math.max(...ackDurations);
+      const avg = Math.round(ackDurations.reduce((a, b) => a + b, 0) / ackDurations.length);
+      summary += `\nMin/Avg/Max: ${min}/${avg}/${max}ms`;
+    }
+    if (timeouts > 0) {
+      summary += `\nTimeouts: ${timeouts}`;
+    }
+    if (naks > 0) {
+      summary += `\nFailed: ${naks}`;
+    }
+
+    try {
+      await this.sendTextMessage(summary, 0, requestedBy);
+      messageQueueService.recordExternalSend();
+    } catch (error) {
+      logger.error(`❌ Failed to send auto-ping summary to !${requestedBy.toString(16).padStart(8, '0')}:`, error);
+    }
+
+    this.emitAutoPingUpdate(session, 'completed');
+
+    logger.info(`✅ Auto-ping session completed for !${requestedBy.toString(16).padStart(8, '0')}: ${session.successfulPings}/${session.totalPings} successful`);
+  }
+
+  /**
+   * Stop an auto-ping session (user cancelled or force-stopped from UI)
+   */
+  stopAutoPingSession(requestedBy: number, reason: 'cancelled' | 'force_stopped' = 'cancelled'): void {
+    const session = this.autoPingSessions.get(requestedBy);
+    if (!session) return;
+
+    // Clear timers
+    if (session.timer) {
+      clearInterval(session.timer);
+      session.timer = null;
+    }
+    if (session.pendingTimeout) {
+      clearTimeout(session.pendingTimeout);
+      session.pendingTimeout = null;
+    }
+
+    const summary = `Auto-ping ${reason}: ${session.successfulPings}/${session.completedPings} successful out of ${session.totalPings} planned.`;
+
+    this.sendTextMessage(summary, 0, requestedBy).then(() => {
+      messageQueueService.recordExternalSend();
+    }).catch(error => {
+      logger.error(`❌ Failed to send auto-ping cancellation to !${requestedBy.toString(16).padStart(8, '0')}:`, error);
+    });
+
+    this.emitAutoPingUpdate(session, 'cancelled');
+    this.autoPingSessions.delete(requestedBy);
+
+    logger.info(`🛑 Auto-ping session ${reason} for !${requestedBy.toString(16).padStart(8, '0')}`);
+  }
+
+  /**
+   * Get all active auto-ping sessions (for API)
+   */
+  getAutoPingSessions(): Array<{
+    requestedBy: number;
+    requestedByName: string;
+    totalPings: number;
+    completedPings: number;
+    successfulPings: number;
+    failedPings: number;
+    startTime: number;
+    results: AutoPingSession['results'];
+  }> {
+    const sessions: Array<any> = [];
+    for (const [nodeNum, session] of this.autoPingSessions) {
+      const node = databaseService.getNode(nodeNum);
+      sessions.push({
+        requestedBy: nodeNum,
+        requestedByName: node?.longName || node?.shortName || `!${nodeNum.toString(16).padStart(8, '0')}`,
+        totalPings: session.totalPings,
+        completedPings: session.completedPings,
+        successfulPings: session.successfulPings,
+        failedPings: session.failedPings,
+        startTime: session.startTime,
+        results: session.results,
+      });
+    }
+    return sessions;
+  }
+
+  /**
+   * Emit an auto-ping update via WebSocket
+   */
+  private emitAutoPingUpdate(session: AutoPingSession, status: 'started' | 'ping_result' | 'completed' | 'cancelled'): void {
+    const node = databaseService.getNode(session.requestedBy);
+    dataEventEmitter.emitAutoPingUpdate({
+      requestedBy: session.requestedBy,
+      requestedByName: node?.longName || node?.shortName || `!${session.requestedBy.toString(16).padStart(8, '0')}`,
+      totalPings: session.totalPings,
+      completedPings: session.completedPings,
+      successfulPings: session.successfulPings,
+      failedPings: session.failedPings,
+      startTime: session.startTime,
+      status,
+      results: session.results,
+    });
   }
 
   private async checkAutoResponder(message: TextMessage, isDirectMessage: boolean, packetId?: number): Promise<void> {

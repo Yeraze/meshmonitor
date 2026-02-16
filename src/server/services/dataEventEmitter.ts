@@ -17,7 +17,8 @@ export type DataEventType =
   | 'telemetry:batch'
   | 'connection:status'
   | 'traceroute:complete'
-  | 'routing:update';
+  | 'routing:update'
+  | 'auto-ping:update';
 
 export interface DataEvent {
   type: DataEventType;
@@ -42,6 +43,18 @@ export interface RoutingUpdateData {
   status: 'ack' | 'nak' | 'error';
   errorReason?: string;
   fromNodeNum?: number;
+}
+
+export interface AutoPingUpdateData {
+  requestedBy: number;
+  requestedByName?: string;
+  totalPings: number;
+  completedPings: number;
+  successfulPings: number;
+  failedPings: number;
+  startTime: number;
+  status: 'started' | 'ping_result' | 'completed' | 'cancelled';
+  results: Array<{ pingNum: number; status: 'ack' | 'nak' | 'timeout'; durationMs?: number; sentAt: number }>;
 }
 
 export interface TelemetryBatchData {
@@ -176,6 +189,19 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Routing update: ${update.requestId} - ${update.status}`);
+  }
+
+  /**
+   * Emit an auto-ping session update event
+   */
+  emitAutoPingUpdate(update: AutoPingUpdateData): void {
+    const event: DataEvent = {
+      type: 'auto-ping:update',
+      data: update,
+      timestamp: Date.now()
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Auto-ping update: ${update.requestedBy} - ${update.status} (${update.completedPings}/${update.totalPings})`);
   }
 
   /**
