@@ -1889,6 +1889,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   // Check precision data exists
                   if (node.positionPrecisionBits === undefined || node.positionPrecisionBits === null) return false;
                   if (node.positionPrecisionBits <= 0 || node.positionPrecisionBits >= 32) return false;
+                  // Don't show accuracy region for nodes with overridden positions
+                  if (node.positionIsOverride) return false;
                   // Apply standard filters
                   if (!showMqttNodes && node.viaMqtt) return false;
                   if (!showIncompleteNodes && !isNodeComplete(node)) return false;
