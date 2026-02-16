@@ -160,7 +160,7 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
     const [byDevice, byType, total] = await Promise.all([
       packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, portnum }),
       packetLogService.getPacketCountsByPortnumAsync({ since, from_node }),
-      packetLogService.getPacketCountAsync({ since, from_node })
+      packetLogService.getPacketCountAsync({ since, from_node, portnum })
     ]);
 
     res.json({
