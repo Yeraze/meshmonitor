@@ -1179,6 +1179,39 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Rewrite the firmware_version in a cached DeviceMetadata FromRadio message.
+   * Decodes the raw FromRadio bytes, appends a suffix to the firmware_version
+   * in the metadata field, and re-encodes.
+   * Returns the modified bytes, or null if the message isn't a metadata message.
+   */
+  async rewriteMetadataFirmwareVersion(rawFromRadio: Uint8Array, suffix: string): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const decoded = FromRadio.decode(rawFromRadio) as any;
+
+      if (!decoded.metadata) {
+        return null;
+      }
+
+      // Append suffix to firmware version
+      const original = decoded.metadata.firmwareVersion || '';
+      decoded.metadata.firmwareVersion = original + suffix;
+      logger.debug(`Virtual node: Rewrote firmware version: "${original}" → "${decoded.metadata.firmwareVersion}"`);
+
+      return FromRadio.encode(decoded).finish();
+    } catch (error) {
+      logger.error('❌ Failed to rewrite metadata firmware version:', error);
+      return null;
+    }
+  }
+
+  /**
    * Create QueueStatus FromRadio message
    * Used as a heartbeat response to keep iOS clients connected
    */

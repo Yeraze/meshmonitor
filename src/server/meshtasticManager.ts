@@ -2366,15 +2366,19 @@ class MeshtasticManager {
       const parsed = meshtasticProtobufService.parseIncomingData(data);
 
       // Broadcast to virtual node clients if virtual node server is enabled (unless explicitly skipped).
-      // Skip broadcasting 'channel' type FromRadio messages — these should only reach clients
-      // through the controlled sendInitialConfig() flow. Broadcasting raw FromRadio.channel
-      // messages during physical node reconnection causes Android/iOS clients to receive
-      // unsolicited channel updates with empty name fields, which the Meshtastic app displays
-      // as the placeholder text "Channel Name" (fixes #1567).
+      // Skip broadcasting 'channel' and 'configComplete' type FromRadio messages — these should
+      // only reach clients through the controlled sendInitialConfig() flow.
+      // - 'channel': Broadcasting raw FromRadio.channel messages during physical node reconnection
+      //   causes Android/iOS clients to receive unsolicited channel updates with empty name fields,
+      //   which the Meshtastic app displays as placeholder text "Channel Name" (fixes #1567).
+      // - 'configComplete': Broadcasting raw configComplete during physical node reconnection or
+      //   refreshNodeDatabase() causes clients to receive an unsolicited end-of-config signal.
+      //   Since no channels preceded it (they're filtered above), the Meshtastic app interprets
+      //   this as "config done with zero channels" and clears its channel list.
       // If parsing failed, still broadcast the raw data (clients may understand it even if
       // the server can't parse it).
       const shouldBroadcast = !context?.skipVirtualNodeBroadcast &&
-        (!parsed || parsed.type !== 'channel');
+        (!parsed || (parsed.type !== 'channel' && parsed.type !== 'configComplete'));
       if (shouldBroadcast) {
         const virtualNodeServer = (global as any).virtualNodeServer;
         if (virtualNodeServer) {
