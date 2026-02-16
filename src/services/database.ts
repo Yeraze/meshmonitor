@@ -77,6 +77,7 @@ import { migration as traceroutePositionsMigration, runMigration069Postgres, run
 import { migration as meshcoreTablesMigration, runMigration070Postgres as runMigration070MeshcorePostgres, runMigration070Mysql as runMigration070MeshcoreMysql } from '../server/migrations/070_add_meshcore_tables.js';
 import { migration as meshcorePermissionMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_add_meshcore_permission.js';
 import { migration as dmUnreadIndexMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_add_messages_dm_unread_index.js';
+import { migration as packetIdMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_add_packet_id_to_telemetry.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -216,6 +217,7 @@ export interface DbTelemetry {
   unit?: string;
   createdAt: number;
   packetTimestamp?: number; // Original timestamp from the packet (may be inaccurate if node has wrong time)
+  packetId?: number; // Meshtastic meshPacket.id for deduplication
   // Position precision tracking metadata (Migration 020)
   channel?: number; // Which channel this telemetry came from
   precisionBits?: number; // Position precision bits (for latitude/longitude telemetry)
@@ -947,6 +949,7 @@ class DatabaseService {
     this.runMeshcoreTablesMigration();
     this.runMeshcorePermissionMigration();
     this.runDmUnreadIndexMigration();
+    this.runPacketIdMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2373,6 +2376,25 @@ class DatabaseService {
       logger.debug('DM unread index migration completed successfully');
     } catch (error) {
       logger.error('Failed to run DM unread index migration:', error);
+      throw error;
+    }
+  }
+
+  private runPacketIdMigration(): void {
+    const migrationKey = 'migration_073_packet_id_telemetry';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 073 (packetId telemetry) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 073: Add packetId to telemetry...');
+      packetIdMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('PacketId telemetry migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run packetId telemetry migration:', error);
       throw error;
     }
   }
@@ -10726,6 +10748,9 @@ class DatabaseService {
       // Run migration 072: Add DM unread index
       await runMigration072Postgres(client);
 
+      // Run migration 073: Add packetId to telemetry
+      await runMigration073Postgres(client);
+
 
       // Verify all expected tables exist
       const result = await client.query(`
@@ -10854,6 +10879,9 @@ class DatabaseService {
 
       // Run migration 072: Add DM unread index
       await runMigration072Mysql(pool);
+
+      // Run migration 073: Add packetId to telemetry
+      await runMigration073Mysql(pool);
 
 
       // Verify all expected tables exist

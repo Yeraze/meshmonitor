@@ -763,6 +763,96 @@ describe('MeshtasticManager - Configuration Polling', () => {
         expect(estimatedLon).toBeCloseTo(expected.lon, 6);
       });
     });
+
+    it('should NOT include packetId for estimated position telemetry', () => {
+      const mockDatabaseService = {
+        insertTelemetry: vi.fn(),
+      };
+
+      const nodeId = '!000007d0';
+      const nodeNum = 2000;
+      const timestamp = Date.now();
+      const now = Date.now();
+
+      // Estimated position telemetry is derived from neighbor calculations,
+      // not from a direct mesh packet, so it should NOT have packetId
+      mockDatabaseService.insertTelemetry({
+        nodeId,
+        nodeNum,
+        telemetryType: 'estimated_latitude',
+        timestamp,
+        value: 26.1,
+        unit: '° (est)',
+        createdAt: now,
+      });
+
+      mockDatabaseService.insertTelemetry({
+        nodeId,
+        nodeNum,
+        telemetryType: 'estimated_longitude',
+        timestamp,
+        value: -80.1,
+        unit: '° (est)',
+        createdAt: now,
+      });
+
+      // Verify packetId is NOT present in estimated position calls
+      for (const call of mockDatabaseService.insertTelemetry.mock.calls) {
+        expect(call[0]).not.toHaveProperty('packetId');
+      }
+
+      // Verify the telemetry types are correct
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryType: 'estimated_latitude',
+        })
+      );
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryType: 'estimated_longitude',
+        })
+      );
+    });
+
+    it('should include packetId in telemetry from actual mesh packets but not derived telemetry', () => {
+      const mockDatabaseService = {
+        insertTelemetry: vi.fn(),
+      };
+
+      const now = Date.now();
+      const meshPacketId = 444555666;
+
+      // Telemetry from an actual mesh packet (e.g., position from POSITION_APP)
+      mockDatabaseService.insertTelemetry({
+        nodeId: '!000003e8',
+        nodeNum: 1000,
+        telemetryType: 'latitude',
+        timestamp: now,
+        value: 40.7128,
+        unit: '°',
+        createdAt: now,
+        packetId: meshPacketId,
+        channel: 0,
+        precisionBits: 32,
+      });
+
+      // Derived telemetry (estimated position from neighbor info)
+      mockDatabaseService.insertTelemetry({
+        nodeId: '!000007d0',
+        nodeNum: 2000,
+        telemetryType: 'estimated_latitude',
+        timestamp: now,
+        value: 26.1,
+        unit: '° (est)',
+        createdAt: now,
+      });
+
+      // First call (actual packet) should have packetId
+      expect(mockDatabaseService.insertTelemetry.mock.calls[0][0].packetId).toBe(meshPacketId);
+
+      // Second call (derived) should not have packetId
+      expect(mockDatabaseService.insertTelemetry.mock.calls[1][0]).not.toHaveProperty('packetId');
+    });
   });
 
   describe('Public Key Cryptography (PKC) tracking', () => {

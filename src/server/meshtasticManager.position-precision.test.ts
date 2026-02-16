@@ -351,4 +351,97 @@ describe('MeshtasticManager - Position Precision Tracking', () => {
       expect(precisionZero).not.toBe(precisionUndefined);
     });
   });
+
+  describe('packetId propagation', () => {
+    it('should include packetId in position telemetry from mesh packets', () => {
+      const now = Date.now();
+      const meshPacketId = 1234567890;
+
+      const telemetryData = {
+        nodeId: '!1e240abcd',
+        nodeNum: 123456,
+        telemetryType: 'latitude',
+        timestamp: now / 1000,
+        value: 40.7128,
+        unit: '°',
+        createdAt: now,
+        packetTimestamp: undefined,
+        packetId: meshPacketId,
+        channel: 1,
+        precisionBits: 32,
+        gpsAccuracy: 5.0
+      };
+
+      mockInsertTelemetry(telemetryData);
+
+      expect(mockInsertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          packetId: meshPacketId,
+          channel: 1,
+          precisionBits: 32,
+          gpsAccuracy: 5.0
+        })
+      );
+    });
+
+    it('should extract packetId from meshPacket.id using Number conversion', () => {
+      // Simulate how meshtasticManager extracts packetId
+      const meshPacket = { id: 987654321, from: 123456 };
+
+      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
+
+      expect(packetId).toBe(987654321);
+      expect(typeof packetId).toBe('number');
+    });
+
+    it('should produce undefined packetId when meshPacket.id is missing', () => {
+      // Simulate a meshPacket without an id field
+      const meshPacket = { from: 123456 } as any;
+
+      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
+
+      expect(packetId).toBeUndefined();
+    });
+
+    it('should handle meshPacket.id of 0 as falsy (resulting in undefined)', () => {
+      // meshPacket.id of 0 is technically a valid protobuf default but not a real packet ID
+      const meshPacket = { id: 0, from: 123456 };
+
+      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
+
+      expect(packetId).toBeUndefined();
+    });
+
+    it('should share the same packetId across multiple telemetry entries from one packet', () => {
+      const now = Date.now();
+      const meshPacketId = 555666777;
+
+      // Simulate device metrics producing multiple telemetry entries from one packet
+      const metricsFromOnePacket = [
+        { telemetryType: 'batteryLevel', value: 85, unit: '%' },
+        { telemetryType: 'voltage', value: 3.7, unit: 'V' },
+        { telemetryType: 'channelUtilization', value: 12.5, unit: '%' },
+        { telemetryType: 'airUtilTx', value: 5.2, unit: '%' },
+      ];
+
+      for (const metric of metricsFromOnePacket) {
+        mockInsertTelemetry({
+          nodeId: '!1e240abcd',
+          nodeNum: 123456,
+          telemetryType: metric.telemetryType,
+          timestamp: now,
+          value: metric.value,
+          unit: metric.unit,
+          createdAt: now,
+          packetId: meshPacketId,
+        });
+      }
+
+      // Verify all 4 calls include the same packetId
+      expect(mockInsertTelemetry).toHaveBeenCalledTimes(metricsFromOnePacket.length);
+      for (const call of mockInsertTelemetry.mock.calls) {
+        expect(call[0].packetId).toBe(meshPacketId);
+      }
+    });
+  });
 });

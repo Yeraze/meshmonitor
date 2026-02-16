@@ -142,6 +142,7 @@ export interface DbTelemetry {
   unit?: string | null;
   createdAt: number;
   packetTimestamp?: number | null;
+  packetId?: number | null;
   channel?: number | null;
   precisionBits?: number | null;
   gpsAccuracy?: number | null;

@@ -30,6 +30,7 @@ export class TelemetryRepository extends BaseRepository {
       unit: telemetryData.unit ?? null,
       createdAt: telemetryData.createdAt,
       packetTimestamp: telemetryData.packetTimestamp ?? null,
+      packetId: telemetryData.packetId ?? null,
       channel: telemetryData.channel ?? null,
       precisionBits: telemetryData.precisionBits ?? null,
       gpsAccuracy: telemetryData.gpsAccuracy ?? null,
