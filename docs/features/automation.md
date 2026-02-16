@@ -190,6 +190,104 @@ Traceroute uses Meshtastic's routing protocol. For more information:
 - [Meshtastic Routing Documentation](https://meshtastic.org/docs/overview/mesh-algo#routing)
 - [Traceroute Request Documentation](https://meshtastic.org/docs/configuration/module/traceroute)
 
+## Auto Ping {#auto-ping}
+
+Allows mesh users to trigger automated ping sessions via direct message commands. This is useful for testing link quality, measuring round-trip times, and verifying connectivity to the MeshMonitor node over time.
+
+### How It Works
+
+When enabled, mesh users can send a direct message to the MeshMonitor node with the command `ping N` (where N is the number of pings). MeshMonitor then sends N pings back to the requesting node at the configured interval, tracking ACK/NAK/timeout results for each ping. After all pings complete (or the user cancels), MeshMonitor sends a summary DM with the results.
+
+Pings use Meshtastic's `NODEINFO_APP` request with `wantResponse: true`, which is the standard Meshtastic ping mechanism — the target must respond with an ACK and NodeInfo, giving round-trip confirmation.
+
+### DM Commands
+
+| Command | Description |
+|---------|-------------|
+| `ping N` | Start N pings to the MeshMonitor node (N is capped at the configured maximum) |
+| `ping stop` | Cancel an active ping session |
+
+**Examples**:
+- Send `ping 5` as a DM to start 5 pings at the configured interval
+- Send `ping stop` to cancel an active session before it completes
+
+### Configuration
+
+Navigate to **Settings > Automation** and find the **Auto Ping** section.
+
+**Enable/Disable**: Toggle the checkbox next to "Auto Ping"
+
+| Setting | Description | Default | Range |
+|---------|-------------|---------|-------|
+| **Enable** | Turn auto-ping on or off | Off | — |
+| **Ping Interval** | Time between each ping in a session (seconds) | 30 | 10–300 |
+| **Max Pings Per Session** | Maximum number of pings a user can request in a single session | 20 | 1–100 |
+| **Ping Timeout** | How long to wait for a response before marking a ping as timed out (seconds) | 60 | 10–300 |
+
+### Active Sessions
+
+The Auto Ping settings panel displays a live table of active ping sessions, showing:
+
+- **Requested By**: The node that initiated the ping session
+- **Progress**: How many pings have completed out of the total (e.g., 3/5)
+- **Successful**: Number of pings that received an ACK
+- **Failed**: Number of pings that received a NAK or timed out
+- **Elapsed**: Time since the session started
+- **Stop**: Button to force-stop a session from the UI
+
+Sessions update in real-time via WebSocket events. Admins can force-stop any active session from the UI.
+
+### Session Lifecycle
+
+1. A mesh user sends `ping 5` as a DM to MeshMonitor
+2. MeshMonitor confirms: "Starting 5 pings every 30s..."
+3. After one full interval, the first ping is sent
+4. Each ping waits for an ACK, NAK, or timeout before the next interval
+5. After all pings complete, MeshMonitor sends a summary DM: "Auto-ping complete: 4/5 successful (80%)"
+6. If the user sends `ping stop` during a session, the session is cancelled and a partial summary is sent
+
+### Side Effects
+
+- **Network Traffic**: Each ping generates a NODEINFO request and expects a response, using mesh airtime
+- **One Session Per User**: Each node can only have one active ping session at a time
+- **DM Only**: Auto-ping commands are only processed when received as direct messages
+- **Command Priority**: Auto-ping commands are processed before Auto Responder triggers, so `ping` patterns in Auto Responder won't conflict
+
+### Use Cases
+
+- **Link Quality Testing**: Measure packet delivery rates between a remote node and MeshMonitor over time
+- **Latency Measurement**: Track round-trip times across multiple pings to assess network performance
+- **Connectivity Verification**: Confirm that a node can reliably reach MeshMonitor through the mesh
+- **Troubleshooting**: Diagnose intermittent connectivity issues with repeated ping tests
+
+### Best Practices
+
+- **Interval Selection**: Use the default 30-second interval for most cases; shorter intervals increase airtime usage
+- **Ping Count**: Start with 5–10 pings for quick tests; use higher counts (20+) for sustained reliability testing
+- **Timeout**: The default 60-second timeout is generous enough for multi-hop networks; reduce it for direct connections
+- **Max Pings**: Set the maximum to a reasonable value (20–50) to prevent excessive network usage from long sessions
+
+### Troubleshooting
+
+**"ping 5" not working**:
+- Verify Auto Ping is enabled in the Automation settings
+- Ensure the command is sent as a direct message (not on a channel)
+- Check that the number doesn't exceed the configured maximum
+
+**All pings timing out**:
+- The target node may be out of range or unreachable
+- Check mesh connectivity to the MeshMonitor node
+- Try increasing the timeout value
+
+**Session not appearing in UI**:
+- Refresh the browser page
+- Verify you have `settings:read` permission to view the Automation tab
+
+### Permissions
+
+- **UI Settings**: Requires `settings:read` to view, `settings:write` to modify configuration or force-stop sessions
+- **DM Commands**: Any mesh user can trigger a ping session (feature gated by the `autoPingEnabled` setting)
+
 ## Remote Admin Scanner {#remote-admin-scanner}
 
 Automatically discovers which nodes in your mesh network have remote administration capabilities enabled. This helps you identify nodes that can be managed remotely through MeshMonitor's Admin Commands feature.
@@ -1575,6 +1673,136 @@ Channel: Direct Message
 - Check response text is under 200 characters
 - Verify channel selection is correct
 - Check for script errors in container logs
+
+## Auto Key Management {#auto-key-management}
+
+Automatically detects and repairs PKI (Public Key Infrastructure) key mismatches between nodes in your mesh network. Key mismatches can occur when a node's encryption key changes (e.g., after a factory reset or firmware update) but other nodes still have the old key cached. This prevents encrypted communication from working correctly.
+
+### How It Works
+
+When enabled, MeshMonitor periodically scans for nodes with key mismatches and attempts to repair them by exchanging node info. The exchange process forces nodes to share their current encryption keys, resolving stale key caches.
+
+The repair process for each node with a key mismatch:
+
+1. **Detect**: MeshMonitor identifies nodes whose cached public key doesn't match the key seen in recent packets
+2. **Exchange**: Sends a node info exchange request to trigger a fresh key exchange
+3. **Verify**: Waits for the exchange to complete and checks if the key mismatch is resolved
+4. **Retry**: If still mismatched, retries up to the configured maximum number of exchanges
+5. **Purge** (optional): If all exchanges fail and auto-purge is enabled, removes the node from the device database and sends one final exchange to re-establish the connection cleanly
+
+### Configuration
+
+Navigate to **Settings > Automation** and find the **Auto Key Management** section.
+
+**Enable/Disable**: Toggle the checkbox next to "Auto Key Management"
+
+| Setting | Description | Default | Range |
+|---------|-------------|---------|-------|
+| **Enable** | Turn auto key management on or off | Off | — |
+| **Interval Between Attempts** | Time to wait between node info exchange attempts for each node (minutes) | 5 | 1–60 |
+| **Maximum Exchange Attempts** | Number of node info exchanges to attempt before giving up on a node | 3 | 1–10 |
+| **Auto-Purge After Exhausting Attempts** | If enabled, automatically remove the node from the device database after all exchange attempts fail, then send one final node info exchange | Off | — |
+
+### Activity Log
+
+The Auto Key Management panel includes a real-time activity log showing recent repair activity:
+
+- **Time**: When the action occurred
+- **Node**: The node name or ID
+- **Action**: What was attempted
+  - **Exchange**: A node info exchange was sent
+  - **Fixed**: The key mismatch was resolved
+  - **Exhausted**: All exchange attempts were used without resolving the mismatch
+  - **Purge**: The node was removed from the device database (when auto-purge is enabled)
+- **Status**: Success or failure indicator
+
+The log refreshes automatically every 30 seconds.
+
+### Side Effects
+
+- **Network Traffic**: Each exchange attempt generates node info packets on the mesh
+- **Auto-Purge Risk**: Enabling auto-purge will remove nodes from the device database if exchanges fail — the node will need to be re-discovered
+- **Background Processing**: Runs on a timer; does not require user interaction after configuration
+
+### Use Cases
+
+- **Post-Firmware Update**: Repair key mismatches after nodes update their firmware and regenerate keys
+- **Factory Reset Recovery**: Automatically handle key changes when nodes are factory-reset
+- **Large Network Maintenance**: Keep encryption keys current across a large mesh without manual intervention
+- **Security Hygiene**: Ensure all nodes can communicate securely with current keys
+
+### Best Practices
+
+- Start with the default 5-minute interval and 3 exchange attempts
+- Enable auto-purge only if you're comfortable with nodes being temporarily removed and re-discovered
+- Monitor the activity log after enabling to verify repairs are succeeding
+- For more information about encryption keys and key mismatches, see [Duplicate Encryption Keys](/security-duplicate-keys)
+
+### Related Documentation
+
+- [Duplicate Encryption Keys](/security-duplicate-keys) - Understanding key mismatches and how to fix them manually
+- [Security](/features/security) - Learn about node security and encryption
+
+## Ignored Nodes {#ignored-nodes}
+
+Manages the persistent ignore list for nodes you want to exclude from your mesh monitoring. Ignored nodes are hidden from the node list and remain ignored even after being pruned by inactive node cleanup — when they reappear on the mesh, their ignored status is automatically restored.
+
+### How It Works
+
+When you ignore a node (via the Node Details panel), MeshMonitor records it in a persistent ignore list. This section of the Automation tab shows all currently ignored nodes and allows you to manage the list.
+
+Unlike simply hiding a node from the UI, the persistent ignore list ensures that:
+
+- **Survival across cleanup**: If an inactive node is pruned from the database and later reappears, it will automatically be re-ignored
+- **Consistent filtering**: Ignored nodes are hidden from the main Node List, advanced filters, and Admin Commands by default
+- **Network transparency**: Ignoring a node is purely a UI action — it does not affect message delivery or mesh network functionality
+
+### Viewing Ignored Nodes
+
+The Ignored Nodes panel displays:
+
+- **Total Count**: A summary showing how many nodes are currently ignored
+- **Node Table**: A detailed table with columns:
+  - **Node ID**: The hex ID of the ignored node (e.g., `!a1b2c3d4`)
+  - **Long Name**: The node's long name (if known)
+  - **Short Name**: The node's short name (if known)
+  - **Ignored At**: When the node was added to the ignore list
+  - **Actions**: Un-ignore button to remove the node from the list
+
+### How to Ignore a Node
+
+1. Select a node in the Node List to open its details
+2. In the Node Details panel, click the **Ignore Node** button
+3. The node will be added to the persistent ignore list and hidden from the Node List
+
+### How to Un-ignore a Node
+
+**From the Automation tab**:
+1. Navigate to **Settings > Automation > Ignored Nodes**
+2. Find the node in the table
+3. Click the **Un-ignore** button
+
+**From the Node List**:
+1. Enable "Show ignored nodes" in the Node List filter panel (🚫 icon)
+2. Find the ignored node in the list and select it
+3. In the Node Details panel, click the **Un-ignore Node** button
+
+### Use Cases
+
+- **Noise Reduction**: Hide spammy or malfunctioning nodes that clutter your node list
+- **Network Focus**: Narrow monitoring to only the nodes you care about
+- **Persistent Exclusion**: Ensure problematic nodes stay hidden even after database cleanup cycles
+- **Temporary Suppression**: Hide nodes during troubleshooting, then un-ignore them later
+
+### Permissions
+
+- Viewing the ignored nodes list requires `settings:read` permission
+- Ignoring or un-ignoring nodes requires appropriate admin permissions
+
+### Related Documentation
+
+- [Settings - Ignored Nodes Filter](/features/settings#ignored-nodes-filter) - UI filtering for ignored nodes in the Node List
+- [Admin Commands](/features/admin-commands) - Managing nodes through admin commands
 
 ## Configuration Storage
 
