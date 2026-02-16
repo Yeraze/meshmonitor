@@ -1912,18 +1912,16 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
       result.channels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
     }
 
-    // Get DM unread counts if user has messages permission
+    // Get DM unread counts if user has messages permission (batch query)
     if (hasMessagesRead && localNodeInfo) {
-      const directMessages: { [nodeId: string]: number } = {};
-      // Get all nodes that have DMs, filtered by channel permission
+      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId);
       const allNodes = meshtasticManager.getAllNodes();
       const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
-      for (const node of visibleNodes) {
-        if (node.user?.id) {
-          const count = await databaseService.getUnreadDMCountAsync(localNodeInfo.nodeId, node.user.id, userId);
-          if (count > 0) {
-            directMessages[node.user.id] = count;
-          }
+      const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
+      const directMessages: { [nodeId: string]: number } = {};
+      for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
+        if (visibleNodeIds.has(nodeId) && count > 0) {
+          directMessages[nodeId] = count;
         }
       }
       result.directMessages = directMessages;
@@ -3496,6 +3494,17 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       traceroutes?: any[];
     } = {};
 
+    // Pre-compute shared values used across multiple sections
+    const user = (req as any).user;
+    const userId = req.user?.id ?? null;
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const allMemoryNodes = meshtasticManager.getAllNodes();
+    const filteredMemoryNodes = await filterNodesByChannelPermission(allMemoryNodes, user);
+    const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
+    const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
+    const hasInfoRead = req.user?.isAdmin || await hasPermission(req.user!, 'info', 'read');
+    const canViewPrivate = user ? await hasPermission(user, 'nodes_private', 'read') : false;
+
     // 1. Connection status (always available)
     try {
       const connectionStatus = meshtasticManager.getConnectionStatus();
@@ -3513,12 +3522,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
-      const allNodes = meshtasticManager.getAllNodes();
       const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
-
-      // Filter nodes based on channel read permissions
-      const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
-      result.nodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
+      result.nodes = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
       result.nodes = [];
@@ -3526,9 +3531,6 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 3. Messages (requires any channel permission OR messages permission)
     try {
-      const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
-      const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
-
       if (hasChannelsRead || hasMessagesRead) {
         let messages = meshtasticManager.getRecentMessages(100);
 
@@ -3547,10 +3549,6 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 4. Unread counts (requires channels OR messages permission)
     try {
-      const userId = req.user?.id ?? null;
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-      const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
-
       const unreadResult: {
         channels?: { [channelId: number]: number };
         directMessages?: { [nodeId: string]: number };
@@ -3573,17 +3571,14 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       }
       unreadResult.channels = filteredUnreadChannels;
 
+      // Batch DM unread counts (single query instead of N+1)
       if (hasMessagesRead && localNodeInfo) {
+        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId);
+        const visibleNodeIds = new Set(filteredMemoryNodes.map(n => n.user?.id).filter(Boolean));
         const directMessages: { [nodeId: string]: number } = {};
-        const allNodes = meshtasticManager.getAllNodes();
-        // Filter nodes by channel permission
-        const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
-        for (const node of visibleNodes) {
-          if (node.user?.id) {
-            const count = await databaseService.getUnreadDMCountAsync(localNodeInfo.nodeId, node.user.id, userId);
-            if (count > 0) {
-              directMessages[node.user.id] = count;
-            }
+        for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
+          if (visibleNodeIds.has(nodeId) && count > 0) {
+            directMessages[nodeId] = count;
           }
         }
         unreadResult.directMessages = directMessages;
@@ -3646,11 +3641,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 6. Telemetry availability (requires info:read permission, filtered by channel permissions)
     try {
-      const hasInfoRead = req.user?.isAdmin || await hasPermission(req.user!, 'info', 'read');
       if (hasInfoRead) {
-        const allNodes = databaseService.getAllNodes();
-        // Filter nodes based on channel read permissions
-        const nodes = await filterNodesByChannelPermission(allNodes, req.user);
+        // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
+        const allDbNodes = databaseService.getAllNodes();
+        const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user);
 
         const nodesWithTelemetry: string[] = [];
         const nodesWithWeather: string[] = [];
@@ -3661,7 +3655,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
         const nodeTelemetryTypes = databaseService.getAllNodesTelemetryTypes();
 
-        nodes.forEach(node => {
+        dbNodes.forEach(node => {
           const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
           if (telemetryTypes && telemetryTypes.length > 0) {
             nodesWithTelemetry.push(node.nodeId);
@@ -3681,7 +3675,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         });
 
         const nodesWithPKC: string[] = [];
-        nodes.forEach(node => {
+        dbNodes.forEach(node => {
           if (node.hasPKC || node.publicKey) {
             nodesWithPKC.push(node.nodeId);
           }

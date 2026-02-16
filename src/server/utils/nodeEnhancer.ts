@@ -11,7 +11,8 @@ import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 export async function enhanceNodeForClient(
   node: DeviceInfo,
   user: User | null,
-  estimatedPositions?: Map<string, { latitude: number; longitude: number }>
+  estimatedPositions?: Map<string, { latitude: number; longitude: number }>,
+  canViewPrivateOverride?: boolean
 ): Promise<DeviceInfo & { isMobile: boolean }> {
   if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
 
@@ -21,8 +22,10 @@ export async function enhanceNodeForClient(
   const hasOverride = node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null;
   const isPrivateOverride = node.positionOverrideIsPrivate === true;
 
-  // Check if user has permission to view private positions
-  const canViewPrivate = user ? await hasPermission(user, 'nodes_private', 'read') : false;
+  // Check if user has permission to view private positions (use pre-computed value if provided)
+  const canViewPrivate = canViewPrivateOverride !== undefined
+    ? canViewPrivateOverride
+    : (user ? await hasPermission(user, 'nodes_private', 'read') : false);
   const shouldApplyOverride = hasOverride && (!isPrivateOverride || canViewPrivate);
 
   // CRITICAL: Mask sensitive override coordinates if user is not authorized to see them
