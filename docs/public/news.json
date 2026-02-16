@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-02-13T18:00:00Z",
+  "lastUpdated": "2026-02-16T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.6.0",
+      "id": "news-2026-02-16-auto-ping-vn-branding",
+      "title": "MeshMonitor v3.6.0 - Auto-Ping & Virtual Node Enhancements",
+      "content": "MeshMonitor v3.6.0 introduces the **Auto-Ping** automation feature for mesh network diagnostics and improves **Virtual Node** identification with firmware version branding.\n\n## Auto-Ping Automation\n\nA new DM-command driven **Auto-Ping** feature lets mesh users test connectivity and measure latency to your MeshMonitor node.\n\n### How It Works\n\n- Any mesh user can DM your node with `ping N` to start N pings at a configurable interval\n- Each ping sends a text DM and tracks ACK, NAK, and timeout responses\n- After all pings complete, a summary message is sent with **min/avg/max latency** and timeout count\n- Send `ping stop` to cancel an active session\n\n### Admin Controls\n\n- Configure ping **interval** (default 30s), **max pings** (default 20), and **timeout** (default 60s) in the Automation tab\n- Monitor active ping sessions in real-time with a stop button\n- Enable or disable the feature globally\n\n[Read more about Auto-Ping](https://meshmonitor.org/features/automation#auto-ping)\n\n## Virtual Node Firmware Branding\n\nVirtual Node connections now report a branded firmware version string (e.g., `2.6.6-MM3.6.0`), making it easy to identify that a client is connected through MeshMonitor rather than directly to a physical radio. This appears in both MyNodeInfo and DeviceMetadata responses.\n\n## Other Improvements\n\n- **Virtual Node channel stability** — Fixed an issue where `configComplete` broadcasts during physical radio reconnection could cause VN clients to lose their channel list ([#1920](https://github.com/Yeraze/meshmonitor/pull/1920))\n- **Telemetry packet ID tracking** — Telemetry records now include `packetId` from the originating mesh packet, enabling API consumers to de-duplicate data received via multiple mesh paths ([#1921](https://github.com/Yeraze/meshmonitor/pull/1921))\n- **Packet distribution fix** — Portnum filter now correctly applies to total count in the packet distribution API ([#1919](https://github.com/Yeraze/meshmonitor/pull/1919))\n- **Automation documentation** — Added missing docs for Auto-Ping, Auto Key Management, and Ignored Nodes ([#1918](https://github.com/Yeraze/meshmonitor/pull/1918))\n- **Poll optimization** — Batch queries for `/api/poll` and `/api/unread-counts` reduce database load ([#1909](https://github.com/Yeraze/meshmonitor/pull/1909))\n- **Mobile scroll fix** — Fixed infinite scroll and always-visible virtual channels on mobile ([#1907](https://github.com/Yeraze/meshmonitor/pull/1907))\n- **Dependency updates** — Updated serialport, @serialport/parser-readline, jose, jiti, sass, and sharp",
+      "date": "2026-02-16T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "minVersion": "3.5.0",
       "id": "news-2026-02-13-meshcore-support",
