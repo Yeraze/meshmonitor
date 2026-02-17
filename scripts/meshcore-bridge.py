@@ -116,7 +116,17 @@ class MeshCoreBridge:
             self.connection = SerialConnection(port, baudrate=baud)
 
         self.meshcore = MeshCore(self.connection)
-        await self.meshcore.connect()
+        result = await self.meshcore.connect()
+
+        if result is None:
+            self.meshcore = None
+            self.connection = None
+            return {
+                'id': cmd_id,
+                'success': False,
+                'error': 'No response from device — check connection and ensure it is a Companion node (not a Repeater)'
+            }
+
         self.connected = True
 
         # Get initial info
