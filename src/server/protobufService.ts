@@ -1595,7 +1595,9 @@ class ProtobufService {
         'neighborinfo': 'neighborInfo',
         'ambientlighting': 'ambientLighting',
         'detectionsensor': 'detectionSensor',
-        'paxcounter': 'paxcounter'
+        'paxcounter': 'paxcounter',
+        'statusmessage': 'statusmessage',
+        'trafficmanagement': 'trafficManagement'
       };
 
       const fieldName = configFieldMap[configType];

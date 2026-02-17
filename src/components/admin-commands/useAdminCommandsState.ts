@@ -134,6 +134,29 @@ export interface TelemetryConfigState {
   healthScreenEnabled: boolean;
 }
 
+// Status Message Config State
+export interface StatusMessageConfigState {
+  nodeStatus: string;
+}
+
+// Traffic Management Config State
+export interface TrafficManagementConfigState {
+  enabled: boolean;
+  positionDedupEnabled: boolean;
+  positionDedupTimeSecs: number;
+  positionDedupDistanceMeters: number;
+  nodeinfoDirectResponseEnabled: boolean;
+  nodeinfoDirectResponseMyNodeOnly: boolean;
+  rateLimitEnabled: boolean;
+  rateLimitMaxPerNode: number;
+  rateLimitWindowSecs: number;
+  unknownPacketDropEnabled: boolean;
+  unknownPacketGracePeriodSecs: number;
+  hopExhaustionEnabled: boolean;
+  hopExhaustionMinHops: number;
+  hopExhaustionMaxHops: number;
+}
+
 // Combined Admin Commands State
 export interface AdminCommandsState {
   lora: LoRaConfigState;
@@ -146,6 +169,8 @@ export interface AdminCommandsState {
   owner: OwnerConfigState;
   device: DeviceConfigState;
   telemetry: TelemetryConfigState;
+  statusMessage: StatusMessageConfigState;
+  trafficManagement: TrafficManagementConfigState;
 }
 
 // Action types
@@ -161,6 +186,8 @@ type AdminCommandsAction =
   | { type: 'SET_OWNER_CONFIG'; payload: Partial<OwnerConfigState> }
   | { type: 'SET_DEVICE_CONFIG'; payload: Partial<DeviceConfigState> }
   | { type: 'SET_TELEMETRY_CONFIG'; payload: Partial<TelemetryConfigState> }
+  | { type: 'SET_STATUSMESSAGE_CONFIG'; payload: Partial<StatusMessageConfigState> }
+  | { type: 'SET_TRAFFICMANAGEMENT_CONFIG'; payload: Partial<TrafficManagementConfigState> }
   | { type: 'SET_ADMIN_KEY'; payload: { index: number; value: string } }
   | { type: 'ADD_ADMIN_KEY' }
   | { type: 'REMOVE_ADMIN_KEY'; payload: number }
@@ -275,6 +302,25 @@ const initialState: AdminCommandsState = {
     healthUpdateInterval: 900,
     healthScreenEnabled: false,
   },
+  statusMessage: {
+    nodeStatus: '',
+  },
+  trafficManagement: {
+    enabled: false,
+    positionDedupEnabled: false,
+    positionDedupTimeSecs: 0,
+    positionDedupDistanceMeters: 0,
+    nodeinfoDirectResponseEnabled: false,
+    nodeinfoDirectResponseMyNodeOnly: false,
+    rateLimitEnabled: false,
+    rateLimitMaxPerNode: 0,
+    rateLimitWindowSecs: 0,
+    unknownPacketDropEnabled: false,
+    unknownPacketGracePeriodSecs: 0,
+    hopExhaustionEnabled: false,
+    hopExhaustionMinHops: 0,
+    hopExhaustionMaxHops: 0,
+  },
 };
 
 function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAction): AdminCommandsState {
@@ -336,6 +382,16 @@ function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAc
       return {
         ...state,
         telemetry: { ...state.telemetry, ...action.payload },
+      };
+    case 'SET_STATUSMESSAGE_CONFIG':
+      return {
+        ...state,
+        statusMessage: { ...state.statusMessage, ...action.payload },
+      };
+    case 'SET_TRAFFICMANAGEMENT_CONFIG':
+      return {
+        ...state,
+        trafficManagement: { ...state.trafficManagement, ...action.payload },
       };
     case 'SET_ADMIN_KEY':
       const newKeys = [...state.security.adminKeys];
@@ -464,6 +520,16 @@ export function useAdminCommandsState() {
     dispatch({ type: 'SET_TELEMETRY_CONFIG', payload: config });
   }, []);
 
+  // StatusMessage config actions
+  const setStatusMessageConfig = useCallback((config: Partial<StatusMessageConfigState>) => {
+    dispatch({ type: 'SET_STATUSMESSAGE_CONFIG', payload: config });
+  }, []);
+
+  // TrafficManagement config actions
+  const setTrafficManagementConfig = useCallback((config: Partial<TrafficManagementConfigState>) => {
+    dispatch({ type: 'SET_TRAFFICMANAGEMENT_CONFIG', payload: config });
+  }, []);
+
   // Reset all configs
   const resetAll = useCallback(() => {
     dispatch({ type: 'RESET_ALL' });
@@ -496,6 +562,10 @@ export function useAdminCommandsState() {
     setDeviceConfig,
     // Telemetry
     setTelemetryConfig,
+    // StatusMessage
+    setStatusMessageConfig,
+    // TrafficManagement
+    setTrafficManagementConfig,
     // Reset
     resetAll,
   };

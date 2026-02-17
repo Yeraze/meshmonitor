@@ -2882,7 +2882,7 @@ class MeshtasticManager {
   /**
    * Get the current device configuration
    */
-  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
+  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean } } {
     logger.info(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
     // Apply Proto3 defaults to device config if it exists
@@ -3032,10 +3032,57 @@ class MeshtasticManager {
       logger.debug(`[CONFIG] Converted network config IP addresses to strings`);
     }
 
+    // Apply Proto3 defaults to StatusMessage module config
+    if (moduleConfig.statusmessage) {
+      const statusMessageConfigWithDefaults = {
+        ...moduleConfig.statusmessage,
+        nodeStatus: moduleConfig.statusmessage.nodeStatus !== undefined ? moduleConfig.statusmessage.nodeStatus : ''
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        statusmessage: statusMessageConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning StatusMessage config with nodeStatus="${statusMessageConfigWithDefaults.nodeStatus}"`);
+    }
+
+    // Apply Proto3 defaults to TrafficManagement module config
+    if (moduleConfig.trafficManagement) {
+      const trafficManagementConfigWithDefaults = {
+        ...moduleConfig.trafficManagement,
+        enabled: moduleConfig.trafficManagement.enabled !== undefined ? moduleConfig.trafficManagement.enabled : false,
+        positionDedupEnabled: moduleConfig.trafficManagement.positionDedupEnabled !== undefined ? moduleConfig.trafficManagement.positionDedupEnabled : false,
+        positionDedupTimeSecs: moduleConfig.trafficManagement.positionDedupTimeSecs !== undefined ? moduleConfig.trafficManagement.positionDedupTimeSecs : 0,
+        positionDedupDistanceMeters: moduleConfig.trafficManagement.positionDedupDistanceMeters !== undefined ? moduleConfig.trafficManagement.positionDedupDistanceMeters : 0,
+        nodeinfoDirectResponseEnabled: moduleConfig.trafficManagement.nodeinfoDirectResponseEnabled !== undefined ? moduleConfig.trafficManagement.nodeinfoDirectResponseEnabled : false,
+        nodeinfoDirectResponseMyNodeOnly: moduleConfig.trafficManagement.nodeinfoDirectResponseMyNodeOnly !== undefined ? moduleConfig.trafficManagement.nodeinfoDirectResponseMyNodeOnly : false,
+        rateLimitEnabled: moduleConfig.trafficManagement.rateLimitEnabled !== undefined ? moduleConfig.trafficManagement.rateLimitEnabled : false,
+        rateLimitMaxPerNode: moduleConfig.trafficManagement.rateLimitMaxPerNode !== undefined ? moduleConfig.trafficManagement.rateLimitMaxPerNode : 0,
+        rateLimitWindowSecs: moduleConfig.trafficManagement.rateLimitWindowSecs !== undefined ? moduleConfig.trafficManagement.rateLimitWindowSecs : 0,
+        unknownPacketDropEnabled: moduleConfig.trafficManagement.unknownPacketDropEnabled !== undefined ? moduleConfig.trafficManagement.unknownPacketDropEnabled : false,
+        unknownPacketGracePeriodSecs: moduleConfig.trafficManagement.unknownPacketGracePeriodSecs !== undefined ? moduleConfig.trafficManagement.unknownPacketGracePeriodSecs : 0,
+        hopExhaustionEnabled: moduleConfig.trafficManagement.hopExhaustionEnabled !== undefined ? moduleConfig.trafficManagement.hopExhaustionEnabled : false,
+        hopExhaustionMinHops: moduleConfig.trafficManagement.hopExhaustionMinHops !== undefined ? moduleConfig.trafficManagement.hopExhaustionMinHops : 0,
+        hopExhaustionMaxHops: moduleConfig.trafficManagement.hopExhaustionMaxHops !== undefined ? moduleConfig.trafficManagement.hopExhaustionMaxHops : 0
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        trafficManagement: trafficManagementConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning TrafficManagement config with enabled=${trafficManagementConfigWithDefaults.enabled}`);
+    }
+
     return {
       deviceConfig,
       moduleConfig,
-      localNodeInfo: this.localNodeInfo
+      localNodeInfo: this.localNodeInfo,
+      supportedModules: {
+        statusmessage: !!moduleConfig.statusmessage,
+        trafficManagement: !!moduleConfig.trafficManagement
+      }
     };
   }
 
@@ -10040,7 +10087,8 @@ class MeshtasticManager {
           0: 'mqtt',
           5: 'telemetry',
           9: 'neighborInfo',
-          13: 'statusmessage'
+          13: 'statusmessage',
+          14: 'trafficManagement'
         };
         const configKey = moduleConfigMap[configType];
         if (configKey) {
@@ -10090,7 +10138,8 @@ class MeshtasticManager {
               0: 'mqtt',
               5: 'telemetry',
               9: 'neighborInfo',
-              13: 'statusmessage'
+              13: 'statusmessage',
+              14: 'trafficManagement'
             };
             const configKey = moduleConfigMap[configType];
             if (configKey && nodeConfig.moduleConfig?.[configKey]) {
