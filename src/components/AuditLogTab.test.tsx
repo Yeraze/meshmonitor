@@ -71,6 +71,18 @@ const mockAuditLogs = [
     valueBefore: null,
     valueAfter: null,
     timestamp: Date.now() - 3000
+  },
+  {
+    id: 4,
+    userId: 1,
+    username: 'admin',
+    action: 'api_token_used',
+    resource: 'auth',
+    details: JSON.stringify({ tokenName: 'my-token' }),
+    ipAddress: '192.168.1.5',
+    valueBefore: null,
+    valueAfter: null,
+    timestamp: Date.now() - 4000
   }
 ];
 
@@ -277,6 +289,22 @@ describe('AuditLogTab', () => {
         expect(screen.getByLabelText(/audit.end_date/i)).toBeInTheDocument();
         expect(screen.getByLabelText(/audit.search/i)).toBeInTheDocument();
       });
+    });
+
+    it('should have Source filter dropdown', async () => {
+      (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: mockAuditLogs.length });
+      (api.get as any).mockResolvedValueOnce({ stats: mockStats });
+      (api.get as any).mockResolvedValueOnce({ users: mockUsers });
+
+      renderWithProviders(authStatus);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/audit.source/i)).toBeInTheDocument();
+      });
+
+      const sourceSelect = screen.getByLabelText(/audit.source/i);
+      expect(sourceSelect).toBeInTheDocument();
+      expect(sourceSelect.querySelectorAll('option')).toHaveLength(3);
     });
 
     it('should have Clear Filters button', async () => {

@@ -8651,6 +8651,7 @@ class DatabaseService {
     offset?: number;
     userId?: number;
     action?: string;
+    excludeAction?: string;
     resource?: string;
     startDate?: number;
     endDate?: number;
@@ -8661,6 +8662,7 @@ class DatabaseService {
       offset = 0,
       userId,
       action,
+      excludeAction,
       resource,
       startDate,
       endDate,
@@ -8679,6 +8681,11 @@ class DatabaseService {
     if (action) {
       conditions.push('al.action = ?');
       params.push(action);
+    }
+
+    if (excludeAction) {
+      conditions.push('al.action != ?');
+      params.push(excludeAction);
     }
 
     if (resource) {
@@ -8742,6 +8749,7 @@ class DatabaseService {
     offset?: number;
     userId?: number;
     action?: string;
+    excludeAction?: string;
     resource?: string;
     startDate?: number;
     endDate?: number;
@@ -8757,6 +8765,7 @@ class DatabaseService {
       offset = 0,
       userId,
       action,
+      excludeAction,
       resource,
       startDate,
       endDate,
@@ -8780,6 +8789,11 @@ class DatabaseService {
         if (action) {
           conditions.push(`action = $${paramIndex++}`);
           params.push(action);
+        }
+
+        if (excludeAction) {
+          conditions.push(`action != $${paramIndex++}`);
+          params.push(excludeAction);
         }
 
         if (resource) {
@@ -8839,6 +8853,11 @@ class DatabaseService {
         if (action) {
           conditions.push('action = ?');
           params.push(action);
+        }
+
+        if (excludeAction) {
+          conditions.push('action != ?');
+          params.push(excludeAction);
         }
 
         if (resource) {

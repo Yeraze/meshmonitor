@@ -613,6 +613,10 @@
   "audit.page": "Page {{current}} of {{total}}",
   "audit.previous": "Previous",
   "audit.next": "Next",
+  "audit.source": "Source",
+  "audit.all_sources": "All Sources",
+  "audit.ui_only": "UI Only",
+  "audit.api_only": "API Token Only",
 
   "security.title": "Security Scanner",
   "security.description": "Monitor encryption key security issues including low-entropy and duplicate keys",
