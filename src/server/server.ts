@@ -6083,7 +6083,9 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'security': { type: 7, isModule: false },  // SECURITY_CONFIG
           'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
           'telemetry': { type: 5, isModule: true },  // TELEMETRY_CONFIG (module)
-          'neighborinfo': { type: 9, isModule: true } // NEIGHBORINFO_CONFIG (module)
+          'neighborinfo': { type: 9, isModule: true }, // NEIGHBORINFO_CONFIG (module)
+          'statusmessage': { type: 13, isModule: true }, // STATUSMESSAGE_CONFIG (module)
+          'trafficmanagement': { type: 14, isModule: true } // TRAFFICMANAGEMENT_CONFIG (module)
         };
 
         const configInfo = configTypeMap[configType];
@@ -6110,7 +6112,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               'ambientlighting': 'ambientLighting',
               'detectionsensor': 'detectionSensor',
               'paxcounter': 'paxcounter',
-              'statusmessage': 'statusmessage'
+              'statusmessage': 'statusmessage',
+              'trafficmanagement': 'trafficManagement'
             };
             const moduleKey = moduleConfigMap[configType];
             if (moduleKey && !currentConfig?.moduleConfig?.[moduleKey]) needsRequest = true;
@@ -6313,6 +6316,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'detectionsensor':
           case 'paxcounter':
           case 'statusmessage':
+          case 'trafficmanagement':
             const moduleConfigMap: { [key: string]: string } = {
               'serial': 'serial',
               'extnotif': 'externalNotification',
@@ -6326,7 +6330,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               'ambientlighting': 'ambientLighting',
               'detectionsensor': 'detectionSensor',
               'paxcounter': 'paxcounter',
-              'statusmessage': 'statusmessage'
+              'statusmessage': 'statusmessage',
+              'trafficmanagement': 'trafficManagement'
             };
             const moduleKey = moduleConfigMap[configType];
             if (moduleKey && finalConfig.moduleConfig?.[moduleKey]) {
@@ -6366,7 +6371,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'ambientlighting': { type: 10, isModule: true }, // AMBIENTLIGHTING_CONFIG (module)
           'detectionsensor': { type: 11, isModule: true }, // DETECTIONSENSOR_CONFIG (module)
           'paxcounter': { type: 12, isModule: true }, // PAXCOUNTER_CONFIG (module)
-          'statusmessage': { type: 13, isModule: true } // STATUSMESSAGE_CONFIG (module)
+          'statusmessage': { type: 13, isModule: true }, // STATUSMESSAGE_CONFIG (module)
+          'trafficmanagement': { type: 14, isModule: true } // TRAFFICMANAGEMENT_CONFIG (module)
         };
 
         const configInfo = configTypeMap[configType];
@@ -6504,6 +6510,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'ambientlighting':
           case 'detectionsensor':
           case 'paxcounter':
+          case 'statusmessage':
+          case 'trafficmanagement':
             config = remoteConfig || { enabled: false };
             break;
         }
@@ -7257,6 +7265,18 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'config is required for setTelemetryConfig' });
         }
         adminMessage = protobufService.createSetModuleConfigMessageGeneric('telemetry', params.config, sessionPasskey || undefined);
+        break;
+      case 'setStatusMessageConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setStatusMessageConfig' });
+        }
+        adminMessage = protobufService.createSetModuleConfigMessageGeneric('statusmessage', params.config, sessionPasskey || undefined);
+        break;
+      case 'setTrafficManagementConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setTrafficManagementConfig' });
+        }
+        adminMessage = protobufService.createSetModuleConfigMessageGeneric('trafficmanagement', params.config, sessionPasskey || undefined);
         break;
       case 'setSecurityConfig':
         if (!params.config) {

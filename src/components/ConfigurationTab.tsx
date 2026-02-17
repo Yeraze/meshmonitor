@@ -23,6 +23,8 @@ import AudioConfigSection from './configuration/AudioConfigSection';
 import RemoteHardwareConfigSection from './configuration/RemoteHardwareConfigSection';
 import DetectionSensorConfigSection from './configuration/DetectionSensorConfigSection';
 import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
+import StatusMessageConfigSection from './configuration/StatusMessageConfigSection';
+import TrafficManagementConfigSection from './configuration/TrafficManagementConfigSection';
 import SerialConfigSection from './configuration/SerialConfigSection';
 import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
 import SecurityConfigSection from './configuration/SecurityConfigSection';
@@ -240,6 +242,28 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [paxcounterUpdateInterval, setPaxcounterUpdateInterval] = useState(0);
   const [paxcounterWifiThreshold, setPaxcounterWifiThreshold] = useState(-80);
   const [paxcounterBleThreshold, setPaxcounterBleThreshold] = useState(-80);
+
+  // Status Message Config State
+  const [statusMessageNodeStatus, setStatusMessageNodeStatus] = useState('');
+
+  // Traffic Management Config State
+  const [trafficManagementEnabled, setTrafficManagementEnabled] = useState(false);
+  const [trafficManagementPositionDedupEnabled, setTrafficManagementPositionDedupEnabled] = useState(false);
+  const [trafficManagementPositionDedupTimeSecs, setTrafficManagementPositionDedupTimeSecs] = useState(0);
+  const [trafficManagementPositionDedupDistanceMeters, setTrafficManagementPositionDedupDistanceMeters] = useState(0);
+  const [trafficManagementNodeinfoDirectResponseEnabled, setTrafficManagementNodeinfoDirectResponseEnabled] = useState(false);
+  const [trafficManagementNodeinfoDirectResponseMyNodeOnly, setTrafficManagementNodeinfoDirectResponseMyNodeOnly] = useState(false);
+  const [trafficManagementRateLimitEnabled, setTrafficManagementRateLimitEnabled] = useState(false);
+  const [trafficManagementRateLimitMaxPerNode, setTrafficManagementRateLimitMaxPerNode] = useState(0);
+  const [trafficManagementRateLimitWindowSecs, setTrafficManagementRateLimitWindowSecs] = useState(0);
+  const [trafficManagementUnknownPacketDropEnabled, setTrafficManagementUnknownPacketDropEnabled] = useState(false);
+  const [trafficManagementUnknownPacketGracePeriodSecs, setTrafficManagementUnknownPacketGracePeriodSecs] = useState(0);
+  const [trafficManagementHopExhaustionEnabled, setTrafficManagementHopExhaustionEnabled] = useState(false);
+  const [trafficManagementHopExhaustionMinHops, setTrafficManagementHopExhaustionMinHops] = useState(0);
+  const [trafficManagementHopExhaustionMaxHops, setTrafficManagementHopExhaustionMaxHops] = useState(0);
+
+  // Supported modules tracking (for unsupported firmware detection)
+  const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean } | null>(null);
 
   // Serial Config State
   const [serialEnabled, setSerialEnabled] = useState(false);
@@ -611,6 +635,36 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setPaxcounterUpdateInterval(pax.paxcounterUpdateInterval ?? 0);
           setPaxcounterWifiThreshold(pax.wifiThreshold ?? -80);
           setPaxcounterBleThreshold(pax.bleThreshold ?? -80);
+        }
+
+        // Populate Status Message config
+        if (config.moduleConfig?.statusmessage) {
+          const sm = config.moduleConfig.statusmessage;
+          setStatusMessageNodeStatus(sm.nodeStatus || '');
+        }
+
+        // Populate Traffic Management config
+        if (config.moduleConfig?.trafficManagement) {
+          const tm = config.moduleConfig.trafficManagement;
+          setTrafficManagementEnabled(tm.enabled || false);
+          setTrafficManagementPositionDedupEnabled(tm.positionDedupEnabled || false);
+          setTrafficManagementPositionDedupTimeSecs(tm.positionDedupTimeSecs ?? 0);
+          setTrafficManagementPositionDedupDistanceMeters(tm.positionDedupDistanceMeters ?? 0);
+          setTrafficManagementNodeinfoDirectResponseEnabled(tm.nodeinfoDirectResponseEnabled || false);
+          setTrafficManagementNodeinfoDirectResponseMyNodeOnly(tm.nodeinfoDirectResponseMyNodeOnly || false);
+          setTrafficManagementRateLimitEnabled(tm.rateLimitEnabled || false);
+          setTrafficManagementRateLimitMaxPerNode(tm.rateLimitMaxPerNode ?? 0);
+          setTrafficManagementRateLimitWindowSecs(tm.rateLimitWindowSecs ?? 0);
+          setTrafficManagementUnknownPacketDropEnabled(tm.unknownPacketDropEnabled || false);
+          setTrafficManagementUnknownPacketGracePeriodSecs(tm.unknownPacketGracePeriodSecs ?? 0);
+          setTrafficManagementHopExhaustionEnabled(tm.hopExhaustionEnabled || false);
+          setTrafficManagementHopExhaustionMinHops(tm.hopExhaustionMinHops ?? 0);
+          setTrafficManagementHopExhaustionMaxHops(tm.hopExhaustionMaxHops ?? 0);
+        }
+
+        // Store supported modules info
+        if (config.supportedModules) {
+          setSupportedModules(config.supportedModules);
         }
 
         // Populate Serial config
@@ -1250,6 +1304,57 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
+  const handleSaveStatusMessageConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('statusmessage', {
+        nodeStatus: statusMessageNodeStatus
+      });
+      setStatusMessage(t('config.statusmessage_saved', 'Status Message config saved'));
+      showToast(t('config.statusmessage_saved_toast', 'Status Message config saved successfully'), 'success');
+    } catch (error) {
+      logger.error('Error saving Status Message config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.statusmessage_failed', 'Failed to save Status Message config');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.statusmessage_failed', 'Failed to save Status Message config')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveTrafficManagementConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('trafficmanagement', {
+        enabled: trafficManagementEnabled,
+        positionDedupEnabled: trafficManagementPositionDedupEnabled,
+        positionDedupTimeSecs: trafficManagementPositionDedupTimeSecs,
+        positionDedupDistanceMeters: trafficManagementPositionDedupDistanceMeters,
+        nodeinfoDirectResponseEnabled: trafficManagementNodeinfoDirectResponseEnabled,
+        nodeinfoDirectResponseMyNodeOnly: trafficManagementNodeinfoDirectResponseMyNodeOnly,
+        rateLimitEnabled: trafficManagementRateLimitEnabled,
+        rateLimitMaxPerNode: trafficManagementRateLimitMaxPerNode,
+        rateLimitWindowSecs: trafficManagementRateLimitWindowSecs,
+        unknownPacketDropEnabled: trafficManagementUnknownPacketDropEnabled,
+        unknownPacketGracePeriodSecs: trafficManagementUnknownPacketGracePeriodSecs,
+        hopExhaustionEnabled: trafficManagementHopExhaustionEnabled,
+        hopExhaustionMinHops: trafficManagementHopExhaustionMinHops,
+        hopExhaustionMaxHops: trafficManagementHopExhaustionMaxHops
+      });
+      setStatusMessage(t('config.trafficmanagement_saved', 'Traffic Management config saved'));
+      showToast(t('config.trafficmanagement_saved_toast', 'Traffic Management config saved successfully'), 'success');
+    } catch (error) {
+      logger.error('Error saving Traffic Management config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.trafficmanagement_failed', 'Failed to save Traffic Management config');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.trafficmanagement_failed', 'Failed to save Traffic Management config')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSaveSerialConfig = async () => {
     setIsSaving(true);
     setStatusMessage('');
@@ -1716,6 +1821,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         { id: 'config-remotehardware', label: t('remotehardware_config.title', 'Remote Hardware') },
         { id: 'config-detectionsensor', label: t('detectionsensor_config.title', 'Detection Sensor') },
         { id: 'config-paxcounter', label: t('paxcounter_config.title', 'Paxcounter') },
+        { id: 'config-statusmessage', label: t('statusmessage_config.title', 'Status Message') },
+        { id: 'config-trafficmanagement', label: t('trafficmanagement_config.title', 'Traffic Management') },
         { id: 'config-serial', label: t('serial_config.title', 'Serial') },
         { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting') },
         { id: 'config-security', label: t('security_config.title', 'Security') },
@@ -2341,6 +2448,52 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setBleThreshold={setPaxcounterBleThreshold}
             isSaving={isSaving}
             onSave={handleSavePaxcounterConfig}
+          />
+        </div>
+
+        <div id="config-statusmessage">
+          <StatusMessageConfigSection
+            nodeStatus={statusMessageNodeStatus}
+            setNodeStatus={setStatusMessageNodeStatus}
+            isDisabled={!supportedModules?.statusmessage}
+            isSaving={isSaving}
+            onSave={handleSaveStatusMessageConfig}
+          />
+        </div>
+
+        <div id="config-trafficmanagement">
+          <TrafficManagementConfigSection
+            enabled={trafficManagementEnabled}
+            setEnabled={setTrafficManagementEnabled}
+            positionDedupEnabled={trafficManagementPositionDedupEnabled}
+            setPositionDedupEnabled={setTrafficManagementPositionDedupEnabled}
+            positionDedupTimeSecs={trafficManagementPositionDedupTimeSecs}
+            setPositionDedupTimeSecs={setTrafficManagementPositionDedupTimeSecs}
+            positionDedupDistanceMeters={trafficManagementPositionDedupDistanceMeters}
+            setPositionDedupDistanceMeters={setTrafficManagementPositionDedupDistanceMeters}
+            nodeinfoDirectResponseEnabled={trafficManagementNodeinfoDirectResponseEnabled}
+            setNodeinfoDirectResponseEnabled={setTrafficManagementNodeinfoDirectResponseEnabled}
+            nodeinfoDirectResponseMyNodeOnly={trafficManagementNodeinfoDirectResponseMyNodeOnly}
+            setNodeinfoDirectResponseMyNodeOnly={setTrafficManagementNodeinfoDirectResponseMyNodeOnly}
+            rateLimitEnabled={trafficManagementRateLimitEnabled}
+            setRateLimitEnabled={setTrafficManagementRateLimitEnabled}
+            rateLimitMaxPerNode={trafficManagementRateLimitMaxPerNode}
+            setRateLimitMaxPerNode={setTrafficManagementRateLimitMaxPerNode}
+            rateLimitWindowSecs={trafficManagementRateLimitWindowSecs}
+            setRateLimitWindowSecs={setTrafficManagementRateLimitWindowSecs}
+            unknownPacketDropEnabled={trafficManagementUnknownPacketDropEnabled}
+            setUnknownPacketDropEnabled={setTrafficManagementUnknownPacketDropEnabled}
+            unknownPacketGracePeriodSecs={trafficManagementUnknownPacketGracePeriodSecs}
+            setUnknownPacketGracePeriodSecs={setTrafficManagementUnknownPacketGracePeriodSecs}
+            hopExhaustionEnabled={trafficManagementHopExhaustionEnabled}
+            setHopExhaustionEnabled={setTrafficManagementHopExhaustionEnabled}
+            hopExhaustionMinHops={trafficManagementHopExhaustionMinHops}
+            setHopExhaustionMinHops={setTrafficManagementHopExhaustionMinHops}
+            hopExhaustionMaxHops={trafficManagementHopExhaustionMaxHops}
+            setHopExhaustionMaxHops={setTrafficManagementHopExhaustionMaxHops}
+            isDisabled={!supportedModules?.trafficManagement}
+            isSaving={isSaving}
+            onSave={handleSaveTrafficManagementConfig}
           />
         </div>
 

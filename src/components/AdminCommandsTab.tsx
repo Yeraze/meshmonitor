@@ -43,6 +43,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setOwnerConfig,
     setDeviceConfig,
     setTelemetryConfig,
+    setStatusMessageConfig,
+    setTrafficManagementConfig,
   } = useAdminCommandsState();
 
   // UI and non-config state (keep as useState for now)
@@ -99,6 +101,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     network: 'idle',
     neighborinfo: 'idle',
     telemetry: 'idle',
+    statusmessage: 'idle',
+    trafficmanagement: 'idle',
     owner: 'idle',
     channels: 'idle'
   });
@@ -392,12 +396,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       network: 'loading',
       neighborinfo: 'loading',
       telemetry: 'loading',
+      statusmessage: 'loading',
+      trafficmanagement: 'loading',
       owner: 'loading',
       channels: 'loading'
     });
     const errors: string[] = [];
     const loaded: string[] = [];
-    const totalConfigs = 11; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, owner, channels
+    const totalConfigs = 13; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, statusmessage, trafficmanagement, owner, channels
 
     try {
       // Load all config types sequentially to avoid conflicts and timeouts
@@ -594,12 +600,41 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
+      await loadConfig('statusmessage', 10, (result) => {
+        const config = result.config;
+        setStatusMessageConfig({
+          nodeStatus: config.nodeStatus ?? ''
+        });
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('trafficmanagement', 11, (result) => {
+        const config = result.config;
+        setTrafficManagementConfig({
+          enabled: config.enabled ?? false,
+          positionDedupEnabled: config.positionDedupEnabled ?? false,
+          positionDedupTimeSecs: config.positionDedupTimeSecs ?? 0,
+          positionDedupDistanceMeters: config.positionDedupDistanceMeters ?? 0,
+          nodeinfoDirectResponseEnabled: config.nodeinfoDirectResponseEnabled ?? false,
+          nodeinfoDirectResponseMyNodeOnly: config.nodeinfoDirectResponseMyNodeOnly ?? false,
+          rateLimitEnabled: config.rateLimitEnabled ?? false,
+          rateLimitMaxPerNode: config.rateLimitMaxPerNode ?? 0,
+          rateLimitWindowSecs: config.rateLimitWindowSecs ?? 0,
+          unknownPacketDropEnabled: config.unknownPacketDropEnabled ?? false,
+          unknownPacketGracePeriodSecs: config.unknownPacketGracePeriodSecs ?? 0,
+          hopExhaustionEnabled: config.hopExhaustionEnabled ?? false,
+          hopExhaustionMinHops: config.hopExhaustionMinHops ?? 0,
+          hopExhaustionMaxHops: config.hopExhaustionMaxHops ?? 0
+        });
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Load owner info
-      await loadOwner(10);
+      await loadOwner(12);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Load channels (extracted logic to avoid duplicate loading state and toasts)
-      setLoadingProgress({ current: 11, total: totalConfigs, configType: 'channels' });
+      setLoadingProgress({ current: 13, total: totalConfigs, configType: 'channels' });
       try {
         const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
         const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
@@ -1751,6 +1786,51 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       console.error('Set Telemetry config command failed:', error);
     }
   }, [configState.telemetry, executeCommand]);
+
+  const handleStatusMessageConfigChange = useCallback((field: string, value: any) => {
+    setStatusMessageConfig({ [field]: value });
+  }, [setStatusMessageConfig]);
+
+  const handleSetStatusMessageConfig = useCallback(async () => {
+    const config: any = {
+      nodeStatus: configState.statusMessage.nodeStatus
+    };
+
+    try {
+      await executeCommand('setStatusMessageConfig', { config });
+    } catch (error) {
+      console.error('Set StatusMessage config command failed:', error);
+    }
+  }, [configState.statusMessage, executeCommand]);
+
+  const handleTrafficManagementConfigChange = useCallback((field: string, value: any) => {
+    setTrafficManagementConfig({ [field]: value });
+  }, [setTrafficManagementConfig]);
+
+  const handleSetTrafficManagementConfig = useCallback(async () => {
+    const config: any = {
+      enabled: configState.trafficManagement.enabled,
+      positionDedupEnabled: configState.trafficManagement.positionDedupEnabled,
+      positionDedupTimeSecs: configState.trafficManagement.positionDedupTimeSecs,
+      positionDedupDistanceMeters: configState.trafficManagement.positionDedupDistanceMeters,
+      nodeinfoDirectResponseEnabled: configState.trafficManagement.nodeinfoDirectResponseEnabled,
+      nodeinfoDirectResponseMyNodeOnly: configState.trafficManagement.nodeinfoDirectResponseMyNodeOnly,
+      rateLimitEnabled: configState.trafficManagement.rateLimitEnabled,
+      rateLimitMaxPerNode: configState.trafficManagement.rateLimitMaxPerNode,
+      rateLimitWindowSecs: configState.trafficManagement.rateLimitWindowSecs,
+      unknownPacketDropEnabled: configState.trafficManagement.unknownPacketDropEnabled,
+      unknownPacketGracePeriodSecs: configState.trafficManagement.unknownPacketGracePeriodSecs,
+      hopExhaustionEnabled: configState.trafficManagement.hopExhaustionEnabled,
+      hopExhaustionMinHops: configState.trafficManagement.hopExhaustionMinHops,
+      hopExhaustionMaxHops: configState.trafficManagement.hopExhaustionMaxHops
+    };
+
+    try {
+      await executeCommand('setTrafficManagementConfig', { config });
+    } catch (error) {
+      console.error('Set TrafficManagement config command failed:', error);
+    }
+  }, [configState.trafficManagement, executeCommand]);
 
   const handleAdminKeyChange = (index: number, value: string) => {
     setAdminKey(index, value);
@@ -3033,11 +3113,34 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         telemetryHealthScreenEnabled={configState.telemetry.healthScreenEnabled}
         onTelemetryConfigChange={handleTelemetryConfigChange}
         onSaveTelemetryConfig={handleSetTelemetryConfig}
+        statusMessageNodeStatus={configState.statusMessage.nodeStatus}
+        onStatusMessageConfigChange={handleStatusMessageConfigChange}
+        onSaveStatusMessageConfig={handleSetStatusMessageConfig}
+        statusMessageIsDisabled={sectionLoadStatus.statusmessage === 'error'}
+        trafficManagementEnabled={configState.trafficManagement.enabled}
+        trafficManagementPositionDedupEnabled={configState.trafficManagement.positionDedupEnabled}
+        trafficManagementPositionDedupTimeSecs={configState.trafficManagement.positionDedupTimeSecs}
+        trafficManagementPositionDedupDistanceMeters={configState.trafficManagement.positionDedupDistanceMeters}
+        trafficManagementNodeinfoDirectResponseEnabled={configState.trafficManagement.nodeinfoDirectResponseEnabled}
+        trafficManagementNodeinfoDirectResponseMyNodeOnly={configState.trafficManagement.nodeinfoDirectResponseMyNodeOnly}
+        trafficManagementRateLimitEnabled={configState.trafficManagement.rateLimitEnabled}
+        trafficManagementRateLimitMaxPerNode={configState.trafficManagement.rateLimitMaxPerNode}
+        trafficManagementRateLimitWindowSecs={configState.trafficManagement.rateLimitWindowSecs}
+        trafficManagementUnknownPacketDropEnabled={configState.trafficManagement.unknownPacketDropEnabled}
+        trafficManagementUnknownPacketGracePeriodSecs={configState.trafficManagement.unknownPacketGracePeriodSecs}
+        trafficManagementHopExhaustionEnabled={configState.trafficManagement.hopExhaustionEnabled}
+        trafficManagementHopExhaustionMinHops={configState.trafficManagement.hopExhaustionMinHops}
+        trafficManagementHopExhaustionMaxHops={configState.trafficManagement.hopExhaustionMaxHops}
+        onTrafficManagementConfigChange={handleTrafficManagementConfigChange}
+        onSaveTrafficManagementConfig={handleSetTrafficManagementConfig}
+        trafficManagementIsDisabled={sectionLoadStatus.trafficmanagement === 'error'}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
         mqttHeaderActions={renderSectionLoadButton('mqtt')}
         neighborInfoHeaderActions={renderSectionLoadButton('neighborinfo')}
         telemetryHeaderActions={renderSectionLoadButton('telemetry')}
+        statusMessageHeaderActions={renderSectionLoadButton('statusmessage')}
+        trafficManagementHeaderActions={renderSectionLoadButton('trafficmanagement')}
       />
 
       {/* Import/Export Configuration Section */}

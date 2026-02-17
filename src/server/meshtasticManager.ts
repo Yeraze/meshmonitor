@@ -328,6 +328,8 @@ class MeshtasticManager {
     moduleConfig: any;
     lastUpdated: number;
   }> = new Map();
+  // Track pending module config requests so empty Proto3 responses can be mapped to the correct key
+  private pendingModuleConfigRequests: Map<number, string> = new Map();
   // Per-node channel storage for remote nodes
   private remoteNodeChannels: Map<number, Map<number, any>> = new Map();
   // Per-node owner storage for remote nodes
@@ -2882,7 +2884,7 @@ class MeshtasticManager {
   /**
    * Get the current device configuration
    */
-  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
+  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean } } {
     logger.info(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
     // Apply Proto3 defaults to device config if it exists
@@ -3032,10 +3034,57 @@ class MeshtasticManager {
       logger.debug(`[CONFIG] Converted network config IP addresses to strings`);
     }
 
+    // Apply Proto3 defaults to StatusMessage module config
+    if (moduleConfig.statusmessage) {
+      const statusMessageConfigWithDefaults = {
+        ...moduleConfig.statusmessage,
+        nodeStatus: moduleConfig.statusmessage.nodeStatus !== undefined ? moduleConfig.statusmessage.nodeStatus : ''
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        statusmessage: statusMessageConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning StatusMessage config with nodeStatus="${statusMessageConfigWithDefaults.nodeStatus}"`);
+    }
+
+    // Apply Proto3 defaults to TrafficManagement module config
+    if (moduleConfig.trafficManagement) {
+      const trafficManagementConfigWithDefaults = {
+        ...moduleConfig.trafficManagement,
+        enabled: moduleConfig.trafficManagement.enabled !== undefined ? moduleConfig.trafficManagement.enabled : false,
+        positionDedupEnabled: moduleConfig.trafficManagement.positionDedupEnabled !== undefined ? moduleConfig.trafficManagement.positionDedupEnabled : false,
+        positionDedupTimeSecs: moduleConfig.trafficManagement.positionDedupTimeSecs !== undefined ? moduleConfig.trafficManagement.positionDedupTimeSecs : 0,
+        positionDedupDistanceMeters: moduleConfig.trafficManagement.positionDedupDistanceMeters !== undefined ? moduleConfig.trafficManagement.positionDedupDistanceMeters : 0,
+        nodeinfoDirectResponseEnabled: moduleConfig.trafficManagement.nodeinfoDirectResponseEnabled !== undefined ? moduleConfig.trafficManagement.nodeinfoDirectResponseEnabled : false,
+        nodeinfoDirectResponseMyNodeOnly: moduleConfig.trafficManagement.nodeinfoDirectResponseMyNodeOnly !== undefined ? moduleConfig.trafficManagement.nodeinfoDirectResponseMyNodeOnly : false,
+        rateLimitEnabled: moduleConfig.trafficManagement.rateLimitEnabled !== undefined ? moduleConfig.trafficManagement.rateLimitEnabled : false,
+        rateLimitMaxPerNode: moduleConfig.trafficManagement.rateLimitMaxPerNode !== undefined ? moduleConfig.trafficManagement.rateLimitMaxPerNode : 0,
+        rateLimitWindowSecs: moduleConfig.trafficManagement.rateLimitWindowSecs !== undefined ? moduleConfig.trafficManagement.rateLimitWindowSecs : 0,
+        unknownPacketDropEnabled: moduleConfig.trafficManagement.unknownPacketDropEnabled !== undefined ? moduleConfig.trafficManagement.unknownPacketDropEnabled : false,
+        unknownPacketGracePeriodSecs: moduleConfig.trafficManagement.unknownPacketGracePeriodSecs !== undefined ? moduleConfig.trafficManagement.unknownPacketGracePeriodSecs : 0,
+        hopExhaustionEnabled: moduleConfig.trafficManagement.hopExhaustionEnabled !== undefined ? moduleConfig.trafficManagement.hopExhaustionEnabled : false,
+        hopExhaustionMinHops: moduleConfig.trafficManagement.hopExhaustionMinHops !== undefined ? moduleConfig.trafficManagement.hopExhaustionMinHops : 0,
+        hopExhaustionMaxHops: moduleConfig.trafficManagement.hopExhaustionMaxHops !== undefined ? moduleConfig.trafficManagement.hopExhaustionMaxHops : 0
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        trafficManagement: trafficManagementConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning TrafficManagement config with enabled=${trafficManagementConfigWithDefaults.enabled}`);
+    }
+
     return {
       deviceConfig,
       moduleConfig,
-      localNodeInfo: this.localNodeInfo
+      localNodeInfo: this.localNodeInfo,
+      supportedModules: {
+        statusmessage: !!moduleConfig.statusmessage,
+        trafficManagement: !!moduleConfig.trafficManagement
+      }
     };
   }
 
@@ -9456,12 +9505,22 @@ class MeshtasticManager {
           const moduleConfigResponse = adminMsg.getModuleConfigResponse;
           if (moduleConfigResponse) {
             // Merge all module config fields that exist in the response
-            Object.keys(moduleConfigResponse).forEach((key) => {
-              // Skip internal protobuf fields
-              if (key !== 'payloadVariant' && moduleConfigResponse[key] !== undefined) {
-                nodeConfig.moduleConfig[key] = moduleConfigResponse[key];
-              }
+            const responseKeys = Object.keys(moduleConfigResponse).filter(k => k !== 'payloadVariant' && moduleConfigResponse[k] !== undefined);
+            responseKeys.forEach((key) => {
+              nodeConfig.moduleConfig[key] = moduleConfigResponse[key];
             });
+
+            // Proto3 omits all-default fields, so an empty getModuleConfigResponse means
+            // the node responded with a config where all values are defaults.
+            // Use the pending request tracker to store an empty config under the correct key.
+            if (responseKeys.length === 0) {
+              const pendingKey = this.pendingModuleConfigRequests.get(fromNum);
+              if (pendingKey) {
+                logger.info(`📊 Empty module config response from node ${fromNum}, storing defaults for '${pendingKey}'`);
+                nodeConfig.moduleConfig[pendingKey] = {};
+                this.pendingModuleConfigRequests.delete(fromNum);
+              }
+            }
           }
           nodeConfig.lastUpdated = Date.now();
           logger.info(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
@@ -10040,7 +10099,8 @@ class MeshtasticManager {
           0: 'mqtt',
           5: 'telemetry',
           9: 'neighborInfo',
-          13: 'statusmessage'
+          13: 'statusmessage',
+          14: 'trafficManagement'
         };
         const configKey = moduleConfigMap[configType];
         if (configKey) {
@@ -10063,6 +10123,18 @@ class MeshtasticManager {
           if (nodeConfig?.deviceConfig) {
             delete nodeConfig.deviceConfig[configKey];
           }
+        }
+      }
+
+      // Track pending module config request so empty Proto3 responses can be mapped
+      if (isModuleConfig) {
+        const moduleConfigMap: { [key: number]: string } = {
+          0: 'mqtt', 5: 'telemetry', 9: 'neighborInfo',
+          13: 'statusmessage', 14: 'trafficManagement'
+        };
+        const pendingKey = moduleConfigMap[configType];
+        if (pendingKey) {
+          this.pendingModuleConfigRequests.set(destinationNodeNum, pendingKey);
         }
       }
 
@@ -10090,7 +10162,8 @@ class MeshtasticManager {
               0: 'mqtt',
               5: 'telemetry',
               9: 'neighborInfo',
-              13: 'statusmessage'
+              13: 'statusmessage',
+              14: 'trafficManagement'
             };
             const configKey = moduleConfigMap[configType];
             if (configKey && nodeConfig.moduleConfig?.[configKey]) {
