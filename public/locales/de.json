@@ -3143,6 +3143,7 @@
     "admin_commands.remote_node_passkey_acquired": "",
     "admin_commands.channel_name": "",
     "node_popup.direct_message": "",
+    "node_popup.more_details": "",
     "messages.key_mismatch": "",
     "security_config.admin_key_placeholder": "",
     "automation.auto_key_management.max_exchanges_description": "",

@@ -161,7 +161,7 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
           {/* Action button for info tab */}
           {node.user?.id && hasPermission('messages', 'read') && (
             <button className="node-popup-btn" onClick={onDMNode}>
-              💬 Direct Message
+              🔍 More Details
             </button>
           )}
         </div>

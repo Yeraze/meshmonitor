@@ -267,6 +267,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     sampleFeatures.push('🤖'); // Auto-ack
     sampleFeatures.push('📢'); // Auto-announce
     sampleFeatures.push('👋'); // Auto-welcome
+    sampleFeatures.push('🏓'); // Auto-ping
+    sampleFeatures.push('🔑'); // Auto-key management
+    sampleFeatures.push('💬'); // Auto-responder
+    sampleFeatures.push('⏱️'); // Timed triggers
+    sampleFeatures.push('📍'); // Geofence triggers
+    sampleFeatures.push('🔍'); // Remote admin scan
+    sampleFeatures.push('🕐'); // Auto time sync
     sample = sample.replace(/{FEATURES}/g, sampleFeatures.join(' '));
 
     sample = sample.replace(/{NODECOUNT}/g, '42');

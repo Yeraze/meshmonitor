@@ -8919,6 +8919,58 @@ class MeshtasticManager {
         features.push('👋');
       }
 
+      // Check auto-ping
+      const autoPingEnabled = databaseService.getSetting('autoPingEnabled');
+      if (autoPingEnabled === 'true') {
+        features.push('🏓');
+      }
+
+      // Check auto-key management
+      const autoKeyManagementEnabled = databaseService.getSetting('autoKeyManagementEnabled');
+      if (autoKeyManagementEnabled === 'true') {
+        features.push('🔑');
+      }
+
+      // Check auto-responder
+      const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
+      if (autoResponderEnabled === 'true') {
+        features.push('💬');
+      }
+
+      // Check timed triggers (any enabled trigger)
+      const timerTriggersJson = databaseService.getSetting('timerTriggers');
+      if (timerTriggersJson) {
+        try {
+          const triggers = JSON.parse(timerTriggersJson);
+          if (Array.isArray(triggers) && triggers.some((t: any) => t.enabled)) {
+            features.push('⏱️');
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Check geofence triggers (any enabled trigger)
+      const geofenceTriggersJson = databaseService.getSetting('geofenceTriggers');
+      if (geofenceTriggersJson) {
+        try {
+          const triggers = JSON.parse(geofenceTriggersJson);
+          if (Array.isArray(triggers) && triggers.some((t: any) => t.enabled)) {
+            features.push('📍');
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Check remote admin scan
+      const remoteAdminInterval = databaseService.getSetting('remoteAdminScannerIntervalMinutes');
+      if (remoteAdminInterval && parseInt(remoteAdminInterval) > 0) {
+        features.push('🔍');
+      }
+
+      // Check auto time sync
+      const autoTimeSyncEnabled = databaseService.getSetting('autoTimeSyncEnabled');
+      if (autoTimeSyncEnabled === 'true') {
+        features.push('🕐');
+      }
+
       result = result.replace(/{FEATURES}/g, features.join(' '));
     }
 
@@ -9079,6 +9131,58 @@ class MeshtasticManager {
       const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
       if (autoWelcomeEnabled === 'true') {
         features.push('👋');
+      }
+
+      // Check auto-ping
+      const autoPingEnabled = databaseService.getSetting('autoPingEnabled');
+      if (autoPingEnabled === 'true') {
+        features.push('🏓');
+      }
+
+      // Check auto-key management
+      const autoKeyManagementEnabled = databaseService.getSetting('autoKeyManagementEnabled');
+      if (autoKeyManagementEnabled === 'true') {
+        features.push('🔑');
+      }
+
+      // Check auto-responder
+      const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
+      if (autoResponderEnabled === 'true') {
+        features.push('💬');
+      }
+
+      // Check timed triggers (any enabled trigger)
+      const timerTriggersJson = databaseService.getSetting('timerTriggers');
+      if (timerTriggersJson) {
+        try {
+          const triggers = JSON.parse(timerTriggersJson);
+          if (Array.isArray(triggers) && triggers.some((t: any) => t.enabled)) {
+            features.push('⏱️');
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Check geofence triggers (any enabled trigger)
+      const geofenceTriggersJson = databaseService.getSetting('geofenceTriggers');
+      if (geofenceTriggersJson) {
+        try {
+          const triggers = JSON.parse(geofenceTriggersJson);
+          if (Array.isArray(triggers) && triggers.some((t: any) => t.enabled)) {
+            features.push('📍');
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Check remote admin scan
+      const remoteAdminInterval = databaseService.getSetting('remoteAdminScannerIntervalMinutes');
+      if (remoteAdminInterval && parseInt(remoteAdminInterval) > 0) {
+        features.push('🔍');
+      }
+
+      // Check auto time sync
+      const autoTimeSyncEnabled = databaseService.getSetting('autoTimeSyncEnabled');
+      if (autoTimeSyncEnabled === 'true') {
+        features.push('🕐');
       }
 
       result = result.replace(/{FEATURES}/g, encode(features.join(' ')));

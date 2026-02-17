@@ -3131,6 +3131,7 @@
     "node_popup.hardware": "硬件",
     "node_popup.snr": "SNR（信噪比）",
     "node_popup.direct_message": "私信",
+    "node_popup.more_details": "更多详情",
     "node_popup.show_on_map": "在地图上显示",
     "node_popup.last_traceroute": "最近路由追踪",
     "node_popup.forward_path": "前进",
