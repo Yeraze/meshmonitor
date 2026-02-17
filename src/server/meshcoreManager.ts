@@ -61,6 +61,7 @@ export interface MeshCoreConfig {
   tcpHost?: string;
   tcpPort?: number;
   baudRate?: number;
+  firmwareType?: 'companion' | 'repeater';
 }
 
 export interface MeshCoreNode {
@@ -184,39 +185,20 @@ class MeshCoreManager extends EventEmitter {
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
 
     try {
-      if (this.config.connectionType === ConnectionType.SERIAL) {
-        // Load serialport dynamically for Repeater detection
+      if (this.config.connectionType === ConnectionType.SERIAL && this.config.firmwareType === 'repeater') {
+        // Explicit Repeater mode: use direct serial connection
         const serialAvailable = await loadSerialPort();
         if (!serialAvailable) {
-          logger.warn('[MeshCore] Serial port not available, will use Python bridge');
+          throw new Error('Serial port support not available — install serialport package for Repeater mode');
         }
-
-        // First try to detect if it's a Repeater via direct serial
-        if (serialAvailable) {
-          try {
-            await this.connectSerialDirect();
-            const isRepeater = await this.detectRepeater();
-            if (isRepeater) {
-              this.deviceType = MeshCoreDeviceType.REPEATER;
-              logger.info('[MeshCore] Detected Repeater firmware');
-            } else {
-              // Not a repeater, close serial and use Python bridge
-              await this.closeSerialDirect();
-              await this.startBridge();
-              this.deviceType = MeshCoreDeviceType.COMPANION;
-            }
-          } catch {
-            // Serial detection failed, try Python bridge
-            await this.startBridge();
-            this.deviceType = MeshCoreDeviceType.COMPANION;
-          }
-        } else {
-          // No serial support, use Python bridge
-          await this.startBridge();
-          this.deviceType = MeshCoreDeviceType.COMPANION;
-        }
-      } else if (this.config.connectionType === ConnectionType.TCP) {
-        // TCP uses Python bridge
+        await this.connectSerialDirect();
+        this.deviceType = MeshCoreDeviceType.REPEATER;
+        logger.info('[MeshCore] Using Repeater mode (direct serial)');
+      } else {
+        // Companion (default) or TCP: use Python bridge
+        // Note: We no longer send "ver" over serial for auto-detection, as it
+        // corrupts Companion binary protocol state. Set MESHCORE_FIRMWARE_TYPE=repeater
+        // to use direct serial for Repeater devices.
         await this.startBridge();
         this.deviceType = MeshCoreDeviceType.COMPANION;
       }
@@ -289,12 +271,16 @@ class MeshCoreManager extends EventEmitter {
    * Get configuration from environment variables
    */
   private getConfigFromEnv(): MeshCoreConfig | null {
+    const firmwareTypeRaw = (process.env.MESHCORE_FIRMWARE_TYPE || 'companion').toLowerCase();
+    const firmwareType: 'companion' | 'repeater' = firmwareTypeRaw === 'repeater' ? 'repeater' : 'companion';
+
     const serialPort = process.env.MESHCORE_SERIAL_PORT;
     if (serialPort) {
       return {
         connectionType: ConnectionType.SERIAL,
         serialPort,
         baudRate: parseInt(process.env.MESHCORE_BAUD_RATE || '115200', 10),
+        firmwareType,
       };
     }
 
@@ -304,6 +290,7 @@ class MeshCoreManager extends EventEmitter {
         connectionType: ConnectionType.TCP,
         tcpHost,
         tcpPort: parseInt(process.env.MESHCORE_TCP_PORT || '4403', 10),
+        firmwareType,
       };
     }
 
@@ -498,18 +485,6 @@ class MeshCoreManager extends EventEmitter {
     }
     this.serialPort = null;
     this.parser = null;
-  }
-
-  /**
-   * Detect if device is a Repeater (text CLI)
-   */
-  private async detectRepeater(): Promise<boolean> {
-    try {
-      const response = await this.sendRepeaterCommand('ver', 2000);
-      return response.includes('MeshCore');
-    } catch {
-      return false;
-    }
   }
 
   /**
