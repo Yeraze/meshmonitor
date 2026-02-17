@@ -5766,6 +5766,21 @@ apiRouter.get('/announce/last', requirePermission('automation', 'read'), (_req, 
   }
 });
 
+// Announce preview endpoint - expands message template with real values
+apiRouter.get('/announce/preview', requirePermission('automation', 'read'), async (req, res) => {
+  try {
+    const message = req.query.message as string;
+    if (!message) {
+      return res.status(400).json({ error: 'Missing message parameter' });
+    }
+    const preview = await meshtasticManager.previewAnnouncementMessage(message);
+    res.json({ preview });
+  } catch (error) {
+    logger.error('Error generating announcement preview:', error);
+    res.status(500).json({ error: 'Failed to generate preview' });
+  }
+});
+
 // Danger zone endpoints
 apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
   try {

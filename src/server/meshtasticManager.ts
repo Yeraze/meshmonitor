@@ -9295,6 +9295,13 @@ class MeshtasticManager {
     return result;
   }
 
+  /**
+   * Public wrapper for replaceAnnouncementTokens, used by the preview API endpoint.
+   */
+  public async previewAnnouncementMessage(message: string): Promise<string> {
+    return this.replaceAnnouncementTokens(message);
+  }
+
   private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean, urlEncode: boolean = false): Promise<string> {
     // Start with base announcement tokens (includes {IP}, {PORT}, {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT})
     let result = await this.replaceAnnouncementTokens(message, urlEncode);

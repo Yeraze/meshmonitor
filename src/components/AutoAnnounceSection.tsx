@@ -253,35 +253,35 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     }, 0);
   };
 
-  // Generate sample message with example token values
-  const generateSampleMessage = (): string => {
-    let sample = localMessage;
+  // Live preview message from the backend
+  const [previewMessage, setPreviewMessage] = useState<string>(localMessage);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
-    // Replace with sample values
-    sample = sample.replace(/{VERSION}/g, '2.9.1');
-    sample = sample.replace(/{DURATION}/g, '3d 12h');
+  // Debounced effect to fetch preview from backend
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!localMessage) {
+        setPreviewMessage('');
+        return;
+      }
+      setIsPreviewLoading(true);
+      try {
+        const response = await fetch(`${baseUrl}/api/announce/preview?message=${encodeURIComponent(localMessage)}`);
+        if (response.ok) {
+          const data = await response.json();
+          setPreviewMessage(data.preview);
+        } else {
+          setPreviewMessage(localMessage);
+        }
+      } catch {
+        setPreviewMessage(localMessage);
+      } finally {
+        setIsPreviewLoading(false);
+      }
+    }, 500);
 
-    // Check which features would be shown
-    const sampleFeatures: string[] = [];
-    sampleFeatures.push('🗺️'); // Traceroute
-    sampleFeatures.push('🤖'); // Auto-ack
-    sampleFeatures.push('📢'); // Auto-announce
-    sampleFeatures.push('👋'); // Auto-welcome
-    sampleFeatures.push('🏓'); // Auto-ping
-    sampleFeatures.push('🔑'); // Auto-key management
-    sampleFeatures.push('💬'); // Auto-responder
-    sampleFeatures.push('⏱️'); // Timed triggers
-    sampleFeatures.push('📍'); // Geofence triggers
-    sampleFeatures.push('🔍'); // Remote admin scan
-    sampleFeatures.push('🕐'); // Auto time sync
-    sample = sample.replace(/{FEATURES}/g, sampleFeatures.join(' '));
-
-    sample = sample.replace(/{NODECOUNT}/g, '42');
-    sample = sample.replace(/{DIRECTCOUNT}/g, '8');
-    sample = sample.replace(/{TOTALNODES}/g, '156');
-
-    return sample;
-  };
+    return () => clearTimeout(timer);
+  }, [localMessage, baseUrl]);
 
   const handleSendNow = async () => {
     setIsSendingNow(true);
@@ -658,7 +658,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             lineHeight: '1.5',
             minHeight: '50px'
           }}>
-            {generateSampleMessage()}
+            {isPreviewLoading ? (
+              <span style={{ opacity: 0.6, fontStyle: 'italic' }}>{previewMessage || localMessage}</span>
+            ) : (
+              previewMessage
+            )}
           </div>
         </div>
 
@@ -677,6 +681,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             <li>{t('automation.auto_announce.feature_acknowledge')}</li>
             <li>{t('automation.auto_announce.feature_announce')}</li>
             <li>{t('automation.auto_announce.feature_welcome')}</li>
+            <li>{t('automation.auto_announce.feature_ping')}</li>
+            <li>{t('automation.auto_announce.feature_key_management')}</li>
+            <li>{t('automation.auto_announce.feature_responder')}</li>
+            <li>{t('automation.auto_announce.feature_timed_triggers')}</li>
+            <li>{t('automation.auto_announce.feature_geofence')}</li>
+            <li>{t('automation.auto_announce.feature_remote_admin')}</li>
+            <li>{t('automation.auto_announce.feature_time_sync')}</li>
           </ul>
         </div>
 
