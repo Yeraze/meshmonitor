@@ -488,18 +488,6 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Detect if device is a Repeater (text CLI)
-   */
-  private async detectRepeater(): Promise<boolean> {
-    try {
-      const response = await this.sendRepeaterCommand('ver', 2000);
-      return response.includes('MeshCore');
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Handle incoming serial data
    */
   private handleSerialData(data: string): void {
