@@ -122,6 +122,7 @@ describe('Audit Log Routes', () => {
         offset = 0,
         userId,
         action,
+        excludeAction,
         resource,
         startDate,
         endDate,
@@ -138,6 +139,10 @@ describe('Audit Log Routes', () => {
       if (action) {
         whereClause += ' AND audit_log.action = ?';
         params.push(action);
+      }
+      if (excludeAction) {
+        whereClause += ' AND audit_log.action != ?';
+        params.push(excludeAction);
       }
       if (resource) {
         whereClause += ' AND audit_log.resource = ?';
@@ -295,6 +300,7 @@ describe('Audit Log Routes', () => {
     DatabaseService.auditLog(adminUserId, 'login_success', 'auth', 'Admin logged in', '192.168.1.1');
     DatabaseService.auditLog(adminUserId, 'settings_updated', 'settings', 'Changed theme', '192.168.1.1');
     DatabaseService.auditLog(regularUserId, 'login_success', 'auth', 'User logged in', '192.168.1.2');
+    DatabaseService.auditLog(adminUserId, 'api_token_used', 'auth', 'API token access', '192.168.1.3');
   });
 
   describe('GET /api/audit', () => {
@@ -335,7 +341,7 @@ describe('Audit Log Routes', () => {
     it('should filter by resource', async () => {
       const res = await asAdmin().get('/api/audit?resource=auth');
       expect(res.status).toBe(200);
-      expect(res.body.logs).toHaveLength(2);
+      expect(res.body.logs).toHaveLength(3);
     });
 
     it('should search in details', async () => {
@@ -349,7 +355,7 @@ describe('Audit Log Routes', () => {
       const res = await asAdmin().get('/api/audit?limit=2&offset=0');
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(2);
-      expect(res.body.total).toBe(3);
+      expect(res.body.total).toBe(4);
     });
 
     it('should filter by date range', async () => {
@@ -358,6 +364,13 @@ describe('Audit Log Routes', () => {
 
       const res = await asAdmin().get(`/api/audit?startDate=${oneHourAgo}`);
       expect(res.status).toBe(200);
+      expect(res.body.total).toBe(4);
+    });
+
+    it('should filter by excludeAction', async () => {
+      const res = await asAdmin().get('/api/audit?excludeAction=api_token_used');
+      expect(res.status).toBe(200);
+      expect(res.body.logs.every((log: any) => log.action !== 'api_token_used')).toBe(true);
       expect(res.body.total).toBe(3);
     });
   });
@@ -455,16 +468,16 @@ describe('Audit Log Routes', () => {
     it('should cleanup old audit logs', async () => {
       const beforeResult = db.prepare('SELECT COUNT(*) as count FROM audit_log').get() as any;
       const beforeCount = beforeResult.count;
-      expect(beforeCount).toBe(4);
+      expect(beforeCount).toBe(5);
 
       const res = await asAdmin().post('/api/audit/cleanup').send({ days: 90 });
       expect(res.status).toBe(200);
       expect(res.body.deletedCount).toBe(1);
 
-      // After cleanup: 4 initial - 1 deleted + 1 cleanup audit log = 4
+      // After cleanup: 5 initial - 1 deleted + 1 cleanup audit log = 5
       const afterResult = db.prepare('SELECT COUNT(*) as count FROM audit_log').get() as any;
       const afterCount = afterResult.count;
-      expect(afterCount).toBe(4);
+      expect(afterCount).toBe(5);
 
       // Verify the old entry was deleted
       const oldEntries = db.prepare(`

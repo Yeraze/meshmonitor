@@ -52,6 +52,7 @@ const AuditLogTab: React.FC = () => {
   const [filters, setFilters] = useState({
     userId: '',
     action: '',
+    source: '',
     resource: '',
     search: '',
     startDate: '',
@@ -78,6 +79,8 @@ const AuditLogTab: React.FC = () => {
       const params = new URLSearchParams();
       if (filters.userId) params.append('userId', filters.userId);
       if (filters.action) params.append('action', filters.action);
+      if (filters.source === 'ui') params.append('excludeAction', 'api_token_used');
+      if (filters.source === 'api') params.append('action', 'api_token_used');
       if (filters.resource) params.append('resource', filters.resource);
       if (filters.search) params.append('search', filters.search);
       if (filters.startDate) {
@@ -138,6 +141,7 @@ const AuditLogTab: React.FC = () => {
     setFilters({
       userId: '',
       action: '',
+      source: '',
       resource: '',
       search: '',
       startDate: '',
@@ -289,6 +293,19 @@ const AuditLogTab: React.FC = () => {
               {users && users.map(user => (
                 <option key={user.id} value={user.id}>{user.username}</option>
               ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="filter-source">{t('audit.source')}</label>
+            <select
+              id="filter-source"
+              value={filters.source}
+              onChange={(e) => handleFilterChange('source', e.target.value)}
+            >
+              <option value="">{t('audit.all_sources')}</option>
+              <option value="ui">{t('audit.ui_only')}</option>
+              <option value="api">{t('audit.api_only')}</option>
             </select>
           </div>
 
