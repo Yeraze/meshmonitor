@@ -3105,6 +3105,7 @@
     "node_popup.battery": "Батарея: {{level}}%",
     "node_popup.last_seen": "Последний раз слышен",
     "node_popup.direct_message": "Прямое сообщение",
+    "node_popup.more_details": "Подробнее",
     "node_popup.show_on_map": "Показать на карте",
     "node_popup.last_traceroute": "Последняя трассировка",
     "node_popup.forward_path": "Вперед",

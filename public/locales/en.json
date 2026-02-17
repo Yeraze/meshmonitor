@@ -1035,6 +1035,7 @@
   "node_popup.power_plugged": "Power: Plugged In",
   "node_popup.last_seen": "Last Seen",
   "node_popup.direct_message": "Direct Message",
+  "node_popup.more_details": "More Details",
   "node_popup.show_on_map": "Show on Map",
   "node_popup.traceroute": "Traceroute",
   "node_popup.last_traceroute": "Last Traceroute",

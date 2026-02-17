@@ -174,7 +174,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
                 onClose();
               }}
             >
-              💬 {t('node_popup.direct_message', 'Direct Message')}
+              🔍 {t('node_popup.more_details', 'More Details')}
             </button>
           )}
           {node.user?.id && node.position?.latitude != null && node.position?.longitude != null && (

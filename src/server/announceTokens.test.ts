@@ -135,6 +135,13 @@ describe('Auto-Announce Token Replacement', () => {
         if (key === 'autoAckEnabled') return 'true';
         if (key === 'autoAnnounceEnabled') return 'true';
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoPingEnabled') return 'true';
+        if (key === 'autoKeyManagementEnabled') return 'true';
+        if (key === 'autoResponderEnabled') return 'true';
+        if (key === 'timerTriggers') return JSON.stringify([{ id: '1', enabled: true }]);
+        if (key === 'geofenceTriggers') return JSON.stringify([{ id: '1', enabled: true }]);
+        if (key === 'remoteAdminScannerIntervalMinutes') return '5';
+        if (key === 'autoTimeSyncEnabled') return 'true';
         return null;
       });
 
@@ -155,8 +162,46 @@ describe('Auto-Announce Token Replacement', () => {
       if (autoWelcomeEnabled === 'true') {
         features.push('👋');
       }
+      const autoPingEnabled = mockGetSetting('autoPingEnabled');
+      if (autoPingEnabled === 'true') {
+        features.push('🏓');
+      }
+      const autoKeyManagementEnabled = mockGetSetting('autoKeyManagementEnabled');
+      if (autoKeyManagementEnabled === 'true') {
+        features.push('🔑');
+      }
+      const autoResponderEnabled = mockGetSetting('autoResponderEnabled');
+      if (autoResponderEnabled === 'true') {
+        features.push('💬');
+      }
+      const timerTriggersJson = mockGetSetting('timerTriggers');
+      if (timerTriggersJson) {
+        try {
+          const triggers = JSON.parse(timerTriggersJson);
+          if (Array.isArray(triggers) && triggers.some((t: any) => t.enabled)) {
+            features.push('⏱️');
+          }
+        } catch { /* ignore */ }
+      }
+      const geofenceTriggersJson = mockGetSetting('geofenceTriggers');
+      if (geofenceTriggersJson) {
+        try {
+          const triggers = JSON.parse(geofenceTriggersJson);
+          if (Array.isArray(triggers) && triggers.some((t: any) => t.enabled)) {
+            features.push('📍');
+          }
+        } catch { /* ignore */ }
+      }
+      const remoteAdminInterval = mockGetSetting('remoteAdminScannerIntervalMinutes');
+      if (remoteAdminInterval && parseInt(remoteAdminInterval) > 0) {
+        features.push('🔍');
+      }
+      const autoTimeSyncEnabled = mockGetSetting('autoTimeSyncEnabled');
+      if (autoTimeSyncEnabled === 'true') {
+        features.push('🕐');
+      }
 
-      expect(features.join(' ')).toBe('🗺️ 🤖 📢 👋');
+      expect(features.join(' ')).toBe('🗺️ 🤖 📢 👋 🏓 🔑 💬 ⏱️ 📍 🔍 🕐');
     });
   });
 
