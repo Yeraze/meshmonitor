@@ -75,7 +75,8 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const beforeTimestamp = before ? parseInt(before as string) : undefined;
 
     // Check privacy for position history
-    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
+    // V1 API uses decimal nodeId strings (e.g., '2882400001'), not hex format
+    const nodeNum = parseInt(nodeId, 10);
     const node = databaseService.getNode(nodeNum);
 
     if (node?.positionOverrideIsPrivate === true) {
@@ -89,9 +90,12 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch position telemetry - use a larger internal limit to account for grouping
-    // Each position has up to 5 telemetry rows (lat, lon, alt, speed, track)
-    const internalLimit = maxLimit * 5;
+    // Fetch position telemetry with a larger internal limit to account for grouping.
+    // Each position produces up to 5 telemetry rows (latitude, longitude, altitude,
+    // ground_speed, ground_track), so we multiply the requested limit by 5 to ensure
+    // we fetch enough raw rows to assemble the desired number of positions.
+    const TELEMETRY_TYPES_PER_POSITION = 5;
+    const internalLimit = maxLimit * TELEMETRY_TYPES_PER_POSITION;
     const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(
       nodeId,
       internalLimit,

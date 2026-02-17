@@ -1298,6 +1298,19 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     expect(response.body.data[0].timestamp).toBe(2000);
   });
 
+  it('should filter positions by before parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?before=2500')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    // Only positions at timestamps 1000 and 2000 should be returned (3000 >= 2500)
+    expect(response.body.count).toBe(2);
+    expect(response.body.total).toBe(2);
+    expect(response.body.data[0].timestamp).toBe(1000);
+    expect(response.body.data[1].timestamp).toBe(2000);
+  });
+
   it('should pass since parameter to database query', async () => {
     const databaseService = await import('../../../services/database.js');
     vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockClear();
