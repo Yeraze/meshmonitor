@@ -328,6 +328,8 @@ class MeshtasticManager {
     moduleConfig: any;
     lastUpdated: number;
   }> = new Map();
+  // Track pending module config requests so empty Proto3 responses can be mapped to the correct key
+  private pendingModuleConfigRequests: Map<number, string> = new Map();
   // Per-node channel storage for remote nodes
   private remoteNodeChannels: Map<number, Map<number, any>> = new Map();
   // Per-node owner storage for remote nodes
@@ -9503,12 +9505,22 @@ class MeshtasticManager {
           const moduleConfigResponse = adminMsg.getModuleConfigResponse;
           if (moduleConfigResponse) {
             // Merge all module config fields that exist in the response
-            Object.keys(moduleConfigResponse).forEach((key) => {
-              // Skip internal protobuf fields
-              if (key !== 'payloadVariant' && moduleConfigResponse[key] !== undefined) {
-                nodeConfig.moduleConfig[key] = moduleConfigResponse[key];
-              }
+            const responseKeys = Object.keys(moduleConfigResponse).filter(k => k !== 'payloadVariant' && moduleConfigResponse[k] !== undefined);
+            responseKeys.forEach((key) => {
+              nodeConfig.moduleConfig[key] = moduleConfigResponse[key];
             });
+
+            // Proto3 omits all-default fields, so an empty getModuleConfigResponse means
+            // the node responded with a config where all values are defaults.
+            // Use the pending request tracker to store an empty config under the correct key.
+            if (responseKeys.length === 0) {
+              const pendingKey = this.pendingModuleConfigRequests.get(fromNum);
+              if (pendingKey) {
+                logger.info(`📊 Empty module config response from node ${fromNum}, storing defaults for '${pendingKey}'`);
+                nodeConfig.moduleConfig[pendingKey] = {};
+                this.pendingModuleConfigRequests.delete(fromNum);
+              }
+            }
           }
           nodeConfig.lastUpdated = Date.now();
           logger.info(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
@@ -10111,6 +10123,18 @@ class MeshtasticManager {
           if (nodeConfig?.deviceConfig) {
             delete nodeConfig.deviceConfig[configKey];
           }
+        }
+      }
+
+      // Track pending module config request so empty Proto3 responses can be mapped
+      if (isModuleConfig) {
+        const moduleConfigMap: { [key: number]: string } = {
+          0: 'mqtt', 5: 'telemetry', 9: 'neighborInfo',
+          13: 'statusmessage', 14: 'trafficManagement'
+        };
+        const pendingKey = moduleConfigMap[configType];
+        if (pendingKey) {
+          this.pendingModuleConfigRequests.set(destinationNodeNum, pendingKey);
         }
       }
 

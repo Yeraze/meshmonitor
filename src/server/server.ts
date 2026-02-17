@@ -6083,7 +6083,9 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'security': { type: 7, isModule: false },  // SECURITY_CONFIG
           'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
           'telemetry': { type: 5, isModule: true },  // TELEMETRY_CONFIG (module)
-          'neighborinfo': { type: 9, isModule: true } // NEIGHBORINFO_CONFIG (module)
+          'neighborinfo': { type: 9, isModule: true }, // NEIGHBORINFO_CONFIG (module)
+          'statusmessage': { type: 13, isModule: true }, // STATUSMESSAGE_CONFIG (module)
+          'trafficmanagement': { type: 14, isModule: true } // TRAFFICMANAGEMENT_CONFIG (module)
         };
 
         const configInfo = configTypeMap[configType];
@@ -6508,6 +6510,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'ambientlighting':
           case 'detectionsensor':
           case 'paxcounter':
+          case 'statusmessage':
+          case 'trafficmanagement':
             config = remoteConfig || { enabled: false };
             break;
         }
