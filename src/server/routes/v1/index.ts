@@ -16,6 +16,7 @@ import messagesRouter from './messages.js';
 import networkRouter from './network.js';
 import packetsRouter from './packets.js';
 import solarRouter from './solar.js';
+import positionHistoryRouter from './positionHistory.js';
 import docsRouter from './docs.js';
 
 const router = express.Router();
@@ -41,12 +42,14 @@ router.get('/', (_req, res) => {
       messages: '/api/v1/messages',
       network: '/api/v1/network',
       packets: '/api/v1/packets',
-      solar: '/api/v1/solar'
+      solar: '/api/v1/solar',
+      positionHistory: '/api/v1/nodes/{nodeId}/position-history'
     }
   });
 });
 
 // Mount resource routers
+router.use('/nodes', positionHistoryRouter);
 router.use('/nodes', nodesRouter);
 router.use('/channels', channelsRouter);
 router.use('/channel-database', channelDatabaseRouter);

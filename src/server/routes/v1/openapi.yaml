@@ -207,6 +207,80 @@ components:
         data:
           $ref: '#/components/schemas/Node'
 
+    PositionHistoryItem:
+      type: object
+      required:
+        - timestamp
+        - latitude
+        - longitude
+        - packetId
+      properties:
+        timestamp:
+          type: integer
+          description: Unix timestamp (ms) when the position was recorded
+          example: 1700000000000
+        latitude:
+          type: number
+          format: double
+          description: Latitude in decimal degrees
+          example: 33.749
+        longitude:
+          type: number
+          format: double
+          description: Longitude in decimal degrees
+          example: -84.388
+        altitude:
+          type: number
+          description: Altitude in meters
+          example: 320
+        groundSpeed:
+          type: number
+          description: Ground speed in m/s
+          example: 5.2
+        groundTrack:
+          type: number
+          description: Ground track (heading) in degrees
+          example: 180
+        packetId:
+          type: integer
+          nullable: true
+          description: Meshtastic packet ID
+          example: 12345
+
+    PositionHistoryResponse:
+      type: object
+      required:
+        - success
+        - count
+        - total
+        - offset
+        - limit
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of positions in this response
+          example: 50
+        total:
+          type: integer
+          description: Total number of matching positions
+          example: 150
+        offset:
+          type: integer
+          description: Number of records skipped
+          example: 0
+        limit:
+          type: integer
+          description: Maximum records per page
+          example: 1000
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionHistoryItem'
+
     Channel:
       type: object
       properties:
@@ -1079,6 +1153,71 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /nodes/{nodeId}/position-history:
+    get:
+      tags:
+        - Nodes
+      summary: Get position history for a node
+      description: |
+        Retrieve position history for a specific node. Returns every stored position
+        (no deduplication), grouped from telemetry data. Requires nodes:read permission.
+        For nodes with private positions, additionally requires nodes_private:read.
+      parameters:
+        - name: nodeId
+          in: path
+          description: Node ID (decimal string, e.g., 2882400001)
+          required: true
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Unix timestamp (ms) - only return positions after this time
+          schema:
+            type: integer
+        - name: before
+          in: query
+          description: Unix timestamp (ms) - only return positions before this time
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Maximum number of position records to return (default 1000, max 10000)
+          schema:
+            type: integer
+            default: 1000
+            maximum: 10000
+        - name: offset
+          in: query
+          description: Number of records to skip for pagination
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Position history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionHistoryResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - insufficient permissions
           content:
             application/json:
               schema:
