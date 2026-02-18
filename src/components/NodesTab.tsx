@@ -1035,7 +1035,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     const isLocalNode = n.user?.id === currentNodeId;
     const hops = isLocalNode ? 0 : getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum);
     const shouldAnimate = showAnimations && animatedNodes.has(n.user?.id || '');
-    return `${n.nodeNum}-${hops}-${isSelected}-${n.user?.role}-${n.user?.shortName}-${showLabel || shouldAnimate}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`;
+    return `${n.nodeNum}-${hops}-${isSelected}-${n.user?.role}-${n.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`;
   }).join(',')]);
 
   // Calculate center point of all nodes for initial map view
