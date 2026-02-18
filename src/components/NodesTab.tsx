@@ -999,6 +999,45 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
   }).join(',')]);
 
+  // Memoize marker icons to prevent unnecessary Leaflet DOM rebuilds
+  // React-Leaflet calls setIcon() whenever the icon prop reference changes, which
+  // destroys and recreates the entire icon DOM element. By memoizing icons, we ensure
+  // setIcon() is only called when visual properties actually change (hops, selection, zoom, etc.),
+  // not on every render. This prevents icon DOM rebuilds from interfering with position updates.
+  const showLabel = mapZoom >= 13;
+  const nodeIcons = React.useMemo(() => {
+    const iconMap = new Map<number, L.DivIcon>();
+    nodesWithPosition.forEach(node => {
+      const roleNum = typeof node.user?.role === 'string'
+        ? parseInt(node.user.role, 10)
+        : (typeof node.user?.role === 'number' ? node.user.role : 0);
+      const isRouter = roleNum === 2;
+      const isSelected = selectedNodeId === node.user?.id;
+      const isLocalNode = node.user?.id === currentNodeId;
+      const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+      const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
+
+      const icon = createNodeIcon({
+        hops,
+        isSelected,
+        isRouter,
+        shortName: node.user?.shortName,
+        showLabel: showLabel || shouldAnimate,
+        animate: shouldAnimate,
+        highlightSelected: showRoute && isSelected,
+        pinStyle: mapPinStyle,
+      });
+      iconMap.set(node.nodeNum, icon);
+    });
+    return iconMap;
+  }, [nodesWithPosition.map(n => {
+    const isSelected = selectedNodeId === n.user?.id;
+    const isLocalNode = n.user?.id === currentNodeId;
+    const hops = isLocalNode ? 0 : getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum);
+    const shouldAnimate = showAnimations && animatedNodes.has(n.user?.id || '');
+    return `${n.nodeNum}-${hops}-${isSelected}-${n.user?.role}-${n.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`;
+  }).join(',')]);
+
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
   const getMapCenter = (): [number, number] => {
@@ -1684,33 +1723,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   return true;
                 })
                 .map(node => {
-                const roleNum = typeof node.user?.role === 'string'
-                  ? parseInt(node.user.role, 10)
-                  : (typeof node.user?.role === 'number' ? node.user.role : 0);
-                const isRouter = roleNum === 2;
-                const isSelected = selectedNodeId === node.user?.id;
-
-                // Get hop count for this node
-                // Local node always gets 0 hops (green), otherwise use effective hops based on setting
-                const isLocalNode = node.user?.id === currentNodeId;
-                const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                const showLabel = mapZoom >= 13; // Show labels when zoomed in
-
-                const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
-
-                const markerIcon = createNodeIcon({
-                  hops: hops, // 0 (local) = green, 999 (no hops_away data) = grey
-                  isSelected,
-                  isRouter,
-                  shortName: node.user?.shortName,
-                  showLabel: showLabel || shouldAnimate, // Show label when animating OR zoomed in
-                  animate: shouldAnimate,
-                  highlightSelected: showRoute && isSelected,
-                  pinStyle: mapPinStyle
-                });
-
-                // Use memoized position to prevent React-Leaflet from resetting marker position
+                // Use memoized icon and position to prevent unnecessary Leaflet DOM rebuilds
+                const markerIcon = nodeIcons.get(node.nodeNum)!;
                 const position = nodePositions.get(node.nodeNum)!;
+                const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
 
                 // Calculate opacity based on last heard time
                 const markerOpacity = calculateNodeOpacity(
