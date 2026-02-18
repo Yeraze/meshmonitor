@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import { isEmoji } from './text';
 
 /**
  * Get color based on hop count
@@ -55,14 +56,36 @@ export function createNodeIcon(options: {
   // Official Meshtastic style: Circle with always-visible label
   if (pinStyle === 'official') {
     const circleSize = size;
-    const markerSvg = `
+    const emojiName = shortName && isEmoji(shortName);
+
+    // For emoji short names, render as an HTML overlay instead of SVG <text>
+    // SVG text elements can't reliably render emoji across browsers
+    const markerSvg = emojiName ? `
       <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-        <!-- Circle with colored border -->
         <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
-        <!-- Text in center -->
+      </svg>
+    ` : `
+      <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
         <text x="24" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">${shortName || '?'}</text>
       </svg>
     `;
+
+    const emojiOverlay = emojiName ? `
+      <div style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: ${circleSize}px;
+        height: ${circleSize}px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        line-height: 1;
+        pointer-events: none;
+      ">${shortName}</div>
+    ` : '';
 
     const classes = [
       animate ? 'node-icon-pulse' : '',
@@ -72,6 +95,7 @@ export function createNodeIcon(options: {
     const html = `
       <div class="${classes}" style="position: relative; width: ${circleSize}px; height: ${circleSize}px;">
         ${markerSvg}
+        ${emojiOverlay}
       </div>
     `;
 
@@ -113,6 +137,7 @@ export function createNodeIcon(options: {
     </svg>
   `;
 
+  const emojiLabel = shortName && isEmoji(shortName);
   const label = showLabel && shortName ? `
     <div style="
       position: absolute;
@@ -123,8 +148,9 @@ export function createNodeIcon(options: {
       padding: 2px 6px;
       border-radius: 3px;
       border: 1px solid ${color};
-      font-weight: bold;
-      font-size: 11px;
+      font-weight: ${emojiLabel ? 'normal' : 'bold'};
+      font-size: ${emojiLabel ? '16px' : '11px'};
+      line-height: ${emojiLabel ? '1' : 'normal'};
       white-space: nowrap;
       box-shadow: 0 1px 3px rgba(0,0,0,0.3);
       color: #333;
