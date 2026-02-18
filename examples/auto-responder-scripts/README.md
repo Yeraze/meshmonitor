@@ -389,7 +389,7 @@ EOF
 
 - Scripts are sandboxed to `/data/scripts/` directory only
 - Path traversal attempts (`..`) are blocked
-- Scripts have 10-second execution timeout
+- Scripts have 30-second execution timeout
 - Scripts run with container user permissions (not root)
 - Output is limited to 1MB
 
