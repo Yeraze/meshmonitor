@@ -181,9 +181,9 @@ vi.mock('../../../services/database.js', () => {
       // Nodes async method
       getAllNodesAsync: vi.fn(async () => testNodes),
       // Position history methods
-      getNode: vi.fn((nodeNum: number) => {
-        const node = testNodes.find(n => n.node_id === nodeNum);
-        return node ? { ...node, positionOverrideIsPrivate: false } : null;
+      // getNode takes a decimal nodeNum; position history route converts hex nodeId to decimal
+      getNode: vi.fn((_nodeNum: number) => {
+        return { positionOverrideIsPrivate: false };
       }),
       getPositionTelemetryByNodeAsync: vi.fn(async () => testPositionTelemetry),
       // Traceroutes methods
@@ -1296,6 +1296,19 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     expect(response.body.total).toBe(3);
     expect(response.body.offset).toBe(1);
     expect(response.body.data[0].timestamp).toBe(2000);
+  });
+
+  it('should filter positions by before parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?before=2500')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    // Only positions at timestamps 1000 and 2000 should be returned (3000 >= 2500)
+    expect(response.body.count).toBe(2);
+    expect(response.body.total).toBe(2);
+    expect(response.body.data[0].timestamp).toBe(1000);
+    expect(response.body.data[1].timestamp).toBe(2000);
   });
 
   it('should filter positions by before parameter', async () => {
