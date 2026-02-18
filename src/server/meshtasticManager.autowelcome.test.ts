@@ -152,7 +152,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
-        shortName: '000f', // Default short name (first 4 chars after !)
+        shortName: '423f', // Default short name (last 4 chars of nodeId)
         hwModel: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),

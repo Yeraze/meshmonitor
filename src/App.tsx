@@ -3487,7 +3487,7 @@ function App() {
 
   const getNodeShortName = (nodeId: string): string => {
     const node = nodes.find(n => n.user?.id === nodeId);
-    return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.substring(1, 5);
+    return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.slice(-4);
   };
 
   const getAvailableChannels = (): number[] => {
