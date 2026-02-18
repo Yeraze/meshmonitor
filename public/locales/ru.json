@@ -2732,7 +2732,7 @@
     "detectionsensor_config.trigger_type": "Тип триггера",
     "admin_commands.config_coming_soon": "Скоро появится пользовательский интерфейс конфигурации. Используйте Загрузку для просмотра текущих настроек.",
     "storeforward_config.history_return_max": "",
-    "serial_config.title": "Последовательный порт",
+    "serial_config.title": "",
     "notifications.apprise_config_title": "Настройки Apprise",
     "notifications.test_failed": "Не удалось отправить тестовое уведомление",
     "admin_commands.security_config_loaded": "Настройки безопасности успешно загружены",
