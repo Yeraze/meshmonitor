@@ -4668,7 +4668,7 @@ function App() {
         {activeTab === 'security' && (
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
         )}
-        {activeTab === 'meshcore' && <MeshCoreTab />}
+        {activeTab === 'meshcore' && <MeshCoreTab baseUrl={baseUrl} />}
       </main>
 
       {/* Node Popup */}
