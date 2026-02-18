@@ -8413,10 +8413,10 @@ class MeshtasticManager {
                 logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
               }
 
-              // Execute script with 10-second timeout
+              // Execute script with 30-second timeout
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
               const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
-                timeout: 10000,
+                timeout: 30000,
                 env: scriptEnv,
                 maxBuffer: 1024 * 1024, // 1MB max output
               });

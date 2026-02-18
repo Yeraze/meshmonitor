@@ -1390,7 +1390,7 @@ print(json.dumps(output))
 
 - **Network Traffic**: Each timer execution sends messages to the mesh network
 - **Airtime Usage**: Timer outputs consume LoRa airtime
-- **Script Execution**: Scripts run in the container with 10-second timeout
+- **Script Execution**: Scripts run in the container with 30-second timeout
 - **Queue Processing**: Multi-response scripts queue messages with 30-second intervals
 
 ### Use Cases
