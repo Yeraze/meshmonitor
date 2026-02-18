@@ -42,6 +42,22 @@ const testPackets = [
   { id: 2, packet_id: 1002, from_node: 2882400002, to_node: 2882400001, channel: 0, portnum: 3, encrypted: 1, timestamp: Date.now() - 1000 }
 ];
 
+const testPositionTelemetry = [
+  // Position at timestamp 1000 - complete with lat/lon/alt/speed/track
+  { id: 1, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'latitude', timestamp: 1000, value: 33.749, unit: 'degrees', createdAt: 1000, packetId: 100 },
+  { id: 2, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'longitude', timestamp: 1000, value: -84.388, unit: 'degrees', createdAt: 1000, packetId: 100 },
+  { id: 3, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'altitude', timestamp: 1000, value: 320, unit: 'meters', createdAt: 1000, packetId: 100 },
+  { id: 4, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'ground_speed', timestamp: 1000, value: 5.2, unit: 'm/s', createdAt: 1000, packetId: 100 },
+  { id: 5, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'ground_track', timestamp: 1000, value: 180, unit: 'degrees', createdAt: 1000, packetId: 100 },
+  // Position at timestamp 2000 - lat/lon only
+  { id: 6, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'latitude', timestamp: 2000, value: 33.750, unit: 'degrees', createdAt: 2000, packetId: 101 },
+  { id: 7, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'longitude', timestamp: 2000, value: -84.389, unit: 'degrees', createdAt: 2000, packetId: 101 },
+  // Position at timestamp 3000 - complete
+  { id: 8, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'latitude', timestamp: 3000, value: 33.751, unit: 'degrees', createdAt: 3000, packetId: 102 },
+  { id: 9, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'longitude', timestamp: 3000, value: -84.390, unit: 'degrees', createdAt: 3000, packetId: 102 },
+  { id: 10, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'altitude', timestamp: 3000, value: 325, unit: 'meters', createdAt: 3000, packetId: 102 },
+];
+
 const testSolarEstimates = [
   { timestamp: Math.floor(Date.now() / 1000), watt_hours: 450.5, fetched_at: Math.floor(Date.now() / 1000) - 3600 },
   { timestamp: Math.floor(Date.now() / 1000) + 3600, watt_hours: 520.3, fetched_at: Math.floor(Date.now() / 1000) - 3600 },
@@ -164,6 +180,12 @@ vi.mock('../../../services/database.js', () => {
       getTelemetryCountAsync: vi.fn(async () => testTelemetry.length),
       // Nodes async method
       getAllNodesAsync: vi.fn(async () => testNodes),
+      // Position history methods
+      getNode: vi.fn((nodeNum: number) => {
+        const node = testNodes.find(n => n.node_id === nodeNum);
+        return node ? { ...node, positionOverrideIsPrivate: false } : null;
+      }),
+      getPositionTelemetryByNodeAsync: vi.fn(async () => testPositionTelemetry),
       // Traceroutes methods
       getAllTraceroutes: vi.fn(() => testTraceroutes)
     }
@@ -299,7 +321,8 @@ describe('GET /api/v1/', () => {
         messages: '/api/v1/messages',
         network: '/api/v1/network',
         packets: '/api/v1/packets',
-        solar: '/api/v1/solar'
+        solar: '/api/v1/solar',
+        positionHistory: '/api/v1/nodes/{nodeId}/position-history'
       }
     });
   });
@@ -1148,5 +1171,183 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.data.messageCount).toBe(3);
     expect(messageQueueService.enqueue).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('GET /api/v1/nodes/:nodeId/position-history', () => {
+  it('should reject requests without API token', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .expect(401);
+
+    expect(response.body).toHaveProperty('error');
+  });
+
+  it('should return 403 when user lacks nodes:read permission', async () => {
+    const databaseService = await import('../../../services/database.js');
+    vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValueOnce({
+      nodes: { read: false }
+    });
+
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(403);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Forbidden');
+    expect(response.body.required).toHaveProperty('resource', 'nodes');
+    expect(response.body.required).toHaveProperty('action', 'read');
+  });
+
+  it('should return 403 for private-position node without nodes_private:read', async () => {
+    const databaseService = await import('../../../services/database.js');
+    vi.mocked(databaseService.default.getNode).mockReturnValueOnce({
+      nodeId: '2882400001', node_id: 2882400001, positionOverrideIsPrivate: true
+    } as any);
+    vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValue({
+      nodes: { read: true },
+      nodes_private: { read: false }
+    } as any);
+
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(403);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body.required).toHaveProperty('resource', 'nodes_private');
+  });
+
+  it('should return position history with correct response format', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body).toHaveProperty('count');
+    expect(response.body).toHaveProperty('total');
+    expect(response.body).toHaveProperty('offset', 0);
+    expect(response.body).toHaveProperty('limit', 1000);
+    expect(response.body).toHaveProperty('data');
+    expect(Array.isArray(response.body.data)).toBe(true);
+    expect(response.body.count).toBe(3); // 3 positions from test data
+    expect(response.body.total).toBe(3);
+  });
+
+  it('should return positions sorted ascending by timestamp', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    const data = response.body.data;
+    expect(data.length).toBe(3);
+    expect(data[0].timestamp).toBe(1000);
+    expect(data[1].timestamp).toBe(2000);
+    expect(data[2].timestamp).toBe(3000);
+  });
+
+  it('should include correct fields in position data', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    const fullPosition = response.body.data[0]; // timestamp 1000 has all fields
+    expect(fullPosition).toHaveProperty('timestamp', 1000);
+    expect(fullPosition).toHaveProperty('latitude', 33.749);
+    expect(fullPosition).toHaveProperty('longitude', -84.388);
+    expect(fullPosition).toHaveProperty('altitude', 320);
+    expect(fullPosition).toHaveProperty('groundSpeed', 5.2);
+    expect(fullPosition).toHaveProperty('groundTrack', 180);
+    expect(fullPosition).toHaveProperty('packetId', 100);
+
+    // Position at timestamp 2000 has only lat/lon
+    const minimalPosition = response.body.data[1];
+    expect(minimalPosition).toHaveProperty('latitude', 33.750);
+    expect(minimalPosition).toHaveProperty('longitude', -84.389);
+    expect(minimalPosition).toHaveProperty('packetId', 101);
+    expect(minimalPosition).not.toHaveProperty('altitude');
+    expect(minimalPosition).not.toHaveProperty('groundSpeed');
+    expect(minimalPosition).not.toHaveProperty('groundTrack');
+  });
+
+  it('should respect limit parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?limit=2')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    expect(response.body.count).toBe(2);
+    expect(response.body.total).toBe(3);
+    expect(response.body.limit).toBe(2);
+    expect(response.body.data.length).toBe(2);
+  });
+
+  it('should respect offset parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?offset=1&limit=10')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    expect(response.body.count).toBe(2); // 3 total - 1 offset = 2
+    expect(response.body.total).toBe(3);
+    expect(response.body.offset).toBe(1);
+    expect(response.body.data[0].timestamp).toBe(2000);
+  });
+
+  it('should filter positions by before parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?before=2500')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    // Only positions at timestamps 1000 and 2000 should be returned (3000 >= 2500)
+    expect(response.body.count).toBe(2);
+    expect(response.body.total).toBe(2);
+    expect(response.body.data[0].timestamp).toBe(1000);
+    expect(response.body.data[1].timestamp).toBe(2000);
+  });
+
+  it('should pass since parameter to database query', async () => {
+    const databaseService = await import('../../../services/database.js');
+    vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockClear();
+
+    await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?since=1500')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    expect(databaseService.default.getPositionTelemetryByNodeAsync).toHaveBeenCalledWith(
+      '2882400001',
+      5000, // 1000 * 5 internal limit
+      1500  // since parameter
+    );
+  });
+
+  it('should return empty array for node with no position history', async () => {
+    const databaseService = await import('../../../services/database.js');
+    vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockResolvedValueOnce([]);
+
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.count).toBe(0);
+    expect(response.body.total).toBe(0);
+    expect(response.body.data).toEqual([]);
+  });
+
+  it('should cap limit at 10000', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes/2882400001/position-history?limit=50000')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(200);
+
+    expect(response.body.limit).toBe(10000);
   });
 });
