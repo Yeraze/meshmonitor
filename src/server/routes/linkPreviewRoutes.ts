@@ -12,9 +12,49 @@ interface LinkMetadata {
   siteName?: string;
 }
 
+// --- In-memory link preview cache ---
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_MAX_SIZE = 500;
+
+interface CacheEntry {
+  metadata: LinkMetadata;
+  fetchedAt: number;
+}
+
+const previewCache = new Map<string, CacheEntry>();
+
+function getCachedPreview(url: string): LinkMetadata | null {
+  const entry = previewCache.get(url);
+  if (!entry) return null;
+
+  if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) {
+    previewCache.delete(url);
+    return null;
+  }
+
+  // Move to end for LRU ordering (Map preserves insertion order)
+  previewCache.delete(url);
+  previewCache.set(url, entry);
+
+  return entry.metadata;
+}
+
+function setCachedPreview(url: string, metadata: LinkMetadata): void {
+  // Evict oldest entries if at capacity
+  if (previewCache.size >= CACHE_MAX_SIZE) {
+    const oldestKey = previewCache.keys().next().value;
+    if (oldestKey) {
+      previewCache.delete(oldestKey);
+    }
+  }
+
+  previewCache.set(url, { metadata, fetchedAt: Date.now() });
+}
+
 /**
  * Fetches link preview metadata from a URL
  * Extracts Open Graph and meta tags for preview display
+ * Results are cached in-memory for 24 hours
  */
 router.get('/link-preview', optionalAuth(), async (req, res) => {
   try {
@@ -35,6 +75,15 @@ router.get('/link-preview', optionalAuth(), async (req, res) => {
       }
     } catch (error) {
       return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Check cache first
+    const cached = getCachedPreview(url);
+    if (cached) {
+      logger.debug(`📎 Link preview cache hit for: ${url}`);
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.set('X-Cache', 'HIT');
+      return res.json(cached);
     }
 
     logger.debug(`📎 Fetching link preview for: ${url}`);
@@ -64,11 +113,15 @@ router.get('/link-preview', optionalAuth(), async (req, res) => {
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('text/html')) {
         logger.debug(`URL is not HTML (${contentType}), returning basic metadata`);
-        return res.json({
+        const metadata: LinkMetadata = {
           url,
           title: validatedUrl.hostname,
           siteName: validatedUrl.hostname
-        } as LinkMetadata);
+        };
+        setCachedPreview(url, metadata);
+        res.set('Cache-Control', 'public, max-age=3600');
+        res.set('X-Cache', 'MISS');
+        return res.json(metadata);
       }
 
       // Read response body with size limit
@@ -77,7 +130,12 @@ router.get('/link-preview', optionalAuth(), async (req, res) => {
       // Parse metadata from HTML
       const metadata = extractMetadata(html, url);
 
+      // Cache the result
+      setCachedPreview(url, metadata);
+
       logger.debug(`✅ Link preview extracted: ${metadata.title || 'No title'}`);
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.set('X-Cache', 'MISS');
       res.json(metadata);
 
     } catch (fetchError: any) {
