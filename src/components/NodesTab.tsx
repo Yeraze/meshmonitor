@@ -280,7 +280,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeHopsCalculation,
   } = useSettings();
 
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -1590,6 +1590,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Show MQTT</span>
                   </label>
+                  {authStatus?.meshcoreEnabled && (
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -1598,6 +1599,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Show MeshCore</span>
                   </label>
+                  )}
                   <label className="map-control-item">
                     <input
                       type="checkbox"
