@@ -8800,7 +8800,7 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
 
     try {
       const { stdout, stderr } = await execFileAsync(interpreter, scriptArgList, {
-        timeout: 10000,
+        timeout: 30000,
         env: scriptEnv,
         maxBuffer: 1024 * 1024, // 1MB max output
       });
@@ -8850,7 +8850,7 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
       if (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM') {
         return res.status(408).json({
           success: false,
-          error: 'Script execution timed out after 10 seconds',
+          error: 'Script execution timed out after 30 seconds',
           executionTimeMs,
         });
       }
