@@ -12,6 +12,21 @@ import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings } from '../contexts/SettingsContext';
 import { ChartData } from '../types/ui';
 
+/** Telemetry types that represent discrete integer values where fractional display is meaningless */
+const INTEGER_TELEMETRY_TYPES = new Set([
+  'sats_in_view',
+  'messageHops',
+  'batteryLevel',
+  'numOnlineNodes', 'numTotalNodes',
+  'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
+  'numRxDupe', 'numTxRelay', 'numTxRelayCanceled', 'numTxDropped',
+  'systemNodeCount', 'systemDirectNodeCount',
+  'paxcounterWifi', 'paxcounterBle',
+  'particles03um', 'particles05um', 'particles10um',
+  'particles25um', 'particles50um', 'particles100um',
+  'co2', 'iaq',
+]);
+
 interface TelemetryGraphsProps {
   nodeId: string;
   temperatureUnit?: TemperatureUnit;
@@ -708,7 +723,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                       yAxisId="left"
                       tick={{ fontSize: 12 }}
                       domain={['auto', 'auto']}
-                      allowDecimals={type !== 'sats_in_view'}
+                      allowDecimals={!INTEGER_TELEMETRY_TYPES.has(type)}
+                      tickFormatter={INTEGER_TELEMETRY_TYPES.has(type) ? (v: number) => Math.round(v).toString() : undefined}
                     />
                     <YAxis
                       yAxisId="right"
