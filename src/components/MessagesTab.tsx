@@ -340,7 +340,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       nodeNum: node.nodeNum,
       nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
       longName: node.user?.longName || `Node ${node.nodeNum}`,
-      shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
+      shortName: node.user?.shortName || node.nodeNum.toString(16).padStart(8, '0').slice(-4),
       hopsAway: node.hopsAway,
       role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
       avgDirectRssi: stats?.avgRssi,
@@ -363,7 +363,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const getNodeShortName = useCallback(
     (nodeId: string): string => {
       const node = nodes.find(n => n.user?.id === nodeId);
-      return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.substring(1, 5);
+      return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.slice(-4);
     },
     [nodes]
   );

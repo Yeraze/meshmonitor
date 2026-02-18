@@ -270,7 +270,7 @@ export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string =>
   // Safely extract substring from nodeId
   // Node IDs are typically formatted as !XXXXXXXX (8 hex chars)
   if (nodeId.length >= 5 && nodeId.startsWith('!')) {
-    return nodeId.substring(1, 5);
+    return nodeId.slice(-4);
   }
 
   // Fallback to full nodeId if it's too short or doesn't match expected format
@@ -327,7 +327,7 @@ export const isNodeComplete = (node: DeviceInfo | DbNodeLike): boolean => {
 
   // If we have a nodeId, verify shortName isn't just derived from it
   if (nodeId && nodeId.startsWith('!')) {
-    const defaultShortName = nodeId.substring(1, 5);
+    const defaultShortName = nodeId.slice(-4);
     if (shortName === defaultShortName) {
       return false;
     }

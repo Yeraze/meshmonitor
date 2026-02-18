@@ -3419,7 +3419,7 @@ class MeshtasticManager {
       // Only set default name if this is a brand new node
       if (!existingNode) {
         nodeData.longName = `Node ${nodeId}`;
-        nodeData.shortName = nodeId.substring(1, 5);
+        nodeData.shortName = nodeId.slice(-4);
       }
 
       // Only include SNR/RSSI if they have valid values
@@ -3538,7 +3538,7 @@ class MeshtasticManager {
             nodeNum: fromNum,
             nodeId: fromNodeId,
             longName: `Node ${fromNodeId}`,
-            shortName: fromNodeId.substring(1, 5),
+            shortName: fromNodeId.slice(-4),
             lastHeard: Date.now() / 1000,
             createdAt: Date.now(),
             updatedAt: Date.now()
@@ -4365,7 +4365,7 @@ class MeshtasticManager {
           nodeNum: fromNum,
           nodeId: fromNodeId,
           longName: `Node ${fromNodeId}`,
-          shortName: fromNodeId.substring(1, 5),
+          shortName: fromNodeId.slice(-4),
           lastHeard: Date.now() / 1000
         });
       } else {
@@ -4384,7 +4384,7 @@ class MeshtasticManager {
           nodeNum: toNum,
           nodeId: toNodeId,
           longName: `Node ${toNodeId}`,
-          shortName: toNodeId.substring(1, 5),
+          shortName: toNodeId.slice(-4),
           lastHeard: Date.now() / 1000
         });
       } else {
@@ -4988,7 +4988,7 @@ class MeshtasticManager {
             nodeNum,
             nodeId,
             longName: `Node ${nodeId}`,
-            shortName: nodeId.substring(1, 5),
+            shortName: nodeId.slice(-4),
             lastHeard: Date.now() / 1000
           });
           node = databaseService.getNode(nodeNum);
@@ -5134,7 +5134,7 @@ class MeshtasticManager {
           nodeNum: fromNum,
           nodeId: fromNodeId,
           longName: `Node ${fromNodeId}`,
-          shortName: fromNodeId.substring(1, 5),
+          shortName: fromNodeId.slice(-4),
           lastHeard: Date.now() / 1000
         });
         senderNode = databaseService.getNode(fromNum);
@@ -5162,7 +5162,7 @@ class MeshtasticManager {
               nodeNum: neighborNodeNum,
               nodeId: neighborNodeId,
               longName: `Node ${neighborNodeId}`,
-              shortName: neighborNodeId.substring(1, 5),
+              shortName: neighborNodeId.slice(-4),
               hopsAway: senderHopsAway + 1,
               lastHeard: Date.now() / 1000
             });
@@ -5594,7 +5594,7 @@ class MeshtasticManager {
           nodeNum: nodeNum,
           nodeId: nodeId,
           longName: possibleName.longName || `Node ${nodeId}`,
-          shortName: possibleName.shortName || nodeId.substring(1, 5),
+          shortName: possibleName.shortName || nodeId.slice(-4),
           hwModel: possibleName.hwModel || 0,
           lastHeard: Date.now() / 1000,
           snr: possibleName.snr,
@@ -6566,7 +6566,7 @@ class MeshtasticManager {
           nodeNum: fromNodeNum,
           nodeId: fromNodeId,
           longName: fromNodeId === 'unknown' ? 'Unknown Node' : fromNodeId,
-          shortName: fromNodeId === 'unknown' ? 'UNK' : fromNodeId.substring(1, 5),
+          shortName: fromNodeId === 'unknown' ? 'UNK' : fromNodeId.slice(-4),
           hwModel: 0,
           lastHeard: Date.now() / 1000,
           createdAt: Date.now(),
@@ -6593,7 +6593,7 @@ class MeshtasticManager {
           nodeNum: toNodeNum,
           nodeId: toNodeId,
           longName: toNodeId === '!ffffffff' ? 'Broadcast' : toNodeId,
-          shortName: toNodeId === '!ffffffff' ? 'BCST' : toNodeId.substring(1, 5),
+          shortName: toNodeId === '!ffffffff' ? 'BCST' : toNodeId.slice(-4),
           hwModel: 0,
           lastHeard: Date.now() / 1000,
           createdAt: Date.now(),
@@ -8833,7 +8833,7 @@ class MeshtasticManager {
           logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
           return;
         }
-        if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
+        if (!node.shortName || node.shortName === nodeId.slice(-4)) {
           logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
           return;
         }

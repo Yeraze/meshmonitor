@@ -171,13 +171,13 @@ describe('Node Helpers', () => {
       expect(getNodeShortName(mockNodes, '!abc12345')).toBe('TNA');
     });
 
-    it('should extract first 4 chars from node ID if no short name', () => {
-      expect(getNodeShortName(mockNodes, '!def67890')).toBe('def6'); // Whitespace-only short name
-      expect(getNodeShortName(mockNodes, '!ghi11111')).toBe('ghi1'); // Empty short name
+    it('should extract last 4 chars from node ID if no short name', () => {
+      expect(getNodeShortName(mockNodes, '!def67890')).toBe('7890'); // Whitespace-only short name
+      expect(getNodeShortName(mockNodes, '!ghi11111')).toBe('1111'); // Empty short name
     });
 
-    it('should extract first 4 chars for unknown nodes', () => {
-      expect(getNodeShortName(mockNodes, '!xyz99999')).toBe('xyz9');
+    it('should extract last 4 chars for unknown nodes', () => {
+      expect(getNodeShortName(mockNodes, '!xyz99999')).toBe('9999');
     });
 
     it('should handle node IDs shorter than 5 characters', () => {
@@ -194,7 +194,7 @@ describe('Node Helpers', () => {
     });
 
     it('should handle empty nodes array', () => {
-      expect(getNodeShortName([], '!test1234')).toBe('test');
+      expect(getNodeShortName([], '!test1234')).toBe('1234');
     });
 
     it('should trim whitespace from short names', () => {
@@ -290,13 +290,13 @@ describe('Node Helpers', () => {
         expect(isNodeComplete(node)).toBe(false);
       });
 
-      it('should return false for node with default shortName (first 4 chars of nodeId)', () => {
+      it('should return false for node with default shortName (last 4 chars of nodeId)', () => {
         const node: DeviceInfo = {
           nodeNum: 123456789,
           user: {
             id: '!abc12345',
             longName: 'Test Node',
-            shortName: 'abc1', // First 4 chars of node ID without !
+            shortName: '2345', // Last 4 chars of node ID
             hwModel: 9
           }
         };
@@ -379,7 +379,7 @@ describe('Node Helpers', () => {
         const dbNode = {
           nodeId: '!abc12345',
           longName: 'Test Node',
-          shortName: 'abc1', // Default derived from nodeId
+          shortName: '2345', // Default derived from last 4 chars of nodeId
           hwModel: 9
         };
         expect(isNodeComplete(dbNode)).toBe(false);

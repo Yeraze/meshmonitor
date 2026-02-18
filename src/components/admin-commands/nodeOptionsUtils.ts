@@ -58,7 +58,7 @@ export function buildNodeOptions(
         nodeNum: node.nodeNum,
         nodeId: nodeId,
         longName: longName || `Node ${nodeId}`,
-        shortName: shortName || (nodeId.startsWith('!') ? nodeId.substring(1, 5) : nodeId.substring(0, 4)),
+        shortName: shortName || nodeId.slice(-4),
         isLocal: false,
         isFavorite: node.isFavorite ?? false,
         isIgnored: node.isIgnored ?? false,

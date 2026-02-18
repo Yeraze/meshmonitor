@@ -618,7 +618,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
         nodeNum,
         nodeId,
         longName: `Node ${nodeId}`,
-        shortName: nodeId.substring(1, 5),
+        shortName: nodeId.slice(-4),
         lastHeard: Date.now() / 1000,
       });
 
