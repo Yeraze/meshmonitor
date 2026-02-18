@@ -181,9 +181,9 @@ vi.mock('../../../services/database.js', () => {
       // Nodes async method
       getAllNodesAsync: vi.fn(async () => testNodes),
       // Position history methods
-      getNode: vi.fn((nodeNum: number) => {
-        const node = testNodes.find(n => n.node_id === nodeNum);
-        return node ? { ...node, positionOverrideIsPrivate: false } : null;
+      // getNode takes a decimal nodeNum; position history route converts hex nodeId to decimal
+      getNode: vi.fn((_nodeNum: number) => {
+        return { positionOverrideIsPrivate: false };
       }),
       getPositionTelemetryByNodeAsync: vi.fn(async () => testPositionTelemetry),
       // Traceroutes methods
