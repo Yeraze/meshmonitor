@@ -86,7 +86,11 @@ const DEVICE_TYPE_KEYS: Record<number, string> = {
 // Small offset to prevent exact overlap on map when local node is at same location as contacts
 const LOCAL_NODE_OFFSET = 0.0005; // ~55m
 
-export const MeshCoreTab: React.FC = () => {
+interface MeshCoreTabProps {
+  baseUrl: string;
+}
+
+export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
   const { t } = useTranslation();
   const { setMeshCoreNodes } = useMapContext();
 
@@ -119,7 +123,7 @@ export const MeshCoreTab: React.FC = () => {
   // Fetch status
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await csrfFetch('/api/meshcore/status');
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/status`);
       const data = await response.json();
       if (data.success) {
         setStatus(data.data);
@@ -127,12 +131,12 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch status:', err);
     }
-  }, [csrfFetch]);
+  }, [baseUrl, csrfFetch]);
 
   // Fetch nodes
   const fetchNodes = useCallback(async () => {
     try {
-      const response = await csrfFetch('/api/meshcore/nodes');
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/nodes`);
       const data = await response.json();
       if (data.success) {
         setNodes(data.data);
@@ -140,12 +144,12 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch nodes:', err);
     }
-  }, [csrfFetch]);
+  }, [baseUrl, csrfFetch]);
 
   // Fetch contacts and update map nodes
   const fetchContacts = useCallback(async () => {
     try {
-      const response = await csrfFetch('/api/meshcore/contacts');
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
       const data = await response.json();
       if (data.success) {
         setContacts(data.data);
@@ -171,12 +175,12 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch contacts:', err);
     }
-  }, [csrfFetch, setMeshCoreNodes]);
+  }, [baseUrl, csrfFetch, setMeshCoreNodes]);
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
     try {
-      const response = await csrfFetch('/api/meshcore/messages?limit=50');
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/messages?limit=50`);
       const data = await response.json();
       if (data.success) {
         setMessages(data.data);
@@ -184,7 +188,7 @@ export const MeshCoreTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch messages:', err);
     }
-  }, [csrfFetch]);
+  }, [baseUrl, csrfFetch]);
 
   // Track connected state in ref to avoid dependency in effect
   const connectedRef = useRef(false);
@@ -212,7 +216,7 @@ export const MeshCoreTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await csrfFetch('/api/meshcore/connect', {
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -241,7 +245,7 @@ export const MeshCoreTab: React.FC = () => {
   const handleDisconnect = async () => {
     setLoading(true);
     try {
-      await csrfFetch('/api/meshcore/disconnect', { method: 'POST' });
+      await csrfFetch(`${baseUrl}/api/meshcore/disconnect`, { method: 'POST' });
       await fetchStatus();
       setNodes([]);
       setContacts([]);
@@ -256,7 +260,7 @@ export const MeshCoreTab: React.FC = () => {
   // Send advert handler
   const handleSendAdvert = async () => {
     try {
-      const response = await csrfFetch('/api/meshcore/advert', { method: 'POST' });
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/advert`, { method: 'POST' });
       const data = await response.json();
       if (!data.success) {
         setError(data.error || 'Failed to send advert');
@@ -270,7 +274,7 @@ export const MeshCoreTab: React.FC = () => {
   const handleRefreshContacts = async () => {
     setLoading(true);
     try {
-      const response = await csrfFetch('/api/meshcore/contacts/refresh', { method: 'POST' });
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts/refresh`, { method: 'POST' });
       const data = await response.json();
       if (data.success) {
         setContacts(data.data);
@@ -287,7 +291,7 @@ export const MeshCoreTab: React.FC = () => {
     if (!messageText.trim()) return;
 
     try {
-      const response = await csrfFetch('/api/meshcore/messages/send', {
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -312,7 +316,7 @@ export const MeshCoreTab: React.FC = () => {
     if (!adminPublicKey || !adminPassword) return;
 
     try {
-      const response = await csrfFetch('/api/meshcore/admin/login', {
+      const response = await csrfFetch(`${baseUrl}/api/meshcore/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -323,7 +327,7 @@ export const MeshCoreTab: React.FC = () => {
       const data = await response.json();
       if (data.success) {
         // Fetch status after login
-        const statusResponse = await fetch(`/api/meshcore/admin/status/${adminPublicKey}`);
+        const statusResponse = await csrfFetch(`${baseUrl}/api/meshcore/admin/status/${adminPublicKey}`);
         const statusData = await statusResponse.json();
         if (statusData.success) {
           setAdminStatus(statusData.data);
