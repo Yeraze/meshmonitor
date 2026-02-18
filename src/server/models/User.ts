@@ -403,6 +403,7 @@ export class UserModel {
         show_route as showRoute,
         show_motion as showMotion,
         show_mqtt_nodes as showMqttNodes,
+        show_meshcore_nodes as showMeshCoreNodes,
         show_animations as showAnimations,
         position_history_hours as positionHistoryHours
       FROM user_map_preferences
@@ -419,6 +420,7 @@ export class UserModel {
       showRoute: Boolean(row.showRoute),
       showMotion: Boolean(row.showMotion),
       showMqttNodes: Boolean(row.showMqttNodes),
+      showMeshCoreNodes: Boolean(row.showMeshCoreNodes),
       showAnimations: Boolean(row.showAnimations),
       positionHistoryHours: row.positionHistoryHours ?? null,
     };
@@ -434,6 +436,7 @@ export class UserModel {
     showRoute?: boolean;
     showMotion?: boolean;
     showMqttNodes?: boolean;
+    showMeshCoreNodes?: boolean;
     showAnimations?: boolean;
     positionHistoryHours?: number | null;
   }): void {
@@ -471,6 +474,10 @@ export class UserModel {
         updates.push('show_mqtt_nodes = ?');
         params.push(preferences.showMqttNodes ? 1 : 0);
       }
+      if (preferences.showMeshCoreNodes !== undefined) {
+        updates.push('show_meshcore_nodes = ?');
+        params.push(preferences.showMeshCoreNodes ? 1 : 0);
+      }
       if (preferences.showAnimations !== undefined) {
         updates.push('show_animations = ?');
         params.push(preferences.showAnimations ? 1 : 0);
@@ -497,9 +504,9 @@ export class UserModel {
       const stmt = this.db.prepare(`
         INSERT INTO user_map_preferences (
           user_id, map_tileset, show_paths, show_neighbor_info,
-          show_route, show_motion, show_mqtt_nodes, show_animations,
+          show_route, show_motion, show_mqtt_nodes, show_meshcore_nodes, show_animations,
           position_history_hours, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -510,6 +517,7 @@ export class UserModel {
         preferences.showRoute !== undefined ? (preferences.showRoute ? 1 : 0) : 1, // default true
         preferences.showMotion !== undefined ? (preferences.showMotion ? 1 : 0) : 1, // default true
         preferences.showMqttNodes !== undefined ? (preferences.showMqttNodes ? 1 : 0) : 1, // default true
+        preferences.showMeshCoreNodes !== undefined ? (preferences.showMeshCoreNodes ? 1 : 0) : 1, // default true
         preferences.showAnimations ? 1 : 0,
         preferences.positionHistoryHours ?? null,
         now,
