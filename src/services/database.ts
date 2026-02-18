@@ -5307,7 +5307,19 @@ class DatabaseService {
 
     // Telemetry types that should use raw values instead of averaging
     // These are discrete integer values where averaging produces meaningless floats
-    const rawValueTypes = ['sats_in_view'];
+    const rawValueTypes = [
+      'sats_in_view',
+      'messageHops',
+      'batteryLevel',
+      'numOnlineNodes', 'numTotalNodes',
+      'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
+      'numRxDupe', 'numTxRelay', 'numTxRelayCanceled', 'numTxDropped',
+      'systemNodeCount', 'systemDirectNodeCount',
+      'paxcounterWifi', 'paxcounterBle',
+      'particles03um', 'particles05um', 'particles10um',
+      'particles25um', 'particles50um', 'particles100um',
+      'co2', 'iaq',
+    ];
 
     // Build the query to group and average telemetry data by time intervals
     // Exclude raw value types from this query - they'll be fetched separately
