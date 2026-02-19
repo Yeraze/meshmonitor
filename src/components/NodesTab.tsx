@@ -506,6 +506,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const handleMarkerRef = React.useCallback((ref: LeafletMarker | null, nodeId: string | undefined) => {
     if (ref && nodeId) {
       markerRefs.current.set(nodeId, ref);
+      // Tag marker with nodeId so the spiderfier click handler can identify it
+      // even if the spiderfier holds a stale marker reference
+      (ref as any)._meshNodeId = nodeId;
       // Add marker to spiderfier for overlap handling, passing nodeId to allow multiple markers at same position
       spiderfierRef.current?.addMarker(ref, nodeId);
     }
@@ -816,36 +819,55 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       }
 
       const clickHandler = (marker: any) => {
-        // Find the node data from the marker
-        const nodeEntry = Array.from(markerRefs.current.entries()).find(([_, ref]) => ref === marker);
-        if (nodeEntry) {
-          const nodeId = nodeEntry[0];
-          setSelectedNodeIdRef.current(nodeId);
-          // When showRoute is enabled, let TracerouteBoundsController handle the zoom
-          // to fit the entire traceroute path instead of just centering on the node.
-          // But if the node has no valid traceroute, fall back to centering on it.
-          if (!showRouteRef.current) {
+        // Get nodeId from the marker's tag (set in handleMarkerRef).
+        // This is more reliable than reference equality with markerRefs because
+        // the spiderfier may hold a stale marker reference after React-Leaflet
+        // recreates the underlying Leaflet marker object.
+        const nodeId: string | undefined = marker._meshNodeId;
+        if (!nodeId) return;
+
+        // Close popup to prevent Leaflet's native toggle from interfering
+        // The popup will be re-opened after the map pan starts
+        marker.closePopup();
+
+        setSelectedNodeIdRef.current(nodeId);
+        // When showRoute is enabled, let TracerouteBoundsController handle the zoom
+        // to fit the entire traceroute path instead of just centering on the node.
+        // But if the node has no valid traceroute, fall back to centering on it.
+        if (!showRouteRef.current) {
+          const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
+          if (node) {
+            centerMapOnNodeRef.current(node);
+          }
+        } else {
+          // Check if this node has a valid traceroute
+          const hasTraceroute = traceroutesRef.current.some(tr => {
+            const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
+            if (!matches) return false;
+            return tr.route && tr.route !== 'null' && tr.route !== '' &&
+                   tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
+          });
+          // If no valid traceroute, still center on the node
+          if (!hasTraceroute) {
             const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
             if (node) {
               centerMapOnNodeRef.current(node);
             }
-          } else {
-            // Check if this node has a valid traceroute
-            const hasTraceroute = traceroutesRef.current.some(tr => {
-              const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
-              if (!matches) return false;
-              return tr.route && tr.route !== 'null' && tr.route !== '' &&
-                     tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
-            });
-            // If no valid traceroute, still center on the node
-            if (!hasTraceroute) {
-              const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
-              if (node) {
-                centerMapOnNodeRef.current(node);
-              }
-            }
           }
         }
+
+        // Open popup after delay to let MapCenterController start the pan animation
+        // This matches the sidebar behavior (App.tsx useEffect opens at 100ms)
+        // and handles re-clicking the same marker (where selectedNodeId doesn't change)
+        // Use the current marker from markerRefs (not the spiderfier's potentially stale ref)
+        setTimeout(() => {
+          const currentMarker = markerRefs.current.get(nodeId) || marker;
+          const popup = currentMarker.getPopup();
+          if (popup) {
+            popup.options.autoPan = false;
+          }
+          currentMarker.openPopup();
+        }, 100);
       };
 
       const spiderfyHandler = (_markers: any[]) => {

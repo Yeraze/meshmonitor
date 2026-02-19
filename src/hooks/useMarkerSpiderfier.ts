@@ -152,12 +152,18 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
         existingLatLng.lng === newLatLng.lng;
 
       if (isSamePosition) {
-        // Same position - this is likely React-Leaflet recreating the marker
-        // DON'T remove the old marker to preserve spiderfier state
-        // Update tracking without touching spiderfier
-        // The spiderfier will continue to work with the old marker object
-        // This is safe because Leaflet markers at the same position are functionally identical
-        return; // Keep the existing marker in the spiderfier
+        // Same position but different object - React-Leaflet recreated the marker
+        // (e.g., after Popup child mounts/unmounts from showRoute toggle).
+        // We must replace the old marker so the spiderfier's click listener
+        // is registered on the marker that's actually on the map.
+        try {
+          spiderfierRef.current.removeMarker(existingMarker);
+          markersRef.current.delete(existingMarker);
+          markerByIdRef.current.delete(trackingKey);
+        } catch (e) {
+          // Log but don't fail - we'll add the new marker anyway
+        }
+        // Fall through to add the new marker below
       } else {
         // Different position - truly a different marker, remove the old one
         try {
