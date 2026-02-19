@@ -108,11 +108,11 @@ echo "en_US.UTF-8 UTF-8" >> "$ROOTFS_DIR/etc/locale.gen"
 chroot "$ROOTFS_DIR" locale-gen
 
 echo ""
-echo "Step 4: Installing Node.js 22..."
+echo "Step 4: Installing Node.js 24..."
 
-# Add NodeSource repository for Node.js 22
+# Add NodeSource repository for Node.js 24
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | chroot "$ROOTFS_DIR" gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > "$ROOTFS_DIR/etc/apt/sources.list.d/nodesource.list"
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" > "$ROOTFS_DIR/etc/apt/sources.list.d/nodesource.list"
 
 chroot "$ROOTFS_DIR" apt-get update
 chroot "$ROOTFS_DIR" apt-get install -y nodejs
@@ -170,22 +170,38 @@ mkdir -p "$ROOTFS_DIR/opt/meshmonitor/docker"
 cp "$PROJECT_ROOT/docker/apprise-api.py" "$ROOTFS_DIR/opt/meshmonitor/docker/"
 chmod +x "$ROOTFS_DIR/opt/meshmonitor/docker/apprise-api.py"
 
-# Copy upgrade scripts (even though auto-upgrade won't work)
+# Copy utility scripts (upgrade-watchdog won't work without Docker, but include for completeness)
 if [ -d "$PROJECT_ROOT/scripts" ]; then
     cp -r "$PROJECT_ROOT/scripts/"*.sh "$ROOTFS_DIR/data/scripts/" 2>/dev/null || true
+    cp -r "$PROJECT_ROOT/scripts/"*.py "$ROOTFS_DIR/data/scripts/" 2>/dev/null || true
+    chmod +x "$ROOTFS_DIR/data/scripts/"* 2>/dev/null || true
+fi
+
+# Copy admin password reset script
+if [ -f "$PROJECT_ROOT/reset-admin.mjs" ]; then
+    cp "$PROJECT_ROOT/reset-admin.mjs" "$ROOTFS_DIR/opt/meshmonitor/"
 fi
 
 echo ""
 echo "Step 8: Creating Python virtual environment for Apprise..."
 
 chroot "$ROOTFS_DIR" python3 -m venv /opt/apprise-venv
-chroot "$ROOTFS_DIR" /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
+chroot "$ROOTFS_DIR" /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0" meshtastic meshcore
+
+# Create python symlink for user scripts that use #!/usr/bin/env python
+chroot "$ROOTFS_DIR" ln -sf /usr/bin/python3 /usr/bin/python
+
+# Create meshtastic CLI symlink
+chroot "$ROOTFS_DIR" ln -sf /opt/apprise-venv/bin/meshtastic /usr/local/bin/meshtastic
 
 echo ""
 echo "Step 9: Creating meshmonitor user and setting permissions..."
 
 # Create meshmonitor user (UID 1000 to match Docker)
 chroot "$ROOTFS_DIR" useradd -u 1000 -m -s /bin/bash meshmonitor || true
+
+# Add to dialout group for MeshCore serial device access
+chroot "$ROOTFS_DIR" usermod -aG dialout meshmonitor || true
 
 # Set ownership
 chroot "$ROOTFS_DIR" chown -R meshmonitor:meshmonitor /opt/meshmonitor
@@ -209,7 +225,9 @@ echo "Step 11: Creating environment file template..."
 cat > "$ROOTFS_DIR/etc/meshmonitor/meshmonitor.env.example" << 'EOF'
 # MeshMonitor Configuration
 # Copy this file to meshmonitor.env and configure
+# See .env.example in the project repo for full documentation on each option
 
+# ── Meshtastic Node ──────────────────────────────────────────────
 # Required: IP address of your Meshtastic node
 MESHTASTIC_NODE_IP=192.168.1.100
 
@@ -219,37 +237,66 @@ MESHTASTIC_NODE_IP=192.168.1.100
 # Optional: Enable TLS for Meshtastic connection
 #MESHTASTIC_USE_TLS=false
 
-# Optional: Database path (default: /data/meshmonitor.db)
-#DATABASE_PATH=/data/meshmonitor.db
+# ── MeshCore (optional) ─────────────────────────────────────────
+# Enable MeshCore protocol support for monitoring MeshCore mesh networks
+#MESHCORE_ENABLED=false
+#MESHCORE_SERIAL_PORT=/dev/ttyACM0
+#MESHCORE_BAUD_RATE=115200
+#MESHCORE_FIRMWARE_TYPE=companion
 
-# Optional: Server port (default: 3001)
-#PORT=3001
-
-# Optional: Base URL for subfolder deployments
-#BASE_URL=/
-
-# Optional: Session secret (auto-generated if not set)
-#SESSION_SECRET=your-secret-here
-
-# Optional: CORS allowed origins (comma-separated)
-#ALLOWED_ORIGINS=http://localhost:8080
-
-# Optional: Enable virtual node for mobile apps
+# ── Virtual Node (optional) ─────────────────────────────────────
+# Proxy server for mobile apps to share a single physical node
 #ENABLE_VIRTUAL_NODE=false
 #VIRTUAL_NODE_PORT=4404
+#VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=false
 
-# Optional: VAPID keys for web push notifications
+# ── Database ─────────────────────────────────────────────────────
+# SQLite (default):
+#DATABASE_PATH=/data/meshmonitor.db
+
+# PostgreSQL or MySQL via DATABASE_URL:
+#DATABASE_URL=postgres://user:pass@host:5432/meshmonitor
+#DATABASE_URL=mysql://user:pass@host:3306/meshmonitor
+
+# ── Server ───────────────────────────────────────────────────────
+#PORT=3001
+#BASE_URL=/
+
+# ── Authentication & Sessions ────────────────────────────────────
+# Session secret (REQUIRED for production - generate: openssl rand -hex 32)
+#SESSION_SECRET=your-secret-here
+
+# Session lifetime in ms (default: 86400000 = 24 hours)
+#SESSION_MAX_AGE=86400000
+
+# Reset session expiry on each request (default: true)
+#SESSION_ROLLING=true
+
+# Require authentication for all access (default: false)
+#DISABLE_ANONYMOUS=false
+
+# ── Cookie & Proxy ───────────────────────────────────────────────
+#COOKIE_SECURE=false
+#COOKIE_SAMESITE=lax
+#TRUST_PROXY=true
+
+# ── CORS ─────────────────────────────────────────────────────────
+# Comma-separated list of allowed origins
+#ALLOWED_ORIGINS=http://localhost:8080
+
+# ── Web Push Notifications ───────────────────────────────────────
 #VAPID_PUBLIC_KEY=
 #VAPID_PRIVATE_KEY=
 #VAPID_SUBJECT=mailto:your@email.com
+#PUSH_NOTIFICATION_TTL=3600
 
-# Optional: OIDC/SSO configuration
+# ── OIDC/SSO (optional) ─────────────────────────────────────────
 #OIDC_ISSUER=
 #OIDC_CLIENT_ID=
 #OIDC_CLIENT_SECRET=
 #OIDC_ALLOW_HTTP=false
 
-# Optional: Access logging (for fail2ban)
+# ── Access Logging ───────────────────────────────────────────────
 #ACCESS_LOG_ENABLED=false
 #ACCESS_LOG_PATH=/data/logs/access.log
 #ACCESS_LOG_FORMAT=combined
