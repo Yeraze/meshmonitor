@@ -78,17 +78,6 @@ jobs:
             lxc/build/*.sha256
           retention-days: 90
 
-      - name: Get existing release body
-        if: startsWith(github.ref, 'refs/tags/')
-        id: get_release
-        run: |
-          RELEASE_BODY=$(gh release view "${GITHUB_REF#refs/tags/}" --json body --jq '.body')
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -96,35 +85,6 @@ jobs:
           files: |
             lxc/build/*.tar.gz
             lxc/build/*.sha256
-          body: |
-            ${{ steps.get_release.outputs.body }}
-
-            ---
-
-            ## Proxmox LXC Template
-
-            This release includes a Proxmox-compatible LXC container template for MeshMonitor.
-
-            ### Installation
-
-            1. Download the `.tar.gz` template file
-            2. Verify the SHA256 checksum (optional but recommended)
-            3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
-            4. Create a new LXC container from the template via Proxmox web UI
-            5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
-            6. Start the container and access the web UI on port 8080
-
-            ### Documentation
-
-            See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
-
-            ### Limitations
-
-            - Auto-upgrade feature is not supported in LXC deployments
-            - Manual updates required (download new template for each version)
-            - Community-supported (Docker remains the primary deployment method)
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -29,5 +29,10 @@ ProtectHome=true
 ReadWritePaths=/data
 ReadOnlyPaths=/opt/meshmonitor
 
+# Allow serial device access for MeshCore (e.g., /dev/ttyACM0, /dev/ttyUSB0)
+DeviceAllow=/dev/ttyACM0 rw
+DeviceAllow=/dev/ttyUSB0 rw
+SupplementaryGroups=dialout
+
 [Install]
 WantedBy=multi-user.target
