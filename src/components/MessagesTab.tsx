@@ -1259,7 +1259,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 {reactions.map(reaction => (
                                   <span
                                     key={reaction.id}
-                                    className="reaction"
+                                    className={`reaction ${isMyMessage(reaction) ? 'mine' : 'theirs'}`}
                                     title={t('messages.reaction_tooltip', { name: getNodeShortName(reaction.from) })}
                                     onClick={() => handleSendTapback(reaction.text, msg)}
                                   >

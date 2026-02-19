@@ -4040,15 +4040,28 @@ body {
   align-items: center;
   justify-content: center;
   padding: 2px 6px;
-  background: var(--ctp-surface1);
-  border: 1px solid var(--ctp-surface2);
   border-radius: 12px;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.reaction:hover {
+.reaction.mine {
+  background: var(--ctp-blue);
+  border: 1px solid var(--ctp-blue);
+}
+
+.reaction.theirs {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+}
+
+.reaction.mine:hover {
+  background: var(--ctp-sapphire);
+  transform: scale(1.1);
+}
+
+.reaction.theirs:hover {
   background: var(--ctp-surface2);
   transform: scale(1.1);
 }
