@@ -34,7 +34,7 @@ import TelemetryGraphs from './TelemetryGraphs';
 import SmartHopsGraphs from './SmartHopsGraphs';
 import LinkQualityGraph from './LinkQualityGraph';
 import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
-import { getPacketDistributionStats } from '../services/packetApi';
+import { getNodePacketDistribution } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
@@ -448,27 +448,28 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   );
 
   // Packet type distribution for selected node (last 24h)
-  const selectedNodeNum = useMemo(() => {
+  const selectedNodeInfo = useMemo(() => {
     if (!selectedDMNode) return undefined;
     const node = nodes.find(n => n.user?.id === selectedDMNode);
-    return node?.nodeNum;
+    if (!node) return undefined;
+    return { nodeNum: node.nodeNum, nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}` };
   }, [selectedDMNode, nodes]);
 
   const [nodePacketDistribution, setNodePacketDistribution] = useState<PacketDistributionStats | null>(null);
 
   const fetchNodePacketDistribution = useCallback(async () => {
-    if (selectedNodeNum === undefined) {
+    if (!selectedNodeInfo) {
       setNodePacketDistribution(null);
       return;
     }
     try {
       const since = Math.floor(Date.now() / 1000) - 86400; // Last 24 hours
-      const distribution = await getPacketDistributionStats(since, selectedNodeNum);
+      const distribution = await getNodePacketDistribution(selectedNodeInfo.nodeId, selectedNodeInfo.nodeNum, since);
       setNodePacketDistribution(distribution);
     } catch (error) {
       console.error('Failed to fetch node packet distribution:', error);
     }
-  }, [selectedNodeNum]);
+  }, [selectedNodeInfo]);
 
   useEffect(() => {
     fetchNodePacketDistribution();

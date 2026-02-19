@@ -128,6 +128,24 @@ export const getPacketDistributionStats = async (since?: number, from_node?: num
 };
 
 /**
+ * Fetch packet type distribution for a specific node from actual data tables
+ * (telemetry, messages, traceroutes) instead of the capped packet_log.
+ */
+export const getNodePacketDistribution = async (
+  nodeId: string,
+  nodeNum: number,
+  since?: number,
+): Promise<PacketDistributionStats> => {
+  const params = new URLSearchParams();
+  params.append('node_id', nodeId);
+  params.append('node_num', nodeNum.toString());
+  if (since !== undefined) {
+    params.append('since', since.toString());
+  }
+  return api.get<PacketDistributionStats>(`/api/packets/stats/node-distribution?${params.toString()}`);
+};
+
+/**
  * Clear all packet logs (admin only)
  */
 export const clearPackets = async (): Promise<{ message: string; deletedCount: number }> => {
