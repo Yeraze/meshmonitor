@@ -728,7 +728,7 @@ export default function ChannelsTab({
                                         {reactions.map(reaction => (
                                           <span
                                             key={reaction.id}
-                                            className="reaction"
+                                            className={`reaction ${isMyMessage(reaction) ? 'mine' : 'theirs'}`}
                                             title={t('channels.reaction_tooltip', { name: getNodeShortName(reaction.from) })}
                                             onClick={() => handleSendTapback(reaction.text, msg)}
                                           >
