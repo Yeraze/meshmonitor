@@ -3743,8 +3743,9 @@ function App() {
 
   // Function to center map on a specific node
   const centerMapOnNode = useCallback((node: DeviceInfo) => {
-    if (node.position && node.position.latitude != null && node.position.longitude != null) {
-      setMapCenterTarget([node.position.latitude, node.position.longitude]);
+    const effectivePos = getEffectivePosition(node);
+    if (effectivePos.latitude != null && effectivePos.longitude != null) {
+      setMapCenterTarget([effectivePos.latitude, effectivePos.longitude]);
     }
   }, []);
 
