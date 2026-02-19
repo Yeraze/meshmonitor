@@ -1,0 +1,94 @@
+name: Build LXC Template
+
+on:
+  # Trigger on version tags
+  push:
+    tags:
+      - 'v*.*.*'
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., 2.19.4 or latest)'
+        required: false
+        default: 'latest'
+
+permissions:
+  contents: write  # Required for uploading release assets
+
+jobs:
+  build-lxc-template:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive  # Needed for protobufs
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build React frontend
+        run: npm run build
+
+      - name: Build Express backend
+        run: npm run build:server
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Extract version from tag (remove 'v' prefix if present)
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building LXC template version: $VERSION"
+
+      - name: Install debootstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap
+
+      - name: Build LXC template
+        run: |
+          sudo ./lxc/build-lxc-template.sh "${{ steps.get_version.outputs.version }}"
+
+      - name: List build artifacts
+        run: |
+          ls -lh lxc/build/
+          echo ""
+          echo "SHA256 Checksums:"
+          cat lxc/build/*.sha256
+
+      - name: Upload template as artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: meshmonitor-lxc-template-${{ steps.get_version.outputs.version }}
+          path: |
+            lxc/build/*.tar.gz
+            lxc/build/*.sha256
+          retention-days: 90
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            lxc/build/*.tar.gz
+            lxc/build/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup build directory
+        if: always()
+        run: |
+          sudo rm -rf lxc/build/
