@@ -101,7 +101,24 @@ chroot "$ROOTFS_DIR" apt-get install -y --no-install-recommends \
     procps \
     locales \
     systemd \
-    systemd-sysv
+    systemd-sysv \
+    ifupdown \
+    iproute2 \
+    dbus \
+    nano \
+    iputils-ping
+
+# Create /etc/network/interfaces for Proxmox networking support
+cat > "$ROOTFS_DIR/etc/network/interfaces" << EOF
+# Loopback
+auto lo
+iface lo inet loopback
+
+# Include Proxmox-managed interface configurations
+source /etc/network/interfaces.d/*
+EOF
+
+mkdir -p "$ROOTFS_DIR/etc/network/interfaces.d"
 
 # Generate locale
 echo "en_US.UTF-8 UTF-8" >> "$ROOTFS_DIR/etc/locale.gen"
