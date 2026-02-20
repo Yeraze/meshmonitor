@@ -4386,7 +4386,9 @@ class DatabaseService {
       }
 
       // Update the mobile flag in the database using repository
-      await this.nodesRepo!.updateNodeMobility(nodeId, isMobile);
+      if (this.nodesRepo) {
+        await this.nodesRepo.updateNodeMobility(nodeId, isMobile);
+      }
 
       // Also update the cache so getAllNodes() returns the updated value
       for (const [nodeNum, cachedNode] of this.nodesCache.entries()) {
@@ -7541,6 +7543,11 @@ class DatabaseService {
   async setSettingAsync(key: string, value: string): Promise<void> {
     if (this.settingsRepo) {
       await this.settingsRepo.setSetting(key, value);
+      return;
+    }
+    // For PostgreSQL/MySQL without repo, just update cache (don't recurse into setSetting)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      this.settingsCache.set(key, value);
       return;
     }
     // Fallback to sync for SQLite if repo not ready
