@@ -103,6 +103,7 @@ chroot "$ROOTFS_DIR" apt-get install -y --no-install-recommends \
     systemd \
     systemd-sysv \
     ifupdown \
+    isc-dhcp-client \
     iproute2 \
     dbus \
     nano \
@@ -119,6 +120,9 @@ source /etc/network/interfaces.d/*
 EOF
 
 mkdir -p "$ROOTFS_DIR/etc/network/interfaces.d"
+
+# Enable networking service so ifupdown brings up interfaces at boot
+chroot "$ROOTFS_DIR" systemctl enable networking.service
 
 # Generate locale
 echo "en_US.UTF-8 UTF-8" >> "$ROOTFS_DIR/etc/locale.gen"

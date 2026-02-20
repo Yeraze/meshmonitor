@@ -237,6 +237,32 @@ run_tests() {
         test_result "Locale configuration" "WARN" "Locale may not be configured"
     fi
 
+    # Test 15: Check for DHCP client (required for network to come up)
+    if [ -f "$TEMP_DIR/sbin/dhclient" ] || [ -f "$TEMP_DIR/usr/sbin/dhclient" ]; then
+        test_result "DHCP client (dhclient) exists" "PASS"
+    else
+        test_result "DHCP client (dhclient) exists" "FAIL" "No DHCP client found - networking will not work"
+    fi
+
+    # Test 16: Check for network interfaces configuration
+    if [ -f "$TEMP_DIR/etc/network/interfaces" ]; then
+        if grep -q "source /etc/network/interfaces.d" "$TEMP_DIR/etc/network/interfaces"; then
+            test_result "Network interfaces config" "PASS"
+        else
+            test_result "Network interfaces config" "WARN" "Missing interfaces.d source directive"
+        fi
+    else
+        test_result "Network interfaces config" "FAIL" "/etc/network/interfaces not found"
+    fi
+
+    # Test 17: Check that networking.service is enabled
+    if [ -L "$TEMP_DIR/etc/systemd/system/multi-user.target.wants/networking.service" ] || \
+       [ -L "$TEMP_DIR/etc/systemd/system/network-online.target.wants/networking.service" ]; then
+        test_result "networking.service enabled" "PASS"
+    else
+        test_result "networking.service enabled" "FAIL" "networking.service not enabled - interfaces won't come up at boot"
+    fi
+
     echo ""
     echo "========================================"
     echo "Test Summary"
