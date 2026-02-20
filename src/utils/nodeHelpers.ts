@@ -307,9 +307,6 @@ export const isNodeComplete = (node: DeviceInfo | DbNodeLike): boolean => {
   // Determine if this is a DeviceInfo (has 'user' property) or DbNodeLike
   const isDeviceInfo = 'user' in node;
 
-  // Get node ID for checking default names
-  const nodeId = isDeviceInfo ? node.user?.id : (node as DbNodeLike).nodeId;
-
   // Get fields - handle both DeviceInfo (user.field) and database node (field) formats
   const longName = isDeviceInfo ? node.user?.longName : (node as DbNodeLike).longName;
   const shortName = isDeviceInfo ? node.user?.shortName : (node as DbNodeLike).shortName;
@@ -320,17 +317,13 @@ export const isNodeComplete = (node: DeviceInfo | DbNodeLike): boolean => {
     return false;
   }
 
-  // Check if shortName exists and is not just the first 4 chars of nodeId
+  // Check if shortName exists
+  // Note: We do NOT check if shortName matches the default (last 4 hex chars of nodeId).
+  // Meshtastic firmware uses the last 4 hex chars as the default shortName, so many users
+  // have a valid NODEINFO with a default shortName. Matching the default does not mean
+  // the node is incomplete.
   if (!shortName) {
     return false;
-  }
-
-  // If we have a nodeId, verify shortName isn't just derived from it
-  if (nodeId && nodeId.startsWith('!')) {
-    const defaultShortName = nodeId.slice(-4);
-    if (shortName === defaultShortName) {
-      return false;
-    }
   }
 
   // Check if hwModel exists (proves we received NODEINFO_APP packet)
