@@ -268,6 +268,13 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Get configuration from environment variables (public accessor)
+   */
+  getEnvConfig(): MeshCoreConfig | null {
+    return this.getConfigFromEnv();
+  }
+
+  /**
    * Get configuration from environment variables
    */
   private getConfigFromEnv(): MeshCoreConfig | null {

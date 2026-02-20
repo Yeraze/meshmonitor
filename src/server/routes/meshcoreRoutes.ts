@@ -122,6 +122,7 @@ router.get('/status', optionalAuth(), requirePermission('meshcore', 'read'), asy
   try {
     const status = meshcoreManager.getConnectionStatus();
     const localNode = meshcoreManager.getLocalNode();
+    const envConfig = meshcoreManager.getEnvConfig();
 
     res.json({
       success: true,
@@ -129,6 +130,7 @@ router.get('/status', optionalAuth(), requirePermission('meshcore', 'read'), asy
         ...status,
         localNode,
         deviceTypeName: MeshCoreDeviceType[status.deviceType],
+        envConfig,
       },
     });
   } catch (error) {

@@ -41,6 +41,7 @@ vi.mock('../meshcoreManager.js', () => ({
       config: null,
     }),
     getLocalNode: vi.fn().mockReturnValue(null),
+    getEnvConfig: vi.fn().mockReturnValue(null),
     getAllNodes: vi.fn().mockReturnValue([]),
     getContacts: vi.fn().mockReturnValue([]),
     getRecentMessages: vi.fn().mockReturnValue([]),
