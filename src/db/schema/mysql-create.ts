@@ -115,7 +115,7 @@ export const MYSQL_SCHEMA_SQL = `
     unit VARCHAR(255),
     createdAt BIGINT NOT NULL,
     packetTimestamp BIGINT,
-    packetId INT,
+    packetId BIGINT,
     channel INT,
     precisionBits INT,
     gpsAccuracy DOUBLE,
