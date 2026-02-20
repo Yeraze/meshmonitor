@@ -29,7 +29,7 @@ import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
-import { NodeFilterPopup } from './NodeFilterPopup';
+
 import { VectorTileLayer } from './VectorTileLayer';
 import { MapNodePopupContent } from './MapNodePopupContent';
 
@@ -2198,11 +2198,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         </div>
       )}
 
-      {/* Node Filter Popup */}
-      <NodeFilterPopup
-        isOpen={showNodeFilterPopup}
-        onClose={() => setShowNodeFilterPopup(false)}
-      />
     </div>
   );
 };
