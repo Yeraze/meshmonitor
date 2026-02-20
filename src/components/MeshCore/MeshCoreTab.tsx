@@ -63,6 +63,12 @@ interface ConnectionStatus {
     tcpPort?: number;
   } | null;
   localNode: MeshCoreNode | null;
+  envConfig: {
+    connectionType: string;
+    serialPort?: string;
+    tcpHost?: string;
+    tcpPort?: number;
+  } | null;
 }
 
 interface RemoteNodeStatus {
@@ -120,6 +126,9 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
   // CSRF-protected fetch
   const csrfFetch = useCsrfFetch();
 
+  // Track whether env defaults have been loaded into the form
+  const defaultsLoaded = useRef(false);
+
   // Fetch status
   const fetchStatus = useCallback(async () => {
     try {
@@ -127,6 +136,18 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
       const data = await response.json();
       if (data.success) {
         setStatus(data.data);
+
+        // Pre-populate form from env config on first fetch (only when not connected)
+        if (!defaultsLoaded.current && !data.data.connected && data.data.envConfig) {
+          const env = data.data.envConfig;
+          if (env.connectionType === 'serial' || env.connectionType === 'tcp') {
+            setConnectionType(env.connectionType);
+          }
+          if (env.serialPort) setSerialPort(env.serialPort);
+          if (env.tcpHost) setTcpHost(env.tcpHost);
+          if (env.tcpPort) setTcpPort(String(env.tcpPort));
+          defaultsLoaded.current = true;
+        }
       }
     } catch (err) {
       console.error('Failed to fetch status:', err);
