@@ -36,12 +36,13 @@
     "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.6.2",
-    "better-sqlite3-session-store": "^0.1.0",
+    "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
     "cron-validator": "^1.4.0",
     "dotenv": "^17.2.4",
     "drizzle-orm": "^0.45.1",
     "express": "^5.2.1",
+    "express-mysql-session": "^3.0.3",
     "express-rate-limit": "^8.2.1",
     "express-session": "^1.19.0",
     "helmet": "^8.1.0",
@@ -86,6 +87,7 @@
     "@types/archiver": "^7.0.0",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^7.6.9",
+    "@types/connect-pg-simple": "^7.0.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
@@ -128,7 +130,7 @@
   "optionalDependencies": {
     "@rollup/rollup-linux-arm-gnueabihf": "^4.57.1",
     "@rollup/rollup-linux-arm64-musl": "^4.57.1",
-    "serialport": "^13.0.0",
-    "@serialport/parser-readline": "^13.0.0"
+    "@serialport/parser-readline": "^13.0.0",
+    "serialport": "^13.0.0"
   }
 }

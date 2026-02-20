@@ -1,17 +1,21 @@
 /**
  * Session Configuration
  *
- * Configures Express session with SQLite storage
+ * Configures Express session with database-appropriate storage.
+ * Selects SQLite, PostgreSQL, or MySQL session store based on DATABASE_URL.
  */
 
 import session from 'express-session';
-import BetterSqlite3Store from 'better-sqlite3-session-store';
 import Database from 'better-sqlite3';
+import { createRequire } from 'node:module';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { SqliteSessionStore } from './sqliteSessionStore.js';
+import { parseMySQLUrl } from '../../db/drivers/mysql.js';
 
-const SqliteStore = BetterSqlite3Store(session);
+// createRequire allows loading CJS modules (connect-pg-simple, express-mysql-session) from ESM
+const require = createRequire(import.meta.url);
 
 // Extend session data type
 declare module 'express-session' {
@@ -35,14 +39,80 @@ declare module 'express-session' {
 let sessionMiddleware: ReturnType<typeof session> | null = null;
 
 /**
+ * Create the appropriate session store based on the configured database type.
+ */
+function createSessionStore(): session.Store {
+  const env = getEnvironmentConfig();
+  const dbType = env.databaseType;
+
+  if (dbType === 'postgres' && env.databaseUrl) {
+    return createPostgresStore(env.databaseUrl);
+  }
+
+  if (dbType === 'mysql' && env.databaseUrl) {
+    return createMySQLStore(env.databaseUrl, env.databasePath);
+  }
+
+  // Default: SQLite session store
+  return createSqliteStore(env.databasePath);
+}
+
+/**
+ * Create a PostgreSQL session store.
+ */
+function createPostgresStore(databaseUrl: string): session.Store {
+  const connectPgSimple = require('connect-pg-simple');
+  const pgSession = connectPgSimple(session);
+  const pg = require('pg');
+  const pool = new pg.Pool({ connectionString: databaseUrl });
+  logger.info('🔐 Session store: PostgreSQL (connect-pg-simple)');
+  return new pgSession({ pool, tableName: 'session', createTableIfMissing: true });
+}
+
+/**
+ * Create a MySQL/MariaDB session store.
+ */
+function createMySQLStore(databaseUrl: string, databasePath: string): session.Store {
+  const expressMySQLSession = require('express-mysql-session');
+  const MySQLStore = expressMySQLSession(session);
+  const parsed = parseMySQLUrl(databaseUrl);
+  if (!parsed) {
+    logger.error('Failed to parse MySQL DATABASE_URL for session store. Falling back to SQLite.');
+    return createSqliteStore(databasePath);
+  }
+  logger.info('🔐 Session store: MySQL/MariaDB (express-mysql-session)');
+  return new MySQLStore({
+    host: parsed.host,
+    port: parsed.port,
+    user: parsed.user,
+    password: parsed.password,
+    database: parsed.database,
+    clearExpired: true,
+    checkExpirationInterval: 900000, // 15 minutes
+    createDatabaseTable: true,
+  });
+}
+
+/**
+ * Create an SQLite session store.
+ */
+function createSqliteStore(databasePath: string): session.Store {
+  const sessionDbPath = path.join(path.dirname(databasePath), 'sessions.db');
+  const sessionDb = new Database(sessionDbPath);
+  logger.info('🔐 Session store: SQLite (custom store)');
+  return new SqliteSessionStore({
+    db: sessionDb,
+    clearInterval: 900000, // 15 minutes
+  });
+}
+
+/**
  * Get session configuration
  */
 export function getSessionConfig(): session.SessionOptions {
   const env = getEnvironmentConfig();
 
-  // Create session database path
-  const sessionDbPath = path.join(path.dirname(env.databasePath), 'sessions.db');
-  const sessionDb = new Database(sessionDbPath);
+  const store = createSessionStore();
 
   // Log configuration summary for troubleshooting
   logger.info('🔐 Session configuration:');
@@ -54,13 +124,7 @@ export function getSessionConfig(): session.SessionOptions {
   logger.info(`   - Environment: ${env.nodeEnv}`);
 
   return {
-    store: new SqliteStore({
-      client: sessionDb,
-      expired: {
-        clear: true,
-        intervalMs: 900000 // Clear expired sessions every 15 minutes
-      }
-    }),
+    store,
     secret: env.sessionSecret,
     resave: false,
     saveUninitialized: false,

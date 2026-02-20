@@ -158,7 +158,7 @@ export interface EnvironmentConfig {
   databasePathProvided: boolean;
   databaseUrl: string | undefined;
   databaseUrlProvided: boolean;
-  databaseType: 'sqlite' | 'postgres';
+  databaseType: 'sqlite' | 'postgres' | 'mysql';
 
   // Meshtastic
   meshtasticNodeIp: string;
@@ -374,15 +374,18 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   };
 
   // Determine database type from DATABASE_URL
-  let databaseType: 'sqlite' | 'postgres' = 'sqlite';
+  let databaseType: 'sqlite' | 'postgres' | 'mysql' = 'sqlite';
   if (databaseUrl.value) {
     const url = databaseUrl.value.toLowerCase();
     if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
       databaseType = 'postgres';
       logger.info('📦 Database: PostgreSQL (configured via DATABASE_URL)');
+    } else if (url.startsWith('mysql://') || url.startsWith('mariadb://')) {
+      databaseType = 'mysql';
+      logger.info('📦 Database: MySQL/MariaDB (configured via DATABASE_URL)');
     } else {
-      logger.warn(`⚠️  DATABASE_URL provided but not recognized as PostgreSQL. Using SQLite.`);
-      logger.warn(`   PostgreSQL URLs must start with postgres:// or postgresql://`);
+      logger.warn(`⚠️  DATABASE_URL provided but not recognized as PostgreSQL or MySQL. Using SQLite.`);
+      logger.warn(`   Supported URL prefixes: postgres://, postgresql://, mysql://, mariadb://`);
     }
   } else {
     logger.debug('📦 Database: SQLite (default)');

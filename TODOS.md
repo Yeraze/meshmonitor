@@ -288,20 +288,19 @@ Added 4 new filter options to the Messages page node list, similar to what exist
 
 ### Replace GPL-licensed Session Store (#1177)
 
-**Priority: HIGH** - License compatibility issue
+**Completed:**
+- [x] Write custom SQLite session store using `better-sqlite3` (MIT licensed)
+- [x] Implement express-session Store interface: `get`, `set`, `destroy`, `touch`
+- [x] Add session cleanup for expired sessions
+- [x] Remove `better-sqlite3-session-store` dependency
+- [x] Update `src/server/auth/sessionConfig.ts` to use new store
+- [x] Add multi-backend session stores: PostgreSQL (`connect-pg-simple`), MySQL (`express-mysql-session`)
+- [x] Fix `environment.ts` database type detection to recognize MySQL/MariaDB URLs
+- [x] Create `src/types/express-mysql-session.d.ts` type declaration
+- [x] Delete `src/types/better-sqlite3-session-store.d.ts`
 
-The `better-sqlite3-session-store` package is GPL-3.0-only licensed, which conflicts with MeshMonitor's BSD-3-Clause license. This is actual code being imported and linked, not just data definitions.
-
-**Tasks:**
-- [ ] Write custom SQLite session store using `better-sqlite3` (MIT licensed)
-- [ ] Implement express-session Store interface: `get`, `set`, `destroy`, `touch`
-- [ ] Add session cleanup for expired sessions
-- [ ] Remove `better-sqlite3-session-store` dependency
-- [ ] Update `src/server/auth/sessionConfig.ts` to use new store
-- [ ] Test session persistence across restarts
-- [ ] Run system tests
-
-**Reference:** The existing store is ~72 lines. We already use `better-sqlite3` directly (MIT licensed).
+**Summary:**
+Replaced the GPL-3.0-licensed `better-sqlite3-session-store` with a custom MIT-licensed SQLite session store (`src/server/auth/sqliteSessionStore.ts`). Also added proper session store support for PostgreSQL and MySQL backends, and fixed database URL detection in `environment.ts` to recognize `mysql://` and `mariadb://` URLs.
 
 ---
 
