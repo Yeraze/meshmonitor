@@ -290,17 +290,20 @@ describe('Node Helpers', () => {
         expect(isNodeComplete(node)).toBe(false);
       });
 
-      it('should return false for node with default shortName (last 4 chars of nodeId)', () => {
+      it('should return true for node with default shortName (last 4 chars of nodeId)', () => {
+        // Meshtastic firmware uses last 4 hex chars as the default shortName.
+        // A node with a custom longName, default shortName, and valid hwModel
+        // has received NODEINFO and is complete.
         const node: DeviceInfo = {
           nodeNum: 123456789,
           user: {
             id: '!abc12345',
             longName: 'Test Node',
-            shortName: '2345', // Last 4 chars of node ID
+            shortName: '2345', // Last 4 chars of node ID - this is the firmware default
             hwModel: 9
           }
         };
-        expect(isNodeComplete(node)).toBe(false);
+        expect(isNodeComplete(node)).toBe(true);
       });
 
       it('should return false for node without hwModel', () => {
@@ -375,14 +378,16 @@ describe('Node Helpers', () => {
         expect(isNodeComplete(dbNode)).toBe(false);
       });
 
-      it('should return false for database node with default shortName', () => {
+      it('should return true for database node with default shortName', () => {
+        // Default shortName matching last 4 hex chars is normal for users who
+        // didn't customize it - the node still has valid NODEINFO.
         const dbNode = {
           nodeId: '!abc12345',
           longName: 'Test Node',
           shortName: '2345', // Default derived from last 4 chars of nodeId
           hwModel: 9
         };
-        expect(isNodeComplete(dbNode)).toBe(false);
+        expect(isNodeComplete(dbNode)).toBe(true);
       });
 
       it('should return false for database node without hwModel', () => {
