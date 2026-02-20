@@ -80,6 +80,7 @@ import { migration as dmUnreadIndexMigration, runMigration072Postgres, runMigrat
 import { migration as packetIdMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_add_packet_id_to_telemetry.js';
 import { migration as showMeshCoreNodesMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_meshcore_nodes_preference.js';
 import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_upgrade_telemetry_packetid_bigint.js';
+import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_accuracy_and_estimated_position_prefs.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -954,6 +955,7 @@ class DatabaseService {
     this.runPacketIdMigration();
     this.runShowMeshCoreNodesMigration();
     this.runTelemetryPacketIdBigintMigration();
+    this.runAccuracyEstimatedPrefsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2437,6 +2439,25 @@ class DatabaseService {
       logger.debug('telemetry packetId bigint migration completed successfully');
     } catch (error) {
       logger.error('Failed to run telemetry packetId bigint migration:', error);
+      throw error;
+    }
+  }
+
+  private runAccuracyEstimatedPrefsMigration(): void {
+    const migrationKey = 'migration_076_accuracy_estimated_prefs';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 076 (accuracy_estimated_prefs) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 076: Add show_accuracy_regions and show_estimated_positions to user_map_preferences...');
+      accuracyEstimatedPrefsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('accuracy_estimated_prefs migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run accuracy_estimated_prefs migration:', error);
       throw error;
     }
   }
@@ -10877,6 +10898,9 @@ class DatabaseService {
       // Run migration 075: Upgrade telemetry packetId to BIGINT
       await runMigration075Postgres(client);
 
+      // Run migration 076: Add show_accuracy_regions and show_estimated_positions
+      await runMigration076Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11013,6 +11037,9 @@ class DatabaseService {
 
       // Run migration 075: Upgrade telemetry packetId to BIGINT
       await runMigration075Mysql(pool);
+
+      // Run migration 076: Add show_accuracy_regions and show_estimated_positions
+      await runMigration076Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

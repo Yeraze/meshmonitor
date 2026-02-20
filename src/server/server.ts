@@ -5537,10 +5537,10 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
     }
 
-    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showMeshCoreNodes, showAnimations, positionHistoryHours } = req.body;
+    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showMeshCoreNodes, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryHours } = req.body;
 
     // Validate boolean values
-    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showMeshCoreNodes, showAnimations };
+    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showMeshCoreNodes, showAnimations, showAccuracyRegions, showEstimatedPositions };
     for (const [key, value] of Object.entries(booleanFields)) {
       if (value !== undefined && typeof value !== 'boolean') {
         return res.status(400).json({ error: `${key} must be a boolean` });
@@ -5567,6 +5567,8 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
       showMqttNodes,
       showMeshCoreNodes,
       showAnimations,
+      showAccuracyRegions,
+      showEstimatedPositions,
       positionHistoryHours,
     });
 

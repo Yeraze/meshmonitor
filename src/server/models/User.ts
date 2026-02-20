@@ -405,6 +405,8 @@ export class UserModel {
         show_mqtt_nodes as showMqttNodes,
         show_meshcore_nodes as showMeshCoreNodes,
         show_animations as showAnimations,
+        show_accuracy_regions as showAccuracyRegions,
+        show_estimated_positions as showEstimatedPositions,
         position_history_hours as positionHistoryHours
       FROM user_map_preferences
       WHERE user_id = ?
@@ -422,6 +424,8 @@ export class UserModel {
       showMqttNodes: Boolean(row.showMqttNodes),
       showMeshCoreNodes: Boolean(row.showMeshCoreNodes),
       showAnimations: Boolean(row.showAnimations),
+      showAccuracyRegions: Boolean(row.showAccuracyRegions),
+      showEstimatedPositions: Boolean(row.showEstimatedPositions),
       positionHistoryHours: row.positionHistoryHours ?? null,
     };
   }
@@ -438,6 +442,8 @@ export class UserModel {
     showMqttNodes?: boolean;
     showMeshCoreNodes?: boolean;
     showAnimations?: boolean;
+    showAccuracyRegions?: boolean;
+    showEstimatedPositions?: boolean;
     positionHistoryHours?: number | null;
   }): void {
     const now = Date.now();
@@ -482,6 +488,14 @@ export class UserModel {
         updates.push('show_animations = ?');
         params.push(preferences.showAnimations ? 1 : 0);
       }
+      if (preferences.showAccuracyRegions !== undefined) {
+        updates.push('show_accuracy_regions = ?');
+        params.push(preferences.showAccuracyRegions ? 1 : 0);
+      }
+      if (preferences.showEstimatedPositions !== undefined) {
+        updates.push('show_estimated_positions = ?');
+        params.push(preferences.showEstimatedPositions ? 1 : 0);
+      }
       if (preferences.positionHistoryHours !== undefined) {
         updates.push('position_history_hours = ?');
         params.push(preferences.positionHistoryHours);
@@ -505,8 +519,9 @@ export class UserModel {
         INSERT INTO user_map_preferences (
           user_id, map_tileset, show_paths, show_neighbor_info,
           show_route, show_motion, show_mqtt_nodes, show_meshcore_nodes, show_animations,
+          show_accuracy_regions, show_estimated_positions,
           position_history_hours, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -519,6 +534,8 @@ export class UserModel {
         preferences.showMqttNodes !== undefined ? (preferences.showMqttNodes ? 1 : 0) : 1, // default true
         preferences.showMeshCoreNodes !== undefined ? (preferences.showMeshCoreNodes ? 1 : 0) : 1, // default true
         preferences.showAnimations ? 1 : 0,
+        preferences.showAccuracyRegions ? 1 : 0, // default false
+        preferences.showEstimatedPositions !== undefined ? (preferences.showEstimatedPositions ? 1 : 0) : 1, // default true
         preferences.positionHistoryHours ?? null,
         now,
         now
