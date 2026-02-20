@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger.js';
+import { getHardwareModelName } from '../../utils/nodeHelpers.js';
 import { pushNotificationService } from './pushNotificationService.js';
 import { appriseNotificationService, AppriseNotificationPayload } from './appriseNotificationService.js';
 
@@ -134,14 +135,16 @@ class NotificationService {
 
   /**
    * Send notification for newly discovered node (bypasses normal filtering)
-   * Only sends if user has notifyOnNewNode enabled
+   * Only sends if user has notifyOnNewNode enabled.
+   * Called when a node transitions from incomplete to complete (has longName, shortName, hwModel).
    */
-  public async notifyNewNode(nodeId: string, longName: string, hopsAway: number | undefined): Promise<void> {
+  public async notifyNewNode(nodeId: string, longName: string, shortName: string, hwModel: number | undefined, hopsAway: number | undefined): Promise<void> {
     try {
       const hopsText = hopsAway !== undefined ? ` (${hopsAway} ${hopsAway === 1 ? 'hop' : 'hops'} away)` : '';
+      const hwModelText = hwModel !== undefined ? ` - ${getHardwareModelName(hwModel) || 'Unknown'}` : '';
       const payload: NotificationPayload = {
         title: '🆕 New Node Discovered',
-        body: `${longName || nodeId}${hopsText}`,
+        body: `${longName} (${shortName})${hwModelText}${hopsText}`,
         type: 'info'
       };
 
@@ -151,7 +154,7 @@ class NotificationService {
         appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload)
       ]);
 
-      logger.info(`📤 Sent new node notification for ${nodeId}`);
+      logger.info(`📤 Sent new node notification for ${longName} (${shortName}) [${nodeId}]`);
     } catch (error) {
       logger.error('❌ Error sending new node notification:', error);
     }

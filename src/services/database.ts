@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
+import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
 import { getPortNumName } from '../server/constants/meshtastic.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
@@ -392,6 +393,10 @@ class DatabaseService {
   private _traceroutesCache: DbTraceroute[] = [];
   private _traceroutesByNodesCache: Map<string, DbTraceroute[]> = new Map();
   private cacheInitialized = false;
+
+  // Track nodes that have already had their "new node" notification sent
+  // to avoid duplicate notifications when node data is updated incrementally
+  private newNodeNotifiedSet: Set<number> = new Set();
 
   /**
    * Get the Drizzle database instance for direct access if needed
@@ -3174,13 +3179,21 @@ class DatabaseService {
               }
             }).catch(err => logger.error('Failed to check persistent ignore list:', err));
           }
+        }
 
-          // Send notification for newly discovered node
+        // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
+        // This defers the notification until we have meaningful info instead of just a raw node ID
+        const wasComplete = existingNode ? isNodeComplete(existingNode) : false;
+        if (nodeData.nodeNum !== 4294967295 && !wasComplete &&
+            !this.newNodeNotifiedSet.has(nodeData.nodeNum) && isNodeComplete(updatedNode)) {
+          this.newNodeNotifiedSet.add(nodeData.nodeNum);
           import('../server/services/notificationService.js').then(({ notificationService }) => {
             notificationService.notifyNewNode(
-              nodeData.nodeId!,
-              nodeData.longName || nodeData.nodeId!,
-              nodeData.hopsAway
+              updatedNode.nodeId!,
+              updatedNode.longName!,
+              updatedNode.shortName!,
+              updatedNode.hwModel ?? undefined,
+              updatedNode.hopsAway
             ).catch(err => logger.error('Failed to send new node notification:', err));
           }).catch(err => logger.error('Failed to import notification service:', err));
         }
@@ -3336,17 +3349,32 @@ class DatabaseService {
       if (wasIgnored) {
         logger.debug(`Restored ignored status for returning node ${nodeData.nodeNum}`);
       }
+    }
 
-      // Send notification for newly discovered node (only if not broadcast node)
-      if (nodeData.nodeNum !== 4294967295 && nodeData.nodeId) {
-        // Import notification service dynamically to avoid circular dependencies
-        import('../server/services/notificationService.js').then(({ notificationService }) => {
-          notificationService.notifyNewNode(
-            nodeData.nodeId!,
-            nodeData.longName || nodeData.nodeId!,
-            nodeData.hopsAway
-          ).catch(err => logger.error('Failed to send new node notification:', err));
-        }).catch(err => logger.error('Failed to import notification service:', err));
+    // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
+    // This defers the notification until we have meaningful info instead of just a raw node ID
+    // For SQLite, build the merged node state to check completeness (COALESCE merges in SQL)
+    if (nodeData.nodeNum !== 4294967295 && !this.newNodeNotifiedSet.has(nodeData.nodeNum)) {
+      const wasComplete = existingNode ? isNodeComplete(existingNode) : false;
+      if (!wasComplete) {
+        const mergedNode = {
+          nodeId: nodeData.nodeId ?? existingNode?.nodeId,
+          longName: nodeData.longName ?? existingNode?.longName,
+          shortName: nodeData.shortName ?? existingNode?.shortName,
+          hwModel: nodeData.hwModel ?? existingNode?.hwModel,
+        };
+        if (isNodeComplete(mergedNode)) {
+          this.newNodeNotifiedSet.add(nodeData.nodeNum);
+          import('../server/services/notificationService.js').then(({ notificationService }) => {
+            notificationService.notifyNewNode(
+              mergedNode.nodeId!,
+              mergedNode.longName!,
+              mergedNode.shortName!,
+              mergedNode.hwModel ?? undefined,
+              nodeData.hopsAway ?? existingNode?.hopsAway
+            ).catch(err => logger.error('Failed to send new node notification:', err));
+          }).catch(err => logger.error('Failed to import notification service:', err));
+        }
       }
     }
   }
