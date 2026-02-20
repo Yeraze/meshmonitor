@@ -60,6 +60,11 @@ cleanup() {
     docker compose -f docker-compose.migration-source-test.yml down -v 2>/dev/null || true
     docker volume rm meshmonitor_meshmonitor-migration-source-test-data 2>/dev/null || true
 
+    # Cleanup database backing consistency test artifacts
+    docker compose -f docker-compose.db-backing-sqlite-test.yml down -v 2>/dev/null || true
+    docker compose -f docker-compose.db-backing-postgres-test.yml down -v 2>/dev/null || true
+    docker compose -f docker-compose.db-backing-mysql-test.yml down -v 2>/dev/null || true
+
     # Remove any temporary compose files
     rm -f docker-compose.quick-start-test.yml 2>/dev/null || true
     rm -f docker-compose.reverse-proxy-test.yml 2>/dev/null || true
@@ -68,6 +73,9 @@ cleanup() {
     rm -f docker-compose.backup-source-test.yml 2>/dev/null || true
     rm -f docker-compose.restore-test.yml 2>/dev/null || true
     rm -f docker-compose.migration-source-test.yml 2>/dev/null || true
+    rm -f docker-compose.db-backing-sqlite-test.yml 2>/dev/null || true
+    rm -f docker-compose.db-backing-postgres-test.yml 2>/dev/null || true
+    rm -f docker-compose.db-backing-mysql-test.yml 2>/dev/null || true
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
@@ -80,9 +88,13 @@ cleanup() {
     rm -f /tmp/meshmonitor-api-test-*.json 2>/dev/null || true
     rm -f /tmp/vn-test-client.py 2>/dev/null || true
     rm -f /tmp/meshmonitor-migration-cookies.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-db-backing-cookies.txt 2>/dev/null || true
     rm -f /tmp/test-migration-source.db 2>/dev/null || true
     rm -f /tmp/pg-migration.log 2>/dev/null || true
     rm -f /tmp/mysql-migration.log 2>/dev/null || true
+    rm -f /tmp/meshmonitor-nodes-sqlite.json 2>/dev/null || true
+    rm -f /tmp/meshmonitor-nodes-postgres.json 2>/dev/null || true
+    rm -f /tmp/meshmonitor-nodes-mysql.json 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Cleanup complete"
 }
@@ -151,6 +163,7 @@ else
     VIRTUAL_NODE_RESULT="SKIPPED"
     BACKUP_RESTORE_RESULT="SKIPPED"
     DB_MIGRATION_RESULT="SKIPPED"
+    DB_BACKING_RESULT="SKIPPED"
     # Skip to results
     echo ""
     echo "=========================================="
@@ -166,6 +179,7 @@ else
     echo -e "Virtual Node CLI Test:    ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Backup & Restore Test:    ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Database Migration Test:  ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "DB Backing Consistency:  ${YELLOW}⊘ SKIPPED${NC}"
     echo ""
     echo -e "${RED}===========================================${NC}"
     echo -e "${RED}✗ SYSTEM TESTS FAILED${NC}"
@@ -303,6 +317,23 @@ else
 fi
 echo ""
 
+echo "=========================================="
+echo -e "${BLUE}Running Database Backing Consistency Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run Database Backing Consistency test (SQLite, PostgreSQL, MySQL)
+if bash "$SCRIPT_DIR/test-database-backing.sh"; then
+    DB_BACKING_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ Database Backing Consistency test PASSED${NC}"
+else
+    DB_BACKING_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ Database Backing Consistency test FAILED${NC}"
+fi
+echo ""
+
 # Summary
 echo "=========================================="
 echo "System Test Results"
@@ -363,6 +394,14 @@ if [ "$DB_MIGRATION_RESULT" = "PASSED" ]; then
     echo -e "Database Migration Test:  ${GREEN}✓ PASSED${NC}"
 else
     echo -e "Database Migration Test:  ${RED}✗ FAILED${NC}"
+fi
+
+if [ "$DB_BACKING_RESULT" = "PASSED" ]; then
+    echo -e "DB Backing Consistency:  ${GREEN}✓ PASSED${NC}"
+elif [ "$DB_BACKING_RESULT" = "SKIPPED" ]; then
+    echo -e "DB Backing Consistency:  ${YELLOW}⊘ SKIPPED${NC}"
+else
+    echo -e "DB Backing Consistency:  ${RED}✗ FAILED${NC}"
 fi
 
 echo ""
@@ -434,11 +473,19 @@ else
     echo "| Database Migration Test | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$DB_BACKING_RESULT" = "PASSED" ]; then
+    echo "| DB Backing Consistency | ✅ PASSED |" >> "$REPORT_FILE"
+elif [ "$DB_BACKING_RESULT" = "SKIPPED" ]; then
+    echo "| DB Backing Consistency | ⊘ SKIPPED |" >> "$REPORT_FILE"
+else
+    echo "| DB Backing Consistency | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ] || [ "$DB_MIGRATION_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ] || [ "$DB_MIGRATION_RESULT" != "PASSED" ] || [ "$DB_BACKING_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -512,6 +559,12 @@ if [ "$REQUIRED_TESTS_PASSED" = true ]; then
     echo "- SQLite to MySQL migration verified" >> "$REPORT_FILE"
     echo "- Data integrity confirmed for both target databases" >> "$REPORT_FILE"
     echo "- Row counts match between source and target" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**DB Backing Consistency Test:**" >> "$REPORT_FILE"
+    echo "- SQLite, PostgreSQL, and MySQL backends tested with same device" >> "$REPORT_FILE"
+    echo "- Node counts within ±10 across all three backends" >> "$REPORT_FILE"
+    echo "- Favorite counts identical across all backends" >> "$REPORT_FILE"
+    echo "- Key station verified as favorite on all backends" >> "$REPORT_FILE"
 
     echo -e "${GREEN}=========================================="
     echo "✓ ALL SYSTEM TESTS PASSED"
@@ -556,6 +609,9 @@ else
     fi
     if [ "$DB_MIGRATION_RESULT" != "PASSED" ]; then
         echo "- **Database Migration Test:** PostgreSQL/MySQL migration test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$DB_BACKING_RESULT" != "PASSED" ]; then
+        echo "- **DB Backing Consistency:** Database backing consistency test failed" >> "$REPORT_FILE"
     fi
 
     echo -e "${RED}=========================================="
