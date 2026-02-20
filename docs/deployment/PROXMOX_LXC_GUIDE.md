@@ -69,7 +69,7 @@ systemctl start meshmonitor
 systemctl start meshmonitor-apprise
 
 # 7. Access web UI
-# Open browser to: http://CONTAINER-IP:8080
+# Open browser to: http://CONTAINER-IP:3001
 ```
 
 ## Detailed Installation
@@ -215,7 +215,7 @@ systemctl status meshmonitor-apprise
 
 2. Open web browser to:
    ```
-   http://CONTAINER-IP:8080
+   http://CONTAINER-IP:3001
    ```
 
 3. Log in with default credentials or create first admin user
@@ -294,13 +294,13 @@ All persistent data is stored in `/data`:
 
 ### Port Forwarding
 
-By default, MeshMonitor runs on port 3001 but the systemd service is configured to proxy to port 8080.
+MeshMonitor listens on port 3001 by default (configurable via the `PORT` environment variable in `/etc/meshmonitor/meshmonitor.env`).
 
 **To access from outside Proxmox**:
 
-1. Configure Proxmox firewall rules
+1. Configure Proxmox firewall rules to allow port 3001
 2. Or use port forwarding on your router
-3. Or use a reverse proxy (see below)
+3. Or use a reverse proxy for HTTPS (see below)
 
 ### Reverse Proxy (HTTPS)
 
@@ -314,7 +314,7 @@ server {
     server_name meshmonitor.yourdomain.com;
 
     location / {
-        proxy_pass http://CONTAINER-IP:8080;
+        proxy_pass http://CONTAINER-IP:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -364,14 +364,18 @@ pct delsnapshot 100 before-update
 
 ### Manual Database Backup
 
-Backup the SQLite database:
+Backup the SQLite database by copying the file (the `sqlite3` CLI is not installed in the container):
 
 ```bash
-# Inside container
-sqlite3 /data/meshmonitor.db ".backup /data/system-backups/meshmonitor-$(date +%Y%m%d).db"
+# Inside container - stop service first for a clean copy
+systemctl stop meshmonitor
+cp /data/meshmonitor.db /data/system-backups/meshmonitor-$(date +%Y%m%d).db
+systemctl start meshmonitor
 
-# Or copy via Proxmox host
-pct exec 100 -- sqlite3 /data/meshmonitor.db ".backup /data/system-backups/meshmonitor-backup.db"
+# Or copy via Proxmox host (stop service first for consistency)
+pct exec 100 -- systemctl stop meshmonitor
+pct pull 100 /data/meshmonitor.db ./meshmonitor-backup.db
+pct exec 100 -- systemctl start meshmonitor
 ```
 
 ### System Backup via Web UI
@@ -453,23 +457,50 @@ systemctl cat meshmonitor
 systemd-analyze verify meshmonitor.service
 ```
 
+#### Network Interface DOWN / No IP Address
+
+If `ip addr show` shows `eth0` as `state DOWN` with no IP address, the container's networking service may not be running.
+
+**Check networking service**:
+```bash
+systemctl status networking
+```
+
+**Manually bring up the interface**:
+```bash
+ifup eth0
+```
+
+**Verify DHCP client is installed** (required for `ip=dhcp` configuration):
+```bash
+which dhclient
+```
+
+If `dhclient` is missing, the container was built from an older template before the networking fix. Download the latest template from the [releases page](https://github.com/yeraze/meshmonitor/releases) and recreate the container.
+
+**Verify Proxmox wrote the interface config**:
+```bash
+ls /etc/network/interfaces.d/
+cat /etc/network/interfaces
+```
+
+You should see an entry for `eth0` with either `dhcp` or a static IP. If `/etc/network/interfaces.d/` is empty, check your Proxmox container network settings in the web UI.
+
 #### Cannot Connect to Meshtastic Node
 
 **Test network connectivity**:
 ```bash
 # Inside container
 ping YOUR-NODE-IP
-nc -zv YOUR-NODE-IP 4403
+
+# Test TCP connection to Meshtastic node
+curl -s --connect-timeout 5 telnet://YOUR-NODE-IP:4403 || echo "Connection failed"
 ```
 
 **Check firewall**:
 ```bash
 # On Proxmox host
 pct config 100 | grep firewall
-
-# Verify Meshtastic node is listening
-# On node device:
-netstat -tln | grep 4403
 ```
 
 #### Web UI Not Accessible
@@ -477,12 +508,12 @@ netstat -tln | grep 4403
 **Check service is running**:
 ```bash
 systemctl status meshmonitor
-netstat -tln | grep 3001
+ss -tln | grep 3001
 ```
 
 **Check from Proxmox host**:
 ```bash
-curl http://CONTAINER-IP:8080
+curl http://CONTAINER-IP:3001
 ```
 
 **Verify network configuration**:
@@ -510,10 +541,6 @@ systemctl restart meshmonitor
 ```bash
 # CPU and memory
 top
-htop
-
-# Disk I/O
-iotop
 
 # Database size
 du -sh /data/meshmonitor.db
