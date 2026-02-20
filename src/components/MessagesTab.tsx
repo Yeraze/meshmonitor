@@ -36,7 +36,7 @@ import LinkQualityGraph from './LinkQualityGraph';
 import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
 import { getNodePacketDistribution } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
-import { NodeFilterPopup } from './NodeFilterPopup';
+
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
@@ -219,8 +219,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   securityFilter,
   channelFilter,
   showIncompleteNodes,
-  showNodeFilterPopup,
-  setShowNodeFilterPopup,
+  showNodeFilterPopup: _showNodeFilterPopup,
+  setShowNodeFilterPopup: _setShowNodeFilterPopup,
   isMessagesNodeListCollapsed,
   setIsMessagesNodeListCollapsed,
   tracerouteLoading,
@@ -687,7 +687,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           )}
         </div>
 
-        <NodeFilterPopup isOpen={showNodeFilterPopup} onClose={() => setShowNodeFilterPopup(false)} />
 
         {!isMessagesNodeListCollapsed && (
           <div className="nodes-list">

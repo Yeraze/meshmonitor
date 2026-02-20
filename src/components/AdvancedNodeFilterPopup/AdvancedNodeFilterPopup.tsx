@@ -47,6 +47,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
 
   const handleReset = () => {
     onNodeFiltersChange(DEFAULT_FILTERS);
+    onSecurityFilterChange('all');
   };
 
   const handleRoleChange = (roleNum: number, checked: boolean) => {
