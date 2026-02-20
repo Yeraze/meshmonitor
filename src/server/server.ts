@@ -2410,6 +2410,8 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     try {
       logger.info(`🔄 Beginning edit settings transaction for import`);
       await meshtasticManager.beginEditSettings();
+      // Allow device time to enter edit mode before sending config messages
+      await new Promise((resolve) => setTimeout(resolve, 500));
       logger.info(`✅ Edit settings transaction started`);
     } catch (error) {
       logger.error(`❌ Failed to begin edit settings transaction:`, error);
@@ -2440,6 +2442,8 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
             positionPrecision: channel.positionPrecision,
           });
 
+          // Allow device time to process channel config before sending the next message
+          await new Promise((resolve) => setTimeout(resolve, 300));
           importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
           logger.info(`✅ Imported channel ${i}`);
         } catch (error) {
@@ -2466,6 +2470,9 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
 
         logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
         await meshtasticManager.setLoRaConfig(loraConfigToImport);
+        // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
+        // so allow extra time before committing
+        await new Promise((resolve) => setTimeout(resolve, 500));
         loraImported = true;
         requiresReboot = true; // LoRa config requires reboot when committed
         logger.info(`✅ Imported LoRa config`);
