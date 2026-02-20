@@ -362,6 +362,9 @@ systemRestoreService.markRestoreStarted();
 // Initialize Meshtastic connection
 setTimeout(async () => {
   try {
+    // Wait for database initialization (critical for PostgreSQL/MySQL where repos are async)
+    await databaseService.waitForReady();
+
     // Load saved traceroute interval from database before connecting
     const savedInterval = databaseService.getSetting('tracerouteIntervalMinutes');
     if (savedInterval !== null) {
