@@ -110,7 +110,7 @@ export const POSTGRES_SCHEMA_SQL = `
     unit TEXT,
     "createdAt" BIGINT NOT NULL,
     "packetTimestamp" BIGINT,
-    "packetId" INTEGER,
+    "packetId" BIGINT,
     channel INTEGER,
     "precisionBits" INTEGER,
     "gpsAccuracy" DOUBLE PRECISION

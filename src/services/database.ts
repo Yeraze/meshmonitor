@@ -79,6 +79,7 @@ import { migration as meshcorePermissionMigration, runMigration071Postgres, runM
 import { migration as dmUnreadIndexMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_add_messages_dm_unread_index.js';
 import { migration as packetIdMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_add_packet_id_to_telemetry.js';
 import { migration as showMeshCoreNodesMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_meshcore_nodes_preference.js';
+import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_upgrade_telemetry_packetid_bigint.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -952,6 +953,7 @@ class DatabaseService {
     this.runDmUnreadIndexMigration();
     this.runPacketIdMigration();
     this.runShowMeshCoreNodesMigration();
+    this.runTelemetryPacketIdBigintMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2416,6 +2418,25 @@ class DatabaseService {
       logger.debug('show_meshcore_nodes migration completed successfully');
     } catch (error) {
       logger.error('Failed to run show_meshcore_nodes migration:', error);
+      throw error;
+    }
+  }
+
+  private runTelemetryPacketIdBigintMigration(): void {
+    const migrationKey = 'migration_075_telemetry_packetid_bigint';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 075 (telemetry_packetid_bigint) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 075: Upgrade telemetry packetId to BIGINT...');
+      telemetryPacketIdBigintMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('telemetry packetId bigint migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run telemetry packetId bigint migration:', error);
       throw error;
     }
   }
@@ -10853,6 +10874,8 @@ class DatabaseService {
       // Run migration 074: Add show_meshcore_nodes to user_map_preferences
       await runMigration074Postgres(client);
 
+      // Run migration 075: Upgrade telemetry packetId to BIGINT
+      await runMigration075Postgres(client);
 
       // Verify all expected tables exist
       const result = await client.query(`
@@ -10988,6 +11011,8 @@ class DatabaseService {
       // Run migration 074: Add show_meshcore_nodes to user_map_preferences
       await runMigration074Mysql(pool);
 
+      // Run migration 075: Upgrade telemetry packetId to BIGINT
+      await runMigration075Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
