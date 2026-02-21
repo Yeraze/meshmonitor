@@ -1342,7 +1342,6 @@
   "settings.tapback_confirm_reset": "Reset tapback emojis to defaults? This will replace all your custom emojis.",
   "settings.tapback_reset_success": "Emojis reset to defaults",
   "settings.packet_monitor": "Packet Monitor",
-  "settings.packet_monitor_desktop_only": "(Desktop Only)",
   "settings.packet_monitor_description": "Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.",
   "settings.enable_audio_notifications": "Enable Audio Notifications",
   "settings.enable_audio_notifications_description": "Play a sound when new messages arrive. Disable this if you experience audio issues in your browser.",

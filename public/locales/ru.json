@@ -1176,7 +1176,6 @@
     "settings.theme_tritanopia": "Тританопия (синяя слепота)",
     "settings.theme_custom": "Пользовательская тема",
     "settings.packet_monitor": "Мониторинг пакетов",
-    "settings.packet_monitor_desktop_only": "(Только для настольных компьютеров)",
     "settings.packet_monitor_description": "Настройте mesh traffic monitor, отображающий все пакеты в сети. Требуются оба канала: чтение и сообщения:разрешение на чтение.",
     "settings.hide_incomplete_description": "Скройте имена нод, в которых отсутствуют данные об оборудовании. В защищенных каналах (пользовательский PSK) неполные ноды не были одобрены как входящие в ваш канал.",
     "settings.solar_monitoring_description": "Настройте мониторинг солнечных панелей для оценки производительности. Спасибо {{link}} за их API для оценки солнечной энергии!",

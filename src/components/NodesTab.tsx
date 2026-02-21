@@ -303,7 +303,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
 
-  // Packet Monitor state (desktop only)
+  // Packet Monitor state
   const [showPacketMonitor, setShowPacketMonitor] = useState(() => {
     // Load from localStorage
     const saved = localStorage.getItem('showPacketMonitor');
@@ -2179,7 +2179,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         )}
       </div>
 
-      {/* Packet Monitor Panel (Desktop Only) */}
+      {/* Packet Monitor Panel */}
       {showPacketMonitor && canViewPacketMonitor && (
         <div
           className={`packet-monitor-container ${isPacketMonitorResizing ? 'resizing' : ''}`}

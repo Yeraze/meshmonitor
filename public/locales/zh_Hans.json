@@ -1086,7 +1086,6 @@
     "settings.theme_tritanopia": "蓝色盲友好",
     "settings.theme_custom": "自定义主题",
     "settings.packet_monitor": "数据包监视",
-    "settings.packet_monitor_desktop_only": "（仅桌面）",
     "settings.packet_monitor_description": "配置网格流量监视器以显示网络上所有数据包。需要 channels:read 与 messages:read 权限。",
     "settings.hide_incomplete_description": "隐藏缺少名称或硬件信息的节点。在安全频道（自定义 PSK）建议启用，避免显示未验证的节点。",
     "settings.solar_monitoring_description": "配置太阳能监测以估算产能。感谢 {{link}} 提供 Solar Estimates API！",
