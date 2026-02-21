@@ -204,7 +204,6 @@
     "users.user_deactivated": "",
     "admin_commands.please_select_node_to_ignore": "",
     "messages.traceroute_failed": "",
-    "settings.packet_monitor_desktop_only": "",
     "security.failed_export": "",
     "system_backup.restore_warning_description": "",
     "lora_config.hop_limit": "",

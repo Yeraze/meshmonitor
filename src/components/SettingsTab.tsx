@@ -1149,7 +1149,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               />
               <span>{t('settings.packet_monitor')}</span>
             </label>
-            <span style={{ fontSize: '0.85rem', fontWeight: 'normal', color: 'var(--text-secondary)' }}>{t('settings.packet_monitor_desktop_only')}</span>
+
           </h3>
           <p className="setting-description">{t('settings.packet_monitor_description')}</p>
           <div className="packet-monitor-settings">
