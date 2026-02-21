@@ -82,7 +82,7 @@ export async function runMigration077Mysql(pool: import('mysql2/promise').Pool):
       return;
     }
 
-    await pool.query(`ALTER TABLE ignored_nodes MODIFY COLUMN nodeNum BIGINT PRIMARY KEY`);
+    await pool.query(`ALTER TABLE ignored_nodes MODIFY COLUMN nodeNum BIGINT`);
     logger.debug('Upgraded ignored_nodes.nodeNum to BIGINT');
   } catch (error: any) {
     logger.error('Failed to upgrade ignored_nodes.nodeNum:', error.message);
