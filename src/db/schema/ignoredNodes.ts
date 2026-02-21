@@ -10,13 +10,11 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import {
   pgTable,
   text as pgText,
-  integer as pgInteger,
   bigint as pgBigint,
 } from 'drizzle-orm/pg-core';
 import {
   mysqlTable,
   varchar as myVarchar,
-  int as myInt,
   bigint as myBigint,
 } from 'drizzle-orm/mysql-core';
 
@@ -34,7 +32,7 @@ export const ignoredNodesSqlite = sqliteTable('ignored_nodes', {
 // ============ IGNORED NODES (PostgreSQL) ============
 
 export const ignoredNodesPostgres = pgTable('ignored_nodes', {
-  nodeNum: pgInteger('nodeNum').primaryKey(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).primaryKey(),
   nodeId: pgText('nodeId').notNull(),
   longName: pgText('longName'),
   shortName: pgText('shortName'),
@@ -45,7 +43,7 @@ export const ignoredNodesPostgres = pgTable('ignored_nodes', {
 // ============ IGNORED NODES (MySQL) ============
 
 export const ignoredNodesMysql = mysqlTable('ignored_nodes', {
-  nodeNum: myInt('nodeNum').primaryKey(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).primaryKey(),
   nodeId: myVarchar('nodeId', { length: 255 }).notNull(),
   longName: myVarchar('longName', { length: 255 }),
   shortName: myVarchar('shortName', { length: 255 }),
