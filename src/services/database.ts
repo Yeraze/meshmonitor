@@ -82,6 +82,7 @@ import { migration as packetIdMigration, runMigration073Postgres, runMigration07
 import { migration as showMeshCoreNodesMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_meshcore_nodes_preference.js';
 import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_upgrade_telemetry_packetid_bigint.js';
 import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_accuracy_and_estimated_position_prefs.js';
+import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_upgrade_ignored_nodes_nodenum_bigint.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -961,6 +962,7 @@ class DatabaseService {
     this.runShowMeshCoreNodesMigration();
     this.runTelemetryPacketIdBigintMigration();
     this.runAccuracyEstimatedPrefsMigration();
+    this.runIgnoredNodesNodeNumBigintMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2463,6 +2465,25 @@ class DatabaseService {
       logger.debug('accuracy_estimated_prefs migration completed successfully');
     } catch (error) {
       logger.error('Failed to run accuracy_estimated_prefs migration:', error);
+      throw error;
+    }
+  }
+
+  private runIgnoredNodesNodeNumBigintMigration(): void {
+    const migrationKey = 'migration_077_ignored_nodes_nodenum_bigint';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 077 (ignored_nodes nodeNum bigint) already completed');
+        return;
+      }
+
+      logger.debug('Running migration 077: Upgrade ignored_nodes.nodeNum to BIGINT...');
+      ignoredNodesNodeNumBigintMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('ignored_nodes nodeNum bigint migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run ignored_nodes nodeNum bigint migration:', error);
       throw error;
     }
   }
@@ -10928,6 +10949,9 @@ class DatabaseService {
       // Run migration 076: Add show_accuracy_regions and show_estimated_positions
       await runMigration076Postgres(client);
 
+      // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
+      await runMigration077Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11067,6 +11091,9 @@ class DatabaseService {
 
       // Run migration 076: Add show_accuracy_regions and show_estimated_positions
       await runMigration076Mysql(pool);
+
+      // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
+      await runMigration077Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
