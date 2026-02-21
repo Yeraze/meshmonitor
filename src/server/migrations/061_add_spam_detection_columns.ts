@@ -87,11 +87,12 @@ export async function runMigration061Mysql(pool: import('mysql2/promise').Pool):
   logger.debug('Running migration 061 (MySQL): Add spam detection columns to nodes...');
 
   const [rows] = await pool.query(`
-    SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'nodes' AND column_name IN ('isExcessivePackets', 'packetRatePerHour', 'packetRateLastChecked')
+    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nodes'
+      AND COLUMN_NAME IN ('isExcessivePackets', 'packetRatePerHour', 'packetRateLastChecked')
   `) as any;
 
-  const existingColumns = new Set(rows.map((r: { column_name: string }) => r.column_name));
+  const existingColumns = new Set(rows.map((r: { COLUMN_NAME: string }) => r.COLUMN_NAME));
 
   if (!existingColumns.has('isExcessivePackets')) {
     await pool.query('ALTER TABLE nodes ADD COLUMN isExcessivePackets BOOLEAN DEFAULT false');
