@@ -7367,7 +7367,6 @@ class DatabaseService {
 
   // Invalidate the telemetry types cache (call when new telemetry is inserted)
   invalidateTelemetryTypesCache(): void {
-    this.telemetryTypesCache = null;
     this.telemetryTypesCacheTime = 0;
   }
 

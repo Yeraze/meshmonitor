@@ -14,6 +14,7 @@
  * ```
  */
 
+import { useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePoll, PollData, POLL_QUERY_KEY } from "./usePoll";
 import type { DeviceInfo, Channel } from "../types/device";
@@ -71,12 +72,22 @@ export function useConnectionInfo() {
 export function useTelemetryNodes() {
   const { data, isLoading } = usePoll();
   const telemetry = data?.telemetryNodes;
+  const prevRef = useRef(telemetry);
+
+  // Preserve previous telemetry data if current response lacks it.
+  // This prevents icon flicker when a poll response temporarily
+  // has empty/missing telemetry (e.g., server cache invalidation race).
+  if (telemetry && (telemetry.nodes?.length || telemetry.weather?.length || telemetry.pkc?.length)) {
+    prevRef.current = telemetry;
+  }
+
+  const effectiveTelemetry = telemetry?.nodes?.length ? telemetry : prevRef.current;
 
   return {
-    nodesWithTelemetry: new Set(telemetry?.nodes ?? []),
-    nodesWithWeather: new Set(telemetry?.weather ?? []),
-    nodesWithEstimatedPosition: new Set(telemetry?.estimatedPosition ?? []),
-    nodesWithPKC: new Set(telemetry?.pkc ?? []),
+    nodesWithTelemetry: new Set(effectiveTelemetry?.nodes ?? []),
+    nodesWithWeather: new Set(effectiveTelemetry?.weather ?? []),
+    nodesWithEstimatedPosition: new Set(effectiveTelemetry?.estimatedPosition ?? []),
+    nodesWithPKC: new Set(effectiveTelemetry?.pkc ?? []),
     isLoading,
   };
 }
