@@ -166,188 +166,89 @@ pull_image() {
 recreate_container() {
   log "Recreating container: $CONTAINER_NAME"
 
-  # Use Docker Compose if available, otherwise fall back to Docker commands
-  # Docker Compose ensures proper container management and avoids conflicts
-
+  # Resolve compose directory - try configured path, then standard mount point
+  local compose_dir=""
   if [ -d "$COMPOSE_PROJECT_DIR" ] && [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
-    log "Using Docker Compose to recreate container"
+    compose_dir="$COMPOSE_PROJECT_DIR"
+  elif [ -d "/compose" ] && [ -f "/compose/docker-compose.yml" ]; then
+    log_warn "COMPOSE_PROJECT_DIR=$COMPOSE_PROJECT_DIR not found, falling back to /compose"
+    compose_dir="/compose"
+  fi
 
-    # Detect which compose files were originally used by inspecting the container
-    local original_config_files=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+  if [ -z "$compose_dir" ]; then
+    log_error "No docker-compose.yml found at $COMPOSE_PROJECT_DIR or /compose"
+    log_error "The upgrade sidecar requires Docker Compose files to recreate containers safely."
+    log_error "Mount your compose directory to /compose in the sidecar container."
+    return 1
+  fi
 
-    local compose_files=""
-    if [ -n "$original_config_files" ]; then
-      log "Original compose files: $original_config_files"
-      # Parse comma-separated list and convert /compose/ paths to -f flags
-      # Example: /compose/docker-compose.yml,/compose/docker-compose.dev.yml
-      for config_file in $(echo "$original_config_files" | tr ',' ' '); do
-        # Extract just the filename (remove /compose/ prefix)
-        local filename=$(basename "$config_file")
-        if [ -f "$COMPOSE_PROJECT_DIR/$filename" ]; then
-          compose_files="$compose_files -f $filename"
-          log "Using compose file: $filename"
-        else
-          log_warn "Compose file not found: $filename (skipping)"
-        fi
-      done
-    fi
+  log "Using compose directory: $compose_dir"
 
-    # Fallback if no compose files detected from labels
-    if [ -z "$compose_files" ]; then
-      log_warn "Could not detect original compose files, using defaults"
-      compose_files="-f docker-compose.yml"
-      if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.upgrade.yml" ]; then
-        compose_files="$compose_files -f docker-compose.upgrade.yml"
-        log "Detected upgrade overlay: docker-compose.upgrade.yml"
+  # Verify docker compose is available
+  if ! docker compose version >/dev/null 2>&1; then
+    log_error "docker compose not available - required for container recreation"
+    return 1
+  fi
+
+  # Detect which compose files were originally used
+  local original_config_files=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+
+  local compose_files=""
+  if [ -n "$original_config_files" ]; then
+    log "Original compose files: $original_config_files"
+    for config_file in $(echo "$original_config_files" | tr ',' ' '); do
+      local filename=$(basename "$config_file")
+      if [ -f "$compose_dir/$filename" ]; then
+        compose_files="$compose_files -f $filename"
+        log "  Using: $filename"
+      else
+        log_warn "  Not found: $filename (skipping)"
       fi
-    fi
-
-    # Pull latest image
-    if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
-      log_success "Image pulled: ${IMAGE_NAME}:latest"
-    fi
-
-    # Stop and remove existing container first to avoid name conflicts
-    log "Stopping existing container..."
-    cd "$COMPOSE_PROJECT_DIR" || return 1
-
-    # Detect actual project name from container labels - this is more reliable than env var
-    # because the container may have been created with a different project name
-    local detected_project=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
-    local project_flag=""
-
-    if [ -n "$detected_project" ]; then
-      project_flag="-p $detected_project"
-      log "Using detected project name: $detected_project"
-      if [ -n "$COMPOSE_PROJECT_NAME" ] && [ "$detected_project" != "$COMPOSE_PROJECT_NAME" ]; then
-        log_warn "Note: COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME differs from container's project"
-      fi
-    elif [ -n "$COMPOSE_PROJECT_NAME" ]; then
-      project_flag="-p $COMPOSE_PROJECT_NAME"
-      log "Using env project name: $COMPOSE_PROJECT_NAME"
-    fi
-
-    # Stop container via compose
-    if ! docker compose $project_flag $compose_files stop "$CONTAINER_NAME" 2>/dev/null; then
-      log_warn "Compose stop failed, trying direct docker stop..."
-      docker stop "$CONTAINER_NAME" 2>/dev/null || true
-    fi
-
-    # Remove container via compose
-    if ! docker compose $project_flag $compose_files rm -f "$CONTAINER_NAME" 2>/dev/null; then
-      log_warn "Compose rm failed, trying direct docker rm..."
-      docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-    fi
-
-    # Verify container is actually gone (critical for ARM/Raspberry Pi where Docker can be slower)
-    local wait_count=0
-    local max_wait=30
-    while docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; do
-      wait_count=$((wait_count + 1))
-      if [ $wait_count -ge $max_wait ]; then
-        log_error "Container still exists after ${max_wait}s - forcing removal"
-        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-        sleep 2
-        # Final check
-        if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-          log_error "Unable to remove container - manual intervention required"
-          return 1
-        fi
-        break
-      fi
-      log "Waiting for container removal... (${wait_count}s)"
-      sleep 1
     done
-    log_success "Container removed successfully"
+  fi
 
-    # Recreate using docker compose (this properly handles all configuration)
-    if docker compose $project_flag $compose_files up -d --no-deps "$CONTAINER_NAME"; then
-      log_success "Container recreated successfully via Docker Compose"
-      return 0
-    else
-      log_error "Failed to recreate container via Docker Compose"
-      return 1
+  # Fallback if no compose files detected from labels
+  if [ -z "$compose_files" ]; then
+    compose_files="-f docker-compose.yml"
+    if [ -f "$compose_dir/docker-compose.upgrade.yml" ]; then
+      compose_files="$compose_files -f docker-compose.upgrade.yml"
     fi
+    log "Using default compose files: $compose_files"
+  fi
+
+  # Detect project name from container labels
+  local detected_project=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+  local project_flag=""
+  if [ -n "$detected_project" ]; then
+    project_flag="-p $detected_project"
+    log "Using project name: $detected_project"
+  elif [ -n "$COMPOSE_PROJECT_NAME" ]; then
+    project_flag="-p $COMPOSE_PROJECT_NAME"
+    log "Using env project name: $COMPOSE_PROJECT_NAME"
+  fi
+
+  # Pull latest image
+  log "Pulling latest image..."
+  if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
+    log_success "Image pulled: ${IMAGE_NAME}:latest"
+  fi
+
+  # Recreate via docker compose (handles ports, volumes, env, networks - everything)
+  cd "$compose_dir" || return 1
+  log "Running: docker compose $project_flag $compose_files up -d --force-recreate --no-deps $CONTAINER_NAME"
+
+  if docker compose $project_flag $compose_files up -d --force-recreate --no-deps "$CONTAINER_NAME"; then
+    # Log the port mappings on the new container for verification
+    local new_ports=$(docker port "$CONTAINER_NAME" 2>/dev/null)
+    if [ -n "$new_ports" ]; then
+      log "Port mappings on recreated container:"
+      echo "$new_ports" | while IFS= read -r line; do log "  $line"; done
+    fi
+    log_success "Container recreated successfully via Docker Compose"
+    return 0
   else
-    # Fallback to direct Docker commands (legacy compatibility)
-    log "Docker Compose files not found, using direct Docker commands"
-
-    # Pull the new image
-    if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
-      log_success "Image pulled: ${IMAGE_NAME}:latest"
-    fi
-
-    # Get current container configuration before stopping
-    local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
-    # Extract both volume and bind mounts
-    local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{else if eq .Type "bind"}}-v {{.Source}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
-
-    # Extract ports - remove /tcp or /udp protocol suffix for docker run compatibility
-    local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | sed 's|/tcp||g; s|/udp||g')
-
-    # Extract env vars to a temporary file to handle values with spaces properly
-    local env_file="/tmp/.meshmonitor-upgrade-env-$$"
-    docker inspect --format='{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | \
-      grep -v '^COMPOSE_' | \
-      grep -v '^DOCKER_' | \
-      grep -v '^PATH=' | \
-      grep -v '^HOME=' | \
-      grep -v '^HOSTNAME=' | \
-      grep -v '^$' > "$env_file"
-
-    # Stop and remove old container
-    log "Stopping current container..."
-    docker stop "$CONTAINER_NAME" 2>/dev/null || true
-    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-
-    # Verify container is actually gone (critical for ARM/Raspberry Pi where Docker can be slower)
-    local wait_count=0
-    local max_wait=30
-    while docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; do
-      wait_count=$((wait_count + 1))
-      if [ $wait_count -ge $max_wait ]; then
-        log_error "Container still exists after ${max_wait}s - forcing removal"
-        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-        sleep 2
-        if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-          log_error "Unable to remove container - manual intervention required"
-          rm -f "$env_file"
-          return 1
-        fi
-        break
-      fi
-      log "Waiting for container removal... (${wait_count}s)"
-      sleep 1
-    done
-    log_success "Container removed successfully"
-
-    # Start new container with same configuration
-    log "Starting new container..."
-
-    # Build command incrementally to handle optional network parameter
-    set -- -d --name "$CONTAINER_NAME" --restart unless-stopped
-
-    # Add network if present (using positional parameters to avoid word-splitting issues)
-    if [ -n "$network" ]; then
-      set -- "$@" --network "$network"
-    fi
-
-    # Execute docker run with all parameters
-    # Note: $ports, $volumes are intentionally unquoted for word splitting
-    # Use --env-file to properly handle env vars with spaces in values
-    docker run "$@" $ports $volumes --env-file "$env_file" ghcr.io/yeraze/meshmonitor:latest
-    local exit_code=$?
-
-    # Clean up temp env file
-    rm -f "$env_file"
-
-    if [ $exit_code -eq 0 ]; then
-      log_success "Container recreated successfully"
-      return 0
-    else
-      log_error "Failed to recreate container"
-      return 1
-    fi
+    log_error "Failed to recreate container via Docker Compose"
+    return 1
   fi
 }
 
