@@ -66,6 +66,45 @@ function parseInt32(
 }
 
 /**
+ * Parse a rate limit environment variable.
+ * Accepts positive integers (normal limit), or special values to disable:
+ *   "unlimited" (case-insensitive), "0", "-1" → returns 0 (sentinel for disabled)
+ * In express-rate-limit v7+, max:0 blocks all requests, so callers must
+ * use `skip: () => true` when the value is 0.
+ */
+function parseRateLimit(
+  name: string,
+  envValue: string | undefined,
+  defaultValue: number
+): { value: number; wasProvided: boolean } {
+  if (envValue === undefined) {
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  const trimmed = envValue.trim();
+
+  // Special "unlimited" keyword (case-insensitive)
+  if (trimmed.toLowerCase() === 'unlimited') {
+    logger.info(`ℹ️  ${name} set to "unlimited" — rate limiting disabled for this category`);
+    return { value: 0, wasProvided: true };
+  }
+
+  const parsed = parseInt(trimmed, 10);
+  if (isNaN(parsed)) {
+    logger.warn(`⚠️  Invalid ${name} value: "${envValue}". Expected integer or "unlimited". Using default: ${defaultValue}`);
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  // 0 or negative → treat as "disable"
+  if (parsed <= 0) {
+    logger.info(`ℹ️  ${name} set to ${parsed} — rate limiting disabled for this category`);
+    return { value: 0, wasProvided: true };
+  }
+
+  return { value: parsed, wasProvided: true };
+}
+
+/**
  * Parse trust proxy setting
  * Supports: 'true', 'false', numbers (1, 2, etc.), or IP/CIDR strings
  * See: https://expressjs.com/en/guide/behind-proxies.html
@@ -478,9 +517,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   // Rate Limiting
   // Defaults: API=1000/15min (~1req/sec), Auth=5/15min, Messages=30/min
-  const rateLimitApi = parseInt32('RATE_LIMIT_API', process.env.RATE_LIMIT_API, nodeEnv.value === 'development' ? 10000 : 1000);
-  const rateLimitAuth = parseInt32('RATE_LIMIT_AUTH', process.env.RATE_LIMIT_AUTH, nodeEnv.value === 'development' ? 100 : 5);
-  const rateLimitMessages = parseInt32('RATE_LIMIT_MESSAGES', process.env.RATE_LIMIT_MESSAGES, nodeEnv.value === 'development' ? 100 : 30);
+  const rateLimitApi = parseRateLimit('RATE_LIMIT_API', process.env.RATE_LIMIT_API, nodeEnv.value === 'development' ? 10000 : 1000);
+  const rateLimitAuth = parseRateLimit('RATE_LIMIT_AUTH', process.env.RATE_LIMIT_AUTH, nodeEnv.value === 'development' ? 100 : 5);
+  const rateLimitMessages = parseRateLimit('RATE_LIMIT_MESSAGES', process.env.RATE_LIMIT_MESSAGES, nodeEnv.value === 'development' ? 100 : 30);
 
   // Push Notifications (VAPID) - optional, can be stored in database instead
   const vapidPublicKey = {

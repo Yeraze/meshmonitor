@@ -24,9 +24,9 @@ const rateLimitConfig = {
 
 // Log rate limit configuration at startup
 logger.info('⏱️  Rate limit configuration:');
-logger.info(`   - API: ${env.rateLimitApi} requests per 15 minutes${env.rateLimitApiProvided ? ' (custom)' : ' (default)'}`);
-logger.info(`   - Auth: ${env.rateLimitAuth} attempts per 15 minutes${env.rateLimitAuthProvided ? ' (custom)' : ' (default)'}`);
-logger.info(`   - Messages: ${env.rateLimitMessages} messages per minute${env.rateLimitMessagesProvided ? ' (custom)' : ' (default)'}`);
+logger.info(`   - API: ${env.rateLimitApi === 0 ? 'unlimited (disabled)' : `${env.rateLimitApi} requests per 15 minutes`}${env.rateLimitApiProvided ? ' (custom)' : ' (default)'}`);
+logger.info(`   - Auth: ${env.rateLimitAuth === 0 ? 'unlimited (disabled)' : `${env.rateLimitAuth} attempts per 15 minutes`}${env.rateLimitAuthProvided ? ' (custom)' : ' (default)'}`);
+logger.info(`   - Messages: ${env.rateLimitMessages === 0 ? 'unlimited (disabled)' : `${env.rateLimitMessages} messages per minute`}${env.rateLimitMessagesProvided ? ' (custom)' : ' (default)'}`);
 
 // Log reverse proxy configuration warnings
 if (!env.trustProxyProvided && env.isProduction) {
@@ -50,6 +50,7 @@ export const apiLimiter = rateLimit({
     });
   },
   ...rateLimitConfig,
+  ...(env.rateLimitApi === 0 ? { skip: () => true } : {}),
 });
 
 // Strict rate limiting for authentication endpoints
@@ -70,6 +71,7 @@ export const authLimiter = rateLimit({
     });
   },
   ...rateLimitConfig,
+  ...(env.rateLimitAuth === 0 ? { skip: () => true } : {}),
 });
 
 // Moderate rate limiting for message sending
@@ -88,6 +90,7 @@ export const messageLimiter = rateLimit({
     });
   },
   ...rateLimitConfig,
+  ...(env.rateLimitMessages === 0 ? { skip: () => true } : {}),
 });
 
 // Rate limiting for MeshCore device operations (connect, disconnect, config changes)
