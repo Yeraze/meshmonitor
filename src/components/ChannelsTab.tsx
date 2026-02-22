@@ -5,7 +5,7 @@
  * Handles the Channels tab with channel selection and messaging.
  */
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -171,6 +171,14 @@ export default function ChannelsTab({
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
+
+  // Compute auto-position channel: lowest-index channel with positionPrecision > 0
+  const autoPositionChannelId = useMemo(() => {
+    const sorted = [...channels]
+      .filter(ch => ch.id < CHANNEL_DB_OFFSET && (ch.positionPrecision ?? 0) > 0)
+      .sort((a, b) => a.id - b.id);
+    return sorted.length > 0 ? sorted[0].id : null;
+  }, [channels]);
 
   // Map nodes to the format expected by RelayNodeModal
   const mappedNodes = nodes.map(node => {
@@ -377,10 +385,11 @@ export default function ChannelsTab({
                   const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
                   const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
                   const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
+                  const locationIcon = (channelConfig?.positionPrecision ?? 0) > 0 ? '📍' : '';
 
                   return (
                     <option key={channelId} value={channelId}>
-                      {encryptionIcon} {displayName} #{channelId} {uplink}
+                      {encryptionIcon}{locationIcon ? ` ${locationIcon}` : ''} {displayName} #{channelId} {uplink}
                       {downlink} {unread > 0 ? `(${unread})` : ''}
                     </option>
                   );
@@ -438,6 +447,16 @@ export default function ChannelsTab({
                               );
                             }
                           })()}
+                          {(channelConfig?.positionPrecision ?? 0) > 0 && (
+                            <span
+                              className="location-icon"
+                              title={channelId === autoPositionChannelId
+                                ? t('channels.location_auto_position')
+                                : t('channels.location_active', { bits: channelConfig?.positionPrecision })}
+                            >
+                              📍
+                            </span>
+                          )}
                           <a
                             href="#"
                             className="channel-info-link"
@@ -911,6 +930,20 @@ export default function ChannelsTab({
                           <span className="status-enabled">{t('channels.enabled')}</span>
                         ) : (
                           <span className="status-disabled">{t('channels.disabled')}</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t('channels.location_sharing')}:</span>
+                      <span className="info-value">
+                        {(selectedChannelConfig.positionPrecision ?? 0) > 0 ? (
+                          <span className="status-enabled">
+                            {selectedChannelConfig.id === autoPositionChannelId
+                              ? t('channels.location_auto_position')
+                              : t('channels.location_active', { bits: selectedChannelConfig.positionPrecision })}
+                          </span>
+                        ) : (
+                          <span className="status-disabled">{t('channels.location_disabled')}</span>
                         )}
                       </span>
                     </div>
