@@ -409,6 +409,9 @@
   "channels.access_mode": "Access Mode:",
   "channels.read_only": "Read-only",
   "channels.packets_decrypted": "Packets Decrypted:",
+  "channels.location_sharing": "Location Sharing",
+  "channels.location_auto_position": "Active (auto-position updates)",
+  "channels.location_disabled": "Disabled",
 
   "dashboard.title": "Telemetry Dashboard",
   "dashboard.add_widget": "Add Widget",
