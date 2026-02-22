@@ -27,6 +27,7 @@ export default defineConfig({
         items: [
           { text: 'Features', link: '/features/settings' },
           { text: 'Configuration', link: '/configuration/' },
+          { text: 'Add-ons', link: '/add-ons/' },
           { text: 'Development', link: '/development/' }
         ]
       },
@@ -66,7 +67,6 @@ export default defineConfig({
             { text: 'BLE Bridge', link: '/configuration/ble-bridge' },
             { text: 'Serial Bridge', link: '/configuration/serial-bridge' },
             { text: 'Virtual Node', link: '/configuration/virtual-node' },
-            { text: 'MQTT Client Proxy', link: '/configuration/mqtt-proxy' },
             { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' },
             { text: 'SSO Setup', link: '/configuration/sso' },
             { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
@@ -81,6 +81,16 @@ export default defineConfig({
           items: [
             { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
             { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' }
+          ]
+        }
+      ],
+      '/add-ons/': [
+        {
+          text: 'Community Add-ons',
+          items: [
+            { text: 'Overview', link: '/add-ons/' },
+            { text: 'MQTT Client Proxy', link: '/add-ons/mqtt-proxy' },
+            { text: 'AI Responder', link: '/add-ons/ai-responder' }
           ]
         }
       ],

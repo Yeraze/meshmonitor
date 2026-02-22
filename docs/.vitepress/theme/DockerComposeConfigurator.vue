@@ -477,7 +477,7 @@
         <p class="field-help">
           Adds an MQTT proxy container that routes MQTT traffic through MeshMonitor instead of directly from your node.
           Useful when your node has unreliable WiFi or when you want MQTT without running mobile apps.
-          <a href="/configuration/mqtt-proxy" target="_blank">Learn more</a>
+          <a href="/add-ons/mqtt-proxy" target="_blank">Learn more</a>
         </p>
       </div>
 

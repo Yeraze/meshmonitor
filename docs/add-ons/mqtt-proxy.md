@@ -3,7 +3,7 @@
 The MQTT Client Proxy is an optional sidecar container that enables reliable MQTT connectivity for MeshMonitor deployments. It routes MQTT traffic through MeshMonitor instead of relying on your Meshtastic node's WiFi connection.
 
 ::: tip Credit
-The MQTT Proxy was created by [LN4CY](https://github.com/LN4CY/mqtt-proxy). MeshMonitor integrates it as an optional Docker sidecar.
+The MQTT Proxy was created by [LN4CY](https://github.com/LN4CY/mqtt-proxy). MeshMonitor integrates it as an optional Docker sidecar. See also: [AI Responder](/add-ons/ai-responder), another add-on by the same author.
 :::
 
 ## Overview
@@ -214,6 +214,8 @@ The proxy writes a health file at `/tmp/healthy` that Docker uses for health che
 - [Virtual Node](/configuration/virtual-node) - Required for MQTT Proxy
 - [Device Configuration](/features/device#mqtt-configuration) - Node MQTT settings
 - [Docker Configurator](/configurator) - Generate deployment configs
+- [AI Responder](/add-ons/ai-responder) - Another community add-on by LN4CY
+- [Community Add-ons Overview](/add-ons/) - All available add-ons
 - [LN4CY mqtt-proxy Repository](https://github.com/LN4CY/mqtt-proxy) - Original project
 
 ## License Note
