@@ -1122,7 +1122,7 @@ Configure network settings including WiFi, NTP, and static IP addresses.
 - More reliable connectivity via Docker containers with health checks
 
 ::: tip MeshMonitor Integration
-When using MeshMonitor, enable this option and deploy the [MQTT Client Proxy sidecar](/configuration/mqtt-proxy). The proxy container handles all MQTT forwarding automatically.
+When using MeshMonitor, enable this option and deploy the [MQTT Client Proxy sidecar](/add-ons/mqtt-proxy). The proxy container handles all MQTT forwarding automatically.
 
 Credit: MQTT Proxy by [LN4CY](https://github.com/LN4CY/mqtt-proxy)
 :::

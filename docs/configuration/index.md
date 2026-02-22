@@ -259,6 +259,10 @@ MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your 
 - **Kubernetes**: Logs are available via `kubectl logs`
 - **Bare Metal**: Redirect output to log files or use a process manager like systemd
 
+## Community Add-ons
+
+Looking for the MQTT Client Proxy, AI Responder, or other sidecar containers? These have moved to the [Community Add-ons](/add-ons/) section.
+
 ## Next Steps
 
 - [Connect Serial/USB devices](/configuration/serial-bridge)
@@ -267,3 +271,4 @@ MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your 
 - [Set up SSO](/configuration/sso)
 - [Configure a reverse proxy](/configuration/reverse-proxy)
 - [Deploy to production](/configuration/production)
+- [Browse community add-ons](/add-ons/)
