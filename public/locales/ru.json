@@ -376,7 +376,6 @@
     "channels.cannot_undo": "Это действие не может быть отменено",
     "channels.location_sharing": "",
     "channels.location_auto_position": "",
-    "channels.location_active": "",
     "channels.location_disabled": "",
     "dashboard.title": "Панель телеметрии",
     "dashboard.add_widget": "Добавить виджет",

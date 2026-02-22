@@ -329,7 +329,6 @@
     "channels.cannot_undo": "该操作无法撤销",
     "channels.location_sharing": "",
     "channels.location_auto_position": "",
-    "channels.location_active": "",
     "channels.location_disabled": "",
     "dashboard.title": "遥测仪表盘",
     "dashboard.add_widget": "添加小部件",

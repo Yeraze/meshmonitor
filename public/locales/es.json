@@ -251,7 +251,6 @@
     "channels.cannot_undo": "Esta acción no se puede deshacer",
     "channels.location_sharing": "",
     "channels.location_auto_position": "",
-    "channels.location_active": "",
     "channels.location_disabled": "",
     "dashboard.title": "Panel de Telemetría",
     "dashboard.add_widget": "Añadir Widget",

@@ -385,7 +385,7 @@ export default function ChannelsTab({
                   const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
                   const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
                   const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
-                  const locationIcon = (channelConfig?.positionPrecision ?? 0) > 0 ? '📍' : '';
+                  const locationIcon = channelId === autoPositionChannelId ? '📍' : '';
 
                   return (
                     <option key={channelId} value={channelId}>
@@ -447,12 +447,10 @@ export default function ChannelsTab({
                               );
                             }
                           })()}
-                          {(channelConfig?.positionPrecision ?? 0) > 0 && (
+                          {channelId === autoPositionChannelId && (
                             <span
                               className="location-icon"
-                              title={channelId === autoPositionChannelId
-                                ? t('channels.location_auto_position')
-                                : t('channels.location_active', { bits: channelConfig?.positionPrecision })}
+                              title={t('channels.location_auto_position')}
                             >
                               📍
                             </span>
@@ -936,11 +934,9 @@ export default function ChannelsTab({
                     <div className="info-row">
                       <span className="info-label">{t('channels.location_sharing')}:</span>
                       <span className="info-value">
-                        {(selectedChannelConfig.positionPrecision ?? 0) > 0 ? (
+                        {selectedChannelConfig.id === autoPositionChannelId ? (
                           <span className="status-enabled">
-                            {selectedChannelConfig.id === autoPositionChannelId
-                              ? t('channels.location_auto_position')
-                              : t('channels.location_active', { bits: selectedChannelConfig.positionPrecision })}
+                            {t('channels.location_auto_position')}
                           </span>
                         ) : (
                           <span className="status-disabled">{t('channels.location_disabled')}</span>

@@ -411,7 +411,6 @@
   "channels.packets_decrypted": "Packets Decrypted:",
   "channels.location_sharing": "Location Sharing",
   "channels.location_auto_position": "Active (auto-position updates)",
-  "channels.location_active": "Active ({{bits}} bits)",
   "channels.location_disabled": "Disabled",
 
   "dashboard.title": "Telemetry Dashboard",
