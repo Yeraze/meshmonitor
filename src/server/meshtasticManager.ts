@@ -18,6 +18,7 @@ import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
+import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
@@ -6845,6 +6846,11 @@ class MeshtasticManager {
     }
 
     try {
+      // Apply homoglyph optimization if enabled (replace Cyrillic look-alikes with Latin to save bytes)
+      if (databaseService.getSetting('homoglyphEnabled') === 'true') {
+        text = applyHomoglyphOptimization(text);
+      }
+
       // Use the new protobuf service to create a proper text message
       // Note: PKI encryption is handled automatically by the firmware if it has the recipient's public key
       const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji);

@@ -4984,6 +4984,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoPingIntervalSeconds',
       'autoPingMaxPings',
       'autoPingTimeoutSeconds',
+      'homoglyphEnabled',
     ];
     const filteredSettings: Record<string, string> = {};
 

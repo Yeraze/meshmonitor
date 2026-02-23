@@ -1348,6 +1348,8 @@
   "settings.packet_monitor_description": "Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.",
   "settings.enable_audio_notifications": "Enable Audio Notifications",
   "settings.enable_audio_notifications_description": "Play a sound when new messages arrive. Disable this if you experience audio issues in your browser.",
+  "settings.homoglyph_enabled": "Homoglyph Message Optimization",
+  "settings.homoglyph_description": "Replace visually identical non-Latin characters (e.g. Cyrillic A\u2192A, C\u2192C) with Latin equivalents to reduce message size by ~20%. Does not affect message appearance.",
   "settings.hide_incomplete_nodes": "Hide Incomplete Nodes",
   "settings.hide_incomplete_description": "Hide nodes missing name or hardware info. On secure channels (custom PSK), incomplete nodes haven't been verified as being on your channel.",
   "settings.node_dimming_enabled": "Dim Inactive Nodes on Map",
