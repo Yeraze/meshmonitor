@@ -6,11 +6,30 @@
  * Logs all rate limit events for visibility
  */
 
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 
 const env = getEnvironmentConfig();
+
+const IPV4_MAPPED_PREFIX = '::ffff:';
+
+/**
+ * Custom rate limit key generator that normalizes IPv4-mapped IPv6 addresses.
+ *
+ * When Node.js listens on dual-stack (default), IPv4 clients arrive as
+ * ::ffff:x.x.x.x. The default ipKeyGenerator applies a /56 subnet mask
+ * which zeroes out the IPv4 data, causing ALL IPv4 clients to share one bucket.
+ *
+ * Fix: Strip the ::ffff: prefix so ipKeyGenerator treats it as plain IPv4.
+ */
+export function normalizeRateLimitKey(req: { ip?: string }): string {
+  const ip = req.ip ?? '';
+  const normalized = ip.startsWith(IPV4_MAPPED_PREFIX)
+    ? ip.slice(IPV4_MAPPED_PREFIX.length)
+    : ip;
+  return ipKeyGenerator(normalized);
+}
 
 // When TRUST_PROXY is set, we need to skip express-rate-limit's validation
 // We're relying on Express's trust proxy configuration which is set at the app level
@@ -20,6 +39,7 @@ const rateLimitConfig = {
 
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: normalizeRateLimitKey,
 };
 
 // Log rate limit configuration at startup
