@@ -56,6 +56,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [longName, setLongName] = useState('');
   const [shortName, setShortName] = useState('');
   const [isUnmessagable, setIsUnmessagable] = useState(false);
+  const [isLicensed, setIsLicensed] = useState(false);
   const [role, setRole] = useState<number>(0);
   const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(3600);
   const [tzdef, setTzdef] = useState('');
@@ -318,6 +319,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setLongName(config.localNodeInfo.longName || '');
           setShortName(config.localNodeInfo.shortName || '');
           setIsUnmessagable(config.localNodeInfo.isUnmessagable || false);
+          setIsLicensed(config.localNodeInfo.isLicensed || false);
         }
 
         // Populate device config
@@ -803,7 +805,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      await apiService.setNodeOwner(longName, shortName, isUnmessagable);
+      await apiService.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
       setStatusMessage(t('config.node_names_saved'));
       showToast(t('config.node_names_saved_toast'), 'success');
       // Node owner changes don't require reboot
@@ -1768,6 +1770,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (config.localNodeInfo.longName !== undefined) setLongName(config.localNodeInfo.longName);
         if (config.localNodeInfo.shortName !== undefined) setShortName(config.localNodeInfo.shortName);
         if (config.localNodeInfo.isUnmessagable !== undefined) setIsUnmessagable(config.localNodeInfo.isUnmessagable);
+        if (config.localNodeInfo.isLicensed !== undefined) setIsLicensed(config.localNodeInfo.isLicensed);
       }
 
       setConfigChanges(changes);
@@ -2019,9 +2022,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             longName={longName}
             shortName={shortName}
             isUnmessagable={isUnmessagable}
+            isLicensed={isLicensed}
             setLongName={setLongName}
             setShortName={setShortName}
             setIsUnmessagable={setIsUnmessagable}
+            setIsLicensed={setIsLicensed}
             isSaving={isSaving}
             onSave={handleSaveNodeOwner}
           />

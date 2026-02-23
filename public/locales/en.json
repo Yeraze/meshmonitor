@@ -2625,6 +2625,8 @@
   "node_identity.short_name_placeholder": "MESH",
   "node_identity.unmessageable": "Unmessageable",
   "node_identity.unmessageable_description": "Prevent others from sending direct messages to this node",
+  "node_identity.is_licensed": "Licensed (HAM)",
+  "node_identity.is_licensed_description": "Mark this node as a licensed amateur radio (HAM) operator. Long name should be set to your license number.",
   "node_identity.save_button": "Save Node Names",
 
   "neighbor_info.title": "Neighbor Info Module",
@@ -3216,6 +3218,8 @@
   "admin_commands.short_name_placeholder": "Device owner short name (max 4 chars)",
   "admin_commands.mark_unmessagable": "Mark as Unmessagable",
   "admin_commands.mark_unmessagable_description": "Prevent other nodes from sending messages to this device",
+  "admin_commands.mark_licensed": "Licensed (HAM)",
+  "admin_commands.mark_licensed_description": "Mark as a licensed amateur radio operator. Long name should be the license number.",
   "admin_commands.set_owner_button": "Set Owner",
 
   "admin_commands.radio_configuration": "Radio Configuration",

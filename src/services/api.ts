@@ -978,13 +978,13 @@ class ApiService {
     return response.json();
   }
 
-  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean) {
+  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ longName, shortName, isUnmessagable }),
+      body: JSON.stringify({ longName, shortName, isUnmessagable, isLicensed }),
     });
 
     if (!response.ok) {

@@ -18,6 +18,7 @@ interface DeviceConfigurationSectionProps {
   ownerLongName: string;
   ownerShortName: string;
   ownerIsUnmessagable: boolean;
+  ownerIsLicensed: boolean;
   onOwnerConfigChange: (field: string, value: any) => void;
   onSaveOwnerConfig: () => Promise<void>;
 
@@ -95,6 +96,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
   ownerLongName,
   ownerShortName,
   ownerIsUnmessagable,
+  ownerIsLicensed,
   onOwnerConfigChange,
   onSaveOwnerConfig,
   deviceRole,
@@ -214,6 +216,21 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             <div style={{ flex: 1 }}>
               <div>{t('admin_commands.mark_unmessagable')}</div>
               <span className="setting-description">{t('admin_commands.mark_unmessagable_description')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={ownerIsLicensed}
+              onChange={(e) => onOwnerConfigChange('isLicensed', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.mark_licensed')}</div>
+              <span className="setting-description">{t('admin_commands.mark_licensed_description')}</span>
             </div>
           </label>
         </div>

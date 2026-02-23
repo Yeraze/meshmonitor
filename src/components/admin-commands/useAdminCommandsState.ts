@@ -108,6 +108,7 @@ export interface OwnerConfigState {
   longName: string;
   shortName: string;
   isUnmessagable: boolean;
+  isLicensed: boolean;
 }
 
 // Device Config State
@@ -281,6 +282,7 @@ const initialState: AdminCommandsState = {
     longName: '',
     shortName: '',
     isUnmessagable: false,
+    isLicensed: false,
   },
   device: {
     role: 0,

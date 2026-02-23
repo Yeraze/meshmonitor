@@ -6,9 +6,11 @@ interface NodeIdentitySectionProps {
   longName: string;
   shortName: string;
   isUnmessagable: boolean;
+  isLicensed: boolean;
   setLongName: (value: string) => void;
   setShortName: (value: string) => void;
   setIsUnmessagable: (value: boolean) => void;
+  setIsLicensed: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -17,9 +19,11 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
   longName,
   shortName,
   isUnmessagable,
+  isLicensed,
   setLongName,
   setShortName,
   setIsUnmessagable,
+  setIsLicensed,
   isSaving,
   onSave
 }) => {
@@ -27,7 +31,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
-    longName, shortName, isUnmessagable
+    longName, shortName, isUnmessagable, isLicensed
   });
 
   // Calculate if there are unsaved changes
@@ -36,9 +40,10 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
     return (
       longName !== initial.longName ||
       shortName !== initial.shortName ||
-      isUnmessagable !== initial.isUnmessagable
+      isUnmessagable !== initial.isUnmessagable ||
+      isLicensed !== initial.isLicensed
     );
-  }, [longName, shortName, isUnmessagable]);
+  }, [longName, shortName, isUnmessagable, isLicensed]);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -46,15 +51,16 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
     setLongName(initial.longName);
     setShortName(initial.shortName);
     setIsUnmessagable(initial.isUnmessagable);
-  }, [setLongName, setShortName, setIsUnmessagable]);
+    setIsLicensed(initial.isLicensed);
+  }, [setLongName, setShortName, setIsUnmessagable, setIsLicensed]);
 
   // Update initial values after successful save
   const handleSave = useCallback(async () => {
     await onSave();
     initialValuesRef.current = {
-      longName, shortName, isUnmessagable
+      longName, shortName, isUnmessagable, isLicensed
     };
-  }, [onSave, longName, shortName, isUnmessagable]);
+  }, [onSave, longName, shortName, isUnmessagable, isLicensed]);
 
   // Register with SaveBar
   useSaveBar({
@@ -126,6 +132,21 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           <div style={{ flex: 1 }}>
             <div>{t('node_identity.unmessageable')}</div>
             <span className="setting-description">{t('node_identity.unmessageable_description')}</span>
+          </div>
+        </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="isLicensed" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="isLicensed"
+            type="checkbox"
+            checked={isLicensed}
+            onChange={(e) => setIsLicensed(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('node_identity.is_licensed')}</div>
+            <span className="setting-description">{t('node_identity.is_licensed_description')}</span>
           </div>
         </label>
       </div>
