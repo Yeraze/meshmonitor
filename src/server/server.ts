@@ -6029,12 +6029,12 @@ apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 
 
 apiRouter.post('/config/owner', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const { longName, shortName, isUnmessagable } = req.body;
+    const { longName, shortName, isUnmessagable, isLicensed } = req.body;
     if (!longName || !shortName) {
       res.status(400).json({ error: 'longName and shortName are required' });
       return;
     }
-    await meshtasticManager.setNodeOwner(longName, shortName, isUnmessagable);
+    await meshtasticManager.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
     res.json({ success: true, message: 'Node owner updated' });
   } catch (error) {
     logger.error('Error setting node owner:', error);
@@ -6767,6 +6767,7 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
           longName: localNodeInfo.longName || '' ,
           shortName: localNodeInfo.shortName || '' ,
           isUnmessagable: false,
+          isLicensed: false,
           publicKey: publicKeyBase64
         }});
       } else {
@@ -6779,7 +6780,8 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
         return res.json({ owner: {
           longName: owner.longName || '' ,
           shortName: owner.shortName || '' ,
-          isUnmessagable: owner.isUnmessagable || false
+          isUnmessagable: owner.isUnmessagable || false,
+          isLicensed: owner.isLicensed || false
         }});
       } else {
         return res.status(404).json({ error: `Owner info not received from remote node ${destinationNodeNum}` });
@@ -7220,7 +7222,8 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           params.longName,
           params.shortName,
           params.isUnmessagable,
-          sessionPasskey || undefined
+          sessionPasskey || undefined,
+          params.isLicensed
         );
         break;
       case 'setChannel':

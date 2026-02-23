@@ -440,7 +440,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             setOwnerConfig({
               longName: owner.longName,
               shortName: owner.shortName,
-              isUnmessagable: owner.isUnmessagable
+              isUnmessagable: owner.isUnmessagable,
+              isLicensed: owner.isLicensed
             });
             loaded.push('owner');
             setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
@@ -953,7 +954,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               setOwnerConfig({
                 longName: result.owner.longName,
                 shortName: result.owner.shortName,
-                isUnmessagable: result.owner.isUnmessagable
+                isUnmessagable: result.owner.isUnmessagable,
+                isLicensed: result.owner.isLicensed
               });
               setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
               showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
@@ -1405,7 +1407,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       await executeCommand('setOwner', {
         longName: configState.owner.longName.trim(),
         shortName: configState.owner.shortName.trim(),
-        isUnmessagable: configState.owner.isUnmessagable
+        isUnmessagable: configState.owner.isUnmessagable,
+        isLicensed: configState.owner.isLicensed
       });
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
@@ -3020,6 +3023,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         ownerLongName={configState.owner.longName}
         ownerShortName={configState.owner.shortName}
         ownerIsUnmessagable={configState.owner.isUnmessagable}
+        ownerIsLicensed={configState.owner.isLicensed}
         onOwnerConfigChange={handleOwnerConfigChange}
         onSaveOwnerConfig={handleSetOwner}
         deviceRole={configState.device.role}

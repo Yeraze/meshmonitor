@@ -1687,7 +1687,7 @@ class ProtobufService {
    * @param isUnmessagable Optional flag to prevent others from sending direct messages
    * @param sessionPasskey Optional session passkey for authentication
    */
-  createSetOwnerMessage(longName: string, shortName: string, isUnmessagable?: boolean, sessionPasskey?: Uint8Array): Uint8Array {
+  createSetOwnerMessage(longName: string, shortName: string, isUnmessagable?: boolean, sessionPasskey?: Uint8Array, isLicensed?: boolean): Uint8Array {
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -1699,7 +1699,8 @@ class ProtobufService {
       const userMsg = User.create({
         longName: longName,
         shortName: shortName,
-        isUnmessagable: isUnmessagable
+        isUnmessagable: isUnmessagable,
+        isLicensed: isLicensed
       });
 
       const adminMsgData: any = {
@@ -1714,7 +1715,7 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      logger.debug(`⚙️ Created SetOwner admin message: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}`);
+      logger.debug(`⚙️ Created SetOwner admin message: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}, isLicensed: ${isLicensed}`);
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetOwner message:', error);
