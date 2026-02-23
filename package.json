@@ -129,7 +129,7 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-arm-gnueabihf": "^4.57.1",
-    "@rollup/rollup-linux-arm64-musl": "^4.57.1",
+    "@rollup/rollup-linux-arm64-musl": "^4.59.0",
     "@serialport/parser-readline": "^13.0.0",
     "serialport": "^13.0.0"
   }
