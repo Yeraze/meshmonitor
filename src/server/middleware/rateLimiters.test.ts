@@ -301,4 +301,75 @@ describe('Rate Limiters Middleware', () => {
       );
     });
   });
+
+  describe('normalizeRateLimitKey', () => {
+    async function getNormalizeRateLimitKey() {
+      vi.resetModules();
+      vi.doMock('../config/environment.js', () => ({
+        getEnvironmentConfig: () => ({
+          rateLimitApi: 10000,
+          rateLimitApiProvided: false,
+          rateLimitAuth: 100,
+          rateLimitAuthProvided: false,
+          rateLimitMessages: 100,
+          rateLimitMessagesProvided: false,
+          isProduction: false,
+          trustProxyProvided: true,
+        }),
+      }));
+      vi.doMock('../../utils/logger.js', () => ({
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      }));
+      const { normalizeRateLimitKey } = await import('./rateLimiters.js');
+      return normalizeRateLimitKey;
+    }
+
+    it('should produce distinct keys for different IPv4-mapped IPv6 addresses', async () => {
+      const normalize = await getNormalizeRateLimitKey();
+      const key1 = normalize({ ip: '::ffff:192.168.1.100' });
+      const key2 = normalize({ ip: '::ffff:10.0.0.1' });
+      const key3 = normalize({ ip: '::ffff:172.18.0.1' });
+
+      // The core bug: all three used to collapse to '::/56'
+      expect(key1).not.toBe(key2);
+      expect(key1).not.toBe(key3);
+      expect(key2).not.toBe(key3);
+    });
+
+    it('should return the plain IPv4 address for mapped addresses', async () => {
+      const normalize = await getNormalizeRateLimitKey();
+      const key = normalize({ ip: '::ffff:192.168.1.100' });
+      expect(key).toBe('192.168.1.100');
+    });
+
+    it('should pass through plain IPv4 addresses unchanged', async () => {
+      const normalize = await getNormalizeRateLimitKey();
+      const key = normalize({ ip: '192.168.1.100' });
+      expect(key).toBe('192.168.1.100');
+    });
+
+    it('should apply /56 subnet masking to real IPv6 addresses', async () => {
+      const normalize = await getNormalizeRateLimitKey();
+      // Two addresses in the same /56 subnet should produce the same key
+      const key1 = normalize({ ip: '2001:db8:85a3:0000:0000:0000:0000:0001' });
+      const key2 = normalize({ ip: '2001:db8:85a3:0000:1111:2222:3333:4444' });
+      expect(key1).toBe(key2);
+
+      // An address in a different /56 subnet should produce a different key
+      const key3 = normalize({ ip: '2001:db8:85a4:0100:0000:0000:0000:0001' });
+      expect(key1).not.toBe(key3);
+    });
+
+    it('should handle undefined ip gracefully', async () => {
+      const normalize = await getNormalizeRateLimitKey();
+      const key = normalize({ ip: undefined });
+      expect(key).toBe('');
+    });
+
+    it('should handle empty ip gracefully', async () => {
+      const normalize = await getNormalizeRateLimitKey();
+      const key = normalize({ ip: '' });
+      expect(key).toBe('');
+    });
+  });
 });
