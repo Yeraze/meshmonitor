@@ -10,7 +10,7 @@ All code is reviewed by the project maintainer before merging. Automated CI pipe
 
 ### Authentication
 
-- **Local accounts** with bcrypt-hashed passwords (10 rounds) and minimum 8-character password enforcement
+- **Local accounts** with bcrypt-hashed passwords (12 rounds) and minimum 8-character password enforcement
 - **Multi-Factor Authentication (MFA)** via TOTP with QR code enrollment and single-use backup codes
 - **OpenID Connect (OIDC)** with PKCE flow, state validation, and nonce verification for SSO integration
 - **API tokens** with Bearer authentication for programmatic access; tokens are displayed once at creation and stored hashed
