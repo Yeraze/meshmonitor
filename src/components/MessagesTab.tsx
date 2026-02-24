@@ -288,6 +288,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     fetchHomoglyphSetting();
   }, []);
 
+  // Memoize byte count to avoid redundant homoglyph optimization on each render
+  const byteCountDisplay = useMemo(() => {
+    const message = homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage;
+    return formatByteCount(getUtf8ByteLength(message));
+  }, [newMessage, homoglyphEnabled]);
+
   // Telemetry request modal state
   const [showTelemetryRequestModal, setShowTelemetryRequestModal] = useState(false);
 
@@ -1342,8 +1348,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           }
                         }}
                       />
-                      <div className={formatByteCount(getUtf8ByteLength(homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage)).className}>
-                        {formatByteCount(getUtf8ByteLength(homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage)).text}
+                      <div className={byteCountDisplay.className}>
+                        {byteCountDisplay.text}
                       </div>
                     </div>
                     <button

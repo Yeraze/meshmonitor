@@ -187,6 +187,12 @@ export default function ChannelsTab({
     fetchHomoglyphSetting();
   }, []);
 
+  // Memoize byte count to avoid redundant homoglyph optimization on each render
+  const byteCountDisplay = useMemo(() => {
+    const message = homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage;
+    return formatByteCount(getUtf8ByteLength(message));
+  }, [newMessage, homoglyphEnabled]);
+
   // Compute auto-position channel: lowest-index channel with positionPrecision > 0
   const autoPositionChannelId = useMemo(() => {
     const sorted = [...channels]
@@ -834,8 +840,8 @@ export default function ChannelsTab({
                                 }
                               }}
                             />
-                            <div className={formatByteCount(getUtf8ByteLength(homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage)).className}>
-                              {formatByteCount(getUtf8ByteLength(homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage)).text}
+                            <div className={byteCountDisplay.className}>
+                              {byteCountDisplay.text}
                             </div>
                           </div>
                           <button
