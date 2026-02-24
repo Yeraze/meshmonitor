@@ -4,54 +4,120 @@ Test AUTH-VULN-04: Transport Exposure via missing Cache-Control headers
 Tests authentication endpoints for proper cache control headers.
 """
 
-import requests
+import urllib.request
+import urllib.error
 import json
-from urllib3.exceptions import InsecureRequestWarning
+import ssl
 
-# Suppress SSL warnings for self-signed certificates
-requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+# Create SSL context that ignores certificate verification
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
 
 BASE_URL = "https://mesh.yeraze.online"
 
 def test_endpoint(method, path, body=None):
     """Test an endpoint for cache control headers."""
     url = f"{BASE_URL}{path}"
-    print(f"\\n{'='*80}")
+    print()
+    print("=" * 80)
     print(f"Testing: {method} {path}")
-    print(f"{'='*80}")
+    print("=" * 80)
     
     try:
         if method == "GET":
-            response = requests.get(url, verify=False, timeout=10)
+            request = urllib.request.Request(url, method="GET")
         elif method == "POST":
-            headers = {"Content-Type": "application/json"}
-            response = requests.post(url, json=body, headers=headers, verify=False, timeout=10)
+            json_data = json.dumps(body).encode('utf-8')
+            request = urllib.request.Request(url, data=json_data, method="POST")
+            request.add_header('Content-Type', 'application/json')
         
-        print(f"\\nHTTP Status Code: {response.status_code}")
+        with urllib.request.urlopen(request, context=ssl_context, timeout=10) as response:
+            status_code = response.status
+            headers = response.headers
+            body_text = response.read().decode('utf-8', errors='replace')
+            
+            print()
+            print(f"HTTP Status Code: {status_code}")
+            
+            # Check Cache-Control header
+            cache_control = headers.get('Cache-Control')
+            print()
+            print(f"Cache-Control: {cache_control if cache_control else 'MISSING WARNING'}")
+            
+            # Check all caching-related headers
+            print()
+            print("--- Caching-Related Headers ---")
+            caching_headers = {
+                'Cache-Control': headers.get('Cache-Control', 'MISSING'),
+                'Pragma': headers.get('Pragma', 'MISSING'),
+                'Expires': headers.get('Expires', 'MISSING'),
+                'ETag': headers.get('ETag', 'MISSING')
+            }
+            
+            for header, value in caching_headers.items():
+                print(f"  {header}: {value}")
+            
+            # Check HSTS header
+            print()
+            print("--- Security Headers ---")
+            hsts = headers.get('Strict-Transport-Security')
+            print(f"  HSTS (Strict-Transport-Security): {hsts if hsts else 'MISSING WARNING'}")
+            
+            # Vulnerability assessment
+            print()
+            print("--- Vulnerability Assessment ---")
+            if not cache_control:
+                print("  VULNERABLE: Missing Cache-Control header")
+                print("     Risk: Authentication responses may be cached by intermediaries")
+            elif 'no-store' in cache_control.lower() and 'no-cache' in cache_control.lower():
+                print("  SECURE: Proper cache control configured")
+            else:
+                print(f"  PARTIAL: Cache-Control present but may be insufficient")
+                print(f"     Current value: {cache_control}")
+                print(f"     Recommended: Cache-Control: no-store, no-cache, must-revalidate, private")
+            
+            # Show response body snippet (first 500 chars)
+            print()
+            print("--- Response Body (first 500 chars) ---")
+            print(body_text[:500])
+            if len(body_text) > 500:
+                print("... (truncated)")
+                
+    except urllib.error.HTTPError as e:
+        status_code = e.code
+        headers = e.headers
         
-        # Check Cache-Control header
-        cache_control = response.headers.get('Cache-Control')
-        print(f"\\nCache-Control: {cache_control if cache_control else 'MISSING WARNING'}")
+        print()
+        print(f"HTTP Status Code: {status_code}")
+        
+        # Check Cache-Control header even on errors
+        cache_control = headers.get('Cache-Control')
+        print()
+        print(f"Cache-Control: {cache_control if cache_control else 'MISSING WARNING'}")
         
         # Check all caching-related headers
-        print("\\n--- Caching-Related Headers ---")
+        print()
+        print("--- Caching-Related Headers ---")
         caching_headers = {
-            'Cache-Control': response.headers.get('Cache-Control', 'MISSING'),
-            'Pragma': response.headers.get('Pragma', 'MISSING'),
-            'Expires': response.headers.get('Expires', 'MISSING'),
-            'ETag': response.headers.get('ETag', 'MISSING')
+            'Cache-Control': headers.get('Cache-Control', 'MISSING'),
+            'Pragma': headers.get('Pragma', 'MISSING'),
+            'Expires': headers.get('Expires', 'MISSING'),
+            'ETag': headers.get('ETag', 'MISSING')
         }
         
         for header, value in caching_headers.items():
             print(f"  {header}: {value}")
         
         # Check HSTS header
-        print("\\n--- Security Headers ---")
-        hsts = response.headers.get('Strict-Transport-Security')
+        print()
+        print("--- Security Headers ---")
+        hsts = headers.get('Strict-Transport-Security')
         print(f"  HSTS (Strict-Transport-Security): {hsts if hsts else 'MISSING WARNING'}")
         
         # Vulnerability assessment
-        print("\\n--- Vulnerability Assessment ---")
+        print()
+        print("--- Vulnerability Assessment ---")
         if not cache_control:
             print("  VULNERABLE: Missing Cache-Control header")
             print("     Risk: Authentication responses may be cached by intermediaries")
@@ -59,21 +125,21 @@ def test_endpoint(method, path, body=None):
             print("  SECURE: Proper cache control configured")
         else:
             print(f"  PARTIAL: Cache-Control present but may be insufficient")
-            print(f"     Current value: {cache_control}")
-            print(f"     Recommended: Cache-Control: no-store, no-cache, must-revalidate, private")
         
-        # Show response body snippet (first 500 chars)
-        print("\\n--- Response Body (first 500 chars) ---")
+        # Show error response body
+        print()
+        print("--- Response Body ---")
         try:
-            body_text = response.text[:500]
-            print(body_text)
-            if len(response.text) > 500:
+            error_body = e.read().decode('utf-8', errors='replace')
+            print(error_body[:500])
+            if len(error_body) > 500:
                 print("... (truncated)")
         except:
-            print("(unable to display body)")
+            print("(unable to read error body)")
             
-    except requests.exceptions.RequestException as e:
-        print(f"\\nError testing endpoint: {e}")
+    except Exception as e:
+        print()
+        print(f"Error testing endpoint: {e}")
 
 def main():
     """Main test function."""
@@ -97,14 +163,17 @@ def main():
     test_endpoint("POST", "/api/auth/login", body=login_body)
     
     # Summary
-    print("\\n" + "=" * 80)
+    print()
+    print("=" * 80)
     print("TEST SUMMARY")
     print("=" * 80)
-    print("\\nAll authentication endpoints should include:")
+    print()
+    print("All authentication endpoints should include:")
     print("  Cache-Control: no-store, no-cache, must-revalidate, private")
     print("  Pragma: no-cache")
     print("  Expires: 0 (or past date)")
-    print("\\nThis prevents sensitive authentication data from being cached by:")
+    print()
+    print("This prevents sensitive authentication data from being cached by:")
     print("  - Browser caches")
     print("  - Proxy servers")
     print("  - CDN caches")
