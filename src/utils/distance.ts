@@ -104,17 +104,22 @@ export function getDistanceToNode(
  */
 export function formatPrecisionAccuracy(bits: number, unit: 'km' | 'mi'): string {
   if (bits <= 0) return 'Disabled';
-  const accuracyMeters = Math.pow(2, 32 - bits) * 1e-7 * 111320;
+
+  const METERS_PER_DEGREE = 111320;
+  const FEET_PER_METER = 3.28084;
+  const FEET_PER_MILE = 5280;
+
+  const accuracyMeters = Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE;
 
   if (unit === 'mi') {
-    const feet = accuracyMeters * 3.28084;
+    const feet = accuracyMeters * FEET_PER_METER;
     if (feet < 1) {
       return '< 1 ft';
     }
-    if (feet < 528) {
+    if (feet < FEET_PER_MILE / 10) { // 528ft = 0.1 mile
       return `~${Math.round(feet)} ft`;
     }
-    const miles = feet / 5280;
+    const miles = feet / FEET_PER_MILE;
     if (miles < 10) {
       return `~${miles.toFixed(1)} mi`;
     }
