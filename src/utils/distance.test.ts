@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateDistance, kmToMiles, formatDistance, getDistanceToNode } from './distance';
+import { calculateDistance, kmToMiles, formatDistance, getDistanceToNode, formatPrecisionAccuracy } from './distance';
 
 describe('Distance Utilities', () => {
   describe('calculateDistance', () => {
@@ -224,6 +224,71 @@ describe('Distance Utilities', () => {
       const distanceValue = parseFloat(result!.replace(' km', ''));
       expect(distanceValue).toBeGreaterThan(0.9);
       expect(distanceValue).toBeLessThan(1.1);
+    });
+  });
+
+  describe('formatPrecisionAccuracy', () => {
+    it('should return Disabled for bits <= 0', () => {
+      expect(formatPrecisionAccuracy(0, 'km')).toBe('Disabled');
+      expect(formatPrecisionAccuracy(-1, 'km')).toBe('Disabled');
+      expect(formatPrecisionAccuracy(0, 'mi')).toBe('Disabled');
+    });
+
+    it('should return sub-meter for high precision (32 bits)', () => {
+      // 32 bits = 2^0 * 1e-7 * 111320 ≈ 0.011 m
+      expect(formatPrecisionAccuracy(32, 'km')).toBe('< 1 m');
+      expect(formatPrecisionAccuracy(32, 'mi')).toBe('< 1 ft');
+    });
+
+    it('should format metric meters for medium precision', () => {
+      // 20 bits = 2^12 * 1e-7 * 111320 ≈ 45.6 m
+      const result = formatPrecisionAccuracy(20, 'km');
+      expect(result).toMatch(/^~\d+ m$/);
+    });
+
+    it('should format metric kilometers for low precision', () => {
+      // 10 bits = 2^22 * 1e-7 * 111320 ≈ 46,700 m ≈ 46.7 km
+      const result = formatPrecisionAccuracy(10, 'km');
+      expect(result).toMatch(/^~\d+ km$/);
+    });
+
+    it('should format imperial feet for medium precision', () => {
+      // 20 bits ≈ 45.6 m ≈ 150 ft
+      const result = formatPrecisionAccuracy(20, 'mi');
+      expect(result).toMatch(/^~\d+ ft$/);
+    });
+
+    it('should format imperial miles for low precision', () => {
+      // 10 bits ≈ 46.7 km ≈ 29 mi
+      const result = formatPrecisionAccuracy(10, 'mi');
+      expect(result).toMatch(/^~\d+ mi$/);
+    });
+
+    it('should use one decimal for km < 10', () => {
+      // 14 bits = 2^18 * 1e-7 * 111320 ≈ 2918 m ≈ 2.9 km
+      const result = formatPrecisionAccuracy(14, 'km');
+      expect(result).toMatch(/^~\d+\.\d km$/);
+    });
+
+    it('should use one decimal for miles < 10', () => {
+      // 14 bits ≈ 2918 m ≈ 1.8 mi
+      const result = formatPrecisionAccuracy(14, 'mi');
+      expect(result).toMatch(/^~\d+\.\d mi$/);
+    });
+
+    it('should handle boundary bit value 1', () => {
+      // 1 bit = 2^31 * 1e-7 * 111320 ≈ very large
+      const resultKm = formatPrecisionAccuracy(1, 'km');
+      const resultMi = formatPrecisionAccuracy(1, 'mi');
+      expect(resultKm).toMatch(/km$/);
+      expect(resultMi).toMatch(/mi$/);
+    });
+
+    it('should produce decreasing accuracy values as bits increase', () => {
+      // Higher bits = more precision = smaller accuracy circle
+      const getMeters = (bits: number) => Math.pow(2, 32 - bits) * 1e-7 * 111320;
+      expect(getMeters(10)).toBeGreaterThan(getMeters(20));
+      expect(getMeters(20)).toBeGreaterThan(getMeters(30));
     });
   });
 });

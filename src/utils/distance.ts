@@ -93,3 +93,49 @@ export function getDistanceToNode(
   );
   return formatDistance(km, unit);
 }
+
+/**
+ * Format a human-readable accuracy estimate for a given Meshtastic position precision value.
+ * Meshtastic encodes positions as int32 (1 unit = 1e-7 degrees). With N precision bits,
+ * the lower (32-N) bits are zeroed, so resolution = 2^(32-N) * 1e-7 degrees.
+ * @param bits Precision bits (0-32). 0 = disabled, 32 = full precision (~1 cm)
+ * @param unit 'km' for metric (m/km) or 'mi' for imperial (ft/mi)
+ * @returns Human-readable accuracy string like "~100 m", "~1.5 km", "~300 ft", "~2 mi"
+ */
+export function formatPrecisionAccuracy(bits: number, unit: 'km' | 'mi'): string {
+  if (bits <= 0) return 'Disabled';
+
+  const METERS_PER_DEGREE = 111320;
+  const FEET_PER_METER = 3.28084;
+  const FEET_PER_MILE = 5280;
+
+  const accuracyMeters = Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE;
+
+  if (unit === 'mi') {
+    const feet = accuracyMeters * FEET_PER_METER;
+    if (feet < 1) {
+      return '< 1 ft';
+    }
+    if (feet < FEET_PER_MILE / 10) { // 528ft = 0.1 mile
+      return `~${Math.round(feet)} ft`;
+    }
+    const miles = feet / FEET_PER_MILE;
+    if (miles < 10) {
+      return `~${miles.toFixed(1)} mi`;
+    }
+    return `~${Math.round(miles)} mi`;
+  }
+
+  // Metric
+  if (accuracyMeters < 1) {
+    return '< 1 m';
+  }
+  if (accuracyMeters < 1000) {
+    return `~${Math.round(accuracyMeters)} m`;
+  }
+  const km = accuracyMeters / 1000;
+  if (km < 10) {
+    return `~${km.toFixed(1)} km`;
+  }
+  return `~${Math.round(km)} km`;
+}

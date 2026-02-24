@@ -2894,6 +2894,7 @@
   "channels_config.role_secondary": "Secondary",
   "channels_config.position_precision": "Location Precision (bits)",
   "channels_config.position_precision_description": "Number of bits for position data (0-32). Higher = more precise. 32 = full precision.",
+  "channels_config.estimated_accuracy": "Estimated accuracy: {{accuracy}}",
   "channels_config.uplink_enabled": "Uplink Enabled",
   "channels_config.uplink_description": "Allow gateway nodes to forward mesh messages to internet",
   "channels_config.downlink_enabled": "Downlink Enabled",

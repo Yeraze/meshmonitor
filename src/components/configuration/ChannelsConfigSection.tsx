@@ -4,6 +4,8 @@ import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
 import { logger } from '../../utils/logger';
+import { useSettings } from '../../contexts/SettingsContext';
+import { formatPrecisionAccuracy } from '../../utils/distance';
 
 // Default public PSK (base64 encoded value of single byte 0x01)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
@@ -43,6 +45,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { distanceUnit } = useSettings();
   const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -291,6 +294,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                           {slotId === autoPositionChannelId
                             ? `📍 ${t('channels_config.location_auto_broadcast')}`
                             : `📌 ${t('channels_config.location_enabled')}`}
+                          {` (${formatPrecisionAccuracy(channel.positionPrecision ?? 0, distanceUnit)})`}
                         </div>
                       )}
                     </div>
@@ -467,6 +471,9 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 className="setting-input"
                 placeholder="32"
               />
+              <span className="setting-description" style={{ marginTop: '0.25rem' }}>
+                {t('channels_config.estimated_accuracy', { accuracy: formatPrecisionAccuracy(editingChannel.positionPrecision, distanceUnit) })}
+              </span>
             </div>
 
             <div className="setting-item">
