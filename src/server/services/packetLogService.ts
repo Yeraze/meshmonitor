@@ -88,6 +88,10 @@ class PacketLogService {
     return databaseService.getPacketLogById(id);
   }
 
+  async getPacketByIdAsync(id: number): Promise<DbPacketLog | null> {
+    return databaseService.getPacketLogByIdAsync(id);
+  }
+
   /**
    * Get total packet count with optional filters
    */

@@ -14,7 +14,7 @@ const router = express.Router();
  * GET /api/v1/packets
  * Get packet logs with optional filtering
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
     let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
@@ -46,25 +46,16 @@ router.get('/', (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
 
-    const packets = packetLogService.getPackets({
-      offset,
-      limit,
-      portnum,
-      from_node,
-      to_node,
-      channel,
-      encrypted,
-      since
-    });
+    const filterOptions = { portnum, from_node, to_node, channel, encrypted, since };
 
-    const total = packetLogService.getPacketCount({
-      portnum,
-      from_node,
-      to_node,
-      channel,
-      encrypted,
-      since
-    });
+    const [packets, total] = await Promise.all([
+      packetLogService.getPacketsAsync({
+        offset,
+        limit,
+        ...filterOptions
+      }),
+      packetLogService.getPacketCountAsync(filterOptions)
+    ]);
 
     res.json({
       success: true,
@@ -88,7 +79,7 @@ router.get('/', (req, res) => {
  * GET /api/v1/packets/:id
  * Get single packet by ID
  */
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -99,7 +90,7 @@ router.get('/:id', (req, res) => {
       });
     }
 
-    const packet = packetLogService.getPacketById(id);
+    const packet = await packetLogService.getPacketByIdAsync(id);
     if (!packet) {
       return res.status(404).json({
         success: false,

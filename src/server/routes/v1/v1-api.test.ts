@@ -238,8 +238,11 @@ vi.mock('../../services/packetLogService.js', () => {
   return {
     default: {
       getPackets: vi.fn(() => testPackets),
+      getPacketsAsync: vi.fn(async () => testPackets),
       getPacketCount: vi.fn(() => testPackets.length),
+      getPacketCountAsync: vi.fn(async () => testPackets.length),
       getPacketById: vi.fn((id: number) => testPackets.find(p => p.id === id) || null),
+      getPacketByIdAsync: vi.fn(async (id: number) => testPackets.find(p => p.id === id) || null),
       getMaxCount: vi.fn(() => 10000)
     }
   };

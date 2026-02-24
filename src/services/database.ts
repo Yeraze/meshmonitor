@@ -10012,6 +10012,61 @@ class DatabaseService {
     return result || null;
   }
 
+  async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
+    // For PostgreSQL, use pool.query with parameterized query
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const result = await this.postgresPool.query(`
+          SELECT
+            pl.*,
+            from_nodes."longName" as "from_node_longName",
+            to_nodes."longName" as "to_node_longName"
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
+          WHERE pl.id = $1
+        `, [id]);
+        const row = result.rows?.[0];
+        if (!row) return null;
+        return {
+          ...row,
+          id: row.id != null ? Number(row.id) : row.id,
+          packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
+          timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
+          from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
+          to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
+          relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
+          created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
+        } as DbPacketLog;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet log by id:', error);
+        return null;
+      }
+    }
+    // For MySQL, use pool.query with parameterized query
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const [rows] = await this.mysqlPool.query(`
+          SELECT
+            pl.*,
+            from_nodes.longName as from_node_longName,
+            to_nodes.longName as to_node_longName
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
+          WHERE pl.id = ?
+        `, [id]);
+        const row = (rows as any[])?.[0];
+        return row ? (row as DbPacketLog) : null;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get packet log by id:', error);
+        return null;
+      }
+    }
+    // For SQLite, use sync method
+    return this.getPacketLogById(id);
+  }
+
   getPacketLogCount(options: {
     portnum?: number;
     from_node?: number;
