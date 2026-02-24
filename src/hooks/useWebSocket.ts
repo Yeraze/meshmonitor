@@ -90,7 +90,18 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
 
       const updatedNodes = old.nodes.map((node) => {
         if (node.nodeNum === nodeNum) {
-          return { ...node, ...nodeUpdate };
+          const merged = { ...node, ...nodeUpdate };
+          // Rebuild nested position object from flat DB fields sent via WebSocket
+          const lat = (nodeUpdate as any).latitude;
+          const lng = (nodeUpdate as any).longitude;
+          if (lat != null && lng != null) {
+            merged.position = {
+              latitude: lat,
+              longitude: lng,
+              altitude: (nodeUpdate as any).altitude ?? node.position?.altitude,
+            };
+          }
+          return merged;
         }
         return node;
       });

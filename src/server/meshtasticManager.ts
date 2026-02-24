@@ -3768,17 +3768,26 @@ class MeshtasticManager {
           const newPrecision = precisionBits;
           const existingPositionAge = existingNode.positionTimestamp ? (now - existingNode.positionTimestamp) : Infinity;
           const twelveHoursMs = 12 * 60 * 60 * 1000;
+          const tenMinutesMs = 10 * 60 * 1000;
+
+          // Mobile/tracker nodes need more frequent position updates
+          const isMobileOrTracker = existingNode.mobile === 1 ||
+            existingNode.role === 5 ||   // Tracker
+            existingNode.role === 10;    // TAK Tracker
+
+          const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : twelveHoursMs;
 
           // Smart upgrade/downgrade logic:
           // - Always upgrade to higher precision
-          // - Only downgrade if existing position is >12 hours old
-          if (newPrecision < existingPrecision && existingPositionAge < twelveHoursMs) {
+          // - Only downgrade if existing position is older than the stale threshold
+          //   (10 min for mobile/tracker nodes, 12 hours for stationary)
+          if (newPrecision < existingPrecision && existingPositionAge < staleThresholdMs) {
             shouldUpdatePosition = false;
-            logger.debug(`🗺️ Skipping position update for ${nodeId}: New precision (${newPrecision}) < existing (${existingPrecision}) and existing position is recent (${Math.round(existingPositionAge / 1000 / 60)}min old)`);
+            logger.debug(`🗺️ Skipping position update for ${nodeId}: New precision (${newPrecision}) < existing (${existingPrecision}) and existing position is recent (${Math.round(existingPositionAge / 1000 / 60)}min old, threshold: ${Math.round(staleThresholdMs / 1000 / 60)}min)`);
           } else if (newPrecision > existingPrecision) {
             logger.debug(`🗺️ Upgrading position precision for ${nodeId}: ${existingPrecision} -> ${newPrecision} bits (channel ${channelIndex})`);
-          } else if (existingPositionAge >= twelveHoursMs) {
-            logger.debug(`🗺️ Updating stale position for ${nodeId}: existing is ${Math.round(existingPositionAge / 1000 / 60 / 60)}h old`);
+          } else if (existingPositionAge >= staleThresholdMs) {
+            logger.debug(`🗺️ Updating stale position for ${nodeId}: existing is ${Math.round(existingPositionAge / 1000 / 60)}min old (threshold: ${Math.round(staleThresholdMs / 1000 / 60)}min)`);
           }
         }
 
