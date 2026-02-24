@@ -1,0 +1,232 @@
+
+================================================================================
+AUTHENTICATION FLOW TEST REPORT
+================================================================================
+Target: https://mesh.yeraze.online
+Date: 2026-02-24
+Test Objective: Document authentication flow and test default credentials
+
+================================================================================
+TEST RESULTS
+================================================================================
+
+1. DEFAULT PASSWORD CHECK
+   Endpoint: GET /api/auth/check-default-password
+   Status: 200 OK
+   Response: {"isDefaultPassword": false}
+   Result: ✓ Endpoint accessible, default password NOT active
+
+2. CSRF TOKEN RETRIEVAL
+   Attempted: GET /api/auth/csrf-token
+   Status: 404 Not Found
+   Result: ✗ No dedicated CSRF token endpoint available
+   Note: CSRF token may be embedded in HTML pages or session cookies
+
+3. LOGIN ATTEMPT
+   Endpoint: POST /api/auth/login
+   Credentials: admin / changeme
+   Status: 403 Forbidden
+   Response: {"error":"CSRF token required. Please refresh the page and try again."}
+   Result: ✗ Login failed - CSRF token required
+
+4. AUTHENTICATION STATUS
+   Endpoint: GET /api/auth/status
+   Result: Not tested (login failed)
+
+================================================================================
+AUTHENTICATION FLOW DOCUMENTATION
+================================================================================
+
+The application uses a secure authentication flow with CSRF protection:
+
+STEP 1: Check Default Password (Optional)
+-----------------------------------------
+GET /api/auth/check-default-password
+
+Response:
+  Status: 200 OK
+  Body: {
+    "isDefaultPassword": true|false
+  }
+
+Purpose: Determine if default credentials are still active
+
+
+STEP 2: Obtain CSRF Token (Required)
+-------------------------------------
+GET /login (or visit the main page)
+
+The CSRF token is obtained by:
+1. Loading the login page or any authenticated page
+2. Extracting token from HTML (meta tag, hidden input, or inline script)
+3. Or reading from a CSRF-specific cookie set by the server
+
+The server sets a session cookie (meshmonitor.sid) during this request.
+
+Example cookie set:
+  Set-Cookie: meshmonitor.sid=s%3A<token>...; 
+              Path=/; 
+              Expires=<date>; 
+              HttpOnly; 
+              Secure; 
+              SameSite=Lax
+
+
+STEP 3: Login with CSRF Token (Required)
+-----------------------------------------
+POST /api/auth/login
+
+Headers:
+  Content-Type: application/json
+  Cookie: meshmonitor.sid=<session-cookie>
+  csrf-token: <token-from-step-2>
+  x-csrf-token: <token-from-step-2>
+
+Request Body:
+  {
+    "username": "admin",
+    "password": "<password>",
+    "_csrf": "<token-from-step-2>"  // May also be required
+  }
+
+Response (Success):
+  Status: 200 OK
+  Body: <success message or user data>
+  Set-Cookie: Updated session cookie with authentication
+
+Response (Failure - Missing CSRF):
+  Status: 403 Forbidden
+  Body: {
+    "error": "CSRF token required. Please refresh the page and try again."
+  }
+
+Response (Failure - Wrong Credentials):
+  Status: 401 Unauthorized
+  Body: <error message>
+
+
+STEP 4: Verify Authentication
+------------------------------
+GET /api/auth/status
+
+Headers:
+  Cookie: meshmonitor.sid=<authenticated-session-cookie>
+
+Response (Authenticated):
+  Status: 200 OK
+  Body: {
+    "authenticated": true,
+    "user": {
+      "username": "admin",
+      ... additional user fields ...
+    }
+  }
+
+Response (Not Authenticated):
+  Status: 401 Unauthorized
+
+================================================================================
+SECURITY FEATURES DETECTED
+================================================================================
+
+1. CSRF Protection
+   - Token required for state-changing operations (login, etc.)
+   - Prevents cross-site request forgery attacks
+   - Implementation: Token must be included in headers and/or body
+
+2. Secure Session Management
+   - Cookie Name: meshmonitor.sid
+   - Flags: HttpOnly, Secure, SameSite=Lax
+   - HttpOnly: Prevents JavaScript access (XSS protection)
+   - Secure: HTTPS only transmission
+   - SameSite=Lax: CSRF mitigation
+
+3. HSTS (HTTP Strict Transport Security)
+   - Header: Strict-Transport-Security: max-age=63072000; preload
+   - Forces HTTPS for 2 years
+   - Preload directive for browser HSTS preload list
+
+4. Content Security Policy
+   - Restricts resource loading sources
+   - Prevents XSS and data injection attacks
+   - Policy includes restrictions on scripts, styles, images, etc.
+
+5. Additional Security Headers
+   - X-Frame-Options: DENY (clickjacking protection)
+   - X-Content-Type-Options: nosniff (MIME-sniffing protection)
+   - Referrer-Policy: no-referrer (privacy protection)
+   - Cross-Origin-Opener-Policy: same-origin
+   - Cross-Origin-Resource-Policy: same-origin
+
+6. Password Security
+   - Default password detection endpoint
+   - Password has been changed from default "changeme"
+   - Indicates proper security practices
+
+================================================================================
+RECOMMENDATIONS FOR API CONSUMERS
+================================================================================
+
+To authenticate programmatically:
+
+1. Use a web scraping library that supports cookies (requests, urllib, etc.)
+2. First request the /login page to get session cookie and CSRF token
+3. Parse the CSRF token from HTML or cookies
+4. Submit login credentials with CSRF token in headers and/or body
+5. Use the authenticated session cookie for subsequent requests
+
+Example Python code pattern:
+
+```python
+import requests
+
+# Create session to handle cookies
+session = requests.Session()
+
+# Get CSRF token (and session cookie)
+response = session.get('https://mesh.yeraze.online/login', verify=False)
+# Parse CSRF token from response.text or response.cookies
+
+# Login with CSRF token
+login_data = {
+    'username': 'your-username',
+    'password': 'your-password'
+}
+headers = {
+    'csrf-token': csrf_token,
+    'x-csrf-token': csrf_token
+}
+response = session.post(
+    'https://mesh.yeraze.online/api/auth/login',
+    json=login_data,
+    headers=headers,
+    verify=False
+)
+
+# Use authenticated session for API calls
+status = session.get('https://mesh.yeraze.online/api/auth/status', verify=False)
+```
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The mesh.yeraze.online application implements strong security practices:
+
+✓ CSRF protection is enforced
+✓ Secure cookie configuration
+✓ HSTS enabled
+✓ Comprehensive security headers
+✓ Default password has been changed
+✗ Default credentials (admin/changeme) are NOT active
+
+The authentication flow requires proper CSRF token handling, which prevents
+simple programmatic access but provides strong security against CSRF attacks.
+
+To complete authentication testing with correct credentials:
+1. Obtain valid credentials (default password has been changed)
+2. Implement CSRF token extraction from /login page
+3. Include CSRF token in login request
+4. Test authenticated endpoints with session cookie
+
+================================================================================
