@@ -1,179 +1,160 @@
-# Authorization Analysis: GET /api/messages/channel/:channel
+# Vertical Privilege Escalation Analysis - User Management Endpoints
 
-## Endpoint Details
-- **Location**: `/repos/meshmonitor/src/server/server.ts:1770`
-- **Route**: `GET /api/messages/channel/:channel`
-- **Middleware**: `optionalAuth()`
+## Summary
+All 10 user management endpoints in `/repos/meshmonitor/src/server/routes/userRoutes.ts` are **SAFE** from vertical privilege escalation. A global `requireAdmin()` middleware is applied to the entire router at line 17, which executes BEFORE any route handler can process requests.
 
-## Authorization Flow
+## Middleware Architecture
 
-### 1. Middleware Chain
+### Global Protection (Line 17)
 ```typescript
-apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => {
+// All routes require admin
+router.use(requireAdmin());
 ```
 
-**Middleware Applied**:
-- `optionalAuth()` - Located at `/repos/meshmonitor/src/server/auth/authMiddleware.ts:17`
-  - Attaches authenticated user to `req.user` if session exists
-  - Falls back to anonymous user if no authentication present
-  - Does NOT enforce authentication, only identifies the user
+This single middleware call protects ALL routes defined on this router. The middleware:
+1. Checks for valid session (`req.session.userId`)
+2. Fetches user from database
+3. Validates user is active (`user.isActive`)
+4. Verifies `user.isAdmin === true`
+5. Returns 403 if not admin, 401 if not authenticated
 
-### 2. Permission Check Location
-
-**File**: `/repos/meshmonitor/src/server/server.ts`
-**Lines**: 1785-1793
-
+### requireAdmin() Implementation (authMiddleware.ts:175-219)
 ```typescript
-// Check per-channel read permission
-const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
-if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'read')) {
-  return res.status(403).json({
-    error: 'Insufficient permissions',
-    code: 'FORBIDDEN',
-    required: { resource: channelResource, action: 'read' },
-  });
+export function requireAdmin() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // 1. Check authentication
+    if (!req.session.userId) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    // 2. Fetch user from database
+    const user = await databaseService.findUserByIdAsync(req.session.userId);
+
+    // 3. Validate user exists and is active
+    if (!user || !user.isActive) {
+      // Clear invalid session
+      req.session.userId = undefined;
+      req.session.username = undefined;
+      req.session.authProvider = undefined;
+      req.session.isAdmin = undefined;
+
+      return res.status(401).json({
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    // 4. Check admin status from database (NOT session)
+    if (!user.isAdmin) {
+      logger.debug(`❌ User ${user.username} denied admin access`);
+
+      return res.status(403).json({
+        error: 'Admin access required',
+        code: 'FORBIDDEN_ADMIN'
+      });
+    }
+
+    // 5. Attach user to request and proceed
+    req.user = user;
+    next();
+  };
 }
 ```
 
-### 3. Database Query Location
+**Key Security Features:**
+- Admin status checked from **database**, not session (prevents session tampering)
+- User must be active (`isActive` check)
+- Session cleared if user no longer exists or inactive
+- Returns before `next()` if checks fail (no bypass possible)
 
-**File**: `/repos/meshmonitor/src/server/server.ts:1796`
+## Endpoint Analysis
 
+All endpoints are protected by the global middleware at line 17. No individual endpoint checks are needed.
+
+| Endpoint | Line | Method | Protected By | Verdict |
+|----------|------|--------|--------------|---------|
+| `/api/users` (list all) | 20 | GET | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id` (get specific) | 48 | GET | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users` (create) | 79 | POST | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id` (update) | 114 | PUT | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id` (soft delete) | 172 | DELETE | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/permanent` (hard delete) | 222 | DELETE | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/admin` (toggle admin) | 295 | PUT | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/permissions` (get perms) | 404 | GET | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/permissions` (update perms) | 423 | PUT | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/mfa` (force disable MFA) | 633 | DELETE | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+
+### Additional Protected Endpoints
+These endpoints were not in the original list but are also protected by the same global middleware:
+
+| Endpoint | Line | Method | Protected By | Verdict |
+|----------|------|--------|--------------|---------|
+| `/api/users/:id/reset-password` | 352 | POST | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/set-password` | 376 | POST | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/channel-database-permissions` (get) | 499 | GET | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+| `/api/users/:id/channel-database-permissions` (update) | 546 | PUT | Global `router.use(requireAdmin())` at line 17 | **SAFE** |
+
+## Router Mounting Verification
+
+The userRoutes router is mounted in `server.ts` at line 696:
 ```typescript
-const dbMessages = databaseService.getMessagesByChannel(messageChannel, limit + 1, offset);
+// User management routes (admin only)
+apiRouter.use('/users', userRoutes);
 ```
 
-## Authorization Analysis
+This means:
+- All routes are prefixed with `/api/users`
+- No additional middleware is applied at mount point (not needed - protection is in the router itself)
+- No bypasses exist at the routing level
 
-### Channel-Specific Permission Validation
+## Bypass Attempt Analysis
 
-**YES** - The endpoint validates channel-specific permissions:
+### 1. Can a regular user call these endpoints?
+**NO.** The `requireAdmin()` middleware returns a 403 response before any handler executes.
 
-1. **Dynamic Resource Construction** (Line 1786):
-   ```typescript
-   const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
-   ```
-   - Constructs resource string like `channel_0`, `channel_1`, `channel_2`, etc.
-   - Uses the ACTUAL requested channel number from the route parameter
+### 2. Can admin checks be bypassed?
+**NO.** The middleware uses `router.use()`, which applies to ALL routes defined after it. Express.js guarantees middleware execution order.
 
-2. **Permission Check** (Line 1787):
-   ```typescript
-   if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'read'))
-   ```
-   - Checks if user has `read` permission for the SPECIFIC channel
-   - Admins bypass this check
-   - Uses `hasPermission()` helper from `/repos/meshmonitor/src/server/auth/authMiddleware.ts:224`
+### 3. Are there conditional admin checks that could fail?
+**NO.** The admin check is unconditional: `if (!user.isAdmin)` with no exceptions.
 
-3. **Permission Enforcement Flow**:
-   - `hasPermission()` → calls `databaseService.checkPermissionAsync(userId, resource, action)`
-   - `checkPermissionAsync()` → queries user's permissions from database
-   - Returns `true` only if user has explicit `channel_X:read` permission
+### 4. Is admin status checked BEFORE side effects?
+**YES.** The middleware executes BEFORE route handlers. All database operations (creating, updating, deleting users) happen in route handlers, which are never reached by non-admins.
 
-### Guard Placement
+### 5. Can session be tampered with?
+**NO.** Admin status is checked from the **database** (`user.isAdmin`), not from the session. Even if `req.session.isAdmin` is modified, it's ignored by `requireAdmin()`.
 
-**YES** - Permission check runs BEFORE database query:
+### 6. Are there any profile/user update endpoints that allow self-promotion?
+**NO.** Verified that:
+- No `/api/profile` or `/api/me` endpoints exist that allow updating `isAdmin`
+- The only way to modify `isAdmin` is through `/api/users/:id/admin`, which requires admin
+- The `/api/auth/change-password` endpoint only allows password changes, not role changes
 
-**Order of Operations**:
-1. Line 1772: Parse `requestedChannel` from route parameter
-2. Line 1778-1783: Map channel number (handles channel 0 special case)
-3. **Line 1785-1793: PERMISSION CHECK** ✅
-4. Line 1796: Database query (only reached if permission check passes)
+## Conclusion
 
-The guard is correctly placed BEFORE the side effect (database read).
+**VERDICT: ALL ENDPOINTS ARE SAFE**
 
-## Comparison with DELETE /api/messages/:id
+The application uses a robust defense-in-depth approach:
+1. **Global middleware protection** - All routes protected at router level
+2. **Database-backed authorization** - Admin status checked from database, not session
+3. **No self-promotion paths** - No endpoints allow users to elevate their own privileges
+4. **Early rejection** - Non-admins rejected before any business logic executes
 
-The `DELETE /api/messages/:id` endpoint follows a similar pattern but with key differences:
+**Confidence Level:** HIGH
 
-**DELETE Pattern** (`/repos/meshmonitor/src/server/routes/messageRoutes.ts:81-140`):
-1. Fetches the message first (Line 108)
-2. Determines if it's a channel message (Line 117)
-3. Checks `channel_X:write` permission for the SPECIFIC channel (Lines 121-129)
+No vertical privilege escalation vulnerabilities exist in the user management endpoints. Regular users cannot access any admin-only functionality.
 
-**GET Pattern** (This endpoint):
-1. Parses requested channel from route parameter (Line 1772)
-2. Checks `channel_X:read` permission for the SPECIFIC channel (Lines 1785-1793)
-3. Only fetches messages if permission granted (Line 1796)
+## Recommendations
 
-**Both endpoints**:
-- Validate channel-specific permissions
-- Use the actual channel number for permission checks
-- Block access if user lacks permission for that specific channel
-- Allow admins to bypass checks
+While the current implementation is secure, consider these optional hardening measures:
 
-## Security Test: Cross-Channel Access
+1. **Defense in depth:** Add explicit admin checks in critical endpoints (e.g., `/api/users/:id/admin`) as a backup layer, even though the global middleware already protects them.
 
-**Question**: Can a user with `channel_1:read` access messages from `channel_2`?
+2. **Audit logging:** Already implemented for most operations (good practice).
 
-**Answer**: **NO** ❌
+3. **Rate limiting:** Consider adding rate limiting to admin endpoints to prevent abuse if an admin account is compromised.
 
-**Proof**:
-1. User requests `GET /api/messages/channel/2`
-2. `requestedChannel = 2` (Line 1772)
-3. `messageChannel = 2` (Line 1778)
-4. Permission check constructs `channelResource = "channel_2"` (Line 1786)
-5. Calls `hasPermission(user, "channel_2", "read")` (Line 1787)
-6. Database lookup checks if user has `channel_2:read` permission
-7. User only has `channel_1:read` → returns `false`
-8. Request rejected with 403 Forbidden (Lines 1788-1792)
-9. Database query NEVER executes (Line 1796 not reached)
-
-**This endpoint correctly prevents cross-channel access.**
-
-## Verdict: SAFE ✅
-
-### Why This Endpoint is Secure
-
-1. **Channel-Specific Permission Check**:
-   - Uses the ACTUAL requested channel number (`channel_${messageChannel}`)
-   - Not a generic "messages:read" permission
-   - Validates permission for THIS SPECIFIC channel
-
-2. **Correct Guard Placement**:
-   - Permission check at lines 1785-1793
-   - Database query at line 1796
-   - Guard runs BEFORE side effect
-
-3. **No Privilege Escalation**:
-   - User with `channel_1:read` CANNOT access `channel_2` messages
-   - Each channel requires explicit permission
-   - No wildcard or fallback permissions
-
-4. **Admin Bypass is Intentional**:
-   - Admins have all permissions by design
-   - Check: `!req.user?.isAdmin` (Line 1787)
-
-5. **Consistent with Application Pattern**:
-   - Matches the pattern used in DELETE endpoints
-   - Follows the same channel-specific authorization model
-   - Uses the same `hasPermission()` helper function
-
-### Authorization Chain Summary
-
-```
-Request: GET /api/messages/channel/2
-    ↓
-optionalAuth() middleware (attaches user)
-    ↓
-Parse channel: requestedChannel = 2
-    ↓
-Check: hasPermission(user, "channel_2", "read")
-    ↓
-    ├─ Admin? → Allow ✅
-    ├─ Has channel_2:read? → Allow ✅
-    └─ Otherwise → Deny 403 ❌
-    ↓
-[Only if permission granted]
-    ↓
-getMessagesByChannel(2, limit, offset)
-```
-
-## Recommendation
-
-**No changes required.** This endpoint implements proper authorization:
-- Channel-specific permission validation
-- Guard before database query
-- Prevents cross-channel access
-- Consistent with application security model
-
-The authorization implementation is SAFE and follows security best practices.
+4. **Monitor for anomalies:** Track failed admin access attempts for security monitoring.
