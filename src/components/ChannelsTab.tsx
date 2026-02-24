@@ -14,6 +14,7 @@ import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
@@ -171,6 +172,20 @@ export default function ChannelsTab({
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
+  const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
+
+  // Fetch homoglyph optimization setting
+  useEffect(() => {
+    const fetchHomoglyphSetting = async () => {
+      try {
+        const settings = await apiService.get<Record<string, string>>('/api/settings');
+        setHomoglyphEnabled(settings.homoglyphEnabled === 'true');
+      } catch {
+        // Default to false if we can't fetch settings
+      }
+    };
+    fetchHomoglyphSetting();
+  }, []);
 
   // Compute auto-position channel: lowest-index channel with positionPrecision > 0
   const autoPositionChannelId = useMemo(() => {
@@ -819,8 +834,8 @@ export default function ChannelsTab({
                                 }
                               }}
                             />
-                            <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
-                              {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                            <div className={formatByteCount(getUtf8ByteLength(homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage)).className}>
+                              {formatByteCount(getUtf8ByteLength(homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage)).text}
                             </div>
                           </div>
                           <button
