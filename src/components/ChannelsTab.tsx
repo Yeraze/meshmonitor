@@ -10,7 +10,8 @@ import { useTranslation } from 'react-i18next';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import { TimeFormat, DateFormat, useSettings } from '../contexts/SettingsContext';
+import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
@@ -155,6 +156,7 @@ export default function ChannelsTab({
 }: ChannelsTabProps) {
   const { t } = useTranslation();
   const { nodes } = useNodes();
+  const { distanceUnit } = useSettings();
 
   // Refs
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
@@ -946,11 +948,11 @@ export default function ChannelsTab({
                       <span className="info-value">
                         {selectedChannelConfig.id === autoPositionChannelId ? (
                           <span className="status-enabled">
-                            {t('channels.location_auto_position')}
+                            {t('channels.location_auto_position')} ({formatPrecisionAccuracy(selectedChannelConfig.positionPrecision ?? 0, distanceUnit)})
                           </span>
                         ) : (selectedChannelConfig.positionPrecision ?? 0) > 0 ? (
                           <span className="status-enabled">
-                            {t('channels.location_enabled')}
+                            {t('channels.location_enabled')} ({formatPrecisionAccuracy(selectedChannelConfig.positionPrecision ?? 0, distanceUnit)})
                           </span>
                         ) : (
                           <span className="status-disabled">{t('channels.location_disabled')}</span>
