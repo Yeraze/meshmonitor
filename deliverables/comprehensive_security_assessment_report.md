@@ -1,6 +1,7 @@
 # Security Assessment Report
 
 ## Executive Summary
+- Model: claude-sonnet-4-5-20250929
 
 - **Target:** https://mesh.yeraze.online
 - **Assessment Date:** February 24, 2026
