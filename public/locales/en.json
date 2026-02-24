@@ -411,6 +411,7 @@
   "channels.packets_decrypted": "Packets Decrypted:",
   "channels.location_sharing": "Location Sharing",
   "channels.location_auto_position": "Active (auto-position updates)",
+  "channels.location_enabled": "Enabled (location shared)",
   "channels.location_disabled": "Disabled",
 
   "dashboard.title": "Telemetry Dashboard",
@@ -2914,6 +2915,8 @@
   "channels_config.toast_channel_imported": "Channel imported to slot {{slot}} successfully!",
   "channels_config.toast_import_failed": "Failed to import channel",
   "channels_config.toast_key_generated": "Generated new AES256 key",
+  "channels_config.location_auto_broadcast": "Location: Auto-broadcast",
+  "channels_config.location_enabled": "Location: Enabled",
 
   "mqtt_config.title": "MQTT Module",
   "mqtt_config.view_docs": "View MQTT Configuration Documentation",
