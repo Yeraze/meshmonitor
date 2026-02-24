@@ -385,7 +385,9 @@ export default function ChannelsTab({
                   const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
                   const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
                   const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
-                  const locationIcon = channelId === autoPositionChannelId ? '📍' : '';
+                  const channelConfig2 = channels.find(c => c.id === channelId);
+                  const hasLocation = (channelConfig2?.positionPrecision ?? 0) > 0;
+                  const locationIcon = channelId === autoPositionChannelId ? '📍' : hasLocation ? '📌' : '';
 
                   return (
                     <option key={channelId} value={channelId}>
@@ -453,6 +455,14 @@ export default function ChannelsTab({
                               title={t('channels.location_auto_position')}
                             >
                               📍
+                            </span>
+                          )}
+                          {channelId !== autoPositionChannelId && (channels.find(c => c.id === channelId)?.positionPrecision ?? 0) > 0 && (
+                            <span
+                              className="location-icon"
+                              title={t('channels.location_enabled')}
+                            >
+                              📌
                             </span>
                           )}
                           <a
@@ -937,6 +947,10 @@ export default function ChannelsTab({
                         {selectedChannelConfig.id === autoPositionChannelId ? (
                           <span className="status-enabled">
                             {t('channels.location_auto_position')}
+                          </span>
+                        ) : (selectedChannelConfig.positionPrecision ?? 0) > 0 ? (
+                          <span className="status-enabled">
+                            {t('channels.location_enabled')}
                           </span>
                         ) : (
                           <span className="status-disabled">{t('channels.location_disabled')}</span>

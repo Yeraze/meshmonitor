@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
@@ -50,6 +50,14 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const [importFileContent, setImportFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Compute auto-position channel: lowest-index channel with positionPrecision > 0
+  const autoPositionChannelId = useMemo(() => {
+    const sorted = [...channels]
+      .filter(ch => (ch.positionPrecision ?? 0) > 0)
+      .sort((a, b) => a.id - b.id);
+    return sorted.length > 0 ? sorted[0].id : null;
+  }, [channels]);
 
   // Create array of 8 slots (0-7) with channel data
   const channelSlots = Array.from({ length: 8 }, (_, index) => {
@@ -278,6 +286,13 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                         {channel.downlinkEnabled ? `↓ ${t('channels_config.downlink')}` : ''}
                         {!channel.uplinkEnabled && !channel.downlinkEnabled && t('channels_config.no_bridge')}
                       </div>
+                      {(channel.positionPrecision ?? 0) > 0 && (
+                        <div>
+                          {slotId === autoPositionChannelId
+                            ? `📍 ${t('channels_config.location_auto_broadcast')}`
+                            : `📌 ${t('channels_config.location_enabled')}`}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
