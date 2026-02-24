@@ -757,7 +757,7 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
       const placeholders = mappedData.map(() => '?').join(', ');
       // Quote column names for MySQL (use backticks)
       const quotedColumns = mappedData.map((d) => `\`${d.targetCol}\``).join(', ');
-      const values = mappedData.map((d) => d.value);
+      const values = mappedData.map((d) => d.value) as (string | number | boolean | null)[];
 
       const query = `INSERT IGNORE INTO \`${table}\` (${quotedColumns}) VALUES (${placeholders})`;
 
