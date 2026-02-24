@@ -172,6 +172,10 @@ describe('Packet Routes', () => {
       return db.prepare('SELECT * FROM packet_log WHERE id = ?').get(id) || null;
     };
 
+    (DatabaseService as any).getPacketLogByIdAsync = async (id: number) => {
+      return (DatabaseService as any).getPacketLogById(id);
+    };
+
     (DatabaseService as any).getPacketLogCount = (options: any = {}) => {
       let sql = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
       const params: any[] = [];

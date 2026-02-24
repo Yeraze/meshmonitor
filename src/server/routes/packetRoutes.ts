@@ -260,7 +260,7 @@ router.get('/stats/node-distribution', requirePacketPermissions, async (req, res
  * Export packet logs as JSONL with optional filtering
  * IMPORTANT: Must be registered before /:id route to avoid route matching conflicts
  */
-router.get('/export', requirePacketPermissions, (req, res) => {
+router.get('/export', requirePacketPermissions, async (req, res) => {
   try {
     const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
     const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
@@ -271,7 +271,7 @@ router.get('/export', requirePacketPermissions, (req, res) => {
 
     // Fetch all matching packets (up to configured max)
     const maxCount = packetLogService.getMaxCount();
-    const packets = packetLogService.getPackets({
+    const packets = await packetLogService.getPacketsAsync({
       offset: 0,
       limit: maxCount,
       portnum,
@@ -315,14 +315,14 @@ router.get('/export', requirePacketPermissions, (req, res) => {
  * Get single packet by ID
  * IMPORTANT: Must be registered after more specific routes like /stats and /export
  */
-router.get('/:id', requirePacketPermissions, (req, res) => {
+router.get('/:id', requirePacketPermissions, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'Invalid packet ID' });
     }
 
-    const packet = packetLogService.getPacketById(id);
+    const packet = await packetLogService.getPacketByIdAsync(id);
     if (!packet) {
       return res.status(404).json({ error: 'Packet not found' });
     }
