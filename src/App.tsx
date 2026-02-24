@@ -2332,7 +2332,16 @@ function App() {
 
             // For pending messages (temp IDs), only keep if still pending
             if (m.id.toString().startsWith('temp_')) {
-              return pendingIds.has(m.id);
+              if (!pendingIds.has(m.id)) return false;
+              // Safety net: filter out if a matching server message already exists
+              // This catches edge cases where the ref timing or text/sender matching fails
+              const hasServerMatch = processedMessages.some((pm: MeshMessage) =>
+                pm.text === m.text &&
+                (pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
+                Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
+              );
+              if (hasServerMatch) return false;
+              return true;
             }
 
             // Keep all other older messages (loaded via infinite scroll)
@@ -2398,7 +2407,15 @@ function App() {
               // Once matched/acknowledged, pendingIds won't contain it anymore
               // Channel messages use 'temp_' prefix, DMs use 'temp_dm_' prefix
               if (m.id.toString().startsWith('temp_')) {
-                return pendingIds.has(m.id);
+                if (!pendingIds.has(m.id)) return false;
+                // Safety net: filter out if a matching server message already exists
+                const hasServerMatch = pollMsgs.some(pm =>
+                  pm.text === m.text &&
+                  (pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
+                  Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
+                );
+                if (hasServerMatch) return false;
+                return true;
               }
 
               // Keep all other older messages (loaded via infinite scroll)
@@ -2803,11 +2820,10 @@ function App() {
     setMessages(prev => [...prev, sentMessage]);
 
     // Add to pending acknowledgments
-    setPendingMessages(prev => {
-      const updated = new Map(prev).set(tempId, sentMessage);
-      pendingMessagesRef.current = updated; // Update ref for interval access
-      return updated;
-    });
+    // Update ref immediately (before React batches the state update) so processPollData
+    // can always find the pending message even if a WebSocket event arrives before React commits
+    pendingMessagesRef.current = new Map(pendingMessagesRef.current).set(tempId, sentMessage);
+    setPendingMessages(pendingMessagesRef.current);
 
     // Scroll to bottom after sending message
     setTimeout(() => {
@@ -3292,12 +3308,11 @@ function App() {
       fromNodeId: sentMessage.fromNodeId,
       channel: sentMessage.channel,
     });
-    setPendingMessages(prev => {
-      const updated = new Map(prev).set(tempId, sentMessage);
-      pendingMessagesRef.current = updated; // Update ref for interval access
-      console.log(`📊 Pending messages map size after add: ${updated.size}`);
-      return updated;
-    });
+    // Update ref immediately (before React batches the state update) so processPollData
+    // can always find the pending message even if a WebSocket event arrives before React commits
+    pendingMessagesRef.current = new Map(pendingMessagesRef.current).set(tempId, sentMessage);
+    console.log(`📊 Pending messages map size after add: ${pendingMessagesRef.current.size}`);
+    setPendingMessages(pendingMessagesRef.current);
 
     // Scroll to bottom after sending message
     setTimeout(() => {
