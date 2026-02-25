@@ -43,6 +43,9 @@ Configure push notifications for iOS, Android, and desktop browsers. Learn about
 ### [Custom Tile Servers](/configuration/custom-tile-servers)
 Configure custom map tile servers for offline operation, custom styling, or organizational branding. Supports both vector (.pbf) and raster (.png) tiles with TileServer GL, nginx caching proxy, or any standard XYZ tile server.
 
+### [Reducing Node Load](/configuration/node-load)
+Understand how MeshMonitor communicates with your Meshtastic node and how to tune settings to reduce memory pressure on constrained devices (ESP32, Heltec V3/V4, RAK4631).
+
 ## Environment Variables
 
 MeshMonitor can be configured using environment variables. Here are the most important ones:

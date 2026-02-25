@@ -403,6 +403,18 @@ setTimeout(async () => {
       }
     }
 
+    // Load LocalStats collection interval
+    const localStatsInterval = databaseService.getSetting('localStatsIntervalMinutes');
+    if (localStatsInterval !== null) {
+      const intervalMinutes = parseInt(localStatsInterval);
+      if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
+        meshtasticManager.setLocalStatsInterval(intervalMinutes);
+        logger.debug(
+          `✅ Loaded saved LocalStats interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`
+        );
+      }
+    }
+
     // NOTE: We no longer mark existing nodes as welcomed on startup.
     // This is now handled when autoWelcomeEnabled is first changed to 'true'
     // via the settings endpoint. This prevents welcoming existing nodes when
@@ -5046,6 +5058,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoFavoriteEnabled',
       'autoFavoriteStaleHours',
       'homoglyphEnabled',
+      'localStatsIntervalMinutes',
     ];
     const filteredSettings: Record<string, string> = {};
 
@@ -5392,6 +5405,14 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       const interval = parseInt(filteredSettings.remoteAdminScannerIntervalMinutes);
       if (!isNaN(interval) && interval >= 0 && interval <= 60) {
         meshtasticManager.setRemoteAdminScannerInterval(interval);
+      }
+    }
+
+    // Apply LocalStats interval if changed
+    if ('localStatsIntervalMinutes' in filteredSettings) {
+      const interval = parseInt(filteredSettings.localStatsIntervalMinutes);
+      if (!isNaN(interval) && interval >= 0 && interval <= 60) {
+        meshtasticManager.setLocalStatsInterval(interval);
       }
     }
 
