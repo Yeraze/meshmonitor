@@ -136,6 +136,43 @@ describe('Authentication Routes', () => {
       expect(response.body.user.passwordHash).toBeUndefined();
     });
 
+    it('should regenerate session ID after successful login', async () => {
+      // First login to establish a session
+      const firstLogin = await agent
+        .post('/api/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'password123'
+        })
+        .expect(200);
+
+      const firstCookies = firstLogin.headers['set-cookie'] || [];
+      const firstCookie = Array.isArray(firstCookies) ? firstCookies[0] : firstCookies;
+      const firstSid = firstCookie?.match(/connect\.sid=([^;]+)/)?.[1];
+      expect(firstSid).toBeDefined();
+
+      // Logout
+      await agent.post('/api/auth/logout').expect(200);
+
+      // Second login - session should be regenerated with a new ID
+      const secondLogin = await agent
+        .post('/api/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'password123'
+        })
+        .expect(200);
+
+      const secondCookies = secondLogin.headers['set-cookie'] || [];
+      const secondCookie = Array.isArray(secondCookies) ? secondCookies[0] : secondCookies;
+      const secondSid = secondCookie?.match(/connect\.sid=([^;]+)/)?.[1];
+
+      expect(secondLogin.body.success).toBe(true);
+      expect(secondSid).toBeDefined();
+      // Session ID should differ between logins (session fixation prevention)
+      expect(secondSid).not.toBe(firstSid);
+    });
+
     it('should reject invalid credentials', async () => {
       const response = await agent
         .post('/api/auth/login')

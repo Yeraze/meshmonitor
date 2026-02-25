@@ -22,6 +22,15 @@ import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
 
+function regenerateSession(req: Request): Promise<void> {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
 // Get authentication status
 router.get('/status', async (req: Request, res: Response) => {
   try {
@@ -263,6 +272,12 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     }
 
     // Create session (no MFA required)
+    try {
+      await regenerateSession(req);
+    } catch (err) {
+      logger.error('Session regeneration failed:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.authProvider = 'local';
@@ -367,6 +382,12 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     }
 
     // MFA verified - create full session
+    try {
+      await regenerateSession(req);
+    } catch (err) {
+      logger.error('Session regeneration failed:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
     req.session.pendingMfaUserId = undefined;
     req.session.userId = user.id;
     req.session.username = user.username;
@@ -517,10 +538,14 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
       expectedNonce
     );
 
-    // Clear OIDC session data
-    req.session.oidcState = undefined;
-    req.session.oidcCodeVerifier = undefined;
-    req.session.oidcNonce = undefined;
+    // Regenerate session to prevent session fixation attacks
+    // This also clears old OIDC session data (oidcState, oidcCodeVerifier, oidcNonce)
+    try {
+      await regenerateSession(req);
+    } catch (err) {
+      logger.error('Session regeneration failed:', err);
+      return res.status(500).send('Authentication failed');
+    }
 
     // Create session
     req.session.userId = user.id;
