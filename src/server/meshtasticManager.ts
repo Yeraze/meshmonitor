@@ -284,7 +284,7 @@ class MeshtasticManager {
   private localStatsInterval: NodeJS.Timeout | null = null;
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
-  private localStatsIntervalMinutes: number = 5;  // Default 5 minutes
+  private localStatsIntervalMinutes: number = 15;  // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
@@ -332,6 +332,8 @@ class MeshtasticManager {
   }> = new Map();
   // Track pending module config requests so empty Proto3 responses can be mapped to the correct key
   private pendingModuleConfigRequests: Map<number, string> = new Map();
+  // Track whether module configs have ever been fetched this process lifetime (skip on reconnect)
+  private moduleConfigsEverFetched: boolean = false;
   // Per-node channel storage for remote nodes
   private remoteNodeChannels: Map<number, Map<number, any>> = new Map();
   // Per-node owner storage for remote nodes
@@ -357,18 +359,18 @@ class MeshtasticManager {
 
   constructor() {
     // Initialize message queue service with send callback
-    messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number) => {
+    messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => {
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
       // For DMs: channel is undefined, destination is the node number
       if (channel !== undefined) {
         // Channel message - send to channel, no specific destination
-        return await this.sendTextMessage(text, channel, undefined, replyId);
+        return await this.sendTextMessage(text, channel, undefined, replyId, emoji);
       } else {
         // DM - use the channel we last heard the target node on
         const targetNode = databaseService.getNode(destination);
         const dmChannel = (targetNode?.channel !== undefined && targetNode?.channel !== null) ? targetNode.channel : 0;
         logger.debug(`📨 Queue DM to ${destination} - Using channel: ${dmChannel}`);
-        return await this.sendTextMessage(text, dmChannel, destination, replyId);
+        return await this.sendTextMessage(text, dmChannel, destination, replyId, emoji);
       }
     });
 
@@ -629,15 +631,20 @@ class MeshtasticManager {
         }
       }, 2000);
 
-      // Request all module configs for complete device backup capability
-      setTimeout(async () => {
-        try {
-          logger.info('📦 Requesting all module configs for backup...');
-          await this.requestAllModuleConfigs();
-        } catch (error) {
-          logger.error('❌ Failed to request all module configs:', error);
-        }
-      }, 3000); // Start after LoRa config request
+      // Request all module configs for complete device backup capability (skip on reconnect)
+      if (!this.moduleConfigsEverFetched) {
+        setTimeout(async () => {
+          try {
+            logger.info('📦 Requesting all module configs for backup...');
+            await this.requestAllModuleConfigs();
+            this.moduleConfigsEverFetched = true;
+          } catch (error) {
+            logger.error('❌ Failed to request all module configs:', error);
+          }
+        }, 3000); // Start after LoRa config request
+      } else {
+        logger.info('📦 Skipping module config request on reconnect (already fetched this session)');
+      }
 
       // Give the node a moment to send initial config, then do basic setup
       setTimeout(async () => {
@@ -1353,7 +1360,7 @@ class MeshtasticManager {
 
   /**
    * Start periodic LocalStats collection from the local node
-   * Requests LocalStats every 5 minutes to track mesh health metrics
+   * Requests LocalStats at the configured interval to track mesh health metrics
    */
   private startLocalStatsScheduler(): void {
     if (this.localStatsInterval) {
@@ -1370,16 +1377,17 @@ class MeshtasticManager {
     const intervalMs = this.localStatsIntervalMinutes * 60 * 1000;
     logger.debug(`📊 Starting LocalStats scheduler with ${this.localStatsIntervalMinutes} minute interval`);
 
-    // Request immediately on start
-    if (this.isConnected && this.localNodeInfo) {
-      this.requestLocalStats().catch(error => {
-        logger.error('❌ Error requesting initial LocalStats:', error);
-      });
-      // Also save system node metrics on initial request
-      this.saveSystemNodeMetrics().catch(error => {
-        logger.error('❌ Error saving initial system node metrics:', error);
-      });
-    }
+    // Delay the first request by 30 seconds to let the node settle after connect
+    setTimeout(() => {
+      if (this.isConnected && this.localNodeInfo) {
+        this.requestLocalStats().catch(error => {
+          logger.error('❌ Error requesting initial LocalStats:', error);
+        });
+        this.saveSystemNodeMetrics().catch(error => {
+          logger.error('❌ Error saving initial system node metrics:', error);
+        });
+      }
+    }, 30000);
 
     this.localStatsInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
@@ -7632,21 +7640,21 @@ class MeshtasticManager {
 
         logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${target}`);
 
-        // Tapbacks always reply on the original channel (not affected by alwaysUseDM)
-        try {
-          await this.sendTextMessage(
-            hopEmoji,
-            isDirectMessage ? 0 : channelIndex,
-            isDirectMessage ? fromNum : undefined,
-            packetId, // replyId - react to the original message
-            1 // emoji flag = 1 for tapback/reaction
-          );
-          logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${target}`);
-          // Record the send so that the message reply respects the 30s rate limit
-          messageQueueService.recordExternalSend();
-        } catch (error) {
-          logger.warn(`❌ Auto-acknowledge tapback failed to ${target}:`, error);
-        }
+        // Route tapback through message queue for rate limiting
+        messageQueueService.enqueue(
+          hopEmoji,
+          isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
+          packetId, // replyId - react to the original message
+          () => {
+            logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${target}`);
+          },
+          (reason: string) => {
+            logger.warn(`❌ Auto-acknowledge tapback failed to ${target}: ${reason}`);
+          },
+          isDirectMessage ? undefined : channelIndex, // channel
+          1, // maxAttempts - tapbacks are best-effort, don't retry
+          1 // emoji flag = 1 for tapback/reaction
+        );
       }
 
       // Send message reply if enabled
@@ -8914,21 +8922,32 @@ class MeshtasticManager {
 
         logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
 
-        await this.sendTextMessage(welcomeText, channel, destination);
+        // Route through message queue for rate limiting
+        messageQueueService.enqueue(
+          welcomeText,
+          destination ?? 0, // destination: node number for DM, 0 for channel
+          undefined, // replyId
+          () => {
+            // Mark node as welcomed on successful send
+            const wasMarked = databaseService.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
+            if (wasMarked) {
+              logger.info(`✅ Node ${nodeId} welcomed successfully and marked in database`);
+            } else {
+              logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
+            }
+            this.welcomingNodes.delete(nodeNum);
+            logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
+          },
+          (reason: string) => {
+            logger.warn(`❌ Auto-welcome failed for ${nodeId}: ${reason}`);
+            this.welcomingNodes.delete(nodeNum);
+            logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId} (failure case)`);
+          },
+          destination ? undefined : channel // channel: undefined for DM, channel number for channel
+        );
 
-        // Mark node as welcomed using atomic check-and-set operation
-        // This ensures the node is only marked if it hasn't been marked already
-        const wasMarked = databaseService.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
-        if (wasMarked) {
-          logger.info(`✅ Node ${nodeId} welcomed successfully and marked in database`);
-        } else {
-          logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
-        }
-
-        // RACE CONDITION PROTECTION: Release lock immediately after atomic database operation
-        // The atomic operation completes synchronously, so no delay is needed
-        this.welcomingNodes.delete(nodeNum);
-        logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
+        // Note: welcomingNodes lock is released in the success/failure callbacks above
+        // The welcomingNodes Set prevents duplicate sends while the message is queued
       } catch (error) {
         // Release lock on error as well
         this.welcomingNodes.delete(nodeNum);
@@ -10815,6 +10834,18 @@ class MeshtasticManager {
     }
 
     logger.info('✅ All module config requests sent');
+  }
+
+  /**
+   * Force refresh of module configs (resets the cache flag and re-fetches).
+   * Useful for Configuration tab refresh button or API use.
+   */
+  async refreshModuleConfigs(): Promise<void> {
+    this.moduleConfigsEverFetched = false;
+    this.actualModuleConfig = null;
+    logger.info('📦 Force-refreshing module configs...');
+    await this.requestAllModuleConfigs();
+    this.moduleConfigsEverFetched = true;
   }
 
   /**

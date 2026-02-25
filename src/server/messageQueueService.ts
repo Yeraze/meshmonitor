@@ -15,6 +15,7 @@ export interface QueuedMessage {
   destination: number; // Node number for DMs, or 0 for channel messages
   channel?: number; // Channel index (0-7) for channel messages, undefined for DMs
   replyId?: number;
+  emoji?: number; // Emoji flag (1 for tapback/reaction)
   attempts: number;
   maxAttempts: number;
   enqueuedAt: number;
@@ -41,13 +42,13 @@ class MessageQueueService {
   private cleanupInterval?: ReturnType<typeof setInterval>;
 
   // Reference to meshtasticManager for sending messages
-  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number) => Promise<number>;
+  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => Promise<number>;
 
   /**
    * Set the callback function for sending messages
    * This should be MeshtasticManager.sendTextMessage
    */
-  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number) => Promise<number>) {
+  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => Promise<number>) {
     this.sendCallback = callback;
   }
 
@@ -68,7 +69,7 @@ class MessageQueueService {
    * @param maxAttemptsOverride - Override the default max attempts (1 for channels, 3 for DMs).
    *                              Use 1 to disable retries, or 3 for retry with verification.
    */
-  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number): string {
+  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number, emoji?: number): string {
     const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Channel messages don't support ACKs, so only attempt once
@@ -83,6 +84,7 @@ class MessageQueueService {
       destination,
       channel,
       replyId,
+      emoji,
       attempts: 0,
       maxAttempts,
       enqueuedAt: Date.now(),
@@ -270,7 +272,7 @@ class MessageQueueService {
       logger.info(`📤 Sending queued message ${message.id} to ${target}${attemptInfo}`);
 
       // Send the message
-      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel);
+      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel, message.emoji);
 
       // Validate requestId
       if (requestId === undefined || requestId === null || requestId <= 0) {

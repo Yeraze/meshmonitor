@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
+import { messageQueueService } from './messageQueueService.js';
 
 // Mock the database service
 vi.mock('../services/database.js', () => ({
@@ -11,6 +12,15 @@ vi.mock('../services/database.js', () => ({
     upsertNode: vi.fn(),
     setSetting: vi.fn(),
     markNodeAsWelcomedIfNotAlready: vi.fn(),
+  },
+}));
+
+// Mock the message queue service
+vi.mock('./messageQueueService.js', () => ({
+  messageQueueService: {
+    enqueue: vi.fn(),
+    setSendCallback: vi.fn(),
+    recordExternalSend: vi.fn(),
   },
 }));
 
@@ -184,7 +194,13 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(mockTransport.send).toHaveBeenCalledTimes(1);
+      // Welcome now goes through message queue
+      expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
+      // markNodeAsWelcomedIfNotAlready is called in the onSuccess callback
+      const enqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
+      const onSuccessCallback = enqueueCall[3] as () => void;
+      vi.mocked(databaseService.markNodeAsWelcomedIfNotAlready).mockReturnValue(true);
+      onSuccessCallback();
       expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
     });
 
@@ -207,11 +223,17 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         updatedAt: Date.now(),
       });
 
-      const sendTextMessageSpy = vi.spyOn(manager as any, 'sendTextMessage');
-
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(sendTextMessageSpy).toHaveBeenCalledWith('Welcome!', 0, 999999);
+      // Welcome now goes through message queue
+      expect(messageQueueService.enqueue).toHaveBeenCalledWith(
+        'Welcome!',
+        999999, // destination (DM to node)
+        undefined, // replyId
+        expect.any(Function), // onSuccess
+        expect.any(Function), // onFailure
+        undefined // channel (undefined for DM)
+      );
     });
 
     it('should send welcome to channel when target is channel number', async () => {
@@ -233,11 +255,17 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         updatedAt: Date.now(),
       });
 
-      const sendTextMessageSpy = vi.spyOn(manager as any, 'sendTextMessage');
-
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(sendTextMessageSpy).toHaveBeenCalledWith('Welcome!', 2, undefined);
+      // Welcome now goes through message queue
+      expect(messageQueueService.enqueue).toHaveBeenCalledWith(
+        'Welcome!',
+        0, // destination (0 for channel message)
+        undefined, // replyId
+        expect.any(Function), // onSuccess
+        expect.any(Function), // onFailure
+        2 // channel
+      );
     });
 
     it('should use default welcome message when not configured', async () => {
@@ -258,11 +286,17 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         updatedAt: Date.now(),
       });
 
-      const sendTextMessageSpy = vi.spyOn(manager as any, 'sendTextMessage');
-
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(sendTextMessageSpy).toHaveBeenCalledWith('Welcome Test Node (TEST) to the mesh!', 0, 999999);
+      // Welcome now goes through message queue with default message
+      expect(messageQueueService.enqueue).toHaveBeenCalledWith(
+        'Welcome Test Node (TEST) to the mesh!',
+        999999, // destination (DM)
+        undefined, // replyId
+        expect.any(Function), // onSuccess
+        expect.any(Function), // onFailure
+        undefined // channel (undefined for DM)
+      );
     });
 
     it('should handle errors gracefully without crashing', async () => {
@@ -303,9 +337,8 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
       await Promise.all([promise1, promise2]);
 
-      // Should only send welcome message once due to in-memory tracking
-      expect(mockTransport.send).toHaveBeenCalledTimes(1);
-      expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledTimes(1);
+      // Should only enqueue welcome message once due to in-memory tracking
+      expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
     });
 
     it('should handle atomic database operation correctly when node already marked by another process', async () => {
@@ -332,8 +365,13 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      // Should still send the message but log a warning
-      expect(mockTransport.send).toHaveBeenCalledTimes(1);
+      // Should enqueue the message (markNodeAsWelcomedIfNotAlready is called in the onSuccess callback)
+      expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
+
+      // Simulate the onSuccess callback to verify database marking
+      const enqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
+      const onSuccessCallback = enqueueCall[3] as () => void;
+      onSuccessCallback();
       expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
     });
   });
