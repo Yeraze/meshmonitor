@@ -511,9 +511,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             disabled={!localEnabled}
             className="setting-input"
           >
-            {channels.map((channel, idx) => (
-              <option key={channel.id} value={idx}>
-                {channel.name || `Channel ${idx}`}
+            {channels.map((channel) => (
+              <option key={channel.id} value={channel.id}>
+                {channel.name || `Channel ${channel.id}`}
               </option>
             ))}
           </select>
@@ -743,13 +743,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                     >
                       <input
                         type="checkbox"
-                        id={`nodeinfo-channel-${idx}`}
-                        checked={localNodeInfoChannels.includes(idx)}
+                        id={`nodeinfo-channel-${channel.id}`}
+                        checked={localNodeInfoChannels.includes(channel.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setLocalNodeInfoChannels([...localNodeInfoChannels, idx]);
+                            setLocalNodeInfoChannels([...localNodeInfoChannels, channel.id]);
                           } else {
-                            setLocalNodeInfoChannels(localNodeInfoChannels.filter(ch => ch !== idx));
+                            setLocalNodeInfoChannels(localNodeInfoChannels.filter(ch => ch !== channel.id));
                           }
                         }}
                         disabled={!localEnabled}
@@ -762,15 +762,15 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                         }}
                       />
                       <label
-                        htmlFor={`nodeinfo-channel-${idx}`}
+                        htmlFor={`nodeinfo-channel-${channel.id}`}
                         style={{
-                          color: idx === 0 ? 'var(--ctp-yellow)' : 'inherit',
+                          color: channel.id === 0 ? 'var(--ctp-yellow)' : 'inherit',
                           cursor: localEnabled ? 'pointer' : 'not-allowed',
                           whiteSpace: 'nowrap'
                         }}
                       >
-                        {channel.name || `Channel ${idx}`}
-                        {idx === 0 && ' (Primary)'}
+                        {channel.name || `Channel ${channel.id}`}
+                        {channel.id === 0 && ' (Primary)'}
                       </label>
                     </div>
                   ))}
