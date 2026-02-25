@@ -289,6 +289,25 @@ describe.skip('AutoAnnounceSection Component', () => {
       const select = screen.getByLabelText(/Broadcast Channel/);
       expect(select).toBeDisabled();
     });
+
+    it('should use channel.id not array index when channels have gaps (disabled channels filtered out)', () => {
+      // Simulate filtered channels where channel 1 is disabled and removed
+      const gappedChannels: Channel[] = [
+        { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },
+        { id: 2, name: 'MESH_FLOW', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 }
+      ];
+
+      render(<AutoAnnounceSection {...defaultProps} channels={gappedChannels} channelIndex={2} />);
+
+      const select = screen.getByLabelText(/Broadcast Channel/) as HTMLSelectElement;
+      // The value should be the channel ID (2), not the array index (1)
+      expect(select.value).toBe('2');
+
+      // Verify the option values use channel IDs
+      const options = Array.from(select.options);
+      expect(options[0].value).toBe('0');
+      expect(options[1].value).toBe('2');
+    });
   });
 
   describe('Interval Configuration', () => {
