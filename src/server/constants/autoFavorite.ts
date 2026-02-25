@@ -1,14 +1,14 @@
 import { DeviceRole } from '../../constants/index.js';
 
 /** Roles that benefit from zero-cost hop favoriting */
-export const AUTO_FAVORITE_LOCAL_ROLES = new Set([
+export const AUTO_FAVORITE_LOCAL_ROLES: Set<number> = new Set([
   DeviceRole.ROUTER,
   DeviceRole.ROUTER_LATE,
   DeviceRole.CLIENT_BASE,
 ]);
 
 /** Roles eligible as zero-cost relay favorites (for ROUTER/ROUTER_LATE local) */
-export const ZERO_HOP_RELAY_ROLES = new Set([
+export const ZERO_HOP_RELAY_ROLES: Set<number> = new Set([
   DeviceRole.ROUTER,
   DeviceRole.ROUTER_LATE,
   DeviceRole.CLIENT_BASE,
