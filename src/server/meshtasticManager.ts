@@ -20,6 +20,7 @@ import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
+import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -345,6 +346,7 @@ class MeshtasticManager {
 
   // Auto-welcome tracking to prevent race conditions
   private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
+  private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
 
   // Virtual Node Server - Message capture for initialization sequence
   private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
@@ -4055,6 +4057,9 @@ class MeshtasticManager {
 
       // Check if we should send auto-welcome message
       await this.checkAutoWelcome(fromNum, nodeId);
+
+      // Check if we should auto-favorite this node
+      await this.checkAutoFavorite(fromNum, nodeId);
     } catch (error) {
       logger.error('❌ Error processing user message:', error);
     }
@@ -8917,6 +8922,73 @@ class MeshtasticManager {
       }
     } catch (error) {
       logger.error('❌ Error in auto-welcome:', error);
+    }
+  }
+
+  private async checkAutoFavorite(nodeNum: number, nodeId: string): Promise<void> {
+    try {
+      const autoFavoriteEnabled = databaseService.getSetting('autoFavoriteEnabled');
+      if (autoFavoriteEnabled !== 'true') {
+        return;
+      }
+
+      if (!this.supportsFavorites()) {
+        return;
+      }
+
+      // Skip local node
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      if (localNodeNum && parseInt(localNodeNum) === nodeNum) {
+        return;
+      }
+
+      // Prevent duplicate concurrent operations
+      if (this.autoFavoritingNodes.has(nodeNum)) {
+        return;
+      }
+
+      // Get local node role
+      const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
+      if (!localNodeNumInt) return;
+      const localNode = databaseService.getNode(localNodeNumInt);
+      if (!localNode) return;
+
+      const targetNode = databaseService.getNode(nodeNum);
+      if (!targetNode) return;
+
+      // Check if already in auto-favorite list (prevent re-adding manually unfavorited nodes)
+      const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
+      if (autoFavoriteNodes.includes(nodeNum)) {
+        return; // Already auto-managed
+      }
+
+      // Check eligibility
+      if (!isAutoFavoriteEligible(localNode.role, targetNode)) {
+        return;
+      }
+
+      this.autoFavoritingNodes.add(nodeNum);
+      try {
+        // Mark in DB
+        databaseService.setNodeFavorite(nodeNum, true);
+
+        // Sync to device
+        try {
+          await this.sendFavoriteNode(nodeNum);
+          logger.info(`⭐ Auto-favorited node ${nodeId} (${targetNode.longName || 'Unknown'}) - 0-hop, role=${targetNode.role}`);
+        } catch (error) {
+          logger.warn(`⚠️ Auto-favorited node ${nodeId} in DB but device sync failed:`, error);
+        }
+
+        // Add to auto-favorite tracking list
+        autoFavoriteNodes.push(nodeNum);
+        databaseService.setSetting('autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
+      } finally {
+        this.autoFavoritingNodes.delete(nodeNum);
+      }
+    } catch (error) {
+      logger.error('❌ Error in auto-favorite check:', error);
     }
   }
 
