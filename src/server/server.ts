@@ -947,6 +947,16 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     // Update favorite status in database
     databaseService.setNodeFavorite(nodeNum, isFavorite);
 
+    // If manually unfavoriting, remove from auto-favorite tracking list
+    if (!isFavorite) {
+      const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
+      if (autoFavoriteNodes.includes(nodeNum)) {
+        const updated = autoFavoriteNodes.filter(n => n !== nodeNum);
+        databaseService.setSetting('autoFavoriteNodes', JSON.stringify(updated));
+      }
+    }
+
     // Broadcast updated NodeInfo to virtual node clients
     const virtualNodeServer = (global as any).virtualNodeServer;
     if (virtualNodeServer) {
