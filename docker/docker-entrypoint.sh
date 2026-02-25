@@ -107,6 +107,16 @@ if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
         chmod +x "$INTERNAL_SCRIPTS_DIR/upgrade-watchdog.sh"
         echo "✓ Upgrade watchdog script deployed"
 
+        # Backward compatibility: also deploy to /data/scripts/ for older sidecar configs
+        # that still reference the old path (command: /data/scripts/upgrade-watchdog.sh)
+        # Only deploy if /data/scripts exists or can be created (skip if bind-mounted with other content)
+        LEGACY_SCRIPTS_DIR="/data/scripts"
+        if mkdir -p "$LEGACY_SCRIPTS_DIR" 2>/dev/null; then
+            cp "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" "$LEGACY_SCRIPTS_DIR/upgrade-watchdog.sh"
+            chmod +x "$LEGACY_SCRIPTS_DIR/upgrade-watchdog.sh"
+            echo "✓ Upgrade watchdog script also deployed to $LEGACY_SCRIPTS_DIR (backward compat)"
+        fi
+
         # Audit log the deployment
         if [ -w "$(dirname "$AUDIT_LOG")" ]; then
             echo "{\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",\"event\":\"upgrade_script_deployed\",\"script_hash\":\"$SCRIPT_HASH\",\"version\":\"${npm_package_version:-unknown}\",\"user\":\"system\"}" >> "$AUDIT_LOG" 2>/dev/null || true
