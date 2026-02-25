@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { getHopColor } from '../utils/mapIcons';
+import { useSettings } from '../contexts/SettingsContext';
 import { DraggableOverlay } from './DraggableOverlay';
 import './MapLegend.css';
 
@@ -22,15 +23,16 @@ const getDefaultPosition = () => ({
 
 const MapLegend: React.FC = () => {
   const { t } = useTranslation();
+  const { overlayColors } = useSettings();
 
   const legendItems: LegendItem[] = [
-    { hops: '0', color: getHopColor(0), label: 'map.legend.local', translate: true },
-    { hops: '1', color: getHopColor(1), label: '1' },
-    { hops: '2', color: getHopColor(2), label: '2' },
-    { hops: '3', color: getHopColor(3), label: '3' },
-    { hops: '4', color: getHopColor(4), label: '4' },
-    { hops: '5', color: getHopColor(5), label: '5' },
-    { hops: '6+', color: getHopColor(6), label: '6+' }
+    { hops: '0', color: getHopColor(0, overlayColors.hopColors), label: 'map.legend.local', translate: true },
+    { hops: '1', color: getHopColor(1, overlayColors.hopColors), label: '1' },
+    { hops: '2', color: getHopColor(2, overlayColors.hopColors), label: '2' },
+    { hops: '3', color: getHopColor(3, overlayColors.hopColors), label: '3' },
+    { hops: '4', color: getHopColor(4, overlayColors.hopColors), label: '4' },
+    { hops: '5', color: getHopColor(5, overlayColors.hopColors), label: '5' },
+    { hops: '6+', color: getHopColor(6, overlayColors.hopColors), label: '6+' }
   ];
 
   return (
