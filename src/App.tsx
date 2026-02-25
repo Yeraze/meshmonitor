@@ -2336,9 +2336,11 @@ function App() {
               if (!pendingIds.has(m.id)) return false;
               // Safety net: filter out if a matching server message already exists
               // This catches edge cases where the ref timing or text/sender matching fails
+              // Must use localNodeId fallback (same as primary dedup) because temp messages
+              // created before first poll may have fromNodeId='me' instead of the real node ID
               const hasServerMatch = processedMessages.some((pm: MeshMessage) =>
                 pm.text === m.text &&
-                (pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
+                ((localNodeId && pm.from === localNodeId) || pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
                 Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
               );
               if (hasServerMatch) return false;
@@ -2410,9 +2412,11 @@ function App() {
               if (m.id.toString().startsWith('temp_')) {
                 if (!pendingIds.has(m.id)) return false;
                 // Safety net: filter out if a matching server message already exists
+                // Must use localNodeId fallback (same as primary dedup) because temp messages
+                // created before first poll may have fromNodeId='me' instead of the real node ID
                 const hasServerMatch = pollMsgs.some(pm =>
                   pm.text === m.text &&
-                  (pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
+                  ((localNodeId && pm.from === localNodeId) || pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
                   Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
                 );
                 if (hasServerMatch) return false;
