@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-02-21T18:00:00Z",
+  "lastUpdated": "2026-02-25T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.7.0",
+      "id": "news-2026-02-25-auto-favorite",
+      "title": "MeshMonitor v3.7.0 - Auto Favorite for Zero-Cost Hop Routing",
+      "content": "MeshMonitor v3.7.0 introduces **Auto Favorite**, a new automation feature that automatically favorites eligible nearby nodes for [zero-cost hop routing](https://meshtastic.org/blog/zero-cost-hops-favorite-routers/) on Meshtastic firmware 2.7+.\n\n## Auto Favorite\n\nWhen enabled on a **Router**, **Router Late**, or **Client Base** node, MeshMonitor automatically detects nearby 0-hop nodes and favorites them on your device — preserving hop counts across your mesh infrastructure without manual configuration.\n\n### How It Works\n\n- **Event-driven**: Eligible nodes are favorited as soon as they are detected (on NodeInfo updates)\n- **Periodic cleanup**: A sweep runs every 60 minutes to unfavorite nodes that have gone stale, moved out of range, or changed roles\n- **Manual favorites are never touched** — only auto-managed nodes are swept\n\n### Eligibility Rules\n\n| Your Node Role | Auto-Favorites |\n|---|---|\n| Client Base | All 0-hop nodes (any role) |\n| Router / Router Late | 0-hop Router, Router Late, and Client Base nodes |\n\n### Configuration\n\nFind **Auto Favorite** in the **Automation** tab. Configure the staleness threshold (default 72 hours) — nodes not heard from within this period are automatically unfavorited. The UI shows warnings if your firmware or node role doesn't support the feature.\n\n[Read more about zero-cost hops](https://meshtastic.org/blog/zero-cost-hops-favorite-routers/)\n\n## Other Improvements\n\n- **Position precision accuracy estimates** — Channel UI now shows estimated accuracy for position precision settings ([#2008](https://github.com/Yeraze/meshmonitor/pull/2008))\n- **Location indicators on all channels** — All location-enabled channels now show location sharing indicators ([#2007](https://github.com/Yeraze/meshmonitor/pull/2007))\n- **Packet routes fix** — Packet routes now use async DB methods for PostgreSQL/MySQL compatibility ([#2016](https://github.com/Yeraze/meshmonitor/pull/2016))\n- **Duplicate chat messages fix** — Prevented duplicate outgoing messages in chat ([#2015](https://github.com/Yeraze/meshmonitor/pull/2015))\n- **Map position updates** — Fixed position updates for mobile/tracker nodes and a WebSocket position bug ([#2014](https://github.com/Yeraze/meshmonitor/pull/2014))\n- **Homoglyph byte count** — Corrected optimized byte count display when homoglyph setting is enabled ([#2009](https://github.com/Yeraze/meshmonitor/pull/2009))\n- **Dependency updates** — Updated production dependencies ([#1992](https://github.com/Yeraze/meshmonitor/pull/1992))",
+      "date": "2026-02-25T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "minVersion": "3.6.5",
       "id": "news-2026-02-21-auto-upgrade-sidecar-fix",
