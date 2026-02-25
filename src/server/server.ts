@@ -947,6 +947,16 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     // Update favorite status in database
     databaseService.setNodeFavorite(nodeNum, isFavorite);
 
+    // If manually unfavoriting, remove from auto-favorite tracking list
+    if (!isFavorite) {
+      const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
+      if (autoFavoriteNodes.includes(nodeNum)) {
+        const updated = autoFavoriteNodes.filter(n => n !== nodeNum);
+        databaseService.setSetting('autoFavoriteNodes', JSON.stringify(updated));
+      }
+    }
+
     // Broadcast updated NodeInfo to virtual node clients
     const virtualNodeServer = (global as any).virtualNodeServer;
     if (virtualNodeServer) {
@@ -1046,6 +1056,52 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     logger.error('Error setting node favorite:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to set node favorite',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Get auto-favorite status (local role, firmware, managed nodes)
+apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), (_req, res) => {
+  try {
+    const localNodeNum = databaseService.getSetting('localNodeNum');
+    const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : meshtasticManager.getLocalNodeInfo()?.nodeNum;
+    const localNode = localNodeNumInt ? databaseService.getNode(localNodeNumInt) : null;
+    const firmwareVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion || null;
+    const supportsFavorites = meshtasticManager.supportsFavorites();
+
+    const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+    const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
+
+    // Get node details for each auto-favorited node
+    const autoFavoriteNodes = autoFavoriteNodeNums
+      .map(nodeNum => {
+        const node = databaseService.getNode(nodeNum);
+        if (!node) return null;
+        return {
+          nodeNum: node.nodeNum,
+          nodeId: node.nodeId,
+          longName: node.longName,
+          shortName: node.shortName,
+          role: node.role,
+          hopsAway: node.hopsAway,
+          lastHeard: node.lastHeard,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({
+      localNodeRole: localNode?.role ?? null,
+      firmwareVersion,
+      supportsFavorites,
+      autoFavoriteNodes,
+    });
+  } catch (error) {
+    logger.error('Error fetching auto-favorite status:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to fetch auto-favorite status',
       code: 'INTERNAL_ERROR',
       details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
