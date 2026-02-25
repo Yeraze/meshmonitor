@@ -4358,6 +4358,7 @@ function App() {
             dmFilter={dmFilter}
             setDmFilter={setDmFilter}
             securityFilter={securityFilter}
+            channels={channels}
             channelFilter={channelFilter}
             showIncompleteNodes={showIncompleteNodes}
             showNodeFilterPopup={showNodeFilterPopup}

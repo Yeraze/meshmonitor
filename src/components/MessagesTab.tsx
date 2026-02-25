@@ -8,7 +8,7 @@
 import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import { useResizable } from '../hooks/useResizable';
 import { useTranslation, Trans } from 'react-i18next';
-import { DeviceInfo } from '../types/device';
+import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
@@ -138,6 +138,7 @@ export interface MessagesTabProps {
   dmFilter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra';
   setDmFilter: (filter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra') => void;
   securityFilter: 'all' | 'flaggedOnly' | 'hideFlagged';
+  channels: Channel[];
   channelFilter: number | 'all';
   showIncompleteNodes: boolean;
   showNodeFilterPopup: boolean;
@@ -218,6 +219,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   dmFilter,
   setDmFilter,
   securityFilter,
+  channels: _channels,
   channelFilter,
   showIncompleteNodes,
   showNodeFilterPopup: _showNodeFilterPopup,
