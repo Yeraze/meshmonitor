@@ -67,7 +67,7 @@ export class TcpTransport extends EventEmitter {
       this.socket = new Socket();
 
       // Set socket options
-      this.socket.setKeepAlive(true, 60000); // Keep alive every 60 seconds
+      this.socket.setKeepAlive(true, 300000); // Keep alive every 5 minutes (app-layer health check handles dead connections)
       this.socket.setNoDelay(true); // Disable Nagle's algorithm for low latency
 
       // Connection timeout

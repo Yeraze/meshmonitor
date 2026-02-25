@@ -1256,6 +1256,8 @@
   "settings.inactive_node_check_interval_description": "How often to check for inactive nodes (1-1440 minutes, default: 60)",
   "settings.inactive_node_cooldown_label": "Inactive Node Notification Cooldown (hours)",
   "settings.inactive_node_cooldown_description": "Minimum time between notifications for the same node (prevents spam, default: 24 hours)",
+  "settings.local_stats_interval_label": "LocalStats Collection Interval (minutes)",
+  "settings.local_stats_interval_description": "How often to request LocalStats from the connected node (0 = disabled, default: 15). Lower values increase node load.",
   "settings.display_prefs": "Display Preferences",
   "settings.sort_field_label": "Preferred Node List Sorting - Field",
   "settings.sort_field_description": "Default sorting field for the Node List on the main page",
