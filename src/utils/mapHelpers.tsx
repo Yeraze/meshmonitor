@@ -235,10 +235,17 @@ export const interpolateColor = (
  * @param total Total number of segments
  * @returns Hex color string
  */
-export const getPositionHistoryColor = (index: number, total: number): string => {
-  if (total <= 1) return interpolateColor(POSITION_HISTORY_COLOR_OLD, POSITION_HISTORY_COLOR_NEW, 1);
+export const getPositionHistoryColor = (
+  index: number,
+  total: number,
+  colorOld?: { r: number; g: number; b: number },
+  colorNew?: { r: number; g: number; b: number },
+): string => {
+  const old = colorOld ?? POSITION_HISTORY_COLOR_OLD;
+  const newC = colorNew ?? POSITION_HISTORY_COLOR_NEW;
+  if (total <= 1) return interpolateColor(old, newC, 1);
   const ratio = index / (total - 1);
-  return interpolateColor(POSITION_HISTORY_COLOR_OLD, POSITION_HISTORY_COLOR_NEW, ratio);
+  return interpolateColor(old, newC, ratio);
 };
 
 /**
