@@ -2760,7 +2760,10 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 
     // Look up the node to get its channel
     const node = databaseService.getNode(destinationNum);
-    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+    // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
+    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+      ? req.body.channel
+      : (node?.channel ?? 0);
 
     const { packetId, requestId } = await meshtasticManager.sendPositionRequest(destinationNum, channel);
 
