@@ -22,6 +22,11 @@ vi.mock('./useCsrfFetch', () => ({
   useCsrfFetch: () => mockFetch,
 }));
 
+// Mock useWebSocketConnected (defaults to disconnected for tests)
+vi.mock('../contexts/WebSocketContext', () => ({
+  useWebSocketConnected: () => false,
+}));
+
 // Helper to create a wrapper with QueryClient
 function createWrapper() {
   const queryClient = new QueryClient({
