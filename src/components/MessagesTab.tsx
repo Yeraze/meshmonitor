@@ -219,7 +219,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   dmFilter,
   setDmFilter,
   securityFilter,
-  channels: _channels,
+  channels,
   channelFilter,
   showIncompleteNodes,
   showNodeFilterPopup: _showNodeFilterPopup,
@@ -268,6 +268,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   // Local state for actions menu
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showPositionChannelDropdown, setShowPositionChannelDropdown] = useState(false);
 
   // Relay node modal state
   const [relayModalOpen, setRelayModalOpen] = useState(false);
@@ -289,6 +290,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     };
     fetchHomoglyphSetting();
   }, []);
+
+  // Close position channel dropdown on click outside
+  useEffect(() => {
+    if (!showPositionChannelDropdown) return;
+    const handleClickOutside = () => setShowPositionChannelDropdown(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showPositionChannelDropdown]);
 
   // Memoize byte count to avoid redundant homoglyph optimization on each render
   const byteCountDisplay = useMemo(() => {
@@ -1599,26 +1608,89 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 </button>
               )}
 
-              {/* Exchange Position */}
+              {/* Exchange Position - Split Button */}
               {hasPermission('messages', 'write') && (
-                <button
-                  onClick={() => handleExchangePosition(selectedDMNode)}
-                  disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
-                  style={{
-                    flex: '1 1 auto',
-                    minWidth: '120px',
-                    padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-blue)',
-                    color: 'var(--ctp-base)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                    opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 0.5 : 1,
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  {positionLoading === selectedDMNode ? <span className="spinner"></span> : '📍'} {t('messages.exchange_position')}
-                </button>
+                <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
+                  <button
+                    onClick={() => handleExchangePosition(selectedDMNode)}
+                    disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 1rem',
+                      backgroundColor: 'var(--ctp-blue)',
+                      color: 'var(--ctp-base)',
+                      border: 'none',
+                      borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
+                      cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                      opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 0.5 : 1,
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    {positionLoading === selectedDMNode ? <span className="spinner"></span> : '📍'} {t('messages.exchange_position')}
+                  </button>
+                  {channels.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPositionChannelDropdown(prev => !prev);
+                      }}
+                      disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                      title={t('messages.exchange_position_channel')}
+                      style={{
+                        padding: '0.5rem 0.5rem',
+                        backgroundColor: 'var(--ctp-blue)',
+                        color: 'var(--ctp-base)',
+                        border: 'none',
+                        borderLeft: '1px solid var(--ctp-base)',
+                        borderRadius: '0 4px 4px 0',
+                        cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                        opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 0.5 : 1,
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      ▾
+                    </button>
+                  )}
+                  {showPositionChannelDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--ctp-surface0)',
+                      border: '1px solid var(--ctp-surface2)',
+                      borderRadius: '4px',
+                      zIndex: 1000,
+                      minWidth: '160px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                    }}>
+                      {channels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => {
+                            handleExchangePosition(selectedDMNode, ch.id);
+                            setShowPositionChannelDropdown(false);
+                          }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '0.5rem 1rem',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--ctp-text)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '0.85rem'
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          {ch.name || `Channel ${ch.id}`}{ch.id === 0 ? ' (Primary)' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Request Neighbor Info */}

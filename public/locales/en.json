@@ -304,6 +304,7 @@
   "messages.history_title": "View traceroute history for this node",
   "messages.exchange_position": "Exchange Position",
   "messages.exchange_position_title": "Request position exchange with this node",
+  "messages.exchange_position_channel": "Choose channel for position exchange",
   "messages.exchange_user_info": "Exchange User Info",
   "messages.exchange_user_info_title": "Request user info exchange with this node (triggers key exchange)",
   "messages.request_neighbor_info": "Request Neighbors",
