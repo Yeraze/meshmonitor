@@ -48,7 +48,7 @@ The auto-upgrade feature uses a **watchdog sidecar** container that:
 ### Docker Compose Setup
 
 ::: info
-The upgrade watchdog script is automatically deployed to `/data/scripts/` by the MeshMonitor container on startup. No manual script download is required.
+The upgrade watchdog script is automatically deployed to `/data/.meshmonitor-internal/` by the MeshMonitor container on startup. No manual script download is required.
 :::
 
 1. **Enable the watchdog sidecar** by using the upgrade overlay:
