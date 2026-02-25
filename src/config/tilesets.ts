@@ -18,6 +18,7 @@ export interface CustomTileset {
   createdAt: number;
   updatedAt: number;
   isVector?: boolean;
+  overlayScheme?: 'light' | 'dark';
 }
 
 export interface TilesetConfig {

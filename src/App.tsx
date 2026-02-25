@@ -298,6 +298,7 @@ function App() {
     setSolarMonitoringLongitude,
     setSolarMonitoringAzimuth,
     setSolarMonitoringDeclination,
+    overlayColors: schemeColors,
   } = useSettings();
 
   // Map context
@@ -384,6 +385,15 @@ function App() {
       setThemeColors({ mauve, red, blue, overlay0 });
     }
   }, [theme]);
+
+  // Merge overlay scheme colors into theme colors for traceroute rendering
+  const mergedThemeColors = useMemo(() => ({
+    ...themeColors,
+    tracerouteForward: schemeColors.tracerouteForward,
+    tracerouteReturn: schemeColors.tracerouteReturn,
+    mqttSegment: schemeColors.mqttSegment,
+    neighborLine: schemeColors.neighborLine,
+  }), [themeColors, schemeColors]);
 
   // Channel Database entries for displaying names of server-decrypted channels
   const [channelDatabaseEntries, setChannelDatabaseEntries] = useState<ChannelDatabaseEntry[]>([]);
@@ -4086,7 +4096,7 @@ function App() {
     traceroutesDigest,
     distanceUnit,
     maxNodeAgeHours,
-    themeColors,
+    themeColors: mergedThemeColors,
     callbacks: tracerouteCallbacks,
     visibleNodeNums,
   });

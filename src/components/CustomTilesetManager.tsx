@@ -11,6 +11,7 @@ interface FormData {
   attribution: string;
   maxZoom: number;
   description: string;
+  overlayScheme: 'light' | 'dark';
 }
 
 const DEFAULT_FORM_DATA: FormData = {
@@ -18,7 +19,8 @@ const DEFAULT_FORM_DATA: FormData = {
   url: '',
   attribution: '',
   maxZoom: 18,
-  description: ''
+  description: '',
+  overlayScheme: 'dark' as const,
 };
 
 export function CustomTilesetManager() {
@@ -172,7 +174,8 @@ export function CustomTilesetManager() {
       url: tileset.url,
       attribution: tileset.attribution,
       maxZoom: tileset.maxZoom,
-      description: tileset.description
+      description: tileset.description,
+      overlayScheme: tileset.overlayScheme ?? 'dark',
     });
     setEditingId(tileset.id);
     setIsAdding(false);
@@ -555,6 +558,21 @@ export function CustomTilesetManager() {
               disabled={isSaving}
             />
             <small>{t('tileset_manager.max_zoom_help')}</small>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="tileset-overlay-scheme">
+              {t('settings.custom_tileset_overlay_scheme')}
+            </label>
+            <select
+              id="tileset-overlay-scheme"
+              value={formData.overlayScheme}
+              onChange={(e) => setFormData(prev => ({ ...prev, overlayScheme: e.target.value as 'light' | 'dark' }))}
+              disabled={isSaving}
+            >
+              <option value="dark">{t('settings.overlay_scheme_dark')}</option>
+              <option value="light">{t('settings.overlay_scheme_light')}</option>
+            </select>
           </div>
 
           <div className="form-field">

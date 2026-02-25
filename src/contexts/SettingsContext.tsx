@@ -5,6 +5,7 @@ import { type SortOption as DashboardSortOption } from '../components/Dashboard/
 import { logger } from '../utils/logger';
 import { useCsrf } from './CsrfContext';
 import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
+import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type OverlayColors } from '../config/overlayColors';
 import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 
@@ -56,6 +57,8 @@ interface SettingsContextType {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   mapTileset: TilesetId;
+  overlayScheme: OverlayScheme;
+  overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
   theme: Theme;
   language: string;
@@ -281,6 +284,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   // Custom tilesets state (database-only, not persisted in localStorage)
   const [customTilesets, setCustomTilesets] = useState<CustomTileset[]>([]);
+
+  const overlayScheme = React.useMemo<OverlayScheme>(() => {
+    const customTileset = customTilesets.find(ct => `custom-${ct.id}` === mapTileset);
+    return getSchemeForTileset(mapTileset, customTileset?.overlayScheme);
+  }, [mapTileset, customTilesets]);
+
+  const overlayColors = React.useMemo(() => getOverlayColors(overlayScheme), [overlayScheme]);
 
   const setMaxNodeAgeHours = (value: number) => {
     setMaxNodeAgeHoursState(value);
@@ -999,6 +1009,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     timeFormat,
     dateFormat,
     mapTileset,
+    overlayScheme,
+    overlayColors,
     mapPinStyle,
     theme,
     language,
