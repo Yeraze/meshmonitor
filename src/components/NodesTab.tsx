@@ -278,6 +278,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeDimmingMinOpacity,
     maxNodeAgeHours,
     nodeHopsCalculation,
+    overlayColors,
   } = useSettings();
 
   const { hasPermission, authStatus } = useAuth();
@@ -1904,7 +1905,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   // Get hop color for the circle (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;
                   const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                  const color = getHopColor(hops);
+                  const color = getHopColor(hops, overlayColors.hopColors);
 
                   return (
                     <Circle
@@ -1969,7 +1970,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   // Get hop color for the region (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;
                   const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                  const color = getHopColor(hops);
+                  const color = getHopColor(hops, overlayColors.hopColors);
 
                   return (
                     <Rectangle
@@ -2018,7 +2019,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <Polyline
                     key={`neighbor-${idx}`}
                     positions={positions}
-                    color="#cba6f7"
+                    color={overlayColors.neighborLine}
                     weight={4}
                     opacity={0.7}
                     dashArray="5, 5"
@@ -2064,7 +2065,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 for (let i = 0; i < segmentCount; i++) {
                   const startPos = filteredHistory[i];
                   const endPos = filteredHistory[i + 1];
-                  const color = getPositionHistoryColor(i, segmentCount);
+                  const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
                   segmentColors.push(color);
 
                   // Generate path - use Bezier curve if heading data is available
