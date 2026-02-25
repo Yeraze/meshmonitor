@@ -22,6 +22,26 @@ vi.mock('react-leaflet', () => ({
   }),
 }));
 
+// Mock SettingsContext to provide overlayColors
+vi.mock('../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    overlayColors: {
+      tracerouteForward: '#89b4fa',
+      tracerouteReturn: '#f38ba8',
+      mqttSegment: '#9399b2',
+      neighborLine: '#cba6f7',
+      positionHistoryOld: { r: 0, g: 191, b: 255 },
+      positionHistoryNew: { r: 255, g: 69, b: 0 },
+      hopColors: {
+        local: '#22c55e',
+        noData: '#9ca3af',
+        max: '#FF0000',
+        gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
+      },
+    },
+  }),
+}));
+
 import MapLegend from './MapLegend';
 
 describe('MapLegend', () => {
