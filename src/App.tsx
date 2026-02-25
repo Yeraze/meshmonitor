@@ -2618,7 +2618,7 @@ function App() {
     }
   };
 
-  const handleExchangePosition = async (nodeId: string) => {
+  const handleExchangePosition = async (nodeId: string, channel?: number) => {
     if (connectionStatus !== 'connected') {
       return;
     }
@@ -2643,7 +2643,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum }),
+        body: JSON.stringify({ destination: nodeNum, ...(channel !== undefined && { channel }) }),
       });
 
       logger.debug(`📍 Position request sent to ${nodeId}`);
@@ -4358,6 +4358,7 @@ function App() {
             dmFilter={dmFilter}
             setDmFilter={setDmFilter}
             securityFilter={securityFilter}
+            channels={channels}
             channelFilter={channelFilter}
             showIncompleteNodes={showIncompleteNodes}
             showNodeFilterPopup={showNodeFilterPopup}

@@ -107,7 +107,9 @@ const databaseMock = {
   setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean) => undefined),
   purgeAllNodes: vi.fn(),
   purgeAllTelemetry: vi.fn(),
-  purgeAllMessages: vi.fn()
+  purgeAllMessages: vi.fn(),
+  insertMessage: vi.fn(),
+  setSetting: vi.fn()
 };
 
 // Mock the database module
@@ -135,7 +137,9 @@ const meshtasticManagerMock = {
   userDisconnect: vi.fn(async () => undefined),
   userReconnect: vi.fn(async () => true),
   isUserDisconnected: vi.fn(() => false),
-  getConnectionStatus: vi.fn(() => ({ connected: true, nodeIp: '192.168.1.100' }))
+  getConnectionStatus: vi.fn(() => ({ connected: true, nodeIp: '192.168.1.100' })),
+  sendPositionRequest: vi.fn(async (_destination: number, _channel?: number) => ({ packetId: 12345, requestId: 67890 })),
+  getLocalNodeInfo: vi.fn(() => ({ nodeId: '!localNode', nodeNum: 100 }))
 };
 
 // Mock the meshtasticManager
@@ -404,6 +408,34 @@ describe('Server API Endpoints', () => {
         res.json({ success: true, message: 'All messages purged' });
       } catch (error) {
         res.status(500).json({ error: 'Failed to purge messages' });
+      }
+    });
+
+    // Position request endpoint
+    app.post('/api/position/request', async (req, res) => {
+      try {
+        const { destination } = req.body;
+        if (!destination) {
+          return res.status(400).json({ error: 'Destination node number is required' });
+        }
+
+        const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+
+        // Look up the node to get its channel
+        const node = databaseMock.getNode(destinationNum);
+        // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
+        const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+          ? req.body.channel
+          : (node?.channel ?? 0);
+
+        const { packetId, requestId } = await meshtasticManagerMock.sendPositionRequest(destinationNum, channel);
+
+        res.json({
+          success: true,
+          message: `Position request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to send position request' });
       }
     });
   });
@@ -725,6 +757,99 @@ describe('Server API Endpoints', () => {
 
       expect(response.body.success).toBe(true);
       expect(databaseMock.purgeAllMessages).toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/position/request', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should send position request with node default channel when no channel specified', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 2 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // Node 2 has channel: 1 in the mock
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(2, 1);
+    });
+
+    it('should use explicit channel when provided', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 1, channel: 3 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(1, 3);
+    });
+
+    it('should fall back to node channel when explicit channel is out of range', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 2, channel: 8 });
+
+      expect(response.status).toBe(200);
+      // Channel 8 is out of range, should fall back to node's channel (1)
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(2, 1);
+    });
+
+    it('should fall back to node channel when channel is negative', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 2, channel: -1 });
+
+      expect(response.status).toBe(200);
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(2, 1);
+    });
+
+    it('should fall back to node channel when channel is not a number', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 2, channel: 'abc' });
+
+      expect(response.status).toBe(200);
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(2, 1);
+    });
+
+    it('should use channel 0 when node not found and no channel specified', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 999 });
+
+      expect(response.status).toBe(200);
+      // Node 999 doesn't exist in mock, should fall back to 0
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(999, 0);
+    });
+
+    it('should return 400 when destination is missing', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Destination node number is required');
+    });
+
+    it('should accept channel 0 explicitly', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 2, channel: 0 });
+
+      expect(response.status).toBe(200);
+      // Explicit channel 0 should override node's channel (1)
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(2, 0);
+    });
+
+    it('should accept channel 7 (max valid)', async () => {
+      const response = await request(app)
+        .post('/api/position/request')
+        .send({ destination: 1, channel: 7 });
+
+      expect(response.status).toBe(200);
+      expect(meshtasticManagerMock.sendPositionRequest).toHaveBeenCalledWith(1, 7);
     });
   });
 });
