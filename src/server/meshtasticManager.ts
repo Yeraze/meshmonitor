@@ -674,6 +674,20 @@ class MeshtasticManager {
         // Start auto key repair scheduler
         this.startKeyRepairScheduler();
 
+        // Auto-favorite staleness sweep - runs every 60 minutes
+        setInterval(() => {
+          this.autoFavoriteSweep().catch(error => {
+            logger.error('❌ Error in auto-favorite sweep interval:', error);
+          });
+        }, 60 * 60 * 1000);
+
+        // Run initial sweep after 30 seconds to handle cleanup from previous session
+        setTimeout(() => {
+          this.autoFavoriteSweep().catch(error => {
+            logger.error('❌ Error in initial auto-favorite sweep:', error);
+          });
+        }, 30000);
+
         logger.debug(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
       }, 5000);
 
@@ -8989,6 +9003,102 @@ class MeshtasticManager {
       }
     } catch (error) {
       logger.error('❌ Error in auto-favorite check:', error);
+    }
+  }
+
+  private async autoFavoriteSweep(): Promise<void> {
+    try {
+      const autoFavoriteEnabled = databaseService.getSetting('autoFavoriteEnabled');
+      const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
+
+      if (autoFavoriteNodes.length === 0) {
+        return;
+      }
+
+      // If feature was disabled, clean up all auto-favorited nodes
+      if (autoFavoriteEnabled !== 'true') {
+        logger.info(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
+        for (const nodeNum of autoFavoriteNodes) {
+          try {
+            databaseService.setNodeFavorite(nodeNum, false);
+            if (this.supportsFavorites() && this.isConnected) {
+              await this.sendRemoveFavoriteNode(nodeNum);
+            }
+          } catch (error) {
+            logger.warn(`⚠️ Failed to unfavorite node ${nodeNum} during cleanup:`, error);
+          }
+        }
+        databaseService.setSetting('autoFavoriteNodes', '[]');
+        return;
+      }
+
+      if (!this.supportsFavorites()) return;
+
+      const staleHours = parseInt(databaseService.getSetting('autoFavoriteStaleHours') || '72');
+      const staleThreshold = Date.now() / 1000 - (staleHours * 3600);
+
+      // Get local node role for re-evaluation
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
+      const localNode = localNodeNumInt ? databaseService.getNode(localNodeNumInt) : null;
+
+      const nodesToRemove: number[] = [];
+
+      for (const nodeNum of autoFavoriteNodes) {
+        const node = databaseService.getNode(nodeNum);
+        if (!node) {
+          nodesToRemove.push(nodeNum);
+          continue;
+        }
+
+        let shouldRemove = false;
+        let reason = '';
+
+        // Check staleness
+        if (node.lastHeard && node.lastHeard < staleThreshold) {
+          shouldRemove = true;
+          reason = `stale (not heard in ${staleHours}+ hours)`;
+        }
+
+        // Check hops changed
+        if (!shouldRemove && (node.hopsAway == null || node.hopsAway > 0)) {
+          shouldRemove = true;
+          reason = `no longer 0-hop (hopsAway=${node.hopsAway})`;
+        }
+
+        // Check role eligibility changed (for ROUTER/ROUTER_LATE local)
+        if (!shouldRemove && localNode) {
+          if (!isAutoFavoriteEligible(localNode.role, { ...node, isFavorite: false })) {
+            shouldRemove = true;
+            reason = 'no longer eligible (role changed)';
+          }
+        }
+
+        if (shouldRemove) {
+          nodesToRemove.push(nodeNum);
+          try {
+            databaseService.setNodeFavorite(nodeNum, false);
+            if (this.isConnected) {
+              await this.sendRemoveFavoriteNode(nodeNum);
+            }
+            const nodeId = node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
+            logger.info(`☆ Auto-unfavorited node ${nodeId} (${node.longName || 'Unknown'}) - ${reason}`);
+          } catch (error) {
+            logger.warn(`⚠️ Failed to auto-unfavorite node ${nodeNum}:`, error);
+          }
+        }
+      }
+
+      // Update the tracking list
+      if (nodesToRemove.length > 0) {
+        const removeSet = new Set(nodesToRemove);
+        const remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
+        databaseService.setSetting('autoFavoriteNodes', JSON.stringify(remaining));
+        logger.info(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
+      }
+    } catch (error) {
+      logger.error('❌ Error in auto-favorite sweep:', error);
     }
   }
 
