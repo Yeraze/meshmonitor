@@ -167,7 +167,7 @@ export interface MessagesTabProps {
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
   handleResendMessage: (message: MeshMessage) => Promise<void>;
   handleTraceroute: (nodeId: string) => Promise<void>;
-  handleExchangePosition: (nodeId: string) => Promise<void>;
+  handleExchangePosition: (nodeId: string, channel?: number) => Promise<void>;
   handleExchangeNodeInfo: (nodeId: string) => Promise<void>;
   handleRequestNeighborInfo: (nodeId: string) => Promise<void>;
   handleRequestTelemetry: (nodeId: string, telemetryType: 'device' | 'environment' | 'airQuality' | 'power') => Promise<void>;
