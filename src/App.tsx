@@ -57,6 +57,7 @@ import api, { type ChannelDatabaseEntry } from './services/api';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
+import { applyHomoglyphOptimization } from './utils/homoglyph';
 import Sidebar from './components/Sidebar';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
@@ -200,6 +201,7 @@ function App() {
   const connectionStatusRef = useRef<string>('disconnected'); // Track connection status for interval closure
   const localNodeIdRef = useRef<string>(''); // Track local node ID for immediate access (bypasses React state delay)
   const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()); // Track pending messages for interval access (bypasses closure stale state)
+  const homoglyphEnabledRef = useRef<boolean>(false); // Track homoglyph setting for send handlers
   const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // Track upgrade polling interval for cleanup
 
   // Constants for emoji tapbacks
@@ -928,6 +930,11 @@ function App() {
             const value = parseInt(settings.telemetryVisualizationHours);
             setTelemetryVisualizationHours(value);
             localStorage.setItem('telemetryVisualizationHours', value.toString());
+          }
+
+          // Homoglyph optimization setting - stored in ref for use in send handlers
+          if (settings.homoglyphEnabled !== undefined) {
+            homoglyphEnabledRef.current = settings.homoglyphEnabled === 'true';
           }
 
           // Automation settings - loaded from database, not localStorage
@@ -2346,9 +2353,11 @@ function App() {
               if (!pendingIds.has(m.id)) return false;
               // Safety net: filter out if a matching server message already exists
               // This catches edge cases where the ref timing or text/sender matching fails
+              // Must use localNodeId fallback (same as primary dedup) because temp messages
+              // created before first poll may have fromNodeId='me' instead of the real node ID
               const hasServerMatch = processedMessages.some((pm: MeshMessage) =>
                 pm.text === m.text &&
-                (pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
+                ((localNodeId && pm.from === localNodeId) || pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
                 Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
               );
               if (hasServerMatch) return false;
@@ -2420,9 +2429,11 @@ function App() {
               if (m.id.toString().startsWith('temp_')) {
                 if (!pendingIds.has(m.id)) return false;
                 // Safety net: filter out if a matching server message already exists
+                // Must use localNodeId fallback (same as primary dedup) because temp messages
+                // created before first poll may have fromNodeId='me' instead of the real node ID
                 const hasServerMatch = pollMsgs.some(pm =>
                   pm.text === m.text &&
-                  (pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
+                  ((localNodeId && pm.from === localNodeId) || pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
                   Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
                 );
                 if (hasServerMatch) return false;
@@ -2812,13 +2823,16 @@ function App() {
     const tempId = `temp_dm_${Date.now()}_${Math.random()}`;
     // Use localNodeIdRef for immediate access (bypasses React state delay)
     const nodeId = localNodeIdRef.current || currentNodeId || 'me';
+    // Apply homoglyph optimization to match what the backend will store,
+    // so dedup text comparison works correctly (#2027)
+    const displayText = homoglyphEnabledRef.current ? applyHomoglyphOptimization(newMessage) : newMessage;
     const sentMessage: MeshMessage = {
       id: tempId,
       from: nodeId,
       to: destinationNodeId,
       fromNodeId: nodeId,
       toNodeId: destinationNodeId,
-      text: newMessage,
+      text: displayText,
       channel: -1, // -1 indicates a direct message
       timestamp: new Date(),
       isLocalMessage: true,
@@ -3290,13 +3304,16 @@ function App() {
     const tempId = `temp_${Date.now()}_${Math.random()}`;
     // Use localNodeIdRef for immediate access (bypasses React state delay)
     const nodeId = localNodeIdRef.current || currentNodeId || 'me';
+    // Apply homoglyph optimization to match what the backend will store,
+    // so dedup text comparison works correctly (#2027)
+    const displayText = homoglyphEnabledRef.current ? applyHomoglyphOptimization(newMessage) : newMessage;
     const sentMessage: MeshMessage = {
       id: tempId,
       from: nodeId,
       to: '!ffffffff', // Broadcast
       fromNodeId: nodeId,
       toNodeId: '!ffffffff',
-      text: newMessage,
+      text: displayText,
       channel: messageChannel,
       timestamp: new Date(),
       isLocalMessage: true,
