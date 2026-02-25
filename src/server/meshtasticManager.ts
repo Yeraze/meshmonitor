@@ -347,6 +347,7 @@ class MeshtasticManager {
   // Auto-welcome tracking to prevent race conditions
   private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
+  private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
 
   // Virtual Node Server - Message capture for initialization sequence
   private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
@@ -9007,6 +9008,8 @@ class MeshtasticManager {
   }
 
   private async autoFavoriteSweep(): Promise<void> {
+    if (this.autoFavoriteSweepRunning) return;
+    this.autoFavoriteSweepRunning = true;
     try {
       const autoFavoriteEnabled = databaseService.getSetting('autoFavoriteEnabled');
       const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
@@ -9099,6 +9102,8 @@ class MeshtasticManager {
       }
     } catch (error) {
       logger.error('❌ Error in auto-favorite sweep:', error);
+    } finally {
+      this.autoFavoriteSweepRunning = false;
     }
   }
 
