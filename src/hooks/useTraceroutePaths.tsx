@@ -58,8 +58,13 @@ export interface TracerouteDigest {
 export interface ThemeColors {
   mauve: string;
   red: string;
-  blue: string; // For forward traceroute path
-  overlay0: string; // For MQTT segments (muted color)
+  blue: string;
+  overlay0: string;
+  // Overlay scheme colors (override theme CSS colors when set)
+  tracerouteForward?: string;
+  tracerouteReturn?: string;
+  mqttSegment?: string;
+  neighborLine?: string;
 }
 
 /**
@@ -426,7 +431,7 @@ export function useTraceroutePaths({
         <Polyline
           key={segment.key}
           positions={segment.positions}
-          color={isMqttSegment ? themeColors.overlay0 : themeColors.mauve}
+          color={isMqttSegment ? (themeColors.mqttSegment ?? themeColors.overlay0) : (themeColors.neighborLine ?? themeColors.mauve)}
           weight={weight}
           opacity={isMqttSegment ? 0.6 : 0.7}
           dashArray={isMqttSegment ? '8, 8' : undefined}
@@ -621,7 +626,7 @@ export function useTraceroutePaths({
     allElements.push(...segmentElements);
 
     return allElements;
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, callbacks, visibleNodeNums]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, themeColors.neighborLine, themeColors.mqttSegment, callbacks, visibleNodeNums]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
@@ -726,7 +731,7 @@ export function useTraceroutePaths({
                <Polyline
                  key={`selected-traceroute-forward-seg-${i}`}
                  positions={segmentPoints}
-                 color={themeColors.blue}
+                 color={themeColors.tracerouteForward ?? themeColors.blue}
                  weight={weight}
                  opacity={0.9}
                  dashArray="10, 5"
@@ -767,7 +772,7 @@ export function useTraceroutePaths({
           const forwardArrows = generateCurvedArrowMarkers(
             forwardPositions,
             'forward',
-            themeColors.blue,
+            themeColors.tracerouteForward ?? themeColors.blue,
             forwardSegmentSnrs,
             0.2,
             true
@@ -828,7 +833,7 @@ export function useTraceroutePaths({
                <Polyline
                  key={`selected-traceroute-back-seg-${i}`}
                  positions={segmentPoints}
-                 color={themeColors.red}
+                 color={themeColors.tracerouteReturn ?? themeColors.red}
                  weight={weight}
                  opacity={0.9}
                  dashArray="5, 10"
@@ -869,7 +874,7 @@ export function useTraceroutePaths({
           const backArrows = generateCurvedArrowMarkers(
             backPositions, 
             'back', 
-            themeColors.red, 
+            themeColors.tracerouteReturn ?? themeColors.red,
             backSegmentSnrs,
             -0.2,
             true
@@ -882,7 +887,7 @@ export function useTraceroutePaths({
     }
 
     return allElements.length > 0 ? allElements : null;
-  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red, themeColors.blue]);
+  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red, themeColors.blue, themeColors.tracerouteForward, themeColors.tracerouteReturn]);
 
   // Compute the set of node numbers involved in the selected traceroute
   // Used for filtering map markers to only show nodes in the active traceroute
