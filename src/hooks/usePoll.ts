@@ -28,6 +28,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCsrfFetch } from './useCsrfFetch';
 import type { DeviceInfo, Channel, LocalNodeInfo } from '../types/device';
 import { appBasename } from '../init';
+import { useWebSocketConnected } from '../contexts/WebSocketContext';
 
 /**
  * Connection status from the server
@@ -222,14 +223,19 @@ export function usePoll({
   baseUrl = appBasename,
   pollInterval,
   enabled = true,
-  webSocketConnected = false
+  webSocketConnected
 }: UsePollOptions = {}) {
   const authFetch = useCsrfFetch();
+
+  // Read WebSocket state internally so all callers automatically get the right interval.
+  // The webSocketConnected prop is kept as an optional override for testing.
+  const wsConnected = useWebSocketConnected();
+  const isWsConnected = webSocketConnected ?? wsConnected;
 
   // Determine the effective poll interval based on WebSocket connection status
   // When WebSocket is connected, poll less frequently (30s) as a backup
   // When disconnected, poll frequently (5s) for real-time updates
-  const effectiveInterval = pollInterval ?? (webSocketConnected ? WEBSOCKET_POLL_INTERVAL : DEFAULT_POLL_INTERVAL);
+  const effectiveInterval = pollInterval ?? (isWsConnected ? WEBSOCKET_POLL_INTERVAL : DEFAULT_POLL_INTERVAL);
 
   return useQuery({
     queryKey: POLL_QUERY_KEY,
@@ -255,6 +261,6 @@ export function usePoll({
     staleTime: effectiveInterval - 1000, // Consider stale just before next poll
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     // Only refetch on window focus when WebSocket is disconnected
-    refetchOnWindowFocus: !webSocketConnected,
+    refetchOnWindowFocus: !isWsConnected,
   });
 }
