@@ -31,6 +31,7 @@ import GeofenceTriggersSection from './components/GeofenceTriggersSection';
 import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
 import AutoTimeSyncSection from './components/AutoTimeSyncSection';
 import AutoPingSection from './components/AutoPingSection';
+import AutoFavoriteSection from './components/AutoFavoriteSection';
 import IgnoredNodesSection from './components/IgnoredNodesSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
@@ -4491,6 +4492,7 @@ function App() {
             <SectionNav
               items={[
                 { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
+                { id: 'auto-favorite', label: t('automation.auto_favorite.title', 'Auto Favorite') },
                 { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
                 { id: 'auto-ping', label: t('automation.auto_ping.title', 'Auto Ping') },
                 { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },
@@ -4520,6 +4522,9 @@ function App() {
                   onWaitForNameChange={setAutoWelcomeWaitForName}
                   onMaxHopsChange={setAutoWelcomeMaxHops}
                 />
+              </div>
+              <div id="auto-favorite">
+                <AutoFavoriteSection baseUrl={baseUrl} />
               </div>
               <div id="auto-traceroute">
                 <AutoTracerouteSection
