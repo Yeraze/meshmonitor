@@ -13,25 +13,25 @@ import { isEmoji } from './text';
  * 6+ hops: Red (#FF0000)
  * 999 hops: Grey (#9ca3af) - No hop data
  */
-export function getHopColor(hops: number): string {
+export function getHopColor(
+  hops: number,
+  hopColors?: { local: string; noData: string; max: string; gradient: string[] },
+): string {
+  const colors = hopColors ?? {
+    local: '#22c55e',
+    noData: '#9ca3af',
+    max: '#FF0000',
+    gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
+  };
+
   if (hops === 0) {
-    return '#22c55e'; // Green for local node (direct connection)
+    return colors.local;
   } else if (hops === 999) {
-    return '#9ca3af'; // Grey for no hop data
+    return colors.noData;
   } else if (hops >= 6) {
-    return '#FF0000'; // Red for 6+ hops
+    return colors.max;
   } else {
-    // Linear gradient from blue to red (1-6 hops)
-    // Using RGB interpolation: Blue(0,0,255) → Red(255,0,0)
-    const colors = [
-      '#0000FF', // 1 hop: Blue
-      '#3300CC', // 2 hops: Blue-Purple
-      '#660099', // 3 hops: Purple
-      '#990066', // 4 hops: Red-Purple
-      '#CC0033', // 5 hops: Red-Magenta
-      '#FF0000'  // 6 hops: Red
-    ];
-    return colors[hops - 1] || colors[colors.length - 1];
+    return colors.gradient[hops - 1] || colors.gradient[colors.gradient.length - 1];
   }
 }
 
