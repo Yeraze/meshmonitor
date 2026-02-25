@@ -166,17 +166,21 @@ pull_image() {
 recreate_container() {
   log "Recreating container: $CONTAINER_NAME"
 
-  # Resolve compose directory - try configured path, then standard mount point
+  # Resolve compose directory - try configured path, then known mount points
+  # Older sidecar configs used /data/compose, current uses /compose
   local compose_dir=""
   if [ -d "$COMPOSE_PROJECT_DIR" ] && [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
     compose_dir="$COMPOSE_PROJECT_DIR"
   elif [ -d "/compose" ] && [ -f "/compose/docker-compose.yml" ]; then
     log_warn "COMPOSE_PROJECT_DIR=$COMPOSE_PROJECT_DIR not found, falling back to /compose"
     compose_dir="/compose"
+  elif [ -d "/data/compose" ] && [ -f "/data/compose/docker-compose.yml" ]; then
+    log_warn "Falling back to legacy path /data/compose - please update COMPOSE_PROJECT_DIR to /compose"
+    compose_dir="/data/compose"
   fi
 
   if [ -z "$compose_dir" ]; then
-    log_error "No docker-compose.yml found at $COMPOSE_PROJECT_DIR or /compose"
+    log_error "No docker-compose.yml found at $COMPOSE_PROJECT_DIR, /compose, or /data/compose"
     log_error "The upgrade sidecar requires Docker Compose files to recreate containers safely."
     log_error "Mount your compose directory to /compose in the sidecar container."
     return 1
@@ -485,6 +489,19 @@ main() {
   log "Check interval: ${CHECK_INTERVAL}s"
   log "Compose project: $COMPOSE_PROJECT_DIR"
   log "=================================================="
+
+  # Warn if running from the legacy script path
+  SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+  case "$SCRIPT_PATH" in
+    /data/scripts/*)
+      log_warn "=================================================="
+      log_warn "Running from legacy path: $SCRIPT_PATH"
+      log_warn "Please update your docker-compose.upgrade.yml to use:"
+      log_warn "  command: /data/.meshmonitor-internal/upgrade-watchdog.sh"
+      log_warn "See: https://github.com/Yeraze/meshmonitor/blob/main/docker-compose.upgrade.yml"
+      log_warn "=================================================="
+      ;;
+  esac
 
   # Initialize status
   write_status "ready"
