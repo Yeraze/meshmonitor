@@ -114,3 +114,39 @@ export async function filterNodesByChannelPermission<T>(
     return channelDbPermissions[channelDbId]?.viewOnMap === true;
   });
 }
+
+/**
+ * Check if a user has viewOnMap permission for the channel that a specific node belongs to.
+ * Used to enforce per-node channel-based access control on telemetry/position endpoints.
+ */
+export async function checkNodeChannelAccess(
+  nodeId: string,
+  user: User | null | undefined
+): Promise<boolean> {
+  if (user?.isAdmin) return true;
+
+  // Support both hex nodeId (!abcdef01) and decimal nodeId (2882400001)
+  const nodeNum = nodeId.startsWith('!')
+    ? parseInt(nodeId.replace('!', ''), 16)
+    : parseInt(nodeId, 10);
+  const node = databaseService.getNode(nodeNum);
+  const channelNum = node?.channel ?? 0;
+
+  // Get user's device channel permission set
+  const permissions: PermissionSet = user
+    ? await databaseService.getUserPermissionSetAsync(user.id)
+    : {};
+
+  // Device channels (0-7)
+  if (channelNum < CHANNEL_DB_OFFSET) {
+    const channelResource = `channel_${channelNum}` as ResourceType;
+    return permissions[channelResource]?.viewOnMap === true;
+  }
+
+  // Virtual channels (>= CHANNEL_DB_OFFSET)
+  const channelDbPermissions = user
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
+    : {};
+  const channelDbId = channelNum - CHANNEL_DB_OFFSET;
+  return channelDbPermissions[channelDbId]?.viewOnMap === true;
+}

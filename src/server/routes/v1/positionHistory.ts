@@ -9,6 +9,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
+import { checkNodeChannelAccess } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router();
 
@@ -67,6 +68,12 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     }
 
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, user)) {
+      return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
+    }
+
     const { since, before, limit, offset } = req.query;
 
     const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);
