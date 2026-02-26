@@ -2,6 +2,8 @@
 
 The Settings tab allows you to customize MeshMonitor's behavior and manage your system. Settings are stored on the server and apply to all users accessing the application.
 
+![Settings](/images/features/settings.png)
+
 ## Node Connection Configuration {#node-connection}
 
 Configure how MeshMonitor connects to your Meshtastic node without restarting the container. This feature allows administrators to dynamically change the node IP address and port through the user interface.

@@ -2,6 +2,8 @@
 
 MeshMonitor provides powerful interactive mapping capabilities to visualize your mesh network in real-time. View node positions, track movement, analyze signal strength, and customize your map experience with flexible tile server options.
 
+![Interactive Map](/images/features/nodes-map.png)
+
 ## Overview
 
 The interactive map is the primary visualization tool in MeshMonitor, displaying:

@@ -2,6 +2,8 @@
 
 MeshMonitor supports two notification methods: **Web Push** notifications for browsers/PWAs and **Apprise** for external notification services. Choose the method that works best for your needs, or use both!
 
+![Notifications](/images/features/notifications.png)
+
 ## Overview
 
 MeshMonitor provides flexible notification options to ensure you never miss important messages:

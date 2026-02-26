@@ -2,6 +2,8 @@
 
 The Configuration tab in MeshMonitor allows you to remotely configure your connected Meshtastic device. Changes are sent directly to the device and typically require a reboot to take effect.
 
+![Device Configuration](/images/features/device-config.png)
+
 ::: warning
 Configuration changes directly modify your Meshtastic device settings. Always ensure you understand the impact of changes before applying them, as incorrect settings may affect device functionality or network connectivity.
 :::

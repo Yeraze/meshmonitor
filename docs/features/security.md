@@ -2,6 +2,8 @@
 
 MeshMonitor includes advanced security monitoring features to help you identify and manage potential security issues in your mesh network. These features automatically detect common security vulnerabilities and provide filtering tools to manage flagged nodes.
 
+![Security Scanner](/images/features/security.png)
+
 ## Overview
 
 The security monitoring system automatically detects two types of security issues:

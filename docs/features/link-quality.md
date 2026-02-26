@@ -2,6 +2,8 @@
 
 MeshMonitor provides two complementary graphs for understanding the health and routing behavior of your mesh network connections: **Link Quality** and **Smart Hops**. Both are available in the Messages tab telemetry view and can be pinned to the Dashboard.
 
+![Link Quality & Smart Hops](/images/features/link-quality.png)
+
 ## Link Quality
 
 Link Quality is a real-time score from **0 to 10** that represents the reliability of communication with a node. It updates dynamically as messages are sent and received, giving you an at-a-glance view of connection health.

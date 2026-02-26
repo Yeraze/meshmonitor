@@ -2,6 +2,8 @@
 
 The Channel Database feature allows MeshMonitor to store additional channel configurations beyond your device's 8 channel slots. These stored channels can be used for **server-side packet decryption**, enabling you to monitor encrypted traffic from channels you're not actively participating in.
 
+![Channel Database](/images/features/channel-database.png)
+
 ## Overview
 
 Meshtastic devices are limited to 8 channel slots, but mesh networks often have many more channels in use. The Channel Database solves this limitation by:
