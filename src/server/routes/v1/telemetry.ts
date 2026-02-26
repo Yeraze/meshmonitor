@@ -7,6 +7,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
+import { checkNodeChannelAccess } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router();
 
@@ -35,6 +36,11 @@ router.get('/', async (req: Request, res: Response) => {
     let total: number | undefined;
 
     if (nodeId) {
+      // Check channel-based access for this node
+      if (!await checkNodeChannelAccess(nodeId as string, (req as any).user)) {
+        return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
       const typeStr = type ? type as string : undefined;
       telemetry = await databaseService.getTelemetryByNodeAsync(nodeId as string, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
       total = await databaseService.getTelemetryCountByNodeAsync(nodeId as string, sinceTimestamp, beforeTimestamp, typeStr);
@@ -112,6 +118,12 @@ router.get('/count', (_req: Request, res: Response) => {
 router.get('/:nodeId', async (req: Request, res: Response) => {
   try {
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, (req as any).user)) {
+      return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
+    }
+
     const { type, since, before, limit, offset } = req.query;
 
     const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);

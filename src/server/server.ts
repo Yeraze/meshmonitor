@@ -38,7 +38,7 @@ import { inactiveNodeNotificationService } from './services/inactiveNodeNotifica
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefix } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
-import { enhanceNodeForClient, filterNodesByChannelPermission } from './utils/nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { PortNum } from './constants/meshtastic.js';
 
@@ -808,6 +808,11 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
   try {
     const { nodeId } = req.params;
 
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     // Allow hours parameter for future use, but default to fetching ALL position history
     // This ensures we capture movement that may have happened long ago
     // Validate hours: must be positive integer, max 8760 (1 year)
@@ -876,6 +881,12 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
 apiRouter.get('/nodes/:nodeId/positions', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 2000;
 
     // Get only position-related telemetry (lat/lon/alt) for the node
@@ -1325,6 +1336,11 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
 apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
 
     // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
     const nodeNumStr = nodeId.replace('!', '');
@@ -3247,6 +3263,11 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     }
 
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
 
     // Calculate cutoff timestamp for filtering
@@ -3304,6 +3325,11 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
     }
 
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
 
     // Calculate cutoff timestamp for filtering
@@ -3381,6 +3407,11 @@ apiRouter.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req, res) =
     }
 
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
     // Validate and clamp hours (1-168, default 24)
     const hoursParam = Math.max(1, Math.min(168, parseInt(req.query.hours as string) || 24));
     // Validate and clamp interval (5-60 minutes, default 15)
@@ -3412,6 +3443,11 @@ apiRouter.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req, res)
     }
 
     const { nodeId } = req.params;
+
+    // Check channel-based access for this node
+    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
     // Validate and clamp hours (1-168, default 24)
     const hoursParam = Math.max(1, Math.min(168, parseInt(req.query.hours as string) || 24));
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { enhanceNodeForClient, filterNodesByChannelPermission } from './nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './nodeEnhancer.js';
 
 // Mock the auth middleware
 vi.mock('../auth/authMiddleware.js', () => ({
@@ -15,6 +15,18 @@ vi.mock('../auth/authMiddleware.js', () => ({
 // Mock the database service for filterNodesByChannelPermission
 vi.mock('../../services/database.js', () => ({
   default: {
+    getNode: vi.fn((nodeNum: number) => {
+      // Node 0x00000001 (1) -> channel 0
+      if (nodeNum === 1) return { channel: 0 };
+      // Node 0x00000002 (2) -> channel 1
+      if (nodeNum === 2) return { channel: 1 };
+      // Node 0x00000003 (3) -> channel 3 (no permission for user 1)
+      if (nodeNum === 3) return { channel: 3 };
+      // Node 0x00000004 (4) -> no channel property (defaults to 0)
+      if (nodeNum === 4) return {};
+      // Unknown node
+      return null;
+    }),
     getUserPermissionSetAsync: vi.fn(async (userId: number) => {
       // User 1: has access to channels 0 and 1
       if (userId === 1) {
@@ -201,5 +213,55 @@ describe('nodeEnhancer: filterNodesByChannelPermission', () => {
     expect(result[0]).toHaveProperty('extra', 'data');
     expect(result[0]).toHaveProperty('nested');
     expect((result[0] as any).nested.value).toBe(1);
+  });
+});
+
+describe('nodeEnhancer: checkNodeChannelAccess', () => {
+  it('should allow admin user access to any node', async () => {
+    const adminUser = { id: 1, isAdmin: true } as any;
+    expect(await checkNodeChannelAccess('!00000003', adminUser)).toBe(true);
+  });
+
+  it('should allow access when user has viewOnMap for the node channel', async () => {
+    // User 1 has channel_0 and channel_1 viewOnMap
+    const regularUser = { id: 1, isAdmin: false } as any;
+    // Node 0x00000001 = nodeNum 1 -> channel 0
+    expect(await checkNodeChannelAccess('!00000001', regularUser)).toBe(true);
+    // Node 0x00000002 = nodeNum 2 -> channel 1
+    expect(await checkNodeChannelAccess('!00000002', regularUser)).toBe(true);
+  });
+
+  it('should deny access when user lacks viewOnMap for the node channel', async () => {
+    // User 1 has channel_0 and channel_1 only
+    const regularUser = { id: 1, isAdmin: false } as any;
+    // Node 0x00000003 = nodeNum 3 -> channel 3
+    expect(await checkNodeChannelAccess('!00000003', regularUser)).toBe(false);
+  });
+
+  it('should default to channel 0 when node has no channel property', async () => {
+    // User 1 has channel_0 viewOnMap
+    const regularUser = { id: 1, isAdmin: false } as any;
+    // Node 0x00000004 = nodeNum 4 -> no channel, defaults to 0
+    expect(await checkNodeChannelAccess('!00000004', regularUser)).toBe(true);
+  });
+
+  it('should default to channel 0 when node is not found', async () => {
+    // User 1 has channel_0 viewOnMap
+    const regularUser = { id: 1, isAdmin: false } as any;
+    // Node 0x000000ff = 255, not in mock -> getNode returns null, channel defaults to 0
+    expect(await checkNodeChannelAccess('!000000ff', regularUser)).toBe(true);
+  });
+
+  it('should deny access for null user (anonymous)', async () => {
+    expect(await checkNodeChannelAccess('!00000001', null)).toBe(false);
+  });
+
+  it('should deny access for undefined user', async () => {
+    expect(await checkNodeChannelAccess('!00000001', undefined)).toBe(false);
+  });
+
+  it('should deny access for user with no permissions at all', async () => {
+    const noPermUser = { id: 99, isAdmin: false } as any;
+    expect(await checkNodeChannelAccess('!00000001', noPermUser)).toBe(false);
   });
 });
