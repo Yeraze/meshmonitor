@@ -5,9 +5,6 @@ hero:
   name: "MeshMonitor"
   text: "Monitor Your Meshtastic Network"
   tagline: "A powerful web application for monitoring Meshtastic nodes over IP with real-time updates, interactive maps, and comprehensive network analytics."
-  image:
-    src: /images/main.png
-    alt: MeshMonitor Dashboard
   actions:
     - theme: brand
       text: Get Started
@@ -151,25 +148,25 @@ MeshMonitor supports multiple deployment scenarios:
 
 ## Screenshots
 
-### Main Dashboard
-Track your entire mesh network at a glance with the interactive map and real-time statistics.
+### Interactive Map
+Track your entire mesh network at a glance with the interactive map and real-time node positions.
 
-![Main Dashboard](/images/main.png)
+![Interactive Map](/images/main.png)
 
-### Messages View
-View and manage all messages across your mesh network with powerful filtering and search capabilities.
+### Channel Messaging
+Communicate across your mesh network with multi-channel messaging and real-time updates.
 
-![Messages](/images/messages.png)
+![Channel Messaging](/images/channels.png)
 
-### Channel Management
-Configure and monitor multiple communication channels in your mesh network.
+### Telemetry Dashboard
+Monitor node telemetry with customizable widgets, charts, and historical data analysis.
 
-![Channels](/images/channels.png)
+![Telemetry Dashboard](/images/dashboard.png)
 
-### User Management
-Manage users, permissions, and authentication with a comprehensive admin interface.
+### Device Configuration
+Configure your Meshtastic device settings, channels, and radio parameters directly from the web UI.
 
-![User Management](/images/users.png)
+![Device Configuration](/images/device-config.png)
 
 ## Community & Support
 
