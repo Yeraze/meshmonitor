@@ -183,6 +183,20 @@ if ! echo "$LOGIN_RESPONSE" | grep -q "success"; then
     exit 1
 fi
 echo -e "${GREEN}✓ PASS${NC}: Login successful"
+
+# Re-fetch CSRF token after login (session is regenerated on auth)
+CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:$SOURCE_PORT/api/csrf-token \
+    -b /tmp/meshmonitor-backup-test-cookies.txt \
+    -c /tmp/meshmonitor-backup-test-cookies.txt)
+HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
+CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | head -n-1 | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$HTTP_CODE" = "200" ] && [ -n "$CSRF_TOKEN" ]; then
+    echo -e "${GREEN}✓${NC} Post-login CSRF token obtained"
+else
+    echo -e "${RED}✗ FAIL${NC}: Failed to get post-login CSRF token"
+    exit 1
+fi
 echo ""
 
 echo "Collecting baseline data..."
@@ -323,6 +337,20 @@ if ! echo "$RESTORE_LOGIN_RESPONSE" | grep -q "success"; then
     exit 1
 fi
 echo -e "${GREEN}✓ PASS${NC}: Logged in to restored container"
+
+# Re-fetch CSRF token after login (session is regenerated on auth)
+CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:$RESTORE_PORT/api/csrf-token \
+    -b /tmp/meshmonitor-restore-test-cookies.txt \
+    -c /tmp/meshmonitor-restore-test-cookies.txt)
+HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
+RESTORE_CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | head -n-1 | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$HTTP_CODE" = "200" ] && [ -n "$RESTORE_CSRF_TOKEN" ]; then
+    echo -e "${GREEN}✓${NC} Post-login CSRF token obtained"
+else
+    echo -e "${RED}✗ FAIL${NC}: Failed to get post-login CSRF token"
+    exit 1
+fi
 echo ""
 
 echo "Verifying data integrity..."

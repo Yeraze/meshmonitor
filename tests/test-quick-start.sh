@@ -255,6 +255,20 @@ else
     echo "$LOGIN_RESPONSE"
     exit 1
 fi
+
+# Re-fetch CSRF token after login (session is regenerated on auth)
+CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" $BASE_URL/api/csrf-token \
+    -b /tmp/meshmonitor-cookies.txt \
+    -c /tmp/meshmonitor-cookies.txt)
+HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
+CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | head -n-1 | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$HTTP_CODE" = "200" ] && [ -n "$CSRF_TOKEN" ]; then
+    echo -e "${GREEN}✓${NC} Post-login CSRF token obtained"
+else
+    echo -e "${RED}✗ FAIL${NC}: Failed to get post-login CSRF token"
+    exit 1
+fi
 echo ""
 
 # Test 10: Check authenticated request works
