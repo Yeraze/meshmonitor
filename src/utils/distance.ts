@@ -97,7 +97,9 @@ export function getDistanceToNode(
 /**
  * Format a human-readable accuracy estimate for a given Meshtastic position precision value.
  * Meshtastic encodes positions as int32 (1 unit = 1e-7 degrees). With N precision bits,
- * the lower (32-N) bits are zeroed, so resolution = 2^(32-N) * 1e-7 degrees.
+ * the lower (32-N) bits are zeroed, giving a grid cell of 2^(32-N) * 1e-7 degrees.
+ * The accuracy shown is half the grid cell (max deviation from true position),
+ * matching the values in the Meshtastic documentation.
  * @param bits Precision bits (0-32). 0 = disabled, 32 = full precision (~1 cm)
  * @param unit 'km' for metric (m/km) or 'mi' for imperial (ft/mi)
  * @returns Human-readable accuracy string like "~100 m", "~1.5 km", "~300 ft", "~2 mi"
@@ -105,11 +107,12 @@ export function getDistanceToNode(
 export function formatPrecisionAccuracy(bits: number, unit: 'km' | 'mi'): string {
   if (bits <= 0) return 'Disabled';
 
-  const METERS_PER_DEGREE = 111320;
+  const METERS_PER_DEGREE = 111111;
   const FEET_PER_METER = 3.28084;
   const FEET_PER_MILE = 5280;
 
-  const accuracyMeters = Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE;
+  // Half the grid cell size = max deviation from true position
+  const accuracyMeters = Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE / 2;
 
   if (unit === 'mi') {
     const feet = accuracyMeters * FEET_PER_METER;

@@ -235,49 +235,62 @@ describe('Distance Utilities', () => {
     });
 
     it('should return sub-meter for high precision (32 bits)', () => {
-      // 32 bits = 2^0 * 1e-7 * 111320 ≈ 0.011 m
+      // 32 bits = 2^0 * 1e-7 * 111320 / 2 ≈ 0.006 m
       expect(formatPrecisionAccuracy(32, 'km')).toBe('< 1 m');
       expect(formatPrecisionAccuracy(32, 'mi')).toBe('< 1 ft');
     });
 
     it('should format metric meters for medium precision', () => {
-      // 20 bits = 2^12 * 1e-7 * 111320 ≈ 45.6 m
+      // 20 bits ≈ 22.8 m → "~23 m"
       const result = formatPrecisionAccuracy(20, 'km');
       expect(result).toMatch(/^~\d+ m$/);
     });
 
     it('should format metric kilometers for low precision', () => {
-      // 10 bits = 2^22 * 1e-7 * 111320 ≈ 46,700 m ≈ 46.7 km
+      // 10 bits ≈ 23,350 m ≈ 23.3 km
       const result = formatPrecisionAccuracy(10, 'km');
       expect(result).toMatch(/^~\d+ km$/);
     });
 
     it('should format imperial feet for medium precision', () => {
-      // 20 bits ≈ 45.6 m ≈ 150 ft
+      // 20 bits ≈ 22.8 m ≈ 75 ft
       const result = formatPrecisionAccuracy(20, 'mi');
       expect(result).toMatch(/^~\d+ ft$/);
     });
 
     it('should format imperial miles for low precision', () => {
-      // 10 bits ≈ 46.7 km ≈ 29 mi
+      // 10 bits ≈ 23.3 km ≈ 14.5 mi → "~15 mi" (rounded, > 10)
       const result = formatPrecisionAccuracy(10, 'mi');
       expect(result).toMatch(/^~\d+ mi$/);
     });
 
     it('should use one decimal for km < 10', () => {
-      // 14 bits = 2^18 * 1e-7 * 111320 ≈ 2918 m ≈ 2.9 km
-      const result = formatPrecisionAccuracy(14, 'km');
+      // 13 bits ≈ 2918 m ≈ 2.9 km (matches Meshtastic docs)
+      const result = formatPrecisionAccuracy(13, 'km');
       expect(result).toMatch(/^~\d+\.\d km$/);
     });
 
     it('should use one decimal for miles < 10', () => {
-      // 14 bits ≈ 2918 m ≈ 1.8 mi
-      const result = formatPrecisionAccuracy(14, 'mi');
+      // 13 bits ≈ 2918 m ≈ 1.8 mi (matches Meshtastic docs)
+      const result = formatPrecisionAccuracy(13, 'mi');
       expect(result).toMatch(/^~\d+\.\d mi$/);
     });
 
+    it('should match Meshtastic documentation values (within rounding)', () => {
+      // Reference: https://meshtastic.org/docs/configuration/radio/channels/#position-precision
+      // Our values match the docs to within rounding of the display format
+      expect(formatPrecisionAccuracy(10, 'km')).toBe('~23 km');      // docs: 23.3 km
+      expect(formatPrecisionAccuracy(12, 'km')).toBe('~5.8 km');     // docs: 5.8 km
+      expect(formatPrecisionAccuracy(13, 'km')).toBe('~2.9 km');     // docs: 2.9 km
+      expect(formatPrecisionAccuracy(14, 'km')).toBe('~1.5 km');     // docs: 1.5 km
+      expect(formatPrecisionAccuracy(16, 'km')).toBe('~364 m');      // docs: 364 m
+      expect(formatPrecisionAccuracy(17, 'km')).toBe('~182 m');      // docs: 182 m
+      expect(formatPrecisionAccuracy(18, 'km')).toBe('~91 m');       // docs: 91 m
+      expect(formatPrecisionAccuracy(19, 'km')).toBe('~46 m');       // docs: 45 m
+    });
+
     it('should handle boundary bit value 1', () => {
-      // 1 bit = 2^31 * 1e-7 * 111320 ≈ very large
+      // 1 bit = 2^31 * 1e-7 * 111320 / 2 ≈ very large
       const resultKm = formatPrecisionAccuracy(1, 'km');
       const resultMi = formatPrecisionAccuracy(1, 'mi');
       expect(resultKm).toMatch(/km$/);
@@ -285,8 +298,8 @@ describe('Distance Utilities', () => {
     });
 
     it('should produce decreasing accuracy values as bits increase', () => {
-      // Higher bits = more precision = smaller accuracy circle
-      const getMeters = (bits: number) => Math.pow(2, 32 - bits) * 1e-7 * 111320;
+      // Higher bits = more precision = smaller accuracy value
+      const getMeters = (bits: number) => Math.pow(2, 32 - bits) * 1e-7 * 111320 / 2;
       expect(getMeters(10)).toBeGreaterThan(getMeters(20));
       expect(getMeters(20)).toBeGreaterThan(getMeters(30));
     });
