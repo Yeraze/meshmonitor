@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/Yeraze/meshmonitor)](https://github.com/Yeraze/meshmonitor/blob/main/LICENSE)
 [![Translation Status](https://hosted.weblate.org/widgets/meshmonitor/-/svg-badge.svg)](https://hosted.weblate.org/engage/meshmonitor/)
 
-A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and persistent SQLite database storage.
+A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and multi-database support (SQLite, PostgreSQL, MySQL).
 
 ![MeshMonitor Interface](docs/images/main.png)
 
@@ -85,14 +85,17 @@ MeshMonitor supports multiple deployment methods:
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking
 - **Modern UI** - Catppuccin theme with message reactions and threading
 - **Interactive Maps** - Node positions and network topology visualization
-- **Persistent Storage** - SQLite database with export/import capabilities
+- **Multi-Database Support** - SQLite (default), PostgreSQL, and MySQL via Drizzle ORM
 - **Notifications** - Web Push and Apprise integration for 100+ services
 - **Authentication** - Local and OIDC/SSO support with RBAC
 - **Security Monitoring** - Encryption key analysis and vulnerability detection
 - **Device Configuration** - Full node configuration UI
+- **Virtual Node Server** - Remote TCP access for Meshtastic Python clients
+- **REST API** - v1 API with Bearer token authentication for external integrations
+- **MeshCore Support** - Optional monitoring for MeshCore mesh networks
 - **Docker Ready** - Pre-built multi-architecture images
-- **🆕 One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback
-- **🆕 System Backup & Restore** - Complete disaster recovery with automated backups
+- **One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback
+- **System Backup & Restore** - Complete disaster recovery with automated backups
 
 For a complete feature list and technical details, visit **[meshmonitor.org](https://meshmonitor.org/)**.
 
@@ -100,7 +103,7 @@ For a complete feature list and technical details, visit **[meshmonitor.org](htt
 
 ### Prerequisites
 
-- Node.js 20+ or 22+ (Node.js 18 is deprecated)
+- Node.js 20+
 - Docker (recommended) or local Node.js environment
 - A Meshtastic device with WiFi/Ethernet connectivity
 
@@ -151,7 +154,7 @@ This starts both the React dev server (port 5173) and the Express API server (po
 **Backend:**
 - Node.js with Express 5
 - TypeScript
-- better-sqlite3 (SQLite driver)
+- Drizzle ORM with SQLite, PostgreSQL, and MySQL drivers
 
 **DevOps:**
 - Docker with multi-stage builds
@@ -190,7 +193,8 @@ This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICE
 
 - [Meshtastic](https://meshtastic.org/) - Open source mesh networking
 - [Catppuccin](https://catppuccin.com/) - Soothing pastel theme
-- [React](https://reactjs.org/) - Frontend framework
+- [React](https://react.dev/) - Frontend framework
+- [Drizzle ORM](https://orm.drizzle.team/) - TypeScript ORM
 - [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) - SQLite driver
 
 ## Star History
