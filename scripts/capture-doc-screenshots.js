@@ -112,6 +112,39 @@ const SCREENSHOTS = [
     },
   },
 
+  {
+    name: 'link-quality.png',
+    dir: 'features',
+    hash: 'messages',
+    desc: 'Link Quality & Smart Hops',
+    before: async (page) => {
+      // Click the first node in the DM list to open its telemetry panel
+      await page.evaluate(() => {
+        const nodeItem = document.querySelector('.node-item');
+        if (nodeItem) nodeItem.click();
+      });
+      await new Promise(r => setTimeout(r, 3000));
+      // Scroll to the Link Quality / Smart Hops graphs area
+      await page.evaluate(() => {
+        // Look for the graph section headers or the graph containers
+        const candidates = [
+          ...document.querySelectorAll('h3, h4, .graph-title, .chart-title, text')
+        ];
+        for (const el of candidates) {
+          const text = el.textContent?.toLowerCase() || '';
+          if (text.includes('link quality') || text.includes('smart hop')) {
+            el.scrollIntoView({ behavior: 'instant', block: 'start' });
+            return;
+          }
+        }
+        // Fallback: scroll the right panel down significantly
+        const panel = document.querySelector('.dm-right-panel, .message-detail, .telemetry-section');
+        if (panel) panel.scrollTop = panel.scrollHeight;
+      });
+      await new Promise(r => setTimeout(r, 2000));
+    },
+  },
+
   // ── Configuration pages ───────────────────────────────────────────────
   {
     name: 'channel-database.png',
@@ -119,12 +152,6 @@ const SCREENSHOTS = [
     hash: 'configuration',
     desc: 'Channel Database config',
     before: async (page) => {
-      // Dismiss any popups/modals that might be covering content
-      await page.evaluate(() => {
-        document.querySelectorAll('.modal-overlay, .popup-overlay, [class*="popup"], [class*="modal"]')
-          .forEach(el => el.remove());
-      });
-      await new Promise(r => setTimeout(r, 500));
       await page.evaluate(() => {
         const el = document.getElementById('config-channel-database');
         if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
@@ -202,6 +229,23 @@ async function login(page) {
   await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#root', { timeout: 10000 });
   await new Promise(r => setTimeout(r, 3000));
+
+  // Dismiss the news popup: check "don't show again", then click Close
+  await page.evaluate(() => {
+    const overlay = document.querySelector('.news-modal-overlay');
+    if (!overlay) return;
+    const checkbox = overlay.querySelector('.news-dont-show-checkbox input[type="checkbox"]');
+    if (checkbox && !checkbox.checked) checkbox.click();
+    // Click through all news items until the last "Close" button
+    const clickNext = () => {
+      const btn = overlay.querySelector('.news-button-primary');
+      if (btn) { btn.click(); return true; }
+      return false;
+    };
+    // Click up to 20 times to get through all news items
+    for (let i = 0; i < 20 && clickNext(); i++) { /* keep clicking Next/Close */ }
+  });
+  await new Promise(r => setTimeout(r, 1000));
 }
 
 /** Filter the screenshot list by --only flag. */
