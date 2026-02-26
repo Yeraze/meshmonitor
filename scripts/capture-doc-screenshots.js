@@ -114,6 +114,25 @@ const SCREENSHOTS = [
 
   // ── Configuration pages ───────────────────────────────────────────────
   {
+    name: 'channel-database.png',
+    dir: 'features',
+    hash: 'configuration',
+    desc: 'Channel Database config',
+    before: async (page) => {
+      // Dismiss any popups/modals that might be covering content
+      await page.evaluate(() => {
+        document.querySelectorAll('.modal-overlay, .popup-overlay, [class*="popup"], [class*="modal"]')
+          .forEach(el => el.remove());
+      });
+      await new Promise(r => setTimeout(r, 500));
+      await page.evaluate(() => {
+        const el = document.getElementById('config-channel-database');
+        if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+      });
+      await new Promise(r => setTimeout(r, 1000));
+    },
+  },
+  {
     name: 'settings-backup.png',
     dir: 'configuration',
     hash: 'settings',
