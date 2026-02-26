@@ -2,6 +2,8 @@
 
 The Packet Monitor is a diagnostic tool that displays raw Meshtastic packets as they are received from the mesh network. It provides visibility into the low-level packet traffic for debugging and analysis purposes.
 
+![Packet Monitor](/images/features/packet-monitor.png)
+
 ## Accessing the Packet Monitor
 
 The Packet Monitor appears at the bottom of the Map tab once enabled in Settings. It requires appropriate permissions to view.

@@ -2,6 +2,8 @@
 
 MeshMonitor includes several automation features that can help you manage your mesh network more efficiently. These features run in the background and can be configured through the Info tab.
 
+![Automation](/images/features/automation.png)
+
 ## Auto Acknowledge
 
 Automatically responds to messages matching a specific pattern with a customizable confirmation message.

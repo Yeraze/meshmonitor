@@ -2,6 +2,8 @@
 
 The Admin Commands tab provides comprehensive remote management capabilities for Meshtastic nodes, allowing administrators to configure and control both locally connected and remote nodes in the mesh network.
 
+![Admin Commands](/images/features/admin-commands.png)
+
 ::: warning
 Admin commands directly modify Meshtastic device settings and can affect device functionality or network connectivity. Always ensure you understand the impact of changes before applying them. Some commands (like factory reset or purge node database) are destructive and cannot be undone.
 :::
