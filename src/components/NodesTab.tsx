@@ -1940,12 +1940,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   return true;
                 })
                 .map(node => {
-                  // Convert precision_bits to size in meters
-                  // precision_bits indicates how many bits of lat/lon are valid
-                  // Earth's circumference is ~40,075,000 meters
-                  // At N precision bits, the grid cell size is Earth's circumference / 2^N
-                  const earthCircumference = 40_075_000; // meters
-                  const sizeMeters = earthCircumference / Math.pow(2, node.positionPrecisionBits!);
+                  // Convert precision_bits to accuracy zone in meters
+                  // Meshtastic encodes lat/lon as int32 (1 unit = 1e-7 degrees).
+                  // With N precision bits, the grid cell = 2^(32-N) * 1e-7 * 111111 meters.
+                  // The accuracy (max deviation) is half the grid cell.
+                  const metersPerDegree = 111_111;
+                  const sizeMeters = Math.pow(2, 32 - node.positionPrecisionBits!) * 1e-7 * metersPerDegree;
                   const halfSizeMeters = sizeMeters / 2;
 
                   // Convert meters to lat/lng offsets
