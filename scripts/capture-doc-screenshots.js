@@ -78,11 +78,11 @@ const DIRS = {
 // ---------------------------------------------------------------------------
 const SCREENSHOTS = [
 
-  // ── Homepage hero images (refresh the existing 4) ─────────────────────
-  { name: 'main.png',     dir: 'homepage', hash: 'nodes',    desc: 'Main nodes/map view' },
-  { name: 'channels.png', dir: 'homepage', hash: 'channels', desc: 'Channels tab' },
-  { name: 'messages.png', dir: 'homepage', hash: 'messages', desc: 'Messages tab' },
-  { name: 'users.png',    dir: 'homepage', hash: 'users',    desc: 'User management' },
+  // ── Homepage hero images ─────────────────────────────────────────────
+  { name: 'main.png',          dir: 'homepage', hash: 'nodes',         desc: 'Main nodes/map view' },
+  { name: 'channels.png',      dir: 'homepage', hash: 'channels',      desc: 'Channels tab' },
+  { name: 'dashboard.png',     dir: 'homepage', hash: 'dashboard',     desc: 'Dashboard widgets' },
+  { name: 'device-config.png', dir: 'homepage', hash: 'configuration', desc: 'Device configuration' },
 
   // ── Feature pages ─────────────────────────────────────────────────────
   { name: 'nodes-map.png',      dir: 'features', hash: 'nodes',          desc: 'Interactive map with nodes' },
@@ -158,6 +158,7 @@ const SCREENSHOTS = [
       });
       await new Promise(r => setTimeout(r, 1000));
     },
+    clip: '#config-channel-database',
   },
   {
     name: 'settings-backup.png',
@@ -334,7 +335,17 @@ async function main() {
 
         if (shot.before) await shot.before(page);
 
-        await page.screenshot({ path: outputPath, fullPage: false });
+        if (shot.clip) {
+          // Element-level screenshot — captures just the matched element
+          const el = await page.$(shot.clip);
+          if (el) {
+            await el.screenshot({ path: outputPath });
+          } else {
+            await page.screenshot({ path: outputPath, fullPage: false });
+          }
+        } else {
+          await page.screenshot({ path: outputPath, fullPage: false });
+        }
         captured++;
 
         const sizeKB = (fs.statSync(outputPath).size / 1024).toFixed(0);
