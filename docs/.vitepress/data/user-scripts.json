@@ -522,5 +522,55 @@
       "Configurable RayHunter URL via --url flag or RAYHUNTER_URL env var",
       "--always-report flag for testing"
     ]
+  },
+  {
+    "name": "Watch and Reboot",
+    "filename": "meshmonitor-watchandreboot.py",
+    "icon": "🔃",
+    "description": "Capability-aware watchdog and self-healing remediation script for MeshMonitor and Meshtastic deployments. Monitors IP-based nodes or BLE bridge endpoints, automatically restarts services or containers when unhealthy, and escalates to safe device reboots with cooldown protection.",
+    "language": "Python",
+    "tags": ["Watchdog", "Health Check", "Automation", "BLE Bridge", "Self-Healing", "Cron"],
+    "githubPath": "maxhayim/meshmonitor-watchandreboot/meshmonitor-watchandreboot.py",
+    "exampleTrigger": "Cron-based (e.g. */5 * * * * meshmonitor-watchandreboot watch-once 10.0.0.10 --mode ip)",
+    "requirements": [
+      "Python 3.8+",
+      "SSH access (for IP mode reboot)",
+      "Optional: mosquitto_pub (MQTT notifications)",
+      "Optional: curl (webhook notifications)"
+    ],
+    "author": "maxhayim",
+    "features": [
+      "IP-based and BLE bridge endpoint monitoring",
+      "Automatic service/container restart on failure",
+      "Escalation to safe device reboot when needed",
+      "Cooldown protection to prevent reboot loops",
+      "MQTT and webhook notification support",
+      "Cron-friendly single-shot mode"
+    ]
+  },
+  {
+    "name": "Home Assistant Bridge",
+    "filename": "meshmonitor_bridge_homeassistant.py",
+    "icon": "🏘️",
+    "description": "Lightweight bridge connecting Home Assistant to MeshMonitor via MQTT. Forwards state changes, classifies alerts (motion, leak, smoke, CO), and optionally executes allowlisted service commands with built-in health monitoring and heartbeat reporting.",
+    "language": "Python",
+    "tags": ["Home Assistant", "MQTT", "Bridge", "Automation", "Alerts", "Health Monitoring"],
+    "githubPath": "maxhayim/meshmonitor-bridge-homeassistant/meshmonitor_bridge_homeassistant.py",
+    "exampleTrigger": "Runs as a daemon (bridges HA state changes to MQTT topics)",
+    "requirements": [
+      "Python 3.8+",
+      "MQTT broker (e.g. Mosquitto)",
+      "Home Assistant instance with Long-Lived Access Token",
+      "paho-mqtt and websockets Python packages"
+    ],
+    "author": "maxhayim",
+    "features": [
+      "Bidirectional Home Assistant to MeshMonitor bridge",
+      "Automatic alert classification (motion, leak, smoke, CO)",
+      "Optional allowlisted service command execution",
+      "MQTT health heartbeat and status reporting",
+      "WebSocket-based HA state change subscription",
+      "Configurable via environment variables"
+    ]
   }
 ]
