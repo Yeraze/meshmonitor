@@ -419,7 +419,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
-        localStatsIntervalMinutes: localLocalStatsIntervalMinutes.toString()
+        localStatsIntervalMinutes: localLocalStatsIntervalMinutes.toString(),
+        nodeHopsCalculation: localNodeHopsCalculation,
+        nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
+        nodeDimmingStartHours: nodeDimmingStartHours.toString(),
+        nodeDimmingMinOpacity: nodeDimmingMinOpacity.toString(),
       };
 
       // Save to server

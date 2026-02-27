@@ -5095,6 +5095,10 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoFavoriteStaleHours',
       'homoglyphEnabled',
       'localStatsIntervalMinutes',
+      'nodeHopsCalculation',
+      'nodeDimmingEnabled',
+      'nodeDimmingStartHours',
+      'nodeDimmingMinOpacity',
     ];
     const filteredSettings: Record<string, string> = {};
 
