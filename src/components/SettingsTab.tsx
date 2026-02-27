@@ -21,6 +21,8 @@ import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
 import TapbackEmojiSettings from './TapbackEmojiSettings';
+import EmbedSettings from './settings/EmbedSettings';
+import { useAuth } from '../contexts/AuthContext';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -129,6 +131,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
   const {
     customThemes,
     customTilesets,
@@ -788,6 +792,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
+        ...(isAdmin ? [{ id: 'settings-embed', label: t('settings.embed_maps', 'Embed Maps') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
@@ -1420,6 +1425,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         <DatabaseMaintenanceSection />
 
         <AutoUpgradeTestSection baseUrl={baseUrl} />
+
+        {isAdmin && (
+          <div id="settings-embed" className="settings-section">
+            <h3>{t('settings.embed_maps', 'Embed Maps')}</h3>
+            <EmbedSettings />
+          </div>
+        )}
 
         <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>

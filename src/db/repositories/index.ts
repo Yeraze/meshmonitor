@@ -33,3 +33,5 @@ export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatab
 export { IgnoredNodesRepository, type IgnoredNodeRecord } from './ignoredNodes.js';
 export { MeshCoreRepository } from './meshcore.js';
 export type { DbMeshCoreNode, DbMeshCoreMessage } from './meshcore.js';
+export { EmbedProfileRepository } from './embedProfiles.js';
+export type { EmbedProfile, EmbedProfileInput } from './embedProfiles.js';

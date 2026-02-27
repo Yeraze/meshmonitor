@@ -33,3 +33,6 @@ export * from './ignoredNodes.js';
 // MeshCore tables
 export * from './meshcoreNodes.js';
 export * from './meshcoreMessages.js';
+
+// Embed Profiles table
+export * from './embedProfiles.js';

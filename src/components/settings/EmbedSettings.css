@@ -1,0 +1,189 @@
+/* Embed Settings - matches MeshMonitor Catppuccin theme */
+
+/* Profile table */
+.embed-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.embed-table thead tr {
+  border-bottom: 2px solid var(--ctp-surface2);
+}
+
+.embed-table th {
+  padding: 0.75rem;
+  text-align: left;
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.embed-table tbody tr {
+  border-bottom: 1px solid var(--ctp-surface1);
+}
+
+.embed-table tbody tr:hover {
+  background: var(--ctp-surface0);
+}
+
+.embed-table td {
+  padding: 0.75rem;
+  color: var(--ctp-text);
+}
+
+.embed-table-center {
+  text-align: center;
+}
+
+.embed-table-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.embed-table-actions .settings-button {
+  margin-left: 0.25rem;
+}
+
+.embed-status-enabled {
+  color: var(--ctp-green);
+  font-weight: 500;
+}
+
+.embed-status-disabled {
+  color: var(--ctp-red);
+  font-weight: 500;
+}
+
+/* Danger button variant */
+.embed-button-danger {
+  color: var(--ctp-red);
+}
+
+.embed-button-danger:hover:not(:disabled) {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+}
+
+/* Modal override for wider embed form */
+.embed-modal {
+  max-width: 700px;
+}
+
+/* Form inputs - extend setting-input to full width */
+.embed-input-wide {
+  width: 100%;
+}
+
+/* Checkbox grid for channels & features */
+.embed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+}
+
+.embed-checkbox-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: normal !important;
+  margin-bottom: 0 !important;
+}
+
+.embed-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ctp-blue);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Map picker */
+.embed-map-picker {
+  height: 280px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--ctp-surface2);
+  margin-top: 0.5rem;
+}
+
+.embed-map-coords {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--ctp-subtext0);
+}
+
+.embed-map-coords strong {
+  color: var(--ctp-text);
+}
+
+/* Info box (security note) */
+.embed-info-box {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-left: 4px solid var(--ctp-blue);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+}
+
+.embed-info-box strong {
+  color: var(--ctp-blue);
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.embed-info-box p {
+  color: var(--ctp-subtext0);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Embed code textarea */
+.embed-code-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: 0.85rem;
+  background: var(--ctp-surface1);
+  border: 2px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.75rem;
+  border-radius: 8px;
+  resize: vertical;
+  margin: 0.75rem 0;
+}
+
+.embed-code-textarea:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .embed-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .embed-table-actions {
+    white-space: normal;
+  }
+
+  .embed-table-actions .settings-button {
+    margin-bottom: 0.25rem;
+  }
+
+  .embed-map-picker {
+    height: 200px;
+  }
+
+  .embed-map-coords {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}

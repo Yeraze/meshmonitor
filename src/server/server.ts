@@ -196,6 +196,31 @@ const getAllowedOrigins = () => {
   return origins.length > 0 ? origins : ['http://localhost:3000'];
 };
 
+// Embed origin cache (refreshes every 60 seconds)
+let embedOriginsCache: string[] = [];
+let embedOriginsCacheTime = 0;
+const EMBED_ORIGINS_CACHE_TTL = 60000;
+
+function refreshEmbedOriginsCache(): void {
+  databaseService.getEmbedProfilesAsync().then(profiles => {
+    embedOriginsCache = [...new Set(
+      profiles.filter(p => p.enabled).flatMap(p => p.allowedOrigins)
+    )];
+    embedOriginsCacheTime = Date.now();
+  }).catch(() => {
+    // On error, keep stale cache
+  });
+}
+
+function getEmbedAllowedOrigins(): string[] {
+  if (Date.now() - embedOriginsCacheTime < EMBED_ORIGINS_CACHE_TTL) {
+    return embedOriginsCache;
+  }
+  // Fire async lookup, use stale cache until it resolves
+  refreshEmbedOriginsCache();
+  return embedOriginsCache;
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -205,11 +230,17 @@ app.use(
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-        callback(null, true);
-      } else {
-        logger.warn(`CORS request blocked from origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+        return callback(null, true);
       }
+
+      // Check embed profile origins
+      const embedOrigins = getEmbedAllowedOrigins();
+      if (embedOrigins.includes(origin) || embedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+
+      logger.warn(`CORS request blocked from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     optionsSuccessStatus: 200,
@@ -655,6 +686,9 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import embedProfileRoutes from './routes/embedProfileRoutes.js';
+import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
+import embedPublicRoutes from './routes/embedPublicRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -750,6 +784,9 @@ apiRouter.use('/tile-server', optionalAuth(), tileServerRoutes);
 
 // Settings routes (GET/POST/DELETE /settings)
 apiRouter.use('/settings', settingsRoutes);
+
+// Embed profile admin routes (admin only)
+apiRouter.use('/embed-profiles', embedProfileRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
@@ -8570,7 +8607,14 @@ apiRouter.delete('/scripts/:filename', requirePermission('settings', 'write'), a
   }
 });
 
-// Mount API router first - this must come before static file serving
+// Public embed config API (must come BEFORE apiRouter to avoid rate limiter and CSRF)
+// CSP middleware is applied per-route inside the router (needs req.params.profileId)
+if (BASE_URL) {
+  app.use(`${BASE_URL}/api/embed`, embedPublicRoutes);
+}
+app.use('/api/embed', embedPublicRoutes);
+
+// Mount API router - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
 if (BASE_URL) {
   app.use(`${BASE_URL}/api`, apiLimiter, csrfProtection, apiRouter);
@@ -8611,6 +8655,8 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
 // Cache for rewritten HTML to avoid repeated file reads
 let cachedHtml: string | null = null;
 let cachedRewrittenHtml: string | null = null;
+let cachedEmbedHtml: string | null = null;
+let cachedRewrittenEmbedHtml: string | null = null;
 
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
@@ -8653,6 +8699,20 @@ if (BASE_URL) {
     staticMiddleware(req, res, next);
   });
 
+  // Serve embed page (before SPA fallback)
+  app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
+    if (!cachedRewrittenEmbedHtml) {
+      const embedHtmlPath = path.join(buildPath, 'embed.html');
+      if (!fs.existsSync(embedHtmlPath)) {
+        return res.status(404).send('Embed page not found');
+      }
+      cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
+      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL);
+    }
+    res.setHeader('Content-Type', 'text/html');
+    res.send(cachedRewrittenEmbedHtml);
+  });
+
   // Catch all handler for SPA routing - but exclude /api
   app.get(`${BASE_URL}`, (_req: express.Request, res: express.Response) => {
     // Use cached HTML if available, otherwise read and cache
@@ -8688,6 +8748,19 @@ if (BASE_URL) {
 } else {
   // Normal static file serving for root deployment
   app.use(express.static(buildPath));
+
+  // Serve embed page (before SPA fallback)
+  app.get('/embed/:profileId', createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
+    if (!cachedEmbedHtml) {
+      const embedHtmlPath = path.join(buildPath, 'embed.html');
+      if (!fs.existsSync(embedHtmlPath)) {
+        return res.status(404).send('Embed page not found');
+      }
+      cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
+    }
+    res.setHeader('Content-Type', 'text/html');
+    res.send(cachedEmbedHtml);
+  });
 
   // Catch all handler for SPA routing - skip API routes
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -8820,6 +8893,9 @@ let server: ReturnType<typeof app.listen>;
     logger.error('❌ Database initialization failed:', error);
     process.exit(1);
   }
+
+  // Eagerly populate embed origins cache so first CORS check works
+  refreshEmbedOriginsCache();
 
   server = app.listen(PORT, () => {
     logger.debug(`MeshMonitor server running on port ${PORT}`);
