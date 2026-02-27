@@ -24,7 +24,7 @@ RUN if [ ! -f "protobufs/meshtastic/mesh.proto" ]; then \
     fi
 
 # Copy config files and source needed for builds
-COPY tsconfig.json tsconfig.server.json tsconfig.node.json vite.config.ts index.html ./
+COPY tsconfig.json tsconfig.server.json tsconfig.node.json vite.config.ts index.html embed.html ./
 COPY src ./src
 COPY public ./public
 
