@@ -655,6 +655,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import embedProfileRoutes from './routes/embedProfileRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -750,6 +751,9 @@ apiRouter.use('/tile-server', optionalAuth(), tileServerRoutes);
 
 // Settings routes (GET/POST/DELETE /settings)
 apiRouter.use('/settings', settingsRoutes);
+
+// Embed profile admin routes (admin only)
+apiRouter.use('/embed-profiles', embedProfileRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
