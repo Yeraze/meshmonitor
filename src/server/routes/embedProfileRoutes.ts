@@ -13,6 +13,30 @@ import { requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
+/** Validate that a value is a valid URL origin (scheme://host[:port], no path) */
+function isValidOrigin(origin: unknown): origin is string {
+  if (typeof origin !== 'string') return false;
+  try {
+    const url = new URL(origin);
+    return (url.protocol === 'https:' || url.protocol === 'http:') &&
+           origin === url.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Filter and validate channel numbers (must be integers 0-7) */
+function validateChannels(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((ch): ch is number => typeof ch === 'number' && Number.isInteger(ch) && ch >= 0 && ch <= 7);
+}
+
+/** Clamp poll interval to safe bounds (10-300 seconds) */
+function clampPollInterval(val: unknown): number {
+  if (typeof val !== 'number') return 30;
+  return Math.max(10, Math.min(300, val));
+}
+
 const router = Router();
 
 // All embed profile routes require admin access
@@ -39,7 +63,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const id = randomUUID();
-    const channels = Array.isArray(req.body.channels) ? req.body.channels : [];
+    const channels = validateChannels(req.body.channels);
     const tileset = typeof req.body.tileset === 'string' ? req.body.tileset : 'osm';
     const defaultLat = typeof req.body.defaultLat === 'number' ? req.body.defaultLat : 0;
     const defaultLng = typeof req.body.defaultLng === 'number' ? req.body.defaultLng : 0;
@@ -50,8 +74,10 @@ router.post('/', async (req: Request, res: Response) => {
     const showPaths = req.body.showPaths === true;
     const showNeighborInfo = req.body.showNeighborInfo === true;
     const showMqttNodes = req.body.showMqttNodes !== false;
-    const pollIntervalSeconds = typeof req.body.pollIntervalSeconds === 'number' ? req.body.pollIntervalSeconds : 30;
-    const allowedOrigins = Array.isArray(req.body.allowedOrigins) ? req.body.allowedOrigins : [];
+    const pollIntervalSeconds = clampPollInterval(req.body.pollIntervalSeconds);
+    const allowedOrigins = Array.isArray(req.body.allowedOrigins)
+      ? req.body.allowedOrigins.filter(isValidOrigin)
+      : [];
     const enabled = req.body.enabled !== false;
 
     const profile = await databaseService.createEmbedProfileAsync({
@@ -94,22 +120,23 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates: Record<string, unknown> = {};
 
-    // Only include fields that are present in the body
-    if (req.body.name !== undefined) updates.name = req.body.name;
-    if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
-    if (req.body.channels !== undefined) updates.channels = req.body.channels;
-    if (req.body.tileset !== undefined) updates.tileset = req.body.tileset;
-    if (req.body.defaultLat !== undefined) updates.defaultLat = req.body.defaultLat;
-    if (req.body.defaultLng !== undefined) updates.defaultLng = req.body.defaultLng;
-    if (req.body.defaultZoom !== undefined) updates.defaultZoom = req.body.defaultZoom;
-    if (req.body.showTooltips !== undefined) updates.showTooltips = req.body.showTooltips;
-    if (req.body.showPopups !== undefined) updates.showPopups = req.body.showPopups;
-    if (req.body.showLegend !== undefined) updates.showLegend = req.body.showLegend;
-    if (req.body.showPaths !== undefined) updates.showPaths = req.body.showPaths;
-    if (req.body.showNeighborInfo !== undefined) updates.showNeighborInfo = req.body.showNeighborInfo;
-    if (req.body.showMqttNodes !== undefined) updates.showMqttNodes = req.body.showMqttNodes;
-    if (req.body.pollIntervalSeconds !== undefined) updates.pollIntervalSeconds = req.body.pollIntervalSeconds;
-    if (req.body.allowedOrigins !== undefined) updates.allowedOrigins = req.body.allowedOrigins;
+    // Only include fields that are present in the body, with type validation
+    if (req.body.name !== undefined && typeof req.body.name === 'string') updates.name = req.body.name.trim();
+    if (req.body.enabled !== undefined) updates.enabled = Boolean(req.body.enabled);
+    if (req.body.channels !== undefined) updates.channels = validateChannels(req.body.channels);
+    if (req.body.tileset !== undefined && typeof req.body.tileset === 'string') updates.tileset = req.body.tileset;
+    if (req.body.defaultLat !== undefined && typeof req.body.defaultLat === 'number') updates.defaultLat = req.body.defaultLat;
+    if (req.body.defaultLng !== undefined && typeof req.body.defaultLng === 'number') updates.defaultLng = req.body.defaultLng;
+    if (req.body.defaultZoom !== undefined && typeof req.body.defaultZoom === 'number') updates.defaultZoom = req.body.defaultZoom;
+    if (req.body.showTooltips !== undefined) updates.showTooltips = Boolean(req.body.showTooltips);
+    if (req.body.showPopups !== undefined) updates.showPopups = Boolean(req.body.showPopups);
+    if (req.body.showLegend !== undefined) updates.showLegend = Boolean(req.body.showLegend);
+    if (req.body.showPaths !== undefined) updates.showPaths = Boolean(req.body.showPaths);
+    if (req.body.showNeighborInfo !== undefined) updates.showNeighborInfo = Boolean(req.body.showNeighborInfo);
+    if (req.body.showMqttNodes !== undefined) updates.showMqttNodes = Boolean(req.body.showMqttNodes);
+    if (req.body.pollIntervalSeconds !== undefined) updates.pollIntervalSeconds = clampPollInterval(req.body.pollIntervalSeconds);
+    if (req.body.allowedOrigins !== undefined) updates.allowedOrigins = Array.isArray(req.body.allowedOrigins)
+      ? req.body.allowedOrigins.filter(isValidOrigin) : [];
 
     const profile = await databaseService.updateEmbedProfileAsync(id, updates);
 

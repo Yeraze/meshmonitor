@@ -206,7 +206,8 @@ const EmbedSettings = () => {
     }
     try {
       // Use csrfFetch for DELETE since the endpoint returns 204 (no JSON body)
-      const res = await csrfFetch(`/meshmonitor/api/embed-profiles/${id}`, { method: 'DELETE' });
+      const baseUrl = await apiService.getBaseUrl();
+      const res = await csrfFetch(`${baseUrl}/api/embed-profiles/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Delete failed' }));
         throw new Error(err.error);

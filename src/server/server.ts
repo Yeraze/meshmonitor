@@ -201,20 +201,23 @@ let embedOriginsCache: string[] = [];
 let embedOriginsCacheTime = 0;
 const EMBED_ORIGINS_CACHE_TTL = 60000;
 
+function refreshEmbedOriginsCache(): void {
+  databaseService.getEmbedProfilesAsync().then(profiles => {
+    embedOriginsCache = [...new Set(
+      profiles.filter(p => p.enabled).flatMap(p => p.allowedOrigins)
+    )];
+    embedOriginsCacheTime = Date.now();
+  }).catch(() => {
+    // On error, keep stale cache
+  });
+}
+
 function getEmbedAllowedOrigins(): string[] {
   if (Date.now() - embedOriginsCacheTime < EMBED_ORIGINS_CACHE_TTL) {
     return embedOriginsCache;
   }
   // Fire async lookup, use stale cache until it resolves
-  databaseService.getEmbedProfilesAsync().then(profiles => {
-    embedOriginsCache = profiles
-      .filter(p => p.enabled)
-      .flatMap(p => p.allowedOrigins)
-      .filter((v, i, a) => a.indexOf(v) === i); // dedupe
-    embedOriginsCacheTime = Date.now();
-  }).catch(() => {
-    // On error, keep stale cache
-  });
+  refreshEmbedOriginsCache();
   return embedOriginsCache;
 }
 
@@ -8652,6 +8655,8 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
 // Cache for rewritten HTML to avoid repeated file reads
 let cachedHtml: string | null = null;
 let cachedRewrittenHtml: string | null = null;
+let cachedEmbedHtml: string | null = null;
+let cachedRewrittenEmbedHtml: string | null = null;
 
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
@@ -8696,14 +8701,16 @@ if (BASE_URL) {
 
   // Serve embed page (before SPA fallback)
   app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
-    const embedHtmlPath = path.join(buildPath, 'embed.html');
-    if (!fs.existsSync(embedHtmlPath)) {
-      return res.status(404).send('Embed page not found');
+    if (!cachedRewrittenEmbedHtml) {
+      const embedHtmlPath = path.join(buildPath, 'embed.html');
+      if (!fs.existsSync(embedHtmlPath)) {
+        return res.status(404).send('Embed page not found');
+      }
+      cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
+      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL);
     }
-    let html = fs.readFileSync(embedHtmlPath, 'utf-8');
-    html = rewriteHtml(html, BASE_URL);
     res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    res.send(cachedRewrittenEmbedHtml);
   });
 
   // Catch all handler for SPA routing - but exclude /api
@@ -8744,13 +8751,15 @@ if (BASE_URL) {
 
   // Serve embed page (before SPA fallback)
   app.get('/embed/:profileId', createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
-    const embedHtmlPath = path.join(buildPath, 'embed.html');
-    if (!fs.existsSync(embedHtmlPath)) {
-      return res.status(404).send('Embed page not found');
+    if (!cachedEmbedHtml) {
+      const embedHtmlPath = path.join(buildPath, 'embed.html');
+      if (!fs.existsSync(embedHtmlPath)) {
+        return res.status(404).send('Embed page not found');
+      }
+      cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
     }
-    const html = fs.readFileSync(embedHtmlPath, 'utf-8');
     res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    res.send(cachedEmbedHtml);
   });
 
   // Catch all handler for SPA routing - skip API routes
@@ -8884,6 +8893,9 @@ let server: ReturnType<typeof app.listen>;
     logger.error('❌ Database initialization failed:', error);
     process.exit(1);
   }
+
+  // Eagerly populate embed origins cache so first CORS check works
+  refreshEmbedOriginsCache();
 
   server = app.listen(PORT, () => {
     logger.debug(`MeshMonitor server running on port ${PORT}`);
