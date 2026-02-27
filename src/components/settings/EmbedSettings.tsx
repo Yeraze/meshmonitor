@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, useMapEvents, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -104,7 +104,7 @@ function MapCenterUpdater({ lat, lng }: MapCenterUpdaterProps) {
 // Main component
 // ---------------------------------------------------------------------------
 
-const EmbedSettings: React.FC = () => {
+const EmbedSettings = () => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
