@@ -140,8 +140,42 @@ const EmbedSettings = () => {
   }, [fetchProfiles]);
 
   // ---- Form helpers ----
-  const openCreate = () => {
-    setForm({ ...DEFAULT_FORM });
+  const openCreate = async () => {
+    const defaults = { ...DEFAULT_FORM };
+
+    // Try to compute centroid from active nodes so the map doesn't start at 0,0
+    try {
+      const nodes = await apiService.get<Array<{ latitude?: number; longitude?: number }>>('/api/nodes/active');
+      const withPos = nodes.filter(
+        (n) => n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0),
+      );
+      if (withPos.length > 0) {
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        for (const n of withPos) {
+          if (n.latitude! < minLat) minLat = n.latitude!;
+          if (n.latitude! > maxLat) maxLat = n.latitude!;
+          if (n.longitude! < minLng) minLng = n.longitude!;
+          if (n.longitude! > maxLng) maxLng = n.longitude!;
+        }
+        defaults.defaultLat = Math.round(((minLat + maxLat) / 2) * 1e6) / 1e6;
+        defaults.defaultLng = Math.round(((minLng + maxLng) / 2) * 1e6) / 1e6;
+
+        // Rough zoom from bounding box span
+        const latSpan = maxLat - minLat;
+        const lngSpan = maxLng - minLng;
+        const span = Math.max(latSpan, lngSpan);
+        if (span < 0.01) defaults.defaultZoom = 15;
+        else if (span < 0.05) defaults.defaultZoom = 13;
+        else if (span < 0.2) defaults.defaultZoom = 11;
+        else if (span < 1) defaults.defaultZoom = 9;
+        else if (span < 5) defaults.defaultZoom = 7;
+        else defaults.defaultZoom = 5;
+      }
+    } catch {
+      // Fall back to DEFAULT_FORM values (0,0) if node fetch fails
+    }
+
+    setForm(defaults);
     setEditingId('new');
   };
 
