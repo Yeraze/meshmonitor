@@ -140,17 +140,6 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Position telemetry types (from POSITION_APP packets, stored in the telemetry table)
-   */
-  private static POSITION_TYPES = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track', 'sats_in_view'];
-
-  /**
-   * Packet metadata types (extracted from any packet's headers, not from a specific portnum)
-   * These should be excluded from TELEMETRY_APP counts since they don't represent actual telemetry packets.
-   */
-  private static METADATA_TYPES = ['messageHops', 'snr_local', 'snr_remote', 'rssi', 'linkQuality'];
-
-  /**
    * Get telemetry by node with optional filters
    */
   async getTelemetryByNode(
