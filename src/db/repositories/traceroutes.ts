@@ -393,61 +393,6 @@ export class TraceroutesRepository extends BaseRepository {
     }
   }
 
-  /**
-   * Count traceroutes involving a specific node (by nodeNum).
-   */
-  async getTracerouteCountByNode(nodeNum: number, since?: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const conditions = [
-        or(
-          eq(traceroutesSqlite.fromNodeNum, nodeNum),
-          eq(traceroutesSqlite.toNodeNum, nodeNum),
-        ),
-      ];
-      if (since !== undefined) {
-        conditions.push(gte(traceroutesSqlite.timestamp, since));
-      }
-      const result = await db
-        .select()
-        .from(traceroutesSqlite)
-        .where(and(...conditions));
-      return result.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const conditions = [
-        or(
-          eq(traceroutesMysql.fromNodeNum, nodeNum),
-          eq(traceroutesMysql.toNodeNum, nodeNum),
-        ),
-      ];
-      if (since !== undefined) {
-        conditions.push(gte(traceroutesMysql.timestamp, since));
-      }
-      const result = await db
-        .select()
-        .from(traceroutesMysql)
-        .where(and(...conditions));
-      return result.length;
-    } else {
-      const db = this.getPostgresDb();
-      const conditions = [
-        or(
-          eq(traceroutesPostgres.fromNodeNum, nodeNum),
-          eq(traceroutesPostgres.toNodeNum, nodeNum),
-        ),
-      ];
-      if (since !== undefined) {
-        conditions.push(gte(traceroutesPostgres.timestamp, since));
-      }
-      const result = await db
-        .select()
-        .from(traceroutesPostgres)
-        .where(and(...conditions));
-      return result.length;
-    }
-  }
-
   // ============ ROUTE SEGMENTS ============
 
   /**
