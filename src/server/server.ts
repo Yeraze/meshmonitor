@@ -8665,6 +8665,18 @@ if (BASE_URL) {
     staticMiddleware(req, res, next);
   });
 
+  // Serve embed page (before SPA fallback)
+  app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
+    const embedHtmlPath = path.join(buildPath, 'embed.html');
+    if (!fs.existsSync(embedHtmlPath)) {
+      return res.status(404).send('Embed page not found');
+    }
+    let html = fs.readFileSync(embedHtmlPath, 'utf-8');
+    html = rewriteHtml(html, BASE_URL);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  });
+
   // Catch all handler for SPA routing - but exclude /api
   app.get(`${BASE_URL}`, (_req: express.Request, res: express.Response) => {
     // Use cached HTML if available, otherwise read and cache
@@ -8700,6 +8712,17 @@ if (BASE_URL) {
 } else {
   // Normal static file serving for root deployment
   app.use(express.static(buildPath));
+
+  // Serve embed page (before SPA fallback)
+  app.get('/embed/:profileId', createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
+    const embedHtmlPath = path.join(buildPath, 'embed.html');
+    if (!fs.existsSync(embedHtmlPath)) {
+      return res.status(404).send('Embed page not found');
+    }
+    const html = fs.readFileSync(embedHtmlPath, 'utf-8');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  });
 
   // Catch all handler for SPA routing - skip API routes
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
