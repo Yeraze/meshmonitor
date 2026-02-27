@@ -8,11 +8,13 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { createEmbedCspMiddleware } from '../middleware/embedMiddleware.js';
 
 const router = Router();
 
 // GET /:profileId/config — return public config for the embed profile
-router.get('/:profileId/config', (req: Request, res: Response) => {
+// The CSP middleware is applied per-route so it can access req.params.profileId
+router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res: Response) => {
   const profile = (req as any).embedProfile;
 
   if (!profile) {

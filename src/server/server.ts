@@ -8605,10 +8605,11 @@ apiRouter.delete('/scripts/:filename', requirePermission('settings', 'write'), a
 });
 
 // Public embed config API (must come BEFORE apiRouter to avoid rate limiter and CSRF)
+// CSP middleware is applied per-route inside the router (needs req.params.profileId)
 if (BASE_URL) {
-  app.use(`${BASE_URL}/api/embed`, createEmbedCspMiddleware(), embedPublicRoutes);
+  app.use(`${BASE_URL}/api/embed`, embedPublicRoutes);
 }
-app.use('/api/embed', createEmbedCspMiddleware(), embedPublicRoutes);
+app.use('/api/embed', embedPublicRoutes);
 
 // Mount API router - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
