@@ -8923,31 +8923,36 @@ class MeshtasticManager {
         logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
 
         // Route through message queue for rate limiting
+        // For DMs, send only once (maxAttempts=1) — the local radio ACK confirms
+        // transmission to the mesh; remote ACKs from the destination node are unreliable
+        // and waiting for them causes the queue to retry, sending the message multiple times.
         messageQueueService.enqueue(
           welcomeText,
           destination ?? 0, // destination: node number for DM, 0 for channel
           undefined, // replyId
           () => {
-            // Mark node as welcomed on successful send
-            const wasMarked = databaseService.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
-            if (wasMarked) {
-              logger.info(`✅ Node ${nodeId} welcomed successfully and marked in database`);
-            } else {
-              logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
-            }
             this.welcomingNodes.delete(nodeNum);
             logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
           },
           (reason: string) => {
-            logger.warn(`❌ Auto-welcome failed for ${nodeId}: ${reason}`);
+            logger.warn(`❌ Auto-welcome send failed for ${nodeId}: ${reason}`);
             this.welcomingNodes.delete(nodeNum);
             logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId} (failure case)`);
           },
-          destination ? undefined : channel // channel: undefined for DM, channel number for channel
+          destination ? undefined : channel, // channel: undefined for DM, channel number for channel
+          1 // maxAttemptsOverride: send once, don't retry on missing remote ACK
         );
 
-        // Note: welcomingNodes lock is released in the success/failure callbacks above
-        // The welcomingNodes Set prevents duplicate sends while the message is queued
+        // Mark node as welcomed immediately after enqueue — the local radio ACK is
+        // sufficient confirmation that the message was transmitted to the mesh.
+        // Previously this was inside the onSuccess callback which only fires on remote
+        // ACK, causing welcomedAt to never be set and the node to be re-welcomed repeatedly.
+        const wasMarked = databaseService.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
+        if (wasMarked) {
+          logger.info(`✅ Node ${nodeId} welcomed and marked in database`);
+        } else {
+          logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
+        }
       } catch (error) {
         // Release lock on error as well
         this.welcomingNodes.delete(nodeNum);
