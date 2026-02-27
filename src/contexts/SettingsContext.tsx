@@ -936,6 +936,36 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.nodeHopsCalculation) {
+            const valid: NodeHopsCalculation[] = ['nodeinfo', 'traceroute', 'messages'];
+            if (valid.includes(settings.nodeHopsCalculation as NodeHopsCalculation)) {
+              setNodeHopsCalculationState(settings.nodeHopsCalculation as NodeHopsCalculation);
+              localStorage.setItem('nodeHopsCalculation', settings.nodeHopsCalculation);
+            }
+          }
+
+          if (settings.nodeDimmingEnabled !== undefined) {
+            const enabled = settings.nodeDimmingEnabled === '1' || settings.nodeDimmingEnabled === 'true';
+            setNodeDimmingEnabledState(enabled);
+            localStorage.setItem('nodeDimmingEnabled', enabled.toString());
+          }
+
+          if (settings.nodeDimmingStartHours !== undefined) {
+            const value = parseFloat(settings.nodeDimmingStartHours);
+            if (!isNaN(value) && value > 0) {
+              setNodeDimmingStartHoursState(value);
+              localStorage.setItem('nodeDimmingStartHours', value.toString());
+            }
+          }
+
+          if (settings.nodeDimmingMinOpacity !== undefined) {
+            const value = parseFloat(settings.nodeDimmingMinOpacity);
+            if (!isNaN(value) && value >= 0 && value <= 1) {
+              setNodeDimmingMinOpacityState(value);
+              localStorage.setItem('nodeDimmingMinOpacity', value.toString());
+            }
+          }
+
           logger.debug('✅ Settings loaded from server and applied to state');
 
           // Load user-specific map preferences (overrides global settings)
