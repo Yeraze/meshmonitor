@@ -1,10 +1,11 @@
 /**
  * Settings Persistence Tests
  *
- * Verifies that EVERY setting in the validKeys allowlist can be saved via
- * POST /api/settings and read back via GET /api/settings. This test is the
- * safety net for issue #2048 — if a new setting is added to the UI but not
- * to validKeys, this test will catch it.
+ * Verifies that EVERY setting in VALID_SETTINGS_KEYS can be saved via
+ * POST /api/settings and read back via GET /api/settings. Both the server
+ * and this test import from the same shared constant
+ * (src/server/constants/settings.ts), so adding a key there is all that's
+ * needed — no more duplicate arrays to keep in sync.
  *
  * The test also cross-references the frontend SettingsTab save payload and
  * SettingsContext server load to flag persistence gaps.
@@ -14,6 +15,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
+import { VALID_SETTINGS_KEYS } from './constants/settings.js';
 
 // ─── Database mock ────────────────────────────────────────────────────────
 // In-memory store that mimics setSetting / getAllSettings round-trip
@@ -86,116 +88,12 @@ async function createApp(): Promise<Express> {
     res.json(settings);
   });
 
-  // POST /api/settings — copy the validKeys allowlist from server.ts
+  // POST /api/settings — uses the shared VALID_SETTINGS_KEYS allowlist
   app.post('/api/settings', (req, res) => {
     const settings = req.body;
 
-    const validKeys = [
-      'maxNodeAgeHours',
-      'tracerouteIntervalMinutes',
-      'temperatureUnit',
-      'distanceUnit',
-      'positionHistoryLineStyle',
-      'telemetryVisualizationHours',
-      'telemetryFavorites',
-      'telemetryCustomOrder',
-      'dashboardWidgets',
-      'dashboardSolarVisibility',
-      'autoAckEnabled',
-      'autoAckRegex',
-      'autoAckMessage',
-      'autoAckMessageDirect',
-      'autoAckChannels',
-      'autoAckDirectMessages',
-      'autoAckUseDM',
-      'autoAckSkipIncompleteNodes',
-      'autoAckTapbackEnabled',
-      'autoAckReplyEnabled',
-      'autoAckDirectEnabled',
-      'autoAckDirectTapbackEnabled',
-      'autoAckDirectReplyEnabled',
-      'autoAckMultihopEnabled',
-      'autoAckMultihopTapbackEnabled',
-      'autoAckMultihopReplyEnabled',
-      'autoAckTestMessages',
-      'customTapbackEmojis',
-      'autoAnnounceEnabled',
-      'autoAnnounceIntervalHours',
-      'autoAnnounceMessage',
-      'autoAnnounceChannelIndex',
-      'autoAnnounceOnStart',
-      'autoAnnounceUseSchedule',
-      'autoAnnounceSchedule',
-      'autoAnnounceNodeInfoEnabled',
-      'autoAnnounceNodeInfoChannels',
-      'autoAnnounceNodeInfoDelaySeconds',
-      'autoWelcomeEnabled',
-      'autoWelcomeMessage',
-      'autoWelcomeTarget',
-      'autoWelcomeWaitForName',
-      'autoWelcomeMaxHops',
-      'autoResponderEnabled',
-      'autoResponderTriggers',
-      'autoResponderSkipIncompleteNodes',
-      'timerTriggers',
-      'preferredSortField',
-      'preferredSortDirection',
-      'preferredDashboardSortOption',
-      'timeFormat',
-      'dateFormat',
-      'mapTileset',
-      'packet_log_enabled',
-      'packet_log_max_count',
-      'packet_log_max_age_hours',
-      'solarMonitoringEnabled',
-      'solarMonitoringLatitude',
-      'solarMonitoringLongitude',
-      'solarMonitoringAzimuth',
-      'solarMonitoringDeclination',
-      'mapPinStyle',
-      'favoriteTelemetryStorageDays',
-      'theme',
-      'customTilesets',
-      'hideIncompleteNodes',
-      'inactiveNodeThresholdHours',
-      'inactiveNodeCheckIntervalMinutes',
-      'inactiveNodeCooldownHours',
-      'autoUpgradeImmediate',
-      'maintenanceEnabled',
-      'maintenanceTime',
-      'messageRetentionDays',
-      'tracerouteRetentionDays',
-      'routeSegmentRetentionDays',
-      'neighborInfoRetentionDays',
-      'autoKeyManagementEnabled',
-      'autoKeyManagementIntervalMinutes',
-      'autoKeyManagementMaxExchanges',
-      'autoKeyManagementAutoPurge',
-      'remoteAdminScannerIntervalMinutes',
-      'remoteAdminScannerExpirationHours',
-      'tracerouteScheduleEnabled',
-      'tracerouteScheduleStart',
-      'tracerouteScheduleEnd',
-      'remoteAdminScheduleEnabled',
-      'remoteAdminScheduleStart',
-      'remoteAdminScheduleEnd',
-      'geofenceTriggers',
-      'autoPingEnabled',
-      'autoPingIntervalSeconds',
-      'autoPingMaxPings',
-      'autoPingTimeoutSeconds',
-      'autoFavoriteEnabled',
-      'autoFavoriteStaleHours',
-      'homoglyphEnabled',
-      'localStatsIntervalMinutes',
-      'nodeHopsCalculation',
-      'nodeDimmingEnabled',
-      'nodeDimmingStartHours',
-      'nodeDimmingMinOpacity',
-    ];
-
     const filteredSettings: Record<string, string> = {};
-    for (const key of validKeys) {
+    for (const key of VALID_SETTINGS_KEYS) {
       if (key in settings) {
         filteredSettings[key] = String(settings[key]);
       }
@@ -213,111 +111,9 @@ async function createApp(): Promise<Express> {
 }
 
 // ─── The canonical list of ALL valid settings ─────────────────────────────
-// This MUST match the validKeys array in server.ts exactly.
-// If you add a setting to server.ts, add it here too (and vice versa).
-const ALL_VALID_KEYS = [
-  'maxNodeAgeHours',
-  'tracerouteIntervalMinutes',
-  'temperatureUnit',
-  'distanceUnit',
-  'positionHistoryLineStyle',
-  'telemetryVisualizationHours',
-  'telemetryFavorites',
-  'telemetryCustomOrder',
-  'dashboardWidgets',
-  'dashboardSolarVisibility',
-  'autoAckEnabled',
-  'autoAckRegex',
-  'autoAckMessage',
-  'autoAckMessageDirect',
-  'autoAckChannels',
-  'autoAckDirectMessages',
-  'autoAckUseDM',
-  'autoAckSkipIncompleteNodes',
-  'autoAckTapbackEnabled',
-  'autoAckReplyEnabled',
-  'autoAckDirectEnabled',
-  'autoAckDirectTapbackEnabled',
-  'autoAckDirectReplyEnabled',
-  'autoAckMultihopEnabled',
-  'autoAckMultihopTapbackEnabled',
-  'autoAckMultihopReplyEnabled',
-  'autoAckTestMessages',
-  'customTapbackEmojis',
-  'autoAnnounceEnabled',
-  'autoAnnounceIntervalHours',
-  'autoAnnounceMessage',
-  'autoAnnounceChannelIndex',
-  'autoAnnounceOnStart',
-  'autoAnnounceUseSchedule',
-  'autoAnnounceSchedule',
-  'autoAnnounceNodeInfoEnabled',
-  'autoAnnounceNodeInfoChannels',
-  'autoAnnounceNodeInfoDelaySeconds',
-  'autoWelcomeEnabled',
-  'autoWelcomeMessage',
-  'autoWelcomeTarget',
-  'autoWelcomeWaitForName',
-  'autoWelcomeMaxHops',
-  'autoResponderEnabled',
-  'autoResponderTriggers',
-  'autoResponderSkipIncompleteNodes',
-  'timerTriggers',
-  'preferredSortField',
-  'preferredSortDirection',
-  'preferredDashboardSortOption',
-  'timeFormat',
-  'dateFormat',
-  'mapTileset',
-  'packet_log_enabled',
-  'packet_log_max_count',
-  'packet_log_max_age_hours',
-  'solarMonitoringEnabled',
-  'solarMonitoringLatitude',
-  'solarMonitoringLongitude',
-  'solarMonitoringAzimuth',
-  'solarMonitoringDeclination',
-  'mapPinStyle',
-  'favoriteTelemetryStorageDays',
-  'theme',
-  'customTilesets',
-  'hideIncompleteNodes',
-  'inactiveNodeThresholdHours',
-  'inactiveNodeCheckIntervalMinutes',
-  'inactiveNodeCooldownHours',
-  'autoUpgradeImmediate',
-  'maintenanceEnabled',
-  'maintenanceTime',
-  'messageRetentionDays',
-  'tracerouteRetentionDays',
-  'routeSegmentRetentionDays',
-  'neighborInfoRetentionDays',
-  'autoKeyManagementEnabled',
-  'autoKeyManagementIntervalMinutes',
-  'autoKeyManagementMaxExchanges',
-  'autoKeyManagementAutoPurge',
-  'remoteAdminScannerIntervalMinutes',
-  'remoteAdminScannerExpirationHours',
-  'tracerouteScheduleEnabled',
-  'tracerouteScheduleStart',
-  'tracerouteScheduleEnd',
-  'remoteAdminScheduleEnabled',
-  'remoteAdminScheduleStart',
-  'remoteAdminScheduleEnd',
-  'geofenceTriggers',
-  'autoPingEnabled',
-  'autoPingIntervalSeconds',
-  'autoPingMaxPings',
-  'autoPingTimeoutSeconds',
-  'autoFavoriteEnabled',
-  'autoFavoriteStaleHours',
-  'homoglyphEnabled',
-  'localStatsIntervalMinutes',
-  'nodeHopsCalculation',
-  'nodeDimmingEnabled',
-  'nodeDimmingStartHours',
-  'nodeDimmingMinOpacity',
-];
+// Imported from the shared constant — single source of truth for server.ts
+// and this test file.
+const ALL_VALID_KEYS: readonly string[] = VALID_SETTINGS_KEYS;
 
 // Keys the frontend SettingsTab.tsx sends in handleSave
 const SETTINGS_TAB_SENDS = [
