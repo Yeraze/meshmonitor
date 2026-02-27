@@ -83,6 +83,7 @@ import { migration as showMeshCoreNodesMigration, runMigration074Postgres, runMi
 import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_upgrade_telemetry_packetid_bigint.js';
 import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_accuracy_and_estimated_position_prefs.js';
 import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_upgrade_ignored_nodes_nodenum_bigint.js';
+import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -105,7 +106,9 @@ import {
   MiscRepository,
   ChannelDatabaseRepository,
   IgnoredNodesRepository,
+  EmbedProfileRepository,
 } from '../db/repositories/index.js';
+import type { EmbedProfile, EmbedProfileInput } from '../db/repositories/index.js';
 import type { DatabaseType } from '../db/types.js';
 import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
 import { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } from '../db/schema/postgres-create.js';
@@ -484,6 +487,7 @@ class DatabaseService {
   public miscRepo: MiscRepository | null = null;
   public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
+  public embedProfileRepo: EmbedProfileRepository | null = null;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -750,6 +754,7 @@ class DatabaseService {
       this.miscRepo = new MiscRepository(drizzleDb, this.drizzleDbType);
       this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
       this.ignoredNodesRepo = new IgnoredNodesRepository(drizzleDb, this.drizzleDbType);
+      this.embedProfileRepo = new EmbedProfileRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -963,6 +968,7 @@ class DatabaseService {
     this.runTelemetryPacketIdBigintMigration();
     this.runAccuracyEstimatedPrefsMigration();
     this.runIgnoredNodesNodeNumBigintMigration();
+    this.runCreateEmbedProfilesMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2484,6 +2490,24 @@ class DatabaseService {
       logger.debug('ignored_nodes nodeNum bigint migration completed successfully');
     } catch (error) {
       logger.error('Failed to run ignored_nodes nodeNum bigint migration:', error);
+      throw error;
+    }
+  }
+
+  private runCreateEmbedProfilesMigration(): void {
+    const migrationKey = 'migration_078_create_embed_profiles';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 078 (create embed_profiles) already completed');
+        return;
+      }
+      logger.debug('Running migration 078: Create embed_profiles table...');
+      createEmbedProfilesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Create embed_profiles migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run create embed_profiles migration:', error);
       throw error;
     }
   }
@@ -8393,6 +8417,27 @@ class DatabaseService {
     return !!row;
   }
 
+  // Embed profile operations
+  async getEmbedProfilesAsync(): Promise<EmbedProfile[]> {
+    return this.embedProfileRepo!.getAllAsync();
+  }
+
+  async getEmbedProfileByIdAsync(id: string): Promise<EmbedProfile | null> {
+    return this.embedProfileRepo!.getByIdAsync(id);
+  }
+
+  async createEmbedProfileAsync(input: EmbedProfileInput): Promise<EmbedProfile> {
+    return this.embedProfileRepo!.createAsync(input);
+  }
+
+  async updateEmbedProfileAsync(id: string, input: Partial<EmbedProfileInput>): Promise<EmbedProfile | null> {
+    return this.embedProfileRepo!.updateAsync(id, input);
+  }
+
+  async deleteEmbedProfileAsync(id: string): Promise<boolean> {
+    return this.embedProfileRepo!.deleteAsync(id);
+  }
+
   // Position override operations
   setNodePositionOverride(
     nodeNum: number,
@@ -11007,6 +11052,9 @@ class DatabaseService {
       // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
       await runMigration077Postgres(client);
 
+      // Run migration 078: Create embed_profiles table
+      await runMigration078Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11149,6 +11197,9 @@ class DatabaseService {
 
       // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
       await runMigration077Mysql(pool);
+
+      // Run migration 078: Create embed_profiles table
+      await runMigration078Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
