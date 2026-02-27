@@ -656,6 +656,8 @@ import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
+import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
+import embedPublicRoutes from './routes/embedPublicRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -8581,6 +8583,12 @@ if (BASE_URL) {
 } else {
   app.use('/api', apiLimiter, csrfProtection, apiRouter);
 }
+
+// Public embed config API (outside apiRouter — no CSRF, no rate limiter)
+if (BASE_URL) {
+  app.use(`${BASE_URL}/api/embed`, createEmbedCspMiddleware(), embedPublicRoutes);
+}
+app.use('/api/embed', createEmbedCspMiddleware(), embedPublicRoutes);
 
 // Function to rewrite HTML with BASE_URL at runtime
 const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
