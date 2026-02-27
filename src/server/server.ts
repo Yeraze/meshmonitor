@@ -8604,19 +8604,19 @@ apiRouter.delete('/scripts/:filename', requirePermission('settings', 'write'), a
   }
 });
 
-// Mount API router first - this must come before static file serving
+// Public embed config API (must come BEFORE apiRouter to avoid rate limiter and CSRF)
+if (BASE_URL) {
+  app.use(`${BASE_URL}/api/embed`, createEmbedCspMiddleware(), embedPublicRoutes);
+}
+app.use('/api/embed', createEmbedCspMiddleware(), embedPublicRoutes);
+
+// Mount API router - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
 if (BASE_URL) {
   app.use(`${BASE_URL}/api`, apiLimiter, csrfProtection, apiRouter);
 } else {
   app.use('/api', apiLimiter, csrfProtection, apiRouter);
 }
-
-// Public embed config API (outside apiRouter — no CSRF, no rate limiter)
-if (BASE_URL) {
-  app.use(`${BASE_URL}/api/embed`, createEmbedCspMiddleware(), embedPublicRoutes);
-}
-app.use('/api/embed', createEmbedCspMiddleware(), embedPublicRoutes);
 
 // Function to rewrite HTML with BASE_URL at runtime
 const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
