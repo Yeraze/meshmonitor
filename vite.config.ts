@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -60,6 +61,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        embed: resolve(__dirname, 'embed.html'),
+      },
       external: [
         './src/services/database.js',
         'better-sqlite3',
