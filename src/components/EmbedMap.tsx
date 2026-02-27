@@ -122,18 +122,19 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     return () => { cancelled = true; };
   }, [profileId, baseUrl]);
 
-  // Fetch nodes from the active nodes endpoint
+  // Fetch nodes from the embed-specific nodes endpoint
+  // This endpoint uses the profile ID as auth — no session required
   const fetchNodes = useCallback(async () => {
     if (!config) return;
     try {
-      const res = await fetch(`${baseUrl}/api/nodes/active`);
+      const res = await fetch(`${baseUrl}/api/embed/${profileId}/nodes`);
       if (!res.ok) return; // Silently ignore poll errors
       const data: EmbedNode[] = await res.json();
       setNodes(data);
     } catch {
       // Silently ignore poll errors — don't break the map
     }
-  }, [config, baseUrl]);
+  }, [config, baseUrl, profileId]);
 
   // Start polling when config is loaded
   useEffect(() => {
@@ -154,21 +155,10 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     };
   }, [config, fetchNodes]);
 
-  // Filter nodes based on config
+  // Nodes are pre-filtered by the server endpoint (channels, MQTT, position)
+  // Client-side filtering is a safety net only
   const filteredNodes = nodes.filter((node) => {
-    // Must have a valid position
-    if (!node.position?.latitude || !node.position?.longitude) return false;
-    if (node.position.latitude === 0 && node.position.longitude === 0) return false;
-
-    // Filter by channels if specified
-    if (config && config.channels.length > 0) {
-      if (node.channel === undefined || !config.channels.includes(node.channel)) return false;
-    }
-
-    // Filter out MQTT nodes if configured
-    if (config && !config.showMqttNodes && node.viaMqtt) return false;
-
-    return true;
+    return node.position?.latitude && node.position?.longitude;
   });
 
   // Loading state

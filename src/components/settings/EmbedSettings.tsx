@@ -220,10 +220,14 @@ const EmbedSettings = () => {
   };
 
   // ---- Embed code builder ----
+  const [embedBaseUrl, setEmbedBaseUrl] = useState('');
+  useEffect(() => {
+    apiService.getBaseUrl().then(base => setEmbedBaseUrl(base));
+  }, []);
+
   const buildEmbedUrl = (profileId: string): string => {
     const origin = window.location.origin;
-    const base = window.location.pathname.replace(/\/+$/, '').replace(/\/[^/]*$/, '');
-    return `${origin}${base}/embed/${profileId}`;
+    return `${origin}${embedBaseUrl}/embed/${profileId}`;
   };
 
   const buildIframeSnippet = (profileId: string): string => {
