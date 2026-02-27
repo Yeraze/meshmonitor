@@ -30,10 +30,17 @@ vi.mock('../services/database.js', () => ({
   default: {
     drizzleDbType: 'sqlite',
     getAllSettings: vi.fn(() => ({ ...settingsStore })),
+    setSettings: vi.fn((settings: Record<string, string>) => {
+      Object.assign(settingsStore, settings);
+    }),
     setSetting: vi.fn((key: string, value: string) => {
       settingsStore[key] = value;
     }),
     getSetting: vi.fn((key: string) => settingsStore[key] ?? null),
+    deleteAllSettings: vi.fn(() => {
+      Object.keys(settingsStore).forEach((k) => delete settingsStore[k]);
+    }),
+    handleAutoWelcomeEnabled: vi.fn(() => 0),
     auditLog: vi.fn(),
     // Async methods required by authMiddleware
     findUserByIdAsync: vi.fn(),
@@ -48,8 +55,10 @@ import databaseService from '../services/database.js';
 
 const mockDb = databaseService as unknown as {
   getAllSettings: ReturnType<typeof vi.fn>;
+  setSettings: ReturnType<typeof vi.fn>;
   setSetting: ReturnType<typeof vi.fn>;
   getSetting: ReturnType<typeof vi.fn>;
+  deleteAllSettings: ReturnType<typeof vi.fn>;
   auditLog: ReturnType<typeof vi.fn>;
   findUserByIdAsync: ReturnType<typeof vi.fn>;
   findUserByUsernameAsync: ReturnType<typeof vi.fn>;
@@ -66,7 +75,10 @@ const adminUser = {
   isAdmin: true,
 };
 
-/** Build an Express app that mounts the settings routes from server.ts */
+// Import the REAL settings router — this is what server.ts mounts
+import settingsRoutes from './routes/settingsRoutes.js';
+
+/** Build an Express app that mounts the real settings routes */
 async function createApp(): Promise<Express> {
   const app = express();
   app.use(express.json());
@@ -79,38 +91,16 @@ async function createApp(): Promise<Express> {
     })
   );
 
-  // Inject authenticated admin session
+  // Inject authenticated admin session + req.user (needed by the real handler)
   app.use((req, _res, next) => {
     req.session.userId = adminUser.id;
     req.session.username = adminUser.username;
+    (req as any).user = adminUser;
     next();
   });
 
-  // Minimal settings routes that mirror server.ts logic
-  // GET /api/settings
-  app.get('/api/settings', (_req, res) => {
-    const settings = databaseService.getAllSettings();
-    res.json(settings);
-  });
-
-  // POST /api/settings — uses the shared VALID_SETTINGS_KEYS allowlist
-  app.post('/api/settings', (req, res) => {
-    const settings = req.body;
-
-    const filteredSettings: Record<string, string> = {};
-    for (const key of VALID_SETTINGS_KEYS) {
-      if (key in settings) {
-        filteredSettings[key] = String(settings[key]);
-      }
-    }
-
-    // Save each setting
-    for (const [key, value] of Object.entries(filteredSettings)) {
-      databaseService.setSetting(key, value);
-    }
-
-    res.json({ success: true, saved: Object.keys(filteredSettings).length });
-  });
+  // Mount the real settings router at /api/settings
+  app.use('/api/settings', settingsRoutes);
 
   return app;
 }
@@ -119,6 +109,62 @@ async function createApp(): Promise<Express> {
 // Imported from the shared constant — single source of truth for server.ts
 // and this test file.
 const ALL_VALID_KEYS: readonly string[] = VALID_SETTINGS_KEYS;
+
+/**
+ * Generate a valid test value for a given settings key.
+ *
+ * The real POST handler validates certain keys (regex patterns, channel
+ * indices, JSON triggers, numeric ranges, etc.), so we need values that
+ * pass validation rather than naive `test-value-${key}` strings.
+ */
+function validTestValue(key: string, suffix = ''): string {
+  // Keys with specific validation requirements
+  const VALID_VALUES: Record<string, string> = {
+    autoAckRegex: 'hello',
+    autoAckChannels: '0,1',
+    inactiveNodeThresholdHours: '24',
+    inactiveNodeCheckIntervalMinutes: '60',
+    inactiveNodeCooldownHours: '24',
+    autoResponderTriggers: JSON.stringify([
+      { id: '1', trigger: 'test', responseType: 'text', response: 'hi' },
+    ]),
+    timerTriggers: JSON.stringify([
+      {
+        id: '1',
+        name: 'test',
+        cronExpression: '0 * * * *',
+        responseType: 'text',
+        response: 'hi',
+        enabled: true,
+      },
+    ]),
+    geofenceTriggers: JSON.stringify([
+      {
+        id: '1',
+        name: 'test',
+        shape: { type: 'circle', center: { lat: 40, lng: -74 }, radiusKm: 1 },
+        event: 'entry',
+        responseType: 'text',
+        response: 'entered',
+        channel: 0,
+        enabled: true,
+      },
+    ]),
+    customTilesets: JSON.stringify([]),
+    telemetryFavorites: JSON.stringify(['temperature']),
+    telemetryCustomOrder: JSON.stringify(['temperature', 'humidity']),
+    dashboardWidgets: JSON.stringify([]),
+    autoAnnounceSchedule: JSON.stringify({ start: '08:00', end: '18:00' }),
+    autoAnnounceNodeInfoChannels: '0',
+  };
+
+  if (key in VALID_VALUES) {
+    return VALID_VALUES[key];
+  }
+
+  // Default: a plain string value that won't trip any validator
+  return `test-${key}${suffix}`;
+}
 
 // ─── Dynamic source extraction ────────────────────────────────────────────
 // Instead of hardcoded arrays, we read the frontend source files at test
@@ -238,30 +284,27 @@ describe('Settings Persistence', () => {
 
   describe('Round-trip: POST then GET every valid key', () => {
     it('should save and read back every single validKeys entry', async () => {
-      // Build a payload with a unique test value for every key
+      // Build a payload with a valid test value for every key
       const payload: Record<string, string> = {};
       for (const key of ALL_VALID_KEYS) {
-        payload[key] = `test-value-${key}`;
+        payload[key] = validTestValue(key);
       }
 
-      // POST all settings
+      // POST all settings via the REAL route handler
       const postRes = await request(app)
         .post('/api/settings')
         .send(payload)
         .expect(200);
 
       expect(postRes.body.success).toBe(true);
-      expect(postRes.body.saved).toBe(ALL_VALID_KEYS.length);
+      expect(Object.keys(postRes.body.settings).length).toBe(ALL_VALID_KEYS.length);
 
       // GET settings back
       const getRes = await request(app).get('/api/settings').expect(200);
 
-      // Verify every key came back
+      // Verify every key came back with the value we sent
       for (const key of ALL_VALID_KEYS) {
-        expect(getRes.body).toHaveProperty(
-          key,
-          `test-value-${key}`
-        );
+        expect(getRes.body).toHaveProperty(key, validTestValue(key));
       }
     });
 
@@ -270,7 +313,7 @@ describe('Settings Persistence', () => {
         // Clear store
         Object.keys(settingsStore).forEach((k) => delete settingsStore[k]);
 
-        const value = `individual-${key}-${Date.now()}`;
+        const value = validTestValue(key);
         await request(app)
           .post('/api/settings')
           .send({ [key]: value })
