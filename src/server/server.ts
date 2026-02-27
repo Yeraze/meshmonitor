@@ -196,6 +196,28 @@ const getAllowedOrigins = () => {
   return origins.length > 0 ? origins : ['http://localhost:3000'];
 };
 
+// Embed origin cache (refreshes every 60 seconds)
+let embedOriginsCache: string[] = [];
+let embedOriginsCacheTime = 0;
+const EMBED_ORIGINS_CACHE_TTL = 60000;
+
+function getEmbedAllowedOrigins(): string[] {
+  if (Date.now() - embedOriginsCacheTime < EMBED_ORIGINS_CACHE_TTL) {
+    return embedOriginsCache;
+  }
+  // Fire async lookup, use stale cache until it resolves
+  databaseService.getEmbedProfilesAsync().then(profiles => {
+    embedOriginsCache = profiles
+      .filter(p => p.enabled)
+      .flatMap(p => p.allowedOrigins)
+      .filter((v, i, a) => a.indexOf(v) === i); // dedupe
+    embedOriginsCacheTime = Date.now();
+  }).catch(() => {
+    // On error, keep stale cache
+  });
+  return embedOriginsCache;
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -205,11 +227,17 @@ app.use(
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-        callback(null, true);
-      } else {
-        logger.warn(`CORS request blocked from origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+        return callback(null, true);
       }
+
+      // Check embed profile origins
+      const embedOrigins = getEmbedAllowedOrigins();
+      if (embedOrigins.includes(origin) || embedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+
+      logger.warn(`CORS request blocked from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     optionsSuccessStatus: 200,
