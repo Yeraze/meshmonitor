@@ -4,17 +4,22 @@
  * Verifies that EVERY setting in VALID_SETTINGS_KEYS can be saved via
  * POST /api/settings and read back via GET /api/settings. Both the server
  * and this test import from the same shared constant
- * (src/server/constants/settings.ts), so adding a key there is all that's
- * needed — no more duplicate arrays to keep in sync.
+ * (src/server/constants/settings.ts).
  *
- * The test also cross-references the frontend SettingsTab save payload and
- * SettingsContext server load to flag persistence gaps.
+ * The test also reads the frontend source files (SettingsTab.tsx and
+ * SettingsContext.tsx) and regex-extracts which keys they actually
+ * reference. This catches desyncs automatically — if a developer adds a
+ * setting to the frontend but forgets the server allowlist, this test
+ * fails without anyone needing to update a hardcoded list.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { VALID_SETTINGS_KEYS } from './constants/settings.js';
 
 // ─── Database mock ────────────────────────────────────────────────────────
@@ -115,125 +120,100 @@ async function createApp(): Promise<Express> {
 // and this test file.
 const ALL_VALID_KEYS: readonly string[] = VALID_SETTINGS_KEYS;
 
-// Keys the frontend SettingsTab.tsx sends in handleSave
-const SETTINGS_TAB_SENDS = [
-  'maxNodeAgeHours',
-  'inactiveNodeThresholdHours',
-  'inactiveNodeCheckIntervalMinutes',
-  'inactiveNodeCooldownHours',
-  'temperatureUnit',
-  'distanceUnit',
-  'positionHistoryLineStyle',
-  'telemetryVisualizationHours',
-  'favoriteTelemetryStorageDays',
-  'preferredSortField',
-  'preferredSortDirection',
-  'timeFormat',
-  'dateFormat',
-  'mapTileset',
-  'mapPinStyle',
-  'theme',
-  'packet_log_enabled',
-  'packet_log_max_count',
-  'packet_log_max_age_hours',
-  'solarMonitoringEnabled',
-  'solarMonitoringLatitude',
-  'solarMonitoringLongitude',
-  'solarMonitoringAzimuth',
-  'solarMonitoringDeclination',
-  'hideIncompleteNodes',
-  'homoglyphEnabled',
-  'localStatsIntervalMinutes',
-  'nodeHopsCalculation',
-  'nodeDimmingEnabled',
-  'nodeDimmingStartHours',
-  'nodeDimmingMinOpacity',
-];
+// ─── Dynamic source extraction ────────────────────────────────────────────
+// Instead of hardcoded arrays, we read the frontend source files at test
+// time and regex-extract which settings keys they actually reference.
+// This catches desyncs between frontend code and the server allowlist.
 
-// Keys SettingsContext.tsx loads from the server in loadServerSettings
-const SETTINGS_CONTEXT_LOADS = [
-  'maxNodeAgeHours',
-  'inactiveNodeThresholdHours',
-  'inactiveNodeCheckIntervalMinutes',
-  'inactiveNodeCooldownHours',
-  'temperatureUnit',
-  'distanceUnit',
-  'positionHistoryLineStyle',
-  'telemetryVisualizationHours',
-  'favoriteTelemetryStorageDays',
-  'preferredSortField',
-  'preferredSortDirection',
-  'preferredDashboardSortOption',
-  'timeFormat',
-  'dateFormat',
-  'mapTileset',
-  'mapPinStyle',
-  'theme',
-  'language',
-  'solarMonitoringEnabled',
-  'solarMonitoringLatitude',
-  'solarMonitoringLongitude',
-  'solarMonitoringAzimuth',
-  'solarMonitoringDeclination',
-  'customTilesets',
-  'customTapbackEmojis',
-  'nodeHopsCalculation',
-  'nodeDimmingEnabled',
-  'nodeDimmingStartHours',
-  'nodeDimmingMinOpacity',
-];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const SRC_ROOT = resolve(__dirname, '..');
 
-// Settings that are saved/loaded through OTHER code paths (not the main
-// settings save button), so they are intentionally not in the SettingsTab
-// payload but ARE in the validKeys allowlist. These are excluded from
-// the "sent but not loaded" / "loaded but not sent" gap checks.
-const OTHER_CODE_PATH_SETTINGS = [
-  // Automation settings saved from their own panels
-  'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckMessageDirect',
-  'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM',
-  'autoAckSkipIncompleteNodes', 'autoAckTapbackEnabled', 'autoAckReplyEnabled',
-  'autoAckDirectEnabled', 'autoAckDirectTapbackEnabled', 'autoAckDirectReplyEnabled',
-  'autoAckMultihopEnabled', 'autoAckMultihopTapbackEnabled', 'autoAckMultihopReplyEnabled',
-  'autoAckTestMessages', 'customTapbackEmojis',
-  'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage',
-  'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule',
-  'autoAnnounceSchedule', 'autoAnnounceNodeInfoEnabled', 'autoAnnounceNodeInfoChannels',
-  'autoAnnounceNodeInfoDelaySeconds',
-  'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget',
-  'autoWelcomeWaitForName', 'autoWelcomeMaxHops',
-  'autoResponderEnabled', 'autoResponderTriggers', 'autoResponderSkipIncompleteNodes',
-  'timerTriggers', 'geofenceTriggers',
-  // Dashboard widgets saved from dashboard drag/drop
-  'dashboardWidgets', 'dashboardSolarVisibility',
-  'preferredDashboardSortOption',
-  // Telemetry ordering saved from dashboard
-  'telemetryFavorites', 'telemetryCustomOrder',
-  // Traceroute interval saved from admin panel
-  'tracerouteIntervalMinutes',
-  // Maintenance/retention saved from admin panel
-  'autoUpgradeImmediate', 'maintenanceEnabled', 'maintenanceTime',
-  'messageRetentionDays', 'tracerouteRetentionDays',
-  'routeSegmentRetentionDays', 'neighborInfoRetentionDays',
-  // Key management saved from security panel
-  'autoKeyManagementEnabled', 'autoKeyManagementIntervalMinutes',
-  'autoKeyManagementMaxExchanges', 'autoKeyManagementAutoPurge',
-  // Remote admin saved from admin panel
-  'remoteAdminScannerIntervalMinutes', 'remoteAdminScannerExpirationHours',
-  // Schedule settings saved from their own panels
-  'tracerouteScheduleEnabled', 'tracerouteScheduleStart', 'tracerouteScheduleEnd',
-  'remoteAdminScheduleEnabled', 'remoteAdminScheduleStart', 'remoteAdminScheduleEnd',
-  // Auto-ping saved from its own panel
-  'autoPingEnabled', 'autoPingIntervalSeconds', 'autoPingMaxPings', 'autoPingTimeoutSeconds',
-  // Auto-favorite saved from its own panel
-  'autoFavoriteEnabled', 'autoFavoriteStaleHours',
-  // Language saved via its own setter in SettingsContext
-  'language',
-  // Custom tilesets saved from map config
-  'customTilesets',
-  // Server-side settings read directly by backend, not loaded into frontend context
-  'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours',
-  'hideIncompleteNodes', 'homoglyphEnabled', 'localStatsIntervalMinutes',
-];
+/**
+ * Extract property keys from the `const settings = { ... }` object literal
+ * inside SettingsTab.tsx's handleSave function.
+ *
+ * Matches lines like: `keyName: someValue,`
+ */
+function extractSettingsTabSends(): string[] {
+  const source = readFileSync(
+    resolve(SRC_ROOT, 'components/SettingsTab.tsx'),
+    'utf-8'
+  );
+
+  // Find the `const settings = {` block inside handleSave
+  const handleSaveMatch = source.match(
+    /const handleSave[\s\S]*?const settings\s*=\s*\{([\s\S]*?)\};/
+  );
+  if (!handleSaveMatch) {
+    throw new Error(
+      'Could not find `const settings = { ... }` in SettingsTab.tsx handleSave. ' +
+      'Has the save pattern changed? Update this regex.'
+    );
+  }
+
+  const block = handleSaveMatch[1];
+  const keys: string[] = [];
+  // Match each `keyName:` property (word chars before the colon)
+  for (const match of block.matchAll(/^\s+(\w+)\s*:/gm)) {
+    keys.push(match[1]);
+  }
+
+  if (keys.length === 0) {
+    throw new Error(
+      'Extracted 0 keys from SettingsTab.tsx handleSave settings object. ' +
+      'The regex may need updating.'
+    );
+  }
+
+  return keys;
+}
+
+/**
+ * Extract setting keys from SettingsContext.tsx's loadServerSettings function.
+ *
+ * Matches `settings.keyName` property accesses between the
+ * `loadServerSettings` function declaration and the
+ * "Settings loaded from server" log line.
+ */
+function extractSettingsContextLoads(): string[] {
+  const source = readFileSync(
+    resolve(SRC_ROOT, 'contexts/SettingsContext.tsx'),
+    'utf-8'
+  );
+
+  // Extract the loadServerSettings function body up to the completion log
+  const fnMatch = source.match(
+    /const loadServerSettings[\s\S]*?Settings loaded from server/
+  );
+  if (!fnMatch) {
+    throw new Error(
+      'Could not find loadServerSettings function in SettingsContext.tsx. ' +
+      'Has the function been renamed or the log message changed?'
+    );
+  }
+
+  const fnBody = fnMatch[0];
+  const keys = new Set<string>();
+  // Match `settings.keyName` — word boundary ensures we don't match
+  // sub-properties or method calls
+  for (const match of fnBody.matchAll(/settings\.(\w+)/g)) {
+    keys.add(match[1]);
+  }
+
+  if (keys.size === 0) {
+    throw new Error(
+      'Extracted 0 keys from SettingsContext.tsx loadServerSettings. ' +
+      'The regex may need updating.'
+    );
+  }
+
+  return [...keys];
+}
+
+// Extract at module load — test will fail fast if patterns change
+const SETTINGS_TAB_SENDS = extractSettingsTabSends();
+const SETTINGS_CONTEXT_LOADS = extractSettingsContextLoads();
 
 // ─── Tests ────────────────────────────────────────────────────────────────
 
@@ -334,15 +314,21 @@ describe('Settings Persistence', () => {
     });
   });
 
-  describe('Frontend ↔ Server key alignment', () => {
-    it('every key SettingsTab sends should be in validKeys', () => {
+  describe('Frontend ↔ Server key alignment (extracted from source)', () => {
+    it('extraction should find a reasonable number of keys', () => {
+      // Sanity check — if these drop to 0 the regex broke
+      expect(SETTINGS_TAB_SENDS.length).toBeGreaterThan(20);
+      expect(SETTINGS_CONTEXT_LOADS.length).toBeGreaterThan(20);
+    });
+
+    it('every key SettingsTab sends should be in VALID_SETTINGS_KEYS', () => {
       const missing = SETTINGS_TAB_SENDS.filter(
         (key) => !ALL_VALID_KEYS.includes(key)
       );
       expect(missing).toEqual([]);
     });
 
-    it('every key SettingsContext loads should be in validKeys (or language)', () => {
+    it('every key SettingsContext loads should be in VALID_SETTINGS_KEYS (or language)', () => {
       // 'language' is handled separately via its own endpoint
       const missing = SETTINGS_CONTEXT_LOADS.filter(
         (key) => key !== 'language' && !ALL_VALID_KEYS.includes(key)
@@ -350,14 +336,30 @@ describe('Settings Persistence', () => {
       expect(missing).toEqual([]);
     });
 
-    it('every key SettingsTab sends should be loadable by SettingsContext', () => {
-      // Settings sent by SettingsTab should be loaded by SettingsContext,
-      // unless they go through another code path (like packet_log settings
-      // which are handled server-side only)
+    it('every key SettingsTab sends should be loaded by SettingsContext or be server-only', () => {
+      // Settings the UI sends to the server should either be loaded back
+      // by SettingsContext OR be explicitly server-only (read by backend
+      // directly, never reflected to frontend state).
+      //
+      // Server-only settings are those in VALID_SETTINGS_KEYS that the
+      // SettingsTab sends but SettingsContext does NOT load. We keep a
+      // small allowlist of known server-only keys so we can distinguish
+      // "intentionally not loaded" from "accidentally forgotten" (#2048).
+      const SERVER_ONLY_SETTINGS = [
+        // Packet log settings — backend reads directly
+        'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours',
+        // Node visibility — backend reads directly
+        'hideIncompleteNodes',
+        // Homoglyph detection — backend reads directly
+        'homoglyphEnabled',
+        // Local stats interval — backend reads directly
+        'localStatsIntervalMinutes',
+      ];
+
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(
         (key) =>
           !SETTINGS_CONTEXT_LOADS.includes(key) &&
-          !OTHER_CODE_PATH_SETTINGS.includes(key)
+          !SERVER_ONLY_SETTINGS.includes(key)
       );
 
       // If this fails, a setting is being sent to the server but never
