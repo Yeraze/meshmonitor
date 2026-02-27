@@ -343,61 +343,6 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Count messages sent from or to a specific node (by nodeNum).
-   */
-  async getMessageCountByNode(nodeNum: number, since?: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const conditions = [
-        or(
-          eq(messagesSqlite.fromNodeNum, nodeNum),
-          eq(messagesSqlite.toNodeNum, nodeNum),
-        ),
-      ];
-      if (since !== undefined) {
-        conditions.push(gte(messagesSqlite.timestamp, since));
-      }
-      const result = await db
-        .select()
-        .from(messagesSqlite)
-        .where(and(...conditions));
-      return result.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const conditions = [
-        or(
-          eq(messagesMysql.fromNodeNum, nodeNum),
-          eq(messagesMysql.toNodeNum, nodeNum),
-        ),
-      ];
-      if (since !== undefined) {
-        conditions.push(gte(messagesMysql.timestamp, since));
-      }
-      const result = await db
-        .select()
-        .from(messagesMysql)
-        .where(and(...conditions));
-      return result.length;
-    } else {
-      const db = this.getPostgresDb();
-      const conditions = [
-        or(
-          eq(messagesPostgres.fromNodeNum, nodeNum),
-          eq(messagesPostgres.toNodeNum, nodeNum),
-        ),
-      ];
-      if (since !== undefined) {
-        conditions.push(gte(messagesPostgres.timestamp, since));
-      }
-      const result = await db
-        .select()
-        .from(messagesPostgres)
-        .where(and(...conditions));
-      return result.length;
-    }
-  }
-
-  /**
    * Delete a message by ID
    */
   async deleteMessage(id: string): Promise<boolean> {

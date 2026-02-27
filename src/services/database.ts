@@ -4333,46 +4333,6 @@ class DatabaseService {
   }
 
   /**
-   * Count distinct position packets for a node from the telemetry table.
-   */
-  async getPositionPacketCountByNodeAsync(nodeId: string, since?: number): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getPositionPacketCountByNode(nodeId, since);
-    }
-    return 0;
-  }
-
-  /**
-   * Count distinct non-position telemetry packets for a node from the telemetry table.
-   */
-  async getNonPositionTelemetryPacketCountByNodeAsync(nodeId: string, since?: number): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getNonPositionTelemetryPacketCountByNode(nodeId, since);
-    }
-    return 0;
-  }
-
-  /**
-   * Count messages sent from or to a specific node.
-   */
-  async getMessageCountByNodeAsync(nodeNum: number, since?: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.getMessageCountByNode(nodeNum, since);
-    }
-    return 0;
-  }
-
-  /**
-   * Count traceroutes involving a specific node.
-   */
-  async getTracerouteCountByNodeAsync(nodeNum: number, since?: number): Promise<number> {
-    if (this.traceroutesRepo) {
-      return this.traceroutesRepo.getTracerouteCountByNode(nodeNum, since);
-    }
-    return 0;
-  }
-
-  /**
    * Update node mobility status based on position telemetry
    * Checks if a node has moved more than 100 meters based on its last 500 position records
    * @param nodeId The node ID to check
