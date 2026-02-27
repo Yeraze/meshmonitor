@@ -3408,7 +3408,7 @@ class MeshtasticManager {
           hop_limit: meshPacket.hopLimit ?? undefined,
           hop_start: meshPacket.hopStart ?? undefined,
           relay_node: meshPacket.relayNode ?? undefined,
-          payload_size: meshPacket.decoded?.payload?.length ?? undefined,
+          payload_size: meshPacket.decoded?.payload?.length ?? meshPacket.encrypted?.length ?? undefined,
           want_ack: meshPacket.wantAck ?? false,
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
