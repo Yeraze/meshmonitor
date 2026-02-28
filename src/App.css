@@ -2568,6 +2568,44 @@ body {
   z-index: 1;
 }
 
+/* Anchored Node List Layout */
+.nodes-anchored-view {
+  display: flex;
+  flex-direction: row;
+}
+
+.nodes-anchored-sidebar {
+  position: relative;
+  width: 380px;
+  max-height: 100%;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ctp-surface2);
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  transition: width 0.3s ease;
+  z-index: auto;
+  overflow: hidden;
+}
+
+.nodes-anchored-sidebar.collapsed {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+
+.nodes-map-area {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Move Leaflet zoom controls to bottom-right */
 .nodes-split-view .leaflet-top.leaflet-left {
   top: auto !important;
@@ -2576,66 +2614,14 @@ body {
   right: 20px !important;
 }
 
-/* Floating Node List Overlay */
+/* Node List Sidebar */
 .nodes-sidebar {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  width: 350px;
-  max-height: calc(100% - 32px);
   background: var(--ctp-surface0);
-  border: 2px solid var(--ctp-surface2);
-  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 1000;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(10px);
-  transition: width 0.3s ease, transform 0.3s ease, left 0s, top 0s;
-  /* Allow dynamic positioning - transition disabled for position to enable smooth dragging */
 }
 
-/* Resize handle for nodes sidebar */
-.sidebar-resize-handle {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 20px;
-  height: 20px;
-  cursor: nwse-resize;
-  z-index: 1001;
-  background: linear-gradient(
-    -45deg,
-    transparent 0%,
-    transparent 30%,
-    var(--ctp-overlay1) 30%,
-    var(--ctp-overlay1) 35%,
-    transparent 35%,
-    transparent 65%,
-    var(--ctp-overlay1) 65%,
-    var(--ctp-overlay1) 70%,
-    transparent 70%
-  );
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.sidebar-resize-handle:hover {
-  opacity: 1;
-  background: linear-gradient(
-    -45deg,
-    transparent 0%,
-    transparent 30%,
-    var(--ctp-blue) 30%,
-    var(--ctp-blue) 35%,
-    transparent 35%,
-    transparent 65%,
-    var(--ctp-blue) 65%,
-    var(--ctp-blue) 70%,
-    transparent 70%
-  );
-}
 
 /* Messages sidebar - blocking left panel on desktop */
 .messages-sidebar {
@@ -2665,19 +2651,7 @@ body {
 }
 
 /* Collapsed state for node list */
-.nodes-sidebar.collapsed {
-  width: auto;
-  max-width: 60px;
-  top: 0 !important;
-  left: 0 !important;
-  /* Override dynamic positioning when collapsed */
-}
-
 .nodes-sidebar.collapsed .nodes-list {
-  display: none;
-}
-
-.nodes-sidebar.collapsed .sidebar-resize-handle {
   display: none;
 }
 
@@ -3123,12 +3097,6 @@ body {
   isolation: isolate; /* Create a new stacking context */
 }
 
-/* Desktop - ensure controls have enough room */
-@media (min-width: 769px) {
-  .nodes-sidebar {
-    width: 360px; /* Slightly wider on desktop for controls */
-  }
-}
 
 .nodes-sidebar.collapsed .node-controls {
   display: none;
@@ -3715,17 +3683,6 @@ body {
     margin-bottom: 0.25rem;
   }
 
-  .nodes-sidebar {
-    top: 0; /* Tight to corner */
-    left: 0; /* Tight to corner */
-    right: auto;
-    width: calc(100vw - 48px); /* Full width minus left sidebar */
-    max-width: 360px;
-    /* Use dvh for proper behavior with virtual keyboard */
-    max-height: calc(100vh - 120px);
-    max-height: calc(100dvh - 120px);
-    border-radius: 12px;
-  }
 
   /* Compact header on mobile */
   .sidebar-header h3 {
@@ -3761,13 +3718,21 @@ body {
     min-width: 36px;
   }
 
-  /* When collapsed, show as small button tight in upper-left corner */
-  .nodes-sidebar.collapsed {
-    top: 0; /* Tight against map top edge */
-    left: 0; /* Tight against map left edge */
-    width: auto;
+  /* Mobile: expanded sidebar overlays the map */
+  .nodes-anchored-sidebar {
+    position: absolute;
+    z-index: 1000;
+    width: min(calc(100vw - 48px), 360px);
+    height: 100%;
+  }
+
+  /* When collapsed on mobile, show as small strip */
+  .nodes-anchored-sidebar.collapsed {
+    position: static;
+    width: 40px;
+    min-width: 40px;
     max-width: 40px;
-    max-height: 40px;
+    max-height: 100%;
     padding: 0;
   }
 
@@ -3830,10 +3795,6 @@ body {
 
 /* Extra small screens - iPhone SE and similar */
 @media (max-width: 400px) {
-  .nodes-sidebar {
-    width: calc(100vw - 48px); /* Full width minus left sidebar */
-    max-width: 327px; /* 375px - 48px sidebar */
-  }
 
   /* Even more compact header on very small screens */
   .sidebar-header h3 {
@@ -6129,11 +6090,6 @@ body {
   transition: height 0.05s ease-out;
 }
 
-/* Adjust node list sidebar when packet monitor is visible */
-.nodes-split-view:has(.packet-monitor-container) .nodes-sidebar {
-  /* Use a reasonable max-height that works with dynamic sizing */
-  max-height: calc(100% - 200px);
-}
 
 /* Hide packet monitor toggle on mobile */
 @media (max-width: 768px) {
