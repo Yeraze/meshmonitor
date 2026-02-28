@@ -170,6 +170,7 @@ export default defineConfig({
     '**/database/**',
     '**/api/**',
     '**/planning/**',
+    '**/plans/**',
     '**/operations/**',
     // Internal development documentation (available on GitHub)
     'ARCHITECTURE_LESSONS.md',
