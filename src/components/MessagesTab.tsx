@@ -193,6 +193,10 @@ export interface MessagesTabProps {
 
   // Refs from parent for scroll handling
   dmMessagesContainerRef: React.RefObject<HTMLDivElement | null>;
+
+  // Search focus
+  focusMessageId?: string | null;
+  onFocusMessageHandled?: () => void;
 }
 
 const MessagesTab: React.FC<MessagesTabProps> = ({
@@ -258,6 +262,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   shouldShowData,
   handleShowOnMap,
   dmMessagesContainerRef,
+  focusMessageId,
+  onFocusMessageHandled,
 }) => {
   const { t } = useTranslation();
 
@@ -298,6 +304,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showPositionChannelDropdown]);
+
+  // Scroll to and highlight a focused message from search
+  useEffect(() => {
+    if (!focusMessageId) return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-message-id="${CSS.escape(focusMessageId)}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('search-highlight');
+        setTimeout(() => el.classList.remove('search-highlight'), 3000);
+      }
+      onFocusMessageHandled?.();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [focusMessageId, onFocusMessageHandled]);
 
   // Memoize byte count to avoid redundant homoglyph optimization on each render
   const byteCountDisplay = useMemo(() => {

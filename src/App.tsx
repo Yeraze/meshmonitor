@@ -59,6 +59,7 @@ import { logger } from './utils/logger';
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import Sidebar from './components/Sidebar';
+import { SearchModal } from './components/SearchModal/SearchModal.js';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
@@ -143,6 +144,8 @@ function App() {
   } | null>(null);
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -4118,6 +4121,43 @@ function App() {
     visibleNodeNums,
   });
 
+  // Navigate to message from search result
+  const handleNavigateToMessage = useCallback((result: { id: string; source: string; channel?: number; fromNodeId?: string; fromNodeNum?: number }) => {
+    setIsSearchOpen(false);
+    setFocusMessageId(result.id);
+    if (result.source === 'meshcore') {
+      setActiveTab('meshcore');
+    } else if (result.channel === -1) {
+      setActiveTab('messages');
+      // Navigate to DM conversation with the sender
+      if (result.fromNodeId) {
+        setSelectedDMNode(result.fromNodeId);
+      } else if (result.fromNodeNum) {
+        // Fallback: convert nodeNum to hex ID format
+        setSelectedDMNode(`!${result.fromNodeNum.toString(16)}`);
+      }
+    } else {
+      setActiveTab('channels');
+      // Navigate to the specific channel
+      if (result.channel !== undefined) {
+        setSelectedChannel(result.channel);
+        selectedChannelRef.current = result.channel;
+      }
+    }
+  }, [setActiveTab, setSelectedDMNode, setSelectedChannel]);
+
+  // Ctrl+K / Cmd+K keyboard shortcut to toggle search modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // If anonymous is disabled and user is not authenticated, show login page
   if (authStatus?.anonymousDisabled && !authStatus?.authenticated) {
     return <LoginPage />;
@@ -4282,6 +4322,7 @@ function App() {
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
         meshcoreEnabled={authStatus?.meshcoreEnabled || false}
+        onSearchClick={() => setIsSearchOpen(true)}
       />
 
       <main className="app-main">
@@ -4358,6 +4399,8 @@ function App() {
             isMqttBridgeMessage={isMqttBridgeMessage}
             setEmojiPickerMessage={setEmojiPickerMessage}
             channelMessagesContainerRef={channelMessagesContainerRef}
+            focusMessageId={focusMessageId}
+            onFocusMessageHandled={() => setFocusMessageId(null)}
           />
         )}
         {activeTab === 'messages' && (
@@ -4421,6 +4464,8 @@ function App() {
             setEmojiPickerMessage={setEmojiPickerMessage}
             shouldShowData={shouldShowData}
             dmMessagesContainerRef={dmMessagesContainerRef}
+            focusMessageId={focusMessageId}
+            onFocusMessageHandled={() => setFocusMessageId(null)}
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
             handleShowOnMap={(nodeId: string) => {
@@ -4763,6 +4808,19 @@ function App() {
         isOpen={showStatusModal}
         systemStatus={systemStatus}
         onClose={() => setShowStatusModal(false)}
+      />
+
+      {/* Message Search Modal */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onNavigateToMessage={handleNavigateToMessage}
+        channels={channels.map(ch => ({ id: ch.id, name: ch.name }))}
+        nodes={nodes.map(n => ({
+          nodeId: n.user?.id || String(n.nodeNum),
+          longName: n.user?.longName || `!${n.nodeNum.toString(16)}`,
+          shortName: n.user?.shortName || '????',
+        }))}
       />
 
       {/* SaveBar for unified save/dismiss actions */}

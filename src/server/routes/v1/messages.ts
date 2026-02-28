@@ -8,6 +8,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import meshtasticManager from '../../meshtasticManager.js';
+import meshcoreManager from '../../meshcoreManager.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -129,6 +130,125 @@ router.get('/', async (req: Request, res: Response) => {
       success: false,
       error: 'Internal Server Error',
       message: 'Failed to retrieve messages'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/messages/search
+ * Search messages across channels and DMs
+ *
+ * Query parameters:
+ * - q: string (required) - Search query text
+ * - caseSensitive: boolean - Whether search is case-sensitive (default: false)
+ * - scope: string - Search scope: 'all', 'channels', 'dms', or 'meshcore' (default: 'all')
+ * - channels: string - Comma-separated channel numbers to filter by
+ * - fromNodeId: string - Filter by sender node ID
+ * - startDate: number - Unix timestamp for range start
+ * - endDate: number - Unix timestamp for range end
+ * - limit: number - Max results to return (default: 50, max: 100)
+ * - offset: number - Offset for pagination (default: 0)
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset } = req.query;
+
+    if (!q || typeof q !== 'string' || q.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Search query parameter "q" is required'
+      });
+    }
+
+    const searchQuery = q.trim();
+    const isCaseSensitive = caseSensitive === 'true';
+    const searchScope = (scope as string) || 'all';
+    const maxLimit = Math.min(parseInt(limit as string) || 50, 100);
+    const searchOffset = parseInt(offset as string) || 0;
+
+    let channelFilter: number[] | undefined;
+    if (channels && typeof channels === 'string') {
+      channelFilter = channels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c));
+    }
+
+    const startDateNum = startDate ? parseInt(startDate as string) : undefined;
+    const endDateNum = endDate ? parseInt(endDate as string) : undefined;
+
+    const accessibleChannels = await getAccessibleChannels(userId, isAdmin);
+
+    const results: any[] = [];
+    let total = 0;
+
+    // Search standard messages (unless scope is meshcore-only)
+    if (searchScope !== 'meshcore') {
+      let effectiveChannelFilter = channelFilter;
+
+      if (accessibleChannels !== null) {
+        const accessibleArray = Array.from(accessibleChannels);
+        if (effectiveChannelFilter) {
+          effectiveChannelFilter = effectiveChannelFilter.filter(c => accessibleChannels.has(c));
+        } else {
+          effectiveChannelFilter = accessibleArray;
+        }
+      }
+
+      const searchResult = await databaseService.searchMessagesAsync({
+        query: searchQuery,
+        caseSensitive: isCaseSensitive,
+        scope: searchScope === 'meshcore' ? 'all' : (searchScope as 'all' | 'channels' | 'dms'),
+        channels: effectiveChannelFilter,
+        fromNodeId: fromNodeId as string | undefined,
+        startDate: startDateNum,
+        endDate: endDateNum,
+        limit: maxLimit,
+        offset: searchOffset
+      });
+
+      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
+      total += searchResult.total;
+    }
+
+    // Search MeshCore messages (in-memory filter)
+    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManager.isConnected()) {
+      const hasMeshcoreAccess = isAdmin || (accessibleChannels === null);
+
+      if (hasMeshcoreAccess) {
+        const allMeshcoreMessages = meshcoreManager.getRecentMessages(1000);
+        const filtered = allMeshcoreMessages.filter(m => {
+          if (!m.text) return false;
+          const textMatch = isCaseSensitive
+            ? m.text.includes(searchQuery)
+            : m.text.toLowerCase().includes(searchQuery.toLowerCase());
+          if (!textMatch) return false;
+          if (startDateNum && m.timestamp < startDateNum) return false;
+          if (endDateNum && m.timestamp > endDateNum) return false;
+          if (fromNodeId && m.fromPublicKey !== fromNodeId) return false;
+          return true;
+        });
+
+        total += filtered.length;
+        const meshcoreSlice = filtered.slice(0, Math.max(0, maxLimit - results.length));
+        results.push(...meshcoreSlice.map(m => ({ ...m, source: 'meshcore' })));
+      }
+    }
+
+    res.json({
+      success: true,
+      count: results.length,
+      total,
+      data: results
+    });
+  } catch (error) {
+    logger.error('Error searching messages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to search messages'
     });
   }
 });
