@@ -119,7 +119,7 @@ describe('Embed CSP Middleware', () => {
     expect(csp).toContain("worker-src 'self' blob:");
   });
 
-  it('handles profile with empty allowedOrigins', async () => {
+  it('handles profile with empty allowedOrigins by allowing any origin', async () => {
     mockDb.getEmbedProfileByIdAsync.mockResolvedValue({ ...sampleProfile, allowedOrigins: [] });
     const app = createApp();
 
@@ -127,8 +127,7 @@ describe('Embed CSP Middleware', () => {
 
     expect(response.status).toBe(200);
     const csp = response.headers['content-security-policy'];
-    expect(csp).toContain("frame-ancestors 'self'");
-    // Should NOT contain extra origins
+    expect(csp).toContain('frame-ancestors *');
     expect(csp).not.toContain('https://example.com');
   });
 

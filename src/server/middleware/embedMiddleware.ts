@@ -35,7 +35,10 @@ export function createEmbedCspMiddleware() {
       res.removeHeader('X-Frame-Options');
 
       // Build frame-ancestors directive
-      const frameAncestors = ['\'self\'', ...profile.allowedOrigins].join(' ');
+      // Empty allowedOrigins means allow any origin (wildcard)
+      const frameAncestors = profile.allowedOrigins.length === 0
+        ? '*'
+        : ['\'self\'', ...profile.allowedOrigins].join(' ');
 
       // Build a minimal embed-specific CSP
       const cspDirectives = [

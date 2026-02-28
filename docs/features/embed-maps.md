@@ -75,7 +75,7 @@ A list of domains permitted to embed this map. This controls the CSP `frame-ance
 - `https://*.example.com` — allow all subdomains
 - `*` — allow any origin (not recommended for production)
 
-If no origins are specified, only the MeshMonitor host itself (`'self'`) can embed the map.
+If no origins are specified, any site can embed the map. For production deployments, it is recommended to restrict this to specific trusted domains.
 
 ## Embedding on Your Website
 
