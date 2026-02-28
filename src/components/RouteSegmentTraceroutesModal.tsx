@@ -36,11 +36,9 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
         }
 
         const routeForward = JSON.parse(tr.route);
-        const routeBack = JSON.parse(tr.routeBack);
 
-        // Build full path sequences
+        // Build full forward path sequence
         const forwardSequence = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
-        const backSequence = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
 
         // Check if segment exists in forward path
         const segmentInForward = forwardSequence.some((num, idx) => {
@@ -49,12 +47,20 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
           return (num === nodeNum1 && next === nodeNum2) || (num === nodeNum2 && next === nodeNum1);
         });
 
-        // Check if segment exists in return path
-        const segmentInBack = backSequence.some((num, idx) => {
-          if (idx === backSequence.length - 1) return false;
-          const next = backSequence[idx + 1];
-          return (num === nodeNum1 && next === nodeNum2) || (num === nodeNum2 && next === nodeNum1);
-        });
+        // Only check return path if it has real data (not empty/unknown) — Issue #2051
+        let segmentInBack = false;
+        if (tr.routeBack && tr.routeBack !== 'null') {
+          const routeBack = JSON.parse(tr.routeBack);
+          const hasSnrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== '[]';
+          if (routeBack.length > 0 || hasSnrBack) {
+            const backSequence = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
+            segmentInBack = backSequence.some((num, idx) => {
+              if (idx === backSequence.length - 1) return false;
+              const next = backSequence[idx + 1];
+              return (num === nodeNum1 && next === nodeNum2) || (num === nodeNum2 && next === nodeNum1);
+            });
+          }
+        }
 
         return segmentInForward || segmentInBack;
       } catch (error) {

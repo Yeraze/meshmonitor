@@ -227,13 +227,22 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
         ? parseRoute(traceroute.routeBack, traceroute.snrBack)
         : [];
 
+    // Check if the return path has real data — an empty routeBack with no SNR data
+    // means the return path is unknown (not that it's a direct connection).
+    // Without this check, an empty routeBack creates a false direct-line segment
+    // between the two endpoints on the map. (Issue #2051)
+    const hasSnrBack = traceroute.snrBack && traceroute.snrBack !== 'null' && traceroute.snrBack !== '' && traceroute.snrBack !== '[]';
+    const hasReturnPath = backHops.length > 0 || hasSnrBack;
+
     // Build complete forward path: from -> hops -> to (with SNR for each segment)
     const forwardPath = [traceroute.fromNodeNum, ...forwardHops.map(h => h.nodeNum), traceroute.toNodeNum];
     const forwardSnrs = forwardHops.map(h => h.snr);
 
-    // Build complete back path: to -> hops -> from (with SNR for each segment)
-    const backPath = [traceroute.toNodeNum, ...backHops.map(h => h.nodeNum), traceroute.fromNodeNum];
-    const backSnrs = backHops.map(h => h.snr);
+    // Build complete back path only if we have actual return data
+    const backPath = hasReturnPath
+      ? [traceroute.toNodeNum, ...backHops.map(h => h.nodeNum), traceroute.fromNodeNum]
+      : [];
+    const backSnrs = hasReturnPath ? backHops.map(h => h.snr) : [];
 
     // Collect unique nodes with positions (prefer snapshot positions)
     const uniqueNodes = new Map<number, { nodeNum: number; position: [number, number]; name: string }>();
