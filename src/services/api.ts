@@ -568,7 +568,7 @@ class ApiService {
     if (params.offset) queryParams.set('offset', String(params.offset));
 
     const response = await fetch(
-      `${this.baseUrl}/api/v1/messages/search?${queryParams.toString()}`,
+      `${this.baseUrl}/api/messages/search?${queryParams.toString()}`,
       { credentials: 'include' }
     );
     if (!response.ok) throw new Error('Failed to search messages');
