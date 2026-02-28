@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
 
 interface MapResizeHandlerProps {
-  trigger: boolean;
+  trigger: unknown;
 }
 
 const MapResizeHandler: React.FC<MapResizeHandlerProps> = ({ trigger }) => {
