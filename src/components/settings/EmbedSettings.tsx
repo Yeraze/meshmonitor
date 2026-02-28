@@ -118,6 +118,9 @@ const EmbedSettings = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileFormData>({ ...DEFAULT_FORM });
 
+  // Raw text for the allowed-origins input so users can type commas freely
+  const [originsText, setOriginsText] = useState('');
+
   // Embed-code modal
   const [copyProfileId, setCopyProfileId] = useState<string | null>(null);
 
@@ -176,6 +179,7 @@ const EmbedSettings = () => {
     }
 
     setForm(defaults);
+    setOriginsText('');
     setEditingId('new');
   };
 
@@ -197,6 +201,7 @@ const EmbedSettings = () => {
       pollIntervalSeconds: profile.pollIntervalSeconds,
       allowedOrigins: [...profile.allowedOrigins],
     });
+    setOriginsText(profile.allowedOrigins.join(', '));
     setEditingId(profile.id);
   };
 
@@ -213,6 +218,10 @@ const EmbedSettings = () => {
     });
   };
 
+  // Parse origins text into a clean array
+  const parseOrigins = (text: string): string[] =>
+    text.split(',').map(s => s.trim()).filter(Boolean);
+
   // ---- CRUD ----
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -220,12 +229,15 @@ const EmbedSettings = () => {
       return;
     }
 
+    // Parse the raw origins text into the form before saving
+    const payload = { ...form, allowedOrigins: parseOrigins(originsText) };
+
     try {
       if (editingId === 'new') {
-        await apiService.post<EmbedProfile>('/api/embed-profiles', form);
+        await apiService.post<EmbedProfile>('/api/embed-profiles', payload);
         showToast(t('settings.embed.created', 'Embed profile created'), 'success');
       } else {
-        await apiService.put<EmbedProfile>(`/api/embed-profiles/${editingId}`, form);
+        await apiService.put<EmbedProfile>(`/api/embed-profiles/${editingId}`, payload);
         showToast(t('settings.embed.updated', 'Embed profile updated'), 'success');
       }
       setEditingId(null);
@@ -491,14 +503,8 @@ const EmbedSettings = () => {
                   id="embed-origins"
                   className="setting-input embed-input-wide"
                   type="text"
-                  value={form.allowedOrigins.join(', ')}
-                  onChange={e => {
-                    const origins = e.target.value
-                      .split(',')
-                      .map(s => s.trim())
-                      .filter(Boolean);
-                    setForm(prev => ({ ...prev, allowedOrigins: origins }));
-                  }}
+                  value={originsText}
+                  onChange={e => setOriginsText(e.target.value)}
                   placeholder="https://example.com, https://other-site.org"
                 />
               </div>
