@@ -4275,6 +4275,27 @@ class DatabaseService {
     return messages.map(message => this.normalizeBigInts(message));
   }
 
+  async searchMessagesAsync(options: {
+    query: string;
+    caseSensitive?: boolean;
+    scope?: 'all' | 'channels' | 'dms';
+    channels?: number[];
+    fromNodeId?: string;
+    startDate?: number;
+    endDate?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ messages: DbMessage[]; total: number }> {
+    if (this.messagesRepo) {
+      const result = await this.messagesRepo.searchMessages(options);
+      return {
+        messages: result.messages.map(msg => this.convertRepoMessage(msg)),
+        total: result.total,
+      };
+    }
+    return { messages: [], total: 0 };
+  }
+
   // Statistics
   getMessageCount(): number {
     // For PostgreSQL/MySQL, use cache

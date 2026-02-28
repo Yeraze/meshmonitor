@@ -114,6 +114,10 @@ export interface ChannelsTabProps {
 
   // Refs from parent for scroll handling
   channelMessagesContainerRef: React.RefObject<HTMLDivElement | null>;
+
+  // Search focus
+  focusMessageId?: string | null;
+  onFocusMessageHandled?: () => void;
 }
 
 export default function ChannelsTab({
@@ -154,6 +158,8 @@ export default function ChannelsTab({
   isMqttBridgeMessage,
   setEmojiPickerMessage,
   channelMessagesContainerRef,
+  focusMessageId,
+  onFocusMessageHandled,
 }: ChannelsTabProps) {
   const { t } = useTranslation();
   const { nodes } = useNodes();
@@ -269,6 +275,22 @@ export default function ChannelsTab({
       return () => container.removeEventListener('scroll', handleScroll);
     }
   }, [channelMessagesContainerRef, handleScroll]);
+
+  // Scroll to and highlight a focused message from search
+  useEffect(() => {
+    if (!focusMessageId) return;
+    // Delay to allow React to render the channel's messages after tab/channel switch
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-message-id="${CSS.escape(focusMessageId)}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('search-highlight');
+        setTimeout(() => el.classList.remove('search-highlight'), 3000);
+      }
+      onFocusMessageHandled?.();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [focusMessageId, onFocusMessageHandled]);
 
   // Helper: get channel name
   const getChannelName = (channelNum: number): string => {

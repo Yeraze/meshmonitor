@@ -21,6 +21,7 @@ interface SidebarProps {
   onMessagesClick: () => void;
   onChannelsClick?: () => void;
   onNewsClick?: () => void;
+  onSearchClick?: () => void;
   baseUrl: string;
   connectedNodeName?: string;
   meshcoreEnabled?: boolean;
@@ -36,6 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onMessagesClick,
   onChannelsClick,
   onNewsClick,
+  onSearchClick,
   baseUrl,
   connectedNodeName,
   meshcoreEnabled
@@ -169,6 +171,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                   : false
               }
             />
+          )}
+          {onSearchClick && (
+            <button
+              className="sidebar-nav-item"
+              onClick={() => {
+                if (!isCollapsed && !isPinned) setIsCollapsed(true);
+                onSearchClick();
+              }}
+              title={isCollapsed ? t('nav.search') : ''}
+            >
+              <span className="nav-icon">🔍</span>
+              {!isCollapsed && <span className="nav-label">{t('nav.search')}</span>}
+            </button>
           )}
           {hasPermission('info', 'read') && (
             <NavItem id="info" label={t('nav.info')} icon="ℹ️" />

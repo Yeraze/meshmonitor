@@ -4,7 +4,7 @@
  * Handles all message-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, and, or, desc, sql } from 'drizzle-orm';
+import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL } from 'drizzle-orm';
 import { messagesSqlite, messagesPostgres, messagesMysql } from '../schema/messages.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
@@ -706,6 +706,227 @@ export class MessagesRepository extends BaseRepository {
         .from(messagesPostgres);
       await db.delete(messagesPostgres);
       return count.length;
+    }
+  }
+
+  /**
+   * Search messages with text matching, filtering, and pagination.
+   * Returns matching messages and total count for pagination.
+   */
+  async searchMessages(options: {
+    query: string;
+    caseSensitive?: boolean;
+    scope?: 'all' | 'channels' | 'dms';
+    channels?: number[];
+    fromNodeId?: string;
+    startDate?: number;
+    endDate?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ messages: DbMessage[]; total: number }> {
+    const {
+      query,
+      caseSensitive = false,
+      scope = 'all',
+      channels,
+      fromNodeId,
+      startDate,
+      endDate,
+      limit = 50,
+      offset = 0,
+    } = options;
+
+    const pattern = `%${query}%`;
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const table = messagesSqlite;
+      const timeExpr = sql`COALESCE(${table.rxTime}, ${table.timestamp})`;
+
+      // Build conditions array
+      const conditions: SQL[] = [];
+
+      // Text must exist
+      conditions.push(isNotNull(table.text));
+      conditions.push(ne(table.text, ''));
+
+      // Text search
+      if (caseSensitive) {
+        conditions.push(sql`instr(${table.text}, ${query}) > 0`);
+      } else {
+        conditions.push(sql`LOWER(${table.text}) LIKE LOWER(${pattern})`);
+      }
+
+      // Scope filter
+      if (scope === 'channels') {
+        conditions.push(gte(table.channel, 0));
+      } else if (scope === 'dms') {
+        conditions.push(eq(table.channel, -1));
+      }
+
+      // Channel filter
+      if (channels && channels.length > 0) {
+        conditions.push(inArray(table.channel, channels));
+      }
+
+      // From node filter
+      if (fromNodeId) {
+        conditions.push(eq(table.fromNodeId, fromNodeId));
+      }
+
+      // Date range filters
+      if (startDate !== undefined) {
+        conditions.push(sql`${timeExpr} >= ${startDate}`);
+      }
+      if (endDate !== undefined) {
+        conditions.push(sql`${timeExpr} <= ${endDate}`);
+      }
+
+      const whereClause = and(...conditions);
+
+      // Get total count
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(table)
+        .where(whereClause);
+      const total = Number(countResult[0]?.count ?? 0);
+
+      // Get paginated messages
+      const messages = await db
+        .select()
+        .from(table)
+        .where(whereClause)
+        .orderBy(desc(timeExpr))
+        .limit(limit)
+        .offset(offset);
+
+      return { messages: messages.map(m => this.normalizeBigInts(m) as DbMessage), total };
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const table = messagesMysql;
+      const timeExpr = sql`COALESCE(${table.rxTime}, ${table.timestamp})`;
+
+      // Build conditions array
+      const conditions: SQL[] = [];
+
+      // Text must exist
+      conditions.push(isNotNull(table.text));
+      conditions.push(ne(table.text, ''));
+
+      // Text search
+      if (caseSensitive) {
+        conditions.push(sql`BINARY ${table.text} LIKE ${pattern}`);
+      } else {
+        conditions.push(like(table.text, pattern));
+      }
+
+      // Scope filter
+      if (scope === 'channels') {
+        conditions.push(gte(table.channel, 0));
+      } else if (scope === 'dms') {
+        conditions.push(eq(table.channel, -1));
+      }
+
+      // Channel filter
+      if (channels && channels.length > 0) {
+        conditions.push(inArray(table.channel, channels));
+      }
+
+      // From node filter
+      if (fromNodeId) {
+        conditions.push(eq(table.fromNodeId, fromNodeId));
+      }
+
+      // Date range filters
+      if (startDate !== undefined) {
+        conditions.push(sql`${timeExpr} >= ${startDate}`);
+      }
+      if (endDate !== undefined) {
+        conditions.push(sql`${timeExpr} <= ${endDate}`);
+      }
+
+      const whereClause = and(...conditions);
+
+      // Get total count
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(table)
+        .where(whereClause);
+      const total = Number(countResult[0]?.count ?? 0);
+
+      // Get paginated messages
+      const messages = await db
+        .select()
+        .from(table)
+        .where(whereClause)
+        .orderBy(desc(timeExpr))
+        .limit(limit)
+        .offset(offset);
+
+      return { messages: messages as DbMessage[], total };
+    } else {
+      const db = this.getPostgresDb();
+      const table = messagesPostgres;
+      const timeExpr = sql`COALESCE(${table.rxTime}, ${table.timestamp})`;
+
+      // Build conditions array
+      const conditions: SQL[] = [];
+
+      // Text must exist
+      conditions.push(isNotNull(table.text));
+      conditions.push(ne(table.text, ''));
+
+      // Text search
+      if (caseSensitive) {
+        conditions.push(like(table.text, pattern));
+      } else {
+        conditions.push(ilike(table.text, pattern));
+      }
+
+      // Scope filter
+      if (scope === 'channels') {
+        conditions.push(gte(table.channel, 0));
+      } else if (scope === 'dms') {
+        conditions.push(eq(table.channel, -1));
+      }
+
+      // Channel filter
+      if (channels && channels.length > 0) {
+        conditions.push(inArray(table.channel, channels));
+      }
+
+      // From node filter
+      if (fromNodeId) {
+        conditions.push(eq(table.fromNodeId, fromNodeId));
+      }
+
+      // Date range filters
+      if (startDate !== undefined) {
+        conditions.push(sql`${timeExpr} >= ${startDate}`);
+      }
+      if (endDate !== undefined) {
+        conditions.push(sql`${timeExpr} <= ${endDate}`);
+      }
+
+      const whereClause = and(...conditions);
+
+      // Get total count
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(table)
+        .where(whereClause);
+      const total = Number(countResult[0]?.count ?? 0);
+
+      // Get paginated messages
+      const messages = await db
+        .select()
+        .from(table)
+        .where(whereClause)
+        .orderBy(desc(timeExpr))
+        .limit(limit)
+        .offset(offset);
+
+      return { messages: messages as DbMessage[], total };
     }
   }
 }
