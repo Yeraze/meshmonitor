@@ -3882,8 +3882,28 @@ class MeshtasticManager {
           });
         }
 
-        // Only update node's current position if precision check passes
-        if (shouldUpdatePosition) {
+        // Skip overwriting the local node's position from mesh broadcast packets when fixedPosition is enabled.
+        // When fixedPosition=true, the position is set explicitly by the user (via config or CLI).
+        // The device's firmware may broadcast stale position data before the new fixed position takes effect,
+        // which would otherwise overwrite the correct position in the database.
+        const isLocalNode = this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum;
+        const hasFixedPositionEnabled = this.actualDeviceConfig?.position?.fixedPosition === true;
+        if (isLocalNode && hasFixedPositionEnabled && shouldUpdatePosition) {
+          logger.info(`🗺️ Skipping position update for local node ${nodeId}: fixedPosition is enabled, position should only be set via config. Received: ${coords.latitude}, ${coords.longitude}`);
+          // Still update lastHeard and technical fields, just not lat/lon/alt
+          const technicalData: any = {
+            nodeNum: fromNum,
+            nodeId: nodeId,
+            lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000),
+          };
+          if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+            technicalData.snr = meshPacket.rxSnr;
+          }
+          if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+            technicalData.rssi = meshPacket.rxRssi;
+          }
+          databaseService.upsertNode(technicalData);
+        } else if (shouldUpdatePosition) {
           const nodeData: any = {
             nodeNum: fromNum,
             nodeId: nodeId,
@@ -11084,6 +11104,22 @@ class MeshtasticManager {
 
         await this.transport.send(positionPacket);
         logger.debug('⚙️ Sent set_fixed_position admin message');
+
+        // Immediately update the local node's position in the database so it's correct
+        // before any stale position broadcast arrives from the device firmware.
+        if (this.localNodeInfo) {
+          const localNodeNum = this.localNodeInfo.nodeNum;
+          const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+          databaseService.upsertNode({
+            nodeNum: localNodeNum,
+            nodeId: localNodeId,
+            latitude,
+            longitude,
+            altitude: altitude || 0,
+            positionTimestamp: Date.now(),
+          });
+          logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
+        }
       }
 
       // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
