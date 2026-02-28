@@ -145,6 +145,7 @@ function App() {
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -4121,8 +4122,9 @@ function App() {
   });
 
   // Navigate to message from search result
-  const handleNavigateToMessage = useCallback((result: { source: string; channel?: number; fromNodeId?: string; fromNodeNum?: number }) => {
+  const handleNavigateToMessage = useCallback((result: { id: string; source: string; channel?: number; fromNodeId?: string; fromNodeNum?: number }) => {
     setIsSearchOpen(false);
+    setFocusMessageId(result.id);
     if (result.source === 'meshcore') {
       setActiveTab('meshcore');
     } else if (result.channel === -1) {
@@ -4397,6 +4399,8 @@ function App() {
             isMqttBridgeMessage={isMqttBridgeMessage}
             setEmojiPickerMessage={setEmojiPickerMessage}
             channelMessagesContainerRef={channelMessagesContainerRef}
+            focusMessageId={focusMessageId}
+            onFocusMessageHandled={() => setFocusMessageId(null)}
           />
         )}
         {activeTab === 'messages' && (
@@ -4460,6 +4464,8 @@ function App() {
             setEmojiPickerMessage={setEmojiPickerMessage}
             shouldShowData={shouldShowData}
             dmMessagesContainerRef={dmMessagesContainerRef}
+            focusMessageId={focusMessageId}
+            onFocusMessageHandled={() => setFocusMessageId(null)}
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
             handleShowOnMap={(nodeId: string) => {

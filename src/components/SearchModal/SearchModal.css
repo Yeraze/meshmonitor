@@ -299,3 +299,15 @@
     width: 100%;
   }
 }
+
+/* Highlight animation for scroll-to-message from search */
+@keyframes search-highlight-pulse {
+  0% { background-color: rgba(249, 226, 175, 0.3); }
+  50% { background-color: rgba(249, 226, 175, 0.15); }
+  100% { background-color: transparent; }
+}
+
+.search-highlight {
+  animation: search-highlight-pulse 3s ease-out forwards;
+  border-radius: 8px;
+}

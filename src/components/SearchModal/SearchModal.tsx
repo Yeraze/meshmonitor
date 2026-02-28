@@ -124,7 +124,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
     if (result.channel !== undefined && result.channel !== null) {
       const ch = channels.find(c => c.id === result.channel);
-      return t('search.channel_label', { name: ch?.name ?? String(result.channel) });
+      return t('search.channel_label', { name: ch?.name || t('channels.channel_fallback', { channelNum: result.channel }) });
     }
     if (result.toNodeId) {
       const node = nodes.find(n => n.nodeId === result.toNodeId);
@@ -232,7 +232,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 >
                   <option value="">{t('search.scope_all')}</option>
                   {channels.map(ch => (
-                    <option key={ch.id} value={ch.id}>{ch.name}</option>
+                    <option key={ch.id} value={ch.id}>{ch.name || t('channels.channel_fallback', { channelNum: ch.id })}</option>
                   ))}
                 </select>
               </div>
