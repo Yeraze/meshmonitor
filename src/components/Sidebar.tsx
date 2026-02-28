@@ -144,21 +144,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <nav className="sidebar-nav">
         <SectionHeader title={t('nav.section_main')} />
-        {onSearchClick && (
-          <div className="sidebar-section">
-            <button
-              className="sidebar-nav-item"
-              onClick={() => {
-                if (!isCollapsed && !isPinned) setIsCollapsed(true);
-                onSearchClick();
-              }}
-              title={isCollapsed ? t('nav.search') : ''}
-            >
-              <span className="nav-icon">🔍</span>
-              {!isCollapsed && <span className="nav-label">{t('nav.search')}</span>}
-            </button>
-          </div>
-        )}
         <div className="sidebar-section">
           <NavItem id="nodes" label={t('nav.nodes')} icon="🗺️" />
           {hasAnyChannelPermission() && (
@@ -186,6 +171,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                   : false
               }
             />
+          )}
+          {onSearchClick && (
+            <button
+              className="sidebar-nav-item"
+              onClick={() => {
+                if (!isCollapsed && !isPinned) setIsCollapsed(true);
+                onSearchClick();
+              }}
+              title={isCollapsed ? t('nav.search') : ''}
+            >
+              <span className="nav-icon">🔍</span>
+              {!isCollapsed && <span className="nav-label">{t('nav.search')}</span>}
+            </button>
           )}
           {hasPermission('info', 'read') && (
             <NavItem id="info" label={t('nav.info')} icon="ℹ️" />
