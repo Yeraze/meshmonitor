@@ -1697,6 +1697,13 @@ class MeshtasticManager {
       return;
     }
 
+    // Auto-assign IDs to triggers missing them
+    for (let i = 0; i < timerTriggers.length; i++) {
+      if (!timerTriggers[i].id) {
+        timerTriggers[i].id = `timer-${i}`;
+      }
+    }
+
     // Schedule each enabled timer
     for (const trigger of timerTriggers) {
       if (!trigger.enabled) {
@@ -1764,6 +1771,13 @@ class MeshtasticManager {
     } catch (e) {
       logger.error('📍 Failed to parse geofenceTriggers setting:', e);
       return;
+    }
+
+    // Auto-assign IDs to triggers missing them (prevents shared state when id is undefined)
+    for (let i = 0; i < triggers.length; i++) {
+      if (!triggers[i].id) {
+        triggers[i].id = `geofence-${i}`;
+      }
     }
 
     const enabledTriggers = triggers.filter(t => t.enabled);
