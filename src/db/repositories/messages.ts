@@ -4,7 +4,7 @@
  * Handles all message-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, gte, lte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL } from 'drizzle-orm';
+import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL } from 'drizzle-orm';
 import { messagesSqlite, messagesPostgres, messagesMysql } from '../schema/messages.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
