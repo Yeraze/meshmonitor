@@ -526,6 +526,55 @@ class ApiService {
     return response.json();
   }
 
+  async searchMessages(params: {
+    q: string;
+    caseSensitive?: boolean;
+    scope?: 'all' | 'channels' | 'dms' | 'meshcore';
+    channels?: number[];
+    fromNodeId?: string;
+    startDate?: number;
+    endDate?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    success: boolean;
+    count: number;
+    total: number;
+    data: Array<{
+      id: string;
+      text: string;
+      fromNodeId?: string;
+      fromNodeNum?: number;
+      fromPublicKey?: string;
+      toNodeId?: string;
+      toNodeNum?: number;
+      toPublicKey?: string;
+      channel?: number;
+      timestamp: number;
+      rxTime?: number;
+      source: 'standard' | 'meshcore';
+    }>;
+  }> {
+    await this.ensureBaseUrl();
+    const queryParams = new URLSearchParams();
+    queryParams.set('q', params.q);
+    if (params.caseSensitive) queryParams.set('caseSensitive', 'true');
+    if (params.scope) queryParams.set('scope', params.scope);
+    if (params.channels?.length) queryParams.set('channels', params.channels.join(','));
+    if (params.fromNodeId) queryParams.set('fromNodeId', params.fromNodeId);
+    if (params.startDate) queryParams.set('startDate', String(params.startDate));
+    if (params.endDate) queryParams.set('endDate', String(params.endDate));
+    if (params.limit) queryParams.set('limit', String(params.limit));
+    if (params.offset) queryParams.set('offset', String(params.offset));
+
+    const response = await fetch(
+      `${this.baseUrl}/api/v1/messages/search?${queryParams.toString()}`,
+      { credentials: 'include' }
+    );
+    if (!response.ok) throw new Error('Failed to search messages');
+    return response.json();
+  }
+
   async sendMessage(payload: {
     channel?: number;
     text: string;
