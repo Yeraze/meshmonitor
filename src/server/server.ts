@@ -6747,6 +6747,21 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
             sessionPasskey || undefined
           );
           await meshtasticManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
+
+          // Immediately update the local node's position in the database so it's correct
+          // before any stale position broadcast arrives from the device firmware.
+          if (isLocalNode && localNodeNum) {
+            const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+            databaseService.upsertNode({
+              nodeNum: localNodeNum,
+              nodeId: localNodeId,
+              latitude,
+              longitude,
+              altitude: altitude || 0,
+              positionTimestamp: Date.now(),
+            });
+            logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
+          }
         }
         adminMessage = protobufService.createSetPositionConfigMessage(positionConfig, sessionPasskey || undefined);
         break;
@@ -6881,6 +6896,21 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
 
     // Send the admin command
     await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+
+    // For setFixedPosition on the local node, immediately update the database
+    // so it's correct before any stale position broadcast arrives from the device firmware.
+    if (command === 'setFixedPosition' && isLocalNode && localNodeNum) {
+      const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+      databaseService.upsertNode({
+        nodeNum: localNodeNum,
+        nodeId: localNodeId,
+        latitude: params.latitude,
+        longitude: params.longitude,
+        altitude: params.altitude || 0,
+        positionTimestamp: Date.now(),
+      });
+      logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${params.latitude}, lon=${params.longitude}`);
+    }
 
     // If command succeeded on a remote node, update hasRemoteAdmin flag
     if (!isLocalNode) {
