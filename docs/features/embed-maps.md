@@ -83,23 +83,24 @@ After saving a profile, click the **Copy Embed Code** button to copy a ready-to-
 
 ```html
 <iframe
-  src="https://your-meshmonitor.example.com/meshmonitor/embed/PROFILE_ID/embed.html"
+  src="https://your-meshmonitor.example.com/embed/PROFILE_ID"
   width="800"
   height="600"
-  style="border: none;"
-  allow="geolocation"
+  frameborder="0"
+  style="border:0"
+  allowfullscreen
 ></iframe>
 ```
 
-Replace the URL with your actual MeshMonitor URL and the profile ID. Adjust `width` and `height` to fit your site layout — the map is fully responsive and fills the iframe.
+Replace the URL with your actual MeshMonitor URL and the profile ID. If you have a `BASE_URL` configured (e.g., `/meshmonitor`), include it before `/embed/` (e.g., `.../meshmonitor/embed/PROFILE_ID`). Adjust `width` and `height` to fit your site layout — the map is fully responsive and fills the iframe.
 
 ::: tip Responsive Sizing
 For a responsive embed, use percentage-based or viewport-based sizing:
 ```html
 <iframe
-  src="https://your-meshmonitor.example.com/meshmonitor/embed/PROFILE_ID/embed.html"
+  src="https://your-meshmonitor.example.com/embed/PROFILE_ID"
   style="border: none; width: 100%; height: 500px;"
-  allow="geolocation"
+  allowfullscreen
 ></iframe>
 ```
 :::
