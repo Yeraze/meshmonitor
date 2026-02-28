@@ -190,7 +190,7 @@ jobs:
 
           FAILED=0
           for FILE in "${FILES[@]}"; do
-            SIZE=$(docker run --rm --platform "$PLATFORM" "$IMAGE" stat -c%s "$FILE" 2>/dev/null || echo "MISSING")
+            SIZE=$(docker run --rm --entrypoint stat --platform "$PLATFORM" "$IMAGE" -c%s "$FILE" 2>/dev/null || echo "MISSING")
             if [ "$SIZE" = "MISSING" ]; then
               echo "FAIL: $FILE is missing"
               FAILED=1
@@ -203,7 +203,7 @@ jobs:
           done
 
           # Verify node binary runs
-          NODE_VERSION=$(docker run --rm --platform "$PLATFORM" "$IMAGE" node --version 2>/dev/null || echo "FAILED")
+          NODE_VERSION=$(docker run --rm --entrypoint node --platform "$PLATFORM" "$IMAGE" --version 2>/dev/null || echo "FAILED")
           if [[ "$NODE_VERSION" == v* ]]; then
             echo "  OK: node $NODE_VERSION"
           else
