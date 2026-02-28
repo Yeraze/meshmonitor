@@ -530,8 +530,8 @@ function App() {
     setAutoAnnounceIntervalHours,
     autoAnnounceMessage,
     setAutoAnnounceMessage,
-    autoAnnounceChannelIndex,
-    setAutoAnnounceChannelIndex,
+    autoAnnounceChannelIndexes,
+    setAutoAnnounceChannelIndexes,
     autoAnnounceOnStart,
     setAutoAnnounceOnStart,
     autoAnnounceUseSchedule,
@@ -1022,9 +1022,19 @@ function App() {
             setAutoAnnounceMessage(settings.autoAnnounceMessage);
           }
 
-          if (settings.autoAnnounceChannelIndex !== undefined) {
+          if (settings.autoAnnounceChannelIndexes) {
+            try {
+              const channels = JSON.parse(settings.autoAnnounceChannelIndexes);
+              if (Array.isArray(channels)) {
+                setAutoAnnounceChannelIndexes(channels);
+              }
+            } catch (e) {
+              console.error('Failed to parse autoAnnounceChannelIndexes:', e);
+            }
+          } else if (settings.autoAnnounceChannelIndex !== undefined) {
+            // Legacy migration: convert single index to array
             const value = parseInt(settings.autoAnnounceChannelIndex);
-            setAutoAnnounceChannelIndex(value);
+            setAutoAnnounceChannelIndexes([value]);
           }
 
           if (settings.autoAnnounceOnStart !== undefined) {
@@ -4666,7 +4676,7 @@ function App() {
                   enabled={autoAnnounceEnabled}
                   intervalHours={autoAnnounceIntervalHours}
                   message={autoAnnounceMessage}
-                  channelIndex={autoAnnounceChannelIndex}
+                  channelIndexes={autoAnnounceChannelIndexes}
                   announceOnStart={autoAnnounceOnStart}
                   useSchedule={autoAnnounceUseSchedule}
                   schedule={autoAnnounceSchedule}
@@ -4675,7 +4685,7 @@ function App() {
                   onEnabledChange={setAutoAnnounceEnabled}
                   onIntervalChange={setAutoAnnounceIntervalHours}
                   onMessageChange={setAutoAnnounceMessage}
-                  onChannelChange={setAutoAnnounceChannelIndex}
+                  onChannelIndexesChange={setAutoAnnounceChannelIndexes}
                   onAnnounceOnStartChange={setAutoAnnounceOnStart}
                   onUseScheduleChange={setAutoAnnounceUseSchedule}
                   onScheduleChange={setAutoAnnounceSchedule}

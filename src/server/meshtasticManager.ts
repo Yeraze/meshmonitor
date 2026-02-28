@@ -15,7 +15,7 @@ import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
-import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
+import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
@@ -8195,22 +8195,22 @@ class MeshtasticManager {
 
       // Try to match message against triggers
       for (const trigger of triggers) {
-        // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
-        const triggerChannel = trigger.channel ?? 'dm';
+        // Normalize trigger channels (handles legacy single channel and new multi-channel array format)
+        const triggerChannels = normalizeTriggerChannels(trigger);
 
-        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}`);
+        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channels: ${triggerChannels.join('+')}) against message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}`);
 
-        // Check if this trigger applies to the current message
+        // Check if this trigger applies to the current message's channel
         if (isDirectMessage) {
-          // For DMs, only match triggers configured for DM
-          if (triggerChannel !== 'dm') {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for channel ${triggerChannel}, but message is DM`);
+          // For DMs, only match triggers that include 'dm' in their channels
+          if (!triggerChannels.includes('dm')) {
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - not configured for DM (channels: ${triggerChannels.join('+')})`);
             continue;
           }
         } else {
-          // For channel messages, only match triggers configured for this specific channel
-          if (triggerChannel !== message.channel) {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${message.channel}`);
+          // For channel messages, only match triggers that include this channel number
+          if (!triggerChannels.includes(message.channel)) {
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - not configured for channel ${message.channel} (channels: ${triggerChannels.join('+')})`);
             continue;
           }
         }
@@ -8531,19 +8531,20 @@ class MeshtasticManager {
               }
 
               // For scripts with multiple responses, send each one
-              const triggerChannel = trigger.channel ?? 'dm';
+              const scriptTriggerChannels = normalizeTriggerChannels(trigger);
 
               // Skip sending if channel is 'none' (script handles its own output)
-              if (triggerChannel === 'none') {
+              if (scriptTriggerChannels.includes('none')) {
                 const scriptDuration = Date.now() - scriptStartTime;
                 logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms (channel=none, no mesh output)`);
                 return;
               }
 
-              const isDM = triggerChannel === 'dm';
+              // Respond on the channel the message came from
+              const isDM = isDirectMessage;
               // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
               const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
-              const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+              const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${message.channel}`;
               logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}${trigger.verifyResponse ? ' (with verification)' : ''}`);
 
               scriptResponses.forEach((resp, index) => {
@@ -8560,7 +8561,7 @@ class MeshtasticManager {
                   (reason: string) => {
                     logger.warn(`❌ Script response ${index + 1}/${scriptResponses.length} failed to ${target}: ${reason}`);
                   },
-                  isDM ? undefined : triggerChannel as number, // channel: undefined for DM, channel number for channel
+                  isDM ? undefined : message.channel as number, // channel: undefined for DM, channel number for channel
                   maxAttempts
                 );
               });
@@ -8617,11 +8618,11 @@ class MeshtasticManager {
           }
 
           // Enqueue all messages for delivery with retry logic
-          const triggerChannel = trigger.channel ?? 'dm';
-          const isDM = triggerChannel === 'dm';
+          // Respond on the channel the message came from
+          const isDM = isDirectMessage;
           // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
           const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
-          const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+          const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${message.channel}`;
           logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${target}${trigger.verifyResponse ? ' (with verification)' : ''}`);
 
           messagesToSend.forEach((msg, index) => {
@@ -8636,7 +8637,7 @@ class MeshtasticManager {
               (reason: string) => {
                 logger.warn(`❌ Auto-response ${index + 1}/${messagesToSend.length} failed to ${target}: ${reason}`);
               },
-              isDM ? undefined : triggerChannel as number, // channel: undefined for DM, channel number for channel
+              isDM ? undefined : message.channel as number, // channel: undefined for DM, channel number for channel
               maxAttempts
             );
           });
@@ -9328,14 +9329,47 @@ class MeshtasticManager {
   async sendAutoAnnouncement(): Promise<void> {
     try {
       const message = databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
-      const channelIndex = parseInt(databaseService.getSetting('autoAnnounceChannelIndex') || '0');
+
+      // Multi-channel support: read JSON array, fall back to legacy single index
+      let channelIndexes: number[];
+      const channelIndexesStr = databaseService.getSetting('autoAnnounceChannelIndexes');
+      if (channelIndexesStr) {
+        try {
+          const parsed = JSON.parse(channelIndexesStr);
+          channelIndexes = Array.isArray(parsed) ? parsed.filter(n => typeof n === 'number') : [0];
+        } catch {
+          channelIndexes = [0];
+        }
+      } else {
+        // Legacy migration: read old single channel setting
+        const legacyIndex = parseInt(databaseService.getSetting('autoAnnounceChannelIndex') || '0');
+        channelIndexes = [legacyIndex];
+      }
+
+      if (channelIndexes.length === 0) {
+        channelIndexes = [0];
+      }
 
       // Replace tokens
       const replacedMessage = await this.replaceAnnouncementTokens(message);
 
-      logger.info(`📢 Sending auto-announcement to channel ${channelIndex}: "${replacedMessage}"`);
+      logger.info(`📢 Sending auto-announcement to ${channelIndexes.length} channel(s) [${channelIndexes.join(',')}]: "${replacedMessage}"`);
 
-      await this.sendTextMessage(replacedMessage, channelIndex);
+      channelIndexes.forEach((channelIdx, i) => {
+        messageQueueService.enqueue(
+          replacedMessage,
+          0, // destination: 0 for channel broadcast
+          undefined, // no reply-to for announcements
+          () => {
+            logger.info(`\u2705 Auto-announcement ${i + 1}/${channelIndexes.length} delivered to channel ${channelIdx}`);
+          },
+          (reason: string) => {
+            logger.warn(`\u274c Auto-announcement ${i + 1}/${channelIndexes.length} failed on channel ${channelIdx}: ${reason}`);
+          },
+          channelIdx, // channel number
+          1 // single attempt, no retry for broadcasts
+        );
+      });
 
       // Update last announcement time
       databaseService.setSetting('lastAnnouncementTime', Date.now().toString());
