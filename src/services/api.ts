@@ -248,7 +248,7 @@ class ApiService {
           // Remove any trailing segments that look like app routes (not part of base path)
           // Keep segments until we hit something that looks like a route
           const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'packet-monitor'];
-          let baseSegments = [];
+          const baseSegments = [];
 
           for (const segment of pathParts) {
             if (appRoutes.includes(segment.toLowerCase())) {
