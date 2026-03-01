@@ -991,4 +991,312 @@ describe('MeshtasticManager - Configuration Polling', () => {
       expect(nodesWithPKC.length).toBe(2);
     });
   });
+
+  describe('Reboot-induced node ID change detection', () => {
+    // Helper to simulate processMyNodeInfo logic for device_id handling
+    function simulateProcessMyNodeInfo(
+      myNodeInfo: {
+        myNodeNum: number;
+        hwModel?: number;
+        rebootCount?: number;
+        deviceId?: Uint8Array | null;
+      },
+      mockDb: {
+        settings: Record<string, string>;
+        nodes: Record<number, any>;
+      }
+    ) {
+      const nodeNum = Number(myNodeInfo.myNodeNum);
+      const nodeId = `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`;
+
+      // Extract device_id
+      const deviceId = myNodeInfo.deviceId && myNodeInfo.deviceId.length > 0
+        ? Buffer.from(myNodeInfo.deviceId).toString('hex')
+        : null;
+
+      const previousNodeNum = mockDb.settings['localNodeNum'] || null;
+      const previousNodeId = mockDb.settings['localNodeId'] || null;
+
+      let result: {
+        action: 'rejected_new_nodenum' | 'accepted_new_nodenum' | 'no_change' | 'first_connection';
+        nodeNum: number;
+        nodeId: string;
+        deviceIdStored?: boolean;
+        initCacheCleared?: boolean;
+      };
+
+      if (previousNodeNum && previousNodeId) {
+        const prevNum = parseInt(previousNodeNum);
+        if (prevNum !== nodeNum) {
+          const storedDeviceId = mockDb.settings['localDeviceId'] || null;
+
+          if (deviceId && storedDeviceId && deviceId === storedDeviceId) {
+            // Same device rebooted - reject new nodeNum
+            result = {
+              action: 'rejected_new_nodenum',
+              nodeNum: prevNum,
+              nodeId: previousNodeId,
+              deviceIdStored: false,
+              initCacheCleared: false,
+            };
+            return result;
+          } else {
+            // Different device or no device_id
+            if (deviceId) {
+              mockDb.settings['localDeviceId'] = deviceId;
+            }
+            result = {
+              action: 'accepted_new_nodenum',
+              nodeNum: nodeNum,
+              nodeId: nodeId,
+              deviceIdStored: !!deviceId,
+              initCacheCleared: true,
+            };
+          }
+        } else {
+          result = {
+            action: 'no_change',
+            nodeNum: nodeNum,
+            nodeId: nodeId,
+          };
+        }
+      } else {
+        result = {
+          action: 'first_connection',
+          nodeNum: nodeNum,
+          nodeId: nodeId,
+        };
+      }
+
+      // Store device_id on first encounter
+      if (deviceId && !mockDb.settings['localDeviceId']) {
+        mockDb.settings['localDeviceId'] = deviceId;
+        result.deviceIdStored = true;
+      }
+
+      // Save node info
+      mockDb.settings['localNodeNum'] = nodeNum.toString();
+      mockDb.settings['localNodeId'] = nodeId;
+
+      return result;
+    }
+
+    it('should reject new nodeNum when same device_id reboots with different nodeNum', () => {
+      const deviceIdBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10]);
+      const deviceIdHex = Buffer.from(deviceIdBytes).toString('hex');
+
+      const mockDb = {
+        settings: {
+          localNodeNum: '1555400904',  // Original nodeNum: !5CA874C8
+          localNodeId: '!5ca874c8',
+          localDeviceId: deviceIdHex,
+        } as Record<string, string>,
+        nodes: {
+          1555400904: { nodeNum: 1555400904, nodeId: '!5ca874c8', longName: 'Test Node' },
+        } as Record<number, any>,
+      };
+
+      // Simulate reboot where firmware assigns different nodeNum
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 903529635,  // New nodeNum: !35BB44A3
+        hwModel: 31,
+        rebootCount: 5,
+        deviceId: deviceIdBytes,  // Same device_id
+      }, mockDb);
+
+      // Should reject the new nodeNum and keep the original
+      expect(result.action).toBe('rejected_new_nodenum');
+      expect(result.nodeNum).toBe(1555400904);  // Original preserved
+      expect(result.nodeId).toBe('!5ca874c8');   // Original preserved
+      expect(result.initCacheCleared).toBe(false);
+
+      // Settings should NOT be updated with new nodeNum
+      expect(mockDb.settings.localNodeNum).toBe('1555400904');
+      expect(mockDb.settings.localNodeId).toBe('!5ca874c8');
+    });
+
+    it('should accept new nodeNum when device_id differs (genuinely different device)', () => {
+      const oldDeviceIdBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10]);
+      const newDeviceIdBytes = new Uint8Array([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00]);
+
+      const mockDb = {
+        settings: {
+          localNodeNum: '1555400904',
+          localNodeId: '!5ca874c8',
+          localDeviceId: Buffer.from(oldDeviceIdBytes).toString('hex'),
+        } as Record<string, string>,
+        nodes: {} as Record<number, any>,
+      };
+
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 903529635,
+        hwModel: 31,
+        rebootCount: 1,
+        deviceId: newDeviceIdBytes,  // Different device_id
+      }, mockDb);
+
+      // Should accept the new nodeNum
+      expect(result.action).toBe('accepted_new_nodenum');
+      expect(result.nodeNum).toBe(903529635);
+      expect(result.nodeId).toBe('!35dac4a3');
+      expect(result.initCacheCleared).toBe(true);
+
+      // Settings should be updated with new device_id
+      expect(mockDb.settings.localDeviceId).toBe(Buffer.from(newDeviceIdBytes).toString('hex'));
+      expect(mockDb.settings.localNodeNum).toBe('903529635');
+    });
+
+    it('should accept new nodeNum when device_id is null (backward compatibility with older firmware)', () => {
+      const mockDb = {
+        settings: {
+          localNodeNum: '1555400904',
+          localNodeId: '!5ca874c8',
+          localDeviceId: '0102030405060708090a0b0c0d0e0f10',
+        } as Record<string, string>,
+        nodes: {} as Record<number, any>,
+      };
+
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 903529635,
+        hwModel: 31,
+        rebootCount: 1,
+        deviceId: null,  // Older firmware, no device_id
+      }, mockDb);
+
+      // Should accept (cannot verify identity without device_id)
+      expect(result.action).toBe('accepted_new_nodenum');
+      expect(result.nodeNum).toBe(903529635);
+      expect(result.initCacheCleared).toBe(true);
+    });
+
+    it('should accept new nodeNum when device_id is empty bytes', () => {
+      const mockDb = {
+        settings: {
+          localNodeNum: '1555400904',
+          localNodeId: '!5ca874c8',
+          localDeviceId: '0102030405060708090a0b0c0d0e0f10',
+        } as Record<string, string>,
+        nodes: {} as Record<number, any>,
+      };
+
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 903529635,
+        hwModel: 31,
+        rebootCount: 1,
+        deviceId: new Uint8Array(0),  // Empty bytes (treated as null)
+      }, mockDb);
+
+      // Should accept (empty device_id is treated as unavailable)
+      expect(result.action).toBe('accepted_new_nodenum');
+      expect(result.nodeNum).toBe(903529635);
+    });
+
+    it('should store device_id on first connection and accept nodeNum normally', () => {
+      const deviceIdBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10]);
+
+      const mockDb = {
+        settings: {} as Record<string, string>,  // No previous settings
+        nodes: {} as Record<number, any>,
+      };
+
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 1555400904,
+        hwModel: 31,
+        rebootCount: 0,
+        deviceId: deviceIdBytes,
+      }, mockDb);
+
+      // Should accept on first connection
+      expect(result.action).toBe('first_connection');
+      expect(result.nodeNum).toBe(1555400904);
+      expect(result.deviceIdStored).toBe(true);
+
+      // Settings should be saved
+      expect(mockDb.settings.localNodeNum).toBe('1555400904');
+      expect(mockDb.settings.localNodeId).toBe('!5cb588c8');
+      expect(mockDb.settings.localDeviceId).toBe(Buffer.from(deviceIdBytes).toString('hex'));
+    });
+
+    it('should store device_id when upgrading from version without device_id support', () => {
+      const deviceIdBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10]);
+
+      const mockDb = {
+        settings: {
+          localNodeNum: '1555400904',
+          localNodeId: '!5ca874c8',
+          // No localDeviceId - upgrading from older version
+        } as Record<string, string>,
+        nodes: {} as Record<number, any>,
+      };
+
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 1555400904,  // Same nodeNum (no change)
+        hwModel: 31,
+        rebootCount: 3,
+        deviceId: deviceIdBytes,
+      }, mockDb);
+
+      // No nodeNum change, should proceed normally and store device_id
+      expect(result.action).toBe('no_change');
+      expect(result.deviceIdStored).toBe(true);
+      expect(mockDb.settings.localDeviceId).toBe(Buffer.from(deviceIdBytes).toString('hex'));
+    });
+
+    it('should convert device_id bytes to hex string correctly', () => {
+      const testCases = [
+        {
+          bytes: new Uint8Array([0x01, 0x02, 0x03, 0x04]),
+          expectedHex: '01020304',
+        },
+        {
+          bytes: new Uint8Array([0xFF, 0xFE, 0xFD, 0xFC]),
+          expectedHex: 'fffefdfc',
+        },
+        {
+          bytes: new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          expectedHex: '00000000000000000000000000000001',
+        },
+      ];
+
+      testCases.forEach(({ bytes, expectedHex }) => {
+        const hex = Buffer.from(bytes).toString('hex');
+        expect(hex).toBe(expectedHex);
+      });
+    });
+
+    it('should not create duplicate node when same device reboots', () => {
+      const deviceIdBytes = new Uint8Array([0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89]);
+      const deviceIdHex = Buffer.from(deviceIdBytes).toString('hex');
+
+      const upsertCalls: any[] = [];
+      const mockDb = {
+        settings: {
+          localNodeNum: '1555400904',
+          localNodeId: '!5ca874c8',
+          localDeviceId: deviceIdHex,
+        } as Record<string, string>,
+        nodes: {
+          1555400904: { nodeNum: 1555400904, nodeId: '!5ca874c8', longName: 'My Node' },
+        } as Record<number, any>,
+      };
+
+      // First, simulate the reboot with different nodeNum
+      const result = simulateProcessMyNodeInfo({
+        myNodeNum: 999999999,  // Firmware assigned different nodeNum
+        hwModel: 31,
+        rebootCount: 10,
+        deviceId: deviceIdBytes,
+      }, mockDb);
+
+      // Should reject and keep original
+      expect(result.action).toBe('rejected_new_nodenum');
+      expect(result.nodeNum).toBe(1555400904);
+
+      // The new nodeNum (999999999) should NOT appear in settings
+      expect(mockDb.settings.localNodeNum).toBe('1555400904');
+
+      // No node with nodeNum 999999999 should be created (verified by action being rejected)
+      expect(result.action).not.toBe('accepted_new_nodenum');
+    });
+  });
 });
