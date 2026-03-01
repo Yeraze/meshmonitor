@@ -145,6 +145,34 @@
   line-height: 1.5;
 }
 
+/* Origin validation tags */
+.embed-origins-validation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.embed-origin-tag {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-family: monospace;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.embed-origin-tag.valid {
+  background: color-mix(in srgb, var(--ctp-green) 15%, transparent);
+  border: 1px solid var(--ctp-green);
+  color: var(--ctp-green);
+}
+
+.embed-origin-tag.invalid {
+  background: color-mix(in srgb, var(--ctp-red) 15%, transparent);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
 /* Embed code textarea */
 .embed-code-textarea {
   width: 100%;

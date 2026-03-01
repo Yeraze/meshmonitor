@@ -13,12 +13,31 @@ import { requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
-/** Validate that a value is a valid URL origin (scheme://host[:port], no path) */
+/** Validate that a value is a valid URL origin or CSP wildcard pattern.
+ *  Accepts:
+ *   - Standard origins: https://example.com, http://example.com:8080
+ *   - CSP wildcard hosts: https://*.example.com, http://*.example.com:8080
+ */
 function isValidOrigin(origin: unknown): origin is string {
   if (typeof origin !== 'string') return false;
+
+  // Handle CSP wildcard host patterns like https://*.example.com
+  const wildcardMatch = origin.match(/^(https?:\/\/)\*\.(.+)$/);
+  if (wildcardMatch) {
+    try {
+      // Validate by replacing the wildcard with a concrete subdomain
+      const testUrl = new URL(`${wildcardMatch[1]}wildcard.${wildcardMatch[2]}`);
+      const reconstructed = `${testUrl.protocol}//*.${testUrl.host.replace(/^wildcard\./, '')}`;
+      return reconstructed === origin;
+    } catch {
+      return false;
+    }
+  }
+
   try {
     const url = new URL(origin);
     return (url.protocol === 'https:' || url.protocol === 'http:') &&
+           !url.hostname.includes('*') &&
            origin === url.origin;
   } catch {
     return false;

@@ -118,6 +118,9 @@ const EmbedSettings = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileFormData>({ ...DEFAULT_FORM });
 
+  // Raw text for the allowed-origins input so users can type commas freely
+  const [originsText, setOriginsText] = useState('');
+
   // Embed-code modal
   const [copyProfileId, setCopyProfileId] = useState<string | null>(null);
 
@@ -176,6 +179,7 @@ const EmbedSettings = () => {
     }
 
     setForm(defaults);
+    setOriginsText('');
     setEditingId('new');
   };
 
@@ -197,6 +201,7 @@ const EmbedSettings = () => {
       pollIntervalSeconds: profile.pollIntervalSeconds,
       allowedOrigins: [...profile.allowedOrigins],
     });
+    setOriginsText(profile.allowedOrigins.join(', '));
     setEditingId(profile.id);
   };
 
@@ -213,6 +218,38 @@ const EmbedSettings = () => {
     });
   };
 
+  // Parse origins text into a clean array
+  const parseOrigins = (text: string): string[] =>
+    text.split(',').map(s => s.trim()).filter(Boolean);
+
+  // Validate a single origin (standard URL or CSP wildcard like https://*.example.com)
+  const isValidOrigin = (origin: string): boolean => {
+    // CSP wildcard host pattern
+    const wildcardMatch = origin.match(/^(https?:\/\/)\*\.(.+)$/);
+    if (wildcardMatch) {
+      try {
+        const testUrl = new URL(`${wildcardMatch[1]}wildcard.${wildcardMatch[2]}`);
+        const reconstructed = `${testUrl.protocol}//*.${testUrl.host.replace(/^wildcard\./, '')}`;
+        return reconstructed === origin;
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const url = new URL(origin);
+      return (url.protocol === 'https:' || url.protocol === 'http:') &&
+        !url.hostname.includes('*') && origin === url.origin;
+    } catch {
+      return false;
+    }
+  };
+
+  // Compute validation results for the current origins text
+  const originsValidation = parseOrigins(originsText).map(origin => ({
+    origin,
+    valid: isValidOrigin(origin),
+  }));
+
   // ---- CRUD ----
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -220,12 +257,15 @@ const EmbedSettings = () => {
       return;
     }
 
+    // Parse the raw origins text into the form before saving
+    const payload = { ...form, allowedOrigins: parseOrigins(originsText) };
+
     try {
       if (editingId === 'new') {
-        await apiService.post<EmbedProfile>('/api/embed-profiles', form);
+        await apiService.post<EmbedProfile>('/api/embed-profiles', payload);
         showToast(t('settings.embed.created', 'Embed profile created'), 'success');
       } else {
-        await apiService.put<EmbedProfile>(`/api/embed-profiles/${editingId}`, form);
+        await apiService.put<EmbedProfile>(`/api/embed-profiles/${editingId}`, payload);
         showToast(t('settings.embed.updated', 'Embed profile updated'), 'success');
       }
       setEditingId(null);
@@ -491,16 +531,19 @@ const EmbedSettings = () => {
                   id="embed-origins"
                   className="setting-input embed-input-wide"
                   type="text"
-                  value={form.allowedOrigins.join(', ')}
-                  onChange={e => {
-                    const origins = e.target.value
-                      .split(',')
-                      .map(s => s.trim())
-                      .filter(Boolean);
-                    setForm(prev => ({ ...prev, allowedOrigins: origins }));
-                  }}
-                  placeholder="https://example.com, https://other-site.org"
+                  value={originsText}
+                  onChange={e => setOriginsText(e.target.value)}
+                  placeholder="https://example.com, https://*.example.com"
                 />
+                {originsValidation.length > 0 && (
+                  <div className="embed-origins-validation">
+                    {originsValidation.map(({ origin, valid }, i) => (
+                      <span key={i} className={`embed-origin-tag ${valid ? 'valid' : 'invalid'}`}>
+                        {origin}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Security note */}
