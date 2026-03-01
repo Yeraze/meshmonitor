@@ -24,6 +24,8 @@ interface SearchModalProps {
   onNavigateToMessage: (result: SearchResult) => void;
   channels: Array<{ id: number; name: string }>;
   nodes: Array<{ nodeId: string; longName: string; shortName: string }>;
+  canSearchDms?: boolean;
+  canSearchMeshcore?: boolean;
 }
 
 const RESULTS_PER_PAGE = 25;
@@ -34,6 +36,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onNavigateToMessage,
   channels,
   nodes,
+  canSearchDms = true,
+  canSearchMeshcore = false,
 }) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +62,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen]);
+
+  // Reset scope if currently selected scope becomes inaccessible
+  useEffect(() => {
+    if (scope === 'dms' && !canSearchDms) setScope('all');
+    if (scope === 'meshcore' && !canSearchMeshcore) setScope('all');
+    if (scope === 'channels' && channels.length === 0) setScope('all');
+  }, [scope, canSearchDms, canSearchMeshcore, channels.length]);
 
   // Close on Escape key
   useEffect(() => {
@@ -217,9 +228,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 onChange={e => setScope(e.target.value as typeof scope)}
               >
                 <option value="all">{t('search.scope_all')}</option>
-                <option value="channels">{t('search.scope_channels')}</option>
-                <option value="dms">{t('search.scope_dms')}</option>
-                <option value="meshcore">{t('search.scope_meshcore')}</option>
+                {channels.length > 0 && (
+                  <option value="channels">{t('search.scope_channels')}</option>
+                )}
+                {canSearchDms && (
+                  <option value="dms">{t('search.scope_dms')}</option>
+                )}
+                {canSearchMeshcore && (
+                  <option value="meshcore">{t('search.scope_meshcore')}</option>
+                )}
               </select>
             </div>
 

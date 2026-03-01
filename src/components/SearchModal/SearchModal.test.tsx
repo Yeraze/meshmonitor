@@ -210,4 +210,62 @@ describe('SearchModal', () => {
     render(<SearchModal {...defaultProps} />);
     expect(screen.getByText('search.min_length')).toBeInTheDocument();
   });
+
+  describe('permission-based scope filtering', () => {
+    it('should hide DMs scope when canSearchDms is false', () => {
+      render(<SearchModal {...defaultProps} canSearchDms={false} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).not.toContain('dms');
+    });
+
+    it('should show DMs scope when canSearchDms is true', () => {
+      render(<SearchModal {...defaultProps} canSearchDms={true} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).toContain('dms');
+    });
+
+    it('should show DMs scope by default (canSearchDms defaults to true)', () => {
+      render(<SearchModal {...defaultProps} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).toContain('dms');
+    });
+
+    it('should hide MeshCore scope when canSearchMeshcore is false', () => {
+      render(<SearchModal {...defaultProps} canSearchMeshcore={false} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).not.toContain('meshcore');
+    });
+
+    it('should show MeshCore scope when canSearchMeshcore is true', () => {
+      render(<SearchModal {...defaultProps} canSearchMeshcore={true} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).toContain('meshcore');
+    });
+
+    it('should hide MeshCore scope by default (canSearchMeshcore defaults to false)', () => {
+      render(<SearchModal {...defaultProps} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).not.toContain('meshcore');
+    });
+
+    it('should hide Channels scope when channels array is empty', () => {
+      render(<SearchModal {...defaultProps} channels={[]} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).not.toContain('channels');
+    });
+
+    it('should show Channels scope when channels are provided', () => {
+      render(<SearchModal {...defaultProps} />);
+      const scopeSelect = screen.getAllByRole('combobox')[0];
+      const options = Array.from(scopeSelect.querySelectorAll('option')).map(o => o.getAttribute('value'));
+      expect(options).toContain('channels');
+    });
+  });
 });

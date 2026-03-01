@@ -4193,16 +4193,21 @@ function App() {
   }, [setActiveTab, setSelectedDMNode, setSelectedChannel]);
 
   // Ctrl+K / Cmd+K keyboard shortcut to toggle search modal
+  const canSearch = hasPermission('messages', 'read') ||
+    Array.from({ length: 8 }, (_, i) =>
+      hasPermission(`channel_${i}` as ResourceType, 'read')
+    ).some(Boolean);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        setIsSearchOpen(prev => !prev);
+        if (canSearch) setIsSearchOpen(prev => !prev);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [canSearch]);
 
   // If anonymous is disabled and user is not authenticated, show login page
   if (authStatus?.anonymousDisabled && !authStatus?.authenticated) {
@@ -4862,12 +4867,16 @@ function App() {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onNavigateToMessage={handleNavigateToMessage}
-        channels={channels.map(ch => ({ id: ch.id, name: ch.name }))}
+        channels={channels
+          .filter(ch => hasPermission(`channel_${ch.id}` as ResourceType, 'read'))
+          .map(ch => ({ id: ch.id, name: ch.name }))}
         nodes={nodes.map(n => ({
           nodeId: n.user?.id || String(n.nodeNum),
           longName: n.user?.longName || `!${n.nodeNum.toString(16)}`,
           shortName: n.user?.shortName || '????',
         }))}
+        canSearchDms={hasPermission('messages', 'read')}
+        canSearchMeshcore={hasPermission('meshcore', 'read')}
       />
 
       {/* SaveBar for unified save/dismiss actions */}
