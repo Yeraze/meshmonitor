@@ -221,6 +221,36 @@ describe('Embed Profile Admin Routes', () => {
       );
     });
 
+    it('accepts CSP wildcard origins like https://*.example.com', async () => {
+      mockDb.createEmbedProfileAsync.mockResolvedValue(sampleProfile);
+      const app = createApp();
+
+      await request(app)
+        .post('/api/embed-profiles')
+        .send({ name: 'Wildcard', allowedOrigins: ['https://*.example.com', 'http://*.test.org:8080'] });
+
+      expect(mockDb.createEmbedProfileAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          allowedOrigins: ['https://*.example.com', 'http://*.test.org:8080'],
+        })
+      );
+    });
+
+    it('rejects invalid wildcard origins', async () => {
+      mockDb.createEmbedProfileAsync.mockResolvedValue(sampleProfile);
+      const app = createApp();
+
+      await request(app)
+        .post('/api/embed-profiles')
+        .send({ name: 'Bad Wildcard', allowedOrigins: ['https://*', 'https://*.', 'ftp://*.example.com'] });
+
+      expect(mockDb.createEmbedProfileAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          allowedOrigins: [],
+        })
+      );
+    });
+
     it('returns 500 when database fails', async () => {
       mockDb.createEmbedProfileAsync.mockRejectedValue(new Error('db failure'));
       const app = createApp();
