@@ -39,6 +39,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoAnnounceIntervalHours',
   'autoAnnounceMessage',
   'autoAnnounceChannelIndex',
+  'autoAnnounceChannelIndexes',
   'autoAnnounceOnStart',
   'autoAnnounceUseSchedule',
   'autoAnnounceSchedule',

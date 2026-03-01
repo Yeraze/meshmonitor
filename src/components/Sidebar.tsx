@@ -72,6 +72,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     return false;
   };
 
+  // Check if user has permission to search anything (DMs, channels, or meshcore)
+  const hasAnySearchPermission = () => {
+    if (hasPermission('messages', 'read')) return true;
+    return hasAnyChannelPermission();
+  };
+
   // Update CSS custom property when sidebar collapse state changes
   React.useEffect(() => {
     const updateSidebarWidth = () => {
@@ -172,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
             />
           )}
-          {onSearchClick && (
+          {onSearchClick && hasAnySearchPermission() && (
             <button
               className="sidebar-nav-item"
               onClick={() => {

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- **Multi-Channel AutoAnnounce & AutoResponder** ([#2078](https://github.com/Yeraze/meshmonitor/pull/2078)): Select multiple channels for automation targets
+  - **AutoAnnounce**: Broadcast announcements to multiple channels simultaneously via checkbox selection (replaces single-channel dropdown)
+  - **AutoResponder**: Triggers can now match messages on any combination of channels and DMs (replaces single-channel-per-trigger limitation)
+  - **Backward Compatible**: Existing single-channel configurations automatically migrate at runtime via normalization — no manual reconfiguration needed on upgrade
+
 ### Added
 - **Admin Commands Tab** ([#911](https://github.com/Yeraze/meshmonitor/pull/911)): Comprehensive remote node management and administrative commands
   - **New Admin Tab**: Dedicated interface for managing both local and remote Meshtastic nodes

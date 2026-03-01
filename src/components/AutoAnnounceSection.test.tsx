@@ -35,7 +35,7 @@ describe.skip('AutoAnnounceSection Component', () => {
     onEnabledChange: vi.fn(),
     onIntervalChange: vi.fn(),
     onMessageChange: vi.fn(),
-    onChannelChange: vi.fn(),
+    onChannelIndexesChange: vi.fn(),
     onAnnounceOnStartChange: vi.fn(),
     onUseScheduleChange: vi.fn(),
     onScheduleChange: vi.fn()
@@ -45,7 +45,7 @@ describe.skip('AutoAnnounceSection Component', () => {
     enabled: true,
     intervalHours: 6,
     message: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
-    channelIndex: 0,
+    channelIndexes: [0],
     announceOnStart: false,
     useSchedule: false,
     schedule: '0 */6 * * *',
@@ -248,65 +248,61 @@ describe.skip('AutoAnnounceSection Component', () => {
   });
 
   describe('Channel Selection', () => {
-    it('should render channel dropdown', () => {
+    it('should render channel checkboxes', () => {
       render(<AutoAnnounceSection {...defaultProps} />);
 
       expect(screen.getByLabelText(/Broadcast Channel/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Primary/)).toBeInTheDocument();
     });
 
-    it('should list all available channels', () => {
+    it('should list all available channels as checkboxes', () => {
       render(<AutoAnnounceSection {...defaultProps} />);
 
-      const select = screen.getByLabelText(/Broadcast Channel/) as HTMLSelectElement;
-      const options = Array.from(select.options).map(opt => opt.text);
-
-      expect(options).toEqual(['Primary', 'Secondary', 'Testing']);
+      expect(screen.getByLabelText(/Primary/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Secondary/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Testing/)).toBeInTheDocument();
     });
 
     it('should select correct channel by index', () => {
-      render(<AutoAnnounceSection {...defaultProps} channelIndex={1} />);
+      render(<AutoAnnounceSection {...defaultProps} channelIndexes={[1]} />);
 
-      const select = screen.getByLabelText(/Broadcast Channel/) as HTMLSelectElement;
-      expect(select.value).toBe('1');
+      const checkbox1 = screen.getByLabelText(/Secondary/);
+      expect(checkbox1).toBeChecked();
+
+      const checkbox0 = screen.getByLabelText(/Primary/);
+      expect(checkbox0).not.toBeChecked();
     });
 
-    it('should change channel when dropdown changed', async () => {
+    it('should toggle channel when checkbox clicked', async () => {
       const user = userEvent.setup({ delay: null });
-      render(<AutoAnnounceSection {...defaultProps} channelIndex={0} />);
+      render(<AutoAnnounceSection {...defaultProps} channelIndexes={[0]} />);
 
-      const select = screen.getByLabelText(/Broadcast Channel/);
-      await user.selectOptions(select, '2');
+      const checkbox2 = screen.getByLabelText(/Testing/);
+      await user.click(checkbox2);
 
-      await waitFor(() => {
-        const saveButton = screen.getByText('Save Changes');
-        expect(saveButton).not.toBeDisabled();
-      });
+      expect(checkbox2).toBeChecked();
     });
 
-    it('should disable channel dropdown when auto-announce is disabled', () => {
+    it('should disable channel checkboxes when auto-announce is disabled', () => {
       render(<AutoAnnounceSection {...defaultProps} enabled={false} />);
 
-      const select = screen.getByLabelText(/Broadcast Channel/);
-      expect(select).toBeDisabled();
+      const checkbox = screen.getByLabelText(/Primary/);
+      expect(checkbox).toBeDisabled();
     });
 
-    it('should use channel.id not array index when channels have gaps (disabled channels filtered out)', () => {
-      // Simulate filtered channels where channel 1 is disabled and removed
+    it('should handle gaps in channel list', () => {
       const gappedChannels: Channel[] = [
         { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },
         { id: 2, name: 'MESH_FLOW', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 }
       ];
 
-      render(<AutoAnnounceSection {...defaultProps} channels={gappedChannels} channelIndex={2} />);
+      render(<AutoAnnounceSection {...defaultProps} channels={gappedChannels} channelIndexes={[2]} />);
 
-      const select = screen.getByLabelText(/Broadcast Channel/) as HTMLSelectElement;
-      // The value should be the channel ID (2), not the array index (1)
-      expect(select.value).toBe('2');
+      const checkbox2 = screen.getByLabelText(/MESH_FLOW/);
+      expect(checkbox2).toBeChecked();
 
-      // Verify the option values use channel IDs
-      const options = Array.from(select.options);
-      expect(options[0].value).toBe('0');
-      expect(options[1].value).toBe('2');
+      const checkbox0 = screen.getByLabelText(/Primary/);
+      expect(checkbox0).not.toBeChecked();
     });
   });
 
@@ -777,7 +773,7 @@ describe.skip('AutoAnnounceSection Component', () => {
             autoAnnounceEnabled: 'true',
             autoAnnounceIntervalHours: 6,
             autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
-            autoAnnounceChannelIndex: 0,
+            autoAnnounceChannelIndexes: JSON.stringify([0]),
             autoAnnounceOnStart: 'false',
             autoAnnounceUseSchedule: 'true',
             autoAnnounceSchedule: '0 */3 * * *'

@@ -1012,7 +1012,7 @@ class DatabaseService {
         autoAnnounceEnabled: 'false',
         autoAnnounceIntervalHours: '6',
         autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
-        autoAnnounceChannelIndex: '0',
+        autoAnnounceChannelIndexes: '[0]',
         autoAnnounceOnStart: 'false',
         autoAnnounceUseSchedule: 'false',
         autoAnnounceSchedule: '0 */6 * * *',

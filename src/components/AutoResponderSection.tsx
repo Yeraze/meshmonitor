@@ -46,7 +46,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newResponse, setNewResponse] = useState('');
   const [newMultiline, setNewMultiline] = useState(false);
   const [newVerifyResponse, setNewVerifyResponse] = useState(false);
-  const [newChannel, setNewChannel] = useState<number | 'dm'>('dm');
+  const [newChannels, setNewChannels] = useState<Array<number | 'dm'>>(['dm']);
   const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [availableScripts, setAvailableScripts] = useState<ScriptMetadata[]>([]);
@@ -343,14 +343,19 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       return;
     }
 
+    if (newChannels.length === 0) {
+      showToast(t('auto_responder.no_channels_selected', 'Please select at least one channel for this trigger'), 'error');
+      return;
+    }
+
     const trigger: AutoResponderTrigger = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       trigger: newTrigger.trim(),
       responseType: newResponseType,
       response: newResponse.trim(),
       multiline: newResponseType !== 'script' ? newMultiline : undefined,
-      verifyResponse: newChannel === 'dm' ? newVerifyResponse : false, // Only allow verify for DM
-      channel: newChannel,
+      verifyResponse: newChannels.includes('dm') ? newVerifyResponse : false, // Only allow verify for DM
+      channels: newChannels,
     };
 
     setLocalTriggers([...localTriggers, trigger]);
@@ -358,7 +363,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setNewResponse('');
     setNewMultiline(false);
     setNewVerifyResponse(false);
-    setNewChannel('dm');
+    setNewChannels(['dm']);
   };
 
   const removeTrigger = (id: string) => {
@@ -376,7 +381,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm' | 'none', scriptArgs?: string) => {
+  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string) => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
@@ -391,7 +396,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
     setLocalTriggers(localTriggers.map(t =>
       t.id === id
-        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channel, scriptArgs: responseType === 'script' ? scriptArgs : undefined }
+        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channels, channel: undefined, scriptArgs: responseType === 'script' ? scriptArgs : undefined }
         : t
     ));
     setEditingId(null);
@@ -748,7 +753,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 setNewResponseType('text');
                 setNewMultiline(false);
                 setNewVerifyResponse(false);
-                setNewChannel('dm');
+                setNewChannels(['dm']);
                 setNewTriggerTestInput('');
               }}
               disabled={!localEnabled}
@@ -1334,30 +1339,52 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           </div>
           <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
-              Channel:
+              Channels:
             </label>
-            <select
-              value={newChannel}
-              onChange={(e) => {
-                const value = e.target.value === 'dm' ? 'dm' : parseInt(e.target.value);
-                setNewChannel(value);
-                // Auto-disable verifyResponse when switching to a channel
-                if (value !== 'dm') {
-                  setNewVerifyResponse(false);
-                }
-              }}
-              disabled={!localEnabled}
-              className="setting-input"
-              style={{ width: '100%', maxWidth: '400px' }}
-              title="Select which channel or direct messages this trigger should respond to"
-            >
-              <option value="dm">{t('auto_responder.direct_messages')}</option>
+            <div className="channel-checkbox-list" style={{ marginTop: '0.25rem' }}>
+              <div className="channel-checkbox-row">
+                <input
+                  type="checkbox"
+                  id="new-trigger-channel-dm"
+                  checked={newChannels.includes('dm')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setNewChannels([...newChannels, 'dm']);
+                    } else {
+                      setNewChannels(newChannels.filter(ch => ch !== 'dm'));
+                      setNewVerifyResponse(false);
+                    }
+                  }}
+                  disabled={!localEnabled}
+                />
+                <label htmlFor="new-trigger-channel-dm" className="dm-channel">
+                  {t('auto_responder.direct_messages')}
+                </label>
+              </div>
               {channels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  Channel {channel.id}: {channel.name}
-                </option>
+                <div key={channel.id} className="channel-checkbox-row">
+                  <input
+                    type="checkbox"
+                    id={`new-trigger-channel-${channel.id}`}
+                    checked={newChannels.includes(channel.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setNewChannels([...newChannels, channel.id]);
+                      } else {
+                        setNewChannels(newChannels.filter(ch => ch !== channel.id));
+                      }
+                    }}
+                    disabled={!localEnabled}
+                  />
+                  <label
+                    htmlFor={`new-trigger-channel-${channel.id}`}
+                    className={channel.id === 0 ? 'primary-channel' : undefined}
+                  >
+                    Channel {channel.id}: {channel.name}
+                  </label>
+                </div>
               ))}
-            </select>
+            </div>
           </div>
           {newResponseType !== 'script' && (
             <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
@@ -1374,12 +1401,12 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </div>
           )}
           <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', cursor: (localEnabled && newChannel === 'dm') ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: newChannel === 'dm' ? 1 : 0.5 }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', cursor: (localEnabled && newChannels.includes('dm')) ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: newChannels.includes('dm') ? 1 : 0.5 }}>
               <input
                 type="checkbox"
                 checked={newVerifyResponse}
                 onChange={(e) => setNewVerifyResponse(e.target.checked)}
-                disabled={!localEnabled || newChannel !== 'dm'}
+                disabled={!localEnabled || !newChannels.includes('dm')}
                 style={{ marginRight: '0.5rem', cursor: localEnabled ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
               />
               <span style={{ verticalAlign: 'middle' }}>Verify Response (enable 3-retry delivery confirmation)</span>

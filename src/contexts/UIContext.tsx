@@ -75,8 +75,8 @@ interface UIContextType {
   setAutoAnnounceIntervalHours: React.Dispatch<React.SetStateAction<number>>;
   autoAnnounceMessage: string;
   setAutoAnnounceMessage: React.Dispatch<React.SetStateAction<string>>;
-  autoAnnounceChannelIndex: number;
-  setAutoAnnounceChannelIndex: React.Dispatch<React.SetStateAction<number>>;
+  autoAnnounceChannelIndexes: number[];
+  setAutoAnnounceChannelIndexes: React.Dispatch<React.SetStateAction<number[]>>;
   autoAnnounceOnStart: boolean;
   setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceUseSchedule: boolean;
@@ -199,7 +199,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
-  const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(0);
+  const [autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes] = useState<number[]>([0]);
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
   const [autoAnnounceUseSchedule, setAutoAnnounceUseSchedule] = useState<boolean>(false);
   const [autoAnnounceSchedule, setAutoAnnounceSchedule] = useState<string>('0 */6 * * *');
@@ -329,8 +329,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAnnounceIntervalHours,
         autoAnnounceMessage,
         setAutoAnnounceMessage,
-        autoAnnounceChannelIndex,
-        setAutoAnnounceChannelIndex,
+        autoAnnounceChannelIndexes,
+        setAutoAnnounceChannelIndexes,
         autoAnnounceOnStart,
         setAutoAnnounceOnStart,
         autoAnnounceUseSchedule,

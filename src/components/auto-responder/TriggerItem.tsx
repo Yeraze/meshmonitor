@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TriggerItemProps, ResponseType, ScriptMetadata } from './types';
 import { splitTriggerPatterns, formatTriggerPatterns } from './utils';
+import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
 import ScriptTestModal from '../ScriptTestModal';
 
 /**
@@ -45,7 +46,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editResponse, setEditResponse] = useState(trigger.response);
   const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
   const [editVerifyResponse, setEditVerifyResponse] = useState(trigger.verifyResponse || false);
-  const [editChannel, setEditChannel] = useState<number | 'dm' | 'none'>(trigger.channel !== undefined ? trigger.channel : 'dm');
+  const [editChannels, setEditChannels] = useState<Array<number | 'dm' | 'none'>>(normalizeTriggerChannels(trigger));
   const [editScriptArgs, setEditScriptArgs] = useState(trigger.scriptArgs || '');
   const [triggerValidation, setTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
 
@@ -98,11 +99,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       setEditResponse(trigger.response);
       setEditMultiline(trigger.multiline || false);
       setEditVerifyResponse(trigger.verifyResponse || false);
-      setEditChannel(trigger.channel !== undefined ? trigger.channel : 'dm');
+      setEditChannels(normalizeTriggerChannels(trigger));
       setEditScriptArgs(trigger.scriptArgs || '');
       setTriggerValidation({ valid: true });
     }
-  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channel, trigger.scriptArgs]);
+  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channels, trigger.channel, trigger.scriptArgs]);
 
   // Validate trigger on change
   useEffect(() => {
@@ -113,8 +114,12 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   }, [editTrigger, isEditing]);
 
   const handleSave = () => {
+    if (editChannels.length === 0) {
+      showToast?.('Please select at least one channel for this trigger', 'error');
+      return;
+    }
     // Automatically disable verifyResponse when channel is not DM
-    const finalVerifyResponse = editChannel === 'dm' ? editVerifyResponse : false;
+    const finalVerifyResponse = editChannels.includes('dm') ? editVerifyResponse : false;
     // Normalize trigger: convert comma-separated string to array if needed
     let normalizedTrigger: string | string[];
     if (editTrigger.includes(',')) {
@@ -128,7 +133,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
     }
     // Only pass scriptArgs if responseType is script and args are not empty
     const scriptArgsToSave = editResponseType === 'script' && editScriptArgs.trim() ? editScriptArgs.trim() : undefined;
-    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannel, scriptArgsToSave);
+    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannels, scriptArgsToSave);
   };
 
   return (
@@ -268,31 +273,72 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
-              <select
-                value={editChannel}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const value = val === 'dm' ? 'dm' : val === 'none' ? 'none' : parseInt(val);
-                  setEditChannel(value);
-                  // Auto-disable verifyResponse when switching to a channel
-                  if (value !== 'dm') {
-                    setEditVerifyResponse(false);
-                  }
-                }}
-                className="setting-input"
-                style={{ flex: '1' }}
-              >
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channels:</label>
+              <div className="channel-checkbox-list" style={{ flex: 1 }}>
                 {editResponseType === 'script' && (
-                  <option value="none">{t('auto_responder.channel_none', 'None (no mesh output)')}</option>
+                  <div className="channel-checkbox-row">
+                    <input
+                      type="checkbox"
+                      id={`edit-channel-none-${trigger.id}`}
+                      checked={editChannels.includes('none')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // 'none' is mutually exclusive — clear all other selections
+                          setEditChannels(['none']);
+                        } else {
+                          // When unchecking 'none', default back to DM
+                          setEditChannels(['dm']);
+                        }
+                      }}
+                    />
+                    <label htmlFor={`edit-channel-none-${trigger.id}`} style={{ color: 'var(--ctp-subtext0)' }}>
+                      {t('auto_responder.channel_none', 'None (no mesh output)')}
+                    </label>
+                  </div>
                 )}
-                <option value="dm">Direct Messages</option>
+                <div className="channel-checkbox-row">
+                  <input
+                    type="checkbox"
+                    id={`edit-channel-dm-${trigger.id}`}
+                    checked={editChannels.includes('dm')}
+                    disabled={editChannels.includes('none')}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setEditChannels([...editChannels.filter(ch => ch !== 'none'), 'dm']);
+                      } else {
+                        setEditChannels(editChannels.filter(ch => ch !== 'dm'));
+                        setEditVerifyResponse(false);
+                      }
+                    }}
+                  />
+                  <label htmlFor={`edit-channel-dm-${trigger.id}`} className="dm-channel">
+                    Direct Messages
+                  </label>
+                </div>
                 {channels.map((channel) => (
-                  <option key={channel.id} value={channel.id}>
-                    Channel {channel.id}: {channel.name}
-                  </option>
+                  <div key={channel.id} className="channel-checkbox-row">
+                    <input
+                      type="checkbox"
+                      id={`edit-channel-${channel.id}-${trigger.id}`}
+                      checked={editChannels.includes(channel.id)}
+                      disabled={editChannels.includes('none')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEditChannels([...editChannels.filter(ch => ch !== 'none'), channel.id]);
+                        } else {
+                          setEditChannels(editChannels.filter(ch => ch !== channel.id));
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor={`edit-channel-${channel.id}-${trigger.id}`}
+                      className={channel.id === 0 ? 'primary-channel' : undefined}
+                    >
+                      Channel {channel.id}: {channel.name}
+                    </label>
+                  </div>
                 ))}
-              </select>
+              </div>
             </div>
             {editResponseType !== 'script' && (
               <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
@@ -358,13 +404,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               );
             })()}
             <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: editChannel === 'dm' ? 1 : 0.5 }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', cursor: editChannels.includes('dm') ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: editChannels.includes('dm') ? 1 : 0.5 }}>
                 <input
                   type="checkbox"
                   checked={editVerifyResponse}
                   onChange={(e) => setEditVerifyResponse(e.target.checked)}
-                  disabled={editChannel !== 'dm'}
-                  style={{ marginRight: '0.5rem', cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
+                  disabled={!editChannels.includes('dm')}
+                  style={{ marginRight: '0.5rem', cursor: editChannels.includes('dm') ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
                 />
                 <span style={{ verticalAlign: 'middle' }}>Verify Response (enable 3-retry delivery confirmation - DM only)</span>
               </label>
@@ -642,18 +688,25 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 }}>
                   {trigger.responseType.toUpperCase()}
                 </span>
-                <span style={{
-                  fontSize: '0.7rem',
-                  padding: '0.15rem 0.4rem',
-                  background: (trigger.channel === 'dm' || trigger.channel === undefined) ? 'var(--ctp-sky)' : 'var(--ctp-lavender)',
-                  color: 'var(--ctp-base)',
-                  borderRadius: '3px',
-                  fontWeight: 'bold'
-                }}>
-                  {(trigger.channel === 'dm' || trigger.channel === undefined)
-                    ? 'DM'
-                    : `CH ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || 'Unknown'}`}
-                </span>
+                {(() => {
+                  const triggerCh = normalizeTriggerChannels(trigger);
+                  return (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      padding: '0.15rem 0.4rem',
+                      background: triggerCh.includes('dm') ? 'var(--ctp-sky)' : 'var(--ctp-lavender)',
+                      color: 'var(--ctp-base)',
+                      borderRadius: '3px',
+                      fontWeight: 'bold'
+                    }}>
+                      {triggerCh.map(c => {
+                        if (c === 'dm') return 'DM';
+                        if (c === 'none') return 'NONE';
+                        return `CH${c}`;
+                      }).join('+')}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>

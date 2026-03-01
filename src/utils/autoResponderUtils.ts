@@ -67,3 +67,27 @@ export function normalizeTriggerPatterns(trigger: string | string[]): string[] {
   return Array.isArray(trigger) ? trigger : splitTriggerPatterns(trigger);
 }
 
+
+
+/**
+ * Normalizes a trigger's channel field to the new multi-channel array format.
+ * Handles backward compatibility with the old single-channel field.
+ * 
+ * @param trigger - The trigger object (may have old `channel` or new `channels` field)
+ * @returns Array of channels this trigger responds to
+ * 
+ * @example
+ * normalizeTriggerChannels({ channels: ['dm', 0] }) // ['dm', 0]
+ * normalizeTriggerChannels({ channel: 'dm' }) // ['dm']
+ * normalizeTriggerChannels({ channel: 0 }) // [0]
+ * normalizeTriggerChannels({}) // ['dm']
+ */
+export function normalizeTriggerChannels(trigger: { channels?: Array<number | 'dm' | 'none'>; channel?: number | 'dm' | 'none' }): Array<number | 'dm' | 'none'> {
+  if (trigger.channels && trigger.channels.length > 0) {
+    return trigger.channels;
+  }
+  if (trigger.channel !== undefined) {
+    return [trigger.channel];
+  }
+  return ['dm'];
+}
