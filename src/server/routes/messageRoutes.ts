@@ -516,6 +516,57 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, async (req, res
 });
 
 /**
+ * DELETE /api/nodes/:nodeNum/position-history
+ * Purge position history for a specific node
+ */
+router.delete('/nodes/:nodeNum/position-history', requireMessagesWrite, async (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+    const user = (req as any).user;
+
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Invalid node number'
+      });
+    }
+
+    const deletedCount = await databaseService.purgePositionHistoryAsync(nodeNum);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} position history records for node ${nodeNum}`);
+
+    // Log to audit log (async for multi-database support)
+    if (user?.id) {
+      await databaseService.auditLogAsync(
+        user.id,
+        'node_position_history_purged',
+        'telemetry',
+        `Purged ${deletedCount} position history records for node ${nodeNum}`,
+        req.ip || ''
+      );
+    }
+
+    res.json({
+      message: 'Node position history purged successfully',
+      nodeNum,
+      deletedCount
+    });
+  } catch (error: any) {
+    logger.error('❌ Error purging node position history:', error);
+
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during position history purge');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to purge position history due to database constraints. Please contact support.'
+      });
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * DELETE /api/nodes/:nodeNum
  * Delete a node and all associated data from the local database
  */
