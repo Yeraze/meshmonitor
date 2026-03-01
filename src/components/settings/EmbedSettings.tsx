@@ -222,6 +222,34 @@ const EmbedSettings = () => {
   const parseOrigins = (text: string): string[] =>
     text.split(',').map(s => s.trim()).filter(Boolean);
 
+  // Validate a single origin (standard URL or CSP wildcard like https://*.example.com)
+  const isValidOrigin = (origin: string): boolean => {
+    // CSP wildcard host pattern
+    const wildcardMatch = origin.match(/^(https?:\/\/)\*\.(.+)$/);
+    if (wildcardMatch) {
+      try {
+        const testUrl = new URL(`${wildcardMatch[1]}wildcard.${wildcardMatch[2]}`);
+        const reconstructed = `${testUrl.protocol}//*.${testUrl.host.replace(/^wildcard\./, '')}`;
+        return reconstructed === origin;
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const url = new URL(origin);
+      return (url.protocol === 'https:' || url.protocol === 'http:') &&
+        !url.hostname.includes('*') && origin === url.origin;
+    } catch {
+      return false;
+    }
+  };
+
+  // Compute validation results for the current origins text
+  const originsValidation = parseOrigins(originsText).map(origin => ({
+    origin,
+    valid: isValidOrigin(origin),
+  }));
+
   // ---- CRUD ----
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -505,8 +533,17 @@ const EmbedSettings = () => {
                   type="text"
                   value={originsText}
                   onChange={e => setOriginsText(e.target.value)}
-                  placeholder="https://example.com, https://other-site.org"
+                  placeholder="https://example.com, https://*.example.com"
                 />
+                {originsValidation.length > 0 && (
+                  <div className="embed-origins-validation">
+                    {originsValidation.map(({ origin, valid }, i) => (
+                      <span key={i} className={`embed-origin-tag ${valid ? 'valid' : 'invalid'}`}>
+                        {origin}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Security note */}
