@@ -18,12 +18,14 @@ interface AutoFavoriteTarget {
   hopsAway?: number | null;
   role?: number | null;
   isFavorite?: boolean | null;
+  viaMqtt?: boolean | null;
 }
 
 /**
  * Determines if a target node is eligible for auto-favoriting.
  * - Local must be ROUTER, ROUTER_LATE, or CLIENT_BASE
  * - Target must be 0-hop (hopsAway === 0)
+ * - Target must not have been received via MQTT
  * - Target must not already be favorited
  * - For ROUTER/ROUTER_LATE local: target must also be ROUTER/ROUTER_LATE/CLIENT_BASE
  * - For CLIENT_BASE local: any role is eligible
@@ -36,6 +38,9 @@ export function isAutoFavoriteEligible(
     return false;
   }
   if (target.hopsAway == null || target.hopsAway !== 0) {
+    return false;
+  }
+  if (target.viaMqtt) {
     return false;
   }
   if (target.isFavorite) {
