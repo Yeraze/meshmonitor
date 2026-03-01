@@ -367,16 +367,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const MAP_CONTROLS_DEFAULT_POSITION = { x: -1, y: 10 };
 
   const [mapControlsPosition, setMapControlsPosition] = useState(() => {
-    const saved = localStorage.getItem('mapControlsPosition');
+    // Migration: clear old left-based positions (now right-based)
+    const oldSaved = localStorage.getItem('mapControlsPosition');
+    if (oldSaved && !localStorage.getItem('mapControlsPositionV2')) {
+      localStorage.removeItem('mapControlsPosition');
+      return MAP_CONTROLS_DEFAULT_POSITION;
+    }
+    const saved = localStorage.getItem('mapControlsPositionV2');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // If x or y is invalid, use defaults
         if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-          // Sanity check: if position seems unreasonable, reset to default
-          // This handles migration from old viewport-based positions
           if (parsed.x > 2000 || parsed.x < -100 || parsed.y > 2000 || parsed.y < -100) {
-            localStorage.removeItem('mapControlsPosition');
+            localStorage.removeItem('mapControlsPositionV2');
             return MAP_CONTROLS_DEFAULT_POSITION;
           }
           return { x: parsed.x, y: parsed.y };
@@ -396,7 +399,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Save map controls position to localStorage (only if not default)
   useEffect(() => {
     if (mapControlsPosition.x !== -1) {
-      localStorage.setItem('mapControlsPosition', JSON.stringify(mapControlsPosition));
+      localStorage.setItem('mapControlsPositionV2', JSON.stringify(mapControlsPosition));
     }
   }, [mapControlsPosition]);
 
@@ -558,55 +561,58 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
 
 
-  // Map controls drag handlers
+  // Map controls drag handlers — positions are stored as (right, top) relative to the map container
+  // so the controls stay anchored to the right edge when the sidebar resizes
   const handleMapControlsDragStart = useCallback((e: React.MouseEvent) => {
     if (isMapControlsCollapsed || isTouchDevice) return; // Disable drag on mobile
     e.preventDefault();
     e.stopPropagation();
 
+    const mapContainer = document.querySelector('.map-container');
+    if (!mapContainer) return;
+    const containerRect = mapContainer.getBoundingClientRect();
+
     // If position is default (-1), calculate actual position from element
-    let currentX = mapControlsPosition.x;
+    let currentRightOffset = mapControlsPosition.x;
     let currentY = mapControlsPosition.y;
 
-    if (currentX === -1) {
-      // Convert from CSS right: 10px to left-based coordinates
-      const mapContainer = document.querySelector('.map-container');
+    if (currentRightOffset === -1) {
+      // Convert from CSS right: 10px to explicit right-based coordinates
       const controls = mapControlsRef.current;
-      if (mapContainer && controls) {
-        const containerRect = mapContainer.getBoundingClientRect();
+      if (controls) {
         const controlsRect = controls.getBoundingClientRect();
-        currentX = controlsRect.left - containerRect.left;
+        currentRightOffset = containerRect.right - controlsRect.right;
         currentY = controlsRect.top - containerRect.top;
-        // Update the position to be explicit
-        setMapControlsPosition({ x: currentX, y: currentY });
+        setMapControlsPosition({ x: currentRightOffset, y: currentY });
       }
     }
 
     setIsDraggingMapControls(true);
+    // Store offset: mouse position relative to the element's right-edge anchor
     setMapControlsDragStart({
-      x: e.clientX - currentX,
-      y: e.clientY - currentY,
+      x: (containerRect.right - e.clientX) - currentRightOffset,
+      y: e.clientY - containerRect.top - currentY,
     });
   }, [isMapControlsCollapsed, mapControlsPosition, isTouchDevice]);
 
   const handleMapControlsDragMove = useCallback((e: MouseEvent) => {
     if (!isDraggingMapControls) return;
-    
+
     const mapContainer = document.querySelector('.map-container');
     if (!mapContainer) return;
-    
+
     const rect = mapContainer.getBoundingClientRect();
     const controls = mapControlsRef.current;
     if (!controls) return;
-    
+
     const controlsRect = controls.getBoundingClientRect();
-    const maxX = rect.width - controlsRect.width - 10;
+    const maxRight = rect.width - controlsRect.width - 10;
     const maxY = rect.height - controlsRect.height - 10;
-    
-    const newX = Math.max(10, Math.min(maxX, e.clientX - mapControlsDragStart.x - rect.left));
-    const newY = Math.max(10, Math.min(maxY, e.clientY - mapControlsDragStart.y - rect.top));
-    
-    setMapControlsPosition({ x: newX, y: newY });
+
+    const newRight = Math.max(10, Math.min(maxRight, (rect.right - e.clientX) - mapControlsDragStart.x));
+    const newY = Math.max(10, Math.min(maxY, e.clientY - rect.top - mapControlsDragStart.y));
+
+    setMapControlsPosition({ x: newRight, y: newY });
   }, [isDraggingMapControls, mapControlsDragStart]);
 
   const handleMapControlsDragEnd = useCallback(() => {
@@ -1357,11 +1363,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
               style={isTouchDevice ? undefined : (
                 // If collapsed, don't apply any position styles (use CSS defaults)
-                // If position is default (-1), don't apply left (CSS will use right: 10px)
+                // x = -1 means use CSS default (right: 10px); otherwise x is distance from right edge
                 isMapControlsCollapsed ? undefined : {
-                  left: mapControlsPosition.x === -1 ? undefined : `${mapControlsPosition.x}px`,
+                  right: mapControlsPosition.x === -1 ? undefined : `${mapControlsPosition.x}px`,
                   top: `${mapControlsPosition.y}px`,
-                  right: mapControlsPosition.x === -1 ? undefined : 'auto',
+                  left: mapControlsPosition.x === -1 ? undefined : 'auto',
                 }
               )}
             >

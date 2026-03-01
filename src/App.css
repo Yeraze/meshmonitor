@@ -2605,7 +2605,7 @@ body {
 .nodes-sidebar-resize-handle {
   position: absolute;
   top: 0;
-  right: -4px;
+  right: 0;
   bottom: 0;
   width: 8px;
   cursor: ew-resize;
