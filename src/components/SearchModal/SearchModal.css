@@ -86,7 +86,7 @@
 
 .search-submit-btn {
   background-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   padding: 0.6rem 1.25rem;
   border-radius: 6px;
@@ -216,7 +216,7 @@
 
 .search-result-text mark {
   background-color: var(--ctp-yellow);
-  color: var(--ctp-base);
+  color: #000000;
   border-radius: 2px;
   padding: 0 2px;
 }

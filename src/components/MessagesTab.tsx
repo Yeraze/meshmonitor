@@ -817,7 +817,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             className="last-message-preview"
                             style={{
                               fontSize: '0.85rem',
-                              color: 'var(--ctp-subtext0)',
+                              color: selectedDMNode === node.user?.id ? '#000000' : 'var(--ctp-subtext0)',
                               fontStyle: 'italic',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',

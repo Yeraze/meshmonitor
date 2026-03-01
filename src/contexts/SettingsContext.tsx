@@ -3,6 +3,7 @@ import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
 import { type SortOption as DashboardSortOption } from '../components/Dashboard/types';
 import { logger } from '../utils/logger';
+import { OPTIONAL_THEME_COLORS } from '../utils/themeValidation';
 import { useCsrf } from './CsrfContext';
 import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
 import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type OverlayColors } from '../config/overlayColors';
@@ -479,6 +480,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       const root = document.documentElement;
       logger.debug(`🎯 Applying ${Object.keys(definition).length} CSS variables to root element`);
 
+      // Clear optional chat bubble vars so stale values from a previous custom theme don't persist
+      for (const optColor of OPTIONAL_THEME_COLORS) {
+        root.style.removeProperty(`--ctp-${optColor}`);
+      }
+
       // Apply each color variable to the root element with ctp- prefix
       Object.entries(definition).forEach(([key, value]) => {
         const cssVarName = `--ctp-${key}`;
@@ -520,6 +526,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     if (isBuiltIn) {
       // Built-in theme: use data-theme attribute
       document.documentElement.setAttribute('data-theme', newTheme);
+      // Remove optional chat bubble vars from any previous custom theme
+      for (const optColor of OPTIONAL_THEME_COLORS) {
+        document.documentElement.style.removeProperty(`--ctp-${optColor}`);
+      }
       logger.debug(`✅ Applied built-in theme: ${newTheme}`);
     } else {
       // Custom theme: apply CSS variables dynamically

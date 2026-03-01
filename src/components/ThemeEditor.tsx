@@ -48,6 +48,19 @@ const COLOR_GROUPS = [
   }
 ];
 
+const OPTIONAL_COLOR_GROUPS = [
+  {
+    name: 'Chat Bubble Colors',
+    description: 'Override chat bubble colors independently from accent colors',
+    colors: [
+      { key: 'chatBubbleSentBg', label: 'Sent Background', fallback: 'blue' },
+      { key: 'chatBubbleSentText', label: 'Sent Text', fallback: 'base' },
+      { key: 'chatBubbleReceivedBg', label: 'Received Background', fallback: 'surface1' },
+      { key: 'chatBubbleReceivedText', label: 'Received Text', fallback: 'text' }
+    ]
+  }
+];
+
 export const ThemeEditor: React.FC<ThemeEditorProps> = ({
   theme,
   baseTheme,
@@ -286,6 +299,61 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          ))}
+
+          {OPTIONAL_COLOR_GROUPS.map((group) => (
+            <div key={group.name} className="color-group">
+              <h3>{group.name}</h3>
+              <p className="color-group-description">{group.description}</p>
+              <div className="color-grid">
+                {group.colors.map((colorDef) => {
+                  const isEnabled = colorDef.key in colors;
+                  const fallbackValue = colors[colorDef.fallback] || '#000000';
+                  return (
+                    <div key={colorDef.key} className="color-picker-item">
+                      <label htmlFor={`color-${colorDef.key}`}>
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              handleColorChange(colorDef.key, fallbackValue);
+                            } else {
+                              setColors(prev => {
+                                const next = { ...prev };
+                                delete next[colorDef.key];
+                                return next;
+                              });
+                            }
+                          }}
+                          style={{ marginRight: '6px' }}
+                        />
+                        {colorDef.label}
+                      </label>
+                      {isEnabled && (
+                        <div className="color-input-wrapper">
+                          <input
+                            id={`color-${colorDef.key}`}
+                            type="color"
+                            value={colors[colorDef.key] || fallbackValue}
+                            onChange={(e) => handleColorChange(colorDef.key, e.target.value)}
+                            className="color-picker"
+                          />
+                          <input
+                            type="text"
+                            value={colors[colorDef.key] || fallbackValue}
+                            onChange={(e) => handleColorChange(colorDef.key, e.target.value)}
+                            pattern="^#[0-9A-Fa-f]{6}$"
+                            className="color-hex-input"
+                            placeholder="#000000"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

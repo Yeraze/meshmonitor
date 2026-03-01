@@ -19,7 +19,7 @@
   background-color: var(--ctp-blue);
   border: none;
   border-radius: 6px;
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -71,7 +71,7 @@
   flex: 1;
   min-width: 200px;
   padding: 8px 12px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   color: var(--ctp-text);
@@ -90,7 +90,7 @@
 
 .dashboard-filter-select {
   padding: 8px 12px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   color: var(--ctp-text);
@@ -119,7 +119,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   color: var(--ctp-text);
@@ -145,7 +145,7 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   padding: 8px;
@@ -207,7 +207,7 @@
 
 .dashboard-sort-select {
   padding: 8px 12px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   color: var(--ctp-text);
@@ -265,7 +265,7 @@
 }
 
 .dashboard-chart-container {
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   padding: 15px;
@@ -455,7 +455,7 @@
 }
 
 .add-widget-modal {
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 12px;
   width: 90%;
@@ -582,7 +582,7 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   max-height: 200px;
@@ -722,7 +722,7 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   max-height: 200px;

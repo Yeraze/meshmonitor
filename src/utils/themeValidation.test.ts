@@ -8,7 +8,8 @@ import {
   isThemeDefinition,
   normalizeHexColor,
   normalizeThemeDefinition,
-  REQUIRED_THEME_COLORS
+  REQUIRED_THEME_COLORS,
+  OPTIONAL_THEME_COLORS
 } from './themeValidation';
 
 // Helper to create a valid theme definition for testing
@@ -204,6 +205,33 @@ describe('themeValidation utilities', () => {
       const result = validateThemeDefinition(extraTheme);
       expect(result.isValid).toBe(false);
       expect(result.errors.some(e => e.includes('Unexpected properties'))).toBe(true);
+    });
+
+    it('should accept known optional chat bubble colors', () => {
+      const themeWithOptional = createValidThemeDefinition();
+      (themeWithOptional as Record<string, string>).chatBubbleSentBg = '#FF0000';
+      (themeWithOptional as Record<string, string>).chatBubbleSentText = '#FFFFFF';
+      const result = validateThemeDefinition(themeWithOptional);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject invalid hex on optional colors', () => {
+      const themeWithBadOptional = createValidThemeDefinition();
+      (themeWithBadOptional as Record<string, string>).chatBubbleSentBg = 'bad';
+      const result = validateThemeDefinition(themeWithBadOptional);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid hex color for 'chatBubbleSentBg'"))).toBe(true);
+    });
+
+    it('should still reject truly unknown properties alongside optional colors', () => {
+      const themeWithMix = createValidThemeDefinition();
+      (themeWithMix as Record<string, string>).chatBubbleSentBg = '#FF0000';
+      (themeWithMix as Record<string, string>).unknownProp = '#000000';
+      const result = validateThemeDefinition(themeWithMix);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some(e => e.includes('Unexpected properties'))).toBe(true);
+      expect(result.errors.some(e => e.includes('unknownProp'))).toBe(true);
     });
   });
 

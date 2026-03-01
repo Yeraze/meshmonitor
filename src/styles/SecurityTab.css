@@ -276,21 +276,21 @@
 
 .badge.low-entropy {
   background: var(--ctp-yellow);
-  color: var(--ctp-base);
+  color: #000000;
   border: 1px solid var(--ctp-yellow);
   opacity: 0.8;
 }
 
 .badge.duplicate {
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
   border: 1px solid var(--ctp-red);
   opacity: 0.8;
 }
 
 .badge.excessive-packets {
   background: var(--ctp-peach);
-  color: var(--ctp-base);
+  color: #000000;
   border: 1px solid var(--ctp-peach);
   opacity: 0.8;
 }

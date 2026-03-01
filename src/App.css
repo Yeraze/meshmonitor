@@ -718,7 +718,7 @@ body {
 
 .channel-btn.active {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border-color: var(--ctp-blue);
 }
 
@@ -836,7 +836,7 @@ body {
 
 .message-item.sent .message-text {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   margin-left: auto;
 }
 
@@ -1004,7 +1004,7 @@ body {
 .connection-form button {
   padding: 0.75rem 2rem;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -1026,7 +1026,7 @@ body {
 
 .connection-form button.disconnect-btn {
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .connection-form button.disconnect-btn:hover:not(:disabled) {
@@ -1062,7 +1062,7 @@ body {
 
 .retry-btn {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   padding: 0.5rem 1rem;
   border-radius: 6px;
@@ -1286,7 +1286,7 @@ body {
   min-width: 40px;
   width: 40px;
   background: var(--ctp-green);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -1814,7 +1814,7 @@ body {
 .send-btn {
   padding: 0.75rem 1.5rem;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -1894,7 +1894,7 @@ body {
 .channel-button.selected {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   transform: translateY(-2px);
   box-shadow: 0 8px 25px -5px rgba(137, 180, 250, 0.5);
 }
@@ -1980,7 +1980,7 @@ body {
 }
 
 .channel-button.selected .channel-info-link {
-  color: var(--ctp-base);
+  color: #000000;
   background: rgba(17, 17, 27, 0.3);
   font-weight: 600;
 }
@@ -2031,12 +2031,12 @@ body {
 }
 
 .channel-button.selected .arrow-icon.enabled {
-  color: var(--ctp-base);
+  color: #000000;
   background: rgba(17, 17, 27, 0.3);
 }
 
 .channel-button.selected .arrow-icon.disabled {
-  color: var(--ctp-base);
+  color: #000000;
   background: rgba(17, 17, 27, 0.2);
   opacity: 0.4;
 }
@@ -2140,7 +2140,7 @@ body {
   height: 32px;
   border-radius: 50%;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2167,14 +2167,24 @@ body {
 }
 
 .message-bubble.mine {
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: var(--ctp-chatBubbleSentBg, var(--ctp-blue));
+  color: var(--ctp-chatBubbleSentText, #000000);
   border-bottom-right-radius: 6px;
 }
 
+.message-bubble.mine,
+.message-bubble.mine * {
+  color: var(--ctp-chatBubbleSentText, #000000);
+}
+
+.message-bubble.mine a.message-link {
+  color: var(--ctp-chatBubbleSentText, #000000);
+  text-decoration: underline;
+}
+
 .message-bubble.theirs {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
+  background: var(--ctp-chatBubbleReceivedBg, var(--ctp-surface1));
+  color: var(--ctp-chatBubbleReceivedText, var(--ctp-text));
   border-bottom-left-radius: 6px;
 }
 
@@ -2333,7 +2343,8 @@ body {
 }
 
 .message-bubble.mine .message-time {
-  color: rgba(30, 30, 46, 0.7);
+  color: var(--ctp-chatBubbleSentText, #000000);
+  opacity: 0.7;
 }
 
 /* Reply button that appears on hover */
@@ -2407,7 +2418,7 @@ body {
 .delete-button:hover {
   background: var(--ctp-red);
   border-color: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .emoji-button:active,
@@ -2768,7 +2779,7 @@ body {
 .filter-popup-btn:hover {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .filter-popup-overlay {
@@ -2830,7 +2841,7 @@ body {
 
 .filter-popup-close:hover {
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .filter-popup-content {
@@ -2921,7 +2932,7 @@ body {
 
 .filter-toggle-btn.active {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   font-weight: 600;
 }
 
@@ -3078,7 +3089,7 @@ body {
 
 .filter-apply-btn {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .filter-apply-btn:hover {
@@ -3108,7 +3119,7 @@ body {
 .collapse-nodes-btn:hover {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   transform: scale(1.1);
 }
 
@@ -3281,15 +3292,20 @@ body {
 
 .node-item.selected {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
+}
+
+.node-item.selected,
+.node-item.selected * {
+  color: #000000;
 }
 
 .node-item.selected .node-stats .stat {
-  color: rgba(30, 30, 46, 0.8);
+  color: rgba(0, 0, 0, 0.8);
 }
 
 .node-item.selected .node-time {
-  color: rgba(30, 30, 46, 0.7);
+  color: rgba(0, 0, 0, 0.7);
 }
 
 .node-header {
@@ -3389,13 +3405,13 @@ body {
 }
 
 .node-item.selected .node-short {
-  background: rgba(30, 30, 46, 0.2);
-  color: rgba(30, 30, 46, 0.8);
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(0, 0, 0, 0.8);
 }
 
 .node-short.sticky {
   background: var(--ctp-yellow);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .node-short .pin-indicator {
@@ -3574,7 +3590,7 @@ body {
   margin-top: 0.75rem;
   padding: 0.5rem 1rem;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -4084,7 +4100,7 @@ body {
   height: 20px;
   padding: 0 6px;
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
@@ -4099,7 +4115,7 @@ body {
   height: 18px;
   padding: 0 5px;
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
   border-radius: 9px;
   font-size: 10px;
   font-weight: 600;
@@ -4181,7 +4197,7 @@ body {
 
 .traceroute-btn {
   background: var(--ctp-mauve);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   border-radius: 8px;
   padding: 0.5rem 1rem;
@@ -4212,7 +4228,7 @@ body {
 
 .traceroute-badge {
   background: var(--ctp-mauve);
-  color: var(--ctp-base);
+  color: #000000;
   padding: 2px 8px;
   border-radius: 6px;
   font-size: 10px;
@@ -4351,7 +4367,7 @@ body {
   width: 100%;
   padding: 0.6rem 1rem;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   border-radius: 8px;
   font-size: 0.9rem;
@@ -4989,7 +5005,7 @@ body {
 
 .danger-button {
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 6px;
@@ -5046,7 +5062,7 @@ body {
 
 .settings-button-primary {
   background: var(--ctp-green);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .settings-button-primary:hover:not(:disabled) {
@@ -5055,7 +5071,7 @@ body {
 
 .save-button {
   background: var(--ctp-green);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 6px;
@@ -5086,7 +5102,7 @@ body {
 
 .reset-button {
   background: var(--ctp-yellow);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 6px;
@@ -5335,7 +5351,7 @@ body {
 
 .button-primary {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .button-primary:hover:not(:disabled) {

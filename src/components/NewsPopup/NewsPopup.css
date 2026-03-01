@@ -102,22 +102,22 @@
 
 .news-category-release {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .news-category-security {
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .news-category-feature {
   background: var(--ctp-green);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .news-category-maintenance {
   background: var(--ctp-yellow);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 /* Priority badge */
@@ -128,7 +128,7 @@
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   background: var(--ctp-maroon);
-  color: var(--ctp-base);
+  color: #000000;
   letter-spacing: 0.05em;
 }
 
@@ -276,7 +276,7 @@
 
 .news-button-primary {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .news-button-primary:hover {

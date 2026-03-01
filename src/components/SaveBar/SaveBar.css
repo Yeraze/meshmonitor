@@ -63,7 +63,7 @@
 
 .save-bar-tab.active {
   background: var(--ctp-green);
-  color: var(--ctp-base);
+  color: #000000;
   border-color: var(--ctp-green);
 }
 
@@ -109,7 +109,7 @@
   border: none;
   border-radius: 4px;
   background: var(--ctp-green);
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -134,7 +134,7 @@
   padding: 0 6px;
   border-radius: 10px;
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.75rem;
   font-weight: 600;
   display: flex;

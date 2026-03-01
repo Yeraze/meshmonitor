@@ -120,7 +120,7 @@
   border: none;
   border-radius: 6px;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;

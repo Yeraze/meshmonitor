@@ -20,7 +20,8 @@ import {
   isThemeDefinition,
   normalizeHexColor,
   normalizeThemeDefinition,
-  REQUIRED_THEME_COLORS
+  REQUIRED_THEME_COLORS,
+  OPTIONAL_THEME_COLORS
 } from '../../src/utils/themeValidation.js';
 
 describe('isValidHexColor', () => {
@@ -329,6 +330,19 @@ describe('REQUIRED_THEME_COLORS', () => {
   });
 });
 
+describe('OPTIONAL_THEME_COLORS', () => {
+  it('exports exactly 4 optional colors', () => {
+    expect(OPTIONAL_THEME_COLORS).toHaveLength(4);
+  });
+
+  it('includes all chat bubble color variables', () => {
+    expect(OPTIONAL_THEME_COLORS).toContain('chatBubbleSentBg');
+    expect(OPTIONAL_THEME_COLORS).toContain('chatBubbleSentText');
+    expect(OPTIONAL_THEME_COLORS).toContain('chatBubbleReceivedBg');
+    expect(OPTIONAL_THEME_COLORS).toContain('chatBubbleReceivedText');
+  });
+});
+
 describe('validateThemeDefinition', () => {
   const validTheme = {
     base: '#1e1e2e',
@@ -507,6 +521,53 @@ describe('validateThemeDefinition', () => {
       expect(result.errors.length).toBeGreaterThan(2);
     });
   });
+
+  describe('optional colors', () => {
+    it('accepts theme with valid optional chat bubble colors', () => {
+      const themeWithOptional = {
+        ...validTheme,
+        chatBubbleSentBg: '#ff0000',
+        chatBubbleSentText: '#ffffff',
+        chatBubbleReceivedBg: '#00ff00',
+        chatBubbleReceivedText: '#000000'
+      };
+      const result = validateThemeDefinition(themeWithOptional);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('accepts theme with only some optional colors', () => {
+      const themeWithPartial = {
+        ...validTheme,
+        chatBubbleSentBg: '#ff0000'
+      };
+      const result = validateThemeDefinition(themeWithPartial);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects invalid hex for optional colors', () => {
+      const themeWithBadOptional = {
+        ...validTheme,
+        chatBubbleSentBg: 'not-a-color'
+      };
+      const result = validateThemeDefinition(themeWithBadOptional);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid hex color for 'chatBubbleSentBg'"))).toBe(true);
+    });
+
+    it('still rejects truly unknown properties', () => {
+      const themeWithUnknown = {
+        ...validTheme,
+        chatBubbleSentBg: '#ff0000',
+        totallyUnknownProp: '#000000'
+      };
+      const result = validateThemeDefinition(themeWithUnknown);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some(e => e.includes('Unexpected properties'))).toBe(true);
+      expect(result.errors.some(e => e.includes('totallyUnknownProp'))).toBe(true);
+    });
+  });
 });
 
 describe('isThemeDefinition', () => {
@@ -646,7 +707,7 @@ describe('normalizeThemeDefinition', () => {
     expect(normalized.text).toBe('#112233');
   });
 
-  it('only normalizes the 26 required colors', () => {
+  it('only normalizes the 26 required colors when no optional present', () => {
     const theme = {
       base: '#fff', mantle: '#000', crust: '#abc',
       text: '#123', subtext1: '#456', subtext0: '#789',
@@ -663,5 +724,28 @@ describe('normalizeThemeDefinition', () => {
 
     // Should have exactly 26 properties
     expect(Object.keys(normalized)).toHaveLength(26);
+  });
+
+  it('preserves and normalizes optional colors when present', () => {
+    const theme = {
+      base: '#fff', mantle: '#000', crust: '#abc',
+      text: '#123', subtext1: '#456', subtext0: '#789',
+      overlay2: '#aaa', overlay1: '#bbb', overlay0: '#ccc',
+      surface2: '#ddd', surface1: '#eee', surface0: '#fff',
+      lavender: '#111', blue: '#222', sapphire: '#333',
+      sky: '#444', teal: '#555', green: '#666',
+      yellow: '#777', peach: '#888', maroon: '#999',
+      red: '#aaa', mauve: '#bbb', pink: '#ccc',
+      flamingo: '#ddd', rosewater: '#eee',
+      chatBubbleSentBg: '#ff0000',
+      chatBubbleSentText: '#abc'
+    };
+
+    const normalized = normalizeThemeDefinition(theme as any);
+
+    // Should have 26 required + 2 optional = 28
+    expect(Object.keys(normalized)).toHaveLength(28);
+    expect((normalized as any).chatBubbleSentBg).toBe('#FF0000');
+    expect((normalized as any).chatBubbleSentText).toBe('#AABBCC');
   });
 });
