@@ -477,6 +477,56 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Purge position history for a specific node.
+   * Deletes only position-related telemetry types (latitude, longitude, altitude, etc.)
+   */
+  async purgePositionHistory(nodeNum: number): Promise<number> {
+    const positionTypes = [
+      'latitude', 'longitude', 'altitude',
+      'ground_speed', 'ground_track',
+      'estimated_latitude', 'estimated_longitude',
+    ];
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const deleted = await db
+        .delete(telemetrySqlite)
+        .where(and(
+          eq(telemetrySqlite.nodeNum, nodeNum),
+          inArray(telemetrySqlite.telemetryType, positionTypes)
+        ))
+        .returning({ id: telemetrySqlite.id });
+      return deleted.length;
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      // MySQL doesn't support .returning(), so count first
+      const countResult = await db
+        .select({ id: telemetryMysql.id })
+        .from(telemetryMysql)
+        .where(and(
+          eq(telemetryMysql.nodeNum, nodeNum),
+          inArray(telemetryMysql.telemetryType, positionTypes)
+        ));
+      const count = countResult.length;
+      await db.delete(telemetryMysql).where(and(
+        eq(telemetryMysql.nodeNum, nodeNum),
+        inArray(telemetryMysql.telemetryType, positionTypes)
+      ));
+      return count;
+    } else {
+      const db = this.getPostgresDb();
+      const deleted = await db
+        .delete(telemetryPostgres)
+        .where(and(
+          eq(telemetryPostgres.nodeNum, nodeNum),
+          inArray(telemetryPostgres.telemetryType, positionTypes)
+        ))
+        .returning({ id: telemetryPostgres.id });
+      return deleted.length;
+    }
+  }
+
+  /**
    * Cleanup old telemetry data.
    * Delegates to deleteOldTelemetry with calculated cutoff timestamp.
    */

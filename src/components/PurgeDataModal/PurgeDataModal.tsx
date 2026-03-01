@@ -10,6 +10,7 @@ interface PurgeDataModalProps {
   onPurgeMessages: (nodeNum: number) => void;
   onPurgeTraceroutes: (nodeNum: number) => void;
   onPurgeTelemetry: (nodeNum: number) => void;
+  onPurgePositionHistory: (nodeNum: number) => void;
   onDeleteNode: (nodeNum: number) => void;
   onPurgeFromDevice: (nodeNum: number) => void;
   getNodeName: (nodeId: string) => string;
@@ -22,6 +23,7 @@ export const PurgeDataModal: React.FC<PurgeDataModalProps> = ({
   onPurgeMessages,
   onPurgeTraceroutes,
   onPurgeTelemetry,
+  onPurgePositionHistory,
   onDeleteNode,
   onPurgeFromDevice,
   getNodeName,
@@ -44,6 +46,11 @@ export const PurgeDataModal: React.FC<PurgeDataModalProps> = ({
 
   const handlePurgeTelemetry = () => {
     onPurgeTelemetry(selectedNode.nodeNum);
+    onClose();
+  };
+
+  const handlePurgePositionHistory = () => {
+    onPurgePositionHistory(selectedNode.nodeNum);
     onClose();
   };
 
@@ -77,6 +84,9 @@ export const PurgeDataModal: React.FC<PurgeDataModalProps> = ({
             </button>
             <button onClick={handlePurgeTelemetry} className="danger-btn purge-btn">
               {t('purgeModal.purgeTelemetry')}
+            </button>
+            <button onClick={handlePurgePositionHistory} className="danger-btn purge-btn">
+              {t('purgeModal.purgePositionHistory')}
             </button>
           </div>
           <hr className="purge-divider" />
