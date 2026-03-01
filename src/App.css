@@ -2591,10 +2591,55 @@ body {
   overflow: hidden;
 }
 
+.nodes-anchored-sidebar.resizing {
+  transition: none;
+}
+
 .nodes-anchored-sidebar.collapsed {
-  width: 48px;
+  width: 48px !important;
   min-width: 48px;
   max-width: 48px;
+}
+
+/* Resize handle on right edge of sidebar */
+.nodes-sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background 0.2s ease;
+}
+
+.nodes-sidebar-resize-handle:hover,
+.nodes-anchored-sidebar.resizing .nodes-sidebar-resize-handle {
+  background: var(--primary-color, #4a9eff);
+}
+
+.nodes-sidebar-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 40px;
+  background: var(--ctp-surface2);
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.nodes-sidebar-resize-handle:hover::before,
+.nodes-anchored-sidebar.resizing .nodes-sidebar-resize-handle::before {
+  background: var(--primary-color, #4a9eff);
+}
+
+/* Prevent interaction during sidebar resize */
+.nodes-anchored-sidebar.resizing .nodes-sidebar {
+  pointer-events: none;
 }
 
 .nodes-map-area {

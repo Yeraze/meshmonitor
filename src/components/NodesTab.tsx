@@ -311,6 +311,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return saved === 'true';
   });
 
+  // Node list sidebar resizable width (default 380px, min 200px, max 50% viewport)
+  const {
+    size: sidebarWidth,
+    isResizing: isSidebarResizing,
+    handleMouseDown: handleSidebarResizeStart,
+    handleTouchStart: handleSidebarTouchStart
+  } = useResizable({
+    id: 'nodes-sidebar-width',
+    defaultHeight: 380,
+    minHeight: 200,
+    maxHeight: Math.round(window.innerWidth * 0.5),
+    direction: 'horizontal'
+  });
+
   // Packet Monitor resizable height (default 35% of viewport, min 150px, max 70%)
   const {
     size: packetMonitorHeight,
@@ -928,7 +942,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       {/* Anchored Node List Sidebar */}
       <div
         ref={sidebarRef}
-        className={`nodes-sidebar nodes-anchored-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}
+        className={`nodes-sidebar nodes-anchored-sidebar ${isNodeListCollapsed ? 'collapsed' : ''} ${isSidebarResizing ? 'resizing' : ''}`}
+        style={!isNodeListCollapsed ? { width: `${sidebarWidth}px` } : undefined}
       >
         <div className="sidebar-header">
           <button
@@ -1317,6 +1332,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             )
           )}
         </div>
+        )}
+        {/* Resize handle on right edge of sidebar */}
+        {!isNodeListCollapsed && (
+          <div
+            className="nodes-sidebar-resize-handle"
+            onMouseDown={handleSidebarResizeStart}
+            onTouchStart={handleSidebarTouchStart}
+            title="Drag to resize"
+          />
         )}
       </div>
 
