@@ -274,9 +274,9 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channels:</label>
-              <div style={{ flex: '1', padding: '0.5rem', background: 'var(--ctp-surface1)', borderRadius: '4px' }}>
+              <div className="channel-checkbox-list" style={{ flex: 1 }}>
                 {editResponseType === 'script' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                  <div className="channel-checkbox-row">
                     <input
                       type="checkbox"
                       id={`edit-channel-none-${trigger.id}`}
@@ -290,14 +290,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                           setEditChannels(['dm']);
                         }
                       }}
-                      style={{ width: 'auto', minWidth: '16px', margin: 0, cursor: 'pointer', flexShrink: 0 }}
                     />
-                    <label htmlFor={`edit-channel-none-${trigger.id}`} style={{ cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
+                    <label htmlFor={`edit-channel-none-${trigger.id}`} style={{ color: 'var(--ctp-subtext0)' }}>
                       {t('auto_responder.channel_none', 'None (no mesh output)')}
                     </label>
                   </div>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                <div className="channel-checkbox-row">
                   <input
                     type="checkbox"
                     id={`edit-channel-dm-${trigger.id}`}
@@ -311,14 +310,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                         setEditVerifyResponse(false);
                       }
                     }}
-                    style={{ width: 'auto', minWidth: '16px', margin: 0, cursor: editChannels.includes('none') ? 'not-allowed' : 'pointer', flexShrink: 0 }}
                   />
-                  <label htmlFor={`edit-channel-dm-${trigger.id}`} style={{ cursor: editChannels.includes('none') ? 'not-allowed' : 'pointer', color: 'var(--ctp-sky)' }}>
+                  <label htmlFor={`edit-channel-dm-${trigger.id}`} className="dm-channel">
                     Direct Messages
                   </label>
                 </div>
-                {channels.map((channel, idx) => (
-                  <div key={channel.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: idx < channels.length - 1 ? '0.4rem' : 0 }}>
+                {channels.map((channel) => (
+                  <div key={channel.id} className="channel-checkbox-row">
                     <input
                       type="checkbox"
                       id={`edit-channel-${channel.id}-${trigger.id}`}
@@ -331,9 +329,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                           setEditChannels(editChannels.filter(ch => ch !== channel.id));
                         }
                       }}
-                      style={{ width: 'auto', minWidth: '16px', margin: 0, cursor: editChannels.includes('none') ? 'not-allowed' : 'pointer', flexShrink: 0 }}
                     />
-                    <label htmlFor={`edit-channel-${channel.id}-${trigger.id}`} style={{ cursor: editChannels.includes('none') ? 'not-allowed' : 'pointer', color: channel.id === 0 ? 'var(--ctp-yellow)' : 'inherit' }}>
+                    <label
+                      htmlFor={`edit-channel-${channel.id}-${trigger.id}`}
+                      className={channel.id === 0 ? 'primary-channel' : undefined}
+                    >
                       Channel {channel.id}: {channel.name}
                     </label>
                   </div>
