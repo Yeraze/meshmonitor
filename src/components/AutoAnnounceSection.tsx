@@ -11,7 +11,7 @@ interface AutoAnnounceSectionProps {
   enabled: boolean;
   intervalHours: number;
   message: string;
-  channelIndex: number;
+  channelIndexes: number[];
   announceOnStart: boolean;
   useSchedule: boolean;
   schedule: string;
@@ -20,7 +20,7 @@ interface AutoAnnounceSectionProps {
   onEnabledChange: (enabled: boolean) => void;
   onIntervalChange: (hours: number) => void;
   onMessageChange: (message: string) => void;
-  onChannelChange: (channelIndex: number) => void;
+  onChannelIndexesChange: (channelIndexes: number[]) => void;
   onAnnounceOnStartChange: (announceOnStart: boolean) => void;
   onUseScheduleChange: (useSchedule: boolean) => void;
   onScheduleChange: (schedule: string) => void;
@@ -39,7 +39,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   enabled,
   intervalHours,
   message,
-  channelIndex,
+  channelIndexes,
   announceOnStart,
   useSchedule,
   schedule,
@@ -48,7 +48,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onEnabledChange,
   onIntervalChange,
   onMessageChange,
-  onChannelChange,
+  onChannelIndexesChange,
   onAnnounceOnStartChange,
   onUseScheduleChange,
   onScheduleChange,
@@ -66,7 +66,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localInterval, setLocalInterval] = useState(intervalHours || 6);
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
-  const [localChannelIndex, setLocalChannelIndex] = useState(channelIndex || 0);
+  const [localChannelIndexes, setLocalChannelIndexes] = useState<number[]>(channelIndexes.length > 0 ? channelIndexes : [0]);
   const [localAnnounceOnStart, setLocalAnnounceOnStart] = useState(announceOnStart);
   const [localUseSchedule, setLocalUseSchedule] = useState(useSchedule);
   const [localSchedule, setLocalSchedule] = useState(schedule || '0 */6 * * *');
@@ -87,14 +87,14 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalEnabled(enabled);
     setLocalInterval(intervalHours || 6);
     setLocalMessage(message || DEFAULT_MESSAGE);
-    setLocalChannelIndex(channelIndex || 0);
+    setLocalChannelIndexes(channelIndexes.length > 0 ? channelIndexes : [0]);
     setLocalAnnounceOnStart(announceOnStart);
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
     setLocalNodeInfoEnabled(nodeInfoEnabled);
     setLocalNodeInfoChannels(nodeInfoChannels);
     setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
-  }, [enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Fetch last announcement time
   useEffect(() => {
@@ -143,7 +143,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       localEnabled !== enabled ||
       localInterval !== intervalHours ||
       localMessage !== message ||
-      localChannelIndex !== channelIndex ||
+      !arraysEqual(localChannelIndexes, channelIndexes) ||
       localAnnounceOnStart !== announceOnStart ||
       localUseSchedule !== useSchedule ||
       localSchedule !== schedule ||
@@ -151,27 +151,32 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       !arraysEqual(localNodeInfoChannels, nodeInfoChannels) ||
       localNodeInfoDelaySeconds !== nodeInfoDelaySeconds;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
     setLocalEnabled(enabled);
     setLocalInterval(intervalHours || 6);
     setLocalMessage(message || DEFAULT_MESSAGE);
-    setLocalChannelIndex(channelIndex || 0);
+    setLocalChannelIndexes(channelIndexes.length > 0 ? channelIndexes : [0]);
     setLocalAnnounceOnStart(announceOnStart);
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
     setLocalNodeInfoEnabled(nodeInfoEnabled);
     setLocalNodeInfoChannels(nodeInfoChannels);
     setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
-  }, [enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Wrap handleSave for useSaveBar (needs to be defined before useSaveBar call)
   const handleSaveForSaveBar = useCallback(async () => {
     // Validate cron expression before saving
     if (localUseSchedule && scheduleError) {
       showToast(t('automation.auto_announce.cannot_save_invalid_cron'), 'error');
+      return;
+    }
+
+    if (localChannelIndexes.length === 0) {
+      showToast(t('automation.auto_announce.no_channels_selected', 'Please select at least one broadcast channel'), 'error');
       return;
     }
 
@@ -185,7 +190,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           autoAnnounceEnabled: String(localEnabled),
           autoAnnounceIntervalHours: localInterval,
           autoAnnounceMessage: localMessage,
-          autoAnnounceChannelIndex: localChannelIndex,
+          autoAnnounceChannelIndexes: JSON.stringify(localChannelIndexes),
           autoAnnounceOnStart: String(localAnnounceOnStart),
           autoAnnounceUseSchedule: String(localUseSchedule),
           autoAnnounceSchedule: localSchedule,
@@ -204,7 +209,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onEnabledChange(localEnabled);
       onIntervalChange(localInterval);
       onMessageChange(localMessage);
-      onChannelChange(localChannelIndex);
+      onChannelIndexesChange(localChannelIndexes);
       onAnnounceOnStartChange(localAnnounceOnStart);
       onUseScheduleChange(localUseSchedule);
       onScheduleChange(localSchedule);
@@ -220,7 +225,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localSchedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
+  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localSchedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelIndexesChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -504,19 +509,56 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               {t('automation.auto_announce.broadcast_channel_description')}
             </span>
           </label>
-          <select
-            id="announceChannel"
-            value={localChannelIndex}
-            onChange={(e) => setLocalChannelIndex(parseInt(e.target.value))}
-            disabled={!localEnabled}
-            className="setting-input"
-          >
-            {channels.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                {channel.name || `Channel ${channel.id}`}
-              </option>
+          <div style={{
+            marginTop: '0.5rem',
+            padding: '0.75rem',
+            background: 'var(--ctp-surface1)',
+            borderRadius: '4px'
+          }}>
+            {channels.map((channel, idx) => (
+              <div
+                key={channel.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  marginBottom: idx < channels.length - 1 ? '0.5rem' : 0
+                }}
+              >
+                <input
+                  type="checkbox"
+                  id={`announce-channel-${channel.id}`}
+                  checked={localChannelIndexes.includes(channel.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setLocalChannelIndexes([...localChannelIndexes, channel.id]);
+                    } else {
+                      setLocalChannelIndexes(localChannelIndexes.filter(ch => ch !== channel.id));
+                    }
+                  }}
+                  disabled={!localEnabled}
+                  style={{
+                    width: 'auto',
+                    minWidth: '16px',
+                    margin: 0,
+                    cursor: localEnabled ? 'pointer' : 'not-allowed',
+                    flexShrink: 0
+                  }}
+                />
+                <label
+                  htmlFor={`announce-channel-${channel.id}`}
+                  style={{
+                    color: channel.id === 0 ? 'var(--ctp-yellow)' : 'inherit',
+                    cursor: localEnabled ? 'pointer' : 'not-allowed',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {channel.name || `Channel ${channel.id}`}
+                </label>
+              </div>
             ))}
-          </select>
+          </div>
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
