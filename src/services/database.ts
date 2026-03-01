@@ -11510,6 +11510,19 @@ class DatabaseService {
   }
 
   /**
+   * Async method to purge position history for a node.
+   * Deletes only position-related telemetry types.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async purgePositionHistoryAsync(nodeNum: number): Promise<number> {
+    if (this.telemetryRepo) {
+      return this.telemetryRepo.purgePositionHistory(nodeNum);
+    }
+    // No sync fallback - position history purge is only available through async repo
+    return 0;
+  }
+
+  /**
    * Async method to update user password.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */

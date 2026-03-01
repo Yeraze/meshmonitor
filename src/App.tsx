@@ -3154,6 +3154,42 @@ function App() {
     }
   };
 
+  const handlePurgePositionHistory = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (
+      !window.confirm(
+        `Are you sure you want to purge position history for ${nodeName}? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/position-history`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(t('toast.purged_position_history', { count: data.deletedCount, node: nodeName }), 'success');
+        refetchPoll();
+      } else {
+        const errorData = await response.json();
+        showToast(t('toast.failed_purge_position_history', { error: errorData.message || t('errors.unknown') }), 'error');
+      }
+    } catch (err) {
+      showToast(
+        t('toast.failed_purge_position_history', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
+    }
+  };
+
   const handleDeleteNode = async (nodeNum: number) => {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
@@ -4236,6 +4272,7 @@ function App() {
         onPurgeMessages={handlePurgeDirectMessages}
         onPurgeTraceroutes={handlePurgeNodeTraceroutes}
         onPurgeTelemetry={handlePurgeNodeTelemetry}
+        onPurgePositionHistory={handlePurgePositionHistory}
         onDeleteNode={handleDeleteNode}
         onPurgeFromDevice={handlePurgeNodeFromDevice}
         getNodeName={getNodeName}
