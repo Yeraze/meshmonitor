@@ -134,14 +134,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
+        run: trivy fs --scanners vuln --format sarif --output trivy-results.sarif --severity HIGH,CRITICAL .
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
@@ -152,6 +154,62 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=moderate
         continue-on-error: true  # Don't fail on audit issues for now
+
+  clamav:
+    name: ClamAV Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install & update ClamAV
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --verbose
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Verify ClamAV detects EICAR signature
+        run: |
+          set -euo pipefail
+          printf 'X5O!P%%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > eicar.com
+          status=0
+          clamscan eicar.com > eicar.log 2>&1 || status=$?
+          cat eicar.log
+          if [ "$status" -ne 1 ]; then
+            echo "ClamAV failed to detect EICAR test signature" >&2
+            exit 1
+          fi
+          rm -f eicar.com eicar.log
+
+      - name: Scan source tree
+        run: |
+          set -euo pipefail
+          clamscan -ri --exclude-dir='^\.git$' . | tee clamav.log
+          if grep -qE 'Infected files: [1-9][0-9]*' clamav.log; then
+            echo "ClamAV found infected files!" >&2
+            grep 'FOUND' clamav.log >&2
+            exit 1
+          fi
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clamav-scan-results
+          path: clamav.log
 
   pr-comment:
     name: PR Comment
