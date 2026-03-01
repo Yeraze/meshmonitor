@@ -1341,14 +1341,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
               Channels:
             </label>
-            <div style={{
-              marginTop: '0.25rem',
-              padding: '0.5rem',
-              background: 'var(--ctp-surface1)',
-              borderRadius: '4px',
-              maxWidth: '400px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+            <div className="channel-checkbox-list" style={{ marginTop: '0.25rem' }}>
+              <div className="channel-checkbox-row">
                 <input
                   type="checkbox"
                   id="new-trigger-channel-dm"
@@ -1362,14 +1356,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     }
                   }}
                   disabled={!localEnabled}
-                  style={{ width: 'auto', minWidth: '16px', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', flexShrink: 0 }}
                 />
-                <label htmlFor="new-trigger-channel-dm" style={{ cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--ctp-sky)' }}>
+                <label htmlFor="new-trigger-channel-dm" className="dm-channel">
                   {t('auto_responder.direct_messages')}
                 </label>
               </div>
-              {channels.map((channel, idx) => (
-                <div key={channel.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: idx < channels.length - 1 ? '0.4rem' : 0 }}>
+              {channels.map((channel) => (
+                <div key={channel.id} className="channel-checkbox-row">
                   <input
                     type="checkbox"
                     id={`new-trigger-channel-${channel.id}`}
@@ -1382,9 +1375,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                       }
                     }}
                     disabled={!localEnabled}
-                    style={{ width: 'auto', minWidth: '16px', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', flexShrink: 0 }}
                   />
-                  <label htmlFor={`new-trigger-channel-${channel.id}`} style={{ cursor: localEnabled ? 'pointer' : 'not-allowed', color: channel.id === 0 ? 'var(--ctp-yellow)' : 'inherit' }}>
+                  <label
+                    htmlFor={`new-trigger-channel-${channel.id}`}
+                    className={channel.id === 0 ? 'primary-channel' : undefined}
+                  >
                     Channel {channel.id}: {channel.name}
                   </label>
                 </div>

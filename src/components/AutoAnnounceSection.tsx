@@ -509,23 +509,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               {t('automation.auto_announce.broadcast_channel_description')}
             </span>
           </label>
-          <div style={{
-            marginTop: '0.5rem',
-            padding: '0.75rem',
-            background: 'var(--ctp-surface1)',
-            borderRadius: '4px'
-          }}>
-            {channels.map((channel, idx) => (
-              <div
-                key={channel.id}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  marginBottom: idx < channels.length - 1 ? '0.5rem' : 0
-                }}
-              >
+          <div className="channel-checkbox-list">
+            {channels.map((channel) => (
+              <div key={channel.id} className="channel-checkbox-row">
                 <input
                   type="checkbox"
                   id={`announce-channel-${channel.id}`}
@@ -538,21 +524,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                     }
                   }}
                   disabled={!localEnabled}
-                  style={{
-                    width: 'auto',
-                    minWidth: '16px',
-                    margin: 0,
-                    cursor: localEnabled ? 'pointer' : 'not-allowed',
-                    flexShrink: 0
-                  }}
                 />
                 <label
                   htmlFor={`announce-channel-${channel.id}`}
-                  style={{
-                    color: channel.id === 0 ? 'var(--ctp-yellow)' : 'inherit',
-                    cursor: localEnabled ? 'pointer' : 'not-allowed',
-                    whiteSpace: 'nowrap'
-                  }}
+                  className={channel.id === 0 ? 'primary-channel' : undefined}
                 >
                   {channel.name || `Channel ${channel.id}`}
                 </label>
@@ -766,23 +741,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                     {t('automation.auto_announce.nodeinfo_channels_description')}
                   </span>
                 </label>
-                <div style={{
-                  marginTop: '0.5rem',
-                  padding: '0.75rem',
-                  background: 'var(--ctp-surface1)',
-                  borderRadius: '4px'
-                }}>
-                  {channels.map((channel, idx) => (
-                    <div
-                      key={channel.id}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        marginBottom: idx < channels.length - 1 ? '0.5rem' : 0
-                      }}
-                    >
+                <div className="channel-checkbox-list">
+                  {channels.map((channel) => (
+                    <div key={channel.id} className="channel-checkbox-row">
                       <input
                         type="checkbox"
                         id={`nodeinfo-channel-${channel.id}`}
@@ -795,21 +756,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                           }
                         }}
                         disabled={!localEnabled}
-                        style={{
-                          width: 'auto',
-                          minWidth: '16px',
-                          margin: 0,
-                          cursor: localEnabled ? 'pointer' : 'not-allowed',
-                          flexShrink: 0
-                        }}
                       />
                       <label
                         htmlFor={`nodeinfo-channel-${channel.id}`}
-                        style={{
-                          color: channel.id === 0 ? 'var(--ctp-yellow)' : 'inherit',
-                          cursor: localEnabled ? 'pointer' : 'not-allowed',
-                          whiteSpace: 'nowrap'
-                        }}
+                        className={channel.id === 0 ? 'primary-channel' : undefined}
                       >
                         {channel.name || `Channel ${channel.id}`}
                         {channel.id === 0 && ' (Primary)'}

@@ -4944,6 +4944,57 @@ body {
   border-color: var(--ctp-overlay0);
 }
 
+/* Channel Checkbox List Styles */
+.channel-checkbox-list {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--ctp-surface1);
+  border-radius: 4px;
+}
+
+.channel-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.channel-checkbox-row:not(:last-child) {
+  margin-bottom: 0.5rem;
+}
+
+.channel-checkbox-row input[type="checkbox"] {
+  width: auto;
+  min-width: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.channel-checkbox-row input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+.channel-checkbox-row label {
+  cursor: pointer;
+  white-space: nowrap;
+  margin-bottom: 0;
+  font-weight: normal;
+  font-size: 0.9rem;
+}
+
+.channel-checkbox-row label.primary-channel {
+  color: var(--ctp-yellow);
+}
+
+.channel-checkbox-row label.dm-channel {
+  color: var(--ctp-sky);
+}
+
+.channel-checkbox-row input[type="checkbox"]:disabled + label {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Danger Zone Styles */
 .danger-zone {
   border: 2px solid var(--ctp-red);
