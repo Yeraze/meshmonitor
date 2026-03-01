@@ -172,7 +172,7 @@
 
 .position-override-actions .save-btn {
   background-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 4px;

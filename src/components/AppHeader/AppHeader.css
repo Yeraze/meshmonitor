@@ -181,7 +181,7 @@
 .connection-control-btn.reconnect {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .connection-control-btn.reconnect:hover {
@@ -198,7 +198,7 @@
   background: var(--ctp-blue);
   border: none;
   border-radius: 8px;
-  color: var(--ctp-base);
+  color: #000000;
   cursor: pointer;
   font-size: 0.95em;
   font-weight: 600;

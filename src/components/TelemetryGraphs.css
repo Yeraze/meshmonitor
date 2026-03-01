@@ -28,7 +28,7 @@
 }
 
 .graph-container {
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   padding: 15px;
@@ -94,7 +94,7 @@
 }
 
 .telemetry-context-menu {
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);

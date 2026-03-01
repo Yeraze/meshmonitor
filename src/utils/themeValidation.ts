@@ -123,6 +123,17 @@ export const REQUIRED_THEME_COLORS = [
 ] as const;
 
 /**
+ * Optional color keys for a theme definition
+ * These allow independent customization of chat bubble colors
+ */
+export const OPTIONAL_THEME_COLORS = [
+  'chatBubbleSentBg',
+  'chatBubbleSentText',
+  'chatBubbleReceivedBg',
+  'chatBubbleReceivedText'
+] as const;
+
+/**
  * Validates a complete theme definition
  * Ensures all required color keys are present and valid hex colors
  *
@@ -161,9 +172,19 @@ export function validateThemeDefinition(definition: any): {
     }
   }
 
-  // Check for unexpected properties
+  // Validate optional colors if present
+  for (const color of OPTIONAL_THEME_COLORS) {
+    const value = definition[color];
+
+    if (value !== undefined && !isValidHexColor(value)) {
+      errors.push(`Invalid hex color for '${color}': ${value}`);
+    }
+  }
+
+  // Check for unexpected properties (allow both required and optional)
+  const allKnownColors: readonly string[] = [...REQUIRED_THEME_COLORS, ...OPTIONAL_THEME_COLORS];
   const extraKeys = Object.keys(definition).filter(
-    key => !REQUIRED_THEME_COLORS.includes(key as any)
+    key => !allKnownColors.includes(key)
   );
 
   if (extraKeys.length > 0) {
@@ -222,6 +243,14 @@ export function normalizeThemeDefinition(definition: ThemeDefinition): ThemeDefi
 
   for (const color of REQUIRED_THEME_COLORS) {
     normalized[color] = normalizeHexColor(definition[color]);
+  }
+
+  // Preserve and normalize optional colors if present
+  for (const color of OPTIONAL_THEME_COLORS) {
+    const value = (definition as any)[color];
+    if (value !== undefined) {
+      normalized[color] = normalizeHexColor(value);
+    }
   }
 
   return normalized as ThemeDefinition;

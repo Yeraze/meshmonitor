@@ -121,7 +121,7 @@
 
 .filter-toggle-btn.active {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border-color: var(--ctp-blue);
 }
 
@@ -244,7 +244,7 @@
   padding: 0.625rem 1rem;
   border: none;
   background: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.875rem;
