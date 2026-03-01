@@ -2792,18 +2792,69 @@ class MeshtasticManager {
     const nodeNum = Number(myNodeInfo.myNodeNum);
     const nodeId = `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`;
 
+    // Extract device_id (stable hardware identifier, 16 bytes) if available
+    const deviceId = myNodeInfo.deviceId && myNodeInfo.deviceId.length > 0
+      ? Buffer.from(myNodeInfo.deviceId).toString('hex')
+      : null;
+
     // Check for node ID mismatch with previously stored values
     const previousNodeNum = databaseService.getSetting('localNodeNum');
     const previousNodeId = databaseService.getSetting('localNodeId');
     if (previousNodeNum && previousNodeId) {
       const prevNum = parseInt(previousNodeNum);
       if (prevNum !== nodeNum) {
-        logger.warn(`⚠️ NODE ID CHANGE DETECTED: Physical node changed from ${previousNodeId} (${prevNum}) to ${nodeId} (${nodeNum})`);
-        logger.warn(`⚠️ This can happen if: (1) The physical node was factory reset, (2) A different physical node was connected, or (3) The node's ID was reconfigured`);
-        logger.warn(`⚠️ Virtual node clients may briefly show the old node ID until they reconnect`);
-        // Clear the init config cache to force fresh data for virtual node clients
-        this.initConfigCache = [];
-        logger.info(`📸 Cleared init config cache due to node ID change`);
+        const storedDeviceId = databaseService.getSetting('localDeviceId');
+
+        if (deviceId && storedDeviceId && deviceId === storedDeviceId) {
+          // Same physical device rebooted with a different nodeNum.
+          // Reject the new nodeNum and keep the stored one to prevent ghost duplicates.
+          logger.info(`📱 Reboot detected for same device (device_id: ${deviceId}), keeping original nodeNum ${previousNodeId} (${prevNum}) instead of ${nodeId} (${nodeNum})`);
+
+          // Update rebootCount on the existing node
+          databaseService.upsertNode({
+            nodeNum: prevNum,
+            nodeId: previousNodeId,
+            rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
+            hasRemoteAdmin: true,
+          });
+
+          // Restore localNodeInfo with the original (correct) nodeNum
+          const existingNode = databaseService.getNode(prevNum);
+          this.localNodeInfo = {
+            nodeNum: prevNum,
+            nodeId: previousNodeId,
+            longName: existingNode?.longName || null,
+            shortName: existingNode?.shortName || null,
+            hwModel: existingNode?.hwModel || myNodeInfo.hwModel || undefined,
+            firmwareVersion: (existingNode as any)?.firmwareVersion || null,
+            rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
+            isLocked: !!(existingNode?.longName && existingNode.longName !== 'Local Device'),
+          } as any;
+
+          return;
+        } else {
+          // Different device connected (or no device_id available for comparison)
+          logger.info(`⚠️ NODE ID CHANGE DETECTED: Physical node changed from ${previousNodeId} (${prevNum}) to ${nodeId} (${nodeNum})`);
+          logger.info(`⚠️ This can happen if: (1) The physical node was factory reset, (2) A different physical node was connected, or (3) The node's ID was reconfigured`);
+          logger.info(`⚠️ Virtual node clients may briefly show the old node ID until they reconnect`);
+          // Clear the init config cache to force fresh data for virtual node clients
+          this.initConfigCache = [];
+          logger.info(`📸 Cleared init config cache due to node ID change`);
+
+          // Update stored device_id if new device provides one
+          if (deviceId) {
+            databaseService.setSetting('localDeviceId', deviceId);
+          }
+        }
+      }
+    }
+
+    // Store device_id on first encounter or when it wasn't previously stored
+    if (deviceId) {
+      const storedDeviceId = databaseService.getSetting('localDeviceId');
+      if (!storedDeviceId) {
+        databaseService.setSetting('localDeviceId', deviceId);
+        logger.debug(`💾 Stored device_id: ${deviceId}`);
       }
     }
 
