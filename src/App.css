@@ -2762,6 +2762,7 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .filter-popup-btn:hover {
@@ -3219,7 +3220,9 @@ body {
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
   font-size: 0.85rem;
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
   cursor: pointer;
   transition: border-color 0.2s;
 }
@@ -3246,6 +3249,7 @@ body {
   align-items: center;
   justify-content: center;
   min-width: 40px;
+  flex-shrink: 0;
 }
 
 .sort-direction-btn:hover {
@@ -3869,7 +3873,6 @@ body {
   .sort-dropdown {
     padding: 0.3rem 0.4rem;
     font-size: 0.75rem;
-    min-width: 0;
   }
 
   .sort-direction-btn {
