@@ -5119,7 +5119,7 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
     if (!databaseService.validateThemeDefinition(definition)) {
       return res
         .status(400)
-        .json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
+        .json({ error: 'Invalid theme definition. All required color variables must be valid hex codes' });
     }
 
     // Create the theme
@@ -5174,7 +5174,7 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), (req, res) 
       if (!databaseService.validateThemeDefinition(definition)) {
         return res
           .status(400)
-          .json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
+          .json({ error: 'Invalid theme definition. All required color variables must be valid hex codes' });
       }
       updates.definition = definition;
     }

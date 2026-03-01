@@ -62,7 +62,7 @@
 
 .embed-button-danger:hover:not(:disabled) {
   background: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 /* Modal override for wider embed form */

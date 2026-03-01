@@ -13,7 +13,7 @@
 }
 
 .backup-modal-content {
-  background-color: var(--ctp-base);
+  background-color: #000000;
   padding: 2rem;
   border-radius: 8px;
   max-width: 800px;

@@ -362,6 +362,11 @@ export interface ThemeDefinition {
   pink: string;
   flamingo: string;
   rosewater: string;
+  // Optional chat bubble color overrides
+  chatBubbleSentBg?: string;
+  chatBubbleSentText?: string;
+  chatBubbleReceivedBg?: string;
+  chatBubbleReceivedText?: string;
 }
 
 class DatabaseService {

@@ -48,7 +48,7 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: 1rem;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-overlay0);
   border-radius: 6px;
   transition: border-color 0.2s;
@@ -149,13 +149,13 @@
 
 .btn-edit:hover:not(:disabled) {
   background-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border-color: var(--ctp-blue);
 }
 
 .btn-delete:hover:not(:disabled) {
   background-color: var(--ctp-red);
-  color: var(--ctp-base);
+  color: #000000;
   border-color: var(--ctp-red);
 }
 
@@ -165,7 +165,7 @@
 }
 
 .tileset-form {
-  background-color: var(--ctp-base);
+  background-color: #000000;
   padding: 1.5rem;
   border-radius: 6px;
   border: 1px solid var(--ctp-blue);
@@ -271,7 +271,7 @@
 
 .btn-save {
   background-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
 }
 
 .btn-save:hover:not(:disabled) {
@@ -348,7 +348,7 @@
 
 .btn-test:hover:not(:disabled) {
   background-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  color: #000000;
   border-color: var(--ctp-blue);
 }
 
@@ -474,7 +474,7 @@
 .autodetect-input-row input {
   flex: 1;
   padding: 0.6rem;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border: 1px solid var(--ctp-overlay0);
   border-radius: 4px;
   color: var(--ctp-text);
@@ -491,7 +491,7 @@
   background-color: var(--ctp-mauve);
   border: none;
   border-radius: 4px;
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -576,7 +576,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  background-color: var(--ctp-base);
+  background-color: #000000;
   border-radius: 4px;
   border: 1px solid var(--ctp-overlay0);
 }
@@ -601,7 +601,7 @@
   background-color: var(--ctp-green);
   border: none;
   border-radius: 4px;
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -656,7 +656,7 @@
   background-color: var(--ctp-yellow);
   border: none;
   border-radius: 4px;
-  color: var(--ctp-base);
+  color: #000000;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
