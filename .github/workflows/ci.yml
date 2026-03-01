@@ -172,6 +172,15 @@ jobs:
           sudo systemctl stop clamav-freshclam || true
           sudo freshclam --verbose
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Verify ClamAV detects EICAR signature
         run: |
           set -euo pipefail
@@ -188,7 +197,7 @@ jobs:
       - name: Scan source tree
         run: |
           set -euo pipefail
-          clamscan -ri --exclude-dir='^\.git$' --exclude-dir='^node_modules$' . | tee clamav.log
+          clamscan -ri --exclude-dir='^\.git$' . | tee clamav.log
           if grep -qE 'Infected files: [1-9][0-9]*' clamav.log; then
             echo "ClamAV found infected files!" >&2
             grep 'FOUND' clamav.log >&2
