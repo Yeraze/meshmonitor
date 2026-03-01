@@ -47,6 +47,19 @@ describe('isAutoFavoriteEligible', () => {
   it('returns true for ROUTER_LATE local with 0-hop ROUTER target', () => {
     expect(isAutoFavoriteEligible(DeviceRole.ROUTER_LATE, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false })).toBe(true);
   });
+
+  it('returns false for 0-hop node received via MQTT', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, viaMqtt: true })).toBe(false);
+  });
+
+  it('returns true for 0-hop non-MQTT node', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, viaMqtt: false })).toBe(true);
+  });
+
+  it('returns true when viaMqtt is null/undefined (backwards compat)', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, viaMqtt: null })).toBe(true);
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, viaMqtt: undefined })).toBe(true);
+  });
 });
 
 describe('isAutoFavoriteValidRole', () => {

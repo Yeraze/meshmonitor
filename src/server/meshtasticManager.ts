@@ -9128,6 +9128,12 @@ class MeshtasticManager {
           reason = `no longer 0-hop (hopsAway=${node.hopsAway})`;
         }
 
+        // Check if received via MQTT (not a true RF neighbor)
+        if (!shouldRemove && node.viaMqtt === true) {
+          shouldRemove = true;
+          reason = 'received via MQTT';
+        }
+
         // Check role eligibility changed (for ROUTER/ROUTER_LATE local)
         if (!shouldRemove && localNode) {
           if (!isAutoFavoriteEligible(localNode.role, { ...node, isFavorite: false })) {
