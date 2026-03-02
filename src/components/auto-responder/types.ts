@@ -71,6 +71,7 @@ export interface GeofenceTrigger {
   shape: GeofenceShape;
   event: GeofenceEvent;
   whileInsideIntervalMinutes?: number; // Required when event is 'while_inside'
+  cooldownMinutes?: number; // Minimum time between triggers per node (0 = no cooldown)
   nodeFilter: GeofenceNodeFilter;
   responseType: GeofenceResponseType;
   response?: string; // Text message with expansion tokens (when responseType is 'text')

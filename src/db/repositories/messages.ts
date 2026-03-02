@@ -20,7 +20,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Insert a new message (ignores duplicates)
    */
-  async insertMessage(messageData: DbMessage): Promise<void> {
+  async insertMessage(messageData: DbMessage): Promise<boolean> {
     const values = {
       id: messageData.id,
       fromNodeNum: messageData.fromNodeNum,
@@ -52,22 +52,28 @@ export class MessagesRepository extends BaseRepository {
 
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      await db
+      const result = await db
         .insert(messagesSqlite)
         .values(values)
         .onConflictDoNothing();
+      // SQLite Drizzle returns { changes: number } - 0 means conflict (no insert)
+      return (result as any).changes > 0;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      await db
+      const result = await db
         .insert(messagesMysql)
         .values(values)
         .onDuplicateKeyUpdate({ set: { id: messageData.id } }); // MySQL equivalent of onConflictDoNothing
+      // MySQL returns affectedRows: 1 for insert, 0 for duplicate with same values
+      return (result as any)[0]?.affectedRows > 0;
     } else {
       const db = this.getPostgresDb();
-      await db
+      const result = await db
         .insert(messagesPostgres)
         .values(values)
         .onConflictDoNothing();
+      // PostgreSQL returns rowCount: 0 on conflict
+      return (result as any).rowCount > 0;
     }
   }
 
