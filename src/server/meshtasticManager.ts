@@ -3726,28 +3726,32 @@ class MeshtasticManager {
           createdAt: Date.now(),
           decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
         };
-        databaseService.insertMessage(message);
+        const wasInserted = databaseService.insertMessage(message);
 
-        // Emit WebSocket event for real-time updates
-        dataEventEmitter.emitNewMessage(message as any);
+        if (wasInserted) {
+          // Emit WebSocket event for real-time updates
+          dataEventEmitter.emitNewMessage(message as any);
 
-        if (isDirectMessage) {
-          logger.debug(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          if (isDirectMessage) {
+            logger.debug(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          } else {
+            logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          }
+
+          // Send push notification for new message
+          await this.sendMessagePushNotification(message, messageText, isDirectMessage);
+
+          // Auto-acknowledge matching messages
+          await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
+
+          // Check for auto-ping DM command (before auto-responder so it takes priority)
+          if (await this.handleAutoPingCommand(message, isDirectMessage)) return;
+
+          // Auto-respond to matching messages
+          await this.checkAutoResponder(message, isDirectMessage, meshPacket.id);
         } else {
-          logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          logger.debug(`⏭️ Skipped duplicate message ${message.id} (echo from device)`);
         }
-
-        // Send push notification for new message
-        await this.sendMessagePushNotification(message, messageText, isDirectMessage);
-
-        // Auto-acknowledge matching messages
-        await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
-
-        // Check for auto-ping DM command (before auto-responder so it takes priority)
-        if (await this.handleAutoPingCommand(message, isDirectMessage)) return;
-
-        // Auto-respond to matching messages
-        await this.checkAutoResponder(message, isDirectMessage, meshPacket.id);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -4778,10 +4782,12 @@ class MeshtasticManager {
         createdAt: Date.now()
       };
 
-      databaseService.insertMessage(message);
+      const wasInserted = databaseService.insertMessage(message);
 
-      // Emit WebSocket event for traceroute message
-      dataEventEmitter.emitNewMessage(message as any);
+      // Emit WebSocket event for traceroute message only if actually new
+      if (wasInserted) {
+        dataEventEmitter.emitNewMessage(message as any);
+      }
 
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
@@ -6745,19 +6751,21 @@ class MeshtasticManager {
       };
 
       try {
-        databaseService.insertMessage(message);
+        const wasInserted = databaseService.insertMessage(message);
 
-        // Emit WebSocket event for real-time updates
-        dataEventEmitter.emitNewMessage(message as any);
+        if (wasInserted) {
+          // Emit WebSocket event for real-time updates
+          dataEventEmitter.emitNewMessage(message as any);
 
-        if (isDirectMessage) {
-          logger.debug('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
-        } else {
-          logger.debug('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          if (isDirectMessage) {
+            logger.debug('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          } else {
+            logger.debug('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          }
+
+          // Send push notification for new message
+          await this.sendMessagePushNotification(message, message.text, isDirectMessage);
         }
-
-        // Send push notification for new message
-        await this.sendMessagePushNotification(message, message.text, isDirectMessage);
       } catch (error) {
         logger.error('Failed to save message:', error);
         logger.error('Message data:', message);

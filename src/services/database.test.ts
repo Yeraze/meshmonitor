@@ -183,7 +183,7 @@ const createTestDatabase = () => {
       return stmt.all() as DbNode[];
     }
 
-    insertMessage(messageData: DbMessage): void {
+    insertMessage(messageData: DbMessage): boolean {
       // Use INSERT OR IGNORE to silently skip duplicate messages
       const stmt = this.db.prepare(`
         INSERT OR IGNORE INTO messages (
@@ -192,7 +192,7 @@ const createTestDatabase = () => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      stmt.run(
+      const result = stmt.run(
         messageData.id,
         messageData.fromNodeNum,
         messageData.toNodeNum,
@@ -205,6 +205,7 @@ const createTestDatabase = () => {
         messageData.rxTime ?? null,
         messageData.createdAt
       );
+      return result.changes > 0;
     }
 
     getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
@@ -584,13 +585,13 @@ describe('DatabaseService', () => {
         createdAt: Date.now()
       };
 
-      // Insert the message
-      db.insertMessage(message);
+      // Insert the message - should return true for new message
+      const firstResult = db.insertMessage(message);
+      expect(firstResult).toBe(true);
 
-      // Try to insert the same message again (should not throw error)
-      expect(() => {
-        db.insertMessage(message);
-      }).not.toThrow();
+      // Try to insert the same message again - should return false for duplicate
+      const secondResult = db.insertMessage(message);
+      expect(secondResult).toBe(false);
 
       // Verify only one message exists
       const retrieved = db.getMessage('msg-duplicate');

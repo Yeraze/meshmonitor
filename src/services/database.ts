@@ -4017,9 +4017,15 @@ class DatabaseService {
   }
 
   // Message operations
-  insertMessage(messageData: DbMessage): void {
+  // Returns true if the message was actually inserted (not a duplicate)
+  insertMessage(messageData: DbMessage): boolean {
     // For PostgreSQL/MySQL, fire-and-forget async insert
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      // Check cache for duplicate before inserting
+      const existsInCache = this._messagesCache.some(m => m.id === messageData.id);
+      if (existsInCache) {
+        return false;
+      }
       if (this.messagesRepo) {
         this.messagesRepo.insertMessage(messageData).catch((error) => {
           logger.error(`[DatabaseService] Failed to insert message: ${error}`);
@@ -4031,7 +4037,7 @@ class DatabaseService {
       if (this._messagesCache.length > 500) {
         this._messagesCache.pop();
       }
-      return;
+      return true;
     }
 
     // SQLite synchronous path - Use INSERT OR IGNORE to silently skip duplicate messages
@@ -4044,7 +4050,7 @@ class DatabaseService {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(
+    const result = stmt.run(
       messageData.id,
       messageData.fromNodeNum,
       messageData.toNodeNum,
@@ -4071,6 +4077,8 @@ class DatabaseService {
       messageData.createdAt,
       messageData.decryptedBy ?? null
     );
+    // result.changes is 0 when INSERT OR IGNORE skips a duplicate
+    return result.changes > 0;
   }
 
   getMessage(id: string): DbMessage | null {
