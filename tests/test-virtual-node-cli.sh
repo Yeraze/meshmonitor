@@ -46,9 +46,7 @@ echo "Creating test docker-compose.yml with Virtual Node Server..."
 cat > "$COMPOSE_FILE" <<'EOF'
 services:
   meshmonitor:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: meshmonitor:test
     container_name: meshmonitor-virtual-node-cli-test
     ports:
       - "8086:3001"
@@ -68,13 +66,7 @@ EOF
 echo -e "${GREEN}✓${NC} Test config created"
 echo ""
 
-# Build and start
-echo "Building container..."
-docker compose -f "$COMPOSE_FILE" build --no-cache --quiet
-
-echo -e "${GREEN}✓${NC} Build complete"
-echo ""
-
+# Start container
 echo "Starting container..."
 docker compose -f "$COMPOSE_FILE" up -d
 

@@ -78,9 +78,7 @@ else
     cat > "$COMPOSE_FILE" <<'EOF'
 services:
   meshmonitor:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: meshmonitor:test
     container_name: meshmonitor-reverse-proxy-test
     ports:
       - "8080:3001"
@@ -104,13 +102,7 @@ EOF
     echo -e "${GREEN}✓${NC} Test config created"
     echo ""
 
-    # Build and start
-    echo "Building container..."
-    docker compose -f "$COMPOSE_FILE" build --quiet
-
-    echo -e "${GREEN}✓${NC} Build complete"
-    echo ""
-
+    # Start container
     echo "Starting container..."
     docker compose -f "$COMPOSE_FILE" up -d
 
