@@ -460,6 +460,13 @@ export const MYSQL_SCHEMA_SQL = `
 
   CREATE INDEX idx_nodes_nodeid ON nodes(nodeId);
   CREATE INDEX idx_nodes_lastheard ON nodes(lastHeard);
+
+  CREATE TABLE IF NOT EXISTS geofence_cooldowns (
+    triggerId VARCHAR(255) NOT NULL,
+    nodeNum BIGINT NOT NULL,
+    firedAt BIGINT NOT NULL,
+    PRIMARY KEY (triggerId, nodeNum)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 `;
 
 export const MYSQL_TABLE_NAMES = [
