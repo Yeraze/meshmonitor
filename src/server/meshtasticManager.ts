@@ -2875,29 +2875,71 @@ class MeshtasticManager {
 
         if (deviceId && storedDeviceId && deviceId === storedDeviceId) {
           // Same physical device rebooted with a different nodeNum.
-          // Reject the new nodeNum and keep the stored one to prevent ghost duplicates.
-          logger.info(`📱 Reboot detected for same device (device_id: ${deviceId}), keeping original nodeNum ${previousNodeId} (${prevNum}) instead of ${nodeId} (${nodeNum})`);
+          // Accept the new nodeNum, merge old node metadata into it, and delete the old ghost.
+          // The firmware is already broadcasting on the new nodeNum, so we must match it.
+          logger.info(`📱 Reboot detected for same device (device_id: ${deviceId}), accepting new nodeNum ${nodeId} (${nodeNum}) and merging from old ${previousNodeId} (${prevNum})`);
 
-          // Update rebootCount on the existing node
+          // Fetch old node data to merge
+          const oldNode = databaseService.getNode(prevNum);
+
+          // Check if new nodeNum already exists as a known mesh peer (edge case)
+          const newNode = databaseService.getNode(nodeNum);
+
+          // Upsert new node with merged metadata — new node's existing data takes priority,
+          // falls back to old node's data for missing fields
           databaseService.upsertNode({
-            nodeNum: prevNum,
-            nodeId: previousNodeId,
+            nodeNum: nodeNum,
+            nodeId: nodeId,
+            longName: newNode?.longName || oldNode?.longName || undefined,
+            shortName: newNode?.shortName || oldNode?.shortName || undefined,
+            hwModel: newNode?.hwModel || oldNode?.hwModel || myNodeInfo.hwModel || 0,
+            firmwareVersion: (newNode as any)?.firmwareVersion || (oldNode as any)?.firmwareVersion || undefined,
+            macaddr: (newNode as any)?.macaddr || (oldNode as any)?.macaddr || undefined,
+            publicKey: (newNode as any)?.publicKey || (oldNode as any)?.publicKey || undefined,
+            latitude: newNode?.latitude || oldNode?.latitude || undefined,
+            longitude: newNode?.longitude || oldNode?.longitude || undefined,
+            altitude: newNode?.altitude || oldNode?.altitude || undefined,
+            isFavorite: newNode?.isFavorite || oldNode?.isFavorite || false,
+            isIgnored: newNode?.isIgnored || oldNode?.isIgnored || false,
+            hasRemoteAdmin: true, // Local node always has admin
             rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
-            hasRemoteAdmin: true,
           });
 
-          // Restore localNodeInfo with the original (correct) nodeNum
-          const existingNode = databaseService.getNode(prevNum);
+          // Delete old ghost node (cascades messages, traceroutes, neighbors, telemetry)
+          databaseService.deleteNode(prevNum);
+          logger.info(`🗑️ Deleted old ghost node ${previousNodeId} (${prevNum})`);
+
+          // Update settings to new nodeNum/nodeId — localDeviceId stays the same
+          databaseService.setSetting('localNodeNum', nodeNum.toString());
+          databaseService.setSetting('localNodeId', nodeId);
+
+          // Clear init config cache to force VN clients to get fresh config with correct identity
+          this.initConfigCache = [];
+          logger.info(`📸 Cleared init config cache due to same-device reboot merge`);
+
+          // Set localNodeInfo with new nodeNum and merged metadata
+          const mergedLongName = newNode?.longName || oldNode?.longName || null;
           this.localNodeInfo = {
-            nodeNum: prevNum,
-            nodeId: previousNodeId,
-            longName: existingNode?.longName || null,
-            shortName: existingNode?.shortName || null,
-            hwModel: existingNode?.hwModel || myNodeInfo.hwModel || undefined,
-            firmwareVersion: (existingNode as any)?.firmwareVersion || null,
+            nodeNum: nodeNum,
+            nodeId: nodeId,
+            longName: mergedLongName,
+            shortName: newNode?.shortName || oldNode?.shortName || null,
+            hwModel: newNode?.hwModel || oldNode?.hwModel || myNodeInfo.hwModel || undefined,
+            firmwareVersion: (newNode as any)?.firmwareVersion || (oldNode as any)?.firmwareVersion || null,
             rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
-            isLocked: !!(existingNode?.longName && existingNode.longName !== 'Local Device'),
+            isLocked: !!(mergedLongName && mergedLongName !== 'Local Device'),
           } as any;
+
+          // Schedule deferred sendRemoveNode to clean up old nodeNum from physical device's NodeDB
+          const prevNumToRemove = prevNum;
+          setTimeout(async () => {
+            try {
+              await this.sendRemoveNode(prevNumToRemove);
+              logger.info(`✅ Removed old nodeNum ${previousNodeId} (${prevNumToRemove}) from device NodeDB after reboot merge`);
+            } catch (err) {
+              logger.warn(`⚠️ Could not remove old nodeNum ${previousNodeId} (${prevNumToRemove}) from device NodeDB (non-fatal):`, err);
+            }
+          }, 5000);
 
           return;
         } else {
@@ -5562,10 +5604,18 @@ class MeshtasticManager {
         };
       }
 
-      // If this is the local node, update localNodeInfo with names (only if not locked)
-      if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num) && !this.localNodeInfo.isLocked) {
-        logger.debug(`📱 Updating local node info with names from NodeInfo`);
+      // If this is the local node, always update localNodeInfo with names from NodeInfo.
+      // NodeInfo is the authoritative source for node identity — names may have been changed
+      // outside MeshMonitor (e.g., via Meshtastic app), so we must accept the device's truth
+      // regardless of isLocked state. isLocked only prevents processMyNodeInfo (which doesn't
+      // carry names) from overwriting with incomplete data.
+      if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num)) {
         if (nodeInfo.user && nodeInfo.user.longName && nodeInfo.user.shortName) {
+          const nameChanged = this.localNodeInfo.longName !== nodeInfo.user.longName ||
+            this.localNodeInfo.shortName !== nodeInfo.user.shortName;
+          if (nameChanged) {
+            logger.info(`📱 Local node name updated: "${this.localNodeInfo.longName}" → "${nodeInfo.user.longName}" (${nodeInfo.user.shortName})`);
+          }
           this.localNodeInfo.longName = nodeInfo.user.longName;
           this.localNodeInfo.shortName = nodeInfo.user.shortName;
           this.localNodeInfo.isLocked = true;  // Lock it now that we have complete info
@@ -11691,6 +11741,14 @@ class MeshtasticManager {
     if (!this.isConnected) {
       logger.debug('⚠️ Not connected, attempting to reconnect...');
       await this.connect();
+    }
+
+    // Clear isLocked so processMyNodeInfo can run (updates hwModel, rebootCount, etc.)
+    // and processNodeInfoProtobuf can update localNodeInfo with fresh names.
+    // The whole point of a manual refresh is to get fresh data from the device.
+    if (this.localNodeInfo) {
+      this.localNodeInfo.isLocked = false;
+      logger.debug('🔓 Cleared localNodeInfo lock for config refresh');
     }
 
     // Send want_config_id to trigger node to send updated info

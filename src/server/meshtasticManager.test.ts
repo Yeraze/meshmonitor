@@ -992,6 +992,108 @@ describe('MeshtasticManager - Configuration Polling', () => {
     });
   });
 
+  describe('Local node name update from NodeInfo (isLocked bypass)', () => {
+    // Simulates the localNodeInfo update logic in processNodeInfoProtobuf
+    function simulateNodeInfoUpdate(
+      localNodeInfo: { nodeNum: number; longName: string | null; shortName: string | null; isLocked: boolean },
+      nodeInfo: { num: number; user?: { longName?: string; shortName?: string } }
+    ) {
+      // This mirrors the fixed logic in processNodeInfoProtobuf:
+      // Always update localNodeInfo from NodeInfo regardless of isLocked,
+      // because NodeInfo is the authoritative source for names.
+      if (localNodeInfo && localNodeInfo.nodeNum === Number(nodeInfo.num)) {
+        if (nodeInfo.user && nodeInfo.user.longName && nodeInfo.user.shortName) {
+          localNodeInfo.longName = nodeInfo.user.longName;
+          localNodeInfo.shortName = nodeInfo.user.shortName;
+          localNodeInfo.isLocked = true;
+        }
+      }
+      return localNodeInfo;
+    }
+
+    it('should update local node name from NodeInfo even when isLocked is true', () => {
+      // Scenario: name changed outside MeshMonitor (e.g., via Meshtastic app)
+      const localNodeInfo = {
+        nodeNum: 1000,
+        longName: 'Old Name',
+        shortName: 'OLD',
+        isLocked: true,  // Already locked from initial connection
+      };
+
+      const nodeInfo = {
+        num: 1000,
+        user: { longName: 'New Name', shortName: 'NEW' },
+      };
+
+      const result = simulateNodeInfoUpdate(localNodeInfo, nodeInfo);
+
+      expect(result.longName).toBe('New Name');
+      expect(result.shortName).toBe('NEW');
+      expect(result.isLocked).toBe(true);
+    });
+
+    it('should update local node name on initial config when isLocked was set by processMyNodeInfo', () => {
+      // Scenario: fresh start, processMyNodeInfo locked with DB name,
+      // then NodeInfo arrives with the device's current name
+      const localNodeInfo = {
+        nodeNum: 1000,
+        longName: 'DB Cached Name',
+        shortName: 'DB',
+        isLocked: true,  // Locked by processMyNodeInfo from DB data
+      };
+
+      const nodeInfo = {
+        num: 1000,
+        user: { longName: 'Device Current Name', shortName: 'DEV' },
+      };
+
+      const result = simulateNodeInfoUpdate(localNodeInfo, nodeInfo);
+
+      // Device's name should win — it's the source of truth
+      expect(result.longName).toBe('Device Current Name');
+      expect(result.shortName).toBe('DEV');
+    });
+
+    it('should not update localNodeInfo for a different node', () => {
+      const localNodeInfo = {
+        nodeNum: 1000,
+        longName: 'My Node',
+        shortName: 'MY',
+        isLocked: true,
+      };
+
+      const nodeInfo = {
+        num: 2000,  // Different node
+        user: { longName: 'Other Node', shortName: 'OTH' },
+      };
+
+      const result = simulateNodeInfoUpdate(localNodeInfo, nodeInfo);
+
+      // Should not be changed
+      expect(result.longName).toBe('My Node');
+      expect(result.shortName).toBe('MY');
+    });
+
+    it('should not update localNodeInfo when NodeInfo has no user data', () => {
+      const localNodeInfo = {
+        nodeNum: 1000,
+        longName: 'My Node',
+        shortName: 'MY',
+        isLocked: false,
+      };
+
+      const nodeInfo = {
+        num: 1000,
+        // No user data
+      };
+
+      const result = simulateNodeInfoUpdate(localNodeInfo, nodeInfo);
+
+      expect(result.longName).toBe('My Node');
+      expect(result.isLocked).toBe(false);  // Should not lock without complete info
+    });
+  });
+
   describe('Reboot-induced node ID change detection', () => {
     // Helper to simulate processMyNodeInfo logic for device_id handling
     function simulateProcessMyNodeInfo(
@@ -1018,11 +1120,13 @@ describe('MeshtasticManager - Configuration Polling', () => {
       const previousNodeId = mockDb.settings['localNodeId'] || null;
 
       let result: {
-        action: 'rejected_new_nodenum' | 'accepted_new_nodenum' | 'no_change' | 'first_connection';
+        action: 'merged_and_accepted' | 'accepted_new_nodenum' | 'no_change' | 'first_connection';
         nodeNum: number;
         nodeId: string;
         deviceIdStored?: boolean;
         initCacheCleared?: boolean;
+        oldNodeDeleted?: boolean;
+        mergedFrom?: number;
       };
 
       if (previousNodeNum && previousNodeId) {
@@ -1031,13 +1135,36 @@ describe('MeshtasticManager - Configuration Polling', () => {
           const storedDeviceId = mockDb.settings['localDeviceId'] || null;
 
           if (deviceId && storedDeviceId && deviceId === storedDeviceId) {
-            // Same device rebooted - reject new nodeNum
+            // Same device rebooted — accept new nodeNum, merge old node data, delete ghost
+            const oldNode = mockDb.nodes[prevNum] || null;
+            const newNode = mockDb.nodes[nodeNum] || null;
+
+            // Upsert new node with merged metadata
+            mockDb.nodes[nodeNum] = {
+              nodeNum: nodeNum,
+              nodeId: nodeId,
+              longName: newNode?.longName || oldNode?.longName || null,
+              shortName: newNode?.shortName || oldNode?.shortName || null,
+              hwModel: newNode?.hwModel || oldNode?.hwModel || myNodeInfo.hwModel || 0,
+              hasRemoteAdmin: true,
+              rebootCount: myNodeInfo.rebootCount,
+            };
+
+            // Delete old ghost
+            delete mockDb.nodes[prevNum];
+
+            // Update settings to new nodeNum/nodeId
+            mockDb.settings['localNodeNum'] = nodeNum.toString();
+            mockDb.settings['localNodeId'] = nodeId;
+
             result = {
-              action: 'rejected_new_nodenum',
-              nodeNum: prevNum,
-              nodeId: previousNodeId,
+              action: 'merged_and_accepted',
+              nodeNum: nodeNum,
+              nodeId: nodeId,
               deviceIdStored: false,
-              initCacheCleared: false,
+              initCacheCleared: true,
+              oldNodeDeleted: true,
+              mergedFrom: prevNum,
             };
             return result;
           } else {
@@ -1081,7 +1208,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
       return result;
     }
 
-    it('should reject new nodeNum when same device_id reboots with different nodeNum', () => {
+    it('should accept and merge when same device reboots with different nodeNum', () => {
       const deviceIdBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10]);
       const deviceIdHex = Buffer.from(deviceIdBytes).toString('hex');
 
@@ -1104,15 +1231,21 @@ describe('MeshtasticManager - Configuration Polling', () => {
         deviceId: deviceIdBytes,  // Same device_id
       }, mockDb);
 
-      // Should reject the new nodeNum and keep the original
-      expect(result.action).toBe('rejected_new_nodenum');
-      expect(result.nodeNum).toBe(1555400904);  // Original preserved
-      expect(result.nodeId).toBe('!5ca874c8');   // Original preserved
-      expect(result.initCacheCleared).toBe(false);
+      // Should accept the new nodeNum and merge old node data
+      expect(result.action).toBe('merged_and_accepted');
+      expect(result.nodeNum).toBe(903529635);  // New nodeNum accepted
+      expect(result.initCacheCleared).toBe(true);
+      expect(result.oldNodeDeleted).toBe(true);
+      expect(result.mergedFrom).toBe(1555400904);
 
-      // Settings should NOT be updated with new nodeNum
-      expect(mockDb.settings.localNodeNum).toBe('1555400904');
-      expect(mockDb.settings.localNodeId).toBe('!5ca874c8');
+      // Settings should be updated to new nodeNum
+      expect(mockDb.settings.localNodeNum).toBe('903529635');
+      expect(mockDb.settings.localNodeId).toBe('!35dac4a3');
+
+      // Old ghost should be deleted, new node should have merged longName
+      expect(mockDb.nodes[1555400904]).toBeUndefined();
+      expect(mockDb.nodes[903529635]).toBeDefined();
+      expect(mockDb.nodes[903529635].longName).toBe('Test Node');
     });
 
     it('should accept new nodeNum when device_id differs (genuinely different device)', () => {
@@ -1268,7 +1401,6 @@ describe('MeshtasticManager - Configuration Polling', () => {
       const deviceIdBytes = new Uint8Array([0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89]);
       const deviceIdHex = Buffer.from(deviceIdBytes).toString('hex');
 
-      const upsertCalls: any[] = [];
       const mockDb = {
         settings: {
           localNodeNum: '1555400904',
@@ -1280,7 +1412,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
         } as Record<number, any>,
       };
 
-      // First, simulate the reboot with different nodeNum
+      // Simulate the reboot with different nodeNum
       const result = simulateProcessMyNodeInfo({
         myNodeNum: 999999999,  // Firmware assigned different nodeNum
         hwModel: 31,
@@ -1288,15 +1420,21 @@ describe('MeshtasticManager - Configuration Polling', () => {
         deviceId: deviceIdBytes,
       }, mockDb);
 
-      // Should reject and keep original
-      expect(result.action).toBe('rejected_new_nodenum');
-      expect(result.nodeNum).toBe(1555400904);
+      // Should merge and accept new nodeNum
+      expect(result.action).toBe('merged_and_accepted');
+      expect(result.nodeNum).toBe(999999999);
+      expect(result.oldNodeDeleted).toBe(true);
 
-      // The new nodeNum (999999999) should NOT appear in settings
-      expect(mockDb.settings.localNodeNum).toBe('1555400904');
+      // Settings should point to new nodeNum
+      expect(mockDb.settings.localNodeNum).toBe('999999999');
 
-      // No node with nodeNum 999999999 should be created (verified by action being rejected)
-      expect(result.action).not.toBe('accepted_new_nodenum');
+      // Old node gone, new node has merged data — no duplicates
+      expect(mockDb.nodes[1555400904]).toBeUndefined();
+      expect(mockDb.nodes[999999999]).toBeDefined();
+      expect(mockDb.nodes[999999999].longName).toBe('My Node');
+
+      // Only one node should exist
+      expect(Object.keys(mockDb.nodes).length).toBe(1);
     });
   });
 });
