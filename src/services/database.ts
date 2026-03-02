@@ -84,6 +84,7 @@ import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres,
 import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_accuracy_and_estimated_position_prefs.js';
 import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_upgrade_ignored_nodes_nodenum_bigint.js';
 import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
+import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -974,6 +975,7 @@ class DatabaseService {
     this.runAccuracyEstimatedPrefsMigration();
     this.runIgnoredNodesNodeNumBigintMigration();
     this.runCreateEmbedProfilesMigration();
+    this.runCreateGeofenceCooldownsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2513,6 +2515,24 @@ class DatabaseService {
       logger.debug('Create embed_profiles migration completed successfully');
     } catch (error) {
       logger.error('Failed to run create embed_profiles migration:', error);
+      throw error;
+    }
+  }
+
+  private runCreateGeofenceCooldownsMigration(): void {
+    const migrationKey = 'migration_079_create_geofence_cooldowns';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 079 (create geofence_cooldowns) already completed');
+        return;
+      }
+      logger.debug('Running migration 079: Create geofence_cooldowns table...');
+      createGeofenceCooldownsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Create geofence_cooldowns migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run create geofence_cooldowns migration:', error);
       throw error;
     }
   }
@@ -8432,6 +8452,77 @@ class DatabaseService {
     return this.embedProfileRepo!.deleteAsync(id);
   }
 
+  // Geofence cooldown operations
+  getGeofenceCooldownAsync(triggerId: string, nodeNum: number): Promise<number | null> {
+    if (this.drizzleDbType === 'sqlite') {
+      const stmt = this.db.prepare('SELECT firedAt FROM geofence_cooldowns WHERE triggerId = ? AND nodeNum = ?');
+      const row = stmt.get(triggerId, nodeNum) as { firedAt: number } | undefined;
+      return Promise.resolve(row ? Number(row.firedAt) : null);
+    } else if (this.drizzleDbType === 'postgres') {
+      return this.postgresPool!.query(
+        'SELECT "firedAt" FROM geofence_cooldowns WHERE "triggerId" = $1 AND "nodeNum" = $2',
+        [triggerId, nodeNum]
+      ).then((result: any) => result.rows.length > 0 ? Number(result.rows[0].firedAt) : null);
+    } else {
+      return this.mysqlPool!.query(
+        'SELECT firedAt FROM geofence_cooldowns WHERE triggerId = ? AND nodeNum = ?',
+        [triggerId, nodeNum]
+      ).then(([rows]: any) => Array.isArray(rows) && rows.length > 0 ? Number(rows[0].firedAt) : null);
+    }
+  }
+
+  setGeofenceCooldownAsync(triggerId: string, nodeNum: number, firedAt: number): Promise<void> {
+    if (this.drizzleDbType === 'sqlite') {
+      const stmt = this.db.prepare(
+        'INSERT INTO geofence_cooldowns (triggerId, nodeNum, firedAt) VALUES (?, ?, ?) ON CONFLICT(triggerId, nodeNum) DO UPDATE SET firedAt = excluded.firedAt'
+      );
+      stmt.run(triggerId, nodeNum, firedAt);
+      return Promise.resolve();
+    } else if (this.drizzleDbType === 'postgres') {
+      return this.postgresPool!.query(
+        'INSERT INTO geofence_cooldowns ("triggerId", "nodeNum", "firedAt") VALUES ($1, $2, $3) ON CONFLICT ("triggerId", "nodeNum") DO UPDATE SET "firedAt" = EXCLUDED."firedAt"',
+        [triggerId, nodeNum, firedAt]
+      ).then(() => {});
+    } else {
+      return this.mysqlPool!.query(
+        'INSERT INTO geofence_cooldowns (triggerId, nodeNum, firedAt) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE firedAt = VALUES(firedAt)',
+        [triggerId, nodeNum, firedAt]
+      ).then(() => {});
+    }
+  }
+
+  clearGeofenceCooldownsAsync(triggerId: string): Promise<void> {
+    if (this.drizzleDbType === 'sqlite') {
+      const stmt = this.db.prepare('DELETE FROM geofence_cooldowns WHERE triggerId = ?');
+      stmt.run(triggerId);
+      return Promise.resolve();
+    } else if (this.drizzleDbType === 'postgres') {
+      return this.postgresPool!.query(
+        'DELETE FROM geofence_cooldowns WHERE "triggerId" = $1',
+        [triggerId]
+      ).then(() => {});
+    } else {
+      return this.mysqlPool!.query(
+        'DELETE FROM geofence_cooldowns WHERE triggerId = ?',
+        [triggerId]
+      ).then(() => {});
+    }
+  }
+
+  getAllGeofenceCooldownsAsync(): Promise<Array<{ triggerId: string; nodeNum: number; firedAt: number }>> {
+    if (this.drizzleDbType === 'sqlite') {
+      const stmt = this.db.prepare('SELECT triggerId, nodeNum, firedAt FROM geofence_cooldowns');
+      const rows = stmt.all() as Array<{ triggerId: string; nodeNum: number; firedAt: number }>;
+      return Promise.resolve(rows.map(r => ({ triggerId: r.triggerId, nodeNum: Number(r.nodeNum), firedAt: Number(r.firedAt) })));
+    } else if (this.drizzleDbType === 'postgres') {
+      return this.postgresPool!.query('SELECT "triggerId", "nodeNum", "firedAt" FROM geofence_cooldowns')
+        .then((result: any) => result.rows.map((r: any) => ({ triggerId: r.triggerId, nodeNum: Number(r.nodeNum), firedAt: Number(r.firedAt) })));
+    } else {
+      return this.mysqlPool!.query('SELECT triggerId, nodeNum, firedAt FROM geofence_cooldowns')
+        .then(([rows]: any) => (rows as any[]).map(r => ({ triggerId: r.triggerId, nodeNum: Number(r.nodeNum), firedAt: Number(r.firedAt) })));
+    }
+  }
+
   // Position override operations
   setNodePositionOverride(
     nodeNum: number,
@@ -11049,6 +11140,9 @@ class DatabaseService {
       // Run migration 078: Create embed_profiles table
       await runMigration078Postgres(client);
 
+      // Run migration 079: Create geofence_cooldowns table
+      await runMigration079Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11194,6 +11288,9 @@ class DatabaseService {
 
       // Run migration 078: Create embed_profiles table
       await runMigration078Mysql(pool);
+
+      // Run migration 079: Create geofence_cooldowns table
+      await runMigration079Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

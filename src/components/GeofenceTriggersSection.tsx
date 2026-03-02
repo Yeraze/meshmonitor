@@ -87,6 +87,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newResponse, setNewResponse] = useState('');
   const [newChannel, setNewChannel] = useState<number | 'dm' | 'none'>('dm');
   const [newVerifyResponse, setNewVerifyResponse] = useState(false);
+  const [newCooldownMinutes, setNewCooldownMinutes] = useState<number>(0);
 
   // Edit mode state
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
@@ -197,6 +198,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             scriptArgs: newResponseType === 'script' && newScriptArgs.trim() ? newScriptArgs.trim() : undefined,
             channel: newChannel,
             verifyResponse: newChannel === 'dm' ? newVerifyResponse : false,
+            cooldownMinutes: newCooldownMinutes > 0 ? newCooldownMinutes : undefined,
           };
         }
         return t;
@@ -212,6 +214,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         shape: newShape,
         event: newEvent,
         whileInsideIntervalMinutes: newEvent === 'while_inside' ? newWhileInsideInterval : undefined,
+        cooldownMinutes: newCooldownMinutes > 0 ? newCooldownMinutes : undefined,
         nodeFilter: newNodeFilter,
         responseType: newResponseType,
         response: newResponseType === 'text' ? newResponse.trim() : undefined,
@@ -237,6 +240,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewResponse('');
     setNewChannel('dm');
     setNewVerifyResponse(false);
+    setNewCooldownMinutes(0);
   };
 
   const handleRemoveTrigger = (id: string) => {
@@ -263,6 +267,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewResponse(trigger.response ?? '');
     setNewChannel(trigger.channel);
     setNewVerifyResponse(trigger.verifyResponse ?? false);
+    setNewCooldownMinutes(trigger.cooldownMinutes ?? 0);
   };
 
   const handleCancelEdit = () => {
@@ -279,6 +284,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
     setNewResponse('');
     setNewChannel('dm');
     setNewVerifyResponse(false);
+    setNewCooldownMinutes(0);
   };
 
   const formatLastRun = (timestamp?: number) => {
@@ -441,6 +447,24 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 </span>
               </div>
             )}
+
+            {/* Cooldown */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                {t('automation.geofence_triggers.cooldown', 'Cooldown (minutes):')}
+              </label>
+              <input
+                type="number"
+                value={newCooldownMinutes}
+                onChange={(e) => setNewCooldownMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                className="setting-input"
+                style={{ width: '100px' }}
+                min={0}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                {t('automation.geofence_triggers.cooldown_help', 'Minimum time between triggers for each node. 0 = no cooldown.')}
+              </span>
+            </div>
 
             {/* Node Filter */}
             <GeofenceNodeSelector
@@ -737,6 +761,9 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           {shapeLabel(trigger.shape)} | {eventLabel(trigger.event)}
           {trigger.event === 'while_inside' && trigger.whileInsideIntervalMinutes && (
             <> (every {trigger.whileInsideIntervalMinutes}min)</>
+          )}
+          {trigger.cooldownMinutes && trigger.cooldownMinutes > 0 && (
+            <> | {t('automation.geofence_triggers.cooldown_display', 'Cooldown: {{minutes}}min', { minutes: trigger.cooldownMinutes })}</>
           )}
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>

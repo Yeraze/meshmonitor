@@ -2356,6 +2356,9 @@
   "automation.geofence_triggers.center_lng": "Center Lng:",
   "automation.geofence_triggers.vertices_count": "Vertices:",
   "automation.geofence_triggers.clear_shape": "Clear Shape",
+  "automation.geofence_triggers.cooldown": "Cooldown (minutes):",
+  "automation.geofence_triggers.cooldown_help": "Minimum time between triggers for each node. 0 = no cooldown.",
+  "automation.geofence_triggers.cooldown_display": "Cooldown: {{minutes}}min",
 
   "script_test.title": "Test Script",
   "script_test.mock_context": "Test Context",

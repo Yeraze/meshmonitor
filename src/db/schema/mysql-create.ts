@@ -495,4 +495,5 @@ export const MYSQL_TABLE_NAMES = [
   'channel_database_permissions',
   'ignored_nodes',
   'embed_profiles',
+  'geofence_cooldowns',
 ];
