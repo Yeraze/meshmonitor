@@ -245,6 +245,7 @@ interface GeofenceTriggerConfig {
        | { type: 'polygon'; vertices: Array<{ lat: number; lng: number }> };
   event: 'entry' | 'exit' | 'while_inside';
   whileInsideIntervalMinutes?: number;
+  cooldownMinutes?: number; // Minimum time between triggers per node (0 = no cooldown)
   nodeFilter: { type: 'all' } | { type: 'selected'; nodeNums: number[] };
   responseType: 'text' | 'script';
   response?: string;
@@ -290,6 +291,7 @@ class MeshtasticManager {
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
   private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
   private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
+  private geofenceCooldowns: Map<string, number> = new Map(); // "triggerId:nodeNum" -> firedAt timestamp
   private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
   private pendingTracerouteTimestamps: Map<number, number> = new Map(); // Track when traceroutes were initiated for timeout detection
   private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
@@ -1759,6 +1761,9 @@ class MeshtasticManager {
     this.geofenceWhileInsideTimers.clear();
     this.geofenceNodeState.clear();
 
+    // Load persisted cooldowns from database (async, populate in background)
+    this.loadGeofenceCooldowns();
+
     const triggersJson = databaseService.getSetting('geofenceTriggers');
     if (!triggersJson) {
       logger.debug('📍 No geofence triggers configured');
@@ -1822,6 +1827,54 @@ class MeshtasticManager {
   }
 
   /**
+   * Check if a geofence trigger is still in cooldown for a specific node.
+   * Uses in-memory map for fast synchronous lookups.
+   * Returns true if the trigger should be suppressed.
+   */
+  private isGeofenceCooldownActive(triggerId: string, nodeNum: number, cooldownMinutes?: number): boolean {
+    if (!cooldownMinutes || cooldownMinutes <= 0) return false;
+
+    const key = `${triggerId}:${nodeNum}`;
+    const firedAt = this.geofenceCooldowns.get(key);
+    if (firedAt === undefined) return false;
+
+    const cooldownMs = cooldownMinutes * 60 * 1000;
+    return (Date.now() - firedAt) < cooldownMs;
+  }
+
+  /**
+   * Load persisted geofence cooldowns from the database into the in-memory map.
+   */
+  private loadGeofenceCooldowns(): void {
+    databaseService.getAllGeofenceCooldownsAsync().then((rows) => {
+      for (const row of rows) {
+        const key = `${row.triggerId}:${row.nodeNum}`;
+        this.geofenceCooldowns.set(key, row.firedAt);
+      }
+      if (rows.length > 0) {
+        logger.debug(`📍 Loaded ${rows.length} geofence cooldown entries from database`);
+      }
+    }).catch((error) => {
+      logger.warn('📍 Failed to load geofence cooldowns from database:', error);
+    });
+  }
+
+  /**
+   * Record a geofence cooldown timestamp for a specific trigger+node pair.
+   * Updates both in-memory map and database for persistence across restarts.
+   */
+  private recordGeofenceCooldown(triggerId: string, nodeNum: number): void {
+    const now = Date.now();
+    const key = `${triggerId}:${nodeNum}`;
+    this.geofenceCooldowns.set(key, now);
+
+    // Persist to database asynchronously (fire and forget)
+    databaseService.setGeofenceCooldownAsync(triggerId, nodeNum, now).catch((error) => {
+      logger.warn(`📍 Failed to persist geofence cooldown for trigger ${triggerId}, node ${nodeNum}:`, error);
+    });
+  }
+
+  /**
    * Check all geofence triggers for a node that just reported a new position.
    * Fires entry/exit events based on state transitions.
    */
@@ -1854,16 +1907,24 @@ class MeshtasticManager {
         stateSet.add(nodeNum);
         this.geofenceNodeState.set(trigger.id, stateSet);
         if (trigger.event === 'entry' || trigger.event === 'while_inside') {
-          logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} entered`);
-          this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'entry');
+          if (!this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
+            logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} entered`);
+            this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'entry');
+          } else {
+            logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping entry`);
+          }
         }
       } else if (!isInside && wasInside) {
         // Node exited geofence
         stateSet.delete(nodeNum);
         this.geofenceNodeState.set(trigger.id, stateSet);
         if (trigger.event === 'exit') {
-          logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} exited`);
-          this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'exit');
+          if (!this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
+            logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} exited`);
+            this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'exit');
+          } else {
+            logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping exit`);
+          }
         }
       }
       // If isInside && wasInside — no state change, while_inside handled by timer
@@ -1901,8 +1962,10 @@ class MeshtasticManager {
         );
 
         this.updateGeofenceTriggerResult(trigger.id, 'success');
+        this.recordGeofenceCooldown(trigger.id, nodeNum);
       } else if (trigger.responseType === 'script' && trigger.scriptPath) {
         await this.executeGeofenceScript(trigger, nodeNum, lat, lng, eventType);
+        this.recordGeofenceCooldown(trigger.id, nodeNum);
       } else {
         logger.error(`📍 Geofence "${trigger.name}" has no valid response configured`);
         this.updateGeofenceTriggerResult(trigger.id, 'error', 'No response configured');
@@ -2082,6 +2145,11 @@ class MeshtasticManager {
       if (!isPointInGeofence(node.latitude, node.longitude, trigger.shape)) {
         stateSet.delete(nodeNum);
         logger.debug(`📍 Geofence "${trigger.name}": node ${nodeNum} no longer inside (stale position)`);
+        continue;
+      }
+
+      if (this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
+        logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping while_inside`);
         continue;
       }
 

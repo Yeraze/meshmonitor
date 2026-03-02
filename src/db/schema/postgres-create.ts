@@ -441,6 +441,13 @@ export const POSTGRES_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC);
   CREATE INDEX IF NOT EXISTS idx_system_backup_history_timestamp ON system_backup_history(timestamp DESC);
   CREATE INDEX IF NOT EXISTS idx_system_backup_history_type ON system_backup_history(type);
+
+  CREATE TABLE IF NOT EXISTS geofence_cooldowns (
+    "triggerId" TEXT NOT NULL,
+    "nodeNum" BIGINT NOT NULL,
+    "firedAt" BIGINT NOT NULL,
+    PRIMARY KEY ("triggerId", "nodeNum")
+  );
 `;
 
 export const POSTGRES_TABLE_NAMES = [
@@ -476,4 +483,5 @@ export const POSTGRES_TABLE_NAMES = [
   'channel_database_permissions',
   'ignored_nodes',
   'embed_profiles',
+  'geofence_cooldowns',
 ];
