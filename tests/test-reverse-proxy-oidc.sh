@@ -71,9 +71,7 @@ services:
       retries: 5
 
   meshmonitor:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: meshmonitor:test
     container_name: meshmonitor-oidc-test
     ports:
       - "8080:3001"
@@ -115,13 +113,6 @@ echo "Building mock OIDC provider..."
 docker compose -f "$COMPOSE_FILE" build mock-oidc --quiet
 
 echo -e "${GREEN}✓${NC} Mock OIDC build complete"
-echo ""
-
-# Build MeshMonitor
-echo "Building MeshMonitor container..."
-docker compose -f "$COMPOSE_FILE" build meshmonitor --quiet
-
-echo -e "${GREEN}✓${NC} MeshMonitor build complete"
 echo ""
 
 # Start services
