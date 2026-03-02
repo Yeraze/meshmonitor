@@ -50,7 +50,7 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "i18next-http-backend": "^3.0.2",
     "leaflet": "^1.9.4",
-    "maplibre-gl": "^5.17.0",
+    "maplibre-gl": "^5.19.0",
     "morgan": "^1.10.1",
     "mysql2": "^3.17.4",
     "node-cron": "^4.2.1",
