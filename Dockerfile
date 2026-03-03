@@ -35,8 +35,7 @@ RUN --mount=type=cache,target=/app/node_modules/.vite \
 
 # Build the server last so it doesn't get overwritten by Vite
 # TypeScript server build will add to dist directory without clearing it
-RUN --mount=type=cache,target=/app/.tsc-cache \
-    npm run build:server
+RUN npm run build:server
 
 # Production stage
 FROM node:24-alpine
