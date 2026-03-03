@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
+import meshtasticManager from '../meshtasticManager.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
 import {
   getBoardName,
@@ -550,10 +551,14 @@ export class FirmwareUpdateService {
     this.updateStatus({
       state: 'in-progress',
       step: 'backup',
-      message: `Backing up config from ${gatewayIp}...`,
+      message: `Disconnecting from node and backing up config from ${gatewayIp}...`,
     });
 
     try {
+      // Disconnect MeshMonitor so the meshtastic CLI can connect via TCP
+      logger.info('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
+      await meshtasticManager.userDisconnect();
+
       this.ensureBackupDir();
 
       const result = await this.runCliCommand('meshtastic', [
@@ -586,6 +591,9 @@ export class FirmwareUpdateService {
         message: `Backup failed: ${message}`,
         error: message,
       });
+      // Reconnect on failure so MeshMonitor isn't left disconnected
+      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after backup failure');
+      await meshtasticManager.userReconnect();
       throw error;
     }
   }
@@ -715,10 +723,12 @@ export class FirmwareUpdateService {
       this.updateStatus({
         state: 'awaiting-confirm',
         step: 'flash',
-        message: 'Firmware flashed successfully. Device is rebooting — wait for it to reconnect before verifying.',
+        message: 'Firmware flashed successfully. Device is rebooting — reconnecting MeshMonitor and waiting for verification.',
       });
 
-      logger.info('[FirmwareUpdateService] OTA flash completed successfully');
+      logger.info('[FirmwareUpdateService] OTA flash completed successfully, reconnecting MeshMonitor');
+      // Reconnect MeshMonitor after successful flash — node will reboot so this may take a moment
+      await meshtasticManager.userReconnect();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.updateStatus({
@@ -727,6 +737,9 @@ export class FirmwareUpdateService {
         message: `Flash failed: ${message}`,
         error: message,
       });
+      // Reconnect on failure so MeshMonitor isn't left disconnected
+      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after flash failure');
+      await meshtasticManager.userReconnect();
       throw error;
     } finally {
       this.cleanupTempDir();

@@ -115,6 +115,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const [isChecking, setIsChecking] = useState(false);
   const [isSavingChannel, setIsSavingChannel] = useState(false);
   const [showRejectedFiles, setShowRejectedFiles] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   // Ref for auto-scrolling logs
   const logRef = useRef<HTMLPreElement>(null);
@@ -248,6 +249,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   };
 
   const handleConfirm = async () => {
+    if (isConfirming) return;
+    setIsConfirming(true);
     try {
       const body = {
         gatewayIp: effectiveStatus?.preflightInfo?.gatewayIp ?? gatewayInfo.gatewayIp,
@@ -265,6 +268,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error confirming step', 'error');
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -572,8 +577,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
             {effectiveStatus.state === 'awaiting-confirm' && (
-              <button className="save-button" onClick={handleConfirm}>
-                {t('firmware.wizard_confirm', 'Confirm & Proceed')}
+              <button className="save-button" onClick={handleConfirm} disabled={isConfirming}>
+                {isConfirming ? '⏳ Working...' : t('firmware.wizard_confirm', 'Confirm & Proceed')}
               </button>
             )}
             {(effectiveStatus.state === 'awaiting-confirm' || effectiveStatus.state === 'in-progress') && (
