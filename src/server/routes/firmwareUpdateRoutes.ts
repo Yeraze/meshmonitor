@@ -182,30 +182,29 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
       }
 
       case 'backup': {
-        // Advance to download step - use the downloadUrl stored during preflight
+        // Auto-advance through download → extract (non-destructive steps)
         if (!status.downloadUrl) {
           return res.status(400).json({
             success: false,
             error: 'No download URL available. Preflight may not have completed.',
           });
         }
-        await firmwareUpdateService.executeDownload(status.downloadUrl);
-        break;
-      }
+        if (!status.preflightInfo) {
+          return res.status(500).json({
+            success: false,
+            error: 'Preflight info not available.',
+          });
+        }
 
-      case 'download': {
-        // Advance to extract step - the zip is at tempDir/firmware.zip
+        // Download
+        await firmwareUpdateService.executeDownload(status.downloadUrl);
+
+        // Extract immediately after download (no user prompt needed)
         const tempDir = firmwareUpdateService.getTempDir();
         if (!tempDir) {
           return res.status(500).json({
             success: false,
             error: 'Temp directory not available. Download may have failed.',
-          });
-        }
-        if (!status.preflightInfo) {
-          return res.status(500).json({
-            success: false,
-            error: 'Preflight info not available.',
           });
         }
         const zipPath = path.join(tempDir, 'firmware.zip');

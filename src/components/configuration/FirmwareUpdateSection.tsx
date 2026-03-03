@@ -83,6 +83,15 @@ const STEP_TITLES: Record<string, string> = {
   verify: 'firmware.wizard_verify_title',
 };
 
+const STEP_ORDER: Array<{ key: string; label: string }> = [
+  { key: 'preflight', label: 'Preflight' },
+  { key: 'backup', label: 'Backup' },
+  { key: 'download', label: 'Download' },
+  { key: 'extract', label: 'Extract' },
+  { key: 'flash', label: 'Flash' },
+  { key: 'verify', label: 'Verify' },
+];
+
 const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -435,6 +444,59 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               ? '1px solid #10b981'
               : '1px solid var(--ctp-blue)',
         }}>
+          {/* Step progress indicator */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0',
+            marginBottom: '1rem',
+            padding: '0.5rem 0',
+          }}>
+            {STEP_ORDER.map((s, i) => {
+              const currentIdx = STEP_ORDER.findIndex(x => x.key === effectiveStatus.step);
+              const isComplete = effectiveStatus.state === 'success'
+                || (currentIdx >= 0 && i < currentIdx)
+                || (effectiveStatus.state === 'error' && i < currentIdx);
+              const isCurrent = s.key === effectiveStatus.step;
+              const isFailed = isCurrent && effectiveStatus.state === 'error';
+
+              let dotColor = 'var(--ctp-surface2)'; // future
+              if (isComplete) dotColor = '#10b981'; // green
+              if (isCurrent && !isFailed) dotColor = 'var(--ctp-blue)';
+              if (isFailed) dotColor = 'var(--ctp-red)';
+
+              return (
+                <React.Fragment key={s.key}>
+                  {i > 0 && (
+                    <div style={{
+                      flex: 1,
+                      height: '2px',
+                      backgroundColor: isComplete ? '#10b981' : 'var(--ctp-surface2)',
+                    }} />
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '48px' }}>
+                    <div style={{
+                      width: isCurrent ? '14px' : '10px',
+                      height: isCurrent ? '14px' : '10px',
+                      borderRadius: '50%',
+                      backgroundColor: dotColor,
+                      border: isCurrent ? '2px solid var(--ctp-text)' : 'none',
+                      transition: 'all 0.2s',
+                    }} />
+                    <span style={{
+                      fontSize: '0.7rem',
+                      color: isCurrent ? 'var(--ctp-text)' : 'var(--ctp-subtext0)',
+                      fontWeight: isCurrent ? 600 : 400,
+                      marginTop: '4px',
+                    }}>
+                      {s.label}
+                    </span>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
           {/* Step title & message */}
           <div style={{ marginBottom: '0.75rem' }}>
             <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
@@ -563,7 +625,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           )}
 
           {/* Reboot warning */}
-          {(effectiveStatus.step === 'flash' || effectiveStatus.step === 'extract') &&
+          {effectiveStatus.step === 'extract' &&
             effectiveStatus.state === 'awaiting-confirm' && (
             <p style={{
               color: 'var(--ctp-peach)',

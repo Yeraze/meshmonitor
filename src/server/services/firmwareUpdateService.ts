@@ -567,7 +567,8 @@ export class FirmwareUpdateService {
       ]);
 
       if (result.exitCode !== 0) {
-        throw new Error(`Backup command failed with exit code ${result.exitCode}: ${result.stderr}`);
+        const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
+        throw new Error(`Backup command failed with exit code ${result.exitCode}:\n${combined}`);
       }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -713,11 +714,14 @@ export class FirmwareUpdateService {
     try {
       const result = await this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
+        '--timeout', '30',
         '--ota-update', firmwarePath,
       ]);
 
       if (result.exitCode !== 0) {
-        throw new Error(`Flash command failed with exit code ${result.exitCode}: ${result.stderr}`);
+        // Python logging writes INFO to stderr; actual errors may be in stdout
+        const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
+        throw new Error(`Flash command failed with exit code ${result.exitCode}:\n${combined}`);
       }
 
       this.updateStatus({
