@@ -11107,6 +11107,16 @@ class MeshtasticManager {
   }
 
   /**
+   * Reset module config cache so the next connect() will re-fetch all configs.
+   * Called after OTA firmware updates to ensure fresh config data.
+   */
+  resetModuleConfigCache(): void {
+    this.moduleConfigsEverFetched = false;
+    this.actualModuleConfig = null;
+    logger.info('📦 Module config cache reset — will re-fetch on next connect');
+  }
+
+  /**
    * Force refresh of module configs (resets the cache flag and re-fetches).
    * Useful for Configuration tab refresh button or API use.
    */

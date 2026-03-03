@@ -264,6 +264,11 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY });
     });
 
+    socket.on('firmware:status', (data: unknown) => {
+      // Store firmware update status for the FirmwareUpdateSection to consume
+      queryClient.setQueryData(['firmware', 'liveStatus'], data);
+    });
+
     // Cleanup on unmount
     return () => {
       socket.disconnect();

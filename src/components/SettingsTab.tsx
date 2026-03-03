@@ -13,6 +13,7 @@ import PacketMonitorSettings from './PacketMonitorSettings';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
+import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
@@ -793,6 +794,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
         ...(isAdmin ? [{ id: 'settings-embed', label: t('settings.embed_maps', 'Embed Maps') }] : []),
+        ...(isAdmin ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
@@ -1432,6 +1434,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <EmbedSettings />
           </div>
         )}
+
+        {isAdmin && <FirmwareUpdateSection baseUrl={baseUrl} />}
 
         <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>
