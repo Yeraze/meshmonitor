@@ -765,4 +765,23 @@ describe('FirmwareUpdateService', () => {
       });
     });
   });
+
+  // ---- appendLog ----
+  describe('appendLog', () => {
+    it('should cap logs at 1000 entries and trim to 500', () => {
+      const service = firmwareUpdateService as any;
+      service.status.logs = Array.from({ length: 1000 }, (_, i) => `log-${i}`);
+      service.appendLog('overflow-entry');
+      expect(service.status.logs.length).toBe(501);
+      expect(service.status.logs[0]).toBe('log-500');
+      expect(service.status.logs[500]).toBe('overflow-entry');
+    });
+
+    it('should not trim when under 1000 entries', () => {
+      const service = firmwareUpdateService as any;
+      service.status.logs = ['a', 'b', 'c'];
+      service.appendLog('d');
+      expect(service.status.logs).toEqual(['a', 'b', 'c', 'd']);
+    });
+  });
 });

@@ -847,6 +847,9 @@ export class FirmwareUpdateService {
    * Append a message to status logs and emit update.
    */
   private appendLog(message: string): void {
+    if (this.status.logs.length >= 1000) {
+      this.status.logs = this.status.logs.slice(-500);
+    }
     this.status.logs.push(message);
     this.updateStatus({});
   }
