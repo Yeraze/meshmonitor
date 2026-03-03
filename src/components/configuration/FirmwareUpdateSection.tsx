@@ -304,6 +304,21 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     queryClient.removeQueries({ queryKey: ['firmware', 'liveStatus'] });
   };
 
+  const handleRetryFlash = async () => {
+    try {
+      const res = await csrfFetch(`${baseUrl}/api/firmware/update/retry`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to retry flash');
+      }
+      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Error retrying flash', 'error');
+    }
+  };
+
   const handleRestoreBackup = async (backup: FirmwareBackup) => {
     const confirmed = window.confirm(
       `Restore configuration from backup "${backup.filename}"?\nThis will overwrite current device configuration.`
@@ -546,6 +561,33 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
             </div>
           )}
 
+          {/* OTA bootloader prerequisite warning */}
+          {effectiveStatus.step === 'preflight' &&
+            effectiveStatus.state === 'awaiting-confirm' && (
+            <div style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(250, 179, 40, 0.1)',
+              border: '1px solid var(--ctp-peach)',
+              color: 'var(--ctp-text)',
+              fontSize: '0.85rem',
+              marginBottom: '0.75rem',
+              lineHeight: '1.5',
+            }}>
+              {t('firmware.ota_bootloader_warning',
+                'Wi-Fi OTA requires a one-time OTA bootloader flash via USB. If this is your first OTA update, ensure the bootloader has been installed.'
+              )}{' '}
+              <a
+                href={`${baseUrl}/docs/firmware-ota-prerequisites`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--accent-color)' }}
+              >
+                {t('firmware.ota_bootloader_learn_more', 'Learn More')}
+              </a>
+            </div>
+          )}
+
           {/* Extract results: matched file */}
           {effectiveStatus.matchedFile && (
             <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
@@ -654,9 +696,16 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               </button>
             )}
             {effectiveStatus.state === 'error' && (
-              <button className="save-button" onClick={handleDone}>
-                Dismiss
-              </button>
+              <>
+                {effectiveStatus.step === 'flash' && (
+                  <button className="save-button" onClick={handleRetryFlash}>
+                    {t('firmware.retry_flash', 'Retry Flash')}
+                  </button>
+                )}
+                <button className="save-button" onClick={handleDone}>
+                  Dismiss
+                </button>
+              </>
             )}
           </div>
         </div>
