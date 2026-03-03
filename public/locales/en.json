@@ -4027,5 +4027,9 @@
   "firmware.no_backups": "No configuration backups found.",
   "firmware.save_channel": "Save",
   "firmware.downgrade_warning": "Warning: Downgrading firmware may cause compatibility issues.",
-  "firmware.reboot_warning": "The node will reboot during the update and be briefly unavailable."
+  "firmware.reboot_warning": "The node will reboot during the update and be briefly unavailable.",
+  "firmware.ota_bootloader_warning": "Wi-Fi OTA requires a one-time OTA bootloader flash via USB. If this is your first OTA update, ensure the bootloader has been installed.",
+  "firmware.ota_bootloader_learn_more": "Learn More",
+  "firmware.retry_flash": "Retry Flash",
+  "firmware.retry_flash_unavailable": "Cannot retry: firmware files are no longer available. Please start a new update."
 }
