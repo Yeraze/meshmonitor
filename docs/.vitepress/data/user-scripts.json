@@ -572,5 +572,30 @@
       "WebSocket-based HA state change subscription",
       "Configurable via environment variables"
     ]
+  },
+  {
+    "name": "Utilization Alert",
+    "filename": "utilization-alert.py",
+    "icon": "📊",
+    "description": "Monitors channel utilization and air TX utilization per node on a schedule. Tracks how long each metric has been over the configured limit and only alerts after a sustained period (default 5 minutes). Once alerted, suppresses repeat notifications until the metric recovers and exceeds the limit again. Supports Discord rich embeds and generic webhook POST.",
+    "language": "Python",
+    "tags": ["Monitoring", "Alerting", "Alerts", "Cron", "Health Check", "Infrastructure", "Timer Trigger", "Automation"],
+    "gistId": "9314039d5088441dffb5d00e8f9df867",
+    "exampleTrigger": "Cron-based (e.g. */5 * * * * utilization-alert)",
+    "requirements": [
+      "Python 3.6+",
+      "MM_API_TOKEN (generate from MeshMonitor UI)",
+      "MM_ALERT_WEBHOOK_URL (Discord webhook or generic POST endpoint)",
+      "Optional: MM_API_URL, MM_CHANNEL_UTIL_LIMIT, MM_AIR_TX_UTIL_LIMIT, MM_OVER_MINUTES, MM_NODE_IDS"
+    ],
+    "author": "JonBons",
+    "features": [
+      "Sustained-over-limit detection with configurable threshold",
+      "Alert suppression until metric recovers and re-exceeds",
+      "Discord rich embed support",
+      "Generic webhook POST for non-Discord endpoints",
+      "Persistent state file for cross-run tracking",
+      "Configurable per-node monitoring via MM_NODE_IDS"
+    ]
   }
 ]
