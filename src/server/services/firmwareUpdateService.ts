@@ -97,7 +97,8 @@ interface GitHubRelease {
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/meshtastic/firmware/releases?per_page=20';
 const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_CHECK_DELAY_MS = 30 * 1000; // 30 seconds
-const BACKUP_DIR = path.join('data', 'firmware-backups');
+const DATA_DIR = process.env.DATA_DIR || '/data';
+const BACKUP_DIR = path.join(DATA_DIR, 'firmware-backups');
 
 // ---- Service ----
 
