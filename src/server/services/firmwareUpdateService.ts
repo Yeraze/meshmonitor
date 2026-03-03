@@ -336,6 +336,31 @@ export class FirmwareUpdateService {
     logger.info('[FirmwareUpdateService] Update cancelled by user');
   }
 
+  /**
+   * Retry the flash step using already-downloaded firmware files.
+   * Can only be called from error state when temp dir and matched file still exist.
+   */
+  retryFlash(): void {
+    if (this.status.state !== 'error') {
+      throw new Error('Can only retry from error state');
+    }
+    if (!this.tempDir || !this.status.matchedFile) {
+      throw new Error(
+        'Cannot retry: firmware files are no longer available. Please start a new update.'
+      );
+    }
+
+    this.updateStatus({
+      state: 'awaiting-confirm',
+      step: 'flash',
+      message: 'Ready to retry flash. Confirm to proceed.',
+      error: undefined,
+      logs: [],
+    });
+
+    logger.info('[FirmwareUpdateService] Retry flash requested — re-entering flash step');
+  }
+
   // ---- Polling ----
 
   /**
@@ -775,7 +800,10 @@ export class FirmwareUpdateService {
       await meshtasticManager.userReconnect();
       throw error;
     } finally {
-      this.cleanupTempDir();
+      // Only clean up temp dir on success — keep it for retry on failure
+      if (this.status.state !== 'error') {
+        this.cleanupTempDir();
+      }
     }
   }
 

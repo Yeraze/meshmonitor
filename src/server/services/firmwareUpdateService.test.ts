@@ -824,6 +824,69 @@ describe('FirmwareUpdateService', () => {
         vi.restoreAllMocks();
       });
     });
+
+    describe('retryFlash', () => {
+      // Helper to create idle status (mirrors the non-exported createIdleStatus)
+      const createIdleStatus = (): any => ({
+        state: 'idle',
+        step: null,
+        message: '',
+        logs: [],
+      });
+
+      it('should reset status to awaiting-confirm at flash step when temp dir and matched file exist', () => {
+        const svc = firmwareUpdateService as any;
+        svc.tempDir = '/tmp/firmware-test';
+        svc.status = {
+          ...createIdleStatus(),
+          state: 'error',
+          step: 'flash',
+          matchedFile: 'firmware-heltec-v3-2.7.19.abc123.bin',
+          preflightInfo: {
+            currentVersion: '2.7.18',
+            targetVersion: '2.7.19',
+            gatewayIp: '192.168.1.100',
+            hwModel: 'Heltec V3',
+            boardName: 'heltec-v3',
+            platform: 'esp32s3',
+          },
+          downloadUrl: 'https://example.com/fw.zip',
+          targetVersion: '2.7.19',
+        };
+
+        svc.retryFlash();
+
+        expect(svc.status.state).toBe('awaiting-confirm');
+        expect(svc.status.step).toBe('flash');
+        expect(svc.status.error).toBeUndefined();
+        expect(svc.status.matchedFile).toBe('firmware-heltec-v3-2.7.19.abc123.bin');
+        expect(svc.status.logs).toEqual([]);
+      });
+
+      it('should throw if tempDir is not set', () => {
+        const svc = firmwareUpdateService as any;
+        svc.tempDir = null;
+        svc.status = { ...createIdleStatus(), state: 'error', step: 'flash' };
+
+        expect(() => svc.retryFlash()).toThrow(/firmware files are no longer available/i);
+      });
+
+      it('should throw if matched file is not set', () => {
+        const svc = firmwareUpdateService as any;
+        svc.tempDir = '/tmp/firmware-test';
+        svc.status = { ...createIdleStatus(), state: 'error', step: 'flash', matchedFile: undefined };
+
+        expect(() => svc.retryFlash()).toThrow(/firmware files are no longer available/i);
+      });
+
+      it('should throw if state is not error', () => {
+        const svc = firmwareUpdateService as any;
+        svc.tempDir = '/tmp/firmware-test';
+        svc.status = { ...createIdleStatus(), state: 'idle', matchedFile: 'fw.bin' };
+
+        expect(() => svc.retryFlash()).toThrow(/can only retry from error state/i);
+      });
+    });
   });
 
   // ---- appendLog ----
