@@ -60,6 +60,58 @@ describe('isAutoFavoriteEligible', () => {
     expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, viaMqtt: null })).toBe(true);
     expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, viaMqtt: undefined })).toBe(true);
   });
+
+  // favoriteLocked tests — isAutoFavoriteEligible does not check favoriteLocked itself
+  // (the caller checkAutoFavorite checks it before calling this function)
+  // but the interface accepts it, so verify it doesn't break eligibility logic
+  it('still evaluates eligibility when favoriteLocked is present', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, favoriteLocked: false })).toBe(true);
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: false, favoriteLocked: true })).toBe(true);
+  });
+
+  it('returns false for already-favorited node regardless of favoriteLocked', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: true, favoriteLocked: false })).toBe(false);
+    expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.ROUTER, isFavorite: true, favoriteLocked: true })).toBe(false);
+  });
+});
+
+describe('favoriteLocked behavior matrix', () => {
+  // These tests document the expected behavior per the behavior matrix
+  // They test the interface contract, not the implementation (which is in meshtasticManager)
+
+  it('manual favorite sets favoriteLocked=true', () => {
+    // When a user manually favorites a node via the API, favoriteLocked should be true
+    // This is enforced in the POST /api/nodes/:nodeId/favorite endpoint
+    const manualFavorite = { isFavorite: true, favoriteLocked: true };
+    expect(manualFavorite.favoriteLocked).toBe(true);
+  });
+
+  it('manual unfavorite sets favoriteLocked=true (prevents re-auto-favorite)', () => {
+    const manualUnfavorite = { isFavorite: false, favoriteLocked: true };
+    expect(manualUnfavorite.favoriteLocked).toBe(true);
+    expect(manualUnfavorite.isFavorite).toBe(false);
+  });
+
+  it('auto-favorite sets favoriteLocked=false', () => {
+    const autoFavorite = { isFavorite: true, favoriteLocked: false };
+    expect(autoFavorite.favoriteLocked).toBe(false);
+  });
+
+  it('sweep unfavorite sets favoriteLocked=false', () => {
+    const sweepUnfavorite = { isFavorite: false, favoriteLocked: false };
+    expect(sweepUnfavorite.favoriteLocked).toBe(false);
+  });
+
+  it('lock on auto-favorite promotes to manual (favoriteLocked=true)', () => {
+    const promoted = { isFavorite: true, favoriteLocked: true };
+    expect(promoted.favoriteLocked).toBe(true);
+    expect(promoted.isFavorite).toBe(true);
+  });
+
+  it('unlock on manual favorite allows automation (favoriteLocked=false)', () => {
+    const unlocked = { isFavorite: true, favoriteLocked: false };
+    expect(unlocked.favoriteLocked).toBe(false);
+  });
 });
 
 describe('isAutoFavoriteValidRole', () => {

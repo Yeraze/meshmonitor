@@ -938,26 +938,58 @@ export class NodesRepository extends BaseRepository {
   /**
    * Set node favorite status
    */
-  async setNodeFavorite(nodeNum: number, isFavorite: boolean): Promise<void> {
+  async setNodeFavorite(nodeNum: number, isFavorite: boolean, favoriteLocked?: boolean): Promise<void> {
+    const now = this.now();
+
+    const setData: Record<string, any> = { isFavorite, updatedAt: now };
+    if (favoriteLocked !== undefined) {
+      setData.favoriteLocked = favoriteLocked;
+    }
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      await db
+        .update(nodesSqlite)
+        .set(setData)
+        .where(eq(nodesSqlite.nodeNum, nodeNum));
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      await db
+        .update(nodesMysql)
+        .set(setData)
+        .where(eq(nodesMysql.nodeNum, nodeNum));
+    } else {
+      const db = this.getPostgresDb();
+      await db
+        .update(nodesPostgres)
+        .set(setData)
+        .where(eq(nodesPostgres.nodeNum, nodeNum));
+    }
+  }
+
+  /**
+   * Set only the favoriteLocked flag (without changing isFavorite)
+   */
+  async setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean): Promise<void> {
     const now = this.now();
 
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       await db
         .update(nodesSqlite)
-        .set({ isFavorite, updatedAt: now })
+        .set({ favoriteLocked, updatedAt: now })
         .where(eq(nodesSqlite.nodeNum, nodeNum));
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
       await db
         .update(nodesMysql)
-        .set({ isFavorite, updatedAt: now })
+        .set({ favoriteLocked, updatedAt: now })
         .where(eq(nodesMysql.nodeNum, nodeNum));
     } else {
       const db = this.getPostgresDb();
       await db
         .update(nodesPostgres)
-        .set({ isFavorite, updatedAt: now })
+        .set({ favoriteLocked, updatedAt: now })
         .where(eq(nodesPostgres.nodeNum, nodeNum));
     }
   }

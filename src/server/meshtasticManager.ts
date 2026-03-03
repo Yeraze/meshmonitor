@@ -2900,6 +2900,7 @@ class MeshtasticManager {
             longitude: newNode?.longitude || oldNode?.longitude || undefined,
             altitude: newNode?.altitude || oldNode?.altitude || undefined,
             isFavorite: newNode?.isFavorite || oldNode?.isFavorite || false,
+            favoriteLocked: newNode?.favoriteLocked || oldNode?.favoriteLocked || false,
             isIgnored: newNode?.isIgnored || oldNode?.isIgnored || false,
             hasRemoteAdmin: true, // Local node always has admin
             rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
@@ -9207,7 +9208,10 @@ class MeshtasticManager {
       const targetNode = databaseService.getNode(nodeNum);
       if (!targetNode) return;
 
-      // Check if already in auto-favorite list (prevent re-adding manually unfavorited nodes)
+      // Skip nodes where favoriteLocked is true — user has manually managed this node
+      if (targetNode.favoriteLocked) return;
+
+      // Check if already in auto-favorite list (backward compat belt-and-suspenders)
       const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
       const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
       if (autoFavoriteNodes.includes(nodeNum)) {
@@ -9221,8 +9225,8 @@ class MeshtasticManager {
 
       this.autoFavoritingNodes.add(nodeNum);
       try {
-        // Mark in DB
-        databaseService.setNodeFavorite(nodeNum, true);
+        // Mark in DB — favoriteLocked=false since this is auto-managed
+        databaseService.setNodeFavorite(nodeNum, true, false);
 
         // Sync to device
         try {
@@ -9255,12 +9259,17 @@ class MeshtasticManager {
         return;
       }
 
-      // If feature was disabled, clean up all auto-favorited nodes
+      // If feature was disabled, clean up all auto-favorited nodes (skip locked ones)
       if (autoFavoriteEnabled !== 'true') {
         logger.info(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
         for (const nodeNum of autoFavoriteNodes) {
           try {
-            databaseService.setNodeFavorite(nodeNum, false);
+            const node = databaseService.getNode(nodeNum);
+            if (node?.favoriteLocked) {
+              logger.debug(`Skipping locked node ${nodeNum} during auto-favorite cleanup`);
+              continue;
+            }
+            databaseService.setNodeFavorite(nodeNum, false, false);
             if (this.supportsFavorites() && this.isConnected) {
               await this.sendRemoveFavoriteNode(nodeNum);
             }
@@ -9288,6 +9297,11 @@ class MeshtasticManager {
         const node = databaseService.getNode(nodeNum);
         if (!node) {
           nodesToRemove.push(nodeNum);
+          continue;
+        }
+
+        // Skip nodes where favoriteLocked is true — user has manually managed this node
+        if (node.favoriteLocked) {
           continue;
         }
 
@@ -9323,7 +9337,7 @@ class MeshtasticManager {
         if (shouldRemove) {
           nodesToRemove.push(nodeNum);
           try {
-            databaseService.setNodeFavorite(nodeNum, false);
+            databaseService.setNodeFavorite(nodeNum, false, false);
             if (this.isConnected) {
               await this.sendRemoveFavoriteNode(nodeNum);
             }
@@ -11619,6 +11633,11 @@ class MeshtasticManager {
       // Add isFavorite if it exists
       if (node.isFavorite !== null && node.isFavorite !== undefined) {
         deviceInfo.isFavorite = Boolean(node.isFavorite);
+      }
+
+      // Add favoriteLocked if it exists
+      if (node.favoriteLocked !== null && node.favoriteLocked !== undefined) {
+        deviceInfo.favoriteLocked = Boolean(node.favoriteLocked);
       }
 
       // Add isIgnored if it exists
