@@ -702,6 +702,7 @@ apiRouter.get('/health', (_req, res) => {
     version: packageJson.version,
     uptime: Date.now() - serverStartTime,
     databaseType: databaseService.drizzleDbType,
+    firmwareOtaEnabled: process.env.IS_DESKTOP !== 'true',
   });
 });
 
