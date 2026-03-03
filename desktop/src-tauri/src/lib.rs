@@ -187,7 +187,9 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
             } else {
                 "false"
             },
-        );
+        )
+        .env("IS_DESKTOP", "true")
+        .env("FIRMWARE_CHECK_ENABLED", "false");
 
     log_to_file(&logs_path, "Environment variables set");
     log_to_file(&logs_path, &format!("PORT: {}", config.web_port));

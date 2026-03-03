@@ -191,6 +191,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
+  const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -221,6 +222,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           if (data.databaseType) {
             setDatabaseType(data.databaseType);
           }
+          setFirmwareOtaEnabled(!!data.firmwareOtaEnabled);
         }
       } catch (error) {
         logger.error('Failed to fetch database type:', error);
@@ -794,7 +796,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
         ...(isAdmin ? [{ id: 'settings-embed', label: t('settings.embed_maps', 'Embed Maps') }] : []),
-        ...(isAdmin ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
+        ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
@@ -1435,7 +1437,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         )}
 
-        {isAdmin && <FirmwareUpdateSection baseUrl={baseUrl} />}
+        {isAdmin && firmwareOtaEnabled && <FirmwareUpdateSection baseUrl={baseUrl} />}
 
         <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>
