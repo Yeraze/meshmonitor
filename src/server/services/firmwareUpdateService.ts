@@ -602,7 +602,7 @@ export class FirmwareUpdateService {
     });
 
     try {
-      const tempDir = fs.mkdtempSync(path.join('data', 'firmware-tmp-'));
+      const tempDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-tmp-'));
       this.tempDir = tempDir;
 
       const response = await fetch(downloadUrl);
