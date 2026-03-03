@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
+import { usePoll } from '../../hooks/usePoll';
 
 interface FirmwareUpdateSectionProps {
   baseUrl: string;
@@ -87,6 +88,26 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+
+  // Derive gateway info from poll data
+  const { data: pollData } = usePoll();
+  const gatewayInfo = useMemo(() => {
+    const config = pollData?.config;
+    const localNodeInfo = config?.localNodeInfo as { nodeId?: string; nodeNum?: number } | undefined;
+    const nodeId = localNodeInfo?.nodeId ?? '';
+    const nodeNum = localNodeInfo?.nodeNum ?? 0;
+    // Find the gateway node in the nodes array to get hwModel
+    const gatewayNode = (pollData?.nodes ?? []).find(
+      (n: any) => n.nodeNum === nodeNum || n.user?.id === nodeId
+    );
+    return {
+      gatewayIp: config?.meshtasticNodeIp ?? '',
+      firmwareVersion: config?.deviceMetadata?.firmwareVersion ?? '',
+      hwModel: gatewayNode?.user?.hwModel ?? 0,
+      nodeId,
+      nodeNum,
+    };
+  }, [pollData]);
 
   // Local state
   const [channel, setChannel] = useState<FirmwareChannel>('stable');
@@ -205,12 +226,11 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
 
   const handleInstall = async (release: FirmwareRelease) => {
     try {
-      // For now, use placeholder values until Task 7 wires gateway info
       const body = {
         targetVersion: release.version,
-        gatewayIp: '0.0.0.0',
-        hwModel: 0,
-        currentVersion: '0.0.0',
+        gatewayIp: gatewayInfo.gatewayIp,
+        hwModel: gatewayInfo.hwModel,
+        currentVersion: gatewayInfo.firmwareVersion,
       };
       const res = await csrfFetch(`${baseUrl}/api/firmware/update`, {
         method: 'POST',
@@ -230,8 +250,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const handleConfirm = async () => {
     try {
       const body = {
-        gatewayIp: effectiveStatus?.preflightInfo?.gatewayIp ?? '0.0.0.0',
-        nodeId: 0,
+        gatewayIp: effectiveStatus?.preflightInfo?.gatewayIp ?? gatewayInfo.gatewayIp,
+        nodeId: gatewayInfo.nodeId,
       };
       const res = await csrfFetch(`${baseUrl}/api/firmware/update/confirm`, {
         method: 'POST',
@@ -278,7 +298,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
 
     try {
       const body = {
-        gatewayIp: effectiveStatus?.preflightInfo?.gatewayIp ?? '0.0.0.0',
+        gatewayIp: effectiveStatus?.preflightInfo?.gatewayIp ?? gatewayInfo.gatewayIp,
         backupPath: backup.path,
       };
       const res = await csrfFetch(`${baseUrl}/api/firmware/restore`, {
@@ -321,6 +341,21 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     <div id="settings-firmware" className="settings-section" style={{ marginTop: '2rem' }}>
       <h3>{t('firmware.title', 'Firmware Updates')}</h3>
       <p className="setting-description">{t('firmware.description', 'Manage firmware updates for your gateway node.')}</p>
+
+      {/* Gateway Info */}
+      {gatewayInfo.firmwareVersion && (
+        <div className="setting-item" style={{ marginTop: '0.5rem' }}>
+          <span className="setting-description">
+            <strong>{t('firmware.current_version', 'Current Firmware')}:</strong> {gatewayInfo.firmwareVersion}
+            {gatewayInfo.hwModel > 0 && (
+              <> &nbsp;|&nbsp; <strong>{t('firmware.hardware_model', 'Hardware Model')}:</strong> {gatewayInfo.hwModel}</>
+            )}
+            {gatewayInfo.gatewayIp && (
+              <> &nbsp;|&nbsp; <strong>IP:</strong> {gatewayInfo.gatewayIp}</>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Channel Selector */}
       <div className="setting-item" style={{ marginTop: '1rem' }}>
