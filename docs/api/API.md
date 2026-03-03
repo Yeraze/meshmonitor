@@ -132,6 +132,34 @@ Toggle favorite status for a node.
 - Favorite nodes appear at the top of node lists regardless of sorting
 - Favorite status syncs with Meshtastic device's NodeDB via NodeInfo packets
 - Frontend displays star icons (⭐ for favorited, ☆ for not favorited)
+- Manual favorite/unfavorite sets `favoriteLocked=true`, protecting the node from auto-favorite automation
+
+#### POST /api/nodes/:nodeId/favorite-lock
+Toggle the favorite lock status for a node. Locked nodes are protected from auto-favorite automation.
+
+**Request Body:**
+```json
+{
+  "locked": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "favoriteLocked": true
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid `locked` parameter or invalid nodeId format
+- `500`: Failed to update lock status
+
+**Notes:**
+- Requires `nodes:write` permission
+- Locked nodes are never modified by auto-favorite or auto-sweep
 
 ### Message Management
 
@@ -530,6 +558,7 @@ interface DeviceInfo {
   firmwareVersion?: string;
   isMobile?: boolean;
   isFavorite?: boolean; // Synced from Meshtastic device NodeDB
+  favoriteLocked?: boolean; // true = protected from auto-favorite automation
 }
 ```
 
