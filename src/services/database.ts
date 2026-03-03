@@ -85,6 +85,7 @@ import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, 
 import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_upgrade_ignored_nodes_nodenum_bigint.js';
 import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
 import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
+import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -144,6 +145,7 @@ export interface DbNode {
   firmwareVersion?: string;
   channel?: number;
   isFavorite?: boolean;
+  favoriteLocked?: boolean;
   isIgnored?: boolean;
   mobile?: number; // 0 = not mobile, 1 = mobile (moved >100m)
   rebootCount?: number;
@@ -826,6 +828,7 @@ class DatabaseService {
             firmwareVersion: node.firmwareVersion ?? undefined,
             channel: node.channel ?? undefined,
             isFavorite: node.isFavorite ?? undefined,
+            favoriteLocked: node.favoriteLocked ?? undefined,
             isIgnored: node.isIgnored ?? undefined,
             mobile: node.mobile ?? undefined,
             rebootCount: node.rebootCount ?? undefined,
@@ -976,6 +979,7 @@ class DatabaseService {
     this.runIgnoredNodesNodeNumBigintMigration();
     this.runCreateEmbedProfilesMigration();
     this.runCreateGeofenceCooldownsMigration();
+    this.runAddFavoriteLockedMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2537,6 +2541,24 @@ class DatabaseService {
     }
   }
 
+  private runAddFavoriteLockedMigration(): void {
+    const migrationKey = 'migration_080_add_favorite_locked';
+    try {
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 080 (add favoriteLocked) already completed');
+        return;
+      }
+      logger.debug('Running migration 080: Add favoriteLocked column...');
+      addFavoriteLockedMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Add favoriteLocked migration completed successfully');
+    } catch (error) {
+      logger.error('Failed to run add favoriteLocked migration:', error);
+      throw error;
+    }
+  }
+
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
     try {
@@ -3193,6 +3215,7 @@ class DatabaseService {
           firmwareVersion: nodeData.firmwareVersion ?? existingNode?.firmwareVersion,
           channel: nodeData.channel ?? existingNode?.channel,
           isFavorite: nodeData.isFavorite ?? existingNode?.isFavorite,
+          favoriteLocked: nodeData.favoriteLocked ?? existingNode?.favoriteLocked,
           isIgnored: nodeData.isIgnored ?? existingNode?.isIgnored,
           mobile: nodeData.mobile ?? existingNode?.mobile,
           rebootCount: nodeData.rebootCount ?? existingNode?.rebootCount,
@@ -8266,22 +8289,78 @@ class DatabaseService {
   }
 
   // Favorite operations
-  setNodeFavorite(nodeNum: number, isFavorite: boolean): void {
+  setNodeFavorite(nodeNum: number, isFavorite: boolean, favoriteLocked?: boolean): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const cachedNode = this.nodesCache.get(nodeNum);
       if (cachedNode) {
         cachedNode.isFavorite = isFavorite;
+        if (favoriteLocked !== undefined) {
+          cachedNode.favoriteLocked = favoriteLocked;
+        }
         cachedNode.updatedAt = Date.now();
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeFavorite(nodeNum, isFavorite).catch(err => {
+        this.nodesRepo.setNodeFavorite(nodeNum, isFavorite, favoriteLocked).catch(err => {
           logger.error(`Failed to set node favorite in database:`, err);
         });
       }
 
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}, locked: ${favoriteLocked}`);
+      return;
+    }
+
+    // SQLite: synchronous update
+    const now = Date.now();
+    if (favoriteLocked !== undefined) {
+      const stmt = this.db.prepare(`
+        UPDATE nodes SET
+          isFavorite = ?,
+          favoriteLocked = ?,
+          updatedAt = ?
+        WHERE nodeNum = ?
+      `);
+      const result = stmt.run(isFavorite ? 1 : 0, favoriteLocked ? 1 : 0, now, nodeNum);
+      if (result.changes === 0) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}, locked: ${favoriteLocked} (${result.changes} row updated)`);
+    } else {
+      const stmt = this.db.prepare(`
+        UPDATE nodes SET
+          isFavorite = ?,
+          updatedAt = ?
+        WHERE nodeNum = ?
+      `);
+      const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+      if (result.changes === 0) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
+    }
+  }
+
+  setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean): void {
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const cachedNode = this.nodesCache.get(nodeNum);
+      if (cachedNode) {
+        cachedNode.favoriteLocked = favoriteLocked;
+        cachedNode.updatedAt = Date.now();
+      }
+
+      if (this.nodesRepo) {
+        this.nodesRepo.setNodeFavoriteLocked(nodeNum, favoriteLocked).catch(err => {
+          logger.error(`Failed to set node favoriteLocked in database:`, err);
+        });
+      }
+
+      logger.debug(`Node ${nodeNum} favoriteLocked set to: ${favoriteLocked}`);
       return;
     }
 
@@ -8289,19 +8368,19 @@ class DatabaseService {
     const now = Date.now();
     const stmt = this.db.prepare(`
       UPDATE nodes SET
-        isFavorite = ?,
+        favoriteLocked = ?,
         updatedAt = ?
       WHERE nodeNum = ?
     `);
-    const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+    const result = stmt.run(favoriteLocked ? 1 : 0, now, nodeNum);
 
     if (result.changes === 0) {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`⚠️ Failed to update favoriteLocked for node ${nodeId} (${nodeNum}): node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
+    logger.debug(`Node ${nodeNum} favoriteLocked set to: ${favoriteLocked} (${result.changes} row updated)`);
   }
 
   // Ignored operations
@@ -11143,6 +11222,9 @@ class DatabaseService {
       // Run migration 079: Create geofence_cooldowns table
       await runMigration079Postgres(client);
 
+      // Run migration 080: Add favoriteLocked column to nodes
+      await runMigration080Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11291,6 +11373,9 @@ class DatabaseService {
 
       // Run migration 079: Create geofence_cooldowns table
       await runMigration079Mysql(pool);
+
+      // Run migration 080: Add favoriteLocked column to nodes
+      await runMigration080Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

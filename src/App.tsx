@@ -3928,6 +3928,50 @@ function App() {
     // when it detects the server has caught up
   };
 
+  // Function to toggle node favorite lock status
+  const toggleFavoriteLock = async (node: DeviceInfo, event: React.MouseEvent) => {
+    event.stopPropagation();
+
+    if (!node.user?.id) {
+      logger.error('Cannot toggle favorite lock: node has no user ID');
+      return;
+    }
+
+    const newLocked = !node.favoriteLocked;
+
+    try {
+      // Optimistically update the UI
+      flushSync(() => {
+        setNodes(prevNodes =>
+          prevNodes.map(n =>
+            n.nodeNum === node.nodeNum ? { ...n, favoriteLocked: newLocked } : n
+          )
+        );
+      });
+
+      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked: newLocked }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      logger.debug(`${newLocked ? '🔒' : '🔓'} Node ${node.user.id} favorite lock set to: ${newLocked}`);
+    } catch (error) {
+      logger.error('Error toggling favorite lock:', error);
+      // Revert
+      setNodes(prevNodes =>
+        prevNodes.map(n =>
+          n.nodeNum === node.nodeNum ? { ...n, favoriteLocked: !newLocked } : n
+        )
+      );
+      showToast(t('toast.failed_update_favorite_lock', 'Failed to update favorite lock'), 'error');
+    }
+  };
+
   // Function to toggle node ignored status
   const toggleIgnored = async (node: DeviceInfo, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent node selection when clicking ignore button
@@ -4399,6 +4443,7 @@ function App() {
             shouldShowData={shouldShowData}
             centerMapOnNode={centerMapOnNode}
             toggleFavorite={toggleFavorite}
+            toggleFavoriteLock={toggleFavoriteLock}
             setActiveTab={setActiveTab}
             setSelectedDMNode={setSelectedDMNode}
             markerRefs={markerRefs}

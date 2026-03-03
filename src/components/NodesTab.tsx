@@ -55,6 +55,7 @@ interface NodesTabProps {
   shouldShowData: () => boolean;
   centerMapOnNode: (node: DeviceInfo) => void;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
+  toggleFavoriteLock?: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   setActiveTab: React.Dispatch<React.SetStateAction<TabType>>;
   setSelectedDMNode: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
@@ -187,6 +188,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   shouldShowData,
   centerMapOnNode,
   toggleFavorite,
+  toggleFavoriteLock,
   setActiveTab,
   setSelectedDMNode,
   markerRefs,
@@ -530,6 +532,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const handleFavoriteClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => toggleFavorite(node, e);
   }, [toggleFavorite]);
+
+  const handleLockClick = useCallback((node: DeviceInfo) => {
+    return (e: React.MouseEvent) => {
+      if (toggleFavoriteLock) toggleFavoriteLock(node, e);
+    };
+  }, [toggleFavoriteLock]);
 
   const handleDMClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
@@ -1213,13 +1221,30 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 >
                   <div className="node-header">
                     <div className="node-name">
-                      <button
-                        className="favorite-star"
-                        title={node.isFavorite ? t('nodes.remove_favorite') : t('nodes.add_favorite')}
-                        onClick={handleFavoriteClick(node)}
-                      >
-                        {node.isFavorite ? '⭐' : '☆'}
-                      </button>
+                      <span className="favorite-wrapper">
+                        <button
+                          className={`favorite-star${node.isFavorite && !node.favoriteLocked ? ' favorite-auto' : ''}`}
+                          title={node.isFavorite
+                            ? (node.favoriteLocked
+                              ? t('nodes.remove_favorite')
+                              : t('nodes.remove_favorite_auto', 'Remove auto-favorite'))
+                            : t('nodes.add_favorite')}
+                          onClick={handleFavoriteClick(node)}
+                        >
+                          {node.isFavorite ? '⭐' : '☆'}
+                        </button>
+                        {node.isFavorite && toggleFavoriteLock && (
+                          <button
+                            className="favorite-lock"
+                            title={node.favoriteLocked
+                              ? t('nodes.unlock_favorite', 'Unlock — let automation manage this favorite')
+                              : t('nodes.lock_favorite', 'Lock — prevent automation from changing this favorite')}
+                            onClick={handleLockClick(node)}
+                          >
+                            {node.favoriteLocked ? '🔒' : '🔓'}
+                          </button>
+                        )}
+                      </span>
                       <div className="node-name-text">
                         <div className="node-longname">
                           {node.user?.longName || `Node ${node.nodeNum}`}
@@ -2029,21 +2054,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 // Memoize NodesTab to prevent re-rendering when App.tsx updates for message status
 // Only re-render when actual node data or map-related props change
 const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
-  // Check if favorite status changed for any node
-  // Build sets of favorite node numbers for comparison
-  const prevFavorites = new Set(
-    prevProps.processedNodes.filter(n => n.isFavorite).map(n => n.nodeNum)
+  // Check if favorite status or lock status changed for any node
+  // Build maps of favorite node numbers with lock state for comparison
+  const prevFavorites = new Map(
+    prevProps.processedNodes.filter(n => n.isFavorite).map(n => [n.nodeNum, !!n.favoriteLocked])
   );
-  const nextFavorites = new Set(
-    nextProps.processedNodes.filter(n => n.isFavorite).map(n => n.nodeNum)
+  const nextFavorites = new Map(
+    nextProps.processedNodes.filter(n => n.isFavorite).map(n => [n.nodeNum, !!n.favoriteLocked])
   );
 
   // If the sets differ in size or content, favorites changed - must re-render
   if (prevFavorites.size !== nextFavorites.size) {
     return false; // Allow re-render
   }
-  for (const nodeNum of prevFavorites) {
-    if (!nextFavorites.has(nodeNum)) {
+  for (const [nodeNum, locked] of prevFavorites) {
+    if (!nextFavorites.has(nodeNum) || nextFavorites.get(nodeNum) !== locked) {
       return false; // Allow re-render
     }
   }
