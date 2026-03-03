@@ -534,7 +534,7 @@ describe('FirmwareUpdateService', () => {
         const release = makeRelease('2.6.1.abcdef');
 
         service.startPreflight({
-          currentVersion: '2.5.0.111111',
+          currentVersion: '2.7.18.111111',
           targetVersion: '2.6.1.abcdef',
           targetRelease: release,
           gatewayIp: '192.168.1.100',
@@ -545,7 +545,7 @@ describe('FirmwareUpdateService', () => {
         expect(status.state).toBe('awaiting-confirm');
         expect(status.step).toBe('preflight');
         expect(status.preflightInfo).toBeDefined();
-        expect(status.preflightInfo!.currentVersion).toBe('2.5.0.111111');
+        expect(status.preflightInfo!.currentVersion).toBe('2.7.18.111111');
         expect(status.preflightInfo!.targetVersion).toBe('2.6.1.abcdef');
         expect(status.preflightInfo!.gatewayIp).toBe('192.168.1.100');
         expect(status.preflightInfo!.boardName).toBe('heltec-v3');
@@ -566,7 +566,7 @@ describe('FirmwareUpdateService', () => {
 
         expect(() =>
           service.startPreflight({
-            currentVersion: '2.5.0.111111',
+            currentVersion: '2.7.18.111111',
             targetVersion: '2.6.1.abcdef',
             targetRelease: release,
             gatewayIp: '192.168.1.100',
@@ -590,7 +590,7 @@ describe('FirmwareUpdateService', () => {
         const release = makeRelease('2.6.1.abcdef');
 
         service.startPreflight({
-          currentVersion: '2.5.0.111111',
+          currentVersion: '2.7.18.111111',
           targetVersion: '2.6.1.abcdef',
           targetRelease: release,
           gatewayIp: '192.168.1.100',
@@ -600,7 +600,7 @@ describe('FirmwareUpdateService', () => {
         // Now try to start preflight again — should reject
         expect(() =>
           service.startPreflight({
-            currentVersion: '2.5.0.111111',
+            currentVersion: '2.7.18.111111',
             targetVersion: '2.6.1.abcdef',
             targetRelease: release,
             gatewayIp: '192.168.1.100',
@@ -617,7 +617,7 @@ describe('FirmwareUpdateService', () => {
 
         expect(() =>
           service.startPreflight({
-            currentVersion: '2.5.0.111111',
+            currentVersion: '2.7.18.111111',
             targetVersion: '2.6.1.abcdef',
             targetRelease: release,
             gatewayIp: '192.168.1.100',
@@ -649,7 +649,7 @@ describe('FirmwareUpdateService', () => {
 
         expect(() =>
           service.startPreflight({
-            currentVersion: '2.5.0.111111',
+            currentVersion: '2.7.18.111111',
             targetVersion: '2.6.1.abcdef',
             targetRelease: release,
             gatewayIp: '192.168.1.100',
@@ -674,7 +674,7 @@ describe('FirmwareUpdateService', () => {
         const release = makeRelease('2.6.1.abcdef');
 
         service.startPreflight({
-          currentVersion: '2.5.0.111111',
+          currentVersion: '2.7.18.111111',
           targetVersion: '2.6.1.abcdef',
           targetRelease: release,
           gatewayIp: '192.168.1.100',
@@ -688,6 +688,56 @@ describe('FirmwareUpdateService', () => {
         const status = service.getStatus();
         expect(status.state).toBe('idle');
         expect(status.step).toBeNull();
+      });
+    });
+
+    describe('firmware version check', () => {
+      it('should reject if current firmware is below 2.7.18', () => {
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+        const mockDisplayName = getHardwareDisplayName as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('heltec-v3');
+        mockGetPlatform.mockReturnValue('esp32s3');
+        mockIsOta.mockReturnValue(true);
+        mockDisplayName.mockReturnValue('Heltec V3');
+
+        const release = makeRelease('2.7.19.abcdef');
+
+        expect(() => {
+          service.startPreflight({
+            currentVersion: '2.7.15.567b8ea',
+            targetVersion: '2.7.19.abcdef',
+            targetRelease: release,
+            gatewayIp: '192.168.1.100',
+            hwModel: 43,
+          });
+        }).toThrow('WiFi OTA requires firmware >= 2.7.18');
+      });
+
+      it('should allow firmware >= 2.7.18', () => {
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+        const mockDisplayName = getHardwareDisplayName as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('heltec-v3');
+        mockGetPlatform.mockReturnValue('esp32s3');
+        mockIsOta.mockReturnValue(true);
+        mockDisplayName.mockReturnValue('Heltec V3');
+
+        const release = makeRelease('2.7.19.abcdef');
+
+        service.startPreflight({
+          currentVersion: '2.7.18.aaaaaa',
+          targetVersion: '2.7.19.abcdef',
+          targetRelease: release,
+          gatewayIp: '192.168.1.100',
+          hwModel: 43,
+        });
+
+        expect(service.getStatus().state).toBe('awaiting-confirm');
       });
     });
 
@@ -707,7 +757,7 @@ describe('FirmwareUpdateService', () => {
       });
 
       it('should set error when versions do not match', () => {
-        service.verifyUpdate('2.5.0.111111', '2.6.1.abcdef');
+        service.verifyUpdate('2.7.18.111111', '2.6.1.abcdef');
         const status = service.getStatus();
         expect(status.state).toBe('error');
         expect(status.step).toBe('verify');

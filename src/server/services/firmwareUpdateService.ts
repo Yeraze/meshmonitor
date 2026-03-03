@@ -513,6 +513,22 @@ export class FirmwareUpdateService {
       );
     }
 
+    // WiFi OTA requires firmware >= 2.7.18 on the running node
+    const versionMatch = params.currentVersion.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (versionMatch) {
+      const [, major, minor, patch] = versionMatch.map(Number);
+      const minVersion = [2, 7, 18];
+      if (major < minVersion[0]
+        || (major === minVersion[0] && minor < minVersion[1])
+        || (major === minVersion[0] && minor === minVersion[1] && patch < minVersion[2])) {
+        throw new Error(
+          `WiFi OTA requires firmware >= 2.7.18 on the running node. ` +
+          `Current version is ${params.currentVersion}. ` +
+          `Please update manually via USB first.`
+        );
+      }
+    }
+
     const zipAsset = this.findFirmwareZipAsset(params.targetRelease, platform);
     if (!zipAsset) {
       throw new Error(
