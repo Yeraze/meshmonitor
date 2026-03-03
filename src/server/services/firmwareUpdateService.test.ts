@@ -82,6 +82,10 @@ global.fetch = mockFetch;
 import {
   FirmwareUpdateService,
   firmwareUpdateService,
+  getBoardName,
+  getPlatformForBoard,
+  isOtaCapable,
+  getHardwareDisplayName,
 } from './firmwareUpdateService.js';
 import type {
   FirmwareRelease,
@@ -493,6 +497,222 @@ describe('FirmwareUpdateService', () => {
   describe('singleton export', () => {
     it('should export a singleton instance', () => {
       expect(firmwareUpdateService).toBeInstanceOf(FirmwareUpdateService);
+    });
+  });
+
+  // ---- Update Pipeline ----
+  describe('Update Pipeline', () => {
+    // Helper to build a release matching expected zip asset pattern
+    const makeRelease = (version: string): FirmwareRelease => ({
+      tagName: `v${version}`,
+      version,
+      prerelease: false,
+      publishedAt: '2026-02-15T00:00:00Z',
+      htmlUrl: `https://github.com/meshtastic/firmware/releases/tag/v${version}`,
+      assets: [
+        {
+          name: `firmware-esp32s3-${version}.zip`,
+          downloadUrl: `https://github.com/meshtastic/firmware/releases/download/v${version}/firmware-esp32s3-${version}.zip`,
+          size: 50000000,
+        },
+      ],
+    });
+
+    describe('startPreflight', () => {
+      it('should set status to awaiting-confirm with preflight info for an OTA-capable board', () => {
+        // hwModel 58 = Heltec V3 (esp32s3)
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+        const mockDisplayName = getHardwareDisplayName as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('heltec-v3');
+        mockGetPlatform.mockReturnValue('esp32s3');
+        mockIsOta.mockReturnValue(true);
+        mockDisplayName.mockReturnValue('Heltec V3');
+
+        const release = makeRelease('2.6.1.abcdef');
+
+        service.startPreflight({
+          currentVersion: '2.5.0.111111',
+          targetVersion: '2.6.1.abcdef',
+          targetRelease: release,
+          gatewayIp: '192.168.1.100',
+          hwModel: 58,
+        });
+
+        const status = service.getStatus();
+        expect(status.state).toBe('awaiting-confirm');
+        expect(status.step).toBe('preflight');
+        expect(status.preflightInfo).toBeDefined();
+        expect(status.preflightInfo!.currentVersion).toBe('2.5.0.111111');
+        expect(status.preflightInfo!.targetVersion).toBe('2.6.1.abcdef');
+        expect(status.preflightInfo!.gatewayIp).toBe('192.168.1.100');
+        expect(status.preflightInfo!.boardName).toBe('heltec-v3');
+        expect(status.preflightInfo!.platform).toBe('esp32s3');
+        expect(status.preflightInfo!.hwModel).toBe('Heltec V3');
+      });
+
+      it('should reject if hwModel is not OTA-capable (e.g., RAK4631=9)', () => {
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('rak4631');
+        mockGetPlatform.mockReturnValue('nrf52840');
+        mockIsOta.mockReturnValue(false);
+
+        const release = makeRelease('2.6.1.abcdef');
+
+        expect(() =>
+          service.startPreflight({
+            currentVersion: '2.5.0.111111',
+            targetVersion: '2.6.1.abcdef',
+            targetRelease: release,
+            gatewayIp: '192.168.1.100',
+            hwModel: 9,
+          })
+        ).toThrow(/not OTA capable/i);
+      });
+
+      it('should reject if state is not idle', () => {
+        // First, get into awaiting-confirm state
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+        const mockDisplayName = getHardwareDisplayName as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('heltec-v3');
+        mockGetPlatform.mockReturnValue('esp32s3');
+        mockIsOta.mockReturnValue(true);
+        mockDisplayName.mockReturnValue('Heltec V3');
+
+        const release = makeRelease('2.6.1.abcdef');
+
+        service.startPreflight({
+          currentVersion: '2.5.0.111111',
+          targetVersion: '2.6.1.abcdef',
+          targetRelease: release,
+          gatewayIp: '192.168.1.100',
+          hwModel: 58,
+        });
+
+        // Now try to start preflight again — should reject
+        expect(() =>
+          service.startPreflight({
+            currentVersion: '2.5.0.111111',
+            targetVersion: '2.6.1.abcdef',
+            targetRelease: release,
+            gatewayIp: '192.168.1.100',
+            hwModel: 58,
+          })
+        ).toThrow(/not idle/i);
+      });
+
+      it('should reject if hwModel has no board name', () => {
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        mockGetBoardName.mockReturnValue(null);
+
+        const release = makeRelease('2.6.1.abcdef');
+
+        expect(() =>
+          service.startPreflight({
+            currentVersion: '2.5.0.111111',
+            targetVersion: '2.6.1.abcdef',
+            targetRelease: release,
+            gatewayIp: '192.168.1.100',
+            hwModel: 999,
+          })
+        ).toThrow(/unknown hardware/i);
+      });
+
+      it('should reject if no firmware zip asset found for platform', () => {
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('heltec-v3');
+        mockGetPlatform.mockReturnValue('esp32s3');
+        mockIsOta.mockReturnValue(true);
+
+        // Release with no matching zip for esp32s3
+        const release: FirmwareRelease = {
+          tagName: 'v2.6.1.abcdef',
+          version: '2.6.1.abcdef',
+          prerelease: false,
+          publishedAt: '2026-02-15T00:00:00Z',
+          htmlUrl: '',
+          assets: [
+            { name: 'firmware-nrf52840-2.6.1.abcdef.zip', downloadUrl: 'https://example.com/nrf.zip', size: 30000000 },
+          ],
+        };
+
+        expect(() =>
+          service.startPreflight({
+            currentVersion: '2.5.0.111111',
+            targetVersion: '2.6.1.abcdef',
+            targetRelease: release,
+            gatewayIp: '192.168.1.100',
+            hwModel: 58,
+          })
+        ).toThrow(/no firmware zip/i);
+      });
+    });
+
+    describe('cancelUpdate', () => {
+      it('should reset status to idle after preflight was started', () => {
+        const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
+        const mockGetPlatform = getPlatformForBoard as ReturnType<typeof vi.fn>;
+        const mockIsOta = isOtaCapable as ReturnType<typeof vi.fn>;
+        const mockDisplayName = getHardwareDisplayName as ReturnType<typeof vi.fn>;
+
+        mockGetBoardName.mockReturnValue('heltec-v3');
+        mockGetPlatform.mockReturnValue('esp32s3');
+        mockIsOta.mockReturnValue(true);
+        mockDisplayName.mockReturnValue('Heltec V3');
+
+        const release = makeRelease('2.6.1.abcdef');
+
+        service.startPreflight({
+          currentVersion: '2.5.0.111111',
+          targetVersion: '2.6.1.abcdef',
+          targetRelease: release,
+          gatewayIp: '192.168.1.100',
+          hwModel: 58,
+        });
+
+        expect(service.getStatus().state).toBe('awaiting-confirm');
+
+        service.cancelUpdate();
+
+        const status = service.getStatus();
+        expect(status.state).toBe('idle');
+        expect(status.step).toBeNull();
+      });
+    });
+
+    describe('verifyUpdate', () => {
+      it('should set success when versions match', () => {
+        service.verifyUpdate('2.6.1.abcdef', '2.6.1.abcdef');
+        const status = service.getStatus();
+        expect(status.state).toBe('success');
+        expect(status.step).toBe('verify');
+      });
+
+      it('should set success when new version contains the target version', () => {
+        service.verifyUpdate('2.6.1.abcdef (extra info)', '2.6.1.abcdef');
+        const status = service.getStatus();
+        expect(status.state).toBe('success');
+        expect(status.step).toBe('verify');
+      });
+
+      it('should set error when versions do not match', () => {
+        service.verifyUpdate('2.5.0.111111', '2.6.1.abcdef');
+        const status = service.getStatus();
+        expect(status.state).toBe('error');
+        expect(status.step).toBe('verify');
+        expect(status.error).toBeDefined();
+      });
     });
   });
 });

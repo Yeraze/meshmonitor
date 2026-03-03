@@ -16,8 +16,14 @@ import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
-// Re-exported for consumers; used by pipeline methods added in Task 3
-export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName } from './firmwareHardwareMap.js';
+import {
+  getBoardName,
+  getPlatformForBoard,
+  isOtaCapable,
+  getHardwareDisplayName,
+} from './firmwareHardwareMap.js';
+// Re-export for consumers
+export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
 
 // ---- Types ----
 
@@ -471,6 +477,301 @@ export class FirmwareUpdateService {
     }
   }
 
+  // ---- OTA Pipeline ----
+
+  /**
+   * Step 1: Validate hardware and set status to awaiting-confirm with preflight info.
+   * Throws if state is not idle, hardware is unknown, not OTA-capable, or no zip found.
+   */
+  startPreflight(params: {
+    currentVersion: string;
+    targetVersion: string;
+    targetRelease: FirmwareRelease;
+    gatewayIp: string;
+    hwModel: number;
+  }): void {
+    if (this.status.state !== 'idle') {
+      throw new Error('Cannot start preflight: state is not idle');
+    }
+
+    const boardName = getBoardName(params.hwModel);
+    if (!boardName) {
+      throw new Error(`Unknown hardware model ${params.hwModel}: cannot determine board name`);
+    }
+
+    const platform = getPlatformForBoard(boardName);
+    if (!platform || !isOtaCapable(platform)) {
+      throw new Error(
+        `Board "${boardName}" (platform: ${platform ?? 'unknown'}) is not OTA capable`
+      );
+    }
+
+    const zipAsset = this.findFirmwareZipAsset(params.targetRelease, platform);
+    if (!zipAsset) {
+      throw new Error(
+        `No firmware zip found for platform "${platform}" in release ${params.targetRelease.tagName}`
+      );
+    }
+
+    const displayName = getHardwareDisplayName(params.hwModel);
+
+    this.updateStatus({
+      state: 'awaiting-confirm',
+      step: 'preflight',
+      message: `Preflight complete. Ready to update ${displayName} from ${params.currentVersion} to ${params.targetVersion}`,
+      targetVersion: params.targetVersion,
+      downloadUrl: zipAsset.downloadUrl,
+      preflightInfo: {
+        currentVersion: params.currentVersion,
+        targetVersion: params.targetVersion,
+        gatewayIp: params.gatewayIp,
+        hwModel: displayName,
+        boardName,
+        platform,
+      },
+    });
+
+    logger.info(
+      `[FirmwareUpdateService] Preflight passed for ${displayName} (${boardName}/${platform})`
+    );
+  }
+
+  /**
+   * Step 2: Execute config backup via meshtastic CLI.
+   * Returns the path to the backup file.
+   */
+  async executeBackup(gatewayIp: string, nodeId: string): Promise<string> {
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'backup',
+      message: `Backing up config from ${gatewayIp}...`,
+    });
+
+    try {
+      this.ensureBackupDir();
+
+      const result = await this.runCliCommand('meshtastic', [
+        '--host', gatewayIp,
+        '--export-config',
+      ]);
+
+      if (result.exitCode !== 0) {
+        throw new Error(`Backup command failed with exit code ${result.exitCode}: ${result.stderr}`);
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupPath = path.join(BACKUP_DIR, `config-${nodeId}-${timestamp}.yaml`);
+      fs.writeFileSync(backupPath, result.stdout, 'utf-8');
+
+      this.updateStatus({
+        state: 'awaiting-confirm',
+        step: 'backup',
+        message: `Config backed up to ${backupPath}`,
+        backupPath,
+      });
+
+      logger.info(`[FirmwareUpdateService] Config backup saved: ${backupPath}`);
+      return backupPath;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.updateStatus({
+        state: 'error',
+        step: 'backup',
+        message: `Backup failed: ${message}`,
+        error: message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Step 3: Download firmware zip from URL.
+   * Returns the path to the downloaded zip.
+   */
+  async executeDownload(downloadUrl: string): Promise<string> {
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'download',
+      message: `Downloading firmware from ${downloadUrl}...`,
+    });
+
+    try {
+      const tempDir = fs.mkdtempSync(path.join('data', 'firmware-tmp-'));
+      this.tempDir = tempDir;
+
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`Download failed: HTTP ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const zipPath = path.join(tempDir, 'firmware.zip');
+      fs.writeFileSync(zipPath, Buffer.from(arrayBuffer));
+
+      const downloadSize = arrayBuffer.byteLength;
+
+      this.updateStatus({
+        state: 'awaiting-confirm',
+        step: 'download',
+        message: `Downloaded ${(downloadSize / 1024 / 1024).toFixed(1)} MB`,
+        downloadSize,
+      });
+
+      logger.info(`[FirmwareUpdateService] Downloaded firmware: ${zipPath} (${downloadSize} bytes)`);
+      return zipPath;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cleanupTempDir();
+      this.updateStatus({
+        state: 'error',
+        step: 'download',
+        message: `Download failed: ${message}`,
+        error: message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Step 4: Extract firmware zip and find matching binary for board.
+   * Returns the path to the matched firmware binary.
+   */
+  async executeExtract(zipPath: string, boardName: string, version: string): Promise<string> {
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'extract',
+      message: 'Extracting firmware zip...',
+    });
+
+    try {
+      const extractDir = path.join(path.dirname(zipPath), 'extracted');
+      fs.mkdirSync(extractDir, { recursive: true });
+
+      const result = await this.runCliCommand('unzip', ['-o', zipPath, '-d', extractDir]);
+      if (result.exitCode !== 0) {
+        throw new Error(`Extraction failed with exit code ${result.exitCode}: ${result.stderr}`);
+      }
+
+      const extractedFiles = fs.readdirSync(extractDir);
+      const { matched, rejected } = this.findFirmwareBinary(extractedFiles, boardName, version);
+
+      if (!matched) {
+        throw new Error(
+          `No matching firmware binary found for board "${boardName}" in extracted files`
+        );
+      }
+
+      const firmwarePath = path.join(extractDir, matched);
+
+      this.updateStatus({
+        state: 'awaiting-confirm',
+        step: 'extract',
+        message: `Found firmware binary: ${matched}`,
+        matchedFile: matched,
+        rejectedFiles: rejected,
+      });
+
+      logger.info(`[FirmwareUpdateService] Matched firmware binary: ${matched}`);
+      return firmwarePath;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cleanupTempDir();
+      this.updateStatus({
+        state: 'error',
+        step: 'extract',
+        message: `Extraction failed: ${message}`,
+        error: message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Step 5: Flash firmware to the gateway via OTA.
+   */
+  async executeFlash(gatewayIp: string, firmwarePath: string): Promise<void> {
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'flash',
+      message: `Flashing firmware to ${gatewayIp}...`,
+    });
+
+    try {
+      const result = await this.runCliCommand('meshtastic', [
+        '--host', gatewayIp,
+        '--ota-update', firmwarePath,
+      ]);
+
+      if (result.exitCode !== 0) {
+        throw new Error(`Flash command failed with exit code ${result.exitCode}: ${result.stderr}`);
+      }
+
+      this.updateStatus({
+        state: 'awaiting-confirm',
+        step: 'flash',
+        message: 'Firmware flashed successfully. Device is rebooting — wait for it to reconnect before verifying.',
+      });
+
+      logger.info('[FirmwareUpdateService] OTA flash completed successfully');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.updateStatus({
+        state: 'error',
+        step: 'flash',
+        message: `Flash failed: ${message}`,
+        error: message,
+      });
+      throw error;
+    } finally {
+      this.cleanupTempDir();
+    }
+  }
+
+  /**
+   * Step 6: Verify that the firmware version matches the target after reboot.
+   */
+  verifyUpdate(newFirmwareVersion: string, targetVersion: string): void {
+    if (newFirmwareVersion.includes(targetVersion) || targetVersion.includes(newFirmwareVersion)) {
+      this.updateStatus({
+        state: 'success',
+        step: 'verify',
+        message: `Firmware update verified: running ${newFirmwareVersion}`,
+      });
+      logger.info(`[FirmwareUpdateService] Update verified: ${newFirmwareVersion}`);
+    } else {
+      this.updateStatus({
+        state: 'error',
+        step: 'verify',
+        message: `Version mismatch: expected ${targetVersion}, got ${newFirmwareVersion}`,
+        error: `Version mismatch: expected ${targetVersion}, got ${newFirmwareVersion}`,
+      });
+      logger.warn(
+        `[FirmwareUpdateService] Version mismatch after update: expected ${targetVersion}, got ${newFirmwareVersion}`
+      );
+    }
+  }
+
+  /**
+   * Restore a previously saved config backup to the gateway.
+   * Throws if the backup file does not exist or the CLI command fails.
+   */
+  async restoreBackup(gatewayIp: string, backupPath: string): Promise<void> {
+    if (!fs.existsSync(backupPath)) {
+      throw new Error(`Backup file not found: ${backupPath}`);
+    }
+
+    const result = await this.runCliCommand('meshtastic', [
+      '--host', gatewayIp,
+      '--configure', backupPath,
+    ]);
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Restore command failed with exit code ${result.exitCode}: ${result.stderr}`);
+    }
+
+    logger.info(`[FirmwareUpdateService] Config restored from ${backupPath} to ${gatewayIp}`);
+  }
+
   // ---- Private helpers ----
 
   /**
@@ -494,7 +795,7 @@ export class FirmwareUpdateService {
   /**
    * Merge partial status update into current status and emit event.
    */
-  private updateStatus(partial: Partial<UpdateStatus>): void {
+  updateStatus(partial: Partial<UpdateStatus>): void {
     this.status = { ...this.status, ...partial };
     dataEventEmitter.emit('data', {
       type: 'firmware:status',
