@@ -3456,6 +3456,77 @@ function App() {
     }
   };
 
+  // Send a bell character (0x07) on a channel, optionally prepended to current text
+  const handleSendBell = async (channel: number, currentText: string) => {
+    if (connectionStatus !== 'connected') return;
+
+    const bellText = currentText.trim() ? `\x07${currentText}` : '\x07';
+    setNewMessage('');
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: bellText, channel }),
+      });
+
+      if (response.ok) {
+        setTimeout(() => refetchPoll(), 1000);
+      } else {
+        const errorData = await response.json();
+        setError(`Failed to send bell: ${errorData.error}`);
+      }
+    } catch (err) {
+      setError(`Failed to send bell: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  // Send a bell character (0x07) as a direct message
+  const handleSendBellDM = async (destinationNodeId: string, currentText: string) => {
+    if (connectionStatus !== 'connected') return;
+
+    const bellText = currentText.trim() ? `\x07${currentText}` : '\x07';
+    setNewMessage('');
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: bellText, channel: 0, destination: destinationNodeId }),
+      });
+
+      if (response.ok) {
+        logger.debug('Bell DM sent successfully');
+      } else {
+        setError('Failed to send bell DM');
+      }
+    } catch (err) {
+      setError(`Failed to send bell DM: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  // Broadcast local node's position on a channel
+  const handleSendPosition = async (channel: number) => {
+    if (connectionStatus !== 'connected') return;
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/position/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination: 4294967295, channel }),
+      });
+
+      if (response.ok) {
+        setTimeout(() => refetchPoll(), 1000);
+      } else {
+        const errorData = await response.json();
+        setError(`Failed to send position: ${errorData.error}`);
+      }
+    } catch (err) {
+      setError(`Failed to send position: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   // Resend a message (for own messages)
   const handleResendMessage = async (message: MeshMessage) => {
     if (!message.text?.trim() || connectionStatus !== 'connected') {
@@ -4490,6 +4561,8 @@ function App() {
             handleSendTapback={handleSendTapback}
             handlePurgeChannelMessages={handlePurgeChannelMessages}
             handleSenderClick={handleSenderClick}
+            onSendBell={handleSendBell}
+            onSendPosition={handleSendPosition}
             shouldShowData={shouldShowData}
             getNodeName={getNodeName}
             getNodeShortName={getNodeShortName}
@@ -4545,6 +4618,7 @@ function App() {
             baseUrl={baseUrl}
             hasPermission={hasPermission}
             handleSendDirectMessage={handleSendDirectMessage}
+            onSendBell={handleSendBellDM}
             handleResendMessage={handleResendMessage}
             handleTraceroute={handleTraceroute}
             handleExchangePosition={handleExchangePosition}

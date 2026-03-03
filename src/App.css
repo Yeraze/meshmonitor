@@ -1310,6 +1310,13 @@ body {
   cursor: not-allowed;
 }
 
+.channel-action-btn {
+  min-width: 32px !important;
+  width: 32px !important;
+  padding: 0.5rem !important;
+  font-size: 0.85rem;
+}
+
 /* Responsive design */
 /* Channel Styles */
 .channels-table {
