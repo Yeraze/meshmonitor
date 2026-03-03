@@ -310,6 +310,11 @@ export class FirmwareUpdateService {
     this.updateStatus({});
   }
 
+  /** Returns the temp directory used during download/extract, or null if not set */
+  getTempDir(): string | null {
+    return this.tempDir;
+  }
+
   /**
    * Cancel an active update process.
    * Kills any active child process, cleans temp directory, resets to idle.
