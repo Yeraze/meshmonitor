@@ -74,6 +74,13 @@ vi.mock('./firmwareHardwareMap.js', () => ({
   getHardwareDisplayName: vi.fn(),
 }));
 
+vi.mock('../meshtasticManager.js', () => ({
+  default: {
+    userReconnect: vi.fn().mockResolvedValue(undefined),
+    userDisconnect: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -762,6 +769,59 @@ describe('FirmwareUpdateService', () => {
         expect(status.state).toBe('error');
         expect(status.step).toBe('verify');
         expect(status.error).toBeDefined();
+      });
+    });
+
+    describe('executeFlash', () => {
+      it('should add bootloader hint when flash fails quickly (under 20s)', async () => {
+        const svc = firmwareUpdateService as any;
+        // Mock runCliCommand to resolve quickly with a failure
+        svc.runCliCommand = vi.fn().mockResolvedValue({
+          stdout: '',
+          stderr: 'some error',
+          exitCode: 1,
+        });
+
+        svc.tempDir = '/tmp/test';
+        svc.cleanupTempDir = vi.fn();
+
+        try {
+          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
+          expect.fail('Should have thrown');
+        } catch (e: any) {
+          expect(e.message).toMatch(/OTA bootloader/i);
+          expect(e.message).toMatch(/rebooted before firmware/i);
+        }
+      });
+
+      it('should NOT add bootloader hint when flash fails slowly (over 20s)', async () => {
+        const svc = firmwareUpdateService as any;
+        // Mock Date.now to simulate slow failure — each call returns 25s more
+        let callCount = 0;
+        vi.spyOn(Date, 'now').mockImplementation(() => {
+          callCount++;
+          // Return increasing values: each call 25s apart so elapsed is always > 20s
+          return callCount * 25000;
+        });
+
+        svc.runCliCommand = vi.fn().mockResolvedValue({
+          stdout: '',
+          stderr: 'timeout error',
+          exitCode: 1,
+        });
+
+        svc.tempDir = '/tmp/test';
+        svc.cleanupTempDir = vi.fn();
+
+        try {
+          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
+          expect.fail('Should have thrown');
+        } catch (e: any) {
+          expect(e.message).not.toMatch(/OTA bootloader/i);
+          expect(e.message).toMatch(/Flash command failed/);
+        }
+
+        vi.restoreAllMocks();
       });
     });
   });

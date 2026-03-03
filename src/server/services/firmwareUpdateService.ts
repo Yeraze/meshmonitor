@@ -727,6 +727,8 @@ export class FirmwareUpdateService {
       message: `Flashing firmware to ${gatewayIp}...`,
     });
 
+    const startTime = Date.now();
+
     try {
       const result = await this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
@@ -735,9 +737,20 @@ export class FirmwareUpdateService {
       ]);
 
       if (result.exitCode !== 0) {
+        const elapsed = Date.now() - startTime;
         // Python logging writes INFO to stderr; actual errors may be in stdout
         const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
-        throw new Error(`Flash command failed with exit code ${result.exitCode}:\n${combined}`);
+        let errorMessage = `Flash command failed with exit code ${result.exitCode}:\n${combined}`;
+
+        // If the process exited quickly (<20s), the OTA bootloader is likely missing
+        if (elapsed < 20000) {
+          errorMessage += '\n\nThe node rebooted before firmware could be transferred. ' +
+            'This usually means the OTA bootloader has not been installed. ' +
+            'The OTA bootloader must be flashed once via USB before Wi-Fi OTA updates will work. ' +
+            'See the Firmware OTA Prerequisites documentation for instructions.';
+        }
+
+        throw new Error(errorMessage);
       }
 
       this.updateStatus({
