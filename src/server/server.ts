@@ -2926,6 +2926,8 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
       }`
     );
 
+    const isBroadcast = destinationNum === 0xFFFFFFFF;
+
     if (localNodeInfo) {
       // Create a system message to record the position request using the actual packet ID and requestId
       const messageId = `${packetId}`;
@@ -2935,7 +2937,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
       const messageChannel = channel === 0 ? -1 : channel;
 
       logger.info(
-        `📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`
+        `📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId}, broadcast: ${isBroadcast})`
       );
       databaseService.insertMessage({
         id: messageId,
@@ -2943,10 +2945,11 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
         toNodeNum: destinationNum,
         fromNodeId: localNodeInfo.nodeId,
         toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
-        text: 'Position exchange requested',
+        text: isBroadcast ? 'Position broadcast sent' : 'Position exchange requested',
         channel: messageChannel,
         portnum: PortNum.TEXT_MESSAGE_APP, // Shows in DM view (DM filter requires TEXT_MESSAGE_APP)
-        requestId: requestId, // Store requestId for ACK matching
+        // Broadcast packets don't get ACKed, so omit requestId to avoid permanent pending state
+        ...(isBroadcast ? {} : { requestId: requestId }),
         timestamp: timestamp,
         rxTime: timestamp,
         createdAt: timestamp,

@@ -166,6 +166,7 @@ export interface MessagesTabProps {
 
   // Handlers
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
+  onSendBell?: (destination: string, text: string) => Promise<void>;
   handleResendMessage: (message: MeshMessage) => Promise<void>;
   handleTraceroute: (nodeId: string) => Promise<void>;
   handleExchangePosition: (nodeId: string, channel?: number) => Promise<void>;
@@ -243,6 +244,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   baseUrl,
   hasPermission,
   handleSendDirectMessage,
+  onSendBell,
   handleResendMessage,
   handleTraceroute,
   handleExchangePosition,
@@ -1383,6 +1385,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         {byteCountDisplay.text}
                       </div>
                     </div>
+                    <button
+                      onClick={() => { onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
+                      className="send-btn channel-action-btn"
+                      title="Send alert bell"
+                    >
+                      🔔
+                    </button>
                     <button
                       onClick={() => handleSendDirectMessage(selectedDMNode)}
                       disabled={!newMessage.trim()}

@@ -102,6 +102,8 @@ export interface ChannelsTabProps {
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   handlePurgeChannelMessages: (channelId: number) => Promise<void>;
   handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
+  onSendBell?: (channel: number, text: string) => Promise<void>;
+  onSendPosition?: (channel: number) => Promise<void>;
 
   // Helper functions
   shouldShowData: () => boolean;
@@ -152,6 +154,8 @@ export default function ChannelsTab({
   handleSendTapback,
   handlePurgeChannelMessages,
   handleSenderClick,
+  onSendBell,
+  onSendPosition,
   shouldShowData,
   getNodeName,
   getNodeShortName,
@@ -868,6 +872,20 @@ export default function ChannelsTab({
                               {byteCountDisplay.text}
                             </div>
                           </div>
+                          <button
+                            onClick={() => { onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
+                            className="send-btn channel-action-btn"
+                            title="Send alert bell"
+                          >
+                            🔔
+                          </button>
+                          <button
+                            onClick={() => onSendPosition?.(selectedChannel)}
+                            className="send-btn channel-action-btn"
+                            title="Send position"
+                          >
+                            📍
+                          </button>
                           <button
                             onClick={() => handleSendMessage(selectedChannel)}
                             disabled={!newMessage.trim()}
