@@ -54,7 +54,8 @@ export default defineConfig({
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
             { text: '🌐 Site Gallery', link: '/site-gallery' },
-            { text: '📜 User Scripts', link: '/user-scripts' }
+            { text: '📜 User Scripts', link: '/user-scripts' },
+            { text: 'Firmware OTA Updates', link: '/firmware-ota-prerequisites' }
           ]
         }
       ],

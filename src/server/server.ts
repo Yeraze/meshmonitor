@@ -689,6 +689,8 @@ import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
+import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
+import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -787,6 +789,9 @@ apiRouter.use('/settings', settingsRoutes);
 
 // Embed profile admin routes (admin only)
 apiRouter.use('/embed-profiles', embedProfileRoutes);
+
+// Firmware OTA update routes (admin only)
+apiRouter.use('/firmware', firmwareUpdateRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
@@ -9002,6 +9007,9 @@ let server: ReturnType<typeof app.listen>;
 
     // Initialize WebSocket server for real-time updates
     initializeWebSocket(server, sessionMiddleware);
+
+    // Start firmware release polling (periodic GitHub checks)
+    firmwareUpdateService.startPolling();
 
     // Send server start notification
     (async () => {
