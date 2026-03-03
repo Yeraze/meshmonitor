@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { usePoll } from '../../hooks/usePoll';
+import { useData } from '../../contexts/DataContext';
 
 interface FirmwareUpdateSectionProps {
   baseUrl: string;
@@ -97,6 +98,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const { setConnectionStatus } = useData();
 
   // Derive gateway info from poll data
   const { data: pollData } = usePoll();
@@ -272,6 +274,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       });
       if (!res.ok) {
         const data = await res.json();
+        // "No update step is awaiting confirmation" is a benign race condition —
+        // the backend already advanced past this step. Just refetch silently.
+        if (res.status === 400 && data.error?.includes('awaiting confirmation')) {
+          queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+          return;
+        }
         throw new Error(data.error || 'Failed to confirm step');
       }
       queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
@@ -298,9 +306,23 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     }
   };
 
-  const handleDone = () => {
-    // Reset status by re-fetching
-    queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+  const handleDone = async () => {
+    const wasSuccess = effectiveStatus?.state === 'success';
+    try {
+      if (wasSuccess) {
+        // Immediately show reconnecting state so the UI reflects the disconnect→reconnect cycle
+        setConnectionStatus('connecting');
+        // Successful update — full disconnect→reconnect cycle to re-download all node data
+        await csrfFetch(`${baseUrl}/api/firmware/update/done`, { method: 'POST' });
+      } else {
+        // Error dismiss — just reset state
+        await csrfFetch(`${baseUrl}/api/firmware/update/cancel`, { method: 'POST' });
+      }
+    } catch {
+      // Best-effort — even if the call fails, clear local queries
+    }
+    // Invalidate everything so the UI refreshes with new node data
+    queryClient.invalidateQueries();
     queryClient.removeQueries({ queryKey: ['firmware', 'liveStatus'] });
   };
 
@@ -446,19 +468,27 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         </button>
       </div>
 
-      {/* Update Wizard (shown when state !== idle) */}
+      {/* Update Wizard Modal (blocks UI during firmware update) */}
       {isUpdateActive && effectiveStatus && (
+        <div className="modal-overlay" style={{ zIndex: 10002 }}>
         <div style={{
-          marginTop: '1rem',
-          padding: '1rem',
+          padding: '1.5rem',
           borderRadius: '8px',
-          backgroundColor: 'var(--ctp-surface0)',
+          backgroundColor: 'var(--ctp-base)',
           border: effectiveStatus.state === 'error'
-            ? '1px solid var(--ctp-red)'
+            ? '2px solid var(--ctp-red)'
             : effectiveStatus.state === 'success'
-              ? '1px solid #10b981'
-              : '1px solid var(--ctp-blue)',
+              ? '2px solid #10b981'
+              : '2px solid var(--ctp-blue)',
+          width: '90%',
+          maxWidth: '600px',
+          maxHeight: '85vh',
+          overflow: 'auto',
         }}>
+          <h3 style={{ margin: '0 0 1rem', color: 'var(--ctp-text)' }}>
+            {t('firmware.update_wizard', 'Firmware Update')}
+          </h3>
+
           {/* Step progress indicator */}
           <div style={{
             display: 'flex',
@@ -522,23 +552,37 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
             </p>
           </div>
 
-          {/* Progress bar */}
+          {/* Progress bar with percentage */}
           {effectiveStatus.progress !== undefined && effectiveStatus.progress > 0 && (
-            <div style={{
-              width: '100%',
-              height: '6px',
-              backgroundColor: 'var(--ctp-surface2)',
-              borderRadius: '3px',
-              marginBottom: '0.75rem',
-              overflow: 'hidden',
-            }}>
+            <div style={{ marginBottom: '0.75rem' }}>
               <div style={{
-                width: `${Math.min(effectiveStatus.progress, 100)}%`,
-                height: '100%',
-                backgroundColor: 'var(--ctp-blue)',
-                borderRadius: '3px',
-                transition: 'width 0.3s ease',
-              }} />
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.35rem',
+                fontSize: '0.85rem',
+                color: 'var(--ctp-text)',
+              }}>
+                <span>{t('firmware.uploading', 'Uploading firmware...')}</span>
+                <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                  {Math.min(effectiveStatus.progress, 100)}%
+                </span>
+              </div>
+              <div style={{
+                width: '100%',
+                height: '16px',
+                backgroundColor: 'var(--ctp-surface2)',
+                borderRadius: '8px',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${Math.min(effectiveStatus.progress, 100)}%`,
+                  height: '100%',
+                  backgroundColor: 'var(--ctp-blue)',
+                  borderRadius: '8px',
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
             </div>
           )}
 
@@ -578,7 +622,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                 'Wi-Fi OTA requires a one-time OTA bootloader flash via USB. If this is your first OTA update, ensure the bootloader has been installed.'
               )}{' '}
               <a
-                href={`${baseUrl}/docs/firmware-ota-prerequisites`}
+                href="https://meshmonitor.org/firmware-ota-prerequisites"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: 'var(--accent-color)' }}
@@ -686,7 +730,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               </button>
             )}
             {(effectiveStatus.state === 'awaiting-confirm' || effectiveStatus.state === 'in-progress') && (
-              <button className="danger-btn" onClick={handleCancel}>
+              <button className="danger-button" onClick={handleCancel}>
                 {t('firmware.wizard_cancel', 'Cancel Update')}
               </button>
             )}
@@ -708,6 +752,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               </>
             )}
           </div>
+        </div>
         </div>
       )}
 

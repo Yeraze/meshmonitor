@@ -337,6 +337,27 @@ export class FirmwareUpdateService {
   }
 
   /**
+   * Complete a successful update: reset firmware state, then force a full
+   * disconnect→reconnect so the node data is re-downloaded from scratch.
+   * The UI will show the disconnected/reconnecting state.
+   */
+  async completeUpdate(): Promise<void> {
+    this.cleanupTempDir();
+    this.status = createIdleStatus();
+    this.updateStatus({});
+    logger.info('[FirmwareUpdateService] Update completed — initiating full reconnect cycle');
+
+    // Force disconnect (clears intervals, transport, etc.)
+    await meshtasticManager.userDisconnect();
+
+    // Reset module-config cache so all configs are re-fetched on reconnect
+    meshtasticManager.resetModuleConfigCache();
+
+    // Reconnect from scratch — handleConnected() will request full node DB
+    await meshtasticManager.userReconnect();
+  }
+
+  /**
    * Retry the flash step using already-downloaded firmware files.
    * Can only be called from error state when temp dir and matched file still exist.
    */
@@ -435,7 +456,8 @@ export class FirmwareUpdateService {
    */
   runCliCommand(
     command: string,
-    args: string[]
+    args: string[],
+    options?: { onOutput?: (chunk: string) => void }
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve) => {
       const proc = spawn(command, args, {
@@ -451,13 +473,15 @@ export class FirmwareUpdateService {
       proc.stdout?.on('data', (data: Buffer) => {
         const text = data.toString();
         stdout += text;
-        this.appendLog(text.trimEnd());
+        logger.debug('[FirmwareUpdateService] CLI stdout: %s', text.trimEnd());
+        options?.onOutput?.(text);
       });
 
       proc.stderr?.on('data', (data: Buffer) => {
         const text = data.toString();
         stderr += text;
-        this.appendLog(text.trimEnd());
+        logger.debug('[FirmwareUpdateService] CLI stderr: %s', text.trimEnd());
+        options?.onOutput?.(text);
       });
 
       proc.on('close', (code) => {
@@ -588,17 +612,31 @@ export class FirmwareUpdateService {
    * Step 2: Execute config backup via meshtastic CLI.
    * Returns the path to the backup file.
    */
+  /**
+   * Disconnect MeshMonitor from the node so the CLI can use the TCP connection.
+   * This is called before backup and stays disconnected through the entire flash process.
+   */
+  async disconnectFromNode(): Promise<void> {
+    this.appendLog('Disconnecting from node...');
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'backup',
+      message: 'Disconnecting from node for firmware update...',
+    });
+    logger.info('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
+    await meshtasticManager.userDisconnect();
+    this.appendLog('Disconnected from node.');
+    logger.info('[FirmwareUpdateService] MeshMonitor disconnected from node');
+  }
+
   async executeBackup(gatewayIp: string, nodeId: string): Promise<string> {
     this.updateStatus({
       state: 'in-progress',
       step: 'backup',
-      message: `Disconnecting from node and backing up config from ${gatewayIp}...`,
+      message: `Backing up config from ${gatewayIp}...`,
     });
 
     try {
-      // Disconnect MeshMonitor so the meshtastic CLI can connect via TCP
-      logger.info('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
-      await meshtasticManager.userDisconnect();
 
       this.ensureBackupDir();
 
@@ -609,7 +647,8 @@ export class FirmwareUpdateService {
 
       if (result.exitCode !== 0) {
         const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
-        throw new Error(`Backup command failed with exit code ${result.exitCode}:\n${combined}`);
+        logger.error('[FirmwareUpdateService] Backup CLI failed (exit %d): %s', result.exitCode, combined);
+        throw new Error(`Backup command failed (exit code ${result.exitCode}). Check server logs for details.`);
       }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -750,43 +789,87 @@ export class FirmwareUpdateService {
       state: 'in-progress',
       step: 'flash',
       message: `Flashing firmware to ${gatewayIp}...`,
+      progress: 0,
     });
 
     const startTime = Date.now();
+    let lastProgressUpdate = 0;
 
     try {
       const result = await this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
         '--timeout', '30',
         '--ota-update', firmwarePath,
-      ]);
+      ], {
+        onOutput: (chunk: string) => {
+          // Split on \r and \n — meshtastic CLI uses \r to overwrite progress lines in-place
+          const lines = chunk.split(/[\r\n]+/).map(l => l.trimEnd()).filter(Boolean);
+          for (const line of lines) {
+            // Parse OTA progress lines like "(45.23%)" — update progress bar, don't log each one
+            const progressMatch = line.match(/\((\d+(?:\.\d+)?)%\)/);
+            if (progressMatch) {
+              const pct = Math.round(parseFloat(progressMatch[1]));
+              const now = Date.now();
+              if (now - lastProgressUpdate >= 2000 || pct >= 100) {
+                lastProgressUpdate = now;
+                this.updateStatus({ progress: pct, message: `Uploading firmware: ${pct}%` });
+              }
+              continue; // Don't log individual progress lines
+            }
+            // Show all other output lines to the user
+            this.appendLog(line);
+          }
+        },
+      });
 
       if (result.exitCode !== 0) {
         const elapsed = Date.now() - startTime;
         // Python logging writes INFO to stderr; actual errors may be in stdout
         const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
-        let errorMessage = `Flash command failed with exit code ${result.exitCode}:\n${combined}`;
 
-        // If the process exited quickly (<20s), the OTA bootloader is likely missing
-        if (elapsed < 20000) {
-          errorMessage += '\n\nThe node rebooted before firmware could be transferred. ' +
+        // Raw CLI output already logged via logger.debug in runCliCommand
+        logger.error('[FirmwareUpdateService] Flash failed (exit code %d, %ds): %s',
+          result.exitCode, Math.round(elapsed / 1000), combined);
+
+        // Detect missing OTA bootloader: either the process exited quickly (<20s)
+        // or the output contains "Connection refused" (device rebooted but OTA server
+        // never started because the bootloader isn't installed — the CLI retries
+        // internally so the total runtime may exceed 20s)
+        const looksLikeMissingBootloader =
+          elapsed < 20000 || /connection refused/i.test(combined);
+
+        let errorMessage: string;
+        if (looksLikeMissingBootloader) {
+          errorMessage = 'The node rebooted before firmware could be transferred. ' +
             'This usually means the OTA bootloader has not been installed. ' +
             'The OTA bootloader must be flashed once via USB before Wi-Fi OTA updates will work. ' +
             'See the Firmware OTA Prerequisites documentation for instructions.';
+        } else {
+          errorMessage = `Flash command failed (exit code ${result.exitCode}). Check the update logs for details.`;
         }
 
         throw new Error(errorMessage);
       }
 
+      this.appendLog('Firmware flashed successfully. Reconnecting to node...');
+      this.updateStatus({
+        state: 'in-progress',
+        step: 'flash',
+        message: 'Firmware flashed successfully. Reconnecting to node...',
+      });
+
+      // Reconnect to the node now that flashing is complete
+      logger.info('[FirmwareUpdateService] OTA flash completed — reconnecting to node');
+      await meshtasticManager.userReconnect();
+      this.appendLog('Reconnected to node.');
+
       this.updateStatus({
         state: 'awaiting-confirm',
         step: 'flash',
-        message: 'Firmware flashed successfully. Device is rebooting — reconnecting MeshMonitor and waiting for verification.',
+        message: 'Firmware flashed successfully. The node has been updated and reconnected.',
       });
 
-      logger.info('[FirmwareUpdateService] OTA flash completed successfully, reconnecting MeshMonitor');
-      // Reconnect MeshMonitor after successful flash — node will reboot so this may take a moment
-      await meshtasticManager.userReconnect();
+      logger.info('[FirmwareUpdateService] OTA flash completed successfully and reconnected to node');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.updateStatus({

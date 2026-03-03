@@ -78,6 +78,7 @@ vi.mock('../meshtasticManager.js', () => ({
   default: {
     userReconnect: vi.fn().mockResolvedValue(undefined),
     userDisconnect: vi.fn().mockResolvedValue(undefined),
+    resetModuleConfigCache: vi.fn(),
   },
 }));
 
@@ -698,6 +699,40 @@ describe('FirmwareUpdateService', () => {
       });
     });
 
+    describe('disconnectFromNode', () => {
+      it('should disconnect from node and update status', async () => {
+        const meshtasticManager = (await import('../meshtasticManager.js')).default;
+
+        await service.disconnectFromNode();
+
+        expect(meshtasticManager.userDisconnect).toHaveBeenCalled();
+        const status = service.getStatus();
+        expect(status.step).toBe('backup');
+      });
+    });
+
+    describe('completeUpdate', () => {
+      it('should reset state, disconnect, reset module cache, and reconnect', async () => {
+        const meshtasticManager = (await import('../meshtasticManager.js')).default;
+        const svc = service as any;
+
+        // Put service in success state
+        svc.status = {
+          state: 'success',
+          step: 'verify',
+          message: 'Firmware update verified',
+          logs: [],
+        };
+
+        await service.completeUpdate();
+
+        expect(service.getStatus().state).toBe('idle');
+        expect(meshtasticManager.userDisconnect).toHaveBeenCalled();
+        expect(meshtasticManager.resetModuleConfigCache).toHaveBeenCalled();
+        expect(meshtasticManager.userReconnect).toHaveBeenCalled();
+      });
+    });
+
     describe('firmware version check', () => {
       it('should reject if current firmware is below 2.7.18', () => {
         const mockGetBoardName = getBoardName as ReturnType<typeof vi.fn>;
@@ -794,7 +829,7 @@ describe('FirmwareUpdateService', () => {
         }
       });
 
-      it('should NOT add bootloader hint when flash fails slowly (over 20s)', async () => {
+      it('should NOT add bootloader hint when flash fails slowly (over 20s) without Connection refused', async () => {
         const svc = firmwareUpdateService as any;
         // Mock Date.now to simulate slow failure — each call returns 25s more
         let callCount = 0;
@@ -818,7 +853,38 @@ describe('FirmwareUpdateService', () => {
           expect.fail('Should have thrown');
         } catch (e: any) {
           expect(e.message).not.toMatch(/OTA bootloader/i);
-          expect(e.message).toMatch(/Flash command failed/);
+          expect(e.message).toMatch(/Flash command failed.*Check the update logs/);
+        }
+
+        vi.restoreAllMocks();
+      });
+
+      it('should add bootloader hint when output contains Connection refused (even if slow)', async () => {
+        const svc = firmwareUpdateService as any;
+        // Mock Date.now to simulate slow failure (>20s) — retries take time
+        let callCount = 0;
+        vi.spyOn(Date, 'now').mockImplementation(() => {
+          callCount++;
+          return callCount * 30000;
+        });
+
+        svc.runCliCommand = vi.fn().mockResolvedValue({
+          stdout: 'OTA update failed: [Errno 111] Connection refused\n' +
+            'Starting OTA update with /tmp/firmware.bin (2069568 bytes)',
+          stderr: '',
+          exitCode: 1,
+        });
+
+        svc.tempDir = '/tmp/test';
+        svc.cleanupTempDir = vi.fn();
+
+        try {
+          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
+          expect.fail('Should have thrown');
+        } catch (e: any) {
+          // User-facing message should mention bootloader, not raw CLI output
+          expect(e.message).toMatch(/OTA bootloader/i);
+          expect(e.message).not.toMatch(/Connection refused/);
         }
 
         vi.restoreAllMocks();

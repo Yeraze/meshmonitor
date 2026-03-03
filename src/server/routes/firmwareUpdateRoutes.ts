@@ -177,6 +177,8 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
             error: 'gatewayIp and nodeId are required to confirm preflight',
           });
         }
+        // Visibly disconnect from node before backup — stays disconnected through entire flash
+        await firmwareUpdateService.disconnectFromNode();
         await firmwareUpdateService.executeBackup(gatewayIp, nodeId);
         break;
       }
@@ -277,14 +279,45 @@ router.post('/update/cancel', (_req: Request, res: Response) => {
 });
 
 /**
- * POST /api/firmware/update/retry
- * Retry a failed flash step (re-enters flash awaiting-confirm with existing firmware)
+ * POST /api/firmware/update/done
+ * Complete a successful update: reset state, force full disconnect→reconnect
+ * so all node data is re-downloaded with the new firmware version.
  */
-router.post('/update/retry', (_req: Request, res: Response) => {
+router.post('/update/done', async (_req: Request, res: Response) => {
+  try {
+    await firmwareUpdateService.completeUpdate();
+    return res.json({ success: true, message: 'Update completed, reconnecting to node' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('[FirmwareRoutes] Error completing update:', error);
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/firmware/update/retry
+ * Retry a failed flash step — directly re-executes the flash with existing firmware
+ */
+router.post('/update/retry', async (_req: Request, res: Response) => {
   try {
     firmwareUpdateService.retryFlash();
     const status = firmwareUpdateService.getStatus();
-    return res.json({ success: true, status });
+
+    // Immediately execute the flash (don't wait for another confirm round-trip)
+    const tempDir = firmwareUpdateService.getTempDir();
+    if (!tempDir || !status.matchedFile || !status.preflightInfo) {
+      return res.status(500).json({
+        success: false,
+        error: 'Firmware files or preflight info not available. Please start a new update.',
+      });
+    }
+    const firmwarePath = path.join(tempDir, 'extracted', status.matchedFile);
+    // Fire-and-forget: flash runs async, frontend tracks via Socket.IO status events
+    firmwareUpdateService.executeFlash(status.preflightInfo.gatewayIp, firmwarePath).catch((err) => {
+      logger.error('[FirmwareRoutes] Retry flash failed:', err);
+    });
+
+    return res.json({ success: true, status: firmwareUpdateService.getStatus() });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('[FirmwareRoutes] Error retrying flash:', error);

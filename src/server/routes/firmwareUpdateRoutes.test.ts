@@ -17,6 +17,7 @@ const {
   mockCancelUpdate,
   mockListBackups,
   mockRestoreBackup,
+  mockDisconnectFromNode,
   mockExecuteBackup,
   mockExecuteDownload,
   mockExecuteExtract,
@@ -38,6 +39,7 @@ const {
   mockCancelUpdate: vi.fn(),
   mockListBackups: vi.fn(),
   mockRestoreBackup: vi.fn(),
+  mockDisconnectFromNode: vi.fn(),
   mockExecuteBackup: vi.fn(),
   mockExecuteDownload: vi.fn(),
   mockExecuteExtract: vi.fn(),
@@ -89,6 +91,7 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     cancelUpdate: mockCancelUpdate,
     listBackups: mockListBackups,
     restoreBackup: mockRestoreBackup,
+    disconnectFromNode: mockDisconnectFromNode,
     executeBackup: mockExecuteBackup,
     executeDownload: mockExecuteDownload,
     executeExtract: mockExecuteExtract,
@@ -336,6 +339,7 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      expect(mockDisconnectFromNode).toHaveBeenCalled();
       expect(mockExecuteBackup).toHaveBeenCalledWith('192.168.1.100', 'node123');
     });
 
@@ -384,18 +388,35 @@ describe('firmwareUpdateRoutes', () => {
   });
 
   describe('POST /api/firmware/update/retry', () => {
-    it('should call retryFlash and return updated status', async () => {
+    it('should call retryFlash and execute flash directly', async () => {
       mockRetryFlash.mockReturnValue(undefined);
       mockGetStatus.mockReturnValue({
         state: 'awaiting-confirm',
         step: 'flash',
         message: 'Ready to retry flash.',
+        matchedFile: 'firmware-tbeam-2.5.0.bin',
+        preflightInfo: {
+          currentVersion: '2.4.0',
+          targetVersion: '2.5.0',
+          gatewayIp: '192.168.1.100',
+          hwModel: 'T-Beam',
+          boardName: 'tbeam',
+          platform: 'esp32',
+        },
       });
+      mockGetTempDir.mockReturnValue('/tmp/firmware-test');
+      mockExecuteFlash.mockResolvedValue(undefined);
 
       const res = await request(app).post('/api/firmware/update/retry');
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(mockRetryFlash).toHaveBeenCalled();
+      // executeFlash is fire-and-forget, wait a tick for it to be called
+      await new Promise((r) => setTimeout(r, 10));
+      expect(mockExecuteFlash).toHaveBeenCalledWith(
+        '192.168.1.100',
+        '/tmp/firmware-test/extracted/firmware-tbeam-2.5.0.bin'
+      );
     });
 
     it('should return error if retryFlash throws', async () => {
