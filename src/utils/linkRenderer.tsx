@@ -11,6 +11,9 @@ const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
 export function renderMessageWithLinks(text: string): React.ReactNode[] {
   if (!text) return [];
 
+  // Replace bell character (0x07) with visible indicator
+  text = text.replace(/\x07/g, '(Alert Bell) \u{1F514} ');
+
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;

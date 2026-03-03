@@ -154,13 +154,16 @@ export class MeshtasticProtobufService {
       // Encode the Position as payload
       const payload = Position.encode(positionMessage).finish();
 
+      // For broadcast (0xFFFFFFFF), don't request response or ACK — just broadcast position
+      const isBroadcast = destination === 0xFFFFFFFF;
+
       // Create the Data message with POSITION_APP portnum
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
         portnum: PortNum.POSITION_APP,
         payload: payload,
         dest: destination,
-        wantResponse: true, // Request position exchange from destination
+        wantResponse: !isBroadcast, // Only request position exchange for unicast
         requestId: requestId
       });
 
@@ -171,7 +174,7 @@ export class MeshtasticProtobufService {
         to: destination,
         channel: channel || 0,
         decoded: dataMessage,
-        wantAck: true, // We want to know if the message was delivered
+        wantAck: !isBroadcast, // Broadcast packets don't get ACKed
         hopLimit: 3 // Default hop limit for position exchange
       });
 
