@@ -18,6 +18,7 @@ Before using OTA updates, your setup must meet **all** of the following:
 | **Firmware >= 2.7.18** | The node must already be running firmware version 2.7.18 or later. Earlier versions do not support the OTA update command. |
 | **OTA bootloader installed** | A one-time USB flash of the OTA bootloader partition is required before the first OTA update. See below. |
 | **Admin access** | Only MeshMonitor administrators can initiate firmware updates. |
+| **Docker/server deployment** | OTA updates are only available when running MeshMonitor via Docker or as a standalone server. The desktop app (Windows/macOS) does not currently support OTA updates. |
 
 ### Connection Type Limitation
 
