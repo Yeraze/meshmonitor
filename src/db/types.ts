@@ -53,6 +53,7 @@ export interface DbNode {
   firmwareVersion?: string | null;
   channel?: number | null;
   isFavorite?: boolean | null;
+  favoriteLocked?: boolean | null;
   isIgnored?: boolean | null;
   mobile?: number | null;
   rebootCount?: number | null;

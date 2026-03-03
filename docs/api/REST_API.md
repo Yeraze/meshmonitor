@@ -190,6 +190,61 @@ curl -X POST \
 - Requires firmware version >= 2.7.0 for device favorites support
 - Frontend displays sync status in browser console
 - Favorite status is local-only; devices do not broadcast favorite status in NodeInfo
+- Manual favorite/unfavorite actions set `favoriteLocked=true`, protecting the node from auto-favorite automation
+
+---
+
+### Toggle Favorite Lock
+
+#### POST /api/nodes/:nodeId/favorite-lock
+
+Toggles the favorite lock status for a node. Locked nodes are protected from auto-favorite automation changes.
+
+**Path Parameters:**
+- `nodeId` (required, string): Node ID (e.g., "!a2e4ff4c")
+
+**Request Body:**
+```json
+{
+  "locked": true
+}
+```
+
+**Parameters:**
+- `locked` (required, boolean): Whether to lock the node's favorite status from automation
+
+**Response:**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "favoriteLocked": true
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid `locked` parameter, or invalid nodeId format
+- `500`: Failed to update lock status
+
+**Example:**
+```bash
+# Lock a node (protect from auto-favorite automation)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"locked": true}' \
+  http://localhost:8080/api/nodes/!a2e4ff4c/favorite-lock
+
+# Unlock (allow automation to manage this node)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"locked": false}' \
+  http://localhost:8080/api/nodes/!a2e4ff4c/favorite-lock
+```
+
+**Notes:**
+- Locked nodes (`favoriteLocked=true`) are never modified by auto-favorite or auto-sweep
+- Unlocking a currently-favorited node adds it to the auto-favorite managed list so automation can manage it
+- Requires `nodes:write` permission
 
 ---
 

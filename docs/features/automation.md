@@ -1745,6 +1745,70 @@ The log refreshes automatically every 30 seconds.
 - [Duplicate Encryption Keys](/security-duplicate-keys) - Understanding key mismatches and how to fix them manually
 - [Security](/features/security) - Learn about node security and encryption
 
+## Auto Favorite {#auto-favorite}
+
+Automatically favorite nodes that are actively communicating with your mesh, ensuring important nodes are always pinned to the top of your node list without manual intervention.
+
+### How It Works
+
+When enabled, MeshMonitor monitors incoming NodeInfo packets and automatically favorites nodes that meet eligibility criteria based on your local node's role. A periodic sweep runs every 60 minutes to unfavorite stale nodes that haven't been heard from within the configured staleness window.
+
+### Manual vs Auto Favorites
+
+MeshMonitor distinguishes between **manual** and **auto-managed** favorites using a lock mechanism:
+
+| Action | Favorite | Locked | Meaning |
+|--------|----------|--------|---------|
+| Manual favorite (click star) | Yes | Yes | Protected from automation |
+| Manual unfavorite (click star) | No | Yes | Won't be re-auto-favorited |
+| Auto-favorite (automation) | Yes | No | Can be swept when stale |
+| Auto-sweep unfavorite | No | No | Available for re-auto-favorite |
+
+**Key behavior:**
+- Automation **never** changes manually locked favorites
+- The lock icon (🔒/🔓) appears as a small subscript on the favorite star
+- Click the lock to promote an auto-favorite to manual (locked), or release a manual favorite to automation (unlocked)
+
+### Configuration
+
+Navigate to **Settings > Automation** and find the **Auto Favorite** section.
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Enable Auto Favorite | Toggle the feature on/off | Off |
+| Stale Hours | Hours since last heard before a node is considered stale and unfavorited | 24 |
+
+### Eligibility Rules
+
+Which nodes are auto-favorited depends on your local node's role:
+
+| Local Node Role | Eligible Nodes |
+|----------------|----------------|
+| Client / Client_Mute | Direct neighbors only (hopsAway = 1) |
+| Router / Router_Client | All heard nodes (any hop count) |
+| Repeater | All heard nodes (any hop count) |
+
+Nodes must also:
+- Have a valid `longName` (not unknown/unnamed)
+- Not be the local node itself
+- Not have `favoriteLocked = true` (manually managed)
+
+### Permissions
+
+- Viewing auto-favorite status requires `settings:read` permission
+- Modifying auto-favorite settings requires `settings:write` permission
+- Toggling favorite lock requires `nodes:write` permission
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Manually favorited node was unfavorited | Check if the lock icon shows unlocked — click it to lock |
+| Node keeps getting re-favorited after manual unfavorite | Should not happen — manual unfavorite sets lock. Check if another user unlocked it |
+| Auto-favorite not triggering | Verify feature is enabled and node meets eligibility criteria for your role |
+
+---
+
 ## Ignored Nodes {#ignored-nodes}
 
 Manages the persistent ignore list for nodes you want to exclude from your mesh monitoring. Ignored nodes are hidden from the node list and remain ignored even after being pruned by inactive node cleanup — when they reappear on the mesh, their ignored status is automatically restored.

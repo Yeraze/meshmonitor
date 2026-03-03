@@ -21,6 +21,7 @@ interface AutoFavoriteStatus {
     role: number | null;
     hopsAway: number | null;
     lastHeard: number | null;
+    favoriteLocked: boolean;
   }>;
 }
 
@@ -280,6 +281,9 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                     <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
                       {t('common.hops', 'Hops')}
                     </th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                      {t('automation.auto_favorite.lock_header', 'Lock')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -288,6 +292,44 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                       <td style={{ padding: '0.5rem' }}>{node.longName || node.shortName || node.nodeId}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{ROLE_NAMES[node.role ?? 0] || 'Unknown'}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{node.hopsAway ?? '?'}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const nodeId = node.nodeId || `!${node.nodeNum.toString(16).padStart(8, '0')}`;
+                              const resp = await csrfFetch(`${baseUrl}/api/nodes/${nodeId}/favorite-lock`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ locked: true }),
+                              });
+                              if (resp.ok) {
+                                showToast(t('automation.auto_favorite.node_locked', 'Node locked from automation'), 'success');
+                                fetchData();
+                              } else {
+                                showToast(t('automation.auto_favorite.lock_error', 'Failed to lock node'), 'error');
+                              }
+                            } catch {
+                              showToast(t('automation.auto_favorite.lock_error', 'Failed to lock node'), 'error');
+                            }
+                          }}
+                          disabled={node.favoriteLocked}
+                          style={{
+                            background: 'none',
+                            border: '1px solid var(--ctp-surface2)',
+                            borderRadius: '4px',
+                            padding: '0.2rem 0.5rem',
+                            cursor: node.favoriteLocked ? 'default' : 'pointer',
+                            fontSize: '11px',
+                            color: node.favoriteLocked ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
+                            opacity: node.favoriteLocked ? 0.5 : 1,
+                          }}
+                          title={node.favoriteLocked
+                            ? t('automation.auto_favorite.already_locked', 'Already locked')
+                            : t('automation.auto_favorite.lock_tooltip', 'Lock this node to prevent automation changes')}
+                        >
+                          {node.favoriteLocked ? '🔒' : '🔓 Lock'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

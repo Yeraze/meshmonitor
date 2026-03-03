@@ -1024,8 +1024,8 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Update favorite status in database
-    databaseService.setNodeFavorite(nodeNum, isFavorite);
+    // Update favorite status in database — manual action always locks
+    databaseService.setNodeFavorite(nodeNum, isFavorite, true);
 
     // If manually unfavoriting, remove from auto-favorite tracking list
     if (!isFavorite) {
@@ -1143,6 +1143,71 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
   }
 });
 
+// Toggle favorite lock status (lock/unlock a node from auto-favorite automation)
+apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write'), (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const { locked } = req.body;
+
+    if (typeof locked !== 'boolean') {
+      const errorResponse: ApiErrorResponse = {
+        error: 'locked must be a boolean',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected boolean value for locked parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    databaseService.setNodeFavoriteLocked(nodeNum, locked);
+
+    // If unlocking, also add to auto-favorite tracking list if node is currently favorited
+    // so that automation can manage it going forward
+    if (!locked) {
+      const node = databaseService.getNode(nodeNum);
+      if (node?.isFavorite) {
+        const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+        const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
+        if (!autoFavoriteNodes.includes(nodeNum)) {
+          autoFavoriteNodes.push(nodeNum);
+          databaseService.setSetting('autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
+        }
+      }
+    }
+
+    logger.info(`${locked ? '🔒' : '🔓'} Node ${nodeNum} favorite lock set to: ${locked}`);
+
+    res.json({
+      success: true,
+      nodeNum,
+      locked,
+    });
+  } catch (error) {
+    logger.error('Error setting node favorite lock:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to set node favorite lock',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
 // Get auto-favorite status (local role, firmware, managed nodes)
 apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), (_req, res) => {
   try {
@@ -1168,6 +1233,7 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), (_req
           role: node.role,
           hopsAway: node.hopsAway,
           lastHeard: node.lastHeard,
+          favoriteLocked: Boolean(node.favoriteLocked),
         };
       })
       .filter(Boolean);

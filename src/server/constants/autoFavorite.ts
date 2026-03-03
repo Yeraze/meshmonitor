@@ -18,6 +18,7 @@ interface AutoFavoriteTarget {
   hopsAway?: number | null;
   role?: number | null;
   isFavorite?: boolean | null;
+  favoriteLocked?: boolean | null;
   viaMqtt?: boolean | null;
 }
 

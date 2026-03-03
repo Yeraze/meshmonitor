@@ -123,6 +123,7 @@ Get all nodes from the database.
     "role": 2,
     "hopsAway": 0,
     "isFavorite": 1,
+    "favoriteLocked": 1,
     "latitude": 40.7128,
     "longitude": -74.0060,
     "altitude": 10.5,
@@ -227,6 +228,7 @@ Set or remove favorite status for a node with optional device synchronization.
 - Requires firmware version >= 2.7.0 for device support
 - Database update succeeds even if device sync fails (graceful degradation)
 - Favorite status is local-only; devices do not broadcast favorites
+- Manual favorite/unfavorite actions set `favoriteLocked=true`, protecting the node from auto-favorite automation
 
 **Example:**
 ```bash
@@ -241,6 +243,55 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"isFavorite": false, "syncToDevice": false}' \
   http://localhost:3001/api/nodes/!a2e4ff4c/favorite
+```
+
+### POST /api/nodes/:nodeId/favorite-lock
+Toggle the favorite lock status for a node. Locked nodes are protected from auto-favorite automation.
+
+**Path Parameters:**
+- `nodeId` (required): Node ID (e.g., "!a2e4ff4c")
+
+**Request Body:**
+```json
+{
+  "locked": true
+}
+```
+
+**Parameters:**
+- `locked` (required, boolean): Whether to lock the node's favorite status from automation
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "favoriteLocked": true
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid `locked` parameter, or invalid nodeId format
+- `500`: Failed to update lock status
+
+**Notes:**
+- Locked nodes (`favoriteLocked=true`) are never modified by auto-favorite or auto-sweep
+- Unlocking a currently-favorited node adds it to the auto-favorite managed list
+- Requires `nodes:write` permission
+
+**Example:**
+```bash
+# Lock a node's favorite status (protect from automation)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"locked": true}' \
+  http://localhost:3001/api/nodes/!a2e4ff4c/favorite-lock
+
+# Unlock (allow automation to manage)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"locked": false}' \
+  http://localhost:3001/api/nodes/!a2e4ff4c/favorite-lock
 ```
 
 ---
