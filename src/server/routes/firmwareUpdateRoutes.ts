@@ -277,6 +277,22 @@ router.post('/update/cancel', (_req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/firmware/update/retry
+ * Retry a failed flash step (re-enters flash awaiting-confirm with existing firmware)
+ */
+router.post('/update/retry', (_req: Request, res: Response) => {
+  try {
+    firmwareUpdateService.retryFlash();
+    const status = firmwareUpdateService.getStatus();
+    return res.json({ success: true, status });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('[FirmwareRoutes] Error retrying flash:', error);
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
  * GET /api/firmware/backups
  * List config backups
  */

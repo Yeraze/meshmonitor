@@ -23,6 +23,7 @@ const {
   mockExecuteFlash,
   mockVerifyUpdate,
   mockGetTempDir,
+  mockRetryFlash,
 } = vi.hoisted(() => ({
   mockGetStatus: vi.fn(),
   mockGetChannel: vi.fn(),
@@ -43,6 +44,7 @@ const {
   mockExecuteFlash: vi.fn(),
   mockVerifyUpdate: vi.fn(),
   mockGetTempDir: vi.fn(),
+  mockRetryFlash: vi.fn(),
 }));
 
 // Mock auth middleware to inject admin user
@@ -93,6 +95,7 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     executeFlash: mockExecuteFlash,
     verifyUpdate: mockVerifyUpdate,
     getTempDir: mockGetTempDir,
+    retryFlash: (...args: unknown[]) => mockRetryFlash(...args),
   },
   FirmwareChannel: {},
 }));
@@ -377,6 +380,33 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.backups).toEqual(backups);
+    });
+  });
+
+  describe('POST /api/firmware/update/retry', () => {
+    it('should call retryFlash and return updated status', async () => {
+      mockRetryFlash.mockReturnValue(undefined);
+      mockGetStatus.mockReturnValue({
+        state: 'awaiting-confirm',
+        step: 'flash',
+        message: 'Ready to retry flash.',
+      });
+
+      const res = await request(app).post('/api/firmware/update/retry');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(mockRetryFlash).toHaveBeenCalled();
+    });
+
+    it('should return error if retryFlash throws', async () => {
+      mockRetryFlash.mockImplementation(() => {
+        throw new Error('Cannot retry');
+      });
+
+      const res = await request(app).post('/api/firmware/update/retry');
+      expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Cannot retry');
     });
   });
 
