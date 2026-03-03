@@ -2,7 +2,7 @@
 
 **Issue:** #2108
 **Date:** 2026-03-02
-**Status:** Approved
+**Status:** Implemented
 
 ## Scope
 
