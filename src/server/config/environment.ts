@@ -267,6 +267,10 @@ export interface EnvironmentConfig {
   accessLogPathProvided: boolean;
   accessLogFormat: 'combined' | 'common' | 'tiny';
   accessLogFormatProvided: boolean;
+
+  // Logging
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  logLevelProvided: boolean;
 }
 
 /**
@@ -561,6 +565,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   const accessLogFormat = parseEnum('ACCESS_LOG_FORMAT', process.env.ACCESS_LOG_FORMAT, ['combined', 'common', 'tiny'] as const, 'combined');
 
+  // Logging
+  const logLevelDefault: 'debug' | 'info' | 'warn' | 'error' = nodeEnv.value === 'development' ? 'debug' : 'info';
+  const logLevel = parseEnum('LOG_LEVEL', process.env.LOG_LEVEL?.toLowerCase(), ['debug', 'info', 'warn', 'error'] as const, logLevelDefault);
+
   return {
     // Node environment
     nodeEnv: nodeEnv.value,
@@ -667,7 +675,11 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     accessLogPath: accessLogPath.value,
     accessLogPathProvided: accessLogPath.wasProvided,
     accessLogFormat: accessLogFormat.value,
-    accessLogFormatProvided: accessLogFormat.wasProvided
+    accessLogFormatProvided: accessLogFormat.wasProvided,
+
+    // Logging
+    logLevel: logLevel.value,
+    logLevelProvided: logLevel.wasProvided
   };
 }
 
