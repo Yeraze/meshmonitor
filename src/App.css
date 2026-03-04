@@ -2523,6 +2523,12 @@ body {
   font-weight: bold;
 }
 
+.status-confirmed {
+  color: var(--ctp-blue);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
 .status-timeout {
   color: var(--ctp-peach);
   font-size: 0.8rem;
