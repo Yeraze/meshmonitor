@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-02-28T18:00:00Z",
+  "lastUpdated": "2026-03-03T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.8.0",
+      "id": "news-2026-03-03-firmware-management",
+      "title": "MeshMonitor v3.8.0 - Gateway Firmware Management",
+      "content": "MeshMonitor v3.8.0 introduces **Gateway OTA Firmware Updates**, allowing administrators to check for, download, and flash Meshtastic firmware updates directly from the MeshMonitor UI.\n\n## Gateway Firmware Management (Experimental)\n\nThis feature is still relatively experimental. Admins can now manage firmware on the directly-connected gateway node through a guided step-by-step wizard in System Settings — no SSH or CLI access required.\n\n### Key Features\n\n- **Release Channels** — Choose from Stable, Alpha, or a custom firmware URL\n- **Version Browser** — Browse recent releases with rollback support\n- **Automatic Config Backup** — Device configuration is backed up before every flash\n- **Step-by-Step Wizard** — Preflight checks, backup, download, extract, flash, and verify — each step with confirmation\n- **Live Progress** — Real-time streaming of flash output via WebSocket\n- **Background Polling** — Configurable interval (default 6 hours) checks for new releases automatically\n- **Hardware Matching** — Automatically selects the correct firmware binary for your device\n\n### Important Notes\n\n- **Docker only** — OTA firmware updates require a Docker deployment (not available in the Tauri desktop app)\n- **Wi-Fi devices only** — Your gateway node must be connected via Wi-Fi/IP (not serial or BLE)\n- **Admin access required** — Only administrators can access firmware management\n\n[Read more about Firmware OTA Updates](https://meshmonitor.org/firmware-ota-prerequisites)\n\n## Other Improvements\n\n- **Bell and position broadcast buttons** — New quick-action buttons in Channels and Messages tabs ([#2113](https://github.com/Yeraze/meshmonitor/pull/2117), [#2114](https://github.com/Yeraze/meshmonitor/pull/2117))\n- **Favorite lock protection** — Manual favorites are now protected from being overridden by auto-favorite ([#2115](https://github.com/Yeraze/meshmonitor/pull/2115))\n- **Per-node geofence cooldowns** — Geofence triggers now support per-node cooldown periods ([#2105](https://github.com/Yeraze/meshmonitor/pull/2105))\n- **NodeNum reboot fix** — Correctly handles node number changes on device reboot ([#2106](https://github.com/Yeraze/meshmonitor/pull/2106))\n- **Message status documentation** — Improved tooltip and FAQ documentation for message delivery status icons ([#2118](https://github.com/Yeraze/meshmonitor/issues/2118))\n- **Dependency updates** — Updated mysql2, maplibre-gl, pg, and other dependencies",
+      "date": "2026-03-03T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "minVersion": "3.7.3",
       "id": "news-2026-02-28-embed-maps-search",
