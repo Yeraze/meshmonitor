@@ -647,6 +647,20 @@ Nodes may also display role badges:
 
 **Tip:** Hover over any icon to see a tooltip with more details!
 
+### What do the message delivery status icons mean?
+
+When you send a message, a status icon appears next to it showing the delivery state:
+
+| Icon | Status | Meaning |
+|------|--------|---------|
+| ⏳ | **Pending** | Message is being sent, awaiting acknowledgment |
+| ✅ | **Delivered** | Message has been transmitted to the mesh network |
+| 🔒 | **Confirmed** | Message was received by the target node (direct messages only) |
+| ⏱️ | **Timeout** | No acknowledgment received after 30 seconds |
+| ❌ | **Failed** | Message failed to send due to a routing error or max retries exceeded |
+
+**Note:** Status icons only appear on messages you send. Hover over any icon to see a tooltip with more details.
+
 ---
 
 ### The map doesn't show any nodes
