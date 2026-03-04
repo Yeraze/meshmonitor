@@ -160,6 +160,14 @@ See the [SSO Setup guide](/configuration/sso) for detailed OIDC configuration.
 
 See the [Push Notifications guide](/features/notifications) for setup instructions and key generation.
 
+### Logging Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `debug` in development, `info` in production |
+
+**Note**: `LOG_LEVEL` controls log output independently of `NODE_ENV`. This lets you enable debug logging in production Docker deployments without changing rate limits, cookie warnings, or other `NODE_ENV`-dependent behavior.
+
 ### System Management Variables
 
 | Variable | Description | Default |
@@ -256,7 +264,35 @@ Always use HTTPS in production environments. See the [HTTP vs HTTPS guide](/conf
 
 ## Logging
 
-MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your deployment platform:
+MeshMonitor logs to stdout/stderr by default. Log output uses level prefixes: `[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]`.
+
+### Log Levels
+
+Control verbosity with the `LOG_LEVEL` environment variable:
+
+| Level | What is logged |
+|-------|---------------|
+| `debug` | Everything — verbose diagnostics, state changes, data inspection |
+| `info` | Informational messages, warnings, and errors |
+| `warn` | Warnings and errors only |
+| `error` | Errors only |
+
+If `LOG_LEVEL` is not set, the default depends on `NODE_ENV`:
+- `development` or `test` → `debug`
+- `production` → `info`
+
+::: tip Troubleshooting in Production
+Set `LOG_LEVEL=debug` to get verbose logging without changing `NODE_ENV`. This avoids side effects like altered rate limits or cookie warnings:
+```yaml
+environment:
+  - NODE_ENV=production
+  - LOG_LEVEL=debug
+```
+:::
+
+### Log Aggregation
+
+Configure log collection in your deployment platform:
 
 - **Docker**: Use `docker logs` or configure a logging driver
 - **Kubernetes**: Logs are available via `kubectl logs`
