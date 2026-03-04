@@ -30,10 +30,14 @@ interface TriggerUpgradeResponse {
 interface UpgradeStatus {
   upgradeId: string;
   status: 'pending' | 'backing_up' | 'downloading' | 'restarting' | 'health_check' | 'cleanup' | 'complete' | 'failed' | 'rolling_back';
-  targetVersion: string;
-  startTime: string;
-  endTime?: string;
-  message?: string;
+  toVersion: string;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  fromVersion: string;
+  progress: number;
+  currentStep: string;
+  logs: string[];
 }
 
 const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl }) => {
@@ -299,14 +303,14 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
               </span>
             </div>
             <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
-              <div>{t('auto_upgrade_test.target_version')}: {upgradeStatus.targetVersion}</div>
-              <div>{t('auto_upgrade_test.started')}: {new Date(upgradeStatus.startTime).toLocaleString()}</div>
-              {upgradeStatus.endTime && (
-                <div>{t('auto_upgrade_test.completed')}: {new Date(upgradeStatus.endTime).toLocaleString()}</div>
+              <div>{t('auto_upgrade_test.target_version')}: {upgradeStatus.toVersion}</div>
+              <div>{t('auto_upgrade_test.started')}: {new Date(upgradeStatus.startedAt).toLocaleString()}</div>
+              {upgradeStatus.completedAt && (
+                <div>{t('auto_upgrade_test.completed')}: {new Date(upgradeStatus.completedAt).toLocaleString()}</div>
               )}
-              {upgradeStatus.message && (
+              {upgradeStatus.error && (
                 <div style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
-                  {upgradeStatus.message}
+                  {upgradeStatus.error}
                 </div>
               )}
             </div>

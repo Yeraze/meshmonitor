@@ -228,10 +228,33 @@ class UpgradeService {
         return null;
       }
 
-      const row = await databaseService.miscRepo.getUpgradeById(upgradeId);
+      let row = await databaseService.miscRepo.getUpgradeById(upgradeId);
 
       if (!row) {
         return null;
+      }
+
+      // Sync terminal states from watchdog status file if DB still shows in-progress
+      const IN_PROGRESS_STATUSES = ['pending', 'backing_up', 'downloading', 'restarting', 'health_check', 'cleanup'];
+      if (IN_PROGRESS_STATUSES.includes(row.status)) {
+        try {
+          if (fs.existsSync(UPGRADE_STATUS_FILE)) {
+            const fileStatus = fs.readFileSync(UPGRADE_STATUS_FILE, 'utf-8').trim().toLowerCase();
+            if (fileStatus === 'complete' || fileStatus === 'ready') {
+              logger.info(`🔄 Syncing upgrade ${upgradeId} status from file: ${row.status} -> complete`);
+              await databaseService.miscRepo.markUpgradeComplete(row.id);
+              const updated = await databaseService.miscRepo.getUpgradeById(upgradeId);
+              if (updated) row = updated;
+            } else if (fileStatus === 'failed') {
+              logger.info(`🔄 Syncing upgrade ${upgradeId} status from file: ${row.status} -> failed`);
+              await databaseService.miscRepo.markUpgradeFailed(row.id, 'Upgrade failed (detected from watchdog status)');
+              const updated = await databaseService.miscRepo.getUpgradeById(upgradeId);
+              if (updated) row = updated;
+            }
+          }
+        } catch (fileError) {
+          logger.debug('Could not read upgrade status file:', fileError);
+        }
       }
 
       // Safely parse logs JSON

@@ -398,9 +398,9 @@ perform_upgrade() {
   fi
 
   trigger_data=$(cat "$TRIGGER_FILE")
-  version=$(echo "$trigger_data" | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
-  backup_enabled=$(echo "$trigger_data" | grep -o '"backup":[^,}]*' | cut -d':' -f2)
-  upgrade_id=$(echo "$trigger_data" | grep -o '"upgradeId":"[^"]*"' | cut -d'"' -f4)
+  version=$(echo "$trigger_data" | grep -o '"version"[ ]*:[ ]*"[^"]*"' | sed 's/.*:.*"\(.*\)"/\1/')
+  backup_enabled=$(echo "$trigger_data" | grep -o '"backup"[ ]*:[ ]*[^,}]*' | sed 's/.*:[ ]*//')
+  upgrade_id=$(echo "$trigger_data" | grep -o '"upgradeId"[ ]*:[ ]*"[^"]*"' | sed 's/.*:.*"\(.*\)"/\1/')
 
   if [ -z "$version" ]; then
     version="latest"
