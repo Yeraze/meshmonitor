@@ -5630,7 +5630,7 @@ apiRouter.post('/config/module/request', requirePermission('configuration', 'wri
 
 apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const seconds = req.body?.seconds || 5;
+    const seconds = req.body?.seconds || 10;
     await meshtasticManager.rebootDevice(seconds);
     res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
   } catch (error) {
@@ -6425,7 +6425,7 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
 // Admin reboot endpoint - sends reboot command to a node
 apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, seconds = 5 } = req.body;
+    const { nodeNum, seconds = 10 } = req.body;
 
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
 
@@ -6436,6 +6436,32 @@ apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
   } catch (error: any) {
     logger.error('Error sending reboot command:', error);
     res.status(500).json({ error: error.message || 'Failed to send reboot command' });
+  }
+});
+
+// Admin suppressed ghosts endpoint - list currently suppressed ghost nodes
+apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), (_req, res) => {
+  try {
+    const suppressed = databaseService.getSuppressedGhostNodes();
+    res.json({ success: true, suppressedNodes: suppressed });
+  } catch (error: any) {
+    logger.error('Error getting suppressed ghosts:', error);
+    res.status(500).json({ error: error.message || 'Failed to get suppressed ghosts' });
+  }
+});
+
+// Admin unsuppress ghost endpoint - manually unsuppress a ghost node
+apiRouter.delete('/admin/suppressed-ghosts/:nodeNum', requireAdmin(), (req, res) => {
+  try {
+    const nodeNum = Number(req.params.nodeNum);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'Invalid nodeNum' });
+    }
+    databaseService.unsuppressGhostNode(nodeNum);
+    res.json({ success: true, message: `Unsuppressed node !${nodeNum.toString(16).padStart(8, '0')}` });
+  } catch (error: any) {
+    logger.error('Error unsuppressing ghost:', error);
+    res.status(500).json({ error: error.message || 'Failed to unsuppress ghost' });
   }
 });
 
@@ -6768,7 +6794,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     // Create the appropriate admin message based on command type
     switch (command) {
       case 'reboot':
-        adminMessage = protobufService.createRebootMessage(params.seconds || 5, sessionPasskey || undefined);
+        adminMessage = protobufService.createRebootMessage(params.seconds || 10, sessionPasskey || undefined);
         break;
       case 'setOwner':
         if (!params.longName || !params.shortName) {

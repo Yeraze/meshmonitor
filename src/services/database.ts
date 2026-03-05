@@ -410,6 +410,10 @@ class DatabaseService {
   // to avoid duplicate notifications when node data is updated incrementally
   private newNodeNotifiedSet: Set<number> = new Set();
 
+  // Ghost node suppression: nodeNum → expiresAt timestamp
+  // Prevents resurrection of ghost nodes after reboot detection
+  private suppressedGhostNodes: Map<number, number> = new Map();
+
   /**
    * Get the Drizzle database instance for direct access if needed
    */
@@ -3172,6 +3176,49 @@ class DatabaseService {
     }
   }
 
+  // Ghost node suppression methods
+  suppressGhostNode(nodeNum: number, durationMs: number = 30 * 60 * 1000): void {
+    const expiresAt = Date.now() + durationMs;
+    this.suppressedGhostNodes.set(nodeNum, expiresAt);
+    logger.info(`👻 Suppressed ghost node !${nodeNum.toString(16).padStart(8, '0')} for ${Math.round(durationMs / 60000)} minutes`);
+  }
+
+  unsuppressGhostNode(nodeNum: number): void {
+    if (this.suppressedGhostNodes.delete(nodeNum)) {
+      logger.info(`👻 Unsuppressed ghost node !${nodeNum.toString(16).padStart(8, '0')}`);
+    }
+  }
+
+  isNodeSuppressed(nodeNum: number | undefined | null): boolean {
+    if (nodeNum === undefined || nodeNum === null) return false;
+    const expiresAt = this.suppressedGhostNodes.get(nodeNum);
+    if (expiresAt === undefined) return false;
+    if (Date.now() >= expiresAt) {
+      this.suppressedGhostNodes.delete(nodeNum);
+      logger.debug(`👻 Ghost suppression expired for !${nodeNum.toString(16).padStart(8, '0')}`);
+      return false;
+    }
+    return true;
+  }
+
+  getSuppressedGhostNodes(): Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> {
+    const now = Date.now();
+    const result: Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> = [];
+    for (const [nodeNum, expiresAt] of this.suppressedGhostNodes) {
+      if (now < expiresAt) {
+        result.push({
+          nodeNum,
+          nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`,
+          expiresAt,
+          remainingMs: expiresAt - now,
+        });
+      } else {
+        this.suppressedGhostNodes.delete(nodeNum);
+      }
+    }
+    return result;
+  }
+
   // Node operations
   upsertNode(nodeData: Partial<DbNode>): void {
     logger.debug(`DEBUG: upsertNode called with nodeData:`, JSON.stringify(nodeData));
@@ -3182,6 +3229,18 @@ class DatabaseService {
       logger.error('STACK TRACE FOR FAILED UPSERT:');
       logger.error(new Error().stack);
       return;
+    }
+
+    // Ghost suppression: block creation of suppressed nodes but allow updates to existing ones
+    if (this.isNodeSuppressed(nodeData.nodeNum)) {
+      // Check if this node already exists (in cache for Postgres/MySQL, in DB for SQLite)
+      const existsInCache = (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql')
+        ? this.nodesCache.has(nodeData.nodeNum)
+        : !!this.getNode(nodeData.nodeNum);
+      if (!existsInCache) {
+        logger.debug(`👻 Suppressed ghost node creation for !${nodeData.nodeNum.toString(16).padStart(8, '0')}`);
+        return;
+      }
     }
 
     // For PostgreSQL/MySQL, use async repo and update cache
