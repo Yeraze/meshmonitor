@@ -4234,13 +4234,17 @@ class DatabaseService {
    * Get the latest telemetry record with non-null packetTimestamp per node
    */
   async getLatestPacketTimestampsPerNodeAsync(): Promise<Array<{ nodeNum: number; timestamp: number; packetTimestamp: number }>> {
+    // Jan 1 2020 in ms — anything earlier is not a valid Meshtastic timestamp
+    // (nodes without GPS/NTP often report 0 or boot-relative seconds)
+    const MIN_VALID_TIMESTAMP_MS = 1577836800000;
+
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
       const result = await this.postgresPool.query(`
         SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
         FROM telemetry
-        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > 0
+        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1
         ORDER BY "nodeNum", "timestamp" DESC
-      `);
+      `, [MIN_VALID_TIMESTAMP_MS]);
       return result.rows.map((r: any) => ({
         nodeNum: Number(r.nodeNum),
         timestamp: Number(r.timestamp),
@@ -4255,11 +4259,11 @@ class DatabaseService {
         INNER JOIN (
           SELECT nodeNum, MAX(timestamp) as maxTs
           FROM telemetry
-          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > 0
+          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
           GROUP BY nodeNum
         ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-        WHERE t.packetTimestamp IS NOT NULL
-      `) as any;
+        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
+      `, [MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS]) as any;
       return (rows as any[]).map((r: any) => ({
         nodeNum: Number(r.nodeNum),
         timestamp: Number(r.timestamp),
@@ -4274,12 +4278,12 @@ class DatabaseService {
       INNER JOIN (
         SELECT nodeNum, MAX(timestamp) as maxTs
         FROM telemetry
-        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > 0
+        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
         GROUP BY nodeNum
       ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-      WHERE t.packetTimestamp IS NOT NULL
+      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
     `);
-    return (stmt.all() as any[]).map((r: any) => ({
+    return (stmt.all(MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS) as any[]).map((r: any) => ({
       nodeNum: Number(r.nodeNum),
       timestamp: Number(r.timestamp),
       packetTimestamp: Number(r.packetTimestamp)

@@ -670,6 +670,14 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                             <span className="detail-label">{t('security.last_heard')}:</span>
                             <span className="detail-value">{formatDate(node.lastHeard)}</span>
                           </div>
+                          <div className="detail-row">
+                            <span className="detail-label">{t('security.node_reported_time')}:</span>
+                            <span className="detail-value">
+                              {node.lastHeard && node.timeOffsetSeconds != null
+                                ? formatDate(node.lastHeard - node.timeOffsetSeconds)
+                                : t('security.unknown')}
+                            </span>
+                          </div>
                           <div className="detail-row recommendations">
                             <span className="detail-label">{t('security.recommendations')}:</span>
                             <ul>

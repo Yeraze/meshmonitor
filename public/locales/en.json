@@ -723,6 +723,7 @@
   "security.time_offset_description": "Nodes with clocks significantly out of sync with the server. This may indicate misconfigured devices or GPS issues.",
   "security.badge_time_offset": "Time Offset",
   "security.clock_offset": "Clock Offset",
+  "security.node_reported_time": "Node Reported Time",
   "security.unknown": "Unknown",
   "security.recommendation_time_offset": "This node's clock is significantly different from the server time, which can affect message ordering and duplicate detection.",
   "security.recommendation_check_gps": "Ensure the node has GPS connectivity or is configured with the correct time zone. A device restart may resolve temporary clock drift.",
