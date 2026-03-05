@@ -56,6 +56,8 @@ export const POSTGRES_SCHEMA_SQL = `
     "lastRemoteAdminCheck" BIGINT,
     "remoteAdminMetadata" TEXT,
     "lastTimeSync" BIGINT,
+    "isTimeOffsetIssue" BOOLEAN DEFAULT false,
+    "timeOffsetSeconds" INTEGER,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL
   );

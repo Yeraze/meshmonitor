@@ -698,3 +698,19 @@
     margin-left: 0;
   }
 }
+
+.stat-card.time-offset {
+  border-left: 4px solid #e67700;
+}
+
+.badge.time-offset {
+  background: #e67700;
+  color: white;
+}
+
+.time-offset-value {
+  font-family: monospace;
+  font-weight: bold;
+  color: #e67700;
+  margin-left: 0.5rem;
+}
