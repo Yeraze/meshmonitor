@@ -1612,7 +1612,7 @@ class MeshtasticManager {
           logger.debug(`📢 Skipping startup announcement - last announcement was ${Math.floor(timeSinceLastAnnouncement / 60000)} minutes ago (spam protection: ${minutesRemaining} minutes remaining)`);
         } else {
           logger.debug('📢 Sending startup announcement');
-          // Send announcement after a short delay to ensure connection is stable
+          // Delay startup announcement to allow reboot detection and ghost cleanup to complete
           setTimeout(async () => {
             if (this.isConnected) {
               try {
@@ -1621,11 +1621,12 @@ class MeshtasticManager {
                 logger.error('❌ Error in startup announcement:', error);
               }
             }
-          }, 5000);
+          }, 30000);
         }
       } else {
         // No previous announcement, send one
         logger.debug('📢 Sending first startup announcement');
+        // Delay startup announcement to allow reboot detection and ghost cleanup to complete
         setTimeout(async () => {
           if (this.isConnected) {
             try {
@@ -1634,7 +1635,7 @@ class MeshtasticManager {
               logger.error('❌ Error in startup announcement:', error);
             }
           }
-        }, 5000);
+        }, 30000);
       }
     }
   }
@@ -2909,6 +2910,9 @@ class MeshtasticManager {
           // Delete old ghost node (cascades messages, traceroutes, neighbors, telemetry)
           databaseService.deleteNode(prevNum);
           logger.info(`🗑️ Deleted old ghost node ${previousNodeId} (${prevNum})`);
+
+          // Suppress ghost resurrection — incoming mesh traffic may still reference the old nodeNum
+          databaseService.suppressGhostNode(prevNum);
 
           // Update settings to new nodeNum/nodeId — localDeviceId stays the same
           databaseService.setSetting('localNodeNum', nodeNum.toString());
@@ -10948,7 +10952,7 @@ class MeshtasticManager {
    * @param destinationNodeNum The target node number (0 or local node num for local)
    * @param seconds Number of seconds before reboot (default: 5, use negative to cancel)
    */
-  async sendRebootCommand(destinationNodeNum: number, seconds: number = 5): Promise<void> {
+  async sendRebootCommand(destinationNodeNum: number, seconds: number = 10): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -11177,7 +11181,7 @@ class MeshtasticManager {
    * Reboot the connected Meshtastic device
    * @param seconds Number of seconds to wait before rebooting
    */
-  async rebootDevice(seconds: number = 5): Promise<void> {
+  async rebootDevice(seconds: number = 10): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
