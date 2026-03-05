@@ -746,10 +746,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                   onClick={(e) => handleRelayClick(packet, e)}
                                   title={t('packet_monitor.click_for_relay')}
                                 >
-                                  {hops}
+                                  {hops}/{packet.hop_start}
                                 </span>
                               ) : (
-                                hops
+                                <>{hops}/{packet.hop_start}</>
                               )
                             ) : (
                               t('common.na')
