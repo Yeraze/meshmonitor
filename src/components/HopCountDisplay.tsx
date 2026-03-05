@@ -92,7 +92,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
         onClick={isClickable ? onClick : undefined}
         title={isClickable ? t('messages.click_for_relay') : undefined}
       >
-        ({t('messages.hops', { count: hopCount })})
+        ({t('messages.hops', { count: hopCount, hopStart: hopStart })})
       </span>
       {MqttIndicator}
     </>
