@@ -2556,8 +2556,8 @@
   "node_details.last_heard": "Last Heard",
   "node_details.public_key": "Public Key",
 
-  "messages.hops_one": "{{count}} hop",
-  "messages.hops_other": "{{count}} hops",
+  "messages.hops_one": "{{count}}/{{hopStart}} hop",
+  "messages.hops_other": "{{count}}/{{hopStart}} hops",
   "messages.signal_info": "Signal strength (SNR/RSSI) - Direct message",
   "messages.click_for_relay": "Click to see potential relay nodes",
   "messages.via_mqtt": "Received via MQTT",
