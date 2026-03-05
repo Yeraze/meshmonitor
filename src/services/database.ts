@@ -4142,8 +4142,6 @@ class DatabaseService {
    * Update the time offset detection flags for a node
    */
   updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): void {
-    const now = Math.floor(Date.now() / 1000);
-
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const cachedNode = this.nodesCache.get(nodeNum);
@@ -4154,7 +4152,7 @@ class DatabaseService {
       }
 
       // Fire-and-forget database update
-      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, now).catch(err => {
+      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds).catch(err => {
         logger.error(`Failed to update node time offset flags in database:`, err);
       });
       return;
@@ -4174,7 +4172,7 @@ class DatabaseService {
   /**
    * Update the time offset detection flags for a node (async)
    */
-  async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null, updatedAt: number): Promise<void> {
+  async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): Promise<void> {
     const now = Date.now();
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
