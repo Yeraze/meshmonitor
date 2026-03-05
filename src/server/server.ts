@@ -6440,7 +6440,7 @@ apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
 });
 
 // Admin suppressed ghosts endpoint - list currently suppressed ghost nodes
-apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), (req, res) => {
+apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), (_req, res) => {
   try {
     const suppressed = databaseService.getSuppressedGhostNodes();
     res.json({ success: true, suppressedNodes: suppressed });
