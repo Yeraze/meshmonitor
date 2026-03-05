@@ -37,7 +37,9 @@ router.get('/issues', async (_req: Request, res: Response) => {
         hwModel: node.hwModel,
         isExcessivePackets: (node as any).isExcessivePackets || false,
         packetRatePerHour: (node as any).packetRatePerHour || null,
-        packetRateLastChecked: (node as any).packetRateLastChecked || null
+        packetRateLastChecked: (node as any).packetRateLastChecked || null,
+        isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
+        timeOffsetSeconds: (node as any).timeOffsetSeconds || null
       });
     }
 
@@ -55,7 +57,9 @@ router.get('/issues', async (_req: Request, res: Response) => {
           hwModel: node.hwModel,
           isExcessivePackets: (node as any).isExcessivePackets || false,
           packetRatePerHour: (node as any).packetRatePerHour || null,
-          packetRateLastChecked: (node as any).packetRateLastChecked || null
+          packetRateLastChecked: (node as any).packetRateLastChecked || null,
+          isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
+          timeOffsetSeconds: (node as any).timeOffsetSeconds || null
         });
       } else {
         // Merge excessive packets info into existing node
@@ -66,12 +70,41 @@ router.get('/issues', async (_req: Request, res: Response) => {
       }
     }
 
+    // Add time offset nodes
+    const nodesWithTimeOffset = await databaseService.getNodesWithTimeOffsetIssuesAsync();
+
+    for (const node of nodesWithTimeOffset) {
+      if (!allIssueNodes.has(node.nodeNum)) {
+        allIssueNodes.set(node.nodeNum, {
+          nodeNum: node.nodeNum,
+          shortName: node.shortName || 'Unknown',
+          longName: node.longName || 'Unknown',
+          lastHeard: node.lastHeard,
+          keyIsLowEntropy: node.keyIsLowEntropy || false,
+          duplicateKeyDetected: node.duplicateKeyDetected || false,
+          keySecurityIssueDetails: node.keySecurityIssueDetails,
+          publicKey: node.publicKey,
+          hwModel: node.hwModel,
+          isExcessivePackets: (node as any).isExcessivePackets || false,
+          packetRatePerHour: (node as any).packetRatePerHour || null,
+          packetRateLastChecked: (node as any).packetRateLastChecked || null,
+          isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
+          timeOffsetSeconds: (node as any).timeOffsetSeconds || null
+        });
+      } else {
+        const existing = allIssueNodes.get(node.nodeNum)!;
+        existing.isTimeOffsetIssue = (node as any).isTimeOffsetIssue || false;
+        existing.timeOffsetSeconds = (node as any).timeOffsetSeconds || null;
+      }
+    }
+
     const nodesWithIssues = Array.from(allIssueNodes.values());
 
     // Categorize issues
     const lowEntropyNodes = nodesWithIssues.filter(node => node.keyIsLowEntropy);
     const duplicateKeyNodes = nodesWithIssues.filter(node => node.duplicateKeyDetected);
     const excessivePacketsNodes = nodesWithIssues.filter(node => node.isExcessivePackets);
+    const timeOffsetNodes = nodesWithIssues.filter(node => node.isTimeOffsetIssue);
 
     // Get top 5 broadcasters for spam analysis
     const topBroadcasters = await databaseService.getTopBroadcastersAsync(5);
@@ -81,6 +114,7 @@ router.get('/issues', async (_req: Request, res: Response) => {
       lowEntropyCount: lowEntropyNodes.length,
       duplicateKeyCount: duplicateKeyNodes.length,
       excessivePacketsCount: excessivePacketsNodes.length,
+      timeOffsetCount: timeOffsetNodes.length,
       nodes: nodesWithIssues,
       topBroadcasters
     });
@@ -172,6 +206,8 @@ router.get('/export', async (req: Request, res: Response) => {
           keyIsLowEntropy: node.keyIsLowEntropy,
           duplicateKeyDetected: node.duplicateKeyDetected,
           keySecurityIssueDetails: node.keySecurityIssueDetails,
+          isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
+          timeOffsetSeconds: (node as any).timeOffsetSeconds || null,
           // Include partial key hash for duplicate identification (first 16 chars only)
           keyHashPrefix: node.publicKey ? node.publicKey.substring(0, 16) : null
         }))
@@ -185,7 +221,7 @@ router.get('/export', async (req: Request, res: Response) => {
       // CSV export (default)
       const csvRows = [
         // Header row
-        'Node ID,Short Name,Long Name,Hardware Model,Last Heard,Low-Entropy Key,Duplicate Key,Issue Details,Key Hash Prefix'
+        'Node ID,Short Name,Long Name,Hardware Model,Last Heard,Low-Entropy Key,Duplicate Key,Time Offset,Offset (seconds),Issue Details,Key Hash Prefix'
       ];
 
       nodesWithIssues.forEach(node => {
@@ -196,10 +232,12 @@ router.get('/export', async (req: Request, res: Response) => {
         const lastHeard = node.lastHeard ? new Date(node.lastHeard * 1000).toISOString() : 'Never';
         const isLowEntropy = node.keyIsLowEntropy ? 'Yes' : 'No';
         const isDuplicate = node.duplicateKeyDetected ? 'Yes' : 'No';
+        const isTimeOffset = (node as any).isTimeOffsetIssue ? 'Yes' : 'No';
+        const offsetSeconds = (node as any).timeOffsetSeconds ?? '';
         const details = (node.keySecurityIssueDetails || '').replace(/,/g, ';').replace(/\n/g, ' ');
         const keyPrefix = node.publicKey ? node.publicKey.substring(0, 16) : '';
 
-        csvRows.push(`${nodeId},"${shortName}","${longName}",${hwModel},${lastHeard},${isLowEntropy},${isDuplicate},"${details}",${keyPrefix}`);
+        csvRows.push(`${nodeId},"${shortName}","${longName}",${hwModel},${lastHeard},${isLowEntropy},${isDuplicate},${isTimeOffset},${offsetSeconds},"${details}",${keyPrefix}`);
       });
 
       const csvContent = csvRows.join('\n');
@@ -239,6 +277,9 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
       keyMismatchDetected: false,
       keySecurityIssueDetails: undefined, // This will now properly clear the field
     });
+
+    // Clear time offset flags
+    databaseService.updateNodeTimeOffsetFlags(nodeNum, false, null);
 
     // Log the action
     databaseService.auditLog(

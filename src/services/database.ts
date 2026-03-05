@@ -86,6 +86,7 @@ import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgre
 import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
 import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
 import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
+import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -984,6 +985,7 @@ class DatabaseService {
     this.runCreateEmbedProfilesMigration();
     this.runCreateGeofenceCooldownsMigration();
     this.runAddFavoriteLockedMigration();
+    this.runAddTimeOffsetColumnsMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2563,6 +2565,24 @@ class DatabaseService {
     }
   }
 
+  private runAddTimeOffsetColumnsMigration(): void {
+    // Run migration 081: Add time offset detection columns to nodes
+    try {
+      const migrationKey = 'migration_081_time_offset_columns';
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 081 (add time offset columns) already completed');
+        return;
+      }
+      logger.debug('Running migration 081: Add time offset detection columns...');
+      addTimeOffsetColumnsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Add time offset columns migration completed successfully');
+    } catch (error) {
+      logger.error('Error running migration 081:', error);
+    }
+  }
+
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
     try {
@@ -4116,6 +4136,158 @@ class DatabaseService {
       return this.getNodesWithExcessivePackets();
     }
     return this.getNodesWithExcessivePackets();
+  }
+
+  /**
+   * Update the time offset detection flags for a node
+   */
+  updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): void {
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const cachedNode = this.nodesCache.get(nodeNum);
+      if (cachedNode) {
+        (cachedNode as any).isTimeOffsetIssue = isTimeOffsetIssue;
+        (cachedNode as any).timeOffsetSeconds = timeOffsetSeconds;
+        cachedNode.updatedAt = Date.now();
+      }
+
+      // Fire-and-forget database update
+      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds).catch(err => {
+        logger.error(`Failed to update node time offset flags in database:`, err);
+      });
+      return;
+    }
+
+    // SQLite: synchronous update
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET isTimeOffsetIssue = ?,
+          timeOffsetSeconds = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, Date.now(), nodeNum);
+  }
+
+  /**
+   * Update the time offset detection flags for a node (async)
+   */
+  async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): Promise<void> {
+    const now = Date.now();
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      await this.postgresPool.query(`
+        UPDATE nodes
+        SET "isTimeOffsetIssue" = $1,
+            "timeOffsetSeconds" = $2,
+            "updatedAt" = $3
+        WHERE "nodeNum" = $4
+      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
+      return;
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      await this.mysqlPool.query(`
+        UPDATE nodes
+        SET isTimeOffsetIssue = ?,
+            timeOffsetSeconds = ?,
+            updatedAt = ?
+        WHERE nodeNum = ?
+      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
+      return;
+    }
+  }
+
+  /**
+   * Get all nodes with time offset issues (for security page)
+   */
+  getNodesWithTimeOffsetIssues(): DbNode[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const result: DbNode[] = [];
+      for (const node of this.nodesCache.values()) {
+        if ((node as any).isTimeOffsetIssue) {
+          result.push(node);
+        }
+      }
+      return result;
+    }
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM nodes WHERE isTimeOffsetIssue = 1
+    `);
+    return stmt.all() as DbNode[];
+  }
+
+  /**
+   * Get all nodes with time offset issues (async)
+   */
+  async getNodesWithTimeOffsetIssuesAsync(): Promise<DbNode[]> {
+    if (this.nodesRepo) {
+      // Use cache for now since we don't have a repo method yet
+      return this.getNodesWithTimeOffsetIssues();
+    }
+    return this.getNodesWithTimeOffsetIssues();
+  }
+
+  /**
+   * Get the latest telemetry record with non-null packetTimestamp per node
+   */
+  async getLatestPacketTimestampsPerNodeAsync(): Promise<Array<{ nodeNum: number; timestamp: number; packetTimestamp: number }>> {
+    // Jan 1 2020 in ms — anything earlier is not a valid Meshtastic timestamp
+    // (nodes without GPS/NTP often report 0 or boot-relative seconds)
+    const MIN_VALID_TIMESTAMP_MS = 1577836800000;
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      const result = await this.postgresPool.query(`
+        SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
+        FROM telemetry
+        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1
+        ORDER BY "nodeNum", "timestamp" DESC
+      `, [MIN_VALID_TIMESTAMP_MS]);
+      return result.rows.map((r: any) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+        packetTimestamp: Number(r.packetTimestamp)
+      }));
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      const [rows] = await this.mysqlPool.query(`
+        SELECT t.nodeNum, t.timestamp, t.packetTimestamp
+        FROM telemetry t
+        INNER JOIN (
+          SELECT nodeNum, MAX(timestamp) as maxTs
+          FROM telemetry
+          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
+          GROUP BY nodeNum
+        ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
+        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
+      `, [MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS]) as any;
+      return (rows as any[]).map((r: any) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+        packetTimestamp: Number(r.packetTimestamp)
+      }));
+    }
+
+    // SQLite
+    const stmt = this.db.prepare(`
+      SELECT t.nodeNum, t.timestamp, t.packetTimestamp
+      FROM telemetry t
+      INNER JOIN (
+        SELECT nodeNum, MAX(timestamp) as maxTs
+        FROM telemetry
+        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
+        GROUP BY nodeNum
+      ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
+      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
+    `);
+    return (stmt.all(MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS) as any[]).map((r: any) => ({
+      nodeNum: Number(r.nodeNum),
+      timestamp: Number(r.timestamp),
+      packetTimestamp: Number(r.packetTimestamp)
+    }));
   }
 
   // Message operations
@@ -11284,6 +11456,9 @@ class DatabaseService {
       // Run migration 080: Add favoriteLocked column to nodes
       await runMigration080Postgres(client);
 
+      // Run migration 081: Add time offset detection columns to nodes
+      await runMigration081Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11435,6 +11610,9 @@ class DatabaseService {
 
       // Run migration 080: Add favoriteLocked column to nodes
       await runMigration080Mysql(pool);
+
+      // Run migration 081: Add time offset detection columns to nodes
+      await runMigration081Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
