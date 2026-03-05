@@ -19,6 +19,8 @@ interface SecurityNode {
   isExcessivePackets?: boolean;
   packetRatePerHour?: number | null;
   packetRateLastChecked?: number | null;
+  isTimeOffsetIssue?: boolean;
+  timeOffsetSeconds?: number | null;
 }
 
 interface TopBroadcaster {
@@ -33,6 +35,7 @@ interface SecurityIssuesResponse {
   lowEntropyCount: number;
   duplicateKeyCount: number;
   excessivePacketsCount: number;
+  timeOffsetCount: number;
   nodes: SecurityNode[];
   topBroadcasters: TopBroadcaster[];
 }
@@ -120,6 +123,17 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     if (diff < 3600) return t('security.minutes_ago', { count: Math.floor(diff / 60) });
     if (diff < 86400) return t('security.hours_ago', { count: Math.floor(diff / 3600) });
     return t('security.days_ago', { count: Math.floor(diff / 86400) });
+  };
+
+  const formatTimeOffset = (seconds: number | null | undefined): string => {
+    if (seconds === null || seconds === undefined) return t('security.unknown');
+    const abs = Math.abs(seconds);
+    const sign = seconds >= 0 ? '+' : '-';
+    if (abs < 60) return `${sign}${abs}s`;
+    if (abs < 3600) return `${sign}${Math.floor(abs / 60)}m ${abs % 60}s`;
+    const hours = Math.floor(abs / 3600);
+    const mins = Math.floor((abs % 3600) / 60);
+    return `${sign}${hours}h ${mins}m`;
   };
 
   const groupDuplicateKeyNodes = (nodes: SecurityNode[]): DuplicateKeyGroup[] => {
@@ -316,6 +330,10 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         <div className="stat-card excessive-packets">
           <div className="stat-value">{issues?.excessivePacketsCount || 0}</div>
           <div className="stat-label">{t('security.have_excessive_packets')}</div>
+        </div>
+        <div className="stat-card time-offset">
+          <div className="stat-value">{issues?.timeOffsetCount || 0}</div>
+          <div className="stat-label">{t('security.have_time_offset')}</div>
         </div>
       </div>
       {issues && issues.total > 0 && (issues.lowEntropyCount + issues.duplicateKeyCount > issues.total) && (
@@ -589,6 +607,74 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                             <ul>
                               <li>{t('security.recommendation_excessive_packets')}</li>
                               <li>{t('security.recommendation_investigate_spam')}</li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Time Offset Section */}
+            {issues.timeOffsetCount > 0 && (
+              <div className="issues-section">
+                <h3>{t('security.time_offset_count', { count: issues.timeOffsetCount })}</h3>
+                <p className="section-description">{t('security.time_offset_description')}</p>
+                <div className="issues-list">
+                  {issues.nodes.filter(node => node.isTimeOffsetIssue).map((node) => (
+                    <div key={node.nodeNum} className="issue-card">
+                      <div
+                        className="issue-header"
+                        onClick={() => setExpandedNode(expandedNode === node.nodeNum ? null : node.nodeNum)}
+                      >
+                        <div className="node-info">
+                          <div className="node-name">
+                            <span
+                              className="node-link"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNodeClick(node.nodeNum);
+                              }}
+                            >
+                              {node.longName || node.shortName} ({node.shortName})
+                            </span>
+                          </div>
+                          <div className="node-id">
+                            Node #{node.nodeNum.toString(16).toUpperCase()}
+                            {node.hwModel !== undefined && node.hwModel !== 0 && (
+                              <span className="hw-model"> - {getHardwareModelName(node.hwModel)}</span>
+                            )}
+                          </div>
+                          <div className="node-last-seen">
+                            {t('security.last_seen', { time: formatRelativeTime(node.lastHeard) })}
+                          </div>
+                        </div>
+                        <div className="issue-types">
+                          <span className="badge time-offset">{t('security.badge_time_offset')}</span>
+                          <span className="time-offset-value">{formatTimeOffset(node.timeOffsetSeconds)}</span>
+                        </div>
+                        <div className="expand-icon">
+                          {expandedNode === node.nodeNum ? '▼' : '▶'}
+                        </div>
+                      </div>
+
+                      {expandedNode === node.nodeNum && (
+                        <div className="issue-details">
+                          <div className="detail-row">
+                            <span className="detail-label">{t('security.clock_offset')}:</span>
+                            <span className="detail-value">{formatTimeOffset(node.timeOffsetSeconds)}</span>
+                          </div>
+                          <div className="detail-row">
+                            <span className="detail-label">{t('security.last_heard')}:</span>
+                            <span className="detail-value">{formatDate(node.lastHeard)}</span>
+                          </div>
+                          <div className="detail-row recommendations">
+                            <span className="detail-label">{t('security.recommendations')}:</span>
+                            <ul>
+                              <li>{t('security.recommendation_time_offset')}</li>
+                              <li>{t('security.recommendation_check_gps')}</li>
                             </ul>
                           </div>
                         </div>

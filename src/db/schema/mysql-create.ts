@@ -59,6 +59,8 @@ export const MYSQL_SCHEMA_SQL = `
     lastRemoteAdminCheck BIGINT,
     remoteAdminMetadata TEXT,
     lastTimeSync BIGINT,
+    isTimeOffsetIssue BOOLEAN DEFAULT false,
+    timeOffsetSeconds INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

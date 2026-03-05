@@ -5,12 +5,17 @@ import { detectDuplicateKeys, checkLowEntropyKey } from '../../services/lowEntro
 /** Threshold for excessive packets per hour (spam detection) */
 const EXCESSIVE_PACKETS_THRESHOLD = 30;
 
+/** Threshold for time offset detection (in minutes, configurable via env var) */
+const TIME_OFFSET_THRESHOLD_MINUTES = parseInt(process.env.TIME_OFFSET_THRESHOLD_MINUTES || '30', 10);
+const TIME_OFFSET_THRESHOLD_MS = TIME_OFFSET_THRESHOLD_MINUTES * 60 * 1000;
+
 /**
  * Scheduled security scanning service
  * Periodically scans all nodes for:
  * - Duplicate public keys
  * - Low-entropy keys
  * - Excessive packet rates (spam detection)
+ * - Clock time offset detection
  */
 class DuplicateKeySchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
@@ -142,6 +147,8 @@ class DuplicateKeySchedulerService {
 
         // Run spam detection (even when no duplicates found)
         await this.runSpamDetection();
+        // Run time offset detection
+        await this.runTimeOffsetDetection();
 
         // Update last scan time (Unix timestamp in seconds)
         this.lastScanTime = Math.floor(Date.now() / 1000);
@@ -197,6 +204,8 @@ class DuplicateKeySchedulerService {
 
       // Run spam detection (excessive packet rates)
       await this.runSpamDetection();
+      // Run time offset detection
+      await this.runTimeOffsetDetection();
 
       // Update last scan time (Unix timestamp in seconds)
       this.lastScanTime = Math.floor(Date.now() / 1000);
@@ -298,6 +307,70 @@ class DuplicateKeySchedulerService {
 
     } catch (error) {
       logger.error('Error during spam detection:', error);
+    }
+  }
+
+  /**
+   * Detect nodes with significant clock offset.
+   * Compares the node's self-reported packetTimestamp against the server's timestamp
+   * from the most recent telemetry record.
+   */
+  private async runTimeOffsetDetection(): Promise<void> {
+    try {
+      logger.info('🔐 Running time offset detection...');
+
+      const latestTimestamps = await databaseService.getLatestPacketTimestampsPerNodeAsync();
+      const allNodes = databaseService.getAllNodes();
+      const nodesWithTimestamps = new Set(latestTimestamps.map(t => t.nodeNum));
+
+      let flaggedCount = 0;
+      let clearedCount = 0;
+
+      for (const { nodeNum, timestamp, packetTimestamp } of latestTimestamps) {
+        const node = databaseService.getNode(nodeNum);
+        if (!node) continue;
+
+        // Both timestamp and packetTimestamp are in milliseconds
+        const offsetMs = timestamp - packetTimestamp;
+        const offsetSeconds = Math.round(offsetMs / 1000);
+        const isOffsetExcessive = Math.abs(offsetMs) > TIME_OFFSET_THRESHOLD_MS;
+        const wasOffsetIssue = (node as any).isTimeOffsetIssue;
+
+        if (isOffsetExcessive && !wasOffsetIssue) {
+          databaseService.updateNodeTimeOffsetFlags(nodeNum, true, offsetSeconds);
+          flaggedCount++;
+          logger.warn(`🕐 Time offset detected: Node ${nodeNum} (${node.shortName || 'Unknown'}) offset ${offsetSeconds}s (threshold: ${TIME_OFFSET_THRESHOLD_MINUTES}min)`);
+        } else if (!isOffsetExcessive && wasOffsetIssue) {
+          databaseService.updateNodeTimeOffsetFlags(nodeNum, false, offsetSeconds);
+          clearedCount++;
+          logger.info(`✅ Time offset cleared: Node ${nodeNum} (${node.shortName || 'Unknown'}) now at ${offsetSeconds}s`);
+        } else if (isOffsetExcessive) {
+          databaseService.updateNodeTimeOffsetFlags(nodeNum, true, offsetSeconds);
+        } else {
+          databaseService.updateNodeTimeOffsetFlags(nodeNum, false, offsetSeconds);
+        }
+      }
+
+      // Clear flags from nodes with no recent timestamp data
+      for (const node of allNodes) {
+        if ((node as any).isTimeOffsetIssue && !nodesWithTimestamps.has(node.nodeNum)) {
+          databaseService.updateNodeTimeOffsetFlags(node.nodeNum, false, null);
+          clearedCount++;
+          logger.info(`✅ Time offset cleared: Node ${node.nodeNum} (${node.shortName || 'Unknown'}) - no timestamp data`);
+        }
+      }
+
+      if (flaggedCount > 0) {
+        logger.info(`🕐 Time offset detection complete: ${flaggedCount} nodes flagged`);
+      } else {
+        logger.info(`✅ Time offset detection complete: No nodes exceeding ${TIME_OFFSET_THRESHOLD_MINUTES} minute threshold`);
+      }
+
+      if (clearedCount > 0) {
+        logger.info(`✅ Cleared time offset flags from ${clearedCount} nodes`);
+      }
+    } catch (error) {
+      logger.error('Error during time offset detection:', error);
     }
   }
 
