@@ -8373,6 +8373,11 @@ class MeshtasticManager {
         return;
       }
 
+      // Normalize message text through homoglyph mapping so triggers match regardless of
+      // whether the sender applied homoglyph optimization (Cyrillic→Latin substitution).
+      // This ensures "Москва" and "Mocквa" both match the same trigger pattern.
+      const normalizedText = applyHomoglyphOptimization(message.text);
+
       logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}: "${message.text}"`);
 
       // Try to match message against triggers
@@ -8403,7 +8408,9 @@ class MeshtasticManager {
         let extractedParams: Record<string, string> = {};
 
         // Try each pattern until one matches
-        for (const patternStr of patterns) {
+        for (const origPatternStr of patterns) {
+          // Normalize trigger pattern through homoglyph mapping to match normalized message text
+          const patternStr = applyHomoglyphOptimization(origPatternStr);
           // Extract parameters with optional regex patterns from trigger pattern
           interface ParamSpec {
             name: string;
@@ -8514,7 +8521,7 @@ class MeshtasticManager {
           }
 
           const triggerRegex = new RegExp(`^${pattern}$`, 'i');
-          const triggerMatch = message.text.match(triggerRegex);
+          const triggerMatch = normalizedText.match(triggerRegex);
 
           if (triggerMatch) {
             // Extract parameters
@@ -8522,7 +8529,7 @@ class MeshtasticManager {
             params.forEach((param, index) => {
               extractedParams[param.name] = triggerMatch[index + 1];
             });
-            matchedPattern = patternStr;
+            matchedPattern = origPatternStr;
             break; // Found a match, stop trying other patterns
           }
         }
