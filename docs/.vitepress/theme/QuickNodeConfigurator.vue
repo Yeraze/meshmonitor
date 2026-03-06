@@ -7,11 +7,21 @@
     </p>
 
     <!-- Browser Compatibility Warning -->
-    <div v-if="!browserSupport.serial && !browserSupport.bluetooth" class="warning-box">
+    <div v-if="!isSecureContext" class="warning-box">
+      <strong>Secure Context Required</strong>
+      <p>
+        Device connection requires HTTPS or localhost access. You are currently using an
+        insecure connection. The form and shareable link features still work, but to connect
+        and write to a device, access this page via <strong>https://</strong> or
+        <strong>localhost</strong>.
+      </p>
+    </div>
+    <div v-else-if="!browserSupport.serial && !browserSupport.bluetooth" class="warning-box">
       <strong>Browser Not Supported</strong>
       <p>
         Your browser does not support Web Serial or Web Bluetooth. Please use a
-        Chromium-based browser (Chrome, Edge, Brave, Opera) on desktop to use this tool.
+        Chromium-based browser (Chrome, Edge, Brave, Opera) on desktop to connect to a device.
+        The form and shareable link features still work in any browser.
       </p>
     </div>
 
@@ -299,6 +309,7 @@ const writeState = reactive({
   success: false
 })
 
+const isSecureContext = ref(false)
 const browserSupport = reactive({
   serial: false,
   bluetooth: false
@@ -351,7 +362,8 @@ async function loadMeshtasticModules() {
 
 // --- Lifecycle ---
 onMounted(async () => {
-  // Detect browser support
+  // Detect secure context and browser support
+  isSecureContext.value = typeof window !== 'undefined' && window.isSecureContext
   browserSupport.serial = typeof navigator !== 'undefined' && 'serial' in navigator
   browserSupport.bluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator
 
@@ -427,7 +439,10 @@ async function copyShareLink() {
 // --- Device connection ---
 async function connectSerial() {
   if (!TransportWebSerial || !MeshDevice) {
-    connectionState.error = 'Meshtastic Serial transport not loaded. Try refreshing the page.'
+    await loadMeshtasticModules()
+  }
+  if (!TransportWebSerial || !MeshDevice) {
+    connectionState.error = 'Failed to load Meshtastic libraries. Check browser console for details.'
     return
   }
 
@@ -435,28 +450,42 @@ async function connectSerial() {
   connectionState.transport = 'serial'
   connectionState.error = ''
 
+  let transport = null
   try {
-    const transport = await TransportWebSerial.create()
+    transport = await TransportWebSerial.create()
     device = new MeshDevice(transport)
 
-    // Wait for device to be configured (status enum 7) with 30s timeout
+    // Match the official Meshtastic web client pattern:
+    // configure() immediately, then start heartbeats during configuration
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Connection timed out after 30 seconds'))
-      }, 30000)
+        reject(new Error('Connection timed out after 60 seconds. Check that the device is powered on and not in use by another application.'))
+      }, 60000)
 
       device.events.onDeviceStatus.subscribe((status) => {
-        // DeviceStatusEnum.DeviceConfigured = 7
+        console.log('[QuickConfig] Device status:', status)
         if (status === 7) {
           clearTimeout(timeout)
+          clearInterval(heartbeatInterval)
           resolve()
         }
       })
 
-      device.configure().catch((err) => {
+      // Start configuration immediately (official client does the same)
+      device.configure().then(() => {
+        console.log('[QuickConfig] configure() resolved, sending initial heartbeat')
+        device.heartbeat().catch(err => console.warn('[QuickConfig] heartbeat failed:', err))
+      }).catch((err) => {
         clearTimeout(timeout)
         reject(err)
       })
+
+      // Send heartbeats every 5s during configuration (keeps serial connection alive)
+      const heartbeatInterval = setInterval(() => {
+        if (device) {
+          device.heartbeat().catch(err => console.warn('[QuickConfig] heartbeat failed:', err))
+        }
+      }, 5000)
     })
 
     connectionState.connected = true
@@ -464,13 +493,20 @@ async function connectSerial() {
   } catch (err) {
     connectionState.connecting = false
     connectionState.error = `Serial connection failed: ${err.message || err}`
+    // Clean up transport to release the serial port
+    if (transport) {
+      try { await transport.disconnect() } catch (e) { console.warn('[QuickConfig] cleanup error:', e) }
+    }
     device = null
   }
 }
 
 async function connectBle() {
   if (!TransportWebBluetooth || !MeshDevice) {
-    connectionState.error = 'Meshtastic Bluetooth transport not loaded. Try refreshing the page.'
+    await loadMeshtasticModules()
+  }
+  if (!TransportWebBluetooth || !MeshDevice) {
+    connectionState.error = 'Failed to load Meshtastic libraries. Check browser console for details.'
     return
   }
 
@@ -478,27 +514,38 @@ async function connectBle() {
   connectionState.transport = 'ble'
   connectionState.error = ''
 
+  let transport = null
   try {
-    const transport = await TransportWebBluetooth.create()
+    transport = await TransportWebBluetooth.create()
     device = new MeshDevice(transport)
 
-    // Wait for device to be configured (status enum 7) with 30s timeout
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Connection timed out after 30 seconds'))
-      }, 30000)
+        reject(new Error('Connection timed out after 60 seconds. Check that the device is powered on and not in use by another application.'))
+      }, 60000)
 
       device.events.onDeviceStatus.subscribe((status) => {
+        console.log('[QuickConfig] Device status:', status)
         if (status === 7) {
           clearTimeout(timeout)
+          clearInterval(heartbeatInterval)
           resolve()
         }
       })
 
-      device.configure().catch((err) => {
+      device.configure().then(() => {
+        console.log('[QuickConfig] configure() resolved, sending initial heartbeat')
+        device.heartbeat().catch(err => console.warn('[QuickConfig] heartbeat failed:', err))
+      }).catch((err) => {
         clearTimeout(timeout)
         reject(err)
       })
+
+      const heartbeatInterval = setInterval(() => {
+        if (device) {
+          device.heartbeat().catch(err => console.warn('[QuickConfig] heartbeat failed:', err))
+        }
+      }, 5000)
     })
 
     connectionState.connected = true
@@ -506,6 +553,9 @@ async function connectBle() {
   } catch (err) {
     connectionState.connecting = false
     connectionState.error = `Bluetooth connection failed: ${err.message || err}`
+    if (transport) {
+      try { await transport.disconnect() } catch (e) { console.warn('[QuickConfig] cleanup error:', e) }
+    }
     device = null
   }
 }
@@ -525,6 +575,10 @@ async function confirmWrite() {
   writeState.success = false
 
   try {
+    // Begin edit transaction — batches all config changes so the device
+    // only reboots once after commitEditSettings(), not after each call.
+    await device.beginEditSettings()
+
     // Set owner (user info)
     const userPayload = {
       longName: config.longName || undefined,
@@ -583,6 +637,9 @@ async function confirmWrite() {
       })
       await device.setChannel(channel)
     }
+
+    // Commit all changes — device reboots once with all settings applied
+    await device.commitEditSettings()
 
     writeState.status = 'Configuration written successfully. The device will reboot.'
     writeState.success = true

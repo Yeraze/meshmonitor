@@ -5,17 +5,48 @@ export default defineConfig({
   vite: {
     server: {
       host: '0.0.0.0',
-      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online'],
+      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online', 'meshdocs.yeraze.online'],
       cors: true
     },
-    build: {
-      rollupOptions: {
-        // @meshtastic/core bundles tslog which statically imports Node.js modules (os, path, util).
-        // These are never actually called in the browser - our component uses dynamic imports
-        // that only execute client-side. Mark them as external so Rollup doesn't try to bundle them.
-        external: ['os', 'path', 'util']
+    // @meshtastic/core bundles tslog which statically imports Node.js modules (os, path, util)
+    // and references the `process` global. Provide browser-safe shims via a Vite plugin.
+    plugins: [{
+      name: 'meshtastic-node-shim',
+      enforce: 'pre',
+      resolveId(id) {
+        if (id === 'os' || id === 'path' || id === 'util' || id === 'process') {
+          return `\0node-shim:${id}`
+        }
+      },
+      load(id) {
+        if (id === '\0node-shim:process') {
+          return `const process = { env: {}, argv: [], version: '', pid: 0, platform: 'browser', stdout: undefined, stderr: undefined, cwd: () => '/', hrtime: () => [0, 0], nextTick: (cb) => setTimeout(cb, 0) };
+export default process;
+export { process };`
+        }
+        if (id.startsWith('\0node-shim:')) {
+          return `export default {};
+export const hostname = () => 'browser';
+export const normalize = (p) => p;
+export const join = (...args) => args.join('/');
+export const formatWithOptions = () => '';
+export const types = {};`
+        }
+      },
+      transform(code, id) {
+        // Inject Node.js global shims into modules that reference them
+        if (id.includes('node_modules/@meshtastic') || id.includes('node_modules/tslog')) {
+          let prepend = ''
+          if (/\bprocess\b/.test(code) && !code.includes('import process')) {
+            prepend += `import process from 'process';\n`
+          }
+          if (/\bBuffer\b/.test(code) && !code.includes('const Buffer')) {
+            prepend += `const Buffer = { isBuffer: () => false, from: (x) => new Uint8Array(x) };\n`
+          }
+          if (prepend) return prepend + code
+        }
       }
-    }
+    }]
   },
   title: "MeshMonitor",
   description: "Web application for monitoring Meshtastic nodes over IP",
