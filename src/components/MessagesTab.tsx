@@ -286,6 +286,37 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
 
+  // State for "Jump to Bottom" button
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  // Handle scroll to detect if user has scrolled up
+  const handleScroll = useCallback(() => {
+    const container = dmMessagesContainerRef.current;
+    if (!container) return;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    setShowJumpToBottom(!isNearBottom);
+  }, [dmMessagesContainerRef]);
+
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    const container = dmMessagesContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [dmMessagesContainerRef]);
+
+  // Attach scroll listener
+  useEffect(() => {
+    const container = dmMessagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
   // Fetch homoglyph optimization setting
   useEffect(() => {
     const fetchHomoglyphSetting = async () => {
@@ -1152,7 +1183,40 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             )}
 
             {/* Messages Container */}
-            <div className="messages-container" ref={dmMessagesContainerRef}>
+            <div className="messages-container" ref={dmMessagesContainerRef} style={{ position: 'relative' }}>
+              {showJumpToBottom && (
+                <div
+                  style={{
+                    position: 'sticky',
+                    top: '0.5rem',
+                    zIndex: 10,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <button
+                    className="jump-to-bottom-btn"
+                    onClick={scrollToBottom}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: 'var(--ctp-blue)',
+                      border: 'none',
+                      borderRadius: '20px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--ctp-base)',
+                      fontWeight: 'bold',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+                  </button>
+                </div>
+              )}
               {selectedDMMessages.length > 0 ? (
                 selectedDMMessages.map((msg, index) => {
                   const isTraceroute = msg.portnum === 70;
