@@ -263,6 +263,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
           setLocalLocalStatsIntervalMinutes(statsInterval);
           setInitialLocalStatsIntervalMinutes(statsInterval);
+
+          // Load node dimming initial values from server
+          const dimmingEnabled = settings.nodeDimmingEnabled === '1' || settings.nodeDimmingEnabled === 'true';
+          const dimmingStartHours = parseFloat(settings.nodeDimmingStartHours) || nodeDimmingStartHours;
+          const dimmingMinOpacity = parseFloat(settings.nodeDimmingMinOpacity) || nodeDimmingMinOpacity;
+          setInitialNodeDimmingSettings({
+            enabled: dimmingEnabled,
+            startHours: dimmingStartHours,
+            minOpacity: dimmingMinOpacity,
+          });
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -316,6 +326,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Instead, we'll track initial packet monitor values separately
   const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
   const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
+  const [initialNodeDimmingSettings, setInitialNodeDimmingSettings] = useState({
+    enabled: nodeDimmingEnabled,
+    startHours: nodeDimmingStartHours,
+    minOpacity: nodeDimmingMinOpacity,
+  });
 
   useEffect(() => {
     const changed =
@@ -347,7 +362,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
-      localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes;
+      localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
+      nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
+      nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
+      nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity;
     setHasChanges(changed);
   }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme, localNodeHopsCalculation, localDashboardSortOption,
       maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
@@ -355,7 +373,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
-      localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes]);
+      localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings]);
 
   // Reset local state to current saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -388,13 +407,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
     setLocalLocalStatsIntervalMinutes(initialLocalStatsIntervalMinutes);
+    setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
+    setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
+    setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
       dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
-      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes]);
+      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
+      setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -470,6 +493,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
       setInitialHomoglyphEnabled(localHomoglyphEnabled);
       setInitialLocalStatsIntervalMinutes(localLocalStatsIntervalMinutes);
+      setInitialNodeDimmingSettings({
+        enabled: nodeDimmingEnabled,
+        startHours: nodeDimmingStartHours,
+        minOpacity: nodeDimmingMinOpacity,
+      });
 
       showToast(t('settings.saved_success'), 'success');
       setHasChanges(false);
@@ -493,7 +521,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
       onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
-      onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t]);
+      onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity]);
 
   // Register with SaveBar
   useSaveBar({
