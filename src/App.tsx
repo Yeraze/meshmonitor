@@ -1719,6 +1719,63 @@ function App() {
     }
   }, [selectedChannel, activeTab]);
 
+  // Auto-scroll to bottom when new messages arrive and user is already at the bottom
+  const prevChannelMsgCountRef = useRef<Record<number, number>>({});
+  useEffect(() => {
+    const currentMessages = channelMessages[selectedChannel] || [];
+    const prevCount = prevChannelMsgCountRef.current[selectedChannel] || 0;
+    const currentCount = currentMessages.length;
+
+    if (currentCount > prevCount && prevCount > 0) {
+      // New messages arrived — auto-scroll if user was near the bottom
+      const container = channelMessagesContainerRef.current;
+      if (container) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+        if (isNearBottom) {
+          setTimeout(() => {
+            if (channelMessagesContainerRef.current) {
+              channelMessagesContainerRef.current.scrollTo({
+                top: channelMessagesContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+              });
+            }
+          }, 50);
+        }
+      }
+    }
+
+    prevChannelMsgCountRef.current = {
+      ...prevChannelMsgCountRef.current,
+      [selectedChannel]: currentCount
+    };
+  }, [channelMessages, selectedChannel]);
+
+  // Auto-scroll DMs to bottom when new messages arrive and user is at the bottom
+  const prevDMMsgCountRef = useRef(0);
+  useEffect(() => {
+    const currentCount = messages.length;
+    const prevCount = prevDMMsgCountRef.current;
+
+    if (currentCount > prevCount && prevCount > 0 && activeTab === 'messages') {
+      const container = dmMessagesContainerRef.current;
+      if (container) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+        if (isNearBottom) {
+          setTimeout(() => {
+            if (dmMessagesContainerRef.current) {
+              dmMessagesContainerRef.current.scrollTo({
+                top: dmMessagesContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+              });
+            }
+          }, 50);
+        }
+      }
+    }
+
+    prevDMMsgCountRef.current = currentCount;
+  }, [messages, activeTab]);
+
   // Auto-load more channel messages if container doesn't have a scrollbar
   // This fixes the case where a channel has no recent messages and infinite scroll never triggers
   useEffect(() => {
