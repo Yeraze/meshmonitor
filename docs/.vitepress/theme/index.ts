@@ -4,6 +4,7 @@ import StarUs from './StarUs.vue'
 import DockerComposeConfigurator from './DockerComposeConfigurator.vue'
 import UserScriptsGallery from './UserScriptsGallery.vue'
 import HeroCarousel from './HeroCarousel.vue'
+import QuickNodeConfigurator from './QuickNodeConfigurator.vue'
 
 export default {
   extends: DefaultTheme,
@@ -16,5 +17,6 @@ export default {
   enhanceApp({ app }) {
     app.component('DockerComposeConfigurator', DockerComposeConfigurator)
     app.component('UserScriptsGallery', UserScriptsGallery)
+    app.component('QuickNodeConfigurator', QuickNodeConfigurator)
   }
 }

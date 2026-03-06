@@ -23,6 +23,13 @@ export default defineConfig({
       { text: '🌐 Site Gallery', link: '/site-gallery' },
       { text: '📜 User Scripts', link: '/user-scripts' },
       {
+        text: 'Tools',
+        items: [
+          { text: 'Docker Compose Configurator', link: '/configurator' },
+          { text: 'Quick Node Configurator', link: '/quick-config' },
+        ]
+      },
+      {
         text: 'Docs',
         items: [
           { text: 'Features', link: '/features/settings' },
@@ -66,6 +73,7 @@ export default defineConfig({
             { text: 'Overview', link: '/configuration/' },
             { text: '🖥️ Desktop App', link: '/configuration/desktop' },
             { text: '⚡ Docker Compose Configurator', link: '/configurator' },
+            { text: '🔧 Quick Node Configurator', link: '/quick-config' },
             { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
             { text: 'BLE Bridge', link: '/configuration/ble-bridge' },
             { text: 'Serial Bridge', link: '/configuration/serial-bridge' },
