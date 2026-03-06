@@ -77,8 +77,13 @@
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
+    "@bufbuild/protobuf": "^2.11.0",
     "@eslint/compat": "^2.0.2",
     "@eslint/js": "^10.0.1",
+    "@meshtastic/core": "^2.6.7",
+    "@meshtastic/protobufs": "^2.7.18",
+    "@meshtastic/transport-web-bluetooth": "^0.1.5",
+    "@meshtastic/transport-web-serial": "^0.2.5",
     "@tanstack/react-query-devtools": "^5.91.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
