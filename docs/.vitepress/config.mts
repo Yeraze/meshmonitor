@@ -7,6 +7,14 @@ export default defineConfig({
       host: '0.0.0.0',
       allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online'],
       cors: true
+    },
+    build: {
+      rollupOptions: {
+        // @meshtastic/core bundles tslog which statically imports Node.js modules (os, path, util).
+        // These are never actually called in the browser - our component uses dynamic imports
+        // that only execute client-side. Mark them as external so Rollup doesn't try to bundle them.
+        external: ['os', 'path', 'util']
+      }
     }
   },
   title: "MeshMonitor",
