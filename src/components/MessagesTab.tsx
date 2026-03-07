@@ -179,6 +179,7 @@ export interface MessagesTabProps {
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
   toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
+  toggleFavoriteLock: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
 
   // Modal controls
   setShowTracerouteHistoryModal: (show: boolean) => void;
@@ -257,6 +258,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   getRecentTraceroute,
   toggleIgnored,
   toggleFavorite,
+  toggleFavoriteLock,
   setShowTracerouteHistoryModal,
   setShowPurgeDataModal,
   setShowPositionOverrideModal,
@@ -1103,6 +1105,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               }}
                             >
                               {selectedNode.isFavorite ? `⭐ ${t('nodes.remove_favorite')}` : `☆ ${t('nodes.add_favorite')}`}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={(e) => {
+                                toggleFavoriteLock(selectedNode, e);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              {selectedNode.favoriteLocked ? `🔓 ${t('nodes.unlock_favorite', 'Remove Favorite Lock')}` : `🔒 ${t('nodes.lock_favorite', 'Set Favorite Lock')}`}
                             </button>
                             <button
                               className="actions-menu-item"
