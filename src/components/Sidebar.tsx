@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  Map, MessageSquare, Mail, Search, Info, LayoutDashboard, Radio,
+  Settings, Bot, Satellite, Bell, Users, Zap, ClipboardList, Shield,
+} from 'lucide-react';
 import './Sidebar.css';
 import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
@@ -100,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const NavItem: React.FC<{
     id: TabType;
     label: string;
-    icon: string;
+    icon: React.ReactNode;
     onClick?: () => void;
     showNotification?: boolean;
   }> = ({ id, label, icon, onClick, showNotification }) => {
@@ -151,12 +155,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       <nav className="sidebar-nav">
         <SectionHeader title={t('nav.section_main')} />
         <div className="sidebar-section">
-          <NavItem id="nodes" label={t('nav.nodes')} icon="🗺️" />
+          <NavItem id="nodes" label={t('nav.nodes')} icon={<Map size={20} />} />
           {hasAnyChannelPermission() && (
             <NavItem
               id="channels"
               label={t('nav.channels')}
-              icon="💬"
+              icon={<MessageSquare size={20} />}
               onClick={onChannelsClick}
               showNotification={
                 unreadCountsData?.channels
@@ -169,7 +173,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <NavItem
               id="messages"
               label={t('nav.messages')}
-              icon="✉️"
+              icon={<Mail size={20} />}
               onClick={onMessagesClick}
               showNotification={
                 unreadCountsData?.directMessages
@@ -187,34 +191,34 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
               title={isCollapsed ? t('nav.search') : ''}
             >
-              <span className="nav-icon">🔍</span>
+              <span className="nav-icon"><Search size={20} /></span>
               {!isCollapsed && <span className="nav-label">{t('nav.search')}</span>}
             </button>
           )}
           {hasPermission('info', 'read') && (
-            <NavItem id="info" label={t('nav.info')} icon="ℹ️" />
+            <NavItem id="info" label={t('nav.info')} icon={<Info size={20} />} />
           )}
           {hasPermission('dashboard', 'read') && (
-            <NavItem id="dashboard" label={t('nav.dashboard')} icon="📊" />
+            <NavItem id="dashboard" label={t('nav.dashboard')} icon={<LayoutDashboard size={20} />} />
           )}
           {meshcoreEnabled && hasPermission('meshcore', 'read') && (
-            <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon="📶" />
+            <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon={<Radio size={20} />} />
           )}
         </div>
 
         <SectionHeader title={t('nav.section_configuration')} />
         <div className="sidebar-section">
           {hasPermission('settings', 'read') && (
-            <NavItem id="settings" label={t('nav.settings')} icon="⚙️" />
+            <NavItem id="settings" label={t('nav.settings')} icon={<Settings size={20} />} />
           )}
           {hasPermission('automation', 'read') && (
-            <NavItem id="automation" label={t('nav.automation')} icon="🤖" />
+            <NavItem id="automation" label={t('nav.automation')} icon={<Bot size={20} />} />
           )}
           {hasPermission('configuration', 'read') && (
-            <NavItem id="configuration" label={t('nav.device')} icon="📡" />
+            <NavItem id="configuration" label={t('nav.device')} icon={<Satellite size={20} />} />
           )}
           {isAuthenticated && (
-            <NavItem id="notifications" label={t('nav.notifications')} icon="🔔" />
+            <NavItem id="notifications" label={t('nav.notifications')} icon={<Bell size={20} />} />
           )}
         </div>
 
@@ -224,15 +228,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="sidebar-section">
               {isAdmin && (
                 <>
-                  <NavItem id="users" label={t('nav.users')} icon="👥" />
-                  <NavItem id="admin" label={t('nav.admin_commands')} icon="⚡" />
+                  <NavItem id="users" label={t('nav.users')} icon={<Users size={20} />} />
+                  <NavItem id="admin" label={t('nav.admin_commands')} icon={<Zap size={20} />} />
                 </>
               )}
               {hasPermission('audit', 'read') && (
-                <NavItem id="audit" label={t('nav.audit_log')} icon="📋" />
+                <NavItem id="audit" label={t('nav.audit_log')} icon={<ClipboardList size={20} />} />
               )}
               {hasPermission('security', 'read') && (
-                <NavItem id="security" label={t('nav.security')} icon="🔐" />
+                <NavItem id="security" label={t('nav.security')} icon={<Shield size={20} />} />
               )}
             </div>
           </>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/settings.css';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { TemperatureUnit } from '../utils/temperature';
 import { SortField, SortDirection } from '../types/ui';

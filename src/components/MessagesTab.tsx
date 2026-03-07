@@ -6,6 +6,7 @@
  */
 
 import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
+import '../styles/messages.css';
 import { useResizable } from '../hooks/useResizable';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
