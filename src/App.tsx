@@ -65,6 +65,7 @@ import { MapProvider, useMapContext } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
 import { UIProvider, useUI } from './contexts/UIContext';
+import { AutomationProvider, useAutomation } from './contexts/AutomationContext';
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
@@ -77,6 +78,7 @@ import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
 import { SaveBarProvider } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Track pending favorite requests outside component to persist across remounts
 // Maps nodeNum -> expected isFavorite state
@@ -494,93 +496,56 @@ function App() {
     setSystemStatus,
     nodePopup,
     setNodePopup,
-    autoAckEnabled,
-    setAutoAckEnabled,
-    autoAckRegex,
-    setAutoAckRegex,
-    autoAckMessage,
-    setAutoAckMessage,
-    autoAckMessageDirect,
-    setAutoAckMessageDirect,
-    autoAckChannels,
-    setAutoAckChannels,
-    autoAckDirectMessages,
-    setAutoAckDirectMessages,
-    autoAckUseDM,
-    setAutoAckUseDM,
-    autoAckSkipIncompleteNodes,
-    setAutoAckSkipIncompleteNodes,
-    autoAckTapbackEnabled,
-    setAutoAckTapbackEnabled,
-    autoAckReplyEnabled,
-    setAutoAckReplyEnabled,
-    autoAckDirectEnabled,
-    setAutoAckDirectEnabled,
-    autoAckDirectTapbackEnabled,
-    setAutoAckDirectTapbackEnabled,
-    autoAckDirectReplyEnabled,
-    setAutoAckDirectReplyEnabled,
-    autoAckMultihopEnabled,
-    setAutoAckMultihopEnabled,
-    autoAckMultihopTapbackEnabled,
-    setAutoAckMultihopTapbackEnabled,
-    autoAckMultihopReplyEnabled,
-    setAutoAckMultihopReplyEnabled,
-    autoAckTestMessages,
-    setAutoAckTestMessages,
-    autoAnnounceEnabled,
-    setAutoAnnounceEnabled,
-    autoAnnounceIntervalHours,
-    setAutoAnnounceIntervalHours,
-    autoAnnounceMessage,
-    setAutoAnnounceMessage,
-    autoAnnounceChannelIndexes,
-    setAutoAnnounceChannelIndexes,
-    autoAnnounceOnStart,
-    setAutoAnnounceOnStart,
-    autoAnnounceUseSchedule,
-    setAutoAnnounceUseSchedule,
-    autoAnnounceSchedule,
-    setAutoAnnounceSchedule,
-    autoAnnounceNodeInfoEnabled,
-    setAutoAnnounceNodeInfoEnabled,
-    autoAnnounceNodeInfoChannels,
-    setAutoAnnounceNodeInfoChannels,
-    autoAnnounceNodeInfoDelaySeconds,
-    setAutoAnnounceNodeInfoDelaySeconds,
-    autoWelcomeEnabled,
-    setAutoWelcomeEnabled,
-    autoWelcomeMessage,
-    setAutoWelcomeMessage,
-    autoWelcomeTarget,
-    setAutoWelcomeTarget,
-    autoWelcomeWaitForName,
-    setAutoWelcomeWaitForName,
-    autoWelcomeMaxHops,
-    setAutoWelcomeMaxHops,
-    autoResponderEnabled,
-    setAutoResponderEnabled,
-    autoResponderTriggers,
-    setAutoResponderTriggers,
-    autoResponderSkipIncompleteNodes,
-    setAutoResponderSkipIncompleteNodes,
-    autoKeyManagementEnabled,
-    setAutoKeyManagementEnabled,
-    autoKeyManagementIntervalMinutes,
-    setAutoKeyManagementIntervalMinutes,
-    autoKeyManagementMaxExchanges,
-    setAutoKeyManagementMaxExchanges,
-    autoKeyManagementAutoPurge,
-    setAutoKeyManagementAutoPurge,
-    timerTriggers,
-    setTimerTriggers,
-    geofenceTriggers,
-    setGeofenceTriggers,
     showNodeFilterPopup,
     setShowNodeFilterPopup,
     showIncompleteNodes,
     setShowIncompleteNodes,
   } = useUI();
+
+  // Automation context
+  const {
+    autoAckEnabled, setAutoAckEnabled,
+    autoAckRegex, setAutoAckRegex,
+    autoAckMessage, setAutoAckMessage,
+    autoAckMessageDirect, setAutoAckMessageDirect,
+    autoAckChannels, setAutoAckChannels,
+    autoAckDirectMessages, setAutoAckDirectMessages,
+    autoAckUseDM, setAutoAckUseDM,
+    autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckTapbackEnabled, setAutoAckTapbackEnabled,
+    autoAckReplyEnabled, setAutoAckReplyEnabled,
+    autoAckDirectEnabled, setAutoAckDirectEnabled,
+    autoAckDirectTapbackEnabled, setAutoAckDirectTapbackEnabled,
+    autoAckDirectReplyEnabled, setAutoAckDirectReplyEnabled,
+    autoAckMultihopEnabled, setAutoAckMultihopEnabled,
+    autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled,
+    autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled,
+    autoAckTestMessages, setAutoAckTestMessages,
+    autoAnnounceEnabled, setAutoAnnounceEnabled,
+    autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
+    autoAnnounceMessage, setAutoAnnounceMessage,
+    autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceOnStart, setAutoAnnounceOnStart,
+    autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
+    autoAnnounceSchedule, setAutoAnnounceSchedule,
+    autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled,
+    autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels,
+    autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds,
+    autoWelcomeEnabled, setAutoWelcomeEnabled,
+    autoWelcomeMessage, setAutoWelcomeMessage,
+    autoWelcomeTarget, setAutoWelcomeTarget,
+    autoWelcomeWaitForName, setAutoWelcomeWaitForName,
+    autoWelcomeMaxHops, setAutoWelcomeMaxHops,
+    autoResponderEnabled, setAutoResponderEnabled,
+    autoResponderTriggers, setAutoResponderTriggers,
+    autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoKeyManagementEnabled, setAutoKeyManagementEnabled,
+    autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
+    autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
+    autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
+    timerTriggers, setTimerTriggers,
+    geofenceTriggers, setGeofenceTriggers,
+  } = useAutomation();
 
   // Check tab permissions and redirect if unauthorized
   // This prevents users from accessing protected tabs via direct URL navigation
@@ -4580,6 +4545,7 @@ function App() {
         )}
 
         {activeTab === 'nodes' && (
+          <ErrorBoundary fallbackTitle="Nodes failed to load">
           <NodesTab
             processedNodes={processedNodes}
             shouldShowData={shouldShowData}
@@ -4598,8 +4564,10 @@ function App() {
             connectionStatus={connectionStatus}
             tracerouteLoading={tracerouteLoading}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'channels' && (
+          <ErrorBoundary fallbackTitle="Channels failed to load">
           <ChannelsTab
             channels={channels}
             channelDatabaseEntries={channelDatabaseEntries}
@@ -4643,8 +4611,10 @@ function App() {
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'messages' && (
+          <ErrorBoundary fallbackTitle="Messages failed to load">
           <MessagesTab
             processedNodes={processedNodes}
             nodes={nodes}
@@ -4720,8 +4690,10 @@ function App() {
               }
             }}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'info' && (
+          <ErrorBoundary fallbackTitle="Info failed to load">
           <InfoTab
             connectionStatus={connectionStatus}
             nodeAddress={nodeAddress}
@@ -4741,8 +4713,10 @@ function App() {
             dateFormat={dateFormat}
             isAuthenticated={authStatus?.authenticated || false}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'dashboard' && (
+          <ErrorBoundary fallbackTitle="Dashboard failed to load">
           <Dashboard
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
@@ -4751,8 +4725,10 @@ function App() {
             currentNodeId={currentNodeId}
             canEdit={hasPermission('dashboard', 'write')}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'settings' && (
+          <ErrorBoundary fallbackTitle="Settings failed to load">
           <SettingsTab
             maxNodeAgeHours={maxNodeAgeHours}
             inactiveNodeThresholdHours={inactiveNodeThresholdHours}
@@ -4802,8 +4778,10 @@ function App() {
             onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
             onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'automation' && (
+          <ErrorBoundary fallbackTitle="Automation failed to load">
           <div className="settings-tab">
             <SectionNav
               items={[
@@ -4979,8 +4957,10 @@ function App() {
               </div>
             </div>
           </div>
+          </ErrorBoundary>
         )}
         {activeTab === 'configuration' && (
+          <ErrorBoundary fallbackTitle="Configuration failed to load">
           <ConfigurationTab
             baseUrl={baseUrl}
             nodes={nodes}
@@ -4990,22 +4970,27 @@ function App() {
             onChannelsUpdated={() => fetchChannels()}
             refreshTrigger={configRefreshTrigger}
           />
+          </ErrorBoundary>
         )}
-        {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
-        {activeTab === 'users' && <UsersTab />}
-        {activeTab === 'audit' && <AuditLogTab />}
+        {activeTab === 'notifications' && <ErrorBoundary fallbackTitle="Notifications failed to load"><NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} /></ErrorBoundary>}
+        {activeTab === 'users' && <ErrorBoundary fallbackTitle="Users failed to load"><UsersTab /></ErrorBoundary>}
+        {activeTab === 'audit' && <ErrorBoundary fallbackTitle="Audit Log failed to load"><AuditLogTab /></ErrorBoundary>}
         {activeTab === 'admin' && authStatus?.user?.isAdmin && (
+          <ErrorBoundary fallbackTitle="Admin Commands failed to load">
           <AdminCommandsTab
             nodes={nodes}
             currentNodeId={currentNodeId}
             channels={channels}
             onChannelsUpdated={fetchChannels}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'security' && (
+          <ErrorBoundary fallbackTitle="Security failed to load">
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
+          </ErrorBoundary>
         )}
-        {activeTab === 'meshcore' && <MeshCoreTab baseUrl={baseUrl} />}
+        {activeTab === 'meshcore' && <ErrorBoundary fallbackTitle="MeshCore failed to load"><MeshCoreTab baseUrl={baseUrl} /></ErrorBoundary>}
       </main>
 
       {/* Node Popup */}
@@ -5109,11 +5094,13 @@ const AppWithToast = () => {
         <DataProvider>
           <MessagingProvider baseUrl={initialBaseUrl}>
             <UIProvider>
+              <AutomationProvider>
               <ToastProvider>
                 <SaveBarProvider>
                   <App />
                 </SaveBarProvider>
               </ToastProvider>
+              </AutomationProvider>
             </UIProvider>
           </MessagingProvider>
         </DataProvider>
