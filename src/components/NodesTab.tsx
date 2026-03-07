@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/nodes.css';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';

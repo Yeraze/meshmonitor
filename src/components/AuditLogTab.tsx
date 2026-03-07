@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/audit.css';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';

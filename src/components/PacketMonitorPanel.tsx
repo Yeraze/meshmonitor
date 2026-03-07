@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { Filter, Trash2, ExternalLink, Download, Pause, Play } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { clearPackets, exportPackets } from '../services/packetApi';
@@ -455,10 +456,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               title={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
               aria-label={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
             >
-              {autoScroll ? '⏸️' : '▶️'}
+              {autoScroll ? <Pause size={14} /> : <Play size={14} />}
             </button>
             <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')} aria-label={t('packet_monitor.toggle_filters')}>
-              🔍
+              <Filter size={14} />
             </button>
             <button
               className="control-btn"
@@ -467,15 +468,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               aria-label={t('packet_monitor.export_title')}
               disabled={total === 0}
             >
-              📥
+              <Download size={14} />
             </button>
             {authStatus?.user?.isAdmin && (
               <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')} aria-label={t('packet_monitor.clear_all')}>
-                🗑️
+                <Trash2 size={14} />
               </button>
             )}
             <button className="control-btn" onClick={handlePopout} title={t('packet_monitor.popout')} aria-label={t('packet_monitor.popout')}>
-              ⧉
+              <ExternalLink size={14} />
             </button>
             <button className="close-btn" onClick={onClose} aria-label={t('common.close')}>
               ×

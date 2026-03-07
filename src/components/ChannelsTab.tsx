@@ -7,6 +7,7 @@
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/messages.css';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
