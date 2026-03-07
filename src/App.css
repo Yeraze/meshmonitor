@@ -4923,6 +4923,22 @@ body {
   min-height: 200px;
 }
 
+@media (min-width: 900px) {
+  .settings-content {
+    column-count: 2;
+    column-gap: 1.5rem;
+  }
+
+  .settings-section {
+    margin-bottom: 1.5rem;
+    break-inside: avoid;
+    background: var(--ctp-base);
+    border: 1px solid var(--ctp-surface1);
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+}
+
 .settings-section {
   margin-bottom: 2rem;
 }
