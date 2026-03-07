@@ -193,13 +193,13 @@ class MeshCoreBridge:
         if self.meshcore:
             try:
                 self.meshcore.stop_auto_message_fetching()
-            except Exception:
-                pass
+            except Exception as e:
+                print(json.dumps({'type': 'event', 'event_type': 'debug', 'data': {'message': f'Error stopping auto-fetch: {e}'}}), flush=True)
             for sub in self.subscriptions:
                 try:
                     self.meshcore.unsubscribe(sub)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(json.dumps({'type': 'event', 'event_type': 'debug', 'data': {'message': f'Error unsubscribing: {e}'}}), flush=True)
         self.subscriptions = []
 
     async def cmd_disconnect(self, cmd_id: str) -> dict:

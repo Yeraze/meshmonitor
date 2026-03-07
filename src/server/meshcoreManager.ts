@@ -447,7 +447,9 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Handle unsolicited events from the Python bridge (incoming messages)
+   * Handle unsolicited events from the Python bridge (incoming messages).
+   * sender_timestamp from the MeshCore protocol is Unix epoch in seconds;
+   * we convert to milliseconds for JS Date compatibility.
    */
   private handleBridgeEvent(event: { event_type: string; data: any }): void {
     const { event_type, data } = event;
@@ -466,7 +468,7 @@ class MeshCoreManager extends EventEmitter {
     } else if (event_type === 'channel_message') {
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        fromPublicKey: `channel-${data.channel_idx}`,
+        fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
@@ -477,6 +479,11 @@ class MeshCoreManager extends EventEmitter {
     } else {
       logger.debug(`[MeshCore] Unknown bridge event: ${event_type}`);
     }
+  }
+
+  /** Generate a synthetic public key identifier for channel messages */
+  private static channelPublicKey(channelIdx: number): string {
+    return `channel-${channelIdx}`;
   }
 
   // ============ Direct Serial Methods (for Repeater) ============
