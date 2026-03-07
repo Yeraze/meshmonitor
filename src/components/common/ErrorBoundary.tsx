@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo } from 'react';
+import { logger } from '../../utils/logger';
 import './ErrorBoundary.css';
 
 interface ErrorBoundaryProps {
@@ -22,7 +23,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    logger.error('ErrorBoundary caught an error:', error, errorInfo);
   }
 
   handleRetry = () => {
