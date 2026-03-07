@@ -1233,15 +1233,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         >
                           {node.isFavorite ? '⭐' : '☆'}
                         </button>
-                        {node.isFavorite && toggleFavoriteLock && (
+                        {node.isFavorite && node.favoriteLocked && toggleFavoriteLock && (
                           <button
                             className="favorite-lock"
-                            title={node.favoriteLocked
-                              ? t('nodes.unlock_favorite', 'Unlock — let automation manage this favorite')
-                              : t('nodes.lock_favorite', 'Lock — prevent automation from changing this favorite')}
+                            title={t('nodes.unlock_favorite', 'Unlock — let automation manage this favorite')}
                             onClick={handleLockClick(node)}
                           >
-                            {node.favoriteLocked ? '🔒' : '🔓'}
+                            🔒
                           </button>
                         )}
                       </span>
