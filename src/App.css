@@ -3537,7 +3537,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 500;
   background: var(--ctp-surface0);
 }
 

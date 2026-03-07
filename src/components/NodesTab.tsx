@@ -32,6 +32,8 @@ import { getPacketStats } from '../services/packetApi';
 
 import { VectorTileLayer } from './VectorTileLayer';
 import { MapNodePopupContent } from './MapNodePopupContent';
+import api from '../services/api';
+import type { MeshCoreMapNode } from '../contexts/MapContext';
 
 /**
  * Spiderfier initialization constants
@@ -217,6 +219,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     showMeshCoreNodes,
     setShowMeshCoreNodes,
     meshCoreNodes,
+    setMeshCoreNodes,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -302,6 +305,42 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
     setIsTouchDevice(checkTouch());
   }, []);
+
+  // Auto-fetch MeshCore contacts for map display when MeshCore is enabled
+  // This ensures nodes appear on the Nodes page even if MeshCoreTab hasn't been visited
+  const LOCAL_NODE_OFFSET = 0.0005; // ~55m, matches MeshCoreTab
+  useEffect(() => {
+    if (!authStatus?.meshcoreEnabled || meshCoreNodes.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/meshcore/contacts`, { credentials: 'include' });
+        const data = await response.json();
+        if (!cancelled && data.success && data.data) {
+          const mapNodes: MeshCoreMapNode[] = data.data
+            .filter((c: any) => c.latitude && c.longitude)
+            .map((c: any) => {
+              const isLocalNode = c.advName?.includes('(local)');
+              return {
+                publicKey: c.publicKey,
+                name: c.advName || c.name || 'Unknown',
+                latitude: c.latitude + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
+                longitude: c.longitude + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
+                rssi: c.rssi,
+                snr: c.snr,
+                lastSeen: c.lastSeen,
+                advType: c.advType,
+              };
+            });
+          setMeshCoreNodes(mapNodes);
+        }
+      } catch {
+        // MeshCore not connected or unavailable — no action needed
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authStatus?.meshcoreEnabled, meshCoreNodes.length, setMeshCoreNodes]);
 
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
@@ -1379,8 +1418,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}
         style={showPacketMonitor && canViewPacketMonitor ? { height: `calc(100% - ${packetMonitorHeight}px)` } : undefined}
       >
-        {(shouldShowData() || meshCoreNodes.length > 0) ? (
-          <>
+        {(shouldShowData() || meshCoreNodes.length > 0) && (
             <div
               ref={mapControlsRef}
               className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
@@ -1554,6 +1592,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 </>
               )}
             </div>
+        )}
             <MapContainer
               center={getMapCenter()}
               zoom={mapZoom}
@@ -2001,11 +2040,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 );
               })()}
           </MapContainer>
+          {(shouldShowData() || meshCoreNodes.length > 0) && (
           <TilesetSelector
             selectedTilesetId={activeTileset}
             onTilesetChange={setMapTileset}
           />
-          {nodesWithPosition.length === 0 && meshCoreNodes.filter(n => n.latitude && n.longitude).length === 0 && (
+          )}
+          {(shouldShowData() || meshCoreNodes.length > 0) && nodesWithPosition.length === 0 && meshCoreNodes.filter(n => n.latitude && n.longitude).length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">
                 <h3>📍 No Node Locations</h3>
@@ -2014,15 +2055,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
           )}
-          </>
-        ) : (
+          {!(shouldShowData() || meshCoreNodes.length > 0) && (
           <div className="map-placeholder">
             <div className="placeholder-content">
               <h3>Map View</h3>
               <p>Connect to a Meshtastic or MeshCore device to view node locations on the map</p>
             </div>
           </div>
-        )}
+          )}
       </div>
 
       {/* Packet Monitor Panel */}

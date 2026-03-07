@@ -129,8 +129,8 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
   // Track whether env defaults have been loaded into the form
   const defaultsLoaded = useRef(false);
 
-  // Fetch status
-  const fetchStatus = useCallback(async () => {
+  // Fetch status - returns whether device is connected
+  const fetchStatus = useCallback(async (): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${baseUrl}/api/meshcore/status`);
       const data = await response.json();
@@ -148,10 +148,12 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
           if (env.tcpPort) setTcpPort(String(env.tcpPort));
           defaultsLoaded.current = true;
         }
+        return data.data.connected ?? false;
       }
     } catch (err) {
       console.error('Failed to fetch status:', err);
     }
+    return false;
   }, [baseUrl, csrfFetch]);
 
   // Fetch nodes
@@ -219,7 +221,14 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
 
   // Initial load and polling
   useEffect(() => {
-    fetchStatus();
+    // Fetch status first, then immediately fetch data if already connected
+    fetchStatus().then((isConnected) => {
+      if (isConnected) {
+        fetchNodes();
+        fetchContacts();
+        fetchMessages();
+      }
+    });
     const interval = setInterval(() => {
       fetchStatus();
       // Use ref to check connected state without causing re-renders
