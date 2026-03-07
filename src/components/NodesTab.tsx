@@ -32,8 +32,9 @@ import { getPacketStats } from '../services/packetApi';
 
 import { VectorTileLayer } from './VectorTileLayer';
 import { MapNodePopupContent } from './MapNodePopupContent';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
-import type { MeshCoreMapNode } from '../contexts/MapContext';
+import { mapContactsToNodes } from '../utils/meshcoreHelpers';
 
 /**
  * Spiderfier initialization constants
@@ -287,6 +288,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useSettings();
 
   const { hasPermission, authStatus } = useAuth();
+  const csrfFetch = useCsrfFetch();
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -308,39 +310,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Auto-fetch MeshCore contacts for map display when MeshCore is enabled
   // This ensures nodes appear on the Nodes page even if MeshCoreTab hasn't been visited
-  const LOCAL_NODE_OFFSET = 0.0005; // ~55m, matches MeshCoreTab
   useEffect(() => {
     if (!authStatus?.meshcoreEnabled || meshCoreNodes.length > 0) return;
     let cancelled = false;
     (async () => {
       try {
         const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/meshcore/contacts`, { credentials: 'include' });
+        const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
         const data = await response.json();
         if (!cancelled && data.success && data.data) {
-          const mapNodes: MeshCoreMapNode[] = data.data
-            .filter((c: any) => c.latitude && c.longitude)
-            .map((c: any) => {
-              const isLocalNode = c.advName?.includes('(local)');
-              return {
-                publicKey: c.publicKey,
-                name: c.advName || c.name || 'Unknown',
-                latitude: c.latitude + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
-                longitude: c.longitude + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
-                rssi: c.rssi,
-                snr: c.snr,
-                lastSeen: c.lastSeen,
-                advType: c.advType,
-              };
-            });
-          setMeshCoreNodes(mapNodes);
+          setMeshCoreNodes(mapContactsToNodes(data.data));
         }
       } catch {
         // MeshCore not connected or unavailable — no action needed
       }
     })();
     return () => { cancelled = true; };
-  }, [authStatus?.meshcoreEnabled, meshCoreNodes.length, setMeshCoreNodes]);
+  }, [authStatus?.meshcoreEnabled, meshCoreNodes.length, setMeshCoreNodes, csrfFetch]);
 
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
