@@ -12,7 +12,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
-import { useMapContext, MeshCoreMapNode } from '../../contexts/MapContext';
+import { useMapContext } from '../../contexts/MapContext';
+import { MeshCoreContact, mapContactsToNodes } from '../../utils/meshcoreHelpers';
 import './MeshCoreTab.css';
 
 // Types
@@ -30,18 +31,6 @@ interface MeshCoreNode {
   snr?: number;
   batteryMv?: number;
   uptimeSecs?: number;
-}
-
-interface MeshCoreContact {
-  publicKey: string;
-  advName?: string;
-  name?: string;
-  lastSeen?: number;
-  rssi?: number;
-  snr?: number;
-  advType?: number;
-  latitude?: number;
-  longitude?: number;
 }
 
 interface MeshCoreMessage {
@@ -89,9 +78,6 @@ const DEVICE_TYPE_KEYS: Record<number, string> = {
   3: 'meshcore.device_type.room_server',
 };
 
-// Small offset to prevent exact overlap on map when local node is at same location as contacts
-const LOCAL_NODE_OFFSET = 0.0005; // ~55m
-
 interface MeshCoreTabProps {
   baseUrl: string;
 }
@@ -129,8 +115,8 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
   // Track whether env defaults have been loaded into the form
   const defaultsLoaded = useRef(false);
 
-  // Fetch status
-  const fetchStatus = useCallback(async () => {
+  // Fetch status - returns whether device is connected
+  const fetchStatus = useCallback(async (): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${baseUrl}/api/meshcore/status`);
       const data = await response.json();
@@ -148,10 +134,12 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
           if (env.tcpPort) setTcpPort(String(env.tcpPort));
           defaultsLoaded.current = true;
         }
+        return data.data.connected ?? false;
       }
     } catch (err) {
       console.error('Failed to fetch status:', err);
     }
+    return false;
   }, [baseUrl, csrfFetch]);
 
   // Fetch nodes
@@ -174,24 +162,7 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
       const data = await response.json();
       if (data.success) {
         setContacts(data.data);
-
-        // Update map nodes - apply offset for local node to prevent overlap
-        const mapNodes: MeshCoreMapNode[] = data.data
-          .filter((c: MeshCoreContact) => c.latitude && c.longitude)
-          .map((c: MeshCoreContact) => {
-            const isLocalNode = c.advName?.includes('(local)');
-            return {
-              publicKey: c.publicKey,
-              name: c.advName || c.name || 'Unknown',
-              latitude: c.latitude! + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
-              longitude: c.longitude! + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
-              rssi: c.rssi,
-              snr: c.snr,
-              lastSeen: c.lastSeen,
-              advType: c.advType,
-            };
-          });
-        setMeshCoreNodes(mapNodes);
+        setMeshCoreNodes(mapContactsToNodes(data.data));
       }
     } catch (err) {
       console.error('Failed to fetch contacts:', err);
@@ -219,7 +190,14 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
 
   // Initial load and polling
   useEffect(() => {
-    fetchStatus();
+    // Fetch status first, then immediately fetch data if already connected
+    fetchStatus().then((isConnected) => {
+      if (isConnected) {
+        fetchNodes();
+        fetchContacts();
+        fetchMessages();
+      }
+    });
     const interval = setInterval(() => {
       fetchStatus();
       // Use ref to check connected state without causing re-renders
