@@ -4399,6 +4399,9 @@ function App() {
 
   return (
     <div className="app">
+      <a href="#main-content" className="skip-to-content">
+        Skip to content
+      </a>
       <AdvancedNodeFilterPopup
         isOpen={showNodeFilterPopup}
         nodeFilters={nodeFilters}
@@ -4560,7 +4563,7 @@ function App() {
         onSearchClick={() => setIsSearchOpen(true)}
       />
 
-      <main className="app-main">
+      <main id="main-content" className="app-main">
         {error && (
           <div className="error-panel">
             <h3>Connection Error</h3>

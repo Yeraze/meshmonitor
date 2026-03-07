@@ -542,6 +542,26 @@ body {
   padding-bottom: env(safe-area-inset-bottom); /* Account for iPhone home indicator */
 }
 
+/* Skip to content link - hidden until focused via keyboard */
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
+  padding: 0.5rem 1rem;
+  border-radius: 0 0 8px 8px;
+  z-index: 100000;
+  text-decoration: none;
+  font-weight: 600;
+  transition: top 0.2s ease;
+}
+
+.skip-to-content:focus {
+  top: 0;
+}
+
 .app {
   min-height: 100vh;
   min-height: 100dvh; /* Use dynamic viewport height for mobile browsers */
