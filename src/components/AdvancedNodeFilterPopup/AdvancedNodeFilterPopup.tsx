@@ -28,6 +28,7 @@ const DEFAULT_FILTERS: NodeFilters = {
   showRemoteAdmin: false,
   showUnknown: false,
   showIgnored: false,
+  showFavoriteLocked: false,
   deviceRoles: [],
   channels: [],
 };
@@ -276,6 +277,18 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
               <span className="filter-label-with-icon">
                 <span className="filter-icon">🚫</span>
                 <span>{t('node_filter.ignored', 'Show ignored nodes')}</span>
+              </span>
+            </label>
+
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={nodeFilters.showFavoriteLocked}
+                onChange={e => onNodeFiltersChange({ ...nodeFilters, showFavoriteLocked: e.target.checked })}
+              />
+              <span className="filter-label-with-icon">
+                <span className="filter-icon">🔒</span>
+                <span>{t('node_filter.favorite_locked', 'Favorite locked')}</span>
               </span>
             </label>
           </div>

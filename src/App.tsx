@@ -174,6 +174,9 @@ function App() {
         if (parsed.showIgnored === undefined) {
           parsed.showIgnored = false;
         }
+        if (parsed.showFavoriteLocked === undefined) {
+          parsed.showFavoriteLocked = false;
+        }
         return parsed;
       } catch (e) {
         logger.error('Failed to parse saved node filters:', e);
@@ -192,6 +195,7 @@ function App() {
       showRemoteAdmin: false,
       showUnknown: false,
       showIgnored: false,
+      showFavoriteLocked: false,
       deviceRoles: [] as number[], // Empty array means show all roles
       channels: [] as number[],
     };
@@ -3919,6 +3923,13 @@ function App() {
         return false;
       }
 
+      // Favorite locked filter
+      if (nodeFilters.showFavoriteLocked) {
+        const matches = !!node.favoriteLocked;
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
@@ -4696,6 +4707,7 @@ function App() {
             onFocusMessageHandled={() => setFocusMessageId(null)}
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
+            toggleFavoriteLock={toggleFavoriteLock}
             handleShowOnMap={(nodeId: string) => {
               const node = nodes.find(n => n.user?.id === nodeId);
               if (node?.position?.latitude != null && node?.position?.longitude != null) {
