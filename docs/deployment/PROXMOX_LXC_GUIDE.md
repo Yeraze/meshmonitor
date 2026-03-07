@@ -522,6 +522,24 @@ ip addr show
 ip route show
 ```
 
+#### Native Module Crash on Startup
+
+If MeshMonitor fails to start after a fresh deployment with errors related to `better-sqlite3`, the pre-built native binary may not be compatible with your LXC container's platform. Rebuild it from source:
+
+```bash
+systemctl stop meshmonitor
+apt update
+apt install -y build-essential python3 make g++
+cd /opt/meshmonitor
+npm rebuild better-sqlite3 --build-from-source
+systemctl start meshmonitor
+```
+
+Verify it's running:
+```bash
+systemctl status meshmonitor --no-pager -l
+```
+
 #### Database Locked Errors
 
 **Check for stale processes**:
