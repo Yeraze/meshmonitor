@@ -420,10 +420,16 @@ class MeshCoreManager extends EventEmitter {
    */
   private handleBridgeResponse(line: string): void {
     try {
-      const response: BridgeResponse = JSON.parse(line);
+      const response = JSON.parse(line);
 
       // Check for ready message (already handled in startBridge)
-      if ((response as any).type === 'ready') {
+      if (response.type === 'ready') {
+        return;
+      }
+
+      // Handle unsolicited events pushed by the bridge (incoming messages)
+      if (response.type === 'event') {
+        this.handleBridgeEvent(response);
         return;
       }
 
@@ -437,6 +443,39 @@ class MeshCoreManager extends EventEmitter {
       }
     } catch (error) {
       logger.error(`[MeshCore] Invalid bridge response: ${line}`);
+    }
+  }
+
+  /**
+   * Handle unsolicited events from the Python bridge (incoming messages)
+   */
+  private handleBridgeEvent(event: { event_type: string; data: any }): void {
+    const { event_type, data } = event;
+
+    if (event_type === 'contact_message') {
+      const message: MeshCoreMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        fromPublicKey: data.pubkey_prefix,
+        text: data.text,
+        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        snr: data.snr,
+      };
+      this.addMessage(message);
+      this.emit('message', message);
+      logger.info(`[MeshCore] Contact message from ${data.pubkey_prefix}: ${data.text}`);
+    } else if (event_type === 'channel_message') {
+      const message: MeshCoreMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        fromPublicKey: `channel-${data.channel_idx}`,
+        text: data.text,
+        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        snr: data.snr,
+      };
+      this.addMessage(message);
+      this.emit('message', message);
+      logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+    } else {
+      logger.debug(`[MeshCore] Unknown bridge event: ${event_type}`);
     }
   }
 
