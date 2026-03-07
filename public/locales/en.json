@@ -1284,6 +1284,12 @@
   "api_token.usage_instruction": "Include the token in the Authorization header:",
   "api_token.view_api_docs": "View API Documentation",
 
+  "settings.units_and_formats": "Units & Formats",
+  "settings.sorting": "Sorting",
+  "settings.appearance": "Appearance",
+  "settings.map": "Map",
+  "settings.telemetry": "Telemetry",
+  "settings.notifications_and_security": "Notifications & Security",
   "settings.node_display": "Node Display",
   "settings.max_node_age_label": "Maximum Age of Active Nodes (hours)",
   "settings.max_node_age_description": "Nodes older than this will not appear in the Node List",
