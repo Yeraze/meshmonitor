@@ -86,6 +86,7 @@ export interface NodeFilters {
   showRemoteAdmin: boolean;
   showUnknown: boolean;
   showIgnored: boolean;
+  showFavoriteLocked: boolean;
   deviceRoles: number[];
   channels: number[];
 }
