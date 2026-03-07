@@ -238,7 +238,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
   };
 
   return (
-    <div className="settings-section">
+    <div id="settings-auto-upgrade" className="settings-section">
       <h3>{t('auto_upgrade_test.title')}</h3>
       <p className="setting-description">
         {t('auto_upgrade_test.description_intro')}
