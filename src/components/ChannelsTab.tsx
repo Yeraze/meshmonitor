@@ -743,6 +743,7 @@ export default function ChannelsTab({
                                             className="resend-button"
                                             onClick={() => handleResendMessage(msg)}
                                             title={t('channels.resend_button_title')}
+                                            aria-label={t('channels.resend_button_title')}
                                           >
                                             ↻
                                           </button>
@@ -754,6 +755,7 @@ export default function ChannelsTab({
                                               channelMessageInputRef.current?.focus();
                                             }}
                                             title={t('channels.reply_button_title')}
+                                            aria-label={t('channels.reply_button_title')}
                                           >
                                             ↩
                                           </button>
@@ -765,6 +767,7 @@ export default function ChannelsTab({
                                           className="emoji-picker-button"
                                           onClick={() => setEmojiPickerMessage(msg)}
                                           title={t('channels.emoji_button_title')}
+                                          aria-label={t('channels.emoji_button_title')}
                                         >
                                           😄
                                         </button>
@@ -773,6 +776,7 @@ export default function ChannelsTab({
                                         className="delete-button"
                                         onClick={() => handleDeleteMessage(msg)}
                                         title={t('channels.delete_button_title')}
+                                        aria-label={t('channels.delete_button_title')}
                                       >
                                         🗑️
                                       </button>
@@ -839,6 +843,7 @@ export default function ChannelsTab({
                             className="reply-indicator-close"
                             onClick={() => setReplyingTo(null)}
                             title={t('channels.cancel_reply_title')}
+                            aria-label={t('channels.cancel_reply_title')}
                           >
                             ×
                           </button>
@@ -876,6 +881,7 @@ export default function ChannelsTab({
                             onClick={() => { onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
                             className="send-btn channel-action-btn"
                             title="Send alert bell"
+                            aria-label="Send alert bell"
                           >
                             🔔
                           </button>
@@ -883,6 +889,7 @@ export default function ChannelsTab({
                             onClick={() => onSendPosition?.(selectedChannel)}
                             className="send-btn channel-action-btn"
                             title="Send position"
+                            aria-label="Send position"
                           >
                             📍
                           </button>
@@ -927,7 +934,7 @@ export default function ChannelsTab({
               <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                   <h2>{t('channels.info_modal_title')}</h2>
-                  <button className="modal-close" onClick={handleCloseModal}>
+                  <button className="modal-close" onClick={handleCloseModal} aria-label={t('common.close')}>
                     ×
                   </button>
                 </div>
@@ -1085,7 +1092,7 @@ export default function ChannelsTab({
           <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t('channels.virtual_channel_info_title', 'Virtual Channel Info')}</h2>
-              <button className="modal-close" onClick={() => setVirtualChannelInfoModal(null)}>
+              <button className="modal-close" onClick={() => setVirtualChannelInfoModal(null)} aria-label={t('common.close')}>
                 ×
               </button>
             </div>

@@ -748,6 +748,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     className="filter-clear-btn"
                     onClick={() => setMessagesNodeFilter('')}
                     title={t('common.clear_filter')}
+                    aria-label={t('common.clear_filter')}
                     type="button"
                   >
                     ✕
@@ -1331,6 +1332,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                   className="resend-button"
                                   onClick={() => handleResendMessage(msg)}
                                   title={t('messages.resend_button_title')}
+                                  aria-label={t('messages.resend_button_title')}
                                 >
                                   ↻
                                 </button>
@@ -1342,6 +1344,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                     dmMessageInputRef.current?.focus();
                                   }}
                                   title={t('messages.reply_button_title')}
+                                  aria-label={t('messages.reply_button_title')}
                                 >
                                   ↩
                                 </button>
@@ -1350,6 +1353,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 className="emoji-picker-button"
                                 onClick={() => setEmojiPickerMessage(msg)}
                                 title={t('messages.emoji_button_title')}
+                                aria-label={t('messages.emoji_button_title')}
                               >
                                 😄
                               </button>
@@ -1357,6 +1361,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 className="delete-button"
                                 onClick={() => handleDeleteMessage(msg)}
                                 title={t('messages.delete_button_title')}
+                                aria-label={t('messages.delete_button_title')}
                               >
                                 🗑️
                               </button>
@@ -1435,7 +1440,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="reply-indicator-label">{t('messages.replying_to', { name: getNodeName(replyingTo.from) })}</div>
                       <div className="reply-indicator-text">{replyingTo.text}</div>
                     </div>
-                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title={t('messages.cancel_reply_title')}>
+                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title={t('messages.cancel_reply_title')} aria-label={t('messages.cancel_reply_title')}>
                       ×
                     </button>
                   </div>
@@ -1464,6 +1469,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       onClick={() => { onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
                       className="send-btn channel-action-btn"
                       title="Send alert bell"
+                      aria-label="Send alert bell"
                     >
                       🔔
                     </button>
@@ -1471,6 +1477,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       onClick={() => handleSendDirectMessage(selectedDMNode)}
                       disabled={!newMessage.trim()}
                       className="send-btn"
+                      aria-label={t('common.send')}
                     >
                       →
                     </button>
@@ -1740,6 +1747,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       }}
                       disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
                       title={t('messages.exchange_position_channel')}
+                      aria-label={t('messages.exchange_position_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
                         backgroundColor: 'var(--ctp-blue)',
