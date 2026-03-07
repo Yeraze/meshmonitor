@@ -834,7 +834,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
-      <div className="settings-content">
+      <div className="settings-content settings-multi-column">
         <div id="settings-language" className="settings-section">
           <h3>{t('settings.language')}</h3>
           <div className="setting-item">

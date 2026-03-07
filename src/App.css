@@ -4924,12 +4924,12 @@ body {
 }
 
 @media (min-width: 900px) {
-  .settings-content {
+  .settings-content.settings-multi-column {
     column-count: 2;
     column-gap: 1.5rem;
   }
 
-  .settings-section {
+  .settings-content.settings-multi-column .settings-section {
     margin-bottom: 1.5rem;
     break-inside: avoid;
     background: var(--ctp-base);
@@ -4953,6 +4953,14 @@ body {
   margin: 0 0 1.5rem 0;
   padding-bottom: 0.75rem;
   border-bottom: 2px solid var(--ctp-surface2);
+}
+
+.automation-section-header {
+  margin-top: 1.5rem;
+}
+
+.settings-content > div:first-child .automation-section-header {
+  margin-top: 0;
 }
 
 .setting-item {
