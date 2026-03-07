@@ -424,7 +424,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       <div className="packet-monitor-panel">
         <div className="packet-monitor-header">
           <h3>{t('packet_monitor.title')}</h3>
-          <button className="close-btn" onClick={onClose}>
+          <button className="close-btn" onClick={onClose} aria-label={t('common.close')}>
             ×
           </button>
         </div>
@@ -453,29 +453,31 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               className="control-btn"
               onClick={() => setAutoScroll(!autoScroll)}
               title={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
+              aria-label={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
             >
               {autoScroll ? '⏸️' : '▶️'}
             </button>
-            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')}>
+            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')} aria-label={t('packet_monitor.toggle_filters')}>
               🔍
             </button>
             <button
               className="control-btn"
               onClick={handleExport}
               title={t('packet_monitor.export_title')}
+              aria-label={t('packet_monitor.export_title')}
               disabled={total === 0}
             >
               📥
             </button>
             {authStatus?.user?.isAdmin && (
-              <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')}>
+              <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')} aria-label={t('packet_monitor.clear_all')}>
                 🗑️
               </button>
             )}
-            <button className="control-btn" onClick={handlePopout} title={t('packet_monitor.popout')}>
+            <button className="control-btn" onClick={handlePopout} title={t('packet_monitor.popout')} aria-label={t('packet_monitor.popout')}>
               ⧉
             </button>
-            <button className="close-btn" onClick={onClose}>
+            <button className="close-btn" onClick={onClose} aria-label={t('common.close')}>
               ×
             </button>
           </div>
@@ -833,7 +835,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             <div className="packet-detail-content" onClick={e => e.stopPropagation()}>
               <div className="packet-detail-header">
                 <h4>{t('packet_monitor.details_title')}</h4>
-                <button className="close-btn" onClick={() => setSelectedPacket(null)}>
+                <button className="close-btn" onClick={() => setSelectedPacket(null)} aria-label={t('common.close')}>
                   ×
                 </button>
               </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import Modal from '../common/Modal';
 import './PositionOverrideModal.css';
 
 interface Node {
@@ -98,7 +99,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
     setError(null);
   }, [enabled, latitude, longitude, altitude, isPrivate]);
 
-  if (!isOpen || !selectedNode) return null;
+  if (!selectedNode) return null;
 
   const nodeName = selectedNode.user?.id ? getNodeName(selectedNode.user.id) : '';
 
@@ -170,155 +171,150 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content position-override-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{t('position_override.title', { nodeName })}</h2>
-          <button className="modal-close" onClick={onClose} disabled={saving}>
-            &times;
-          </button>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('position_override.title', { nodeName })}
+      className="position-override-modal"
+    >
+      {loading ? (
+        <div className="position-override-loading">
+          {t('common.loading')}...
         </div>
-        <div className="modal-body">
-          {loading ? (
-            <div className="position-override-loading">
-              {t('common.loading')}...
-            </div>
-          ) : (
-            <>
-              <p className="position-override-description">
-                {t('position_override.description')}
-              </p>
+      ) : (
+        <>
+          <p className="position-override-description">
+            {t('position_override.description')}
+          </p>
 
-              <div className="position-override-checkbox-group">
-                <div className="position-override-checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      onChange={e => setEnabled(e.target.checked)}
-                      disabled={saving}
-                    />
-                    {t('position_override.use_position')}
-                  </label>
-                </div>
-
-                {enabled && (
-                  <div className="position-override-checkbox private-checkbox">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={isPrivate}
-                        onChange={e => setIsPrivate(e.target.checked)}
-                        disabled={saving}
-                      />
-                      {t('position_override.private')}
-                      <span className="field-description">
-                        {t('position_override.private_description')}
-                      </span>
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              {enabled && (
-                <div className="position-override-fields">
-                  <div className="position-override-field">
-                    <label htmlFor="override-latitude">
-                      {t('position_override.latitude')}
-                      <span className="field-description">
-                        {t('position_override.latitude_description')}
-                      </span>
-                    </label>
-                    <input
-                      id="override-latitude"
-                      type="number"
-                      step="0.000001"
-                      min="-90"
-                      max="90"
-                      value={latitude}
-                      onChange={handleLatitudeChange}
-                      disabled={saving}
-                      className={latError ? 'input-error' : ''}
-                    />
-                    {latError && <span className="error-message">{latError}</span>}
-                  </div>
-
-                  <div className="position-override-field">
-                    <label htmlFor="override-longitude">
-                      {t('position_override.longitude')}
-                      <span className="field-description">
-                        {t('position_override.longitude_description')}
-                      </span>
-                    </label>
-                    <input
-                      id="override-longitude"
-                      type="number"
-                      step="0.000001"
-                      min="-180"
-                      max="180"
-                      value={longitude}
-                      onChange={handleLongitudeChange}
-                      disabled={saving}
-                      className={lngError ? 'input-error' : ''}
-                    />
-                    {lngError && <span className="error-message">{lngError}</span>}
-                  </div>
-
-                  <div className="position-override-field">
-                    <label htmlFor="override-altitude">
-                      {t('position_override.altitude')}
-                      <span className="field-description">
-                        {t('position_override.altitude_description')}
-                      </span>
-                    </label>
-                    <input
-                      id="override-altitude"
-                      type="number"
-                      step="1"
-                      value={altitude}
-                      onChange={e => setAltitude(e.target.value)}
-                      disabled={saving}
-                    />
-                  </div>
-
-                  <div className="position-override-link">
-                    <a
-                      href="https://www.latlong.net/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {t('position_override.find_coordinates')}
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="position-override-error">
-                  {error}
-                </div>
-              )}
-
-              <div className="position-override-actions">
-                <button
-                  className="cancel-btn"
-                  onClick={onClose}
+          <div className="position-override-checkbox-group">
+            <div className="position-override-checkbox">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={e => setEnabled(e.target.checked)}
                   disabled={saving}
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  className="save-btn"
-                  onClick={handleSave}
-                  disabled={saving || (enabled && (latError !== null || lngError !== null))}
-                >
-                  {saving ? t('common.saving') : t('common.save')}
-                </button>
+                />
+                {t('position_override.use_position')}
+              </label>
+            </div>
+
+            {enabled && (
+              <div className="position-override-checkbox private-checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={isPrivate}
+                    onChange={e => setIsPrivate(e.target.checked)}
+                    disabled={saving}
+                  />
+                  {t('position_override.private')}
+                  <span className="field-description">
+                    {t('position_override.private_description')}
+                  </span>
+                </label>
               </div>
-            </>
+            )}
+          </div>
+
+          {enabled && (
+            <div className="position-override-fields">
+              <div className="position-override-field">
+                <label htmlFor="override-latitude">
+                  {t('position_override.latitude')}
+                  <span className="field-description">
+                    {t('position_override.latitude_description')}
+                  </span>
+                </label>
+                <input
+                  id="override-latitude"
+                  type="number"
+                  step="0.000001"
+                  min="-90"
+                  max="90"
+                  value={latitude}
+                  onChange={handleLatitudeChange}
+                  disabled={saving}
+                  className={latError ? 'input-error' : ''}
+                />
+                {latError && <span className="error-message">{latError}</span>}
+              </div>
+
+              <div className="position-override-field">
+                <label htmlFor="override-longitude">
+                  {t('position_override.longitude')}
+                  <span className="field-description">
+                    {t('position_override.longitude_description')}
+                  </span>
+                </label>
+                <input
+                  id="override-longitude"
+                  type="number"
+                  step="0.000001"
+                  min="-180"
+                  max="180"
+                  value={longitude}
+                  onChange={handleLongitudeChange}
+                  disabled={saving}
+                  className={lngError ? 'input-error' : ''}
+                />
+                {lngError && <span className="error-message">{lngError}</span>}
+              </div>
+
+              <div className="position-override-field">
+                <label htmlFor="override-altitude">
+                  {t('position_override.altitude')}
+                  <span className="field-description">
+                    {t('position_override.altitude_description')}
+                  </span>
+                </label>
+                <input
+                  id="override-altitude"
+                  type="number"
+                  step="1"
+                  value={altitude}
+                  onChange={e => setAltitude(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="position-override-link">
+                <a
+                  href="https://www.latlong.net/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t('position_override.find_coordinates')}
+                </a>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+
+          {error && (
+            <div className="position-override-error">
+              {error}
+            </div>
+          )}
+
+          <div className="position-override-actions">
+            <button
+              className="cancel-btn"
+              onClick={onClose}
+              disabled={saving}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              className="save-btn"
+              onClick={handleSave}
+              disabled={saving || (enabled && (latError !== null || lngError !== null))}
+            >
+              {saving ? t('common.saving') : t('common.save')}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 };
