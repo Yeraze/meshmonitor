@@ -319,7 +319,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         const baseUrl = await api.getBaseUrl();
         const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
         const data = await response.json();
-        if (!cancelled && data.success && data.data) {
+        if (!cancelled && data.success && Array.isArray(data.data)) {
           setMeshCoreNodes(mapContactsToNodes(data.data));
         }
       } catch {
@@ -1157,13 +1157,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </div>
                       <div className="node-actions">
                         <div className="node-short" style={{ color: 'var(--ctp-mauve)' }}>
-                          {mcNode.publicKey.substring(0, 4)}...
+                          {mcNode.publicKey ? mcNode.publicKey.substring(0, 4) : '????'}...
                         </div>
                       </div>
                     </div>
                     <div className="node-details">
                       <div className="node-stats">
-                        {mcNode.snr !== undefined && (
+                        {mcNode.snr != null && typeof mcNode.snr === 'number' && (
                           <span className="stat" title="SNR">
                             📶 {mcNode.snr.toFixed(1)}dB
                           </span>
@@ -1691,7 +1691,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* MeshCore nodes */}
               {showMeshCoreNodes && meshCoreNodes
-                .filter(node => node.latitude && node.longitude)
+                .filter(node => typeof node.latitude === 'number' && isFinite(node.latitude)
+                  && typeof node.longitude === 'number' && isFinite(node.longitude))
                 .map(node => {
                   const position: [number, number] = [node.latitude, node.longitude];
                   // Use MeshCore theme color (Catppuccin mauve) for MeshCore nodes
@@ -1749,11 +1750,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           </h3>
                           <div style={{ fontSize: '12px', color: '#666' }}>
                             <strong>Type:</strong> MeshCore Device<br />
-                            <strong>Public Key:</strong> {node.publicKey.substring(0, 16)}...<br />
-                            {node.latitude && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
-                            {node.longitude && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
-                            {node.rssi !== undefined && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
-                            {node.snr !== undefined && <><strong>SNR:</strong> {node.snr} dB<br /></>}
+                            <strong>Public Key:</strong> {node.publicKey ? node.publicKey.substring(0, 16) : '????'}...<br />
+                            {typeof node.latitude === 'number' && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
+                            {typeof node.longitude === 'number' && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
+                            {typeof node.rssi === 'number' && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
+                            {typeof node.snr === 'number' && <><strong>SNR:</strong> {node.snr} dB<br /></>}
                             {node.lastSeen && <><strong>Last Seen:</strong> {new Date(node.lastSeen).toLocaleString()}<br /></>}
                           </div>
                         </div>
