@@ -53,8 +53,10 @@ export function useCustomWidgets({
       newWidget = { id, type: 'traceroute', targetNodeId: null };
     } else if (type === 'hopDistribution') {
       newWidget = { id, type: 'hopDistribution' };
-    } else {
+    } else if (type === 'distanceDistribution') {
       newWidget = { id, type: 'distanceDistribution', bucketSize: 5 };
+    } else {
+      newWidget = { id, type: 'hopDistanceHeatmap', bucketSize: 5 };
     }
 
     const newWidgets = [...customWidgets, newWidget];

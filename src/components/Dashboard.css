@@ -834,6 +834,137 @@
   border-color: var(--ctp-lavender);
 }
 
+/* Hop-Distance Heatmap Widget */
+.heatmap-widget {
+  min-height: 200px;
+}
+
+.heatmap-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.heatmap-scroll-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.heatmap-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  min-width: 100%;
+}
+
+.heatmap-corner {
+  position: relative;
+  min-width: 60px;
+  height: 40px;
+  padding: 4px 8px;
+  font-weight: 400;
+  color: var(--ctp-subtext0);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.heatmap-axis-label-y {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+}
+
+.heatmap-axis-label-x {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+}
+
+.heatmap-axis-divider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 0.5px),
+    var(--ctp-surface1) calc(50% - 0.5px),
+    var(--ctp-surface1) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+  pointer-events: none;
+}
+
+.heatmap-col-header {
+  padding: 6px 4px;
+  text-align: center;
+  color: var(--ctp-subtext0);
+  font-weight: 500;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ctp-surface1);
+}
+
+.heatmap-row-header {
+  padding: 6px 8px;
+  text-align: right;
+  color: var(--ctp-subtext0);
+  font-weight: 500;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  border-right: 1px solid var(--ctp-surface1);
+}
+
+.heatmap-cell {
+  text-align: center;
+  padding: 6px 4px;
+  min-width: 36px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ctp-text);
+  border-radius: 3px;
+  transition: opacity 0.2s;
+  cursor: default;
+}
+
+.heatmap-cell:hover {
+  outline: 1px solid var(--ctp-overlay1);
+}
+
+.heatmap-skipped {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  text-align: center;
+  font-style: italic;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--ctp-subtext0);
+}
+
+.heatmap-legend-bar {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap-legend-cell {
+  width: 16px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.heatmap-legend-label {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* Traceroute Widget */
 .traceroute-widget {
   min-height: 200px;

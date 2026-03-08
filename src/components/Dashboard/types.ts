@@ -26,7 +26,13 @@ export interface DistanceDistributionWidgetConfig {
   bucketSize: number; // in the user's preferred unit (km or mi)
 }
 
-export type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig | HopDistributionWidgetConfig | DistanceDistributionWidgetConfig;
+export interface HopDistanceHeatmapWidgetConfig {
+  id: string;
+  type: 'hopDistanceHeatmap';
+  bucketSize: number;
+}
+
+export type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig | HopDistributionWidgetConfig | DistanceDistributionWidgetConfig | HopDistanceHeatmapWidgetConfig;
 
 export type SortOption = 'custom' | 'node-asc' | 'node-desc' | 'type-asc' | 'type-desc';
 

@@ -18,6 +18,7 @@ import NodeStatusWidget from '../../NodeStatusWidget';
 import TracerouteWidget from '../../TracerouteWidget';
 import HopDistributionWidget from '../../HopDistributionWidget';
 import DistanceDistributionWidget from '../../DistanceDistributionWidget';
+import HopDistanceHeatmapWidget from '../../HopDistanceHeatmapWidget';
 import {
   type CustomWidget,
   type FavoriteChart,
@@ -164,6 +165,20 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
               } else if (widget.type === 'distanceDistribution') {
                 return (
                   <DistanceDistributionWidget
+                    key={widget.id}
+                    id={widget.id}
+                    bucketSize={widget.bucketSize}
+                    nodes={nodes}
+                    currentNodeId={currentNodeId}
+                    distanceUnit={distanceUnit}
+                    onRemove={() => onRemoveWidget(widget.id)}
+                    onBucketSizeChange={(size) => onUpdateWidgetConfig(widget.id, { bucketSize: size })}
+                    canEdit={canEdit}
+                  />
+                );
+              } else if (widget.type === 'hopDistanceHeatmap') {
+                return (
+                  <HopDistanceHeatmapWidget
                     key={widget.id}
                     id={widget.id}
                     bucketSize={widget.bucketSize}
