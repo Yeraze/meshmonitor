@@ -25,7 +25,7 @@ All development and testing is performed on **Linux** hosts (Ubuntu and Raspbian
 | **Authentication** | OIDC via Authentik |
 | **Reverse Proxy** | Nginx Proxy Manager |
 
-The StationG2 is the primary development node and hosts the public MeshMonitor instance at [meshmonitor.yeraze.com](https://meshmonitor.yeraze.com). It connects over the local WiFi network using the standard TCP connection on port 4403. The instance is configured with OIDC single sign-on through [Authentik](https://goauthentik.io/) and sits behind [Nginx Proxy Manager](https://nginxproxymanager.com/) for SSL termination and reverse proxying.
+The StationG2 is the primary **production** node and hosts the public MeshMonitor instance at [meshmonitor.yeraze.com](https://meshmonitor.yeraze.com). It connects over the local WiFi network using the standard TCP connection on port 4403. The instance is configured with OIDC single sign-on through [Authentik](https://goauthentik.io/) and sits behind [Nginx Proxy Manager](https://nginxproxymanager.com/) for SSL termination and reverse proxying.
 
 ---
 
@@ -39,7 +39,7 @@ The StationG2 is the primary development node and hosts the public MeshMonitor i
 | **Host OS** | Ubuntu Linux |
 | **MeshMonitor** | Docker |
 
-The MuziWorks H1 is configured in `CLIENT_MUTE` mode and connects over WiFi. This verifies MeshMonitor works with muted/passive nodes that don't actively transmit but still report telemetry and position data.
+The MuziWorks H1 is the primary **development** node, configured in `CLIENT_MUTE` mode and connected over WiFi. This verifies MeshMonitor works with muted/passive nodes that don't actively transmit but still report telemetry and position data.
 
 ---
 
