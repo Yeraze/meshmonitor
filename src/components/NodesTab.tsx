@@ -1750,11 +1750,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           </h3>
                           <div style={{ fontSize: '12px', color: '#666' }}>
                             <strong>Type:</strong> MeshCore Device<br />
-                            <strong>Public Key:</strong> {node.publicKey.substring(0, 16)}...<br />
-                            {node.latitude && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
-                            {node.longitude && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
-                            {node.rssi !== undefined && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
-                            {node.snr !== undefined && <><strong>SNR:</strong> {node.snr} dB<br /></>}
+                            <strong>Public Key:</strong> {node.publicKey ? node.publicKey.substring(0, 16) : '????'}...<br />
+                            {typeof node.latitude === 'number' && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
+                            {typeof node.longitude === 'number' && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
+                            {typeof node.rssi === 'number' && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
+                            {typeof node.snr === 'number' && <><strong>SNR:</strong> {node.snr} dB<br /></>}
                             {node.lastSeen && <><strong>Last Seen:</strong> {new Date(node.lastSeen).toLocaleString()}<br /></>}
                           </div>
                         </div>
