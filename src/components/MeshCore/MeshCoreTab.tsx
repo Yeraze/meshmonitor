@@ -277,6 +277,7 @@ export const MeshCoreTab: React.FC<MeshCoreTabProps> = ({ baseUrl }) => {
       const data = await response.json();
       if (data.success) {
         setContacts(data.data);
+        setMeshCoreNodes(mapContactsToNodes(data.data));
       }
     } catch (err) {
       console.error('Refresh error:', err);
