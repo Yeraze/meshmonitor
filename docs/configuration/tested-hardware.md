@@ -21,17 +21,11 @@ All development and testing is performed on **Linux** hosts (Ubuntu and Raspbian
 | **Connection** | WiFi (TCP on port 4403) |
 | **Host OS** | Ubuntu Linux |
 | **MeshMonitor** | Docker |
+| **Public Instance** | [meshmonitor.yeraze.com](https://meshmonitor.yeraze.com) |
+| **Authentication** | OIDC via Authentik |
+| **Reverse Proxy** | Nginx Proxy Manager |
 
-The StationG2 is the primary development node. It connects to MeshMonitor over the local WiFi network using the standard TCP connection on port 4403. This is the simplest and most common configuration.
-
-```yaml
-# docker-compose.yml
-services:
-  meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100  # StationG2 IP
-```
+The StationG2 is the primary development node and hosts the public MeshMonitor instance at [meshmonitor.yeraze.com](https://meshmonitor.yeraze.com). It connects over the local WiFi network using the standard TCP connection on port 4403. The instance is configured with OIDC single sign-on through [Authentik](https://goauthentik.io/) and sits behind [Nginx Proxy Manager](https://nginxproxymanager.com/) for SSL termination and reverse proxying.
 
 ---
 
@@ -49,63 +43,21 @@ The MuziWorks H1 is configured in `CLIENT_MUTE` mode and connects over WiFi. Thi
 
 ---
 
-### MuziWorks H1 (Heltec V3) — BLE Bridge
+### MuziWorks H1 (Heltec V3) — BLE & Serial Bridge Testing
 
 | Component | Details |
 |-----------|---------|
 | **Device** | MuziWorks H1 (Heltec V3 based) |
-| **Connection** | Bluetooth Low Energy via [BLE Bridge](/configuration/ble-bridge) |
+| **Connections** | USB via [Serial Bridge](/configuration/serial-bridge), BLE via [BLE Bridge](/configuration/ble-bridge) |
 | **Host OS** | Ubuntu Linux |
 | **MeshMonitor** | Docker |
 
-This configuration uses the [MeshMonitor BLE Bridge](/configuration/ble-bridge) (`meshtastic_ble_bridge`) to connect to the Heltec V3 over Bluetooth. The BLE Bridge creates a TCP proxy that MeshMonitor connects to as if it were a WiFi node.
+This node is used to test both bridge connection methods, switching between them as needed:
 
-This setup is also used for testing on **macOS** and **Windows** (Desktop App).
+- **USB Serial Bridge** — Uses the [Meshtastic Serial Bridge](/configuration/serial-bridge) (`meshtastic_serial_bridge`) to expose the USB-connected device as a TCP socket.
+- **BLE Bridge** — Uses the [MeshMonitor BLE Bridge](/configuration/ble-bridge) (`meshtastic_ble_bridge`) to connect over Bluetooth Low Energy. The BLE Bridge creates a TCP proxy that MeshMonitor connects to as if it were a WiFi node.
 
-```yaml
-# docker-compose.yml with BLE Bridge
-services:
-  ble-bridge:
-    image: ghcr.io/yeraze/meshtastic_ble_bridge:latest
-    privileged: true
-    network_mode: host
-    environment:
-      - BLE_ADDRESS=AA:BB:CC:DD:EE:FF  # Your device's BLE address
-
-  meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=localhost
-```
-
----
-
-### MuziWorks H1 (Heltec V3) — USB Serial Bridge
-
-| Component | Details |
-|-----------|---------|
-| **Device** | MuziWorks H1 (Heltec V3 based) |
-| **Connection** | USB via [Serial Bridge](/configuration/serial-bridge) |
-| **Host OS** | Ubuntu Linux |
-| **MeshMonitor** | Docker |
-
-This configuration uses the [Meshtastic Serial Bridge](/configuration/serial-bridge) (`meshtastic_serial_bridge`) to expose the USB-connected device as a TCP socket. This is the same bridge used for Mac and Windows desktop testing.
-
-```yaml
-# docker-compose.yml with Serial Bridge
-services:
-  serial-bridge:
-    image: ghcr.io/yeraze/meshtastic_serial_bridge:latest
-    devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
-    environment:
-      - SERIAL_PORT=/dev/ttyUSB0
-
-  meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=serial-bridge
-```
+This setup is also used for testing the Desktop App on **macOS** and **Windows**.
 
 ---
 
@@ -119,22 +71,6 @@ services:
 | **MeshMonitor** | Docker |
 
 This configuration runs MeshMonitor on a Raspberry Pi 3B+ with a Heltec V4 connected via USB. The Serial Bridge exposes the device over TCP. This verifies ARM compatibility and low-resource operation.
-
-```yaml
-# docker-compose.yml on Raspberry Pi
-services:
-  serial-bridge:
-    image: ghcr.io/yeraze/meshtastic_serial_bridge:latest
-    devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
-    environment:
-      - SERIAL_PORT=/dev/ttyUSB0
-
-  meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=serial-bridge
-```
 
 ## Host Platforms
 
@@ -154,6 +90,12 @@ The Desktop App (Tauri) is additionally tested on **macOS** and **Windows** usin
 | **WiFi (TCP)** | None | Low | Easiest — just set the IP |
 | **USB Serial** | [Serial Bridge](/configuration/serial-bridge) | Low | Moderate — needs USB passthrough |
 | **Bluetooth (BLE)** | [BLE Bridge](/configuration/ble-bridge) | Medium | Moderate — needs BLE permissions |
+
+## Request Hardware Testing
+
+Want to see a specific device officially tested and supported? You can request it by donating on Ko-fi — include the hardware you'd like tested in the donation description, and we'll do our best to add it to our test lineup.
+
+**[Request Hardware Testing on Ko-fi](https://ko-fi.com/yeraze)**
 
 ## Support Development
 
