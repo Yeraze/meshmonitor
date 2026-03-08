@@ -503,7 +503,7 @@ class MeshCoreManager extends EventEmitter {
     const SerialPortClass = SerialPort;
     const ReadlineParserClass = ReadlineParser;
 
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       this.serialPort = new SerialPortClass({
         path: this.config!.serialPort!,
         baudRate: this.config!.baudRate || 115200,
@@ -524,6 +524,14 @@ class MeshCoreManager extends EventEmitter {
       this.parser.on('data', (data: string) => {
         this.handleSerialData(data.trim());
       });
+    });
+
+    // Wake up the repeater CLI with a CR and discard any buffered data
+    await new Promise<void>((resolve) => {
+      this.serialPort!.write('\r');
+      setTimeout(() => {
+        this.serialPort!.flush(() => resolve());
+      }, 500);
     });
   }
 
@@ -584,7 +592,9 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Send a command to Repeater firmware (text CLI)
+   * Send a command to Repeater firmware (text CLI).
+   * Repeater CLI uses \r as line terminator and echoes the command back.
+   * Response lines start with "  -> " prefix.
    */
   private async sendRepeaterCommand(command: string, timeout: number = 5000): Promise<string> {
     if (!this.serialPort?.isOpen) {
@@ -593,21 +603,33 @@ class MeshCoreManager extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       const cmdId = `cmd_${++this.commandId}`;
-      let response = '';
+      const lines: string[] = [];
+      let echoSeen = false;
 
       const timeoutHandle = setTimeout(() => {
         this.pendingCommands.delete(cmdId);
         this.removeListener('serial_data', dataHandler);
-        reject(new Error(`Command timeout: ${command}`));
+        // Resolve with whatever we have instead of rejecting on timeout,
+        // since the repeater doesn't send an explicit end-of-response marker
+        resolve(lines.join('\n').trim());
       }, timeout);
 
       const dataHandler = (data: string) => {
-        response += data + '\n';
-        if (data.includes('>') || data.includes('OK') || data.includes('Error')) {
+        // Skip the command echo
+        if (!echoSeen && data.replace(/\r/g, '').trim() === command.trim()) {
+          echoSeen = true;
+          return;
+        }
+
+        lines.push(data);
+        logger.debug(`[MeshCore] Response line: ${data}`);
+
+        // Check for response terminators
+        if (data.includes('-> >') || data.includes('OK') || data.includes('Error') || data.includes('Unknown command')) {
           clearTimeout(timeoutHandle);
           this.pendingCommands.delete(cmdId);
           this.removeListener('serial_data', dataHandler);
-          resolve(response.trim());
+          resolve(lines.join('\n').trim());
         }
       };
 
@@ -615,7 +637,7 @@ class MeshCoreManager extends EventEmitter {
       this.on('serial_data', dataHandler);
 
       logger.debug(`[MeshCore] TX: ${command}`);
-      this.serialPort!.write(command + '\n');
+      this.serialPort!.write(command + '\r');
     });
   }
 
@@ -680,7 +702,11 @@ class MeshCoreManager extends EventEmitter {
         const nameResponse = await this.sendRepeaterCommand('get name');
         const radioResponse = await this.sendRepeaterCommand('get radio');
 
-        const nameMatch = nameResponse.match(/name:\s*(.+)/i);
+        logger.debug(`[MeshCore] Name response: ${JSON.stringify(nameResponse)}`);
+        logger.debug(`[MeshCore] Radio response: ${JSON.stringify(radioResponse)}`);
+
+        // Repeater CLI returns "  -> > DeviceName" format
+        const nameMatch = nameResponse.match(/->\s*>\s*(.+)/);
         const radioMatch = radioResponse.match(/(\d+\.?\d*),\s*(\d+\.?\d*),\s*(\d+),\s*(\d+)/);
 
         this.localNode = {

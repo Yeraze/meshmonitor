@@ -162,12 +162,17 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
       return res.status(400).json({ success: false, error: validation.error });
     }
 
+    // Read firmware type from env (controls direct serial vs Python bridge)
+    const firmwareTypeRaw = (process.env.MESHCORE_FIRMWARE_TYPE || 'companion').toLowerCase();
+    const firmwareType: 'companion' | 'repeater' = firmwareTypeRaw === 'repeater' ? 'repeater' : 'companion';
+
     const config = {
       connectionType: connectionType as ConnectionType || ConnectionType.SERIAL,
       serialPort,
       tcpHost,
       tcpPort: parsedTcpPort ?? 4403,
       baudRate: parsedBaudRate ?? 115200,
+      firmwareType,
     };
 
     const success = await meshcoreManager.connect(config);
