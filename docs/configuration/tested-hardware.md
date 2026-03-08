@@ -93,6 +93,36 @@ The Desktop App (Tauri) is additionally tested on **macOS** and **Windows** usin
 | **USB Serial** | [Serial Bridge](/configuration/serial-bridge) | Low | Moderate — needs USB passthrough |
 | **Bluetooth (BLE)** | [BLE Bridge](/configuration/ble-bridge) | Medium | Moderate — needs BLE permissions |
 
+## Pre-Release System Tests
+
+Before every release, MeshMonitor runs a comprehensive system test suite against the development node. These tests build a fresh Docker image from the current code and run end-to-end verification across multiple deployment scenarios.
+
+### Test Suite Overview
+
+| Test | What It Verifies |
+|------|-----------------|
+| **Configuration Import** | Device configuration import and reboot cycle, channel roles, PSKs, and LoRa settings |
+| **Quick Start** | Zero-config deployment — no `SESSION_SECRET` or `COOKIE_SECURE` required, HTTP access, auto-generated admin user, session cookies, node connection, and message exchange |
+| **Security** | Node IP and MQTT config hidden from anonymous users, visible to authenticated users, protected endpoints require authentication |
+| **V1 API** | REST API with Bearer token authentication, CSRF bypass for API tokens, session-based requests still require CSRF |
+| **Reverse Proxy** | Production deployment with `COOKIE_SECURE=true`, HTTPS-ready config, trust proxy, CORS, node connection, and message exchange |
+| **Reverse Proxy + OIDC** | OIDC authentication flow with mock provider, session creation, hybrid mode (OIDC + local auth) |
+| **Virtual Node CLI** | Virtual Node Server on TCP 4404, Meshtastic Python client connection, node data sync, message send/receive on gauntlet channel |
+| **Backup & Restore** | System backup creation, restore into new container via `RESTORE_FROM_BACKUP`, data integrity verification (nodes, messages, settings), audit log confirmation |
+| **Database Migration** | SQLite to PostgreSQL migration, SQLite to MySQL migration, data integrity and row count verification |
+| **DB Backing Consistency** | All three database backends (SQLite, PostgreSQL, MySQL) tested against the same device, node counts within tolerance, favorite counts identical across backends |
+
+### How It Works
+
+1. A fresh Docker image is built from the current source (no cache)
+2. Test containers are spun up with isolated volumes for each scenario
+3. The **Configuration Import** test runs first to set the device to a known state — all subsequent tests depend on this
+4. Each test deploys MeshMonitor in a different configuration and verifies functionality via API calls
+5. A markdown report (`test-results.md`) is generated with pass/fail status for each suite
+6. All test containers and volumes are cleaned up automatically
+
+The full test suite source is available in the [`tests/`](https://github.com/yeraze/meshmonitor/tree/main/tests) directory.
+
 ## Request Hardware Testing
 
 Want to see a specific device officially tested and supported? You can request it by donating on Ko-fi — include the hardware you'd like tested in the donation description, and we'll do our best to add it to our test lineup.
