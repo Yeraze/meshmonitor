@@ -11,6 +11,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { type NodeInfo } from './TelemetryChart';
 import { calculateDistance, kmToMiles } from '../utils/distance';
+import { useHomeNode, BUCKET_SIZE_OPTIONS } from './Dashboard/hooks/useHomeNode';
 
 interface DistanceDistributionWidgetProps {
   id: string;
@@ -28,8 +29,6 @@ interface DistanceBucket {
   count: number;
   index: number;
 }
-
-const BUCKET_SIZE_OPTIONS = [1, 2, 5, 10, 15, 20, 25, 50, 100];
 
 const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
   id,
@@ -54,14 +53,7 @@ const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
 
   const unitLabel = distanceUnit === 'mi' ? t('dashboard.widget.distance_distribution.miles') : t('dashboard.widget.distance_distribution.km');
 
-  // Find the current/home node
-  const homeNode = useMemo(() => {
-    if (!currentNodeId) return null;
-    for (const [, node] of nodes) {
-      if (node.user?.id === currentNodeId) return node;
-    }
-    return null;
-  }, [nodes, currentNodeId]);
+  const homeNode = useHomeNode(nodes, currentNodeId);
 
   const { buckets, noPositionCount, totalWithPosition, maxDistance, avgDistance } = useMemo(() => {
     const homeLat = homeNode?.position?.latitude;

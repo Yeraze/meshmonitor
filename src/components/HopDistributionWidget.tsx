@@ -24,6 +24,8 @@ interface HopBucket {
   hop: number | string;
 }
 
+const MIN_DISPLAY_HOPS = 3;
+
 const HopDistributionWidget: React.FC<HopDistributionWidgetProps> = ({
   id,
   nodes,
@@ -57,8 +59,8 @@ const HopDistributionWidget: React.FC<HopDistributionWidgetProps> = ({
       }
     }
 
-    // Build buckets for 0 through maxHop (at least up to 3 for visual consistency)
-    const displayMax = Math.max(maxH, 3);
+    // Build buckets for 0 through maxHop (at least up to MIN_DISPLAY_HOPS for visual consistency)
+    const displayMax = Math.max(maxH, MIN_DISPLAY_HOPS);
     const result: HopBucket[] = [];
     for (let h = 0; h <= displayMax; h++) {
       result.push({
