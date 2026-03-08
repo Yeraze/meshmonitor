@@ -309,12 +309,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setIsTouchDevice(checkTouch());
   }, []);
 
-  // Auto-fetch MeshCore contacts for map display when MeshCore is enabled
-  // This ensures nodes appear on the Nodes page even if MeshCoreTab hasn't been visited
+  // Poll MeshCore contacts for map display when MeshCore is enabled
+  // Refreshes every 10 seconds to keep map and node list in sync with device
   useEffect(() => {
-    if (!authStatus?.meshcoreEnabled || meshCoreNodes.length > 0) return;
+    if (!authStatus?.meshcoreEnabled) return;
     let cancelled = false;
-    (async () => {
+
+    const fetchMeshCoreContacts = async () => {
       try {
         const baseUrl = await api.getBaseUrl();
         const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
@@ -325,9 +326,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       } catch {
         // MeshCore not connected or unavailable — no action needed
       }
-    })();
-    return () => { cancelled = true; };
-  }, [authStatus?.meshcoreEnabled, meshCoreNodes.length, setMeshCoreNodes, csrfFetch]);
+    };
+
+    fetchMeshCoreContacts();
+    const interval = setInterval(fetchMeshCoreContacts, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [authStatus?.meshcoreEnabled, setMeshCoreNodes, csrfFetch]);
 
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
