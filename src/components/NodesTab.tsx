@@ -319,7 +319,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         const baseUrl = await api.getBaseUrl();
         const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
         const data = await response.json();
-        if (!cancelled && data.success && data.data) {
+        if (!cancelled && data.success && Array.isArray(data.data)) {
           setMeshCoreNodes(mapContactsToNodes(data.data));
         }
       } catch {
@@ -1157,13 +1157,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </div>
                       <div className="node-actions">
                         <div className="node-short" style={{ color: 'var(--ctp-mauve)' }}>
-                          {mcNode.publicKey.substring(0, 4)}...
+                          {mcNode.publicKey ? mcNode.publicKey.substring(0, 4) : '????'}...
                         </div>
                       </div>
                     </div>
                     <div className="node-details">
                       <div className="node-stats">
-                        {mcNode.snr !== undefined && (
+                        {mcNode.snr != null && typeof mcNode.snr === 'number' && (
                           <span className="stat" title="SNR">
                             📶 {mcNode.snr.toFixed(1)}dB
                           </span>
@@ -1691,7 +1691,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* MeshCore nodes */}
               {showMeshCoreNodes && meshCoreNodes
-                .filter(node => node.latitude && node.longitude)
+                .filter(node => typeof node.latitude === 'number' && isFinite(node.latitude)
+                  && typeof node.longitude === 'number' && isFinite(node.longitude))
                 .map(node => {
                   const position: [number, number] = [node.latitude, node.longitude];
                   // Use MeshCore theme color (Catppuccin mauve) for MeshCore nodes

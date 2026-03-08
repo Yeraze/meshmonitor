@@ -21,17 +21,19 @@ export interface MeshCoreContact {
  * a small offset for the local node to prevent marker overlap.
  */
 export function mapContactsToNodes(contacts: MeshCoreContact[]): MeshCoreMapNode[] {
+  if (!Array.isArray(contacts)) return [];
   return contacts
-    .filter(c => c.latitude && c.longitude)
+    .filter(c => c.publicKey && typeof c.latitude === 'number' && isFinite(c.latitude)
+      && typeof c.longitude === 'number' && isFinite(c.longitude))
     .map(c => {
       const isLocalNode = c.advName?.includes('(local)');
       return {
-        publicKey: c.publicKey,
+        publicKey: String(c.publicKey),
         name: c.advName || c.name || 'Unknown',
         latitude: c.latitude! + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
         longitude: c.longitude! + (isLocalNode ? LOCAL_NODE_OFFSET : 0),
-        rssi: c.rssi,
-        snr: c.snr,
+        rssi: typeof c.rssi === 'number' ? c.rssi : undefined,
+        snr: typeof c.snr === 'number' ? c.snr : undefined,
         lastSeen: c.lastSeen,
         advType: c.advType,
       };
