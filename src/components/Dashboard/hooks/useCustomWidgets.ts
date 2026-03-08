@@ -16,6 +16,7 @@ interface UseCustomWidgetsResult {
   addNodeToWidget: (widgetId: string, nodeId: string) => void;
   removeNodeFromWidget: (widgetId: string, nodeId: string) => void;
   selectTracerouteNode: (widgetId: string, nodeId: string) => void;
+  updateWidgetConfig: (widgetId: string, updates: Record<string, unknown>) => void;
 }
 
 /**
@@ -48,8 +49,12 @@ export function useCustomWidgets({
 
     if (type === 'nodeStatus') {
       newWidget = { id, type: 'nodeStatus', nodeIds: [] };
-    } else {
+    } else if (type === 'traceroute') {
       newWidget = { id, type: 'traceroute', targetNodeId: null };
+    } else if (type === 'hopDistribution') {
+      newWidget = { id, type: 'hopDistribution' };
+    } else {
+      newWidget = { id, type: 'distanceDistribution', bucketSize: 5 };
     }
 
     const newWidgets = [...customWidgets, newWidget];
@@ -100,11 +105,24 @@ export function useCustomWidgets({
     saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
+  // Update widget configuration (e.g., bucket size for distance distribution)
+  const updateWidgetConfig = useCallback((widgetId: string, updates: Record<string, unknown>) => {
+    const newWidgets = customWidgets.map(w => {
+      if (w.id === widgetId) {
+        return { ...w, ...updates } as CustomWidget;
+      }
+      return w;
+    });
+    setCustomWidgets(newWidgets);
+    saveWidgets(newWidgets);
+  }, [customWidgets, setCustomWidgets, saveWidgets]);
+
   return {
     addWidget,
     removeWidget,
     addNodeToWidget,
     removeNodeFromWidget,
     selectTracerouteNode,
+    updateWidgetConfig,
   };
 }

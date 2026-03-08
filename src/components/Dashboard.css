@@ -676,6 +676,164 @@
   font-style: italic;
 }
 
+/* Hop Distribution Widget */
+.hop-distribution-widget {
+  min-height: 200px;
+}
+
+.hop-distribution-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.hop-distribution-summary {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.hop-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--ctp-surface0);
+  border-radius: 8px;
+  min-width: 80px;
+}
+
+.hop-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ctp-text);
+  line-height: 1.2;
+}
+
+.hop-stat-label {
+  font-size: 0.7rem;
+  color: var(--ctp-subtext0);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.hop-distribution-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hop-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hop-bar-label {
+  font-size: 0.8rem;
+  color: var(--ctp-subtext1);
+  min-width: 70px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.hop-bar-track {
+  flex: 1;
+  height: 20px;
+  background: var(--ctp-surface0);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hop-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.hop-bar-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ctp-text);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Distance Distribution Widget */
+.distance-distribution-widget {
+  min-height: 200px;
+}
+
+.distance-unit-badge {
+  font-size: 0.7rem;
+  color: var(--ctp-subtext0);
+  background: var(--ctp-surface0);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.distance-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.distance-settings-btn {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.distance-settings-btn:hover {
+  color: var(--ctp-text);
+  background: var(--ctp-surface0);
+}
+
+.distance-settings-panel {
+  padding: 8px 12px;
+  background: var(--ctp-surface0);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.distance-settings-label {
+  font-size: 0.8rem;
+  color: var(--ctp-subtext1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.distance-bucket-select {
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.distance-bucket-select:focus {
+  outline: none;
+  border-color: var(--ctp-lavender);
+}
+
 /* Traceroute Widget */
 .traceroute-widget {
   min-height: 200px;

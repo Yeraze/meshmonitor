@@ -15,7 +15,18 @@ export interface TracerouteWidgetConfig {
   targetNodeId: string | null;
 }
 
-export type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig;
+export interface HopDistributionWidgetConfig {
+  id: string;
+  type: 'hopDistribution';
+}
+
+export interface DistanceDistributionWidgetConfig {
+  id: string;
+  type: 'distanceDistribution';
+  bucketSize: number; // in the user's preferred unit (km or mi)
+}
+
+export type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig | HopDistributionWidgetConfig | DistanceDistributionWidgetConfig;
 
 export type SortOption = 'custom' | 'node-asc' | 'node-desc' | 'type-asc' | 'type-desc';
 
