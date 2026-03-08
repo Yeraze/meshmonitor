@@ -72,6 +72,8 @@ This setup is also used for testing the Desktop App on **macOS** and **Windows**
 
 This configuration runs MeshMonitor on a Raspberry Pi 3B+ with a Heltec V4 connected via USB. The Serial Bridge exposes the device over TCP. This verifies ARM compatibility and low-resource operation.
 
+This setup is also used to test advanced telemetry features, including **PaxCounter** data collection and communication with a nearby solar-powered Heltec V4 in `CLIENT_BASE` mode equipped with a **BME280 sensor** for weather data (temperature, humidity, barometric pressure).
+
 ## Host Platforms
 
 All tested configurations run on Linux:
