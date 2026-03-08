@@ -1591,8 +1591,9 @@ body {
     overflow: hidden;
   }
 
-  /* Fix send button going off screen */
+  /* Mobile: text input full width, action buttons on second row */
   .message-input-container {
+    flex-wrap: wrap;
     gap: 0.5rem;
     width: 100%;
     max-width: 100%;
@@ -1600,8 +1601,8 @@ body {
   }
 
   .input-with-counter {
-    flex: 1;
-    min-width: 0; /* Allow flex item to shrink below content size */
+    flex: 1 1 100%; /* Full width on its own row */
+    min-width: 0;
     max-width: 100%;
   }
 
@@ -1878,6 +1879,18 @@ body {
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Mobile: text input full width, action buttons on second row */
+@media (max-width: 768px) {
+  .message-input-container {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .message-input-container .input-with-counter {
+    flex: 1 1 100%;
+  }
 }
 
 /* Channel Buttons Grid */
