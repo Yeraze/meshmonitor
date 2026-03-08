@@ -5,7 +5,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
-export type WidgetType = 'nodeStatus' | 'traceroute';
+export type WidgetType = 'nodeStatus' | 'traceroute' | 'hopDistribution' | 'distanceDistribution' | 'hopDistanceHeatmap';
 
 interface WidgetOption {
   type: WidgetType;
@@ -26,6 +26,24 @@ const WIDGET_OPTIONS: WidgetOption[] = [
     titleKey: 'dashboard.widget.traceroute.title',
     descriptionKey: 'dashboard.widget.traceroute.description',
     icon: '🔀',
+  },
+  {
+    type: 'hopDistribution',
+    titleKey: 'dashboard.widget.hop_distribution.title',
+    descriptionKey: 'dashboard.widget.hop_distribution.description',
+    icon: '📶',
+  },
+  {
+    type: 'distanceDistribution',
+    titleKey: 'dashboard.widget.distance_distribution.title',
+    descriptionKey: 'dashboard.widget.distance_distribution.description',
+    icon: '📏',
+  },
+  {
+    type: 'hopDistanceHeatmap',
+    titleKey: 'dashboard.widget.hop_distance_heatmap.title',
+    descriptionKey: 'dashboard.widget.hop_distance_heatmap.description',
+    icon: '🗺',
   },
 ];
 
