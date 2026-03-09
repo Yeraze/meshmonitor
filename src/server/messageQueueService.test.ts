@@ -44,7 +44,7 @@ describe('MessageQueueService', () => {
       expect(sentMessages[0].destination).toBe(12345678);
     });
 
-    it.skip('should enqueue multiple messages and process them sequentially', async () => {
+    it('should enqueue multiple messages and process them sequentially', async () => {
       messageQueueService.enqueue('Message 1', 12345678);
       messageQueueService.enqueue('Message 2', 12345678);
       messageQueueService.enqueue('Message 3', 12345678);
@@ -54,10 +54,16 @@ describe('MessageQueueService', () => {
       expect(sentMessages).toHaveLength(1);
       expect(sentMessages[0].text).toBe('Message 1');
 
+      // ACK first message to prevent retry and allow queue progression
+      messageQueueService.handleAck(1000);
+
       // Advance 30 seconds for second message
       await vi.advanceTimersByTimeAsync(30000);
       expect(sentMessages).toHaveLength(2);
       expect(sentMessages[1].text).toBe('Message 2');
+
+      // ACK second message
+      messageQueueService.handleAck(1001);
 
       // Advance another 30 seconds for third message
       await vi.advanceTimersByTimeAsync(30000);
@@ -65,15 +71,18 @@ describe('MessageQueueService', () => {
       expect(sentMessages[2].text).toBe('Message 3');
     });
 
-    it.skip('should respect rate limiting (30 seconds between messages)', async () => {
+    it('should respect rate limiting (30 seconds between messages)', async () => {
       messageQueueService.enqueue('Message 1', 12345678);
       messageQueueService.enqueue('Message 2', 12345678);
 
       // First message sent immediately
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(sentMessages).toHaveLength(1);
 
-      // Advance 29 seconds - should not send yet
+      // ACK first message to prevent retry
+      messageQueueService.handleAck(1000);
+
+      // Advance 29 seconds - should not send yet (rate limited)
       await vi.advanceTimersByTimeAsync(29000);
       expect(sentMessages).toHaveLength(1);
 
@@ -85,7 +94,7 @@ describe('MessageQueueService', () => {
     it('should include replyId when provided', async () => {
       messageQueueService.enqueue('Reply message', 12345678, 999);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(sentMessages[0].replyId).toBe(999);
     });
@@ -96,7 +105,7 @@ describe('MessageQueueService', () => {
       const successCallback = vi.fn();
       messageQueueService.enqueue('Test message', 12345678, undefined, successCallback);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Get the requestId that was used
       const requestId = 1000; // First message gets requestId 1000
@@ -110,7 +119,7 @@ describe('MessageQueueService', () => {
     it('should not retry message after ACK received', async () => {
       messageQueueService.enqueue('Test message', 12345678);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(sentMessages).toHaveLength(1);
 
       // Send ACK
@@ -125,7 +134,7 @@ describe('MessageQueueService', () => {
       messageQueueService.enqueue('Test message', 12345678);
 
       // First attempt
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(sentMessages).toHaveLength(1);
 
       // Second attempt (after 30s)
@@ -141,20 +150,23 @@ describe('MessageQueueService', () => {
       expect(sentMessages).toHaveLength(3);
     });
 
-    it.skip('should call failure callback after max retries without ACK', async () => {
+    it('should call failure callback after max retries without ACK', async () => {
       const failureCallback = vi.fn();
       messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
 
       // Send all 3 attempts without ACK
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(30000);
-      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(0);     // attempt 1 at T
+      await vi.advanceTimersByTimeAsync(30000); // attempt 2 at T+30s
+      await vi.advanceTimersByTimeAsync(30000); // attempt 3 at T+60s
 
       // After final attempt, still waiting for ACK
       expect(failureCallback).not.toHaveBeenCalled();
 
-      // Simulate cleanup timeout (5 minutes + a bit for cleanup interval)
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+      // pendingAckSince is T+60s (updated on last attempt). Cleanup runs every 60s.
+      // Need cleanup fire where age > 5 minutes (300000ms).
+      // At T+420s (7 min): age = 420000-60000 = 360000 > 300000 → cleanup fires.
+      // From T+60s, advance 360s to reach T+420s.
+      await vi.advanceTimersByTimeAsync(360000);
 
       expect(failureCallback).toHaveBeenCalledTimes(1);
       expect(failureCallback).toHaveBeenCalledWith('ACK timeout - no response received');
@@ -166,7 +178,7 @@ describe('MessageQueueService', () => {
       const failureCallback = vi.fn();
       messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Simulate routing error
       messageQueueService.handleFailure(1000, 'NO_INTERFACE');
@@ -175,7 +187,7 @@ describe('MessageQueueService', () => {
       expect(failureCallback).toHaveBeenCalledWith('NO_INTERFACE');
     });
 
-    it.skip('should retry after send error if attempts remaining', async () => {
+    it('should retry after send error if attempts remaining', async () => {
       // Make send callback fail on first attempt
       let callCount = 0;
       mockSendCallback.mockImplementation(async (text: string, destination: number, replyId?: number) => {
@@ -193,7 +205,7 @@ describe('MessageQueueService', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(sentMessages).toHaveLength(0);
 
-      // Second attempt succeeds
+      // Second attempt succeeds (message stays in queue after failed first attempt)
       await vi.advanceTimersByTimeAsync(30000);
       expect(sentMessages).toHaveLength(1);
     });
@@ -206,7 +218,7 @@ describe('MessageQueueService', () => {
       messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
 
       // All 3 attempts fail
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(30000);
       await vi.advanceTimersByTimeAsync(30000);
 
@@ -220,7 +232,7 @@ describe('MessageQueueService', () => {
       const failureCallback = vi.fn();
       messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Should retry due to error
       await vi.advanceTimersByTimeAsync(30000);
@@ -231,38 +243,38 @@ describe('MessageQueueService', () => {
   });
 
   describe('Orphaned ACK cleanup', () => {
-    it.skip('should clean up pending ACKs after 5 minute timeout', async () => {
+    it('should clean up pending ACKs after 5 minute timeout', async () => {
       const failureCallback = vi.fn();
-      messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
+      // Use maxAttempts=1 to avoid retries updating pendingAckSince
+      messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback, undefined, 1);
 
-      // Send message
+      // Send message (single attempt, no retries)
       await vi.advanceTimersByTimeAsync(0);
 
       // Verify message is in pending ACKs
-      const status = messageQueueService.getStatus();
-      expect(status.pendingAcks).toBe(1);
+      expect(messageQueueService.getStatus().pendingAcks).toBe(1);
 
-      // Advance 4 minutes 59 seconds - should not clean up yet
-      await vi.advanceTimersByTimeAsync(4 * 60 * 1000 + 59000);
+      // pendingAckSince = T. Cleanup fires every 60s.
+      // At T+300s (5 min): age = 300000, NOT > 300000. No cleanup.
+      await vi.advanceTimersByTimeAsync(300000);
       expect(messageQueueService.getStatus().pendingAcks).toBe(1);
       expect(failureCallback).not.toHaveBeenCalled();
 
-      // Advance to just past 5 minutes + wait for cleanup interval (runs every 60s)
-      // We need to get to 5 minutes + 1 second, then wait for next cleanup check
-      await vi.advanceTimersByTimeAsync(2000); // Now at 5:01
+      // At T+360s (6 min): age = 360000 > 300000. Cleanup fires!
+      await vi.advanceTimersByTimeAsync(60000);
       expect(messageQueueService.getStatus().pendingAcks).toBe(0);
       expect(failureCallback).toHaveBeenCalledWith('ACK timeout - no response received');
     });
 
     it('should not clean up ACKs that are younger than timeout', async () => {
       messageQueueService.enqueue('Message 1', 12345678);
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Advance 2 minutes
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
 
       messageQueueService.enqueue('Message 2', 12345678);
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Advance 3 more minutes (5 total for message 1, 3 for message 2)
       await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
@@ -288,7 +300,7 @@ describe('MessageQueueService', () => {
       expect(status.queue[1].destination).toBe('!05397fb1'); // 87654321 in hex
     });
 
-    it.skip('should update status as messages are processed', async () => {
+    it('should update status as messages are processed', async () => {
       messageQueueService.enqueue('Message 1', 12345678);
       messageQueueService.enqueue('Message 2', 12345678);
 
@@ -304,12 +316,15 @@ describe('MessageQueueService', () => {
       expect(status.queueLength).toBe(1); // Message 2 still in queue
       expect(status.pendingAcks).toBe(1); // Message 1 waiting for ACK
 
+      // ACK first message to allow queue progression (otherwise it retries)
+      messageQueueService.handleAck(1000);
+
       // Process second message (after 30s rate limit)
       await vi.advanceTimersByTimeAsync(30000);
 
       status = messageQueueService.getStatus();
       expect(status.queueLength).toBe(0); // Queue empty
-      expect(status.pendingAcks).toBe(2); // Both messages waiting for ACK
+      expect(status.pendingAcks).toBe(1); // Message 2 waiting for ACK (Message 1 was ACKed)
     });
   });
 
@@ -318,7 +333,7 @@ describe('MessageQueueService', () => {
       messageQueueService.enqueue('Message 1', 12345678);
       messageQueueService.enqueue('Message 2', 12345678);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       let status = messageQueueService.getStatus();
       expect(status.queueLength).toBe(1);
@@ -339,7 +354,7 @@ describe('MessageQueueService', () => {
       messageQueueService.enqueue('Message 1', 12345678, undefined, undefined, failureCallback1);
       messageQueueService.enqueue('Message 2', 12345678, undefined, undefined, failureCallback2);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       messageQueueService.clear();
 
@@ -352,7 +367,7 @@ describe('MessageQueueService', () => {
     it('should not schedule duplicate processing loops', async () => {
       messageQueueService.enqueue('Message 1', 12345678);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Clear the queue
       messageQueueService.clear();
@@ -366,7 +381,7 @@ describe('MessageQueueService', () => {
     it('should check processing flag before each scheduled callback', async () => {
       messageQueueService.enqueue('Message 1', 12345678);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Stop processing by clearing
       messageQueueService.clear();
@@ -386,7 +401,7 @@ describe('MessageQueueService', () => {
 
       messageQueueService.enqueue('Test message', 12345678, undefined, successCallback);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Should not throw, should handle error gracefully
       expect(() => {
@@ -401,7 +416,7 @@ describe('MessageQueueService', () => {
 
       messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Should not throw when calling failure
       expect(() => {
@@ -409,7 +424,7 @@ describe('MessageQueueService', () => {
       }).not.toThrow();
     });
 
-    it.skip('should continue processing after errors', async () => {
+    it('should continue processing after errors', async () => {
       // First message will fail, then succeed on retry
       let callCount = 0;
       mockSendCallback.mockImplementation(async (text: string, destination: number, replyId?: number) => {
@@ -433,6 +448,9 @@ describe('MessageQueueService', () => {
       expect(sentMessages).toHaveLength(1);
       expect(sentMessages[0].text).toBe('Message 1');
 
+      // ACK first message so queue moves to second message
+      messageQueueService.handleAck(1002); // requestId from callCount=2
+
       // At 60s, second message is sent
       await vi.advanceTimersByTimeAsync(30000);
       expect(sentMessages).toHaveLength(2);
@@ -450,7 +468,7 @@ describe('MessageQueueService', () => {
 
       messageQueueService.enqueue('Test message', 12345678, undefined, undefined, failureCallback);
 
-      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(failureCallback).toHaveBeenCalledWith('No send callback configured');
       expect(mockSendCallback).not.toHaveBeenCalled();
