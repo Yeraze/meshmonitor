@@ -120,12 +120,23 @@ const HopDistanceHeatmapWidget: React.FC<HopDistanceHeatmapWidgetProps> = ({
       g[hopIdx][distIdx]++;
     }
 
-    const max = Math.max(...g.flat(), 1);
+    // Filter out distance buckets where all hop counts are zero
+    const activeDistIndices: number[] = [];
+    for (let d = 0; d < numDistBuckets; d++) {
+      if (g.some(hopRow => hopRow[d] > 0)) {
+        activeDistIndices.push(d);
+      }
+    }
+
+    const filteredGrid = g.map(hopRow => activeDistIndices.map(d => hopRow[d]));
+    const filteredDistLabels = activeDistIndices.map(d => dLabels[d]);
+
+    const max = Math.max(...filteredGrid.flat(), 1);
 
     return {
-      grid: g,
+      grid: filteredGrid,
       hopLabels: hLabels,
-      distLabels: dLabels,
+      distLabels: filteredDistLabels,
       maxCount: max,
       skippedCount: skipped,
     };
