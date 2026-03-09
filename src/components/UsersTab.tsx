@@ -646,7 +646,17 @@ const UsersTab: React.FC = () => {
                   <div key={resource} className="permission-item">
                     <div className="permission-label">{label}</div>
                     <div className="permission-actions">
-                      {(resource === 'connection' || resource === 'traceroute') ? (
+                      {resource === 'packetmonitor' ? (
+                        // Packet Monitor is read-only, no write permission
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={permissions[resource]?.read || false}
+                            onChange={() => togglePermission(resource, 'read')}
+                          />
+                          {t('users.read')}
+                        </label>
+                      ) : (resource === 'connection' || resource === 'traceroute') ? (
                         // Connection and traceroute permissions use a single checkbox
                         <label>
                           <input
