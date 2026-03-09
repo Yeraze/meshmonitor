@@ -206,7 +206,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {meshcoreEnabled && hasPermission('meshcore', 'read') && (
             <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon={<Radio size={20} />} />
           )}
-          {packetLogEnabled && hasAnyChannelPermission() && hasPermission('messages', 'read') && (
+          {packetLogEnabled && hasPermission('packetmonitor', 'read') && (
             <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={<Activity size={20} />} />
           )}
         </div>

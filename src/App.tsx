@@ -448,18 +448,19 @@ function App() {
   }, [authStatus?.authenticated]);
 
   // Check if packet logging is enabled on the server
+  // Re-check when auth status changes (permissions may have changed)
   useEffect(() => {
     const checkPacketLogStatus = async () => {
-      if (!authStatus?.authenticated) return;
       try {
         const stats = await getPacketStats();
         setPacketLogEnabled(stats.enabled === true);
       } catch {
-        logger.debug('Failed to fetch packet log status');
+        // 403 means no permission - packet log may still be enabled but user can't see it
+        setPacketLogEnabled(false);
       }
     };
     checkPacketLogStatus();
-  }, [authStatus?.authenticated]);
+  }, [authStatus]);
 
   // Messaging context
   const {
@@ -586,7 +587,7 @@ function App() {
       admin: () => isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
-      packetmonitor: () => hasPermission('messages', 'read') && Array.from({ length: 8 }, (_, i) => hasPermission(`channel_${i}` as ResourceType, 'read')).some(Boolean),
+      packetmonitor: () => hasPermission('packetmonitor', 'read'),
     };
 
     // Check if current tab requires permission

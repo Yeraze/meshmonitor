@@ -43,7 +43,7 @@ const PERMISSION_KEYS = [
   'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 
   'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 
   'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 
-  'security', 'nodes_private'
+  'security', 'nodes_private', 'packetmonitor'
 ] as const;
 
 const UsersTab: React.FC = () => {
@@ -646,7 +646,17 @@ const UsersTab: React.FC = () => {
                   <div key={resource} className="permission-item">
                     <div className="permission-label">{label}</div>
                     <div className="permission-actions">
-                      {(resource === 'connection' || resource === 'traceroute') ? (
+                      {resource === 'packetmonitor' ? (
+                        // Packet Monitor is read-only, no write permission
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={permissions[resource]?.read || false}
+                            onChange={() => togglePermission(resource, 'read')}
+                          />
+                          {t('users.read')}
+                        </label>
+                      ) : (resource === 'connection' || resource === 'traceroute') ? (
                         // Connection and traceroute permissions use a single checkbox
                         <label>
                           <input
