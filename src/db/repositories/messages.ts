@@ -394,37 +394,28 @@ export class MessagesRepository extends BaseRepository {
   async purgeChannelMessages(channel: number): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: messagesSqlite.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesSqlite)
         .where(eq(messagesSqlite.channel, channel));
-
-      for (const msg of toDelete) {
-        await db.delete(messagesSqlite).where(eq(messagesSqlite.id, msg.id));
-      }
-      return toDelete.length;
+      await db.delete(messagesSqlite).where(eq(messagesSqlite.channel, channel));
+      return deletedCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: messagesMysql.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesMysql)
         .where(eq(messagesMysql.channel, channel));
-
-      for (const msg of toDelete) {
-        await db.delete(messagesMysql).where(eq(messagesMysql.id, msg.id));
-      }
-      return toDelete.length;
+      await db.delete(messagesMysql).where(eq(messagesMysql.channel, channel));
+      return deletedCount;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: messagesPostgres.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesPostgres)
         .where(eq(messagesPostgres.channel, channel));
-
-      for (const msg of toDelete) {
-        await db.delete(messagesPostgres).where(eq(messagesPostgres.id, msg.id));
-      }
-      return toDelete.length;
+      await db.delete(messagesPostgres).where(eq(messagesPostgres.channel, channel));
+      return deletedCount;
     }
   }
 
@@ -434,61 +425,49 @@ export class MessagesRepository extends BaseRepository {
   async purgeDirectMessages(nodeNum: number): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: messagesSqlite.id })
+      const condition = and(
+        or(
+          eq(messagesSqlite.fromNodeNum, nodeNum),
+          eq(messagesSqlite.toNodeNum, nodeNum)
+        ),
+        sql`${messagesSqlite.toNodeId} != '!ffffffff'`
+      );
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesSqlite)
-        .where(
-          and(
-            or(
-              eq(messagesSqlite.fromNodeNum, nodeNum),
-              eq(messagesSqlite.toNodeNum, nodeNum)
-            ),
-            sql`${messagesSqlite.toNodeId} != '!ffffffff'`
-          )
-        );
-
-      for (const msg of toDelete) {
-        await db.delete(messagesSqlite).where(eq(messagesSqlite.id, msg.id));
-      }
-      return toDelete.length;
+        .where(condition);
+      await db.delete(messagesSqlite).where(condition);
+      return deletedCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: messagesMysql.id })
+      const condition = and(
+        or(
+          eq(messagesMysql.fromNodeNum, nodeNum),
+          eq(messagesMysql.toNodeNum, nodeNum)
+        ),
+        sql`${messagesMysql.toNodeId} != '!ffffffff'`
+      );
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesMysql)
-        .where(
-          and(
-            or(
-              eq(messagesMysql.fromNodeNum, nodeNum),
-              eq(messagesMysql.toNodeNum, nodeNum)
-            ),
-            sql`${messagesMysql.toNodeId} != '!ffffffff'`
-          )
-        );
-
-      for (const msg of toDelete) {
-        await db.delete(messagesMysql).where(eq(messagesMysql.id, msg.id));
-      }
-      return toDelete.length;
+        .where(condition);
+      await db.delete(messagesMysql).where(condition);
+      return deletedCount;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: messagesPostgres.id })
+      const condition = and(
+        or(
+          eq(messagesPostgres.fromNodeNum, nodeNum),
+          eq(messagesPostgres.toNodeNum, nodeNum)
+        ),
+        sql`${messagesPostgres.toNodeId} != '!ffffffff'`
+      );
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesPostgres)
-        .where(
-          and(
-            or(
-              eq(messagesPostgres.fromNodeNum, nodeNum),
-              eq(messagesPostgres.toNodeNum, nodeNum)
-            ),
-            sql`${messagesPostgres.toNodeId} != '!ffffffff'`
-          )
-        );
-
-      for (const msg of toDelete) {
-        await db.delete(messagesPostgres).where(eq(messagesPostgres.id, msg.id));
-      }
-      return toDelete.length;
+        .where(condition);
+      await db.delete(messagesPostgres).where(condition);
+      return deletedCount;
     }
   }
 
@@ -500,37 +479,28 @@ export class MessagesRepository extends BaseRepository {
 
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: messagesSqlite.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesSqlite)
         .where(lt(messagesSqlite.timestamp, cutoff));
-
-      for (const msg of toDelete) {
-        await db.delete(messagesSqlite).where(eq(messagesSqlite.id, msg.id));
-      }
-      return toDelete.length;
+      await db.delete(messagesSqlite).where(lt(messagesSqlite.timestamp, cutoff));
+      return deletedCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: messagesMysql.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesMysql)
         .where(lt(messagesMysql.timestamp, cutoff));
-
-      for (const msg of toDelete) {
-        await db.delete(messagesMysql).where(eq(messagesMysql.id, msg.id));
-      }
-      return toDelete.length;
+      await db.delete(messagesMysql).where(lt(messagesMysql.timestamp, cutoff));
+      return deletedCount;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: messagesPostgres.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(messagesPostgres)
         .where(lt(messagesPostgres.timestamp, cutoff));
-
-      for (const msg of toDelete) {
-        await db.delete(messagesPostgres).where(eq(messagesPostgres.id, msg.id));
-      }
-      return toDelete.length;
+      await db.delete(messagesPostgres).where(lt(messagesPostgres.timestamp, cutoff));
+      return deletedCount;
     }
   }
 
