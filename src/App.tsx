@@ -20,6 +20,7 @@ import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import { MeshCoreTab } from './components/MeshCore';
+import PacketMonitorPanel from './components/PacketMonitorPanel';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
@@ -54,6 +55,7 @@ import { MeshMessage } from './types/message';
 import { SortField, SortDirection, NodeFilters } from './types/ui';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
+import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
@@ -148,6 +150,7 @@ function App() {
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
+  const [packetLogEnabled, setPacketLogEnabled] = useState(false);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -444,6 +447,20 @@ function App() {
     checkUnreadNews();
   }, [authStatus?.authenticated]);
 
+  // Check if packet logging is enabled on the server
+  useEffect(() => {
+    const checkPacketLogStatus = async () => {
+      if (!authStatus?.authenticated) return;
+      try {
+        const stats = await getPacketStats();
+        setPacketLogEnabled(stats.enabled === true);
+      } catch {
+        logger.debug('Failed to fetch packet log status');
+      }
+    };
+    checkPacketLogStatus();
+  }, [authStatus?.authenticated]);
+
   // Messaging context
   const {
     selectedDMNode,
@@ -569,6 +586,7 @@ function App() {
       admin: () => isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
+      packetmonitor: () => hasPermission('messages', 'read') && Array.from({ length: 8 }, (_, i) => hasPermission(`channel_${i}` as ResourceType, 'read')).some(Boolean),
     };
 
     // Check if current tab requires permission
@@ -4525,6 +4543,7 @@ function App() {
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
         meshcoreEnabled={authStatus?.meshcoreEnabled || false}
+        packetLogEnabled={packetLogEnabled}
         onSearchClick={() => setIsSearchOpen(true)}
       />
 
@@ -4991,6 +5010,11 @@ function App() {
           </ErrorBoundary>
         )}
         {activeTab === 'meshcore' && <ErrorBoundary fallbackTitle="MeshCore failed to load"><MeshCoreTab baseUrl={baseUrl} /></ErrorBoundary>}
+        {activeTab === 'packetmonitor' && (
+          <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
+            <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
+          </ErrorBoundary>
+        )}
       </main>
 
       {/* Node Popup */}

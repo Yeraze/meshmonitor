@@ -25,6 +25,7 @@
   "nav.pin_sidebar": "Pin sidebar open",
   "nav.unpin_sidebar": "Unpin sidebar",
   "nav.search": "Search",
+  "nav.packet_monitor": "Packet Monitor",
 
   "search.title": "Search Messages",
   "search.placeholder": "Search for text in messages...",

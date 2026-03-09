@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Map, MessageSquare, Mail, Search, Info, LayoutDashboard, Radio,
+  Map, MessageSquare, Mail, Search, Info, LayoutDashboard, Radio, Activity,
   Settings, Bot, Satellite, Bell, Users, Zap, ClipboardList, Shield,
 } from 'lucide-react';
 import './Sidebar.css';
@@ -29,6 +29,7 @@ interface SidebarProps {
   baseUrl: string;
   connectedNodeName?: string;
   meshcoreEnabled?: boolean;
+  packetLogEnabled?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -44,7 +45,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSearchClick,
   baseUrl,
   connectedNodeName,
-  meshcoreEnabled
+  meshcoreEnabled,
+  packetLogEnabled
 }) => {
   const { t } = useTranslation();
   // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
@@ -203,6 +205,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
           {meshcoreEnabled && hasPermission('meshcore', 'read') && (
             <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon={<Radio size={20} />} />
+          )}
+          {packetLogEnabled && hasAnyChannelPermission() && hasPermission('messages', 'read') && (
+            <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={<Activity size={20} />} />
           )}
         </div>
 
