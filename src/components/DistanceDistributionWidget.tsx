@@ -99,15 +99,13 @@ const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
       bucketCounts[idx]++;
     }
 
-    const result: DistanceBucket[] = bucketCounts.map((count, i) => {
-      const from = i * bucketSize;
-      const to = (i + 1) * bucketSize;
-      return {
-        label: `${from}–${to}`,
+    const result: DistanceBucket[] = bucketCounts
+      .map((count, i) => ({
+        label: `${i * bucketSize}–${(i + 1) * bucketSize}`,
         count,
         index: i,
-      };
-    });
+      }))
+      .filter(b => b.count > 0);
 
     return {
       buckets: result,
