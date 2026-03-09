@@ -4,7 +4,7 @@
  * Handles all message-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL } from 'drizzle-orm';
+import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL, count } from 'drizzle-orm';
 import { messagesSqlite, messagesPostgres, messagesMysql } from '../schema/messages.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
@@ -335,16 +335,16 @@ export class MessagesRepository extends BaseRepository {
   async getMessageCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.select().from(messagesSqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(messagesSqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db.select().from(messagesMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(messagesMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.select().from(messagesPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(messagesPostgres);
+      return Number(result[0].count);
     }
   }
 
@@ -693,25 +693,22 @@ export class MessagesRepository extends BaseRepository {
   async deleteAllMessages(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const count = await db
-        .select({ id: messagesSqlite.id })
-        .from(messagesSqlite);
+      const result = await db.select({ count: count() }).from(messagesSqlite);
+      const total = Number(result[0].count);
       await db.delete(messagesSqlite);
-      return count.length;
+      return total;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const count = await db
-        .select({ id: messagesMysql.id })
-        .from(messagesMysql);
+      const result = await db.select({ count: count() }).from(messagesMysql);
+      const total = Number(result[0].count);
       await db.delete(messagesMysql);
-      return count.length;
+      return total;
     } else {
       const db = this.getPostgresDb();
-      const count = await db
-        .select({ id: messagesPostgres.id })
-        .from(messagesPostgres);
+      const result = await db.select({ count: count() }).from(messagesPostgres);
+      const total = Number(result[0].count);
       await db.delete(messagesPostgres);
-      return count.length;
+      return total;
     }
   }
 

@@ -4,7 +4,7 @@
  * Handles traceroute and route segment database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, desc, lt, or, isNull, gte, notInArray } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull, gte, notInArray, count } from 'drizzle-orm';
 import {
   traceroutesSqlite, traceroutesPostgres, traceroutesMysql,
   routeSegmentsSqlite, routeSegmentsPostgres, routeSegmentsMysql,
@@ -380,16 +380,16 @@ export class TraceroutesRepository extends BaseRepository {
   async getTracerouteCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.select().from(traceroutesSqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(traceroutesSqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db.select().from(traceroutesMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(traceroutesMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.select().from(traceroutesPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(traceroutesPostgres);
+      return Number(result[0].count);
     }
   }
 
@@ -611,25 +611,22 @@ export class TraceroutesRepository extends BaseRepository {
   async deleteAllTraceroutes(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const count = await db
-        .select({ id: traceroutesSqlite.id })
-        .from(traceroutesSqlite);
+      const result = await db.select({ count: count() }).from(traceroutesSqlite);
+      const total = Number(result[0].count);
       await db.delete(traceroutesSqlite);
-      return count.length;
+      return total;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const count = await db
-        .select({ id: traceroutesMysql.id })
-        .from(traceroutesMysql);
+      const result = await db.select({ count: count() }).from(traceroutesMysql);
+      const total = Number(result[0].count);
       await db.delete(traceroutesMysql);
-      return count.length;
+      return total;
     } else {
       const db = this.getPostgresDb();
-      const count = await db
-        .select({ id: traceroutesPostgres.id })
-        .from(traceroutesPostgres);
+      const result = await db.select({ count: count() }).from(traceroutesPostgres);
+      const total = Number(result[0].count);
       await db.delete(traceroutesPostgres);
-      return count.length;
+      return total;
     }
   }
 
@@ -639,25 +636,22 @@ export class TraceroutesRepository extends BaseRepository {
   async deleteAllRouteSegments(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const count = await db
-        .select({ id: routeSegmentsSqlite.id })
-        .from(routeSegmentsSqlite);
+      const result = await db.select({ count: count() }).from(routeSegmentsSqlite);
+      const total = Number(result[0].count);
       await db.delete(routeSegmentsSqlite);
-      return count.length;
+      return total;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const count = await db
-        .select({ id: routeSegmentsMysql.id })
-        .from(routeSegmentsMysql);
+      const result = await db.select({ count: count() }).from(routeSegmentsMysql);
+      const total = Number(result[0].count);
       await db.delete(routeSegmentsMysql);
-      return count.length;
+      return total;
     } else {
       const db = this.getPostgresDb();
-      const count = await db
-        .select({ id: routeSegmentsPostgres.id })
-        .from(routeSegmentsPostgres);
+      const result = await db.select({ count: count() }).from(routeSegmentsPostgres);
+      const total = Number(result[0].count);
       await db.delete(routeSegmentsPostgres);
-      return count.length;
+      return total;
     }
   }
 }
