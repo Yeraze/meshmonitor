@@ -279,29 +279,27 @@ class MessageQueueService {
         throw new Error(`Invalid requestId returned: ${requestId}`);
       }
 
+      // Clean up old pendingAcks entry from previous attempt (retry case)
+      if (message.requestId) {
+        this.pendingAcks.delete(message.requestId);
+      }
+
       message.requestId = requestId;
 
       // Update last send time
       this.lastSendTime = Date.now();
 
-      // Add to pending ACKs if not at max attempts
-      if (message.attempts < message.maxAttempts) {
-        message.pendingAckSince = Date.now();
-        this.pendingAcks.set(requestId, message);
-        logger.debug(`⏳ Waiting for ACK for message ${message.id} (requestId: ${requestId})`);
+      // Always remove from queue on successful send
+      this.removeFromQueue(message);
+
+      // Track in pending ACKs for ACK/failure handling
+      message.pendingAckSince = Date.now();
+      this.pendingAcks.set(requestId, message);
+
+      if (message.attempts >= message.maxAttempts) {
+        logger.info(`🏁 Final attempt for message ${message.id} - no more retries`);
       } else {
-        // Final attempt - remove from queue
-        logger.info(`🏁 Final attempt for message ${message.id} - removing from queue`);
-        this.removeFromQueue(message);
-
-        // Add to pending ACKs to track success/failure
-        message.pendingAckSince = Date.now();
-        this.pendingAcks.set(requestId, message);
-      }
-
-      // Remove from queue if this was the first attempt
-      if (message.attempts === 1) {
-        this.removeFromQueue(message);
+        logger.debug(`⏳ Waiting for ACK for message ${message.id} (requestId: ${requestId})`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -446,6 +444,7 @@ class MessageQueueService {
 
     this.queue = [];
     this.pendingAcks.clear();
+    this.lastSendTime = 0;
     this.stopProcessing();
 
     logger.info(`🧹 Cleared message queue (removed ${queueLength} queued and ${pendingAcksCount} pending messages)`);
