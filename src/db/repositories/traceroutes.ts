@@ -565,43 +565,22 @@ export class TraceroutesRepository extends BaseRepository {
   async clearAllRecordHolders(): Promise<void> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const holders = await db
-        .select({ id: routeSegmentsSqlite.id })
-        .from(routeSegmentsSqlite)
+      await db
+        .update(routeSegmentsSqlite)
+        .set({ isRecordHolder: false })
         .where(eq(routeSegmentsSqlite.isRecordHolder, true));
-
-      for (const h of holders) {
-        await db
-          .update(routeSegmentsSqlite)
-          .set({ isRecordHolder: false })
-          .where(eq(routeSegmentsSqlite.id, h.id));
-      }
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const holders = await db
-        .select({ id: routeSegmentsMysql.id })
-        .from(routeSegmentsMysql)
+      await db
+        .update(routeSegmentsMysql)
+        .set({ isRecordHolder: false })
         .where(eq(routeSegmentsMysql.isRecordHolder, true));
-
-      for (const h of holders) {
-        await db
-          .update(routeSegmentsMysql)
-          .set({ isRecordHolder: false })
-          .where(eq(routeSegmentsMysql.id, h.id));
-      }
     } else {
       const db = this.getPostgresDb();
-      const holders = await db
-        .select({ id: routeSegmentsPostgres.id })
-        .from(routeSegmentsPostgres)
+      await db
+        .update(routeSegmentsPostgres)
+        .set({ isRecordHolder: false })
         .where(eq(routeSegmentsPostgres.isRecordHolder, true));
-
-      for (const h of holders) {
-        await db
-          .update(routeSegmentsPostgres)
-          .set({ isRecordHolder: false })
-          .where(eq(routeSegmentsPostgres.id, h.id));
-      }
     }
   }
 
