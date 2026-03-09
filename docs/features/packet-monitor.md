@@ -6,7 +6,12 @@ The Packet Monitor is a diagnostic tool that displays raw Meshtastic packets as 
 
 ## Accessing the Packet Monitor
 
-The Packet Monitor appears at the bottom of the Map tab once enabled in Settings. It requires appropriate permissions to view.
+The Packet Monitor is available in two locations:
+
+- **Sidebar tab** — Click the Packet Monitor icon in the sidebar for a full-page view
+- **Map panel** — The Packet Monitor also appears at the bottom of the Map tab
+
+Both views require the `packetmonitor:read` permission and must be enabled in Settings.
 
 ## What the Packet Monitor Shows
 
@@ -83,11 +88,31 @@ Each packet entry shows:
 
 ## Permissions
 
-Viewing the Packet Monitor requires:
-- `channel_0:read` permission
-- `messages:read` permission
+### Access Permission
 
-These permissions are typically granted to admin users or can be configured per-user in the Admin tab.
+Viewing the Packet Monitor requires the `packetmonitor:read` permission. This is granted by default to all users (including Anonymous). Administrators can revoke it per-user in **Settings > Users**. The Packet Monitor permission is read-only — there is no write mode.
+
+### Packet Filtering by Permission
+
+Once a user has access to the Packet Monitor, the packets they see are filtered based on their other permissions:
+
+| Packet Type | Permission Required |
+|-------------|-------------------|
+| Encrypted packets | None — always visible (content is unreadable) |
+| Decrypted channel packets | `channel_N:read` for the packet's channel (0-7) |
+| Direct Messages (TEXT_MESSAGE_APP to a specific node) | `messages:read` (Direct Messages: Read) |
+| Other decrypted packets (POSITION, TELEMETRY, etc.) | `channel_N:read` for the packet's channel |
+| Packets with no channel info | Always visible |
+
+Admin users bypass all filtering and see all packets.
+
+::: tip Example
+A user with `packetmonitor:read`, `channel_0:read`, and `channel_1:read` (but no `messages:read`) will see:
+- All encrypted packets
+- Decrypted packets on channels 0 and 1
+- Non-DM packets on channels 0 and 1
+- **Not** direct message text packets (they need `messages:read` for those)
+:::
 
 ## Use Cases
 

@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-03-03T18:00:00Z",
+  "lastUpdated": "2026-03-09T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.8.5",
+      "id": "news-2026-03-09-packet-monitor-permissions",
+      "title": "MeshMonitor v3.8.5 - Packet Monitor Permission & Filtering",
+      "content": "MeshMonitor v3.8.5 introduces a dedicated **Packet Monitor** permission resource and granular packet filtering based on channel and message permissions.\n\n## New Packet Monitor Permission\n\nThe Packet Monitor now has its own **packetmonitor:read** permission, replacing the previous requirement for `channel_0:read + messages:read`. This gives administrators more precise control over who can access the packet monitoring feature.\n\n## Action Required\n\nAdministrators should review their user permissions:\n\n1. Navigate to **Settings > Users** and select each user\n2. Verify the **Packet Monitor** read permission is set appropriately\n3. New users and the Anonymous user receive **Packet Monitor: Read** by default\n4. The Packet Monitor permission is read-only — there is no write mode\n\n## Channel-Based Packet Filtering\n\nPacket Monitor now filters packets based on your channel permissions:\n\n- **Encrypted packets** are always visible (content is unreadable anyway)\n- **Decrypted channel packets** require **Read** permission on the corresponding channel (channel_0 through channel_7)\n- **Direct Message packets** (TEXT_MESSAGE_APP to a specific node) require **Direct Messages: Read** permission\n- **Admin users** bypass all filtering and see all packets\n\nThis means non-admin users will only see packets from channels they have access to, while still being able to see encrypted traffic for signal analysis.\n\n## Other Changes\n\n- **Packet Monitor sidebar tab** — Packet Monitor is now accessible as a dedicated sidebar tab in addition to the map panel ([#2180](https://github.com/Yeraze/meshmonitor/pull/2180))\n- **Virtual Node config loop fix** — Prevents reconnect loops caused by cached `rebooted` messages ([#2182](https://github.com/Yeraze/meshmonitor/pull/2182))\n- **Debug cleanup** — Removed stale debug logging and backup file ([#2183](https://github.com/Yeraze/meshmonitor/pull/2183))\n- **Dependency updates** — Updated mysql2, express-rate-limit, pg, recharts, and GitHub Actions",
+      "date": "2026-03-09T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "minVersion": "3.8.0",
       "id": "news-2026-03-03-firmware-management",
