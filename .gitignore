@@ -71,3 +71,6 @@ tiles/*.pbf
 
 # Test output
 test-results.txt
+
+# Git worktrees
+.worktrees/
