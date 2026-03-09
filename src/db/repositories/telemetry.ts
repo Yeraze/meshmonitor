@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, gte, and, desc, inArray, or, not, SQL } from 'drizzle-orm';
+import { eq, lt, gte, and, desc, inArray, or, not, SQL, count } from 'drizzle-orm';
 import { telemetrySqlite, telemetryPostgres, telemetryMysql } from '../schema/telemetry.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
@@ -54,16 +54,16 @@ export class TelemetryRepository extends BaseRepository {
   async getTelemetryCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.select().from(telemetrySqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(telemetrySqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db.select().from(telemetryMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(telemetryMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.select().from(telemetryPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(telemetryPostgres);
+      return Number(result[0].count);
     }
   }
 
