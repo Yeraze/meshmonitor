@@ -223,7 +223,6 @@ function App() {
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
 
-  // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;

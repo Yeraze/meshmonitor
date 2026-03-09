@@ -4,7 +4,7 @@
  * Handles all node-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray } from 'drizzle-orm';
+import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count } from 'drizzle-orm';
 import { nodesSqlite, nodesPostgres, nodesMysql } from '../schema/nodes.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
@@ -176,16 +176,16 @@ export class NodesRepository extends BaseRepository {
   async getNodeCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.select().from(nodesSqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(nodesSqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db.select().from(nodesMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(nodesMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.select().from(nodesPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(nodesPostgres);
+      return Number(result[0].count);
     }
   }
 

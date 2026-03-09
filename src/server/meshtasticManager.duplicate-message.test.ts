@@ -82,7 +82,6 @@ vi.mock('../utils/logger.js', () => ({
 vi.mock('./services/notificationService.js', () => ({
   notificationService: {
     checkAndSendNotifications: vi.fn(),
-    sendNotification: vi.fn(),
   },
 }));
 

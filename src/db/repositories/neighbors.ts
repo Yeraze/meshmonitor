@@ -174,19 +174,22 @@ export class NeighborsRepository extends BaseRepository {
   async deleteAllNeighborInfo(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const count = await db.select().from(neighborInfoSqlite);
+      const result = await db.select({ count: count() }).from(neighborInfoSqlite);
+      const deleteCount = Number(result[0].count);
       await db.delete(neighborInfoSqlite);
-      return count.length;
+      return deleteCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const count = await db.select().from(neighborInfoMysql);
+      const result = await db.select({ count: count() }).from(neighborInfoMysql);
+      const deleteCount = Number(result[0].count);
       await db.delete(neighborInfoMysql);
-      return count.length;
+      return deleteCount;
     } else {
       const db = this.getPostgresDb();
-      const count = await db.select().from(neighborInfoPostgres);
+      const result = await db.select({ count: count() }).from(neighborInfoPostgres);
+      const deleteCount = Number(result[0].count);
       await db.delete(neighborInfoPostgres);
-      return count.length;
+      return deleteCount;
     }
   }
 

@@ -721,25 +721,22 @@ export class TelemetryRepository extends BaseRepository {
   async deleteAllTelemetry(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const count = await db
-        .select({ id: telemetrySqlite.id })
-        .from(telemetrySqlite);
+      const result = await db.select({ count: count() }).from(telemetrySqlite);
+      const deleteCount = Number(result[0].count);
       await db.delete(telemetrySqlite);
-      return count.length;
+      return deleteCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const count = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql);
+      const result = await db.select({ count: count() }).from(telemetryMysql);
+      const deleteCount = Number(result[0].count);
       await db.delete(telemetryMysql);
-      return count.length;
+      return deleteCount;
     } else {
       const db = this.getPostgresDb();
-      const count = await db
-        .select({ id: telemetryPostgres.id })
-        .from(telemetryPostgres);
+      const result = await db.select({ count: count() }).from(telemetryPostgres);
+      const deleteCount = Number(result[0].count);
       await db.delete(telemetryPostgres);
-      return count.length;
+      return deleteCount;
     }
   }
 
