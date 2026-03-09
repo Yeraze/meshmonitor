@@ -124,37 +124,28 @@ export class NeighborsRepository extends BaseRepository {
   async deleteNeighborInfoForNode(nodeNum: number): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: neighborInfoSqlite.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(neighborInfoSqlite)
         .where(eq(neighborInfoSqlite.nodeNum, nodeNum));
-
-      for (const n of toDelete) {
-        await db.delete(neighborInfoSqlite).where(eq(neighborInfoSqlite.id, n.id));
-      }
-      return toDelete.length;
+      await db.delete(neighborInfoSqlite).where(eq(neighborInfoSqlite.nodeNum, nodeNum));
+      return deletedCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: neighborInfoMysql.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(neighborInfoMysql)
         .where(eq(neighborInfoMysql.nodeNum, nodeNum));
-
-      for (const n of toDelete) {
-        await db.delete(neighborInfoMysql).where(eq(neighborInfoMysql.id, n.id));
-      }
-      return toDelete.length;
+      await db.delete(neighborInfoMysql).where(eq(neighborInfoMysql.nodeNum, nodeNum));
+      return deletedCount;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: neighborInfoPostgres.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(neighborInfoPostgres)
         .where(eq(neighborInfoPostgres.nodeNum, nodeNum));
-
-      for (const n of toDelete) {
-        await db.delete(neighborInfoPostgres).where(eq(neighborInfoPostgres.id, n.id));
-      }
-      return toDelete.length;
+      await db.delete(neighborInfoPostgres).where(eq(neighborInfoPostgres.nodeNum, nodeNum));
+      return deletedCount;
     }
   }
 
