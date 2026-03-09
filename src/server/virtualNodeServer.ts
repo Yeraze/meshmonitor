@@ -22,6 +22,7 @@ interface ConnectedClient {
   buffer: Buffer;
   connectedAt: Date;
   lastActivity: Date;
+  lastConfigSentAt?: Date;
 }
 
 interface QueuedMessage {
@@ -507,8 +508,15 @@ export class VirtualNodeServer extends EventEmitter {
         this.queueMessage(clientId, strippedPayload);
       } else if (toRadio.wantConfigId) {
         // Client is requesting config with a specific ID
-        logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
-        await this.sendInitialConfig(clientId, toRadio.wantConfigId);
+        // Rate limit: ignore rapid-fire config requests (prevents reconnect loops)
+        const client = this.clients.get(clientId);
+        const CONFIG_COOLDOWN_MS = 5000;
+        if (client?.lastConfigSentAt && (Date.now() - client.lastConfigSentAt.getTime()) < CONFIG_COOLDOWN_MS) {
+          logger.warn(`Virtual node: Ignoring config request from ${clientId} - config was sent ${Date.now() - client.lastConfigSentAt.getTime()}ms ago (cooldown: ${CONFIG_COOLDOWN_MS}ms)`);
+        } else {
+          logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
+          await this.sendInitialConfig(clientId, toRadio.wantConfigId);
+        }
       } else if (toRadio.heartbeat) {
         // Handle heartbeat locally - don't forward to physical node
         // iOS clients expect a response packet within a timeout window or they disconnect
@@ -779,6 +787,13 @@ export class VirtualNodeServer extends EventEmitter {
           continue;
         }
 
+        // Skip generic/unrecognized FromRadio messages (e.g. rebooted, queueStatus, logRecord).
+        // Replaying a 'rebooted' message causes meshtastic clients to call _startConfig() and
+        // re-request config in a tight loop, since the new configId won't match our ConfigComplete.
+        if (message.type === 'fromRadio') {
+          continue;
+        }
+
         // Check if client is still connected
         const client = this.clients.get(clientId);
         if (!client || client.socket.destroyed) {
@@ -828,6 +843,12 @@ export class VirtualNodeServer extends EventEmitter {
       }
 
       logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${channelCount} fresh channels + ${staticCount} cached static)`);
+
+      // Track when config was last sent to prevent rapid-fire reconnect loops
+      const client = this.clients.get(clientId);
+      if (client) {
+        client.lastConfigSentAt = new Date();
+      }
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
     }
