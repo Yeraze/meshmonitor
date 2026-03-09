@@ -24,7 +24,8 @@ export type ResourceType =
   | 'security'
   | 'themes'
   | 'nodes_private'
-  | 'meshcore';
+  | 'meshcore'
+  | 'packetmonitor';
 
 export type PermissionAction = 'viewOnMap' | 'read' | 'write';
 
@@ -85,6 +86,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'themes', name: 'Custom Themes', description: 'Create and manage custom color themes' },
   { id: 'nodes_private', name: 'Private Positions', description: 'View private node position overrides' },
   { id: 'meshcore', name: 'MeshCore', description: 'MeshCore protocol device management' },
+  { id: 'packetmonitor', name: 'Packet Monitor', description: 'View real-time packet logs and statistics' },
 ] as const;
 
 // Default permissions for different user types
@@ -111,6 +113,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   themes: { read: true, write: true },
   nodes_private: { read: true, write: true },
   meshcore: { read: true, write: true },
+  packetmonitor: { read: true, write: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -136,4 +139,5 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   themes: { read: true, write: false },
   nodes_private: { read: false, write: false },
   meshcore: { read: true, write: false },
+  packetmonitor: { read: true, write: false },
 };

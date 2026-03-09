@@ -6,7 +6,6 @@ import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
-import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows } from '../utils/mapHelpers.tsx';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
@@ -479,16 +478,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [mapControlsPosition]);
 
-  // Check if user has permission to view packet monitor - needs at least one channel and messages permission
-  const hasAnyChannelPermission = () => {
-    for (let i = 0; i < 8; i++) {
-      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const canViewPacketMonitor = hasAnyChannelPermission() && hasPermission('messages', 'read');
+  // Check if user has permission to view packet monitor
+  const canViewPacketMonitor = hasPermission('packetmonitor', 'read');
 
   // Fetch packet logging enabled status from server
   useEffect(() => {
