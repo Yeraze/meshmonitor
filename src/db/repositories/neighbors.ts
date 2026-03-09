@@ -4,7 +4,7 @@
  * Handles neighbor info database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, and, gte, sql } from 'drizzle-orm';
+import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
 import { neighborInfoSqlite, neighborInfoPostgres, neighborInfoMysql } from '../schema/neighbors.js';
 import { packetLogSqlite, packetLogPostgres, packetLogMysql } from '../schema/packets.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
@@ -164,16 +164,16 @@ export class NeighborsRepository extends BaseRepository {
   async getNeighborCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.select().from(neighborInfoSqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(neighborInfoSqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db.select().from(neighborInfoMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(neighborInfoMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.select().from(neighborInfoPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(neighborInfoPostgres);
+      return Number(result[0].count);
     }
   }
 

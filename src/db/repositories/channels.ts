@@ -4,7 +4,7 @@
  * Handles all channel-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, gt, isNull, or, lt } from 'drizzle-orm';
+import { eq, and, gt, isNull, or, lt, count } from 'drizzle-orm';
 import { channelsSqlite, channelsPostgres, channelsMysql } from '../schema/channels.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbChannel } from '../types.js';
@@ -120,22 +120,16 @@ export class ChannelsRepository extends BaseRepository {
   async getChannelCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(channelsSqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(channelsSqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(channelsMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(channelsMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(channelsPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(channelsPostgres);
+      return Number(result[0].count);
     }
   }
 
