@@ -67,7 +67,7 @@
     "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.1",
-    "recharts": "^3.7.0",
+    "recharts": "^3.8.0",
     "rotating-file-stream": "^3.2.9",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
