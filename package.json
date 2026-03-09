@@ -53,7 +53,7 @@
     "lucide-react": "^0.577.0",
     "maplibre-gl": "^5.19.0",
     "morgan": "^1.10.1",
-    "mysql2": "^3.18.2",
+    "mysql2": "^3.19.0",
     "node-cron": "^4.2.1",
     "openid-client": "^6.8.2",
     "otplib": "^13.2.1",
