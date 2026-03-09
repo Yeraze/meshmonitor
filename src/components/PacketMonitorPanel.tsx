@@ -11,7 +11,6 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { usePackets } from '../hooks/usePackets';
 import { formatDateTime } from '../utils/datetime';
-import { ResourceType } from '../types/permission';
 import RelayNodeModal from './RelayNodeModal';
 import './PacketMonitorPanel.css';
 
@@ -87,16 +86,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Check permissions - user needs to have at least one channel permission and messages permission
-  const hasAnyChannelPermission = () => {
-    for (let i = 0; i < 8; i++) {
-      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const canView = hasAnyChannelPermission() && hasPermission('messages', 'read');
+  // Check permissions - user needs packetmonitor:read permission
+  const canView = hasPermission('packetmonitor', 'read');
 
   // Get own node number for filtering
   // Convert nodeId (hex string like "!43588558") to number

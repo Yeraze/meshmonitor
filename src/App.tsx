@@ -586,7 +586,7 @@ function App() {
       admin: () => isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
-      packetmonitor: () => hasPermission('messages', 'read') && Array.from({ length: 8 }, (_, i) => hasPermission(`channel_${i}` as ResourceType, 'read')).some(Boolean),
+      packetmonitor: () => hasPermission('packetmonitor', 'read'),
     };
 
     // Check if current tab requires permission

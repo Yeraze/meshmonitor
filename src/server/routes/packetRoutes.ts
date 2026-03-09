@@ -7,7 +7,7 @@ import { RequestHandler } from 'express';
 const router = express.Router();
 
 /**
- * Permission middleware - require BOTH channels:read AND messages:read
+ * Permission middleware - require packetmonitor:read permission
  */
 const requirePacketPermissions: RequestHandler = async (req, res, next) => {
   try {
@@ -27,15 +27,14 @@ const requirePacketPermissions: RequestHandler = async (req, res, next) => {
       return next();
     }
 
-    // Check both channel_0:read and messages:read (minimum required)
-    const hasChannelsRead = permissions.channel_0?.read === true;
-    const hasMessagesRead = permissions.messages?.read === true;
+    // Check packetmonitor:read permission
+    const hasPacketMonitorRead = permissions.packetmonitor?.read === true;
 
-    if (!hasChannelsRead || !hasMessagesRead) {
-      logger.warn(`❌ Permission denied for packet access - channel_0:read=${hasChannelsRead}, messages:read=${hasMessagesRead}`);
+    if (!hasPacketMonitorRead) {
+      logger.warn(`❌ Permission denied for packet access - packetmonitor:read=${hasPacketMonitorRead}`);
       return res.status(403).json({
         error: 'Forbidden',
-        message: 'You need both channel_0:read and messages:read permissions to access packet logs'
+        message: 'You need packetmonitor:read permission to access packet logs'
       });
     }
 

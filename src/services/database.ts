@@ -87,6 +87,7 @@ import { migration as createEmbedProfilesMigration, runMigration078Postgres, run
 import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
 import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
 import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
+import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -986,6 +987,7 @@ class DatabaseService {
     this.runCreateGeofenceCooldownsMigration();
     this.runAddFavoriteLockedMigration();
     this.runAddTimeOffsetColumnsMigration();
+    this.runAddPacketmonitorPermissionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2580,6 +2582,24 @@ class DatabaseService {
       logger.debug('Add time offset columns migration completed successfully');
     } catch (error) {
       logger.error('Error running migration 081:', error);
+    }
+  }
+
+  private runAddPacketmonitorPermissionMigration(): void {
+    // Run migration 082: Add packetmonitor permission resource
+    try {
+      const migrationKey = 'migration_082_packetmonitor_permission';
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 082 (add packetmonitor permission) already completed');
+        return;
+      }
+      logger.debug('Running migration 082: Add packetmonitor permission...');
+      addPacketmonitorPermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Add packetmonitor permission migration completed successfully');
+    } catch (error) {
+      logger.error('Error running migration 082:', error);
     }
   }
 
@@ -11459,6 +11479,9 @@ class DatabaseService {
       // Run migration 081: Add time offset detection columns to nodes
       await runMigration081Postgres(client);
 
+      // Run migration 082: Add packetmonitor permission
+      await runMigration082Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11613,6 +11636,9 @@ class DatabaseService {
 
       // Run migration 081: Add time offset detection columns to nodes
       await runMigration081Mysql(pool);
+
+      // Run migration 082: Add packetmonitor permission
+      await runMigration082Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
