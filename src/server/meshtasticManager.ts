@@ -6825,17 +6825,7 @@ class MeshtasticManager {
           updatedAt: Date.now()
         };
         logger.debug(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
-        logger.debug(`DEBUG nodeData values: nodeNum=${nodeData.nodeNum}, nodeId="${nodeData.nodeId}"`);
-        logger.debug(`DEBUG nodeData types: nodeNum type=${typeof nodeData.nodeNum}, nodeId type=${typeof nodeData.nodeId}`);
-        logger.debug(`DEBUG validation check: nodeNum undefined? ${nodeData.nodeNum === undefined}, nodeNum null? ${nodeData.nodeNum === null}, nodeId falsy? ${!nodeData.nodeId}`);
-
-        // Force output with console.error to bypass any buffering
-        logger.error(`FORCE DEBUG: nodeData:`, JSON.stringify(nodeData));
-
         databaseService.upsertNode(nodeData);
-        logger.debug(`DEBUG: Called upsertNode, checking if node was created...`);
-        const checkNode = databaseService.getNode(fromNodeNum);
-        logger.debug(`DEBUG: Node exists after upsert:`, checkNode ? 'YES' : 'NO');
       }
 
       // Make sure toNode exists in database (including broadcast node)
