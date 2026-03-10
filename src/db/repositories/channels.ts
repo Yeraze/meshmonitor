@@ -180,7 +180,7 @@ export class ChannelsRepository extends BaseRepository {
           .update(channelsSqlite)
           .set({
             name: effectiveName,
-            psk: data.psk ?? existingChannel.psk,
+            psk: (data.psk !== undefined && data.psk !== '') ? data.psk : existingChannel.psk,
             role: data.role ?? existingChannel.role,
             uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
             downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,
@@ -194,7 +194,7 @@ export class ChannelsRepository extends BaseRepository {
           .update(channelsMysql)
           .set({
             name: effectiveName,
-            psk: data.psk ?? existingChannel.psk,
+            psk: (data.psk !== undefined && data.psk !== '') ? data.psk : existingChannel.psk,
             role: data.role ?? existingChannel.role,
             uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
             downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,
@@ -208,7 +208,7 @@ export class ChannelsRepository extends BaseRepository {
           .update(channelsPostgres)
           .set({
             name: effectiveName,
-            psk: data.psk ?? existingChannel.psk,
+            psk: (data.psk !== undefined && data.psk !== '') ? data.psk : existingChannel.psk,
             role: data.role ?? existingChannel.role,
             uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
             downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,

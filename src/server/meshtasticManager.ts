@@ -3355,7 +3355,7 @@ class MeshtasticManager {
         try {
           // Convert PSK buffer to base64 string if it exists
           let pskString: string | undefined;
-          if (channel.settings.psk) {
+          if (channel.settings.psk && channel.settings.psk.length > 0) {
             try {
               pskString = Buffer.from(channel.settings.psk).toString('base64');
             } catch (pskError) {

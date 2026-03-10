@@ -1115,10 +1115,11 @@ export class MeshtasticProtobufService {
   async createChannel(channelData: {
     index: number;
     settings: {
-      name: string;
+      name?: string;
       psk?: Buffer;
-      uplinkEnabled: boolean;
-      downlinkEnabled: boolean;
+      uplinkEnabled?: boolean;
+      downlinkEnabled?: boolean;
+      positionPrecision?: number | null;
     };
     role: number;
   }): Promise<Uint8Array | null> {
@@ -1131,20 +1132,47 @@ export class MeshtasticProtobufService {
     try {
       const Channel = root.lookupType('meshtastic.Channel');
       const ChannelSettings = root.lookupType('meshtastic.ChannelSettings');
+      const ModuleSettings = root.lookupType('meshtastic.ModuleSettings');
       const FromRadio = root.lookupType('meshtastic.FromRadio');
 
-      const settings = ChannelSettings.create({
-        name: channelData.settings.name,
-        psk: channelData.settings.psk || Buffer.alloc(0),
-        uplinkEnabled: channelData.settings.uplinkEnabled,
-        downlinkEnabled: channelData.settings.downlinkEnabled,
-      });
+      // Build settings to match what the physical radio sends:
+      // - Only include non-default values (proto3 omits defaults on the wire)
+      // - Include moduleSettings.positionPrecision when available
+      // - Include PSK only when non-empty (empty = no encryption / red lock)
+      const settingsData: Record<string, any> = {};
 
-      const channel = Channel.create({
-        index: channelData.index,
-        settings: settings,
-        role: channelData.role,
-      });
+      if (channelData.settings.psk && channelData.settings.psk.length > 0) {
+        settingsData.psk = channelData.settings.psk;
+      }
+      if (channelData.settings.name) {
+        settingsData.name = channelData.settings.name;
+      }
+      // Only include uplink/downlink if true (false is proto3 default, radio omits it)
+      if (channelData.settings.uplinkEnabled) {
+        settingsData.uplinkEnabled = true;
+      }
+      if (channelData.settings.downlinkEnabled) {
+        settingsData.downlinkEnabled = true;
+      }
+      // Include moduleSettings with positionPrecision when available
+      if (channelData.settings.positionPrecision != null && channelData.settings.positionPrecision > 0) {
+        settingsData.moduleSettings = ModuleSettings.create({
+          positionPrecision: channelData.settings.positionPrecision,
+        });
+      }
+
+      const settings = ChannelSettings.create(settingsData);
+
+      // Only include non-default values in the Channel message
+      // (index=0 and role=DISABLED=0 are proto3 defaults)
+      const channelFields: Record<string, any> = { settings };
+      if (channelData.index !== 0) {
+        channelFields.index = channelData.index;
+      }
+      if (channelData.role !== 0) {
+        channelFields.role = channelData.role;
+      }
+      const channel = Channel.create(channelFields);
 
       const fromRadio = FromRadio.create({
         channel: channel,
