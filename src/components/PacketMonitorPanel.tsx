@@ -888,7 +888,30 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     Object.entries(displayData).filter(([, v]) => v !== undefined && v !== null)
                   );
 
-                  return <pre className="packet-json">{JSON.stringify(cleanedData, null, 2)}</pre>;
+                  // Format field names for display (snake_case → Title Case)
+                  const formatLabel = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                  return (
+                    <div className="packet-detail-fields">
+                      {Object.entries(cleanedData).map(([key, value]) => {
+                        // Show decoded_payload and complex objects as formatted JSON
+                        if (typeof value === 'object' && value !== null) {
+                          return (
+                            <div key={key} className="detail-row detail-row-full">
+                              <span className="detail-label">{formatLabel(key)}</span>
+                              <pre className="detail-value-json">{JSON.stringify(value, null, 2)}</pre>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={key} className="detail-row">
+                            <span className="detail-label">{formatLabel(key)}</span>
+                            <span className="detail-value">{String(value)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
                 })()}
               </div>
             </div>
