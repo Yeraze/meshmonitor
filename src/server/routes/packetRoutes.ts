@@ -141,6 +141,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     const channel = req.query.channel ? parseInt(req.query.channel as string, 10) : undefined;
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
 
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
@@ -154,7 +155,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       to_node,
       channel,
       encrypted,
-      since
+      since,
+      relay_node
     });
 
     // Filter packets by channel and message permissions
@@ -166,7 +168,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       to_node,
       channel,
       encrypted,
-      since
+      since,
+      relay_node
     });
 
     res.json({
@@ -252,6 +255,20 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
 
 
 /**
+ * GET /api/packets/relay-nodes
+ * Get distinct relay nodes that appear in packet logs (for filter dropdowns)
+ */
+router.get('/relay-nodes', requirePacketPermissions, async (_req, res) => {
+  try {
+    const relayNodes = await packetLogService.getDistinctRelayNodesAsync();
+    res.json({ relayNodes });
+  } catch (error) {
+    logger.error('❌ Error fetching relay nodes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/packets/export
  * Export packet logs as JSONL with optional filtering
  * IMPORTANT: Must be registered before /:id route to avoid route matching conflicts
@@ -264,6 +281,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     const channel = req.query.channel ? parseInt(req.query.channel as string, 10) : undefined;
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
 
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
@@ -279,7 +297,8 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
       to_node,
       channel,
       encrypted,
-      since
+      since,
+      relay_node
     });
 
     // Filter packets by channel and message permissions

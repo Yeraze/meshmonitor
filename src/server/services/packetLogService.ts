@@ -1,4 +1,4 @@
-import databaseService, { DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum } from '../../services/database.js';
+import databaseService, { DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
 class PacketLogService {
@@ -61,6 +61,7 @@ class PacketLogService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): DbPacketLog[] {
     return databaseService.getPacketLogs(options);
   }
@@ -77,6 +78,7 @@ class PacketLogService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): Promise<DbPacketLog[]> {
     return databaseService.getPacketLogsAsync(options);
   }
@@ -102,6 +104,7 @@ class PacketLogService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): number {
     return databaseService.getPacketLogCount(options || {});
   }
@@ -116,6 +119,7 @@ class PacketLogService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): Promise<number> {
     return databaseService.getPacketLogCountAsync(options || {});
   }
@@ -168,6 +172,10 @@ class PacketLogService {
   /**
    * Get packet counts grouped by portnum (for distribution charts)
    */
+  async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
+    return databaseService.getDistinctRelayNodesAsync();
+  }
+
   async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
     return databaseService.getPacketCountsByPortnumAsync(options);
   }
