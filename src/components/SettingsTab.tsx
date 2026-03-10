@@ -193,6 +193,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
+  const [localAnalyticsProvider, setLocalAnalyticsProvider] = useState<string>('none');
+  const [localAnalyticsConfig, setLocalAnalyticsConfig] = useState<Record<string, string>>({});
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -274,6 +276,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             startHours: dimmingStartHours,
             minOpacity: dimmingMinOpacity,
           });
+
+          // Load analytics settings
+          if (settings.analyticsProvider) {
+            setLocalAnalyticsProvider(settings.analyticsProvider);
+          }
+          if (settings.analyticsConfig) {
+            try {
+              setLocalAnalyticsConfig(JSON.parse(settings.analyticsConfig));
+            } catch { /* ignore parse errors */ }
+          }
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -455,6 +467,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: nodeDimmingStartHours.toString(),
         nodeDimmingMinOpacity: nodeDimmingMinOpacity.toString(),
+        analyticsProvider: localAnalyticsProvider,
+        analyticsConfig: JSON.stringify(localAnalyticsConfig),
       };
 
       // Save to server
@@ -832,6 +846,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-auto-upgrade', label: t('auto_upgrade_test.title', 'Auto Upgrade') },
         ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
         { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
+        ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
@@ -1476,6 +1491,140 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             {t('settings.reset_ui_positions_button')}
           </button>
         </div>
+
+        {isAdmin && (
+        <div id="settings-analytics" className="settings-section">
+          <h3>{t('settings.analytics')}</h3>
+
+          <div className="setting-item">
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1rem 0', padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '4px', borderLeft: '3px solid var(--warning-border, #ffeaa7)' }}>
+              {t('settings.analytics_warning')}
+            </p>
+          </div>
+
+          <div className="setting-item">
+            <label htmlFor="analyticsProvider">
+              {t('settings.analytics_provider_label')}
+              <span className="setting-description">{t('settings.analytics_provider_description')}</span>
+            </label>
+            <select
+              id="analyticsProvider"
+              value={localAnalyticsProvider}
+              onChange={(e) => {
+                setLocalAnalyticsProvider(e.target.value);
+                setLocalAnalyticsConfig({});
+              }}
+              className="setting-input"
+            >
+              <option value="none">{t('settings.analytics_provider_none')}</option>
+              <option value="ga4">{t('settings.analytics_provider_ga4')}</option>
+              <option value="cloudflare">{t('settings.analytics_provider_cloudflare')}</option>
+              <option value="posthog">{t('settings.analytics_provider_posthog')}</option>
+              <option value="plausible">{t('settings.analytics_provider_plausible')}</option>
+              <option value="umami">{t('settings.analytics_provider_umami')}</option>
+              <option value="matomo">{t('settings.analytics_provider_matomo')}</option>
+              <option value="custom">{t('settings.analytics_provider_custom')}</option>
+            </select>
+          </div>
+
+          {localAnalyticsProvider === 'ga4' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsMeasurementId">
+                {t('settings.analytics_measurement_id_label')}
+                <span className="setting-description">{t('settings.analytics_measurement_id_description')}</span>
+              </label>
+              <input id="analyticsMeasurementId" type="text" value={localAnalyticsConfig.measurementId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, measurementId: e.target.value })} className="setting-input" placeholder="G-XXXXXXXXXX" />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'cloudflare' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsBeaconToken">
+                {t('settings.analytics_beacon_token_label')}
+                <span className="setting-description">{t('settings.analytics_beacon_token_description')}</span>
+              </label>
+              <input id="analyticsBeaconToken" type="text" value={localAnalyticsConfig.beaconToken || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, beaconToken: e.target.value })} className="setting-input" />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'posthog' && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="analyticsApiKey">
+                  {t('settings.analytics_api_key_label')}
+                  <span className="setting-description">{t('settings.analytics_api_key_description')}</span>
+                </label>
+                <input id="analyticsApiKey" type="text" value={localAnalyticsConfig.apiKey || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, apiKey: e.target.value })} className="setting-input" placeholder="phc_..." />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="analyticsApiHost">
+                  {t('settings.analytics_api_host_label')}
+                  <span className="setting-description">{t('settings.analytics_api_host_description')}</span>
+                </label>
+                <input id="analyticsApiHost" type="text" value={localAnalyticsConfig.apiHost || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, apiHost: e.target.value })} className="setting-input" placeholder="https://app.posthog.com" />
+              </div>
+            </>
+          )}
+
+          {localAnalyticsProvider === 'plausible' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsDomain">
+                {t('settings.analytics_domain_label')}
+                <span className="setting-description">{t('settings.analytics_domain_description')}</span>
+              </label>
+              <input id="analyticsDomain" type="text" value={localAnalyticsConfig.domain || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, domain: e.target.value })} className="setting-input" placeholder="example.com" />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'umami' && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="analyticsWebsiteId">
+                  {t('settings.analytics_website_id_label')}
+                  <span className="setting-description">{t('settings.analytics_website_id_description')}</span>
+                </label>
+                <input id="analyticsWebsiteId" type="text" value={localAnalyticsConfig.websiteId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, websiteId: e.target.value })} className="setting-input" />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="analyticsScriptUrl">
+                  {t('settings.analytics_script_url_label')}
+                  <span className="setting-description">{t('settings.analytics_script_url_description')}</span>
+                </label>
+                <input id="analyticsScriptUrl" type="text" value={localAnalyticsConfig.scriptUrl || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, scriptUrl: e.target.value })} className="setting-input" placeholder="https://analytics.example.com/script.js" />
+              </div>
+            </>
+          )}
+
+          {localAnalyticsProvider === 'matomo' && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="analyticsSiteUrl">
+                  {t('settings.analytics_site_url_label')}
+                  <span className="setting-description">{t('settings.analytics_site_url_description')}</span>
+                </label>
+                <input id="analyticsSiteUrl" type="text" value={localAnalyticsConfig.siteUrl || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, siteUrl: e.target.value })} className="setting-input" placeholder="https://matomo.example.com" />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="analyticsSiteId">
+                  {t('settings.analytics_site_id_label')}
+                  <span className="setting-description">{t('settings.analytics_site_id_description')}</span>
+                </label>
+                <input id="analyticsSiteId" type="text" value={localAnalyticsConfig.siteId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, siteId: e.target.value })} className="setting-input" placeholder="1" />
+              </div>
+            </>
+          )}
+
+          {localAnalyticsProvider === 'custom' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsCustomScript">
+                {t('settings.analytics_custom_script_label')}
+                <span className="setting-description">{t('settings.analytics_custom_script_description')}</span>
+              </label>
+              <textarea id="analyticsCustomScript" value={localAnalyticsConfig.script || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, script: e.target.value })} className="setting-input" rows={6} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }} placeholder='<script src="https://..."></script>' />
+            </div>
+          )}
+        </div>
+        )}
 
         <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>
