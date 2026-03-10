@@ -109,6 +109,8 @@ export const VALID_SETTINGS_KEYS = [
   'nodeDimmingEnabled',
   'nodeDimmingStartHours',
   'nodeDimmingMinOpacity',
+  'analyticsProvider',
+  'analyticsConfig',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
