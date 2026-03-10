@@ -735,7 +735,59 @@ export class VirtualNodeServer extends EventEmitter {
 
       logger.info(`Virtual node: ✓ Sent ${allNodes.length} fresh NodeInfo entries from database`);
 
-      // === STEP 3: Rebuild and send channels from database ===
+      // === STEP 3: Send static config and moduleConfig from cache ===
+      // These must come BEFORE channels to match the Meshtastic firmware order:
+      //   myInfo → nodeInfo → config → moduleConfig → channels → metadata → configComplete
+      // The iOS app needs config (especially security config) before it can
+      // properly interpret channel PSK values.
+      let staticCount = 0;
+      for (const message of cachedMessages) {
+        // Skip dynamic message types (we already rebuilt those from DB)
+        if (message.type === 'myInfo' || message.type === 'nodeInfo') {
+          continue;
+        }
+
+        // Skip channels (rebuilt from DB in step 4)
+        if (message.type === 'channel') {
+          continue;
+        }
+
+        // Skip configComplete (we'll send a fresh one at the end)
+        if (message.type === 'configComplete') {
+          continue;
+        }
+
+        // Skip metadata (sent after channels in step 5)
+        if (message.type === 'metadata') {
+          continue;
+        }
+
+        // Skip generic/unrecognized FromRadio messages (e.g. rebooted, queueStatus, logRecord).
+        // Replaying a 'rebooted' message causes meshtastic clients to call _startConfig() and
+        // re-request config in a tight loop, since the new configId won't match our ConfigComplete.
+        if (message.type === 'fromRadio') {
+          continue;
+        }
+
+        // Check if client is still connected
+        const client = this.clients.get(clientId);
+        if (!client || client.socket.destroyed) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount} total messages)`);
+          return;
+        }
+
+        await this.sendToClient(clientId, message.data);
+        sentCount++;
+        staticCount++;
+
+        if (staticCount % this.LOG_EVERY_N_MESSAGES === 0) {
+          logger.debug(`Virtual node: Sent cached ${message.type} message (${staticCount} static messages)`);
+        }
+      }
+
+      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, moduleConfig)`);
+
+      // === STEP 4: Rebuild and send channels from database ===
       // Channels must be rebuilt from DB rather than sent from cache because the
       // physical radio often sends channels with empty name strings. The Android
       // app renders empty channel names as "Channel NAme", effectively wiping the
@@ -755,10 +807,11 @@ export class VirtualNodeServer extends EventEmitter {
         const channelMessage = await meshtasticProtobufService.createChannel({
           index: ch.id,
           settings: {
-            name: ch.name || '',
+            name: ch.name || undefined,
             psk: ch.psk ? Buffer.from(ch.psk, 'base64') : undefined,
-            uplinkEnabled: ch.uplinkEnabled,
-            downlinkEnabled: ch.downlinkEnabled,
+            uplinkEnabled: ch.uplinkEnabled ? true : undefined,
+            downlinkEnabled: ch.downlinkEnabled ? true : undefined,
+            positionPrecision: ch.positionPrecision,
           },
           role: ch.role ?? (ch.id === 0 ? 1 : 2),
         });
@@ -772,68 +825,33 @@ export class VirtualNodeServer extends EventEmitter {
       }
       logger.info(`Virtual node: ✓ Sent ${channelCount} channels from database (all slots)`);
 
-      // === STEP 4: Send static config data from cache (config, metadata) ===
-      let staticCount = 0;
+      // === STEP 5: Send metadata from cache ===
+      // Metadata comes after channels in the Meshtastic firmware order.
       for (const message of cachedMessages) {
-        // Skip dynamic message types (we already rebuilt those from DB)
-        if (message.type === 'myInfo' || message.type === 'nodeInfo') {
-          continue;
-        }
+        if (message.type !== 'metadata') continue;
 
-        // Skip channels (rebuilt from DB in step 3)
-        if (message.type === 'channel') {
-          continue;
-        }
-
-        // Skip configComplete (we'll send a fresh one at the end)
-        if (message.type === 'configComplete') {
-          continue;
-        }
-
-        // Skip generic/unrecognized FromRadio messages (e.g. rebooted, queueStatus, logRecord).
-        // Replaying a 'rebooted' message causes meshtastic clients to call _startConfig() and
-        // re-request config in a tight loop, since the new configId won't match our ConfigComplete.
-        if (message.type === 'fromRadio') {
-          continue;
-        }
-
-        // Check if client is still connected
         const client = this.clients.get(clientId);
         if (!client || client.socket.destroyed) {
-          logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount} total messages)`);
+          logger.warn(`Virtual node: Client ${clientId} disconnected during metadata send`);
           return;
         }
 
-        // For metadata messages, rewrite firmware_version to indicate Virtual Node
-        let dataToSend = message.data;
-        if (message.type === 'metadata') {
-          const rewritten = await meshtasticProtobufService.rewriteMetadataFirmwareVersion(
-            message.data,
-            `-MM${packageJson.version}`
-          );
-          if (rewritten) {
-            dataToSend = rewritten;
-          }
-        }
-
-        // Send the cached static message (possibly with modified metadata)
-        await this.sendToClient(clientId, dataToSend);
+        const rewritten = await meshtasticProtobufService.rewriteMetadataFirmwareVersion(
+          message.data,
+          `-MM${packageJson.version}`
+        );
+        await this.sendToClient(clientId, rewritten || message.data);
         sentCount++;
         staticCount++;
-
-        if (staticCount % this.LOG_EVERY_N_MESSAGES === 0) {
-          logger.debug(`Virtual node: Sent cached ${message.type} message (${staticCount} static messages)`);
-        }
+        logger.debug(`Virtual node: ✓ Sent metadata`);
       }
-
-      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, metadata)`);
 
       // NOTE: Message history replay was removed in v3.2.6 (issue #1608)
       // Sending cached messages on each reconnection caused problems with clients
       // that don't deduplicate messages, leading to duplicate chats and incorrect
       // hop counts. Clients should rely on real-time message forwarding instead.
 
-      // === STEP 5: Send custom ConfigComplete with client's requested ID ===
+      // === STEP 6: Send custom ConfigComplete with client's requested ID ===
       const useConfigId = configId || 1;
       logger.info(`Virtual node: Sending ConfigComplete to ${clientId} with ID ${useConfigId}...`);
       const configComplete = await meshtasticProtobufService.createConfigComplete(useConfigId);
