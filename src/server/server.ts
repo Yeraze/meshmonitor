@@ -40,6 +40,7 @@ import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsy
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
+import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 
@@ -808,6 +809,7 @@ setSettingsCallbacks({
   restartTimerScheduler: () => meshtasticManager.restartTimerScheduler(),
   restartGeofenceEngine: () => meshtasticManager.restartGeofenceEngine(),
   handleAutoWelcomeEnabled: () => databaseService.handleAutoWelcomeEnabled(),
+  invalidateHtmlCache,
 });
 
 // API Routes
@@ -8754,7 +8756,7 @@ if (BASE_URL) {
 }
 
 // Function to rewrite HTML with BASE_URL at runtime
-const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
+const rewriteHtml = (htmlContent: string, baseUrl: string, analyticsScript?: string): string => {
   if (!baseUrl) return htmlContent;
 
   // Add <base> tag to set the base URL for all relative paths
@@ -8764,6 +8766,14 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
 
   // Insert the base tag right after <head>
   let rewritten = htmlContent.replace(/<head>/, `<head>\n    ${baseTag}`);
+
+  // Inject analytics script after the base tag if provided
+  if (analyticsScript) {
+    rewritten = rewritten.replace(
+      baseTag,
+      `${baseTag}\n    ${analyticsScript}`
+    );
+  }
 
   // Replace asset paths in the HTML
   rewritten = rewritten
@@ -8788,6 +8798,23 @@ let cachedHtml: string | null = null;
 let cachedRewrittenHtml: string | null = null;
 let cachedEmbedHtml: string | null = null;
 let cachedRewrittenEmbedHtml: string | null = null;
+
+export function invalidateHtmlCache(): void {
+  cachedRewrittenHtml = null;
+  cachedRewrittenEmbedHtml = null;
+}
+
+function getAnalyticsScript(): string {
+  try {
+    const provider = (databaseService.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
+    if (provider === 'none') return '';
+    const configStr = databaseService.getSetting('analyticsConfig') || '{}';
+    const config = JSON.parse(configStr);
+    return generateAnalyticsScript(provider, config);
+  } catch {
+    return '';
+  }
+}
 
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
@@ -8838,7 +8865,8 @@ if (BASE_URL) {
         return res.status(404).send('Embed page not found');
       }
       cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
-      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL);
+      const embedAnalyticsScript = getAnalyticsScript();
+      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
     }
     res.setHeader('Content-Type', 'text/html');
     res.send(cachedRewrittenEmbedHtml);
@@ -8850,7 +8878,8 @@ if (BASE_URL) {
     if (!cachedRewrittenHtml) {
       const htmlPath = path.join(buildPath, 'index.html');
       cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+      const analyticsScript = getAnalyticsScript();
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
     }
     res.type('html').send(cachedRewrittenHtml);
   });
@@ -8872,7 +8901,8 @@ if (BASE_URL) {
     if (!cachedRewrittenHtml) {
       const htmlPath = path.join(buildPath, 'index.html');
       cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+      const analyticsScript = getAnalyticsScript();
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
     }
     res.type('html').send(cachedRewrittenHtml);
   });
