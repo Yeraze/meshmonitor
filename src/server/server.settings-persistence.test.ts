@@ -397,6 +397,8 @@ describe('Settings Persistence', () => {
         'homoglyphEnabled',
         // Local stats interval — backend reads directly
         'localStatsIntervalMinutes',
+        // Analytics — backend injects into HTML, frontend doesn't need them
+        'analyticsProvider', 'analyticsConfig',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(
