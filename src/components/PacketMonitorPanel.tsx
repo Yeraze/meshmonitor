@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Filter, Trash2, ExternalLink, Download, Pause, Play } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
-import { clearPackets, exportPackets } from '../services/packetApi';
+import { clearPackets, exportPackets, getRelayNodes } from '../services/packetApi';
+import { RelayNodeOption } from '../types/packet';
 import apiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -76,6 +77,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [hideOwnPackets, setHideOwnPackets] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
+
+  // Relay node filter options (distinct values from packet_log)
+  const [relayNodeOptions, setRelayNodeOptions] = useState<RelayNodeOption[]>([]);
 
   // Relay node modal state
   const [relayModalOpen, setRelayModalOpen] = useState(false);
@@ -165,6 +169,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   useEffect(() => {
     localStorage.setItem('packetMonitor.autoScroll', JSON.stringify(autoScroll));
   }, [autoScroll]);
+
+  // Fetch distinct relay nodes for filter dropdown
+  useEffect(() => {
+    if (!canView) return;
+    getRelayNodes()
+      .then(setRelayNodeOptions)
+      .catch(() => setRelayNodeOptions([]));
+  }, [canView]);
 
   // Fetch direct neighbor stats on mount for relay estimation
   useEffect(() => {
@@ -520,6 +532,40 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`}
                   </option>
                 ))}
+            </select>
+
+            <select
+              value={filters.relay_node !== undefined ? String(filters.relay_node) : ''}
+              onChange={e => {
+                const val = e.target.value;
+                setFilters({
+                  ...filters,
+                  relay_node: val === '' ? undefined : val === 'unknown' ? 'unknown' : parseInt(val),
+                });
+              }}
+              title={t('packet_monitor.filter.last_hop_tooltip')}
+            >
+              <option value="">{t('packet_monitor.filter.all_last_hops')}</option>
+              <option value="unknown">{t('packet_monitor.filter.unknown_hop')}</option>
+              {relayNodeOptions
+                .sort((a, b) => {
+                  const aName = a.matching_nodes[0]?.longName || a.matching_nodes[0]?.shortName || '';
+                  const bName = b.matching_nodes[0]?.longName || b.matching_nodes[0]?.shortName || '';
+                  return aName.localeCompare(bName);
+                })
+                .map(rn => {
+                  const names = rn.matching_nodes
+                    .map(n => n.longName || n.shortName)
+                    .filter(Boolean);
+                  const label = names.length > 0
+                    ? names.join(', ')
+                    : `!..${rn.relay_node.toString(16).padStart(2, '0')}`;
+                  return (
+                    <option key={rn.relay_node} value={rn.relay_node}>
+                      {label}
+                    </option>
+                  );
+                })}
             </select>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>

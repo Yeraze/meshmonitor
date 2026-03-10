@@ -323,6 +323,11 @@ export interface DbPacketCountByNode {
   count: number;
 }
 
+export interface DbDistinctRelayNode {
+  relay_node: number;
+  matching_nodes: Array<{ longName: string | null; shortName: string | null }>;
+}
+
 export interface DbPacketCountByPortnum {
   portnum: number;
   portnum_name: string;
@@ -10410,8 +10415,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): DbPacketLog[] {
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     let query = `
       SELECT
@@ -10448,6 +10454,12 @@ class DatabaseService {
     if (since !== undefined) {
       query += ' AND pl.timestamp >= ?';
       params.push(since);
+    }
+    if (relay_node === 'unknown') {
+      query += ' AND pl.relay_node IS NULL';
+    } else if (relay_node !== undefined) {
+      query += ' AND pl.relay_node = ?';
+      params.push(relay_node);
     }
 
     query += ' ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?';
@@ -10534,8 +10546,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   } = {}): number {
-    const { portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
     const params: any[] = [];
@@ -10563,6 +10576,12 @@ class DatabaseService {
     if (since !== undefined) {
       query += ' AND timestamp >= ?';
       params.push(since);
+    }
+    if (relay_node === 'unknown') {
+      query += ' AND relay_node IS NULL';
+    } else if (relay_node !== undefined) {
+      query += ' AND relay_node = ?';
+      params.push(relay_node);
     }
 
     const stmt = this.db.prepare(query);
@@ -10621,8 +10640,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   } = {}): Promise<number> {
-    const { portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     // For PostgreSQL, use pool.query with parameterized query
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -10654,6 +10674,12 @@ class DatabaseService {
         if (since !== undefined) {
           query += ` AND timestamp >= $${paramIndex++}`;
           params.push(since);
+        }
+        if (relay_node === 'unknown') {
+          query += ' AND relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ` AND relay_node = $${paramIndex++}`;
+          params.push(relay_node);
         }
 
         const result = await this.postgresPool.query(query, params);
@@ -10694,6 +10720,12 @@ class DatabaseService {
           query += ' AND timestamp >= ?';
           params.push(since);
         }
+        if (relay_node === 'unknown') {
+          query += ' AND relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ' AND relay_node = ?';
+          params.push(relay_node);
+        }
 
         const [rows] = await this.mysqlPool.query(query, params);
         return Number((rows as any[])?.[0]?.count ?? 0);
@@ -10719,8 +10751,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): Promise<DbPacketLog[]> {
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     // For PostgreSQL, use pool.query with parameterized query
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -10762,6 +10795,12 @@ class DatabaseService {
         if (since !== undefined) {
           query += ` AND pl.timestamp >= $${paramIndex++}`;
           params.push(since);
+        }
+        if (relay_node === 'unknown') {
+          query += ' AND pl.relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ` AND pl.relay_node = $${paramIndex++}`;
+          params.push(relay_node);
         }
 
         query += ` ORDER BY pl.timestamp DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
@@ -10824,6 +10863,12 @@ class DatabaseService {
           query += ` AND pl.timestamp >= ?`;
           params.push(since);
         }
+        if (relay_node === 'unknown') {
+          query += ' AND pl.relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ' AND pl.relay_node = ?';
+          params.push(relay_node);
+        }
 
         query += ` ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?`;
         params.push(limit, offset);
@@ -10837,6 +10882,88 @@ class DatabaseService {
     }
     // For SQLite, use sync method
     return this.getPacketLogs(options);
+  }
+
+  /**
+   * Get distinct relay_node values from packet_log for filter dropdowns
+   */
+  async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
+    // relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
+    // We match by (nodeNum & 0xFF) to find candidate node names.
+    const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL AND relay_node > 0';
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const distinctResult = await this.postgresPool.query(distinctQuery);
+        const relayValues = (distinctResult.rows ?? []).map((r: any) => Number(r.relay_node));
+
+        const results: DbDistinctRelayNode[] = [];
+        for (const rv of relayValues) {
+          const matchResult = await this.postgresPool.query(
+            `SELECT "longName", "shortName" FROM nodes WHERE ("nodeNum" & 255) = $1`,
+            [rv]
+          );
+          results.push({
+            relay_node: rv,
+            matching_nodes: (matchResult.rows ?? []).map((r: any) => ({
+              longName: r.longName ?? null,
+              shortName: r.shortName ?? null,
+            })),
+          });
+        }
+        return results;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
+        return [];
+      }
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const [distinctRows] = await this.mysqlPool.query(distinctQuery);
+        const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
+
+        const results: DbDistinctRelayNode[] = [];
+        for (const rv of relayValues) {
+          const [matchRows] = await this.mysqlPool.query(
+            'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?',
+            [rv]
+          );
+          results.push({
+            relay_node: rv,
+            matching_nodes: (matchRows as any[]).map((r: any) => ({
+              longName: r.longName ?? null,
+              shortName: r.shortName ?? null,
+            })),
+          });
+        }
+        return results;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
+        return [];
+      }
+    }
+
+    // SQLite sync
+    try {
+      const distinctStmt = this.db.prepare(distinctQuery);
+      const relayValues = (distinctStmt.all() as any[]).map((r: any) => Number(r.relay_node));
+
+      const matchStmt = this.db.prepare(
+        'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?'
+      );
+
+      return relayValues.map(rv => ({
+        relay_node: rv,
+        matching_nodes: (matchStmt.all(rv) as any[]).map((r: any) => ({
+          longName: r.longName ?? null,
+          shortName: r.shortName ?? null,
+        })),
+      }));
+    } catch (error) {
+      logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
+      return [];
+    }
   }
 
   /**
