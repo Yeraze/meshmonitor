@@ -23,6 +23,7 @@ interface ConnectedClient {
   connectedAt: Date;
   lastActivity: Date;
   lastConfigSentAt?: Date;
+  lastConfigId?: number;
 }
 
 interface QueuedMessage {
@@ -508,11 +509,13 @@ export class VirtualNodeServer extends EventEmitter {
         this.queueMessage(clientId, strippedPayload);
       } else if (toRadio.wantConfigId) {
         // Client is requesting config with a specific ID
-        // Rate limit: ignore rapid-fire config requests (prevents reconnect loops)
+        // Rate limit: ignore rapid-fire config requests with the same ID (prevents reconnect loops)
+        // Allow requests with a different wantConfigId (legitimate follow-up from Android clients)
         const client = this.clients.get(clientId);
         const CONFIG_COOLDOWN_MS = 5000;
-        if (client?.lastConfigSentAt && (Date.now() - client.lastConfigSentAt.getTime()) < CONFIG_COOLDOWN_MS) {
-          logger.warn(`Virtual node: Ignoring config request from ${clientId} - config was sent ${Date.now() - client.lastConfigSentAt.getTime()}ms ago (cooldown: ${CONFIG_COOLDOWN_MS}ms)`);
+        const isSameConfigId = client?.lastConfigId === toRadio.wantConfigId;
+        if (isSameConfigId && client?.lastConfigSentAt && (Date.now() - client.lastConfigSentAt.getTime()) < CONFIG_COOLDOWN_MS) {
+          logger.warn(`Virtual node: Ignoring duplicate config request from ${clientId} (ID: ${toRadio.wantConfigId}) - config was sent ${Date.now() - client.lastConfigSentAt.getTime()}ms ago (cooldown: ${CONFIG_COOLDOWN_MS}ms)`);
         } else {
           logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
           await this.sendInitialConfig(clientId, toRadio.wantConfigId);
@@ -848,6 +851,7 @@ export class VirtualNodeServer extends EventEmitter {
       const client = this.clients.get(clientId);
       if (client) {
         client.lastConfigSentAt = new Date();
+        client.lastConfigId = configId;
       }
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
