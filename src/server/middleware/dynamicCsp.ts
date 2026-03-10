@@ -8,6 +8,7 @@
 import { Request, Response, NextFunction } from 'express';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { AnalyticsProvider, getAnalyticsCspDomains } from '../utils/analyticsScriptGenerator.js';
 
 // Cache for custom tileset hostnames
 let cachedTileHostnames: string[] = [];
@@ -112,16 +113,55 @@ export function buildConnectSrcDirective(isProduction: boolean, cookieSecure: bo
 }
 
 /**
+ * Load analytics CSP domains from database settings
+ */
+function getAnalyticsCspFromSettings(): { scriptSrc: string[]; connectSrc: string[] } {
+  try {
+    const provider = (databaseService.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
+    if (provider === 'none' || provider === 'custom') {
+      return { scriptSrc: [], connectSrc: [] };
+    }
+    const configJson = databaseService.getSetting('analyticsConfig') || '{}';
+    const config = JSON.parse(configJson);
+    return getAnalyticsCspDomains(provider, config);
+  } catch {
+    return { scriptSrc: [], connectSrc: [] };
+  }
+}
+
+/**
  * Build the full CSP header value
  */
 export function buildCspHeader(isProduction: boolean, cookieSecure: boolean): string {
   const connectSrc = buildConnectSrcDirective(isProduction, cookieSecure);
+  const analyticsCsp = getAnalyticsCspFromSettings();
+
+  const scriptSrc = isProduction && cookieSecure
+    ? ["'self'"]
+    : ["'self'", "'unsafe-inline'", "'unsafe-eval'"];
+
+  // Add analytics script domains and allow inline scripts for analytics snippets
+  if (analyticsCsp.scriptSrc.length > 0) {
+    if (!scriptSrc.includes("'unsafe-inline'")) {
+      scriptSrc.push("'unsafe-inline'");
+    }
+    for (const domain of analyticsCsp.scriptSrc) {
+      if (!scriptSrc.includes(domain)) {
+        scriptSrc.push(domain);
+      }
+    }
+  }
+
+  // Add analytics connect domains
+  for (const domain of analyticsCsp.connectSrc) {
+    if (!connectSrc.includes(domain)) {
+      connectSrc.push(domain);
+    }
+  }
 
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
-    'script-src': isProduction && cookieSecure
-      ? ["'self'"]
-      : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+    'script-src': scriptSrc,
     'style-src': ["'self'", "'unsafe-inline'"],
     'img-src': ["'self'", 'data:', 'http:', 'https:'],
     'connect-src': connectSrc,

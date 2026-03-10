@@ -1545,6 +1545,8 @@
   "settings.analytics_site_id_description": "Your Matomo site ID",
   "settings.analytics_custom_script_label": "Custom Script",
   "settings.analytics_custom_script_description": "Paste the full <script>...</script> block from your analytics provider",
+  "settings.analytics_custom_csp_label": "CSP Allowed Domains",
+  "settings.analytics_custom_csp_description": "Space or comma-separated list of domains to allow in Content Security Policy (e.g. https://analytics.example.com)",
   "settings.analytics_warning": "Enabling analytics will send visitor data to the selected service. Only enable this if you control this instance and comply with applicable privacy regulations (GDPR, CCPA, etc.).",
 
   "dashboard.loading": "Loading dashboard...",

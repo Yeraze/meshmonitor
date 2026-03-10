@@ -195,6 +195,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
   const [localAnalyticsProvider, setLocalAnalyticsProvider] = useState<string>('none');
   const [localAnalyticsConfig, setLocalAnalyticsConfig] = useState<Record<string, string>>({});
+  const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
+  const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -280,10 +282,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           // Load analytics settings
           if (settings.analyticsProvider) {
             setLocalAnalyticsProvider(settings.analyticsProvider);
+            setInitialAnalyticsProvider(settings.analyticsProvider);
           }
           if (settings.analyticsConfig) {
             try {
               setLocalAnalyticsConfig(JSON.parse(settings.analyticsConfig));
+              setInitialAnalyticsConfig(settings.analyticsConfig);
             } catch { /* ignore parse errors */ }
           }
         }
@@ -378,7 +382,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
       nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
       nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
-      nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity;
+      nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity ||
+      localAnalyticsProvider !== initialAnalyticsProvider ||
+      JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig;
     setHasChanges(changed);
   }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme, localNodeHopsCalculation, localDashboardSortOption,
       maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
@@ -387,7 +393,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
-      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings]);
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
+      localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig]);
 
   // Reset local state to current saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -423,6 +430,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
     setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
     setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
+    setLocalAnalyticsProvider(initialAnalyticsProvider);
+    try { setLocalAnalyticsConfig(JSON.parse(initialAnalyticsConfig)); } catch { setLocalAnalyticsConfig({}); }
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
@@ -430,7 +439,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
-      setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
+      setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
+      initialAnalyticsProvider, initialAnalyticsConfig]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -513,6 +523,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         startHours: nodeDimmingStartHours,
         minOpacity: nodeDimmingMinOpacity,
       });
+      setInitialAnalyticsProvider(localAnalyticsProvider);
+      setInitialAnalyticsConfig(JSON.stringify(localAnalyticsConfig));
 
       showToast(t('settings.saved_success'), 'success');
       setHasChanges(false);
@@ -537,7 +549,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
-      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity]);
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
+      localAnalyticsProvider, localAnalyticsConfig]);
 
   // Register with SaveBar
   useSaveBar({
@@ -1621,6 +1634,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <span className="setting-description">{t('settings.analytics_custom_script_description')}</span>
               </label>
               <textarea id="analyticsCustomScript" value={localAnalyticsConfig.script || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, script: e.target.value })} className="setting-input" rows={6} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }} placeholder='<script src="https://..."></script>' />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'custom' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsCustomCspDomains">
+                {t('settings.analytics_custom_csp_label')}
+                <span className="setting-description">{t('settings.analytics_custom_csp_description')}</span>
+              </label>
+              <input type="text" id="analyticsCustomCspDomains" value={localAnalyticsConfig.cspDomains || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, cspDomains: e.target.value })} className="setting-input" placeholder="https://analytics.example.com https://cdn.example.com" />
             </div>
           )}
         </div>

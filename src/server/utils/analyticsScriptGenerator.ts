@@ -11,6 +11,7 @@ interface AnalyticsConfig {
   siteUrl?: string;
   siteId?: string;
   script?: string;
+  cspDomains?: string;
 }
 
 /**
@@ -63,5 +64,64 @@ export function generateAnalyticsScript(provider: AnalyticsProvider, config: Ana
     }
     default:
       return '';
+  }
+}
+
+/**
+ * Return CSP domains needed for a given analytics provider.
+ * Returns { scriptSrc: [...], connectSrc: [...] } with the external
+ * origins the browser must be allowed to reach.
+ */
+export function getAnalyticsCspDomains(
+  provider: AnalyticsProvider,
+  config: AnalyticsConfig
+): { scriptSrc: string[]; connectSrc: string[] } {
+  const empty = { scriptSrc: [], connectSrc: [] };
+
+  switch (provider) {
+    case 'ga4':
+      return {
+        scriptSrc: ['https://www.googletagmanager.com', 'https://www.google-analytics.com'],
+        connectSrc: ['https://www.google-analytics.com', 'https://analytics.google.com', 'https://www.googletagmanager.com'],
+      };
+    case 'cloudflare':
+      return {
+        scriptSrc: ['https://static.cloudflareinsights.com'],
+        connectSrc: ['https://cloudflareinsights.com'],
+      };
+    case 'posthog': {
+      const host = config.apiHost?.trim();
+      if (!host || !/^https?:\/\//.test(host)) return empty;
+      const origin = new URL(host).origin;
+      return { scriptSrc: [origin], connectSrc: [origin] };
+    }
+    case 'plausible':
+      return {
+        scriptSrc: ['https://plausible.io'],
+        connectSrc: ['https://plausible.io'],
+      };
+    case 'umami': {
+      const url = config.scriptUrl?.trim();
+      if (!url || !/^https?:\/\//.test(url)) return empty;
+      const origin = new URL(url).origin;
+      return { scriptSrc: [origin], connectSrc: [origin] };
+    }
+    case 'matomo': {
+      const siteUrl = config.siteUrl?.trim();
+      if (!siteUrl || !/^https?:\/\//.test(siteUrl)) return empty;
+      const origin = new URL(siteUrl).origin;
+      return { scriptSrc: [origin], connectSrc: [origin] };
+    }
+    case 'custom': {
+      const raw = config.cspDomains?.trim();
+      if (!raw) return empty;
+      const domains = raw.split(/[\s,]+/).filter((d) => /^https?:\/\//.test(d));
+      const origins = domains.map((d) => {
+        try { return new URL(d).origin; } catch { return null; }
+      }).filter(Boolean) as string[];
+      return { scriptSrc: origins, connectSrc: origins };
+    }
+    default:
+      return empty;
   }
 }
