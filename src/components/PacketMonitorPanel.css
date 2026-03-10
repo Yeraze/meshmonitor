@@ -55,6 +55,7 @@
   padding: 6px 10px;
   cursor: pointer;
   font-size: 14px;
+  color: var(--text-primary);
   transition: all 0.2s;
 }
 
@@ -433,6 +434,36 @@
   color: var(--text-primary);
   font-size: 13px;
   word-break: break-word;
+}
+
+.packet-detail-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.detail-row-full {
+  grid-template-columns: 1fr;
+}
+
+.detail-row-full .detail-label {
+  margin-bottom: 4px;
+}
+
+.detail-value-json {
+  background: var(--bg-secondary);
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
 }
 
 .payload-content,
