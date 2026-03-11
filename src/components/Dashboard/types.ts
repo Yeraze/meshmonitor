@@ -26,6 +26,7 @@ export interface DashboardProps {
   baseUrl: string;
   currentNodeId?: string | null;
   canEdit?: boolean;
+  onOpenNodeDetails?: (nodeId: string) => void;
 }
 
 export interface DashboardFiltersState {

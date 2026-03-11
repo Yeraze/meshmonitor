@@ -4678,6 +4678,10 @@ function App() {
             baseUrl={baseUrl}
             currentNodeId={currentNodeId}
             canEdit={hasPermission('dashboard', 'write')}
+            onOpenNodeDetails={(nodeId: string) => {
+              setSelectedDMNode(nodeId);
+              setActiveTab('messages');
+            }}
           />
         )}
         {activeTab === 'settings' && (

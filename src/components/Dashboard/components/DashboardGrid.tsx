@@ -31,6 +31,7 @@ interface DashboardGridProps {
   onAddNodeToWidget: (widgetId: string, nodeId: string) => void;
   onRemoveNodeFromWidget: (widgetId: string, nodeId: string) => void;
   onSelectTracerouteNode: (widgetId: string, nodeId: string) => void;
+  onOpenNodeDetails?: (nodeId: string) => void;
 
   // Charts
   favorites: FavoriteChart[];
@@ -68,6 +69,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   onAddNodeToWidget,
   onRemoveNodeFromWidget,
   onSelectTracerouteNode,
+  onOpenNodeDetails,
   favorites,
   nodes,
   currentNodeId,
@@ -126,9 +128,11 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     id={widget.id}
                     nodeIds={widget.nodeIds}
                     nodes={nodes}
+                    baseUrl={baseUrl}
                     onRemove={() => onRemoveWidget(widget.id)}
                     onAddNode={nodeId => onAddNodeToWidget(widget.id, nodeId)}
                     onRemoveNode={nodeId => onRemoveNodeFromWidget(widget.id, nodeId)}
+                    onOpenNodeDetails={onOpenNodeDetails}
                     canEdit={canEdit}
                   />
                 );

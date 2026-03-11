@@ -223,6 +223,7 @@
   "nodes.filter_nodes": "Filter nodes...",
   "nodes.toggle_filters": "Toggle filters",
   "nodes.hops": "Hops",
+  "nodes.signal_hops": "Signal/Hops",
   "nodes.node": "Node",
   "nodes.hop": "hop",
   "nodes.hop_one": "hop",
