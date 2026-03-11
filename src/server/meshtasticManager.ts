@@ -3606,7 +3606,7 @@ class MeshtasticManager {
     }
 
     // Extract node information if available
-    // Note: Only update technical fields (SNR/RSSI/lastHeard), not names
+    // Note: Only update technical fields (SNR/RSSI/lastHeard/channel), not names
     // Names should only come from NODEINFO packets
     if (meshPacket.from && meshPacket.from !== BigInt(0)) {
       const fromNum = Number(meshPacket.from);
@@ -3615,11 +3615,22 @@ class MeshtasticManager {
       // Check if node exists first
       const existingNode = databaseService.getNode(fromNum);
 
+      // Only update the node's channel from firmware-decoded packets (decryptedBy === 'node').
+      // Server-decrypted packets still have the raw channel hash in meshPacket.channel, not
+      // a valid channel index (0-7), so storing it would corrupt the node's channel field.
+      const channelFromPacket = (decryptedBy === 'node' && meshPacket.channel !== undefined)
+        ? meshPacket.channel
+        : undefined;
+
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
         // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000)
+        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000),
+        // Update channel from every firmware-decoded packet so outbound messages (DMs,
+        // traceroutes, position requests) use the channel the node is actually communicating
+        // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
+        ...(channelFromPacket !== undefined && { channel: channelFromPacket }),
       };
 
       // Only set default name if this is a brand new node
@@ -4149,8 +4160,8 @@ class MeshtasticManager {
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       const timestamp = Date.now();
       const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
-      // Extract channel from mesh packet - this tells us which channel the node was heard on
-      const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : undefined;
+      // Channel is now updated centrally in the packet processing pipeline (processPacket),
+      // so we don't set it here to avoid redundant writes and keep a single source of truth.
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
@@ -4161,12 +4172,7 @@ class MeshtasticManager {
         hopsAway: meshPacket.hopsAway,
         // Cap lastHeard at current time to prevent stale timestamps from node clock issues
         lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000, Date.now() / 1000),
-        channel: channelIndex
       };
-
-      if (channelIndex !== undefined) {
-        logger.debug(`📡 NodeInfo message for ${nodeId}: received on channel ${channelIndex}`);
-      }
 
       // Capture public key if present
       if (user.publicKey && user.publicKey.length > 0) {
