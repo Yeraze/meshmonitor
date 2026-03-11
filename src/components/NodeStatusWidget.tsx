@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { type NodeInfo } from './TelemetryChart';
+import { useNodeVoltages } from '../hooks/useTelemetry';
 
 interface NodeStatusWidgetProps {
   id: string;
@@ -37,12 +38,6 @@ interface NodeStatusRow {
   rssi: number | null;
   voltage: number | null;
   uptimeSeconds: number | null;
-}
-
-interface TelemetryRow {
-  telemetryType?: string;
-  timestamp: number;
-  value: number;
 }
 
 type NodeStatusInfo = NodeInfo & {
@@ -68,7 +63,6 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [fallbackVoltageByNode, setFallbackVoltageByNode] = useState<Map<string, number>>(new Map());
   const searchRef = useRef<HTMLDivElement>(null);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -93,75 +87,16 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
     }
   }, [showSearch]);
 
-  // Load latest voltage telemetry for nodes that don't currently expose voltage on /api/nodes.
-  useEffect(() => {
-    let isCancelled = false;
+  // Fetch fallback voltages for nodes missing voltage via React Query (cached, deduplicated)
+  const missingVoltageNodeIds = useMemo(() => {
+    return nodeIds.filter(nodeId => {
+      const node = nodes.get(nodeId) as NodeStatusInfo | undefined;
+      const voltage = node?.deviceMetrics?.voltage ?? node?.voltage;
+      return voltage === undefined || voltage === null;
+    });
+  }, [nodeIds, nodes]);
 
-    const loadFallbackVoltages = async () => {
-      const missingVoltageNodeIds = nodeIds.filter(nodeId => {
-        const node = nodes.get(nodeId) as NodeStatusInfo | undefined;
-        const voltage = node?.deviceMetrics?.voltage ?? node?.voltage;
-        return voltage === undefined || voltage === null;
-      });
-
-      if (missingVoltageNodeIds.length === 0) {
-        return;
-      }
-
-      const fetches = missingVoltageNodeIds.map(async nodeId => {
-        try {
-          const response = await fetch(
-            `${baseUrl}/api/telemetry/${encodeURIComponent(nodeId)}?hours=720`
-          );
-          if (!response.ok) return null;
-          const data = await response.json();
-
-          // Support both response shapes:
-          // - Legacy endpoint: DbTelemetry[]
-          // - V1 endpoint shape: { data: DbTelemetry[] }
-          const telemetryRows: TelemetryRow[] = Array.isArray(data)
-            ? data
-            : Array.isArray(data?.data)
-              ? data.data
-              : [];
-
-          const voltageRows = telemetryRows.filter(
-            (row: TelemetryRow) => row.telemetryType === 'voltage'
-          );
-          if (voltageRows.length === 0) return null;
-
-          const latest = voltageRows.reduce((prev, current) =>
-            current.timestamp > prev.timestamp ? current : prev
-          );
-          const value = Number(latest.value);
-          if (Number.isNaN(value)) return null;
-
-          return { nodeId, value };
-        } catch {
-          return null;
-        }
-      });
-
-      const results = await Promise.all(fetches);
-      if (isCancelled) return;
-
-      setFallbackVoltageByNode(prev => {
-        const next = new Map(prev);
-        results.forEach(result => {
-          if (result) {
-            next.set(result.nodeId, result.value);
-          }
-        });
-        return next;
-      });
-    };
-
-    loadFallbackVoltages();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [baseUrl, nodeIds, nodes]);
+  const fallbackVoltageByNode = useNodeVoltages({ nodeIds: missingVoltageNodeIds, baseUrl });
 
   // Build node status rows sorted by last heard (most recent first)
   const nodeRows = useMemo((): NodeStatusRow[] => {
