@@ -7,7 +7,7 @@
  * refetch capabilities.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 
 /**
  * Telemetry data point from the backend
@@ -224,4 +224,65 @@ export function useSolarEstimatesLatest({
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     refetchOnWindowFocus: false,
   });
+}
+
+/**
+ * Options for useNodeVoltages hook
+ */
+interface UseNodeVoltagesOptions {
+  /** Node IDs that need fallback voltage data */
+  nodeIds: string[];
+  /** Base URL for API requests (default: '') */
+  baseUrl?: string;
+}
+
+/**
+ * Hook to fetch latest voltage telemetry for multiple nodes
+ *
+ * Uses useQueries to leverage TanStack Query caching and deduplication
+ * per node, avoiding redundant fetches on re-renders.
+ *
+ * @param options - Configuration options
+ * @returns Map of nodeId to latest voltage value
+ */
+export function useNodeVoltages({ nodeIds, baseUrl = '' }: UseNodeVoltagesOptions): Map<string, number> {
+  const results = useQueries({
+    queries: nodeIds.map(nodeId => ({
+      queryKey: ['nodeVoltage', nodeId],
+      queryFn: async (): Promise<{ nodeId: string; value: number } | null> => {
+        try {
+          const response = await fetch(`${baseUrl}/api/telemetry/${encodeURIComponent(nodeId)}?hours=720`);
+          if (!response.ok) return null;
+          const data = await response.json();
+
+          const telemetryRows: TelemetryData[] = Array.isArray(data) ? data : [];
+          const voltageRows = telemetryRows.filter(row => row.telemetryType === 'voltage');
+          if (voltageRows.length === 0) return null;
+
+          const latest = voltageRows.reduce((prev, current) =>
+            current.timestamp > prev.timestamp ? current : prev
+          );
+          const value = Number(latest.value);
+          if (Number.isNaN(value)) return null;
+
+          return { nodeId, value };
+        } catch {
+          return null;
+        }
+      },
+      staleTime: 5 * 60 * 1000, // Fresh for 5 minutes
+      gcTime: 10 * 60 * 1000, // Cache for 10 minutes
+      refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
+      refetchOnWindowFocus: false,
+    })),
+  });
+
+  const voltageMap = new Map<string, number>();
+  results.forEach(result => {
+    if (result.data) {
+      voltageMap.set(result.data.nodeId, result.data.value);
+    }
+  });
+
+  return voltageMap;
 }
