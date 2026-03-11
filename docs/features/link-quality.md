@@ -97,14 +97,14 @@ Controls how much historical data is displayed in the graphs.
 
 ### Node Hops Calculation
 
-Controls how the hop count is calculated for the node list display (separate from Smart Hops):
+Controls how the hop count is determined for the node list display, map marker colors, and Messages node details (separate from Smart Hops):
 
-- **NodeInfo**: Uses the `hopsAway` field from the most recent NodeInfo packet
-- **Traceroute**: Uses the route length from the most recent traceroute
-- **Messages**: Uses the hop count from the most recent message
+- **NodeInfo packet (default)**: Uses the `hopsAway` value from the node's most recent NodeInfo broadcast. This is the standard Meshtastic behavior and provides a stable, consistent hop count.
+- **Traceroute length**: Uses the shortest path found in traceroute results between your node and the target. Falls back to NodeInfo if no traceroute data is available.
+- **All messages**: Uses the hop count from the most recent packet received from the node — **any packet type**, not just text messages. This includes telemetry, position, NodeInfo, text messages, traceroute responses, and all other packet types. The hop count is derived from the packet's `hopStart - hopLimit` fields, which indicate how many relay hops the packet actually traversed. Falls back to NodeInfo if no message hop data is available.
 
 ::: tip
-Smart Hops always uses actual message hop counts regardless of this setting. The Node Hops Calculation setting only affects the hop count shown in the node list.
+Smart Hops always uses actual message hop counts regardless of this setting. The Node Hops Calculation setting only affects the hop count shown in the node list, map markers, and message node details.
 :::
 
 ## Data Sources
