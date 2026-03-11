@@ -1,3 +1,44 @@
+/* ==============================
+   Design Tokens (shared across all themes)
+   ============================== */
+:root {
+  /* Layout dimensions */
+  --header-height: 60px;
+  --sidebar-width: 60px;
+  --banner-height: 36px;
+
+  /* Spacing scale */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 0.75rem;
+  --spacing-lg: 1rem;
+  --spacing-xl: 1.5rem;
+  --spacing-2xl: 2rem;
+
+  /* Border-radius scale */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 50%;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 25px rgba(0, 0, 0, 0.25);
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+
+  /* Accent text (for text on bright accent-colored buttons) */
+  --ctp-accent-text: #000000;
+}
+
+/* ==============================
+   Theme Definitions
+   ============================== */
+
 /* Catppuccin Latte (Light) */
 :root[data-theme='latte'] {
   --ctp-base: #eff1f5;
@@ -26,11 +67,6 @@
   --ctp-pink: #ea76cb;
   --ctp-flamingo: #dd7878;
   --ctp-rosewater: #dc8a78;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Catppuccin Frappé (Medium) */
@@ -61,11 +97,6 @@
   --ctp-pink: #f4b8e4;
   --ctp-flamingo: #eebebe;
   --ctp-rosewater: #f2d5cf;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Catppuccin Macchiato (Medium-Dark) */
@@ -96,11 +127,6 @@
   --ctp-pink: #f5bde6;
   --ctp-flamingo: #f0c6c6;
   --ctp-rosewater: #f4dbd6;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Catppuccin Mocha (Dark) - Default */
@@ -132,31 +158,6 @@
   --ctp-pink: #f5c2e7;
   --ctp-flamingo: #f2cdcd;
   --ctp-rosewater: #f5e0dc;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
-
-  /* Design tokens: spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 0.75rem;
-  --spacing-lg: 1rem;
-  --spacing-xl: 1.5rem;
-  --spacing-2xl: 2rem;
-
-  /* Design tokens: border-radius */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-full: 50%;
-
-  /* Design tokens: shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 8px 25px rgba(0, 0, 0, 0.25);
 }
 
 /* Nord - Cool blue-gray theme */
@@ -187,11 +188,6 @@
   --ctp-pink: #b48ead;
   --ctp-flamingo: #d08770;
   --ctp-rosewater: #d08770;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Dracula - Popular purple/pink dark theme */
@@ -222,11 +218,6 @@
   --ctp-pink: #ff79c6;
   --ctp-flamingo: #ff79c6;
   --ctp-rosewater: #ff79c6;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Solarized Dark - Classic professional dark theme */
@@ -257,11 +248,6 @@
   --ctp-pink: #d33682;
   --ctp-flamingo: #dc322f;
   --ctp-rosewater: #dc322f;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Solarized Light - Classic professional light theme */
@@ -292,11 +278,6 @@
   --ctp-pink: #d33682;
   --ctp-flamingo: #dc322f;
   --ctp-rosewater: #dc322f;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Gruvbox Dark - Warm retro dark theme */
@@ -327,11 +308,6 @@
   --ctp-pink: #d3869b;
   --ctp-flamingo: #fe8019;
   --ctp-rosewater: #fe8019;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Gruvbox Light - Warm retro light theme */
@@ -362,11 +338,6 @@
   --ctp-pink: #8f3f71;
   --ctp-flamingo: #af3a03;
   --ctp-rosewater: #af3a03;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* High Contrast Dark - Maximum contrast for dark mode */
@@ -397,11 +368,6 @@
   --ctp-pink: #ff66cc;
   --ctp-flamingo: #ff9999;
   --ctp-rosewater: #ffcccc;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* High Contrast Light - Maximum contrast for light mode */
@@ -432,11 +398,6 @@
   --ctp-pink: #cc0080;
   --ctp-flamingo: #cc4444;
   --ctp-rosewater: #aa6666;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Protanopia - Red-blind friendly (blue/yellow contrast) */
@@ -467,11 +428,6 @@
   --ctp-pink: #5a7cc6;
   --ctp-flamingo: #4a6cb6;
   --ctp-rosewater: #7a9cd6;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Deuteranopia - Green-blind friendly (blue/yellow contrast) */
@@ -502,11 +458,6 @@
   --ctp-pink: #5a7cc6;
   --ctp-flamingo: #4a6cb6;
   --ctp-rosewater: #7a9cd6;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 /* Tritanopia - Blue-blind friendly (red/cyan contrast) */
@@ -537,11 +488,6 @@
   --ctp-pink: #d97c9c;
   --ctp-flamingo: #d98c9c;
   --ctp-rosewater: #d99cac;
-
-  /* Layout dimensions */
-  --header-height: 60px;
-  --sidebar-width: 60px;
-  --banner-height: 36px;
 }
 
 * {
@@ -590,23 +536,6 @@ body {
   flex-direction: column;
 }
 
-/* Tab Navigation */
-.tab-nav {
-  display: none; /* Hidden - replaced by sidebar */
-}
-
-.tab-btn {
-  display: none; /* Hidden - replaced by sidebar */
-}
-
-.tab-btn:hover {
-  /* Hidden - replaced by sidebar */
-}
-
-.tab-btn.active {
-  /* Hidden - replaced by sidebar */
-}
-
 .app-main {
   padding: 2rem;
   padding-top: calc(var(--header-height) + 2rem); /* Account for fixed header + desired padding */
@@ -646,7 +575,7 @@ body {
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   min-width: 250px;
   transition: border-color 0.2s;
@@ -669,7 +598,7 @@ body {
 
 .nodes-table {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
   border: 1px solid var(--ctp-surface1);
 }
@@ -745,7 +674,7 @@ body {
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s ease;
@@ -758,13 +687,13 @@ body {
 
 .channel-btn.active {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-color: var(--ctp-blue);
 }
 
 .channel-messages {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   border: 1px solid var(--ctp-surface1);
 }
@@ -779,7 +708,7 @@ body {
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   min-width: 250px;
   cursor: pointer;
@@ -792,7 +721,7 @@ body {
 
 .dm-conversation {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   border: 1px solid var(--ctp-surface1);
   /* Desktop: constrain to viewport height */
@@ -823,7 +752,7 @@ body {
 
 .dm-resize-handle:hover,
 .dm-resize-handle.resizing {
-  background: var(--primary-color, var(--ctp-blue));
+  background: var(--ctp-blue);
 }
 
 .dm-resize-handle::before {
@@ -834,14 +763,14 @@ body {
   transform: translate(-50%, -50%);
   width: 40px;
   height: 4px;
-  background: var(--border-color, var(--ctp-surface2));
-  border-radius: 2px;
+  background: var(--ctp-surface2);
+  border-radius: var(--radius-xs);
   transition: background 0.2s ease;
 }
 
 .dm-resize-handle:hover::before,
 .dm-resize-handle.resizing::before {
-  background: var(--primary-color, var(--ctp-blue));
+  background: var(--ctp-blue);
 }
 
 /* DM Send Section - wrapper for send form and info below */
@@ -876,7 +805,7 @@ body {
 
 .message-item.sent .message-text {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   margin-left: auto;
 }
 
@@ -893,14 +822,14 @@ body {
 
 .info-section {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   border: 1px solid var(--ctp-surface1);
 }
 
 .info-section-full-width {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   border: 1px solid var(--ctp-surface1);
   margin-top: 1.5rem;
@@ -909,7 +838,7 @@ body {
 
 .info-section-wide {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   border: 1px solid var(--ctp-surface1);
   grid-column: span 2;
@@ -1001,7 +930,7 @@ body {
 .nodes-panel,
 .messages-panel {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   margin-bottom: 2rem;
   border: 1px solid var(--ctp-surface1);
@@ -1025,7 +954,7 @@ body {
   flex: 1;
   padding: 0.75rem 1rem;
   border: 2px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   background: var(--ctp-base);
   color: var(--ctp-text);
@@ -1044,9 +973,9 @@ body {
 .connection-form button {
   padding: 0.75rem 2rem;
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -1066,7 +995,7 @@ body {
 
 .connection-form button.disconnect-btn {
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .connection-form button.disconnect-btn:hover:not(:disabled) {
@@ -1076,7 +1005,7 @@ body {
 .error-panel {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-red);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   margin-bottom: 1rem;
   color: var(--ctp-red);
@@ -1102,10 +1031,10 @@ body {
 
 .retry-btn {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
@@ -1120,7 +1049,7 @@ body {
   border: 1px solid var(--ctp-overlay0);
   color: var(--ctp-text);
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -1135,7 +1064,7 @@ body {
   margin-top: 1.5rem;
   padding: 1rem;
   background: var(--ctp-mantle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface1);
 }
 
@@ -1166,7 +1095,7 @@ body {
 .info-item .value {
   font-size: 0.95rem;
   color: var(--ctp-text);
-  font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .nodes-grid {
@@ -1178,7 +1107,7 @@ body {
 .node-card {
   background: var(--ctp-mantle);
   padding: 1.25rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface1);
   transition: all 0.2s;
 }
@@ -1214,7 +1143,7 @@ body {
 .messages-container {
   overflow-y: auto;
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1rem;
   background: var(--ctp-mantle);
   flex: 1;
@@ -1227,12 +1156,12 @@ body {
 
 .messages-container::-webkit-scrollbar-track {
   background: var(--ctp-surface0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .messages-container::-webkit-scrollbar-thumb {
   background: var(--ctp-overlay0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .messages-container::-webkit-scrollbar-thumb:hover {
@@ -1242,7 +1171,7 @@ body {
 .message-item {
   padding: 0.75rem;
   border-bottom: 1px solid var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   margin-bottom: 0.5rem;
   background: var(--ctp-surface0);
 }
@@ -1269,7 +1198,7 @@ body {
   color: var(--ctp-overlay2);
   font-size: 0.9rem;
   margin-left: auto;
-  font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .message-text {
@@ -1285,14 +1214,14 @@ body {
   gap: 1rem;
   font-size: 0.75rem;
   color: var(--ctp-overlay1);
-  font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .send-message {
   margin-bottom: 1rem;
   padding: 1rem;
   background: var(--ctp-mantle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface1);
 }
 
@@ -1305,7 +1234,7 @@ body {
   flex: 1;
   padding: 0.75rem;
   border: 2px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   background: var(--ctp-base);
   color: var(--ctp-text);
@@ -1326,9 +1255,9 @@ body {
   min-width: 40px;
   width: 40px;
   background: var(--ctp-green);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-weight: 600;
   font-size: 1.5rem;
   cursor: pointer;
@@ -1368,7 +1297,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   background: var(--ctp-surface0);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
@@ -1407,7 +1336,7 @@ body {
 
 .channel-info {
   background: var(--ctp-surface0);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   margin-top: 2rem;
   border-left: 2px solid var(--ctp-blue);
@@ -1570,7 +1499,7 @@ body {
 
   .channel-conversation {
     padding: 0.5rem;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     width: 100%;
     box-sizing: border-box;
     max-height: none; /* Override desktop constraint */
@@ -1773,7 +1702,7 @@ body {
   gap: 0.5rem;
   background: var(--ctp-surface1);
   padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface2);
   font-size: 0.85rem;
   color: var(--ctp-text);
@@ -1811,7 +1740,7 @@ body {
 .node-select {
   padding: 0.5rem 1rem;
   border: 2px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   background: var(--ctp-surface0);
   color: var(--ctp-text);
@@ -1843,7 +1772,7 @@ body {
   flex: 1;
   padding: 0.75rem 1rem;
   border: 2px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   background: var(--ctp-base);
   color: var(--ctp-text);
@@ -1862,9 +1791,9 @@ body {
 .send-btn {
   padding: 0.75rem 1.5rem;
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -1906,7 +1835,7 @@ body {
   padding: 0.75rem;
   background: var(--ctp-surface0);
   border: 2px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--ctp-text);
   font-size: 0.9rem;
   cursor: pointer;
@@ -1935,7 +1864,7 @@ body {
 .channel-button {
   background: var(--ctp-surface0);
   border: 2px solid var(--ctp-surface2);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1954,7 +1883,7 @@ body {
 .channel-button.selected {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px -5px rgba(137, 180, 250, 0.5);
 }
@@ -1995,7 +1924,7 @@ body {
 .channel-button .channel-id {
   font-size: 0.85rem;
   opacity: 0.7;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .channel-button-indicators {
@@ -2030,7 +1959,7 @@ body {
   color: var(--ctp-blue);
   text-decoration: none;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   transition: all 0.2s ease;
 }
 
@@ -2040,7 +1969,7 @@ body {
 }
 
 .channel-button.selected .channel-info-link {
-  color: #000000;
+  color: var(--ctp-accent-text);
   background: rgba(17, 17, 27, 0.3);
   font-weight: 600;
 }
@@ -2064,7 +1993,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s ease;
 }
 
@@ -2091,12 +2020,12 @@ body {
 }
 
 .channel-button.selected .arrow-icon.enabled {
-  color: #000000;
+  color: var(--ctp-accent-text);
   background: rgba(17, 17, 27, 0.3);
 }
 
 .channel-button.selected .arrow-icon.disabled {
-  color: #000000;
+  color: var(--ctp-accent-text);
   background: rgba(17, 17, 27, 0.2);
   opacity: 0.4;
 }
@@ -2104,7 +2033,7 @@ body {
 /* Channel Conversation Section */
 .channel-conversation-section {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 0.75rem;
   border: none;
   flex: 1;
@@ -2127,15 +2056,15 @@ body {
   background: var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.25rem 0.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
 }
 
 .channel-conversation {
   background: var(--ctp-mantle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1rem;
   border: 1px solid var(--ctp-surface2);
   flex: 1;
@@ -2177,10 +2106,10 @@ body {
 
 .footer-version {
   color: var(--ctp-subtext1);
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   background: var(--ctp-surface0);
   padding: 0.15rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .footer-link {
@@ -2238,7 +2167,7 @@ body {
   padding: 12px;
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--ctp-text);
   font-size: 1em;
   transition: all 0.2s ease;
@@ -2259,7 +2188,7 @@ body {
   padding: 12px;
   background: rgba(243, 139, 168, 0.1);
   border: 1px solid var(--ctp-red);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--ctp-red);
   margin-bottom: 16px;
   font-size: 0.95em;
@@ -2271,7 +2200,7 @@ body {
   padding: 12px;
   background: rgba(166, 227, 161, 0.1);
   border: 1px solid var(--ctp-green);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--ctp-green);
   margin-bottom: 16px;
   font-size: 0.95em;
@@ -2298,7 +2227,7 @@ body {
   width: 100%;
   padding: 12px 24px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
@@ -2312,7 +2241,7 @@ body {
 
 .button-primary {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .button-primary:hover:not(:disabled) {
@@ -2344,7 +2273,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s ease;
   line-height: 1;
 }
@@ -2367,7 +2296,7 @@ body {
   padding: 8px 16px;
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--ctp-text);
   cursor: pointer;
   font-size: 0.95em;
@@ -2413,7 +2342,7 @@ body {
   min-width: 250px;
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   z-index: 9999;
   overflow: hidden;
@@ -2448,7 +2377,7 @@ body {
   display: inline-block;
   padding: 2px 8px;
   background: var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75em;
   color: var(--ctp-subtext0);
   text-transform: uppercase;
@@ -2462,7 +2391,7 @@ body {
   padding: 2px 8px;
   background: rgba(249, 226, 175, 0.2);
   border: 1px solid var(--ctp-yellow);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75em;
   color: var(--ctp-yellow);
   text-transform: uppercase;
@@ -2525,8 +2454,8 @@ body {
   width: 100%;
   /* height is now set dynamically via inline style */
   z-index: 2;
-  background: var(--bg-primary);
-  border-top: 2px solid var(--border-color);
+  background: var(--ctp-base);
+  border-top: 2px solid var(--ctp-surface2);
   display: flex;
   flex-direction: column;
 }
@@ -2546,7 +2475,7 @@ body {
 
 .packet-monitor-resize-handle:hover,
 .packet-monitor-container.resizing .packet-monitor-resize-handle {
-  background: var(--primary-color, #4a9eff);
+  background: var(--ctp-blue);
 }
 
 .packet-monitor-resize-handle::before {
@@ -2557,14 +2486,14 @@ body {
   transform: translate(-50%, -50%);
   width: 40px;
   height: 4px;
-  background: var(--border-color);
-  border-radius: 2px;
+  background: var(--ctp-surface2);
+  border-radius: var(--radius-xs);
   transition: background 0.2s ease;
 }
 
 .packet-monitor-resize-handle:hover::before,
 .packet-monitor-container.resizing .packet-monitor-resize-handle::before {
-  background: var(--primary-color, #4a9eff);
+  background: var(--ctp-blue);
 }
 
 /* During resize, prevent pointer events on content */
@@ -2612,24 +2541,24 @@ body {
   top: 50%;
   transform: translateY(-50%);
   font-size: 0.75rem;
-  color: var(--text-secondary);
-  font-family: monospace;
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono);
   white-space: nowrap;
   opacity: 0.6;
   pointer-events: none; /* Allow clicking through to the input */
-  background: var(--bg-primary);
+  background: var(--ctp-base);
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .byte-counter-warning {
-  color: var(--warning-color, #f59e0b);
+  color: var(--ctp-yellow);
   font-weight: 600;
   opacity: 0.9;
 }
 
 .byte-counter-over {
-  color: var(--error-color, #ef4444);
+  color: var(--ctp-red);
   font-weight: 700;
   opacity: 1;
 }
@@ -2643,7 +2572,7 @@ body {
   margin-bottom: 1rem;
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -2654,7 +2583,7 @@ body {
   color: var(--ctp-text);
   border: 1px solid var(--ctp-surface2);
   padding: 0.375rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2705,7 +2634,7 @@ body {
   min-width: 220px;
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 10000;
   padding: 0.5rem 0;

@@ -21,7 +21,7 @@
 /* Modal content container */
 .news-modal-content {
   background: var(--ctp-base);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 0;
   max-width: 600px;
   width: 90%;
@@ -59,7 +59,7 @@
   font-size: 0.875rem;
   background: var(--ctp-surface0);
   padding: 0.25rem 0.75rem;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
 }
 
 /* Body styles */
@@ -96,28 +96,28 @@
   font-weight: 600;
   text-transform: uppercase;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   letter-spacing: 0.05em;
 }
 
 .news-category-release {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .news-category-security {
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .news-category-feature {
   background: var(--ctp-green);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .news-category-maintenance {
   background: var(--ctp-yellow);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 /* Priority badge */
@@ -126,9 +126,9 @@
   font-weight: 600;
   text-transform: uppercase;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--ctp-maroon);
-  color: #000000;
+  color: var(--ctp-accent-text);
   letter-spacing: 0.05em;
 }
 
@@ -175,15 +175,15 @@
 .news-item-content code {
   background: var(--ctp-surface0);
   padding: 0.125rem 0.375rem;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   font-size: 0.875em;
 }
 
 .news-item-content pre {
   background: var(--ctp-surface0);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow-x: auto;
   margin: 1rem 0;
 }
@@ -266,7 +266,7 @@
 /* Buttons */
 .news-button {
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -276,7 +276,7 @@
 
 .news-button-primary {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .news-button-primary:hover {
@@ -297,7 +297,7 @@
   .news-modal-content {
     width: 95%;
     max-height: 90vh;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
   }
 
   .news-modal-header,

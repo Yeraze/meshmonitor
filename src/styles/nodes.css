@@ -57,7 +57,7 @@
 
 .nodes-sidebar-resize-handle:hover,
 .nodes-anchored-sidebar.resizing .nodes-sidebar-resize-handle {
-  background: var(--primary-color, #4a9eff);
+  background: var(--ctp-blue);
 }
 
 .nodes-sidebar-resize-handle::before {
@@ -69,13 +69,13 @@
   width: 4px;
   height: 40px;
   background: var(--ctp-surface2);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   transition: background 0.2s ease;
 }
 
 .nodes-sidebar-resize-handle:hover::before,
 .nodes-anchored-sidebar.resizing .nodes-sidebar-resize-handle::before {
-  background: var(--primary-color, #4a9eff);
+  background: var(--ctp-blue);
 }
 
 /* Prevent interaction during sidebar resize */
@@ -183,7 +183,7 @@
   border: 1px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -198,7 +198,7 @@
   border: 1px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem 0.75rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
@@ -209,7 +209,7 @@
 .filter-popup-btn:hover {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .filter-popup-overlay {
@@ -228,7 +228,7 @@
 .filter-popup {
   background: var(--ctp-base);
   border: 2px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   max-width: 500px;
   width: 90%;
   max-height: 80vh;
@@ -265,13 +265,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s;
 }
 
 .filter-popup-close:hover {
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .filter-popup-content {
@@ -327,14 +327,14 @@
   margin-top: 0.5rem;
   padding: 0.5rem;
   background: var(--ctp-surface0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border-left: 3px solid var(--ctp-blue);
 }
 
 .filter-toggle-group {
   display: flex;
   border: 1px solid var(--ctp-surface2);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   width: 100%;
   margin-bottom: 0.5rem;
@@ -362,7 +362,7 @@
 
 .filter-toggle-btn.active {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   font-weight: 600;
 }
 
@@ -406,7 +406,7 @@
   gap: 0.75rem;
   cursor: pointer;
   padding: 0.6rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background 0.2s;
   margin-bottom: 0.5rem;
 }
@@ -446,7 +446,7 @@
   gap: 0.5rem;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.2s;
 }
 
@@ -484,7 +484,7 @@
   border: 1px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
 }
 
@@ -502,7 +502,7 @@
   flex: 1;
   padding: 0.75rem;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s;
@@ -519,7 +519,7 @@
 
 .filter-apply-btn {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .filter-apply-btn:hover {
@@ -534,7 +534,7 @@
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.5rem;
   cursor: pointer;
   transition: all 0.2s;
@@ -549,7 +549,7 @@
 .collapse-nodes-btn:hover {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   transform: scale(1.1);
 }
 
@@ -594,7 +594,7 @@
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
   width: 100%;
   transition: border-color 0.2s;
@@ -637,7 +637,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: color 0.2s, background-color 0.2s;
   font-size: 1rem;
   line-height: 1;
@@ -659,7 +659,7 @@
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.4rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   flex: 1 1 0;
   width: 0;
@@ -682,7 +682,7 @@
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.4rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 1.2rem;
   cursor: pointer;
   transition: all 0.2s;
@@ -722,12 +722,12 @@
 
 .node-item.selected {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .node-item.selected,
 .node-item.selected * {
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .node-item.selected .node-stats .stat {
@@ -779,7 +779,7 @@
 .dm-icon {
   background: var(--ctp-blue);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.25rem 0.5rem;
   font-size: 1rem;
   cursor: pointer;
@@ -857,7 +857,7 @@
   color: var(--ctp-subtext1);
   background: var(--ctp-surface2);
   padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   min-width: fit-content;
 }
 
@@ -868,7 +868,7 @@
 
 .node-short.sticky {
   background: var(--ctp-yellow);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .node-short .pin-indicator {
@@ -919,7 +919,7 @@
   cursor: help;
   background: var(--ctp-surface1);
   padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
 }
 
@@ -933,7 +933,7 @@
 
 .nodes-list::-webkit-scrollbar-thumb {
   background: var(--ctp-overlay0);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .nodes-list::-webkit-scrollbar-thumb:hover {
@@ -988,7 +988,7 @@
 .overlay-content {
   background: rgba(30, 30, 46, 0.95);
   border: 2px solid var(--ctp-surface2);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 2rem;
   text-align: center;
   color: var(--ctp-subtext1);
@@ -1012,7 +1012,7 @@
 .leaflet-popup-content-wrapper {
   background: var(--ctp-surface0);
   color: var(--ctp-text);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -1049,9 +1049,9 @@
   margin-top: 0.75rem;
   padding: 0.5rem 1rem;
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -1096,7 +1096,7 @@
     padding: 0.75rem;
     background: var(--ctp-surface0);
     border: 2px solid var(--ctp-surface2);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     color: var(--ctp-text);
     font-size: 0.875rem;
     cursor: pointer;
@@ -1374,7 +1374,7 @@
 .node-popup {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   max-width: 280px;
@@ -1478,7 +1478,7 @@
   padding: 6px 10px;
   background: var(--ctp-surface1);
   border-left: 3px solid var(--ctp-blue);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   margin-bottom: 4px;
   opacity: 0.8;
@@ -1524,7 +1524,7 @@
   align-items: center;
   justify-content: center;
   padding: 2px 6px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1559,7 +1559,7 @@
   height: 20px;
   padding: 0 6px;
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
@@ -1574,7 +1574,7 @@
   height: 18px;
   padding: 0 5px;
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-radius: 9px;
   font-size: 10px;
   font-weight: 600;
@@ -1588,7 +1588,7 @@
   width: 8px;
   height: 8px;
   background: var(--ctp-red);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
@@ -1625,7 +1625,7 @@
   background: var(--ctp-surface1);
   border-left: 4px solid var(--ctp-mauve);
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
@@ -1656,9 +1656,9 @@
 
 .traceroute-btn {
   background: var(--ctp-mauve);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
   font-weight: 600;
@@ -1687,9 +1687,9 @@
 
 .traceroute-badge {
   background: var(--ctp-mauve);
-  color: #000000;
+  color: var(--ctp-accent-text);
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -1701,7 +1701,7 @@
   height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top: 2px solid var(--ctp-base);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   animation: spin 1s linear infinite;
 }
 
@@ -1731,12 +1731,12 @@
 
 .node-popup::-webkit-scrollbar-track {
   background: var(--ctp-surface0);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .node-popup::-webkit-scrollbar-thumb {
   background: var(--ctp-surface2);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .node-popup::-webkit-scrollbar-thumb:hover {
@@ -1764,7 +1764,7 @@
   color: var(--ctp-mauve);
   background: var(--ctp-surface1);
   padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: inline-block;
 }
 
@@ -1785,7 +1785,7 @@
   gap: 0.3rem;
   padding: 0.25rem 0.4rem;
   background: var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   transition: background 0.2s ease;
 }
@@ -1815,7 +1815,7 @@
   gap: 0.5rem;
   padding: 0.5rem;
   background: var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.8rem;
   color: var(--ctp-subtext1);
   margin-bottom: 0.75rem;
@@ -1826,9 +1826,9 @@
   width: 100%;
   padding: 0.6rem 1rem;
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -1851,7 +1851,7 @@
   margin: 0.75rem 0;
   padding: 0.75rem;
   background: var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border-left: 3px solid var(--ctp-mauve);
 }
 
@@ -1908,7 +1908,7 @@
   padding: 0.375rem 0.5rem;
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
@@ -1958,7 +1958,7 @@
   margin: 0.75rem 0;
   padding: 0.5rem;
   background: var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   text-align: center;
   font-size: 0.9rem;
 }
@@ -1984,7 +1984,7 @@
   margin-top: 0.75rem;
   padding: 0.5rem;
   background: var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--ctp-surface2);
 }
 
@@ -2041,7 +2041,7 @@
   z-index: 1000;
   background: var(--ctp-surface0);
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   user-select: none;
   transition: left 0s, top 0s, right 0s;
@@ -2083,7 +2083,7 @@
   appearance: none;
   -webkit-appearance: none;
   background: var(--ctp-surface1);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 
@@ -2093,7 +2093,7 @@
   width: 14px;
   height: 14px;
   background: var(--ctp-blue);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   cursor: pointer;
   transition: background-color 0.2s;
 }
@@ -2103,7 +2103,7 @@
   height: 14px;
   background: var(--ctp-blue);
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   cursor: pointer;
   transition: background-color 0.2s;
 }
@@ -2129,7 +2129,7 @@
   background: var(--ctp-surface1);
   color: var(--ctp-text);
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0.35rem 0.6rem;
   font-size: 0.8rem;
   font-weight: 500;
@@ -2173,7 +2173,7 @@
   right: 4px;
   background: var(--ctp-surface1);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-text);
   cursor: pointer;
   width: 24px;

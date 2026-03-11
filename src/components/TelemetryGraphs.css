@@ -3,7 +3,7 @@
   margin-bottom: 20px;
   padding: 20px;
   background-color: var(--ctp-mantle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .telemetry-title {
@@ -28,9 +28,9 @@
 }
 
 .graph-container {
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 15px;
 }
 
@@ -94,9 +94,9 @@
 }
 
 .telemetry-context-menu {
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   min-width: 150px;

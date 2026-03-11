@@ -22,7 +22,7 @@
   padding: 16px;
   background-color: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;

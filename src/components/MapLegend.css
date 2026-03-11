@@ -18,7 +18,7 @@
   font-size: 11px;
   cursor: grab;
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background-color 0.2s;
 }
 
@@ -39,7 +39,7 @@
 .legend-dot {
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 1px solid rgba(0, 0, 0, 0.2);
   flex-shrink: 0;
 }

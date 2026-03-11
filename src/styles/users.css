@@ -20,7 +20,7 @@
 
 .users-list {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 16px;
   overflow-y: auto;
 }
@@ -53,7 +53,7 @@
   padding: 12px;
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -95,7 +95,7 @@
   padding: 2px 8px;
   background: rgba(243, 139, 168, 0.2);
   border: 1px solid var(--ctp-red);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75em;
   color: var(--ctp-red);
   text-transform: uppercase;
@@ -104,7 +104,7 @@
 
 .user-details {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 24px;
   overflow-y: auto;
 }
@@ -130,7 +130,7 @@
 .info-item {
   padding: 12px;
   background: var(--ctp-base);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface1);
 }
 
@@ -172,7 +172,7 @@
   padding: 12px;
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .permission-label {

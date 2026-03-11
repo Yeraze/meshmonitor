@@ -33,7 +33,7 @@
 .stat-card {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 16px;
 }
 
@@ -62,7 +62,7 @@
 .audit-filters {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 24px;
 }
@@ -111,7 +111,7 @@
 .audit-table-container {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   margin-bottom: 24px;
 }
@@ -213,10 +213,10 @@
 .detail-pre {
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 12px;
   font-size: 0.75rem;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-mono);
   overflow-x: auto;
   margin: 0;
   color: var(--ctp-text);
@@ -276,7 +276,7 @@
 .audit-empty {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 /* Responsive Design */

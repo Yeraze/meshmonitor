@@ -58,10 +58,10 @@
 }
 
 .node-address {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-family: var(--font-mono);
   background: var(--ctp-surface0);
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-blue);
   transition: all 0.2s ease;
 }
@@ -99,7 +99,7 @@
 .status-indicator {
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--ctp-overlay1);
 }
 
@@ -167,7 +167,7 @@
   border: 1px solid var(--ctp-overlay0);
   background: var(--ctp-surface0);
   color: var(--ctp-text);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 500;
@@ -181,7 +181,7 @@
 .connection-control-btn.reconnect {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .connection-control-btn.reconnect:hover {
@@ -197,8 +197,8 @@
   padding: 8px 16px;
   background: var(--ctp-blue);
   border: none;
-  border-radius: 8px;
-  color: #000000;
+  border-radius: var(--radius-lg);
+  color: var(--ctp-accent-text);
   cursor: pointer;
   font-size: 0.95em;
   font-weight: 600;

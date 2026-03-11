@@ -2,7 +2,7 @@
   margin-top: 1rem;
   padding: 1rem;
   background-color: var(--ctp-surface0);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-overlay0);
 }
 
@@ -48,9 +48,9 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: 1rem;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: border-color 0.2s;
 }
 
@@ -79,7 +79,7 @@
 .tileset-badge {
   display: inline-block;
   padding: 0.2rem 0.6rem;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -99,7 +99,7 @@
 }
 
 .tileset-url {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--ctp-blue);
   word-break: break-all;
@@ -135,7 +135,7 @@
 .tileset-actions button {
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background-color: var(--ctp-surface0);
   color: var(--ctp-text);
   cursor: pointer;
@@ -149,13 +149,13 @@
 
 .btn-edit:hover:not(:disabled) {
   background-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-color: var(--ctp-blue);
 }
 
 .btn-delete:hover:not(:disabled) {
   background-color: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-color: var(--ctp-red);
 }
 
@@ -165,9 +165,9 @@
 }
 
 .tileset-form {
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   padding: 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--ctp-blue);
   margin-bottom: 1rem;
 }
@@ -199,7 +199,7 @@
   padding: 0.6rem;
   background-color: var(--ctp-surface0);
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-text);
   font-size: 0.9rem;
   font-family: inherit;
@@ -228,14 +228,14 @@
 }
 
 .form-field small.example {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   color: var(--ctp-overlay2);
 }
 
 .validation-message {
   margin-top: 0.4rem;
   padding: 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
 }
 
@@ -262,7 +262,7 @@
 .form-actions button {
   padding: 0.6rem 1.2rem;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -271,7 +271,7 @@
 
 .btn-save {
   background-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .btn-save:hover:not(:disabled) {
@@ -303,7 +303,7 @@
   padding: 0.75rem;
   background-color: var(--ctp-surface0);
   border: 2px dashed var(--ctp-overlay0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-blue);
   font-size: 0.9rem;
   font-weight: 500;
@@ -336,7 +336,7 @@
   padding: 0.6rem 1rem;
   background-color: var(--ctp-surface1);
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-text);
   font-size: 0.9rem;
   font-weight: 500;
@@ -348,7 +348,7 @@
 
 .btn-test:hover:not(:disabled) {
   background-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-color: var(--ctp-blue);
 }
 
@@ -361,7 +361,7 @@
 .test-result {
   margin-top: 0.75rem;
   padding: 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
 }
 
@@ -427,7 +427,7 @@
   margin-top: 0.5rem;
   padding: 0.4rem 0.6rem;
   background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-yellow);
   font-size: 0.85rem;
   border: none;
@@ -437,7 +437,7 @@
   margin-top: 0.5rem;
   padding: 0.4rem 0.6rem;
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-red);
   font-size: 0.85rem;
   border: none;
@@ -448,7 +448,7 @@
   margin-top: 1rem;
   padding: 1rem;
   background-color: var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--ctp-overlay0);
 }
 
@@ -474,9 +474,9 @@
 .autodetect-input-row input {
   flex: 1;
   padding: 0.6rem;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-text);
   font-size: 0.9rem;
 }
@@ -490,8 +490,8 @@
   padding: 0.6rem 1rem;
   background-color: var(--ctp-mauve);
   border: none;
-  border-radius: 4px;
-  color: #000000;
+  border-radius: var(--radius-sm);
+  color: var(--ctp-accent-text);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -524,7 +524,7 @@
 .progress-bar {
   height: 6px;
   background-color: var(--ctp-overlay0);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
@@ -545,7 +545,7 @@
 .autodetect-result {
   margin-top: 0.75rem;
   padding: 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .autodetect-result.success {
@@ -576,8 +576,8 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  background-color: #000000;
-  border-radius: 4px;
+  background-color: var(--ctp-crust);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--ctp-overlay0);
 }
 
@@ -590,7 +590,7 @@
 }
 
 .autodetect-url-text {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--ctp-blue);
   word-break: break-all;
@@ -600,8 +600,8 @@
   padding: 0.4rem 0.8rem;
   background-color: var(--ctp-green);
   border: none;
-  border-radius: 4px;
-  color: #000000;
+  border-radius: var(--radius-sm);
+  color: var(--ctp-accent-text);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -618,7 +618,7 @@
   margin-top: 0.5rem;
   padding: 0.4rem 0.6rem;
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-red);
   font-size: 0.85rem;
 }
@@ -629,7 +629,7 @@
   padding: 0.75rem 1rem;
   background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
   border: 1px solid var(--ctp-yellow);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .reload-notice-content {
@@ -655,8 +655,8 @@
   padding: 0.4rem 0.8rem;
   background-color: var(--ctp-yellow);
   border: none;
-  border-radius: 4px;
-  color: #000000;
+  border-radius: var(--radius-sm);
+  color: var(--ctp-accent-text);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;

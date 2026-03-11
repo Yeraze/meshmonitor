@@ -20,7 +20,7 @@
   color: white;
   border: none;
   padding: 0.75rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: bold;
   font-size: 1rem;
@@ -53,7 +53,7 @@
   color: white;
   border: none;
   padding: 0.75rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: bold;
   font-size: 1rem;

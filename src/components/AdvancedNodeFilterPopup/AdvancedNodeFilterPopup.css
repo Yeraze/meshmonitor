@@ -15,7 +15,7 @@
 .filter-popup {
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   width: 90%;
   max-width: 500px;
   max-height: 80vh;
@@ -51,7 +51,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background 0.2s, color 0.2s;
 }
 
@@ -108,7 +108,7 @@
   border: 1px solid var(--ctp-surface1);
   background: var(--ctp-surface0);
   color: var(--ctp-subtext0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.875rem;
   transition: all 0.2s;
@@ -121,7 +121,7 @@
 
 .filter-toggle-btn.active {
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border-color: var(--ctp-blue);
 }
 
@@ -197,7 +197,7 @@
   width: 60px;
   padding: 0.375rem 0.5rem;
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--ctp-surface0);
   color: var(--ctp-text);
   font-size: 0.875rem;
@@ -229,7 +229,7 @@
   border: 1px solid var(--ctp-surface1);
   background: var(--ctp-surface0);
   color: var(--ctp-text);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.875rem;
   transition: all 0.2s;
@@ -244,8 +244,8 @@
   padding: 0.625rem 1rem;
   border: none;
   background: var(--ctp-blue);
-  color: #000000;
-  border-radius: 6px;
+  color: var(--ctp-accent-text);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 500;
