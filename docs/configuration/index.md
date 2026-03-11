@@ -74,6 +74,10 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `MESHTASTIC_NODE_IP` | IP address of your Meshtastic node | `192.168.1.100` |
 | `MESHTASTIC_TCP_PORT` | TCP port for Meshtastic connection | `4403` |
 | `MESHTASTIC_STALE_CONNECTION_TIMEOUT` | Connection timeout in milliseconds before reconnecting if no data received | `300000` (5 minutes) |
+| `MESHTASTIC_CONNECT_TIMEOUT_MS` | Initial TCP connection timeout in milliseconds | `10000` (10 seconds) |
+| `MESHTASTIC_RECONNECT_INITIAL_DELAY_MS` | Initial delay before first reconnect attempt (base for exponential backoff) | `1000` (1 second) |
+| `MESHTASTIC_RECONNECT_MAX_DELAY_MS` | Maximum delay between reconnect attempts (backoff cap) | `60000` (60 seconds) |
+| `MESHTASTIC_MODULE_CONFIG_DELAY_MS` | Delay between consecutive module config requests to avoid overwhelming the device | `100` (100ms) |
 
 ### Virtual Node Variables
 

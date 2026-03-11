@@ -552,9 +552,11 @@ class MeshtasticManager {
       // Create TCP transport
       this.transport = new TcpTransport();
 
-      // Configure stale connection timeout from environment
+      // Configure connection timing from environment
       const env = getEnvironmentConfig();
       this.transport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
+      this.transport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
+      this.transport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
 
       // Setup event handlers
       this.transport.on('connect', () => {
@@ -9936,8 +9938,8 @@ class MeshtasticManager {
     for (const configType of moduleConfigTypes) {
       try {
         await this.requestModuleConfig(configType);
-        // Small delay between requests to avoid overwhelming the device
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Configurable delay between requests to avoid overwhelming the device
+        await new Promise(resolve => setTimeout(resolve, getEnvironmentConfig().meshtasticModuleConfigDelayMs));
       } catch (error) {
         logger.error(`❌ Failed to request module config type ${configType}:`, error);
         // Continue with other configs even if one fails

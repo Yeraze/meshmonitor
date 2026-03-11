@@ -166,6 +166,17 @@ if (pendingOp) {
 # Set via environment variable (in milliseconds)
 MESHTASTIC_STALE_CONNECTION_TIMEOUT=300000  # 5 minutes (default)
 MESHTASTIC_STALE_CONNECTION_TIMEOUT=0       # Disable (not recommended)
+
+# TCP connect/reconnect timing (for advanced troubleshooting)
+MESHTASTIC_CONNECT_TIMEOUT_MS=10000         # Initial TCP connect timeout (default: 10s)
+MESHTASTIC_RECONNECT_INITIAL_DELAY_MS=1000  # First reconnect delay (default: 1s)
+MESHTASTIC_RECONNECT_MAX_DELAY_MS=60000     # Max reconnect delay cap (default: 60s)
+# Reconnect uses exponential backoff: initial * 2^(attempt-1), capped at max
+# Set initial = max for fixed delay (e.g., both = 60000 for 1-minute fixed delay)
+
+# Module config request throttling
+MESHTASTIC_MODULE_CONFIG_DELAY_MS=100       # Delay between config requests (default: 100ms)
+# Increase to 250-1000ms if device shows queue overflow during config loading
 ```
 
 **Why Needed**:
@@ -181,6 +192,8 @@ MESHTASTIC_STALE_CONNECTION_TIMEOUT=0       # Disable (not recommended)
 - Manual reconnect fixes the issue
 
 **Related**: Issue #492 - Serial-connected device stops responding after idle
+**Related**: Issue #2213 - Configurable TCP connect/reconnect timing
+**Related**: Issue #2214 - Configurable module config request delay
 
 ---
 
