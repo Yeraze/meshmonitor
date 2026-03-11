@@ -25,6 +25,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoAckDirectMessages',
   'autoAckUseDM',
   'autoAckSkipIncompleteNodes',
+  'autoAckIgnoredNodes',
   'autoAckTapbackEnabled',
   'autoAckReplyEnabled',
   'autoAckDirectEnabled',

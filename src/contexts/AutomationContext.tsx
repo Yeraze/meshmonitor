@@ -18,6 +18,8 @@ interface AutomationContextType {
   setAutoAckUseDM: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckSkipIncompleteNodes: boolean;
   setAutoAckSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckIgnoredNodes: string;
+  setAutoAckIgnoredNodes: React.Dispatch<React.SetStateAction<string>>;
   autoAckTapbackEnabled: boolean;
   setAutoAckTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckReplyEnabled: boolean;
@@ -102,6 +104,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
   const [autoAckUseDM, setAutoAckUseDM] = useState<boolean>(false);
   const [autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes] = useState<boolean>(false);
+  const [autoAckIgnoredNodes, setAutoAckIgnoredNodes] = useState<string>('');
   const [autoAckTapbackEnabled, setAutoAckTapbackEnabled] = useState<boolean>(false);
   const [autoAckReplyEnabled, setAutoAckReplyEnabled] = useState<boolean>(true); // Default true for backward compatibility
   const [autoAckDirectEnabled, setAutoAckDirectEnabled] = useState<boolean>(true);
@@ -147,6 +150,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoAckDirectMessages, setAutoAckDirectMessages,
         autoAckUseDM, setAutoAckUseDM,
         autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+        autoAckIgnoredNodes, setAutoAckIgnoredNodes,
         autoAckTapbackEnabled, setAutoAckTapbackEnabled,
         autoAckReplyEnabled, setAutoAckReplyEnabled,
         autoAckDirectEnabled, setAutoAckDirectEnabled,

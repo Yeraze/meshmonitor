@@ -81,6 +81,26 @@ export function validateCustomTilesets(tilesets: any[]): boolean {
   return true;
 }
 
+function normalizeIgnoredNodeIds(rawValue: string): string {
+  const tokens = rawValue
+    .split(/[\s,]+/)
+    .map(token => token.trim().toLowerCase())
+    .filter(Boolean);
+
+  const normalized = new Set<string>();
+
+  for (const token of tokens) {
+    if (!/^!?[0-9a-f]{8}$/.test(token)) {
+      throw new Error('Node ignore list entries must be 8-digit hex node IDs (example: !b29fa8d4)');
+    }
+
+    const hex = token.startsWith('!') ? token.slice(1) : token;
+    normalized.add(`!${hex}`);
+  }
+
+  return [...normalized].join(',');
+}
+
 // ─── Side-effect callbacks ───────────────────────────────────────────────
 // These are injected by server.ts so the route handler doesn't directly
 // depend on meshtasticManager / inactiveNodeNotificationService / etc.
@@ -169,6 +189,16 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
         .map((c) => parseInt(c.trim()))
         .filter((n) => !isNaN(n) && n >= 0 && n < 8);
       filteredSettings.autoAckChannels = validChannels.join(',');
+    }
+
+    if ('autoAckIgnoredNodes' in filteredSettings) {
+      try {
+        filteredSettings.autoAckIgnoredNodes = normalizeIgnoredNodeIds(filteredSettings.autoAckIgnoredNodes);
+      } catch (error) {
+        return res.status(400).json({
+          error: error instanceof Error ? error.message : 'Invalid node ignore list format',
+        });
+      }
     }
 
     // Validate inactive node notification settings

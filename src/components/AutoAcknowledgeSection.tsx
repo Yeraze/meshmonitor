@@ -17,6 +17,7 @@ interface AutoAcknowledgeSectionProps {
   directMessagesEnabled: boolean;
   useDM: boolean;
   skipIncompleteNodes: boolean;
+  ignoredNodes: string;
   tapbackEnabled: boolean;
   replyEnabled: boolean;
   // New direct/multihop settings
@@ -35,6 +36,7 @@ interface AutoAcknowledgeSectionProps {
   onDirectMessagesChange: (enabled: boolean) => void;
   onUseDMChange: (enabled: boolean) => void;
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
+  onIgnoredNodesChange: (ignoredNodes: string) => void;
   onTapbackEnabledChange: (enabled: boolean) => void;
   onReplyEnabledChange: (enabled: boolean) => void;
   // New direct/multihop callbacks
@@ -64,6 +66,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   directMessagesEnabled,
   useDM,
   skipIncompleteNodes,
+  ignoredNodes,
   tapbackEnabled,
   replyEnabled,
   directEnabled,
@@ -81,6 +84,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onDirectMessagesChange,
   onUseDMChange,
   onSkipIncompleteNodesChange,
+  onIgnoredNodesChange,
   onTapbackEnabledChange,
   onReplyEnabledChange,
   onDirectEnabledChange,
@@ -104,6 +108,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
   const [localUseDM, setLocalUseDM] = useState(useDM);
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
+  const [localIgnoredNodes, setLocalIgnoredNodes] = useState(ignoredNodes || '');
   const [localTapbackEnabled, setLocalTapbackEnabled] = useState(tapbackEnabled);
   const [localReplyEnabled, setLocalReplyEnabled] = useState(replyEnabled);
   const [localDirectEnabled, setLocalDirectEnabled] = useState(directEnabled);
@@ -128,6 +133,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalDirectMessagesEnabled(directMessagesEnabled);
     setLocalUseDM(useDM);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setLocalIgnoredNodes(ignoredNodes || '');
     setLocalTapbackEnabled(tapbackEnabled);
     setLocalReplyEnabled(replyEnabled);
     setLocalDirectEnabled(directEnabled);
@@ -139,14 +145,14 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled || localDirectEnabled !== directEnabled || localDirectTapbackEnabled !== directTapbackEnabled || localDirectReplyEnabled !== directReplyEnabled || localMultihopEnabled !== multihopEnabled || localMultihopTapbackEnabled !== multihopTapbackEnabled || localMultihopReplyEnabled !== multihopReplyEnabled || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled || localDirectEnabled !== directEnabled || localDirectTapbackEnabled !== directTapbackEnabled || localDirectReplyEnabled !== directReplyEnabled || localMultihopEnabled !== multihopEnabled || localMultihopTapbackEnabled !== multihopTapbackEnabled || localMultihopReplyEnabled !== multihopReplyEnabled || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, testMessages, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, testMessages, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -158,6 +164,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalDirectMessagesEnabled(directMessagesEnabled);
     setLocalUseDM(useDM);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setLocalIgnoredNodes(ignoredNodes || '');
     setLocalTapbackEnabled(tapbackEnabled);
     setLocalReplyEnabled(replyEnabled);
     setLocalDirectEnabled(directEnabled);
@@ -167,7 +174,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
     setLocalMultihopReplyEnabled(multihopReplyEnabled);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -270,6 +277,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckDirectMessages: String(localDirectMessagesEnabled),
           autoAckUseDM: String(localUseDM),
           autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes),
+          autoAckIgnoredNodes: localIgnoredNodes,
           autoAckTapbackEnabled: String(localTapbackEnabled),
           autoAckReplyEnabled: String(localReplyEnabled),
           autoAckDirectEnabled: String(localDirectEnabled),
@@ -299,6 +307,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onDirectMessagesChange(localDirectMessagesEnabled);
       onUseDMChange(localUseDM);
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
+      onIgnoredNodesChange(localIgnoredNodes);
       onTapbackEnabledChange(localTapbackEnabled);
       onReplyEnabledChange(localReplyEnabled);
       onDirectEnabledChange(localDirectEnabled);
@@ -317,7 +326,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, testMessages, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onTapbackEnabledChange, onReplyEnabledChange, onDirectEnabledChange, onDirectTapbackEnabledChange, onDirectReplyEnabledChange, onMultihopEnabledChange, onMultihopTapbackEnabledChange, onMultihopReplyEnabledChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, testMessages, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onTapbackEnabledChange, onReplyEnabledChange, onDirectEnabledChange, onDirectTapbackEnabledChange, onDirectReplyEnabledChange, onMultihopEnabledChange, onMultihopTapbackEnabledChange, onMultihopReplyEnabledChange, onTestMessagesChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -482,6 +491,29 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           </div>
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
             {t('automation.auto_ack.skip_incomplete_description')}
+          </div>
+
+          <div style={{ marginTop: '1rem' }}>
+            <label htmlFor="autoAckIgnoredNodes" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              {t('automation.auto_ack.node_ignore_list')}
+            </label>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.node_ignore_list_description')}
+            </div>
+            <textarea
+              id="autoAckIgnoredNodes"
+              value={localIgnoredNodes}
+              onChange={(e) => setLocalIgnoredNodes(e.target.value)}
+              placeholder={`!a1b2c3d4\n!d5c4b3a2`}
+              disabled={!localEnabled}
+              className="setting-input"
+              rows={3}
+              style={{
+                fontFamily: 'monospace',
+                resize: 'vertical',
+                minHeight: '70px'
+              }}
+            />
           </div>
         </div>
 
