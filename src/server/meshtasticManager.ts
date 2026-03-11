@@ -5369,6 +5369,12 @@ class MeshtasticManager {
 
       logger.info(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
 
+      // Skip MQTT-sourced neighbor info - it represents remote mesh topology, not local connections
+      if (meshPacket.viaMqtt) {
+        logger.debug(`📡 Skipping MQTT-sourced neighbor info from ${fromNodeId}`);
+        return;
+      }
+
       // Get the sender node to determine their hopsAway
       let senderNode = databaseService.getNode(fromNum);
 
