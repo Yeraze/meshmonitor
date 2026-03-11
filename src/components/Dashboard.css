@@ -640,6 +640,22 @@
   font-weight: 500;
 }
 
+.node-status-name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--ctp-blue);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.node-status-name-link:hover {
+  color: var(--ctp-sapphire);
+}
+
 .node-status-time {
   color: var(--ctp-subtext0);
 }
@@ -647,6 +663,10 @@
 .node-status-hops {
   text-align: center;
   color: var(--ctp-subtext0);
+}
+
+.node-status-hops-header {
+  text-align: center !important;
 }
 
 .node-status-actions {

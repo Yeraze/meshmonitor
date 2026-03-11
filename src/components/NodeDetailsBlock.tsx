@@ -138,7 +138,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
    */
   const formatNodeIdHex = (nodeNum: number | undefined): string => {
     if (nodeNum === undefined || nodeNum === null) return 'N/A';
-    return `0x${nodeNum.toString(16).toUpperCase().padStart(8, '0')}`;
+    return `!${nodeNum.toString(16).toLowerCase().padStart(8, '0')}`;
   };
 
   /**

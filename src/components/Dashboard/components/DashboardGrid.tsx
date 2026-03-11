@@ -34,6 +34,7 @@ interface DashboardGridProps {
   onAddNodeToWidget: (widgetId: string, nodeId: string) => void;
   onRemoveNodeFromWidget: (widgetId: string, nodeId: string) => void;
   onSelectTracerouteNode: (widgetId: string, nodeId: string) => void;
+  onOpenNodeDetails?: (nodeId: string) => void;
   onUpdateWidgetConfig: (widgetId: string, updates: Record<string, unknown>) => void;
   distanceUnit: 'km' | 'mi';
 
@@ -73,6 +74,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   onAddNodeToWidget,
   onRemoveNodeFromWidget,
   onSelectTracerouteNode,
+  onOpenNodeDetails,
   onUpdateWidgetConfig,
   distanceUnit,
   favorites,
@@ -133,9 +135,11 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     id={widget.id}
                     nodeIds={widget.nodeIds}
                     nodes={nodes}
+                    baseUrl={baseUrl}
                     onRemove={() => onRemoveWidget(widget.id)}
                     onAddNode={nodeId => onAddNodeToWidget(widget.id, nodeId)}
                     onRemoveNode={nodeId => onRemoveNodeFromWidget(widget.id, nodeId)}
+                    onOpenNodeDetails={onOpenNodeDetails}
                     canEdit={canEdit}
                   />
                 );

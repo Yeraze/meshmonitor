@@ -1342,6 +1342,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
                         </span>
                       )}
+                      {node.deviceMetrics?.voltage !== undefined && node.deviceMetrics.voltage !== null && (
+                        <span className="stat" title={t('nodes.voltage')}>
+                          ⚡ {node.deviceMetrics.voltage.toFixed(2)}V
+                        </span>
+                      )}
                       {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
                         const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                         return effectiveHops < 999 ? (

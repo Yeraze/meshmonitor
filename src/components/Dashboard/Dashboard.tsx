@@ -30,6 +30,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
     baseUrl,
     currentNodeId = null,
     canEdit = true,
+    onOpenNodeDetails,
   }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
@@ -285,6 +286,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
             onAddNodeToWidget={addNodeToWidget}
             onRemoveNodeFromWidget={removeNodeFromWidget}
             onSelectTracerouteNode={selectTracerouteNode}
+            onOpenNodeDetails={onOpenNodeDetails}
             onUpdateWidgetConfig={updateWidgetConfig}
             distanceUnit={distanceUnit}
             favorites={filteredAndSortedFavorites}
