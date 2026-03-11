@@ -529,6 +529,7 @@ function App() {
     autoAckDirectMessages, setAutoAckDirectMessages,
     autoAckUseDM, setAutoAckUseDM,
     autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckIgnoredNodes, setAutoAckIgnoredNodes,
     autoAckTapbackEnabled, setAutoAckTapbackEnabled,
     autoAckReplyEnabled, setAutoAckReplyEnabled,
     autoAckDirectEnabled, setAutoAckDirectEnabled,
@@ -962,6 +963,10 @@ function App() {
 
           if (settings.autoAckSkipIncompleteNodes !== undefined) {
             setAutoAckSkipIncompleteNodes(settings.autoAckSkipIncompleteNodes === 'true');
+          }
+
+          if (settings.autoAckIgnoredNodes !== undefined) {
+            setAutoAckIgnoredNodes(settings.autoAckIgnoredNodes);
           }
 
           if (settings.autoAckTapbackEnabled !== undefined) {
@@ -4876,6 +4881,7 @@ function App() {
                   directMessagesEnabled={autoAckDirectMessages}
                   useDM={autoAckUseDM}
                   skipIncompleteNodes={autoAckSkipIncompleteNodes}
+                  ignoredNodes={autoAckIgnoredNodes}
                   tapbackEnabled={autoAckTapbackEnabled}
                   replyEnabled={autoAckReplyEnabled}
                   directEnabled={autoAckDirectEnabled}
@@ -4894,6 +4900,7 @@ function App() {
                   onDirectMessagesChange={setAutoAckDirectMessages}
                   onUseDMChange={setAutoAckUseDM}
                   onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
+                  onIgnoredNodesChange={setAutoAckIgnoredNodes}
                   onTapbackEnabledChange={setAutoAckTapbackEnabled}
                   onReplyEnabledChange={setAutoAckReplyEnabled}
                   onDirectEnabledChange={setAutoAckDirectEnabled}

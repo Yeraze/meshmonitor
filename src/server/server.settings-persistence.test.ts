@@ -122,6 +122,7 @@ function validTestValue(key: string, suffix = ''): string {
   const VALID_VALUES: Record<string, string> = {
     autoAckRegex: 'hello',
     autoAckChannels: '0,1',
+    autoAckIgnoredNodes: '!b29fa8d4,!a1b2c3d4',
     inactiveNodeThresholdHours: '24',
     inactiveNodeCheckIntervalMinutes: '60',
     inactiveNodeCooldownHours: '24',

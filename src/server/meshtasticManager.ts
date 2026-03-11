@@ -6566,12 +6566,29 @@ class MeshtasticManager {
       // Check channel-specific settings
       const autoAckChannels = databaseService.getSetting('autoAckChannels');
       const autoAckDirectMessages = databaseService.getSetting('autoAckDirectMessages');
+      const autoAckIgnoredNodes = databaseService.getSetting('autoAckIgnoredNodes');
 
       // Parse enabled channels (comma-separated list of channel indices)
       const enabledChannels = autoAckChannels
         ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(n => !isNaN(n))
         : [];
       const dmEnabled = autoAckDirectMessages === 'true';
+
+      // Parse optional node ignore list. Supports canonical !xxxxxxxx entries.
+      const ignoredNodeNums = new Set<number>();
+      if (autoAckIgnoredNodes) {
+        const ignoredNodeIds = autoAckIgnoredNodes
+          .split(/[\s,]+/)
+          .map(token => token.trim().toLowerCase())
+          .filter(Boolean);
+
+        for (const nodeId of ignoredNodeIds) {
+          const normalizedNodeId = nodeId.startsWith('!') ? nodeId.slice(1) : nodeId;
+          if (/^[0-9a-f]{8}$/.test(normalizedNodeId)) {
+            ignoredNodeNums.add(parseInt(normalizedNodeId, 16));
+          }
+        }
+      }
 
       // Check if auto-ack is enabled for this channel/DM
       if (isDirectMessage) {
@@ -6592,6 +6609,11 @@ class MeshtasticManager {
       const localNodeNum = databaseService.getSetting('localNodeNum');
       if (localNodeNum && parseInt(localNodeNum) === fromNum) {
         logger.debug('⏭️  Skipping auto-acknowledge for message from local node');
+        return;
+      }
+
+      if (ignoredNodeNums.has(fromNum)) {
+        logger.debug(`⏭️  Skipping auto-acknowledge for ignored node !${fromNum.toString(16).padStart(8, '0')}`);
         return;
       }
 
