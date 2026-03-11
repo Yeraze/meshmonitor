@@ -206,6 +206,14 @@ export interface EnvironmentConfig {
   meshtasticTcpPortProvided: boolean;
   meshtasticStaleConnectionTimeout: number;
   meshtasticStaleConnectionTimeoutProvided: boolean;
+  meshtasticConnectTimeoutMs: number;
+  meshtasticConnectTimeoutMsProvided: boolean;
+  meshtasticReconnectInitialDelayMs: number;
+  meshtasticReconnectInitialDelayMsProvided: boolean;
+  meshtasticReconnectMaxDelayMs: number;
+  meshtasticReconnectMaxDelayMsProvided: boolean;
+  meshtasticModuleConfigDelayMs: number;
+  meshtasticModuleConfigDelayMsProvided: boolean;
   timezone: string;
   timezoneProvided: boolean;
 
@@ -447,6 +455,26 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     process.env.MESHTASTIC_STALE_CONNECTION_TIMEOUT,
     300000 // 5 minutes default (in milliseconds)
   );
+  const meshtasticConnectTimeoutMs = parseInt32(
+    'MESHTASTIC_CONNECT_TIMEOUT_MS',
+    process.env.MESHTASTIC_CONNECT_TIMEOUT_MS,
+    10000 // 10 seconds default
+  );
+  const meshtasticReconnectInitialDelayMs = parseInt32(
+    'MESHTASTIC_RECONNECT_INITIAL_DELAY_MS',
+    process.env.MESHTASTIC_RECONNECT_INITIAL_DELAY_MS,
+    1000 // 1 second default
+  );
+  const meshtasticReconnectMaxDelayMs = parseInt32(
+    'MESHTASTIC_RECONNECT_MAX_DELAY_MS',
+    process.env.MESHTASTIC_RECONNECT_MAX_DELAY_MS,
+    60000 // 60 seconds default
+  );
+  const meshtasticModuleConfigDelayMs = parseInt32(
+    'MESHTASTIC_MODULE_CONFIG_DELAY_MS',
+    process.env.MESHTASTIC_MODULE_CONFIG_DELAY_MS,
+    100 // 100ms default
+  );
   const timezoneRaw = process.env.TZ || 'UTC';
   let timezone = { value: timezoneRaw, wasProvided: process.env.TZ !== undefined };
 
@@ -615,6 +643,14 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     meshtasticTcpPortProvided: meshtasticTcpPort.wasProvided,
     meshtasticStaleConnectionTimeout: meshtasticStaleConnectionTimeout.value,
     meshtasticStaleConnectionTimeoutProvided: meshtasticStaleConnectionTimeout.wasProvided,
+    meshtasticConnectTimeoutMs: meshtasticConnectTimeoutMs.value,
+    meshtasticConnectTimeoutMsProvided: meshtasticConnectTimeoutMs.wasProvided,
+    meshtasticReconnectInitialDelayMs: meshtasticReconnectInitialDelayMs.value,
+    meshtasticReconnectInitialDelayMsProvided: meshtasticReconnectInitialDelayMs.wasProvided,
+    meshtasticReconnectMaxDelayMs: meshtasticReconnectMaxDelayMs.value,
+    meshtasticReconnectMaxDelayMsProvided: meshtasticReconnectMaxDelayMs.wasProvided,
+    meshtasticModuleConfigDelayMs: meshtasticModuleConfigDelayMs.value,
+    meshtasticModuleConfigDelayMsProvided: meshtasticModuleConfigDelayMs.wasProvided,
     timezone: timezone.value,
     timezoneProvided: timezone.wasProvided,
 

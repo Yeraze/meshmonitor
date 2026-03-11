@@ -23,6 +23,11 @@ export class TcpTransport extends EventEmitter {
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private readonly HEALTH_CHECK_INTERVAL_MS = 60000; // Check every minute
 
+  // Configurable TCP timing
+  private connectTimeoutMs: number = 10000; // 10 second default
+  private reconnectInitialDelayMs: number = 1000; // 1 second default
+  private reconnectMaxDelayMs: number = 60000; // 60 second default
+
   // Protocol constants
   private readonly START1 = 0x94;
   private readonly START2 = 0xc3;
@@ -40,6 +45,23 @@ export class TcpTransport extends EventEmitter {
     }
 
     logger.debug(`⏱️  Stale connection timeout set to ${timeoutMs}ms (${Math.floor(timeoutMs / 1000 / 60)} minute(s))`);
+  }
+
+  /**
+   * Set the initial TCP connection timeout in milliseconds
+   */
+  setConnectTimeout(timeoutMs: number): void {
+    this.connectTimeoutMs = timeoutMs;
+    logger.debug(`⏱️  TCP connect timeout set to ${timeoutMs}ms`);
+  }
+
+  /**
+   * Set the reconnect backoff parameters in milliseconds
+   */
+  setReconnectTiming(initialDelayMs: number, maxDelayMs: number): void {
+    this.reconnectInitialDelayMs = initialDelayMs;
+    this.reconnectMaxDelayMs = maxDelayMs;
+    logger.debug(`⏱️  Reconnect timing: initial=${initialDelayMs}ms, max=${maxDelayMs}ms`);
   }
 
   async connect(host: string, port: number = 4403): Promise<void> {
@@ -76,7 +98,7 @@ export class TcpTransport extends EventEmitter {
           this.socket.destroy();
           reject(new Error('Connection timeout'));
         }
-      }, 10000); // 10 second timeout
+      }, this.connectTimeoutMs);
 
       this.socket.once('connect', () => {
         clearTimeout(connectTimeout);
@@ -138,8 +160,8 @@ export class TcpTransport extends EventEmitter {
 
     this.reconnectAttempts++;
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (capped at 60s)
-    const delay = Math.min(Math.pow(2, this.reconnectAttempts - 1) * 1000, 60000);
+    // Exponential backoff: initialDelay * 2^(attempts-1), capped at maxDelay
+    const delay = Math.min(Math.pow(2, this.reconnectAttempts - 1) * this.reconnectInitialDelayMs, this.reconnectMaxDelayMs);
 
     logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts})...`);
 
