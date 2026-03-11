@@ -86,6 +86,8 @@ import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgre
 import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
 import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
 import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
+import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
+import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -321,6 +323,11 @@ export interface DbPacketCountByNode {
   count: number;
 }
 
+export interface DbDistinctRelayNode {
+  relay_node: number;
+  matching_nodes: Array<{ longName: string | null; shortName: string | null }>;
+}
+
 export interface DbPacketCountByPortnum {
   portnum: number;
   portnum_name: string;
@@ -409,6 +416,10 @@ class DatabaseService {
   // Track nodes that have already had their "new node" notification sent
   // to avoid duplicate notifications when node data is updated incrementally
   private newNodeNotifiedSet: Set<number> = new Set();
+
+  // Ghost node suppression: nodeNum → expiresAt timestamp
+  // Prevents resurrection of ghost nodes after reboot detection
+  private suppressedGhostNodes: Map<number, number> = new Map();
 
   /**
    * Get the Drizzle database instance for direct access if needed
@@ -980,6 +991,8 @@ class DatabaseService {
     this.runCreateEmbedProfilesMigration();
     this.runCreateGeofenceCooldownsMigration();
     this.runAddFavoriteLockedMigration();
+    this.runAddTimeOffsetColumnsMigration();
+    this.runAddPacketmonitorPermissionMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2559,6 +2572,42 @@ class DatabaseService {
     }
   }
 
+  private runAddTimeOffsetColumnsMigration(): void {
+    // Run migration 081: Add time offset detection columns to nodes
+    try {
+      const migrationKey = 'migration_081_time_offset_columns';
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 081 (add time offset columns) already completed');
+        return;
+      }
+      logger.debug('Running migration 081: Add time offset detection columns...');
+      addTimeOffsetColumnsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Add time offset columns migration completed successfully');
+    } catch (error) {
+      logger.error('Error running migration 081:', error);
+    }
+  }
+
+  private runAddPacketmonitorPermissionMigration(): void {
+    // Run migration 082: Add packetmonitor permission resource
+    try {
+      const migrationKey = 'migration_082_packetmonitor_permission';
+      const migrationStatus = this.getSetting(migrationKey);
+      if (migrationStatus === 'completed') {
+        logger.debug('Migration 082 (add packetmonitor permission) already completed');
+        return;
+      }
+      logger.debug('Running migration 082: Add packetmonitor permission...');
+      addPacketmonitorPermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('Add packetmonitor permission migration completed successfully');
+    } catch (error) {
+      logger.error('Error running migration 082:', error);
+    }
+  }
+
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
     try {
@@ -3172,6 +3221,49 @@ class DatabaseService {
     }
   }
 
+  // Ghost node suppression methods
+  suppressGhostNode(nodeNum: number, durationMs: number = 30 * 60 * 1000): void {
+    const expiresAt = Date.now() + durationMs;
+    this.suppressedGhostNodes.set(nodeNum, expiresAt);
+    logger.info(`👻 Suppressed ghost node !${nodeNum.toString(16).padStart(8, '0')} for ${Math.round(durationMs / 60000)} minutes`);
+  }
+
+  unsuppressGhostNode(nodeNum: number): void {
+    if (this.suppressedGhostNodes.delete(nodeNum)) {
+      logger.info(`👻 Unsuppressed ghost node !${nodeNum.toString(16).padStart(8, '0')}`);
+    }
+  }
+
+  isNodeSuppressed(nodeNum: number | undefined | null): boolean {
+    if (nodeNum === undefined || nodeNum === null) return false;
+    const expiresAt = this.suppressedGhostNodes.get(nodeNum);
+    if (expiresAt === undefined) return false;
+    if (Date.now() >= expiresAt) {
+      this.suppressedGhostNodes.delete(nodeNum);
+      logger.debug(`👻 Ghost suppression expired for !${nodeNum.toString(16).padStart(8, '0')}`);
+      return false;
+    }
+    return true;
+  }
+
+  getSuppressedGhostNodes(): Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> {
+    const now = Date.now();
+    const result: Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> = [];
+    for (const [nodeNum, expiresAt] of this.suppressedGhostNodes) {
+      if (now < expiresAt) {
+        result.push({
+          nodeNum,
+          nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`,
+          expiresAt,
+          remainingMs: expiresAt - now,
+        });
+      } else {
+        this.suppressedGhostNodes.delete(nodeNum);
+      }
+    }
+    return result;
+  }
+
   // Node operations
   upsertNode(nodeData: Partial<DbNode>): void {
     logger.debug(`DEBUG: upsertNode called with nodeData:`, JSON.stringify(nodeData));
@@ -3182,6 +3274,18 @@ class DatabaseService {
       logger.error('STACK TRACE FOR FAILED UPSERT:');
       logger.error(new Error().stack);
       return;
+    }
+
+    // Ghost suppression: block creation of suppressed nodes but allow updates to existing ones
+    if (this.isNodeSuppressed(nodeData.nodeNum)) {
+      // Check if this node already exists (in cache for Postgres/MySQL, in DB for SQLite)
+      const existsInCache = (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql')
+        ? this.nodesCache.has(nodeData.nodeNum)
+        : !!this.getNode(nodeData.nodeNum);
+      if (!existsInCache) {
+        logger.debug(`👻 Suppressed ghost node creation for !${nodeData.nodeNum.toString(16).padStart(8, '0')}`);
+        return;
+      }
     }
 
     // For PostgreSQL/MySQL, use async repo and update cache
@@ -4057,6 +4161,158 @@ class DatabaseService {
       return this.getNodesWithExcessivePackets();
     }
     return this.getNodesWithExcessivePackets();
+  }
+
+  /**
+   * Update the time offset detection flags for a node
+   */
+  updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): void {
+    // For PostgreSQL/MySQL, update cache and fire-and-forget
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const cachedNode = this.nodesCache.get(nodeNum);
+      if (cachedNode) {
+        (cachedNode as any).isTimeOffsetIssue = isTimeOffsetIssue;
+        (cachedNode as any).timeOffsetSeconds = timeOffsetSeconds;
+        cachedNode.updatedAt = Date.now();
+      }
+
+      // Fire-and-forget database update
+      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds).catch(err => {
+        logger.error(`Failed to update node time offset flags in database:`, err);
+      });
+      return;
+    }
+
+    // SQLite: synchronous update
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET isTimeOffsetIssue = ?,
+          timeOffsetSeconds = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, Date.now(), nodeNum);
+  }
+
+  /**
+   * Update the time offset detection flags for a node (async)
+   */
+  async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): Promise<void> {
+    const now = Date.now();
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      await this.postgresPool.query(`
+        UPDATE nodes
+        SET "isTimeOffsetIssue" = $1,
+            "timeOffsetSeconds" = $2,
+            "updatedAt" = $3
+        WHERE "nodeNum" = $4
+      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
+      return;
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      await this.mysqlPool.query(`
+        UPDATE nodes
+        SET isTimeOffsetIssue = ?,
+            timeOffsetSeconds = ?,
+            updatedAt = ?
+        WHERE nodeNum = ?
+      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
+      return;
+    }
+  }
+
+  /**
+   * Get all nodes with time offset issues (for security page)
+   */
+  getNodesWithTimeOffsetIssues(): DbNode[] {
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const result: DbNode[] = [];
+      for (const node of this.nodesCache.values()) {
+        if ((node as any).isTimeOffsetIssue) {
+          result.push(node);
+        }
+      }
+      return result;
+    }
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM nodes WHERE isTimeOffsetIssue = 1
+    `);
+    return stmt.all() as DbNode[];
+  }
+
+  /**
+   * Get all nodes with time offset issues (async)
+   */
+  async getNodesWithTimeOffsetIssuesAsync(): Promise<DbNode[]> {
+    if (this.nodesRepo) {
+      // Use cache for now since we don't have a repo method yet
+      return this.getNodesWithTimeOffsetIssues();
+    }
+    return this.getNodesWithTimeOffsetIssues();
+  }
+
+  /**
+   * Get the latest telemetry record with non-null packetTimestamp per node
+   */
+  async getLatestPacketTimestampsPerNodeAsync(): Promise<Array<{ nodeNum: number; timestamp: number; packetTimestamp: number }>> {
+    // Jan 1 2020 in ms — anything earlier is not a valid Meshtastic timestamp
+    // (nodes without GPS/NTP often report 0 or boot-relative seconds)
+    const MIN_VALID_TIMESTAMP_MS = 1577836800000;
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      const result = await this.postgresPool.query(`
+        SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
+        FROM telemetry
+        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1
+        ORDER BY "nodeNum", "timestamp" DESC
+      `, [MIN_VALID_TIMESTAMP_MS]);
+      return result.rows.map((r: any) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+        packetTimestamp: Number(r.packetTimestamp)
+      }));
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      const [rows] = await this.mysqlPool.query(`
+        SELECT t.nodeNum, t.timestamp, t.packetTimestamp
+        FROM telemetry t
+        INNER JOIN (
+          SELECT nodeNum, MAX(timestamp) as maxTs
+          FROM telemetry
+          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
+          GROUP BY nodeNum
+        ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
+        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
+      `, [MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS]) as any;
+      return (rows as any[]).map((r: any) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+        packetTimestamp: Number(r.packetTimestamp)
+      }));
+    }
+
+    // SQLite
+    const stmt = this.db.prepare(`
+      SELECT t.nodeNum, t.timestamp, t.packetTimestamp
+      FROM telemetry t
+      INNER JOIN (
+        SELECT nodeNum, MAX(timestamp) as maxTs
+        FROM telemetry
+        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
+        GROUP BY nodeNum
+      ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
+      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
+    `);
+    return (stmt.all(MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS) as any[]).map((r: any) => ({
+      nodeNum: Number(r.nodeNum),
+      timestamp: Number(r.timestamp),
+      packetTimestamp: Number(r.packetTimestamp)
+    }));
   }
 
   // Message operations
@@ -10159,8 +10415,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): DbPacketLog[] {
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     let query = `
       SELECT
@@ -10197,6 +10454,12 @@ class DatabaseService {
     if (since !== undefined) {
       query += ' AND pl.timestamp >= ?';
       params.push(since);
+    }
+    if (relay_node === 'unknown') {
+      query += ' AND pl.relay_node IS NULL';
+    } else if (relay_node !== undefined) {
+      query += ' AND pl.relay_node = ?';
+      params.push(relay_node);
     }
 
     query += ' ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?';
@@ -10283,8 +10546,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   } = {}): number {
-    const { portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
     const params: any[] = [];
@@ -10312,6 +10576,12 @@ class DatabaseService {
     if (since !== undefined) {
       query += ' AND timestamp >= ?';
       params.push(since);
+    }
+    if (relay_node === 'unknown') {
+      query += ' AND relay_node IS NULL';
+    } else if (relay_node !== undefined) {
+      query += ' AND relay_node = ?';
+      params.push(relay_node);
     }
 
     const stmt = this.db.prepare(query);
@@ -10370,8 +10640,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   } = {}): Promise<number> {
-    const { portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     // For PostgreSQL, use pool.query with parameterized query
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -10403,6 +10674,12 @@ class DatabaseService {
         if (since !== undefined) {
           query += ` AND timestamp >= $${paramIndex++}`;
           params.push(since);
+        }
+        if (relay_node === 'unknown') {
+          query += ' AND relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ` AND relay_node = $${paramIndex++}`;
+          params.push(relay_node);
         }
 
         const result = await this.postgresPool.query(query, params);
@@ -10443,6 +10720,12 @@ class DatabaseService {
           query += ' AND timestamp >= ?';
           params.push(since);
         }
+        if (relay_node === 'unknown') {
+          query += ' AND relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ' AND relay_node = ?';
+          params.push(relay_node);
+        }
 
         const [rows] = await this.mysqlPool.query(query, params);
         return Number((rows as any[])?.[0]?.count ?? 0);
@@ -10468,8 +10751,9 @@ class DatabaseService {
     channel?: number;
     encrypted?: boolean;
     since?: number;
+    relay_node?: number | 'unknown';
   }): Promise<DbPacketLog[]> {
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
 
     // For PostgreSQL, use pool.query with parameterized query
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -10511,6 +10795,12 @@ class DatabaseService {
         if (since !== undefined) {
           query += ` AND pl.timestamp >= $${paramIndex++}`;
           params.push(since);
+        }
+        if (relay_node === 'unknown') {
+          query += ' AND pl.relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ` AND pl.relay_node = $${paramIndex++}`;
+          params.push(relay_node);
         }
 
         query += ` ORDER BY pl.timestamp DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
@@ -10573,6 +10863,12 @@ class DatabaseService {
           query += ` AND pl.timestamp >= ?`;
           params.push(since);
         }
+        if (relay_node === 'unknown') {
+          query += ' AND pl.relay_node IS NULL';
+        } else if (relay_node !== undefined) {
+          query += ' AND pl.relay_node = ?';
+          params.push(relay_node);
+        }
 
         query += ` ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?`;
         params.push(limit, offset);
@@ -10586,6 +10882,88 @@ class DatabaseService {
     }
     // For SQLite, use sync method
     return this.getPacketLogs(options);
+  }
+
+  /**
+   * Get distinct relay_node values from packet_log for filter dropdowns
+   */
+  async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
+    // relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
+    // We match by (nodeNum & 0xFF) to find candidate node names.
+    const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL AND relay_node > 0';
+
+    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      try {
+        const distinctResult = await this.postgresPool.query(distinctQuery);
+        const relayValues = (distinctResult.rows ?? []).map((r: any) => Number(r.relay_node));
+
+        const results: DbDistinctRelayNode[] = [];
+        for (const rv of relayValues) {
+          const matchResult = await this.postgresPool.query(
+            `SELECT "longName", "shortName" FROM nodes WHERE ("nodeNum" & 255) = $1`,
+            [rv]
+          );
+          results.push({
+            relay_node: rv,
+            matching_nodes: (matchResult.rows ?? []).map((r: any) => ({
+              longName: r.longName ?? null,
+              shortName: r.shortName ?? null,
+            })),
+          });
+        }
+        return results;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
+        return [];
+      }
+    }
+
+    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      try {
+        const [distinctRows] = await this.mysqlPool.query(distinctQuery);
+        const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
+
+        const results: DbDistinctRelayNode[] = [];
+        for (const rv of relayValues) {
+          const [matchRows] = await this.mysqlPool.query(
+            'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?',
+            [rv]
+          );
+          results.push({
+            relay_node: rv,
+            matching_nodes: (matchRows as any[]).map((r: any) => ({
+              longName: r.longName ?? null,
+              shortName: r.shortName ?? null,
+            })),
+          });
+        }
+        return results;
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
+        return [];
+      }
+    }
+
+    // SQLite sync
+    try {
+      const distinctStmt = this.db.prepare(distinctQuery);
+      const relayValues = (distinctStmt.all() as any[]).map((r: any) => Number(r.relay_node));
+
+      const matchStmt = this.db.prepare(
+        'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?'
+      );
+
+      return relayValues.map(rv => ({
+        relay_node: rv,
+        matching_nodes: (matchStmt.all(rv) as any[]).map((r: any) => ({
+          longName: r.longName ?? null,
+          shortName: r.shortName ?? null,
+        })),
+      }));
+    } catch (error) {
+      logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
+      return [];
+    }
   }
 
   /**
@@ -11225,6 +11603,12 @@ class DatabaseService {
       // Run migration 080: Add favoriteLocked column to nodes
       await runMigration080Postgres(client);
 
+      // Run migration 081: Add time offset detection columns to nodes
+      await runMigration081Postgres(client);
+
+      // Run migration 082: Add packetmonitor permission
+      await runMigration082Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11376,6 +11760,12 @@ class DatabaseService {
 
       // Run migration 080: Add favoriteLocked column to nodes
       await runMigration080Mysql(pool);
+
+      // Run migration 081: Add time offset detection columns to nodes
+      await runMigration081Mysql(pool);
+
+      // Run migration 082: Add packetmonitor permission
+      await runMigration082Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

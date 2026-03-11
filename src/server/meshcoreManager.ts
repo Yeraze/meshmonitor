@@ -420,10 +420,16 @@ class MeshCoreManager extends EventEmitter {
    */
   private handleBridgeResponse(line: string): void {
     try {
-      const response: BridgeResponse = JSON.parse(line);
+      const response = JSON.parse(line);
 
       // Check for ready message (already handled in startBridge)
-      if ((response as any).type === 'ready') {
+      if (response.type === 'ready') {
+        return;
+      }
+
+      // Handle unsolicited events pushed by the bridge (incoming messages)
+      if (response.type === 'event') {
+        this.handleBridgeEvent(response);
         return;
       }
 
@@ -438,6 +444,46 @@ class MeshCoreManager extends EventEmitter {
     } catch (error) {
       logger.error(`[MeshCore] Invalid bridge response: ${line}`);
     }
+  }
+
+  /**
+   * Handle unsolicited events from the Python bridge (incoming messages).
+   * sender_timestamp from the MeshCore protocol is Unix epoch in seconds;
+   * we convert to milliseconds for JS Date compatibility.
+   */
+  private handleBridgeEvent(event: { event_type: string; data: any }): void {
+    const { event_type, data } = event;
+
+    if (event_type === 'contact_message') {
+      const message: MeshCoreMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        fromPublicKey: data.pubkey_prefix,
+        text: data.text,
+        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        snr: data.snr,
+      };
+      this.addMessage(message);
+      this.emit('message', message);
+      logger.info(`[MeshCore] Contact message from ${data.pubkey_prefix}: ${data.text}`);
+    } else if (event_type === 'channel_message') {
+      const message: MeshCoreMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
+        text: data.text,
+        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        snr: data.snr,
+      };
+      this.addMessage(message);
+      this.emit('message', message);
+      logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+    } else {
+      logger.debug(`[MeshCore] Unknown bridge event: ${event_type}`);
+    }
+  }
+
+  /** Generate a synthetic public key identifier for channel messages */
+  private static channelPublicKey(channelIdx: number): string {
+    return `channel-${channelIdx}`;
   }
 
   // ============ Direct Serial Methods (for Repeater) ============
@@ -457,7 +503,7 @@ class MeshCoreManager extends EventEmitter {
     const SerialPortClass = SerialPort;
     const ReadlineParserClass = ReadlineParser;
 
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       this.serialPort = new SerialPortClass({
         path: this.config!.serialPort!,
         baudRate: this.config!.baudRate || 115200,
@@ -478,6 +524,14 @@ class MeshCoreManager extends EventEmitter {
       this.parser.on('data', (data: string) => {
         this.handleSerialData(data.trim());
       });
+    });
+
+    // Wake up the repeater CLI with a CR and discard any buffered data
+    await new Promise<void>((resolve) => {
+      this.serialPort!.write('\r');
+      setTimeout(() => {
+        this.serialPort!.flush(() => resolve());
+      }, 500);
     });
   }
 
@@ -538,7 +592,9 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Send a command to Repeater firmware (text CLI)
+   * Send a command to Repeater firmware (text CLI).
+   * Repeater CLI uses \r as line terminator and echoes the command back.
+   * Response lines start with "  -> " prefix.
    */
   private async sendRepeaterCommand(command: string, timeout: number = 5000): Promise<string> {
     if (!this.serialPort?.isOpen) {
@@ -547,21 +603,33 @@ class MeshCoreManager extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       const cmdId = `cmd_${++this.commandId}`;
-      let response = '';
+      const lines: string[] = [];
+      let echoSeen = false;
 
       const timeoutHandle = setTimeout(() => {
         this.pendingCommands.delete(cmdId);
         this.removeListener('serial_data', dataHandler);
-        reject(new Error(`Command timeout: ${command}`));
+        // Resolve with whatever we have instead of rejecting on timeout,
+        // since the repeater doesn't send an explicit end-of-response marker
+        resolve(lines.join('\n').trim());
       }, timeout);
 
       const dataHandler = (data: string) => {
-        response += data + '\n';
-        if (data.includes('>') || data.includes('OK') || data.includes('Error')) {
+        // Skip the command echo
+        if (!echoSeen && data.replace(/\r/g, '').trim() === command.trim()) {
+          echoSeen = true;
+          return;
+        }
+
+        lines.push(data);
+        logger.debug(`[MeshCore] Response line: ${data}`);
+
+        // Check for response terminators
+        if (data.includes('-> >') || data.includes('OK') || data.includes('Error') || data.includes('Unknown command')) {
           clearTimeout(timeoutHandle);
           this.pendingCommands.delete(cmdId);
           this.removeListener('serial_data', dataHandler);
-          resolve(response.trim());
+          resolve(lines.join('\n').trim());
         }
       };
 
@@ -569,7 +637,7 @@ class MeshCoreManager extends EventEmitter {
       this.on('serial_data', dataHandler);
 
       logger.debug(`[MeshCore] TX: ${command}`);
-      this.serialPort!.write(command + '\n');
+      this.serialPort!.write(command + '\r');
     });
   }
 
@@ -634,7 +702,11 @@ class MeshCoreManager extends EventEmitter {
         const nameResponse = await this.sendRepeaterCommand('get name');
         const radioResponse = await this.sendRepeaterCommand('get radio');
 
-        const nameMatch = nameResponse.match(/name:\s*(.+)/i);
+        logger.debug(`[MeshCore] Name response: ${JSON.stringify(nameResponse)}`);
+        logger.debug(`[MeshCore] Radio response: ${JSON.stringify(radioResponse)}`);
+
+        // Repeater CLI returns "  -> > DeviceName" format
+        const nameMatch = nameResponse.match(/->\s*>\s*(.+)/);
         const radioMatch = radioResponse.match(/(\d+\.?\d*),\s*(\d+\.?\d*),\s*(\d+),\s*(\d+)/);
 
         this.localNode = {

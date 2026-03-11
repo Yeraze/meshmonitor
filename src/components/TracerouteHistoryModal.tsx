@@ -6,6 +6,7 @@ import { formatDateTime } from '../utils/datetime';
 import { DeviceInfo } from '../types/device';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatTracerouteRoute } from '../utils/traceroute';
+import Modal from './common/Modal';
 
 interface TracerouteHistoryModalProps {
   fromNodeNum: number;
@@ -89,110 +90,109 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
   }, [traceroutes, showFailedTraceroutes]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '80vh' }}>
-        <div className="modal-header">
-          <h2>{t('traceroute_history.title')}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={t('traceroute_history.title')}
+      maxWidth="900px"
+      style={{ maxHeight: '80vh' }}
+    >
+      <div style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <strong>{t('traceroute_history.from')}:</strong> {fromNodeName} → <strong>{t('traceroute_history.to')}:</strong> {toNodeName}
         </div>
 
-        <div className="modal-body" style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <strong>{t('traceroute_history.from')}:</strong> {fromNodeName} → <strong>{t('traceroute_history.to')}:</strong> {toNodeName}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={showFailedTraceroutes}
+              onChange={(e) => setShowFailedTraceroutes(e.target.checked)}
+              style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            {t('traceroute_history.show_failed')}
+          </label>
+        </div>
+
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <div className="spinner"></div>
+            <p>{t('traceroute_history.loading')}</p>
           </div>
+        )}
 
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
-              <input
-                type="checkbox"
-                checked={showFailedTraceroutes}
-                onChange={(e) => setShowFailedTraceroutes(e.target.checked)}
-                style={{ marginRight: '0.5rem', cursor: 'pointer' }}
-              />
-              {t('traceroute_history.show_failed')}
-            </label>
+        {error && (
+          <div style={{ padding: '1rem', background: 'var(--ctp-red)', color: 'var(--ctp-base)', borderRadius: '4px' }}>
+            {error}
           </div>
+        )}
 
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '2rem' }}>
-              <div className="spinner"></div>
-              <p>{t('traceroute_history.loading')}</p>
-            </div>
-          )}
+        {!loading && !error && filteredTraceroutes.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
+            {traceroutes.length === 0 ? t('traceroute_history.no_history') : t('traceroute_history.no_matches')}
+          </div>
+        )}
 
-          {error && (
-            <div style={{ padding: '1rem', background: 'var(--ctp-red)', color: 'var(--ctp-base)', borderRadius: '4px' }}>
-              {error}
-            </div>
-          )}
+        {!loading && !error && filteredTraceroutes.length > 0 && (
+          <div>
+            <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+              {t('traceroute_history.showing_count', { count: filteredTraceroutes.length })}
+              {!showFailedTraceroutes && traceroutes.length > filteredTraceroutes.length && (
+                <span> {t('traceroute_history.failed_hidden', { count: traceroutes.length - filteredTraceroutes.length })}</span>
+              )}
+            </p>
 
-          {!loading && !error && filteredTraceroutes.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
-              {traceroutes.length === 0 ? t('traceroute_history.no_history') : t('traceroute_history.no_matches')}
-            </div>
-          )}
+            {filteredTraceroutes.map((tr: TracerouteWithHops, index: number) => {
+              const age = Math.floor((Date.now() - tr.timestamp) / (1000 * 60));
+              const ageStr = age < 60
+                ? t('common.minutes_ago', { count: age })
+                : age < 1440
+                  ? t('common.hours_ago', { count: Math.floor(age / 60) })
+                  : t('common.days_ago', { count: Math.floor(age / 1440) });
 
-          {!loading && !error && filteredTraceroutes.length > 0 && (
-            <div>
-              <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
-                {t('traceroute_history.showing_count', { count: filteredTraceroutes.length })}
-                {!showFailedTraceroutes && traceroutes.length > filteredTraceroutes.length && (
-                  <span> {t('traceroute_history.failed_hidden', { count: traceroutes.length - filteredTraceroutes.length })}</span>
-                )}
-              </p>
-
-              {filteredTraceroutes.map((tr: TracerouteWithHops, index: number) => {
-                const age = Math.floor((Date.now() - tr.timestamp) / (1000 * 60));
-                const ageStr = age < 60
-                  ? t('common.minutes_ago', { count: age })
-                  : age < 1440
-                    ? t('common.hours_ago', { count: Math.floor(age / 60) })
-                    : t('common.days_ago', { count: Math.floor(age / 1440) });
-
-                return (
-                  <div
-                    key={tr.id || index}
-                    style={{
-                      marginBottom: '1.5rem',
-                      padding: '1rem',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
-                      borderRadius: '8px',
-                    }}
-                  >
-                    <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <strong>#{filteredTraceroutes.length - index}</strong>
-                        <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
-                          {formatDateTime(new Date(tr.timestamp), timeFormat, dateFormat)}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
-                        {ageStr}
-                      </span>
-                    </div>
-
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, nodes, distanceUnit)}
-                      </span>
-                    </div>
-
+              return (
+                <div
+                  key={tr.id || index}
+                  style={{
+                    marginBottom: '1.5rem',
+                    padding: '1rem',
+                    background: 'var(--ctp-surface0)',
+                    border: '1px solid var(--ctp-surface2)',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, nodes, distanceUnit)}
+                      <strong>#{filteredTraceroutes.length - index}</strong>
+                      <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
+                        {formatDateTime(new Date(tr.timestamp), timeFormat, dateFormat)}
                       </span>
                     </div>
+                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {ageStr}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
+                      {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, nodes, distanceUnit)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
+                      {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, nodes, distanceUnit)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 };
 

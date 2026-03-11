@@ -165,51 +165,6 @@ class AppriseNotificationService {
   }
 
   /**
-   * Send a notification via Apprise to all globally configured URLs
-   * @deprecated Use sendNotificationToUrls for per-user notifications
-   */
-  public async sendNotification(payload: AppriseNotificationPayload): Promise<boolean> {
-    if (!this.isAvailable()) {
-      logger.debug('⚠️  Apprise not available, skipping notification');
-      return false;
-    }
-
-    try {
-      const response = await fetch(`${this.config!.url}/notify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title: payload.title,
-          body: payload.body,
-          type: payload.type || 'info'
-        }),
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (!response.ok) {
-        let errorDetails = '';
-        try {
-          const errorData = await response.json();
-          errorDetails = errorData.error || JSON.stringify(errorData);
-        } catch {
-          errorDetails = await response.text();
-        }
-        logger.error(`❌ Apprise notification failed: ${response.status} - ${errorDetails}`);
-        return false;
-      }
-
-      const data = await response.json();
-      logger.debug(`✅ Sent Apprise notification: ${payload.title} (to ${data.sent_to || 0} services)`);
-      return true;
-    } catch (error: any) {
-      logger.error('❌ Failed to send Apprise notification:', error);
-      return false;
-    }
-  }
-
-  /**
    * Send a notification to specific Apprise URLs (per-user)
    * Uses the Apprise API with inline URLs instead of the global config
    */

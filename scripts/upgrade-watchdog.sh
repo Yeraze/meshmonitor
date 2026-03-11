@@ -168,19 +168,33 @@ recreate_container() {
 
   # Resolve compose directory - try configured path, then known mount points
   # Older sidecar configs used /data/compose, current uses /compose
+  # Accept both .yml and .yaml extensions (both are valid for Docker Compose)
   local compose_dir=""
-  if [ -d "$COMPOSE_PROJECT_DIR" ] && [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
-    compose_dir="$COMPOSE_PROJECT_DIR"
-  elif [ -d "/compose" ] && [ -f "/compose/docker-compose.yml" ]; then
-    log_warn "COMPOSE_PROJECT_DIR=$COMPOSE_PROJECT_DIR not found, falling back to /compose"
-    compose_dir="/compose"
-  elif [ -d "/data/compose" ] && [ -f "/data/compose/docker-compose.yml" ]; then
-    log_warn "Falling back to legacy path /data/compose - please update COMPOSE_PROJECT_DIR to /compose"
-    compose_dir="/data/compose"
+  local compose_file=""
+  for try_dir in "$COMPOSE_PROJECT_DIR" "/compose" "/data/compose"; do
+    if [ -d "$try_dir" ]; then
+      if [ -f "$try_dir/docker-compose.yml" ]; then
+        compose_dir="$try_dir"
+        compose_file="docker-compose.yml"
+        break
+      elif [ -f "$try_dir/docker-compose.yaml" ]; then
+        compose_dir="$try_dir"
+        compose_file="docker-compose.yaml"
+        break
+      fi
+    fi
+  done
+
+  if [ -n "$compose_dir" ] && [ "$compose_dir" != "$COMPOSE_PROJECT_DIR" ]; then
+    if [ "$compose_dir" = "/data/compose" ]; then
+      log_warn "Falling back to legacy path /data/compose - please update COMPOSE_PROJECT_DIR to /compose"
+    else
+      log_warn "COMPOSE_PROJECT_DIR=$COMPOSE_PROJECT_DIR not found, falling back to $compose_dir"
+    fi
   fi
 
   if [ -z "$compose_dir" ]; then
-    log_error "No docker-compose.yml found at $COMPOSE_PROJECT_DIR, /compose, or /data/compose"
+    log_error "No docker-compose.yml/yaml found at $COMPOSE_PROJECT_DIR, /compose, or /data/compose"
     log_error "The upgrade sidecar requires Docker Compose files to recreate containers safely."
     log_error "Mount your compose directory to /compose in the sidecar container."
     return 1
@@ -213,9 +227,12 @@ recreate_container() {
 
   # Fallback if no compose files detected from labels
   if [ -z "$compose_files" ]; then
-    compose_files="-f docker-compose.yml"
+    compose_files="-f $compose_file"
+    # Check for upgrade overlay with either extension
     if [ -f "$compose_dir/docker-compose.upgrade.yml" ]; then
       compose_files="$compose_files -f docker-compose.upgrade.yml"
+    elif [ -f "$compose_dir/docker-compose.upgrade.yaml" ]; then
+      compose_files="$compose_files -f docker-compose.upgrade.yaml"
     fi
     log "Using default compose files: $compose_files"
   fi

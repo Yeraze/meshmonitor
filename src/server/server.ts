@@ -40,6 +40,7 @@ import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsy
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
+import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 
@@ -808,6 +809,7 @@ setSettingsCallbacks({
   restartTimerScheduler: () => meshtasticManager.restartTimerScheduler(),
   restartGeofenceEngine: () => meshtasticManager.restartGeofenceEngine(),
   handleAutoWelcomeEnabled: () => databaseService.handleAutoWelcomeEnabled(),
+  invalidateHtmlCache,
 });
 
 // API Routes
@@ -5630,7 +5632,7 @@ apiRouter.post('/config/module/request', requirePermission('configuration', 'wri
 
 apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const seconds = req.body?.seconds || 5;
+    const seconds = req.body?.seconds || 10;
     await meshtasticManager.rebootDevice(seconds);
     res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
   } catch (error) {
@@ -6425,7 +6427,7 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
 // Admin reboot endpoint - sends reboot command to a node
 apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, seconds = 5 } = req.body;
+    const { nodeNum, seconds = 10 } = req.body;
 
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
 
@@ -6436,6 +6438,32 @@ apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
   } catch (error: any) {
     logger.error('Error sending reboot command:', error);
     res.status(500).json({ error: error.message || 'Failed to send reboot command' });
+  }
+});
+
+// Admin suppressed ghosts endpoint - list currently suppressed ghost nodes
+apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), (_req, res) => {
+  try {
+    const suppressed = databaseService.getSuppressedGhostNodes();
+    res.json({ success: true, suppressedNodes: suppressed });
+  } catch (error: any) {
+    logger.error('Error getting suppressed ghosts:', error);
+    res.status(500).json({ error: error.message || 'Failed to get suppressed ghosts' });
+  }
+});
+
+// Admin unsuppress ghost endpoint - manually unsuppress a ghost node
+apiRouter.delete('/admin/suppressed-ghosts/:nodeNum', requireAdmin(), (req, res) => {
+  try {
+    const nodeNum = Number(req.params.nodeNum);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'Invalid nodeNum' });
+    }
+    databaseService.unsuppressGhostNode(nodeNum);
+    res.json({ success: true, message: `Unsuppressed node !${nodeNum.toString(16).padStart(8, '0')}` });
+  } catch (error: any) {
+    logger.error('Error unsuppressing ghost:', error);
+    res.status(500).json({ error: error.message || 'Failed to unsuppress ghost' });
   }
 });
 
@@ -6768,7 +6796,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     // Create the appropriate admin message based on command type
     switch (command) {
       case 'reboot':
-        adminMessage = protobufService.createRebootMessage(params.seconds || 5, sessionPasskey || undefined);
+        adminMessage = protobufService.createRebootMessage(params.seconds || 10, sessionPasskey || undefined);
         break;
       case 'setOwner':
         if (!params.longName || !params.shortName) {
@@ -8728,7 +8756,7 @@ if (BASE_URL) {
 }
 
 // Function to rewrite HTML with BASE_URL at runtime
-const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
+const rewriteHtml = (htmlContent: string, baseUrl: string, analyticsScript?: string): string => {
   if (!baseUrl) return htmlContent;
 
   // Add <base> tag to set the base URL for all relative paths
@@ -8738,6 +8766,14 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
 
   // Insert the base tag right after <head>
   let rewritten = htmlContent.replace(/<head>/, `<head>\n    ${baseTag}`);
+
+  // Inject analytics script after the base tag if provided
+  if (analyticsScript) {
+    rewritten = rewritten.replace(
+      baseTag,
+      `${baseTag}\n    ${analyticsScript}`
+    );
+  }
 
   // Replace asset paths in the HTML
   rewritten = rewritten
@@ -8762,6 +8798,23 @@ let cachedHtml: string | null = null;
 let cachedRewrittenHtml: string | null = null;
 let cachedEmbedHtml: string | null = null;
 let cachedRewrittenEmbedHtml: string | null = null;
+
+export function invalidateHtmlCache(): void {
+  cachedRewrittenHtml = null;
+  cachedRewrittenEmbedHtml = null;
+}
+
+function getAnalyticsScript(): string {
+  try {
+    const provider = (databaseService.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
+    if (provider === 'none') return '';
+    const configStr = databaseService.getSetting('analyticsConfig') || '{}';
+    const config = JSON.parse(configStr);
+    return generateAnalyticsScript(provider, config);
+  } catch {
+    return '';
+  }
+}
 
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
@@ -8812,7 +8865,8 @@ if (BASE_URL) {
         return res.status(404).send('Embed page not found');
       }
       cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
-      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL);
+      const embedAnalyticsScript = getAnalyticsScript();
+      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
     }
     res.setHeader('Content-Type', 'text/html');
     res.send(cachedRewrittenEmbedHtml);
@@ -8824,7 +8878,8 @@ if (BASE_URL) {
     if (!cachedRewrittenHtml) {
       const htmlPath = path.join(buildPath, 'index.html');
       cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+      const analyticsScript = getAnalyticsScript();
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
     }
     res.type('html').send(cachedRewrittenHtml);
   });
@@ -8846,7 +8901,8 @@ if (BASE_URL) {
     if (!cachedRewrittenHtml) {
       const htmlPath = path.join(buildPath, 'index.html');
       cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+      const analyticsScript = getAnalyticsScript();
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
     }
     res.type('html').send(cachedRewrittenHtml);
   });

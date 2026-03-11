@@ -47,6 +47,9 @@ export const nodesSqlite = sqliteTable('nodes', {
   isExcessivePackets: integer('isExcessivePackets', { mode: 'boolean' }).default(false),
   packetRatePerHour: integer('packetRatePerHour'),
   packetRateLastChecked: integer('packetRateLastChecked'),
+  // Time offset detection
+  isTimeOffsetIssue: integer('isTimeOffsetIssue', { mode: 'boolean' }).default(false),
+  timeOffsetSeconds: integer('timeOffsetSeconds'),
   welcomedAt: integer('welcomedAt'),
   // Position precision tracking
   positionChannel: integer('positionChannel'),
@@ -113,6 +116,9 @@ export const nodesPostgres = pgTable('nodes', {
   isExcessivePackets: pgBoolean('isExcessivePackets').default(false),
   packetRatePerHour: pgInteger('packetRatePerHour'),
   packetRateLastChecked: pgBigint('packetRateLastChecked', { mode: 'number' }),
+  // Time offset detection
+  isTimeOffsetIssue: pgBoolean('isTimeOffsetIssue').default(false),
+  timeOffsetSeconds: pgInteger('timeOffsetSeconds'),
   welcomedAt: pgBigint('welcomedAt', { mode: 'number' }),
   // Position precision tracking
   positionChannel: pgInteger('positionChannel'),
@@ -178,6 +184,9 @@ export const nodesMysql = mysqlTable('nodes', {
   isExcessivePackets: myBoolean('isExcessivePackets').default(false),
   packetRatePerHour: myInt('packetRatePerHour'),
   packetRateLastChecked: myBigint('packetRateLastChecked', { mode: 'number' }),
+  // Time offset detection
+  isTimeOffsetIssue: myBoolean('isTimeOffsetIssue').default(false),
+  timeOffsetSeconds: myInt('timeOffsetSeconds'),
   welcomedAt: myBigint('welcomedAt', { mode: 'number' }),
   // Position precision tracking
   positionChannel: myInt('positionChannel'),

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 
 /**
  * Auto Responder Regex Parameter Matching Tests
@@ -68,27 +69,32 @@ describe('Auto Responder - Regex Parameter Matching', () => {
     trigger: string,
     message: string
   ): { matches: boolean; params?: Record<string, string> } => {
+    // Normalize both trigger and message through homoglyph mapping (Issue #2136)
+    // This ensures triggers match regardless of Cyrillic/Latin homoglyph substitution
+    const normalizedTrigger = applyHomoglyphOptimization(trigger);
+    const normalizedMessage = applyHomoglyphOptimization(message);
+
     // Extract parameters with optional regex patterns
-    const params = extractParameters(trigger);
+    const params = extractParameters(normalizedTrigger);
 
     // Build regex pattern from trigger by escaping and replacing parameters
     let pattern = '';
 
-    // Process the trigger string manually to avoid double-escaping issues
+    // Process the normalized trigger string manually to avoid double-escaping issues
     let i = 0;
     const replacements: Array<{ start: number; end: number; replacement: string }> = [];
 
-    while (i < trigger.length) {
-      if (trigger[i] === '{') {
+    while (i < normalizedTrigger.length) {
+      if (normalizedTrigger[i] === '{') {
         const startPos = i;
         let depth = 1;
         let endPos = -1;
 
         // Find the matching closing brace
-        for (let j = i + 1; j < trigger.length && depth > 0; j++) {
-          if (trigger[j] === '{') {
+        for (let j = i + 1; j < normalizedTrigger.length && depth > 0; j++) {
+          if (normalizedTrigger[j] === '{') {
             depth++;
-          } else if (trigger[j] === '}') {
+          } else if (normalizedTrigger[j] === '}') {
             depth--;
             if (depth === 0) {
               endPos = j;
@@ -117,14 +123,14 @@ describe('Auto Responder - Regex Parameter Matching', () => {
     }
 
     // Build the final pattern by replacing placeholders
-    for (let i = 0; i < trigger.length; i++) {
+    for (let i = 0; i < normalizedTrigger.length; i++) {
       const replacement = replacements.find(r => r.start === i);
       if (replacement) {
         pattern += replacement.replacement;
         i = replacement.end - 1; // -1 because loop will increment
       } else {
         // Escape special regex characters in literal parts
-        const char = trigger[i];
+        const char = normalizedTrigger[i];
         if (/[.*+?^${}()|[\]\\]/.test(char)) {
           pattern += '\\' + char;
         } else {
@@ -134,7 +140,7 @@ describe('Auto Responder - Regex Parameter Matching', () => {
     }
 
     const regex = new RegExp(`^${pattern}$`, 'i');
-    const match = message.match(regex);
+    const match = normalizedMessage.match(regex);
 
     if (match) {
       const extractedParams: Record<string, string> = {};
@@ -544,6 +550,55 @@ describe('Auto Responder - Regex Parameter Matching', () => {
       expect(result2.matches).toBe(true);
       expect(result2.matchedPattern).toBe('ask {message}');
       expect(result2.params).toEqual({ message: 'how' });
+    });
+  });
+
+  describe('Homoglyph Normalization (Issue #2136)', () => {
+    it('should match Cyrillic trigger against homoglyph-optimized message', () => {
+      // Trigger written in pure Cyrillic, but sender has homoglyphs enabled
+      // so their message went through applyHomoglyphOptimization before sending
+      const trigger = '\u041F\u0440\u0438\u0432\u0435\u0442'; // Привет (pure Cyrillic)
+      const message = applyHomoglyphOptimization(trigger); // Same word after homoglyph optimization
+      const result = testTriggerMatch(trigger, message);
+      expect(result.matches).toBe(true);
+    });
+
+    it('should match homoglyph-optimized trigger against Cyrillic message', () => {
+      // Admin wrote trigger with Latin chars, incoming message is pure Cyrillic
+      const trigger = 'Mocк\u0432a'; // "Москва" with М→M, о→o, с→c, а→a
+      const message = '\u041C\u043E\u0441\u043A\u0432\u0430'; // Москва (pure Cyrillic)
+      const result = testTriggerMatch(trigger, message);
+      expect(result.matches).toBe(true);
+    });
+
+    it('should match when both sides have mixed Cyrillic/Latin', () => {
+      const trigger = '\u041C\u043E\u0441\u043A\u0432\u0430'; // Москва (pure Cyrillic)
+      const message = 'Mocк\u0432a'; // Москва with some homoglyph replacements
+      const result = testTriggerMatch(trigger, message);
+      expect(result.matches).toBe(true);
+    });
+
+    it('should still match pure Latin triggers against Latin messages', () => {
+      const result = testTriggerMatch('hello', 'hello');
+      expect(result.matches).toBe(true);
+    });
+
+    it('should match Cyrillic trigger with parameters against homoglyph message', () => {
+      // Trigger: "погода {city}" in Cyrillic
+      const trigger = '\u043F\u043E\u0433\u043E\u0434\u0430 {city}'; // погода {city}
+      // Message: same word after homoglyph optimization + parameter value
+      const cyrillic = '\u043F\u043E\u0433\u043E\u0434\u0430'; // погода
+      const message = applyHomoglyphOptimization(cyrillic) + ' Moscow';
+      const result = testTriggerMatch(trigger, message);
+      expect(result.matches).toBe(true);
+      expect(result.params).toEqual({ city: 'Moscow' });
+    });
+
+    it('should not match completely different Cyrillic words', () => {
+      const trigger = '\u041F\u0440\u0438\u0432\u0435\u0442'; // Привет
+      const message = '\u041F\u043E\u043A\u0430'; // Пока (different word)
+      const result = testTriggerMatch(trigger, message);
+      expect(result.matches).toBe(false);
     });
   });
 });

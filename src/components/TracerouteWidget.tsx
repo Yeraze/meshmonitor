@@ -404,7 +404,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
           {t('dashboard.widget.traceroute.title')}
           {targetNodeName ? `: ${targetNodeName}` : ''}
         </h3>
-        <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')}>
+        <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')} aria-label={t('dashboard.remove_widget')}>
           ×
         </button>
       </div>

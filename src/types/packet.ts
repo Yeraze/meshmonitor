@@ -58,6 +58,7 @@ export interface PacketFilters {
   channel?: number;
   encrypted?: boolean;
   since?: number;
+  relay_node?: number | 'unknown';
 }
 
 export interface PacketMonitorSettings {
@@ -80,6 +81,15 @@ export interface PacketCountByType {
   portnum: number;
   portnum_name: string;
   count: number;
+}
+
+export interface RelayNodeOption {
+  relay_node: number;
+  matching_nodes: Array<{ longName: string | null; shortName: string | null }>;
+}
+
+export interface RelayNodesResponse {
+  relayNodes: RelayNodeOption[];
 }
 
 export interface PacketDistributionStats {

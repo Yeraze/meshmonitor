@@ -441,20 +441,20 @@ const SystemBackupSection: React.FC = () => {
                   <tbody>
                     {backupList.map((backup) => (
                       <tr key={backup.dirname}>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{backup.dirname}</td>
+                        <td className="backup-dirname">{backup.dirname}</td>
                         <td>{formatTimestamp(backup.timestamp)}</td>
                         <td>
                           <span className={`backup-type-badge ${backup.type}`}>
                             {backup.type === 'automatic' ? t('backup_management.type_auto') : t('backup_management.type_manual')}
                           </span>
                         </td>
-                        <td style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                        <td className="backup-version">
                           v{backup.meshmonitorVersion}
                         </td>
-                        <td style={{ textAlign: 'center' }}>{backup.tableCount}</td>
+                        <td className="backup-tables-count">{backup.tableCount}</td>
                         <td>{formatFileSize(backup.size)}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <div className="backup-action-group">
                             <button
                               className="backup-action-button download"
                               onClick={() => handleDownloadBackup(backup.dirname)}

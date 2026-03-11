@@ -102,6 +102,7 @@ export interface SettingsCallbacks {
   restartTimerScheduler?: () => void;
   restartGeofenceEngine?: () => void;
   handleAutoWelcomeEnabled?: () => number;
+  invalidateHtmlCache?: () => void;
 }
 
 let callbacks: SettingsCallbacks = {};
@@ -458,6 +459,11 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
     if ('customTilesets' in filteredSettings) {
       callbacks.refreshTileHostnameCache?.();
       logger.debug('🗺️ Refreshed CSP tile hostname cache after customTilesets update');
+    }
+
+    if ('analyticsProvider' in filteredSettings || 'analyticsConfig' in filteredSettings) {
+      callbacks.invalidateHtmlCache?.();
+      logger.info('📊 Analytics settings updated - HTML cache invalidated');
     }
 
     if ('autoWelcomeEnabled' in filteredSettings) {

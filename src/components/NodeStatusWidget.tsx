@@ -250,7 +250,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
           ⋮⋮
         </span>
         <h3 className="dashboard-chart-title">{t('dashboard.widget.node_status.title')}</h3>
-        <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')}>
+        <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')} aria-label={t('dashboard.remove_widget')}>
           ×
         </button>
       </div>
@@ -334,6 +334,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
                         className="node-status-remove-node"
                         onClick={() => onRemoveNode(row.nodeId)}
                         title={t('dashboard.widget.node_status.remove_node')}
+                        aria-label={t('dashboard.widget.node_status.remove_node')}
                       >
                         ×
                       </button>

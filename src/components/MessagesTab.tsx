@@ -6,6 +6,7 @@
  */
 
 import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
+import '../styles/messages.css';
 import { useResizable } from '../hooks/useResizable';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
@@ -179,6 +180,7 @@ export interface MessagesTabProps {
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
   toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
+  toggleFavoriteLock: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
 
   // Modal controls
   setShowTracerouteHistoryModal: (show: boolean) => void;
@@ -257,6 +259,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   getRecentTraceroute,
   toggleIgnored,
   toggleFavorite,
+  toggleFavoriteLock,
   setShowTracerouteHistoryModal,
   setShowPurgeDataModal,
   setShowPositionOverrideModal,
@@ -285,6 +288,37 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
+
+  // State for "Jump to Bottom" button
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  // Handle scroll to detect if user has scrolled up
+  const handleScroll = useCallback(() => {
+    const container = dmMessagesContainerRef.current;
+    if (!container) return;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    setShowJumpToBottom(!isNearBottom);
+  }, [dmMessagesContainerRef]);
+
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    const container = dmMessagesContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [dmMessagesContainerRef]);
+
+  // Attach scroll listener
+  useEffect(() => {
+    const container = dmMessagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
 
   // Fetch homoglyph optimization setting
   useEffect(() => {
@@ -715,6 +749,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     className="filter-clear-btn"
                     onClick={() => setMessagesNodeFilter('')}
                     title={t('common.clear_filter')}
+                    aria-label={t('common.clear_filter')}
                     type="button"
                   >
                     ✕
@@ -1076,6 +1111,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <button
                               className="actions-menu-item"
                               onClick={(e) => {
+                                toggleFavoriteLock(selectedNode, e);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              {selectedNode.favoriteLocked ? `🔓 ${t('nodes.unlock_favorite', 'Remove Favorite Lock')}` : `🔒 ${t('nodes.lock_favorite', 'Set Favorite Lock')}`}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={(e) => {
                                 toggleIgnored(selectedNode, e);
                                 setShowActionsMenu(false);
                               }}
@@ -1152,7 +1196,40 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             )}
 
             {/* Messages Container */}
-            <div className="messages-container" ref={dmMessagesContainerRef}>
+            <div className="messages-container" ref={dmMessagesContainerRef} style={{ position: 'relative' }}>
+              {showJumpToBottom && (
+                <div
+                  style={{
+                    position: 'sticky',
+                    top: '0.5rem',
+                    zIndex: 10,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <button
+                    className="jump-to-bottom-btn"
+                    onClick={scrollToBottom}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: 'var(--ctp-blue)',
+                      border: 'none',
+                      borderRadius: '20px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--ctp-base)',
+                      fontWeight: 'bold',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+                  </button>
+                </div>
+              )}
               {selectedDMMessages.length > 0 ? (
                 selectedDMMessages.map((msg, index) => {
                   const isTraceroute = msg.portnum === 70;
@@ -1256,6 +1333,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                   className="resend-button"
                                   onClick={() => handleResendMessage(msg)}
                                   title={t('messages.resend_button_title')}
+                                  aria-label={t('messages.resend_button_title')}
                                 >
                                   ↻
                                 </button>
@@ -1267,6 +1345,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                     dmMessageInputRef.current?.focus();
                                   }}
                                   title={t('messages.reply_button_title')}
+                                  aria-label={t('messages.reply_button_title')}
                                 >
                                   ↩
                                 </button>
@@ -1275,6 +1354,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 className="emoji-picker-button"
                                 onClick={() => setEmojiPickerMessage(msg)}
                                 title={t('messages.emoji_button_title')}
+                                aria-label={t('messages.emoji_button_title')}
                               >
                                 😄
                               </button>
@@ -1282,6 +1362,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 className="delete-button"
                                 onClick={() => handleDeleteMessage(msg)}
                                 title={t('messages.delete_button_title')}
+                                aria-label={t('messages.delete_button_title')}
                               >
                                 🗑️
                               </button>
@@ -1360,7 +1441,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="reply-indicator-label">{t('messages.replying_to', { name: getNodeName(replyingTo.from) })}</div>
                       <div className="reply-indicator-text">{replyingTo.text}</div>
                     </div>
-                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title={t('messages.cancel_reply_title')}>
+                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title={t('messages.cancel_reply_title')} aria-label={t('messages.cancel_reply_title')}>
                       ×
                     </button>
                   </div>
@@ -1389,6 +1470,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       onClick={() => { onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
                       className="send-btn channel-action-btn"
                       title="Send alert bell"
+                      aria-label="Send alert bell"
                     >
                       🔔
                     </button>
@@ -1396,6 +1478,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       onClick={() => handleSendDirectMessage(selectedDMNode)}
                       disabled={!newMessage.trim()}
                       className="send-btn"
+                      aria-label={t('common.send')}
                     >
                       →
                     </button>
@@ -1665,6 +1748,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       }}
                       disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
                       title={t('messages.exchange_position_channel')}
+                      aria-label={t('messages.exchange_position_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
                         backgroundColor: 'var(--ctp-blue)',

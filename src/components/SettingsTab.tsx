@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/settings.css';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { TemperatureUnit } from '../utils/temperature';
 import { SortField, SortDirection } from '../types/ui';
@@ -192,6 +193,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
+  const [localAnalyticsProvider, setLocalAnalyticsProvider] = useState<string>('none');
+  const [localAnalyticsConfig, setLocalAnalyticsConfig] = useState<Record<string, string>>({});
+  const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
+  const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -263,6 +268,28 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
           setLocalLocalStatsIntervalMinutes(statsInterval);
           setInitialLocalStatsIntervalMinutes(statsInterval);
+
+          // Load node dimming initial values from server
+          const dimmingEnabled = settings.nodeDimmingEnabled === '1' || settings.nodeDimmingEnabled === 'true';
+          const dimmingStartHours = parseFloat(settings.nodeDimmingStartHours) || nodeDimmingStartHours;
+          const dimmingMinOpacity = parseFloat(settings.nodeDimmingMinOpacity) || nodeDimmingMinOpacity;
+          setInitialNodeDimmingSettings({
+            enabled: dimmingEnabled,
+            startHours: dimmingStartHours,
+            minOpacity: dimmingMinOpacity,
+          });
+
+          // Load analytics settings
+          if (settings.analyticsProvider) {
+            setLocalAnalyticsProvider(settings.analyticsProvider);
+            setInitialAnalyticsProvider(settings.analyticsProvider);
+          }
+          if (settings.analyticsConfig) {
+            try {
+              setLocalAnalyticsConfig(JSON.parse(settings.analyticsConfig));
+              setInitialAnalyticsConfig(settings.analyticsConfig);
+            } catch { /* ignore parse errors */ }
+          }
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -316,6 +343,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Instead, we'll track initial packet monitor values separately
   const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
   const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
+  const [initialNodeDimmingSettings, setInitialNodeDimmingSettings] = useState({
+    enabled: nodeDimmingEnabled,
+    startHours: nodeDimmingStartHours,
+    minOpacity: nodeDimmingMinOpacity,
+  });
 
   useEffect(() => {
     const changed =
@@ -347,7 +379,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
-      localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes;
+      localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
+      nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
+      nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
+      nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity ||
+      localAnalyticsProvider !== initialAnalyticsProvider ||
+      JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig;
     setHasChanges(changed);
   }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme, localNodeHopsCalculation, localDashboardSortOption,
       maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
@@ -355,7 +392,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
-      localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes]);
+      localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
+      localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig]);
 
   // Reset local state to current saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -388,13 +427,20 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
     setLocalLocalStatsIntervalMinutes(initialLocalStatsIntervalMinutes);
+    setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
+    setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
+    setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
+    setLocalAnalyticsProvider(initialAnalyticsProvider);
+    try { setLocalAnalyticsConfig(JSON.parse(initialAnalyticsConfig)); } catch { setLocalAnalyticsConfig({}); }
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
       dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
-      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes]);
+      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
+      setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
+      initialAnalyticsProvider, initialAnalyticsConfig]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -431,6 +477,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: nodeDimmingStartHours.toString(),
         nodeDimmingMinOpacity: nodeDimmingMinOpacity.toString(),
+        analyticsProvider: localAnalyticsProvider,
+        analyticsConfig: JSON.stringify(localAnalyticsConfig),
       };
 
       // Save to server
@@ -470,6 +518,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
       setInitialHomoglyphEnabled(localHomoglyphEnabled);
       setInitialLocalStatsIntervalMinutes(localLocalStatsIntervalMinutes);
+      setInitialNodeDimmingSettings({
+        enabled: nodeDimmingEnabled,
+        startHours: nodeDimmingStartHours,
+        minOpacity: nodeDimmingMinOpacity,
+      });
+      setInitialAnalyticsProvider(localAnalyticsProvider);
+      setInitialAnalyticsConfig(JSON.stringify(localAnalyticsConfig));
 
       showToast(t('settings.saved_success'), 'success');
       setHasChanges(false);
@@ -493,7 +548,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
       onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
-      onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t]);
+      onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
+      localAnalyticsProvider, localAnalyticsConfig]);
 
   // Register with SaveBar
   useSaveBar({
@@ -787,20 +844,26 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       </div>
       <SectionNav items={[
         { id: 'settings-language', label: t('settings.language') },
+        { id: 'settings-units', label: t('settings.units_and_formats') },
+        { id: 'settings-sorting', label: t('settings.sorting') },
+        { id: 'settings-appearance', label: t('settings.appearance') },
+        { id: 'settings-map', label: t('settings.map') },
         { id: 'settings-node-display', label: t('settings.node_display') },
-        { id: 'settings-display-prefs', label: t('settings.display_prefs') },
-        { id: 'settings-tapback-emojis', label: t('settings.tapback_emojis', 'Tapback Emojis') },
+        { id: 'settings-telemetry', label: t('settings.telemetry') },
+        { id: 'settings-notifications', label: t('settings.notifications_and_security') },
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
-        ...(isAdmin ? [{ id: 'settings-embed', label: t('settings.embed_maps', 'Embed Maps') }] : []),
+        { id: 'settings-auto-upgrade', label: t('auto_upgrade_test.title', 'Auto Upgrade') },
         ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
+        { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
+        ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
-      <div className="settings-content">
+      <div className="settings-content settings-multi-column">
         <div id="settings-language" className="settings-section">
           <h3>{t('settings.language')}</h3>
           <div className="setting-item">
@@ -823,6 +886,240 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               Weblate
             </a>
           </p>
+        </div>
+
+        <div id="settings-units" className="settings-section">
+          <h3>{t('settings.units_and_formats')}</h3>
+          <div className="setting-item">
+            <label htmlFor="timeFormat">
+              {t('settings.time_format_label')}
+              <span className="setting-description">{t('settings.time_format_description')}</span>
+            </label>
+            <select
+              id="timeFormat"
+              value={localTimeFormat}
+              onChange={(e) => setLocalTimeFormat(e.target.value as TimeFormat)}
+              className="setting-input"
+            >
+              <option value="12">{t('settings.time_12_hour')}</option>
+              <option value="24">{t('settings.time_24_hour')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="dateFormat">
+              {t('settings.date_format_label')}
+              <span className="setting-description">{t('settings.date_format_description')}</span>
+            </label>
+            <select
+              id="dateFormat"
+              value={localDateFormat}
+              onChange={(e) => setLocalDateFormat(e.target.value as DateFormat)}
+              className="setting-input"
+            >
+              <option value="MM/DD/YYYY">{t('settings.date_mdy')}</option>
+              <option value="DD/MM/YYYY">{t('settings.date_dmy')}</option>
+              <option value="YYYY-MM-DD">{t('settings.date_iso')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="temperatureUnit">
+              {t('settings.temp_unit_label')}
+              <span className="setting-description">{t('settings.temp_unit_description')}</span>
+            </label>
+            <select
+              id="temperatureUnit"
+              value={localTemperatureUnit}
+              onChange={(e) => setLocalTemperatureUnit(e.target.value as TemperatureUnit)}
+              className="setting-input"
+            >
+              <option value="C">{t('settings.temp_celsius')}</option>
+              <option value="F">{t('settings.temp_fahrenheit')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="distanceUnit">
+              {t('settings.dist_unit_label')}
+              <span className="setting-description">{t('settings.dist_unit_description')}</span>
+            </label>
+            <select
+              id="distanceUnit"
+              value={localDistanceUnit}
+              onChange={(e) => setLocalDistanceUnit(e.target.value as DistanceUnit)}
+              className="setting-input"
+            >
+              <option value="km">{t('settings.dist_km')}</option>
+              <option value="mi">{t('settings.dist_mi')}</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="settings-sorting" className="settings-section">
+          <h3>{t('settings.sorting')}</h3>
+          <div className="setting-item">
+            <label htmlFor="preferredSortField">
+              {t('settings.sort_field_label')}
+              <span className="setting-description">{t('settings.sort_field_description')}</span>
+            </label>
+            <select
+              id="preferredSortField"
+              value={localPreferredSortField}
+              onChange={(e) => setLocalPreferredSortField(e.target.value as SortField)}
+              className="setting-input"
+            >
+              <option value="longName">{t('settings.sort_long_name')}</option>
+              <option value="shortName">{t('settings.sort_short_name')}</option>
+              <option value="id">{t('settings.sort_id')}</option>
+              <option value="lastHeard">{t('settings.sort_last_heard')}</option>
+              <option value="snr">{t('settings.sort_snr')}</option>
+              <option value="battery">{t('settings.sort_battery')}</option>
+              <option value="hwModel">{t('settings.sort_hw_model')}</option>
+              <option value="hops">{t('settings.sort_hops')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="preferredSortDirection">
+              {t('settings.sort_direction_label')}
+              <span className="setting-description">{t('settings.sort_direction_description')}</span>
+            </label>
+            <select
+              id="preferredSortDirection"
+              value={localPreferredSortDirection}
+              onChange={(e) => setLocalPreferredSortDirection(e.target.value as SortDirection)}
+              className="setting-input"
+            >
+              <option value="asc">{t('settings.sort_ascending')}</option>
+              <option value="desc">{t('settings.sort_descending')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="dashboardSortOption">
+              {t('settings.dashboard_sort_label')}
+              <span className="setting-description">{t('settings.dashboard_sort_description')}</span>
+            </label>
+            <select
+              id="dashboardSortOption"
+              value={localDashboardSortOption}
+              onChange={(e) => setLocalDashboardSortOption(e.target.value as DashboardSortOption)}
+              className="setting-input"
+            >
+              <option value="custom">{t('settings.dashboard_sort_custom')}</option>
+              <option value="node-asc">{t('settings.dashboard_sort_node_asc')}</option>
+              <option value="node-desc">{t('settings.dashboard_sort_node_desc')}</option>
+              <option value="type-asc">{t('settings.dashboard_sort_type_asc')}</option>
+              <option value="type-desc">{t('settings.dashboard_sort_type_desc')}</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="settings-appearance" className="settings-section">
+          <h3>{t('settings.appearance')}</h3>
+          <div className="setting-item">
+            <label htmlFor="theme">
+              {t('settings.theme_label')}
+              <span className="setting-description">{t('settings.theme_description')}</span>
+            </label>
+            <select
+              id="theme"
+              value={localTheme}
+              onChange={(e) => setLocalTheme(e.target.value as Theme)}
+              className="setting-input"
+            >
+              <optgroup label={t('settings.theme_catppuccin')}>
+                <option value="mocha">{t('settings.theme_mocha')}</option>
+                <option value="macchiato">{t('settings.theme_macchiato')}</option>
+                <option value="frappe">{t('settings.theme_frappe')}</option>
+                <option value="latte">{t('settings.theme_latte')}</option>
+              </optgroup>
+              <optgroup label={t('settings.theme_popular')}>
+                <option value="nord">{t('settings.theme_nord')}</option>
+                <option value="dracula">{t('settings.theme_dracula')}</option>
+                <option value="solarized-dark">{t('settings.theme_solarized_dark')}</option>
+                <option value="solarized-light">{t('settings.theme_solarized_light')}</option>
+                <option value="gruvbox-dark">{t('settings.theme_gruvbox_dark')}</option>
+                <option value="gruvbox-light">{t('settings.theme_gruvbox_light')}</option>
+              </optgroup>
+              <optgroup label={t('settings.theme_high_contrast')}>
+                <option value="high-contrast-dark">{t('settings.theme_hc_dark')}</option>
+                <option value="high-contrast-light">{t('settings.theme_hc_light')}</option>
+              </optgroup>
+              <optgroup label={t('settings.theme_colorblind')}>
+                <option value="protanopia">{t('settings.theme_protanopia')}</option>
+                <option value="deuteranopia">{t('settings.theme_deuteranopia')}</option>
+                <option value="tritanopia">{t('settings.theme_tritanopia')}</option>
+              </optgroup>
+              {customThemes.length > 0 && (
+                <optgroup label={t('settings.theme_custom')}>
+                  {customThemes.map((customTheme) => (
+                    <option key={customTheme.id} value={customTheme.slug}>
+                      {customTheme.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+          <CustomThemeManagement />
+          <div className="setting-item">
+            <label htmlFor="mapPinStyle">
+              {t('settings.map_pin_label')}
+              <span className="setting-description">{t('settings.map_pin_description')}</span>
+            </label>
+            <select
+              id="mapPinStyle"
+              value={localMapPinStyle}
+              onChange={(e) => setLocalMapPinStyle(e.target.value as MapPinStyle)}
+              className="setting-input"
+            >
+              <option value="meshmonitor">{t('settings.map_pin_meshmonitor')}</option>
+              <option value="official">{t('settings.map_pin_official')}</option>
+            </select>
+          </div>
+          <TapbackEmojiSettings />
+        </div>
+
+        <div id="settings-map" className="settings-section">
+          <h3>{t('settings.map')}</h3>
+          <div className="setting-item">
+            <label htmlFor="mapTileset">
+              {t('settings.map_tileset_label')}
+              <span className="setting-description">{t('settings.map_tileset_description')}</span>
+            </label>
+            <select
+              id="mapTileset"
+              value={localMapTileset}
+              onChange={(e) => setLocalMapTileset(e.target.value as TilesetId)}
+              className="setting-input"
+            >
+              {getAllTilesets(customTilesets).map((tileset) => (
+                <option key={tileset.id} value={tileset.id}>
+                  {tileset.name} {tileset.description && `- ${tileset.description}`}
+                  {tileset.isCustom && ' [Custom]'}
+                </option>
+              ))}
+            </select>
+          </div>
+          <CustomTilesetManager />
+          <div className="setting-item">
+            <label htmlFor="positionHistoryLineStyle">
+              {t('settings.position_history_line_style_label')}
+              <span className="setting-description">{t('settings.position_history_line_style_description')}</span>
+            </label>
+            <select
+              id="positionHistoryLineStyle"
+              value={localPositionHistoryLineStyle}
+              onChange={(e) => setLocalPositionHistoryLineStyle(e.target.value as PositionHistoryLineStyle)}
+              className="setting-input"
+            >
+              <option value="linear">{t('settings.position_history_line_style_linear')}</option>
+              <option value="spline">{t('settings.position_history_line_style_spline')}</option>
+            </select>
+          </div>
+          {isAdmin && (
+            <div id="settings-embed">
+              <h4>{t('settings.embed_maps', 'Embed Maps')}</h4>
+              <EmbedSettings />
+            </div>
+          )}
         </div>
 
         <div id="settings-node-display" className="settings-section">
@@ -918,369 +1215,34 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="messages">{t('settings.node_hops_messages')}</option>
             </select>
           </div>
-        </div>
-
-        <div id="settings-display-prefs" className="settings-section">
-          <h3>{t('settings.display_prefs')}</h3>
-          <div className="setting-item">
-            <label htmlFor="preferredSortField">
-              {t('settings.sort_field_label')}
-              <span className="setting-description">{t('settings.sort_field_description')}</span>
+          <div className="setting-item" style={{ marginTop: '1rem' }}>
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={localHideIncompleteNodes}
+                  onChange={(e) => setLocalHideIncompleteNodes(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.hide_incomplete_nodes')}
+              </span>
+              <span className="setting-description">{t('settings.hide_incomplete_description')}</span>
             </label>
-            <select
-              id="preferredSortField"
-              value={localPreferredSortField}
-              onChange={(e) => setLocalPreferredSortField(e.target.value as SortField)}
-              className="setting-input"
-            >
-              <option value="longName">{t('settings.sort_long_name')}</option>
-              <option value="shortName">{t('settings.sort_short_name')}</option>
-              <option value="id">{t('settings.sort_id')}</option>
-              <option value="lastHeard">{t('settings.sort_last_heard')}</option>
-              <option value="snr">{t('settings.sort_snr')}</option>
-              <option value="battery">{t('settings.sort_battery')}</option>
-              <option value="hwModel">{t('settings.sort_hw_model')}</option>
-              <option value="hops">{t('settings.sort_hops')}</option>
-            </select>
           </div>
-          <div className="setting-item">
-            <label htmlFor="preferredSortDirection">
-              {t('settings.sort_direction_label')}
-              <span className="setting-description">{t('settings.sort_direction_description')}</span>
+          <div className="setting-item" style={{ marginTop: '1rem' }}>
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={nodeDimmingEnabled}
+                  onChange={(e) => setNodeDimmingEnabled(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.node_dimming_enabled')}
+              </span>
+              <span className="setting-description">{t('settings.node_dimming_description')}</span>
             </label>
-            <select
-              id="preferredSortDirection"
-              value={localPreferredSortDirection}
-              onChange={(e) => setLocalPreferredSortDirection(e.target.value as SortDirection)}
-              className="setting-input"
-            >
-              <option value="asc">{t('settings.sort_ascending')}</option>
-              <option value="desc">{t('settings.sort_descending')}</option>
-            </select>
           </div>
-          <div className="setting-item">
-            <label htmlFor="dashboardSortOption">
-              {t('settings.dashboard_sort_label')}
-              <span className="setting-description">{t('settings.dashboard_sort_description')}</span>
-            </label>
-            <select
-              id="dashboardSortOption"
-              value={localDashboardSortOption}
-              onChange={(e) => setLocalDashboardSortOption(e.target.value as DashboardSortOption)}
-              className="setting-input"
-            >
-              <option value="custom">{t('settings.dashboard_sort_custom')}</option>
-              <option value="node-asc">{t('settings.dashboard_sort_node_asc')}</option>
-              <option value="node-desc">{t('settings.dashboard_sort_node_desc')}</option>
-              <option value="type-asc">{t('settings.dashboard_sort_type_asc')}</option>
-              <option value="type-desc">{t('settings.dashboard_sort_type_desc')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="timeFormat">
-              {t('settings.time_format_label')}
-              <span className="setting-description">{t('settings.time_format_description')}</span>
-            </label>
-            <select
-              id="timeFormat"
-              value={localTimeFormat}
-              onChange={(e) => setLocalTimeFormat(e.target.value as TimeFormat)}
-              className="setting-input"
-            >
-              <option value="12">{t('settings.time_12_hour')}</option>
-              <option value="24">{t('settings.time_24_hour')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="dateFormat">
-              {t('settings.date_format_label')}
-              <span className="setting-description">{t('settings.date_format_description')}</span>
-            </label>
-            <select
-              id="dateFormat"
-              value={localDateFormat}
-              onChange={(e) => setLocalDateFormat(e.target.value as DateFormat)}
-              className="setting-input"
-            >
-              <option value="MM/DD/YYYY">{t('settings.date_mdy')}</option>
-              <option value="DD/MM/YYYY">{t('settings.date_dmy')}</option>
-              <option value="YYYY-MM-DD">{t('settings.date_iso')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="temperatureUnit">
-              {t('settings.temp_unit_label')}
-              <span className="setting-description">{t('settings.temp_unit_description')}</span>
-            </label>
-            <select
-              id="temperatureUnit"
-              value={localTemperatureUnit}
-              onChange={(e) => setLocalTemperatureUnit(e.target.value as TemperatureUnit)}
-              className="setting-input"
-            >
-              <option value="C">{t('settings.temp_celsius')}</option>
-              <option value="F">{t('settings.temp_fahrenheit')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="distanceUnit">
-              {t('settings.dist_unit_label')}
-              <span className="setting-description">{t('settings.dist_unit_description')}</span>
-            </label>
-            <select
-              id="distanceUnit"
-              value={localDistanceUnit}
-              onChange={(e) => setLocalDistanceUnit(e.target.value as DistanceUnit)}
-              className="setting-input"
-            >
-              <option value="km">{t('settings.dist_km')}</option>
-              <option value="mi">{t('settings.dist_mi')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="positionHistoryLineStyle">
-              {t('settings.position_history_line_style_label')}
-              <span className="setting-description">{t('settings.position_history_line_style_description')}</span>
-            </label>
-            <select
-              id="positionHistoryLineStyle"
-              value={localPositionHistoryLineStyle}
-              onChange={(e) => setLocalPositionHistoryLineStyle(e.target.value as PositionHistoryLineStyle)}
-              className="setting-input"
-            >
-              <option value="linear">{t('settings.position_history_line_style_linear')}</option>
-              <option value="spline">{t('settings.position_history_line_style_spline')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="telemetryVisualizationHours">
-              {t('settings.telemetry_hours_label')}
-              <span className="setting-description">{t('settings.telemetry_hours_description')}</span>
-            </label>
-            <input
-              type="number"
-              id="telemetryVisualizationHours"
-              min="1"
-              max="168"
-              value={localTelemetryHours}
-              onChange={(e) => setLocalTelemetryHours(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
-              className="setting-input"
-            />
-          </div>
-          <div className="setting-item">
-            <label htmlFor="favoriteTelemetryStorageDays">
-              {t('settings.fav_telemetry_label')}
-              <span className="setting-description">{t('settings.fav_telemetry_description')}</span>
-            </label>
-            <input
-              type="number"
-              id="favoriteTelemetryStorageDays"
-              min="7"
-              max="90"
-              value={localFavoriteTelemetryStorageDays}
-              onChange={(e) => setLocalFavoriteTelemetryStorageDays(Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
-              className="setting-input"
-            />
-          </div>
-          <div className="setting-item">
-            <label htmlFor="mapTileset">
-              {t('settings.map_tileset_label')}
-              <span className="setting-description">{t('settings.map_tileset_description')}</span>
-            </label>
-            <select
-              id="mapTileset"
-              value={localMapTileset}
-              onChange={(e) => setLocalMapTileset(e.target.value as TilesetId)}
-              className="setting-input"
-            >
-              {getAllTilesets(customTilesets).map((tileset) => (
-                <option key={tileset.id} value={tileset.id}>
-                  {tileset.name} {tileset.description && `- ${tileset.description}`}
-                  {tileset.isCustom && ' [Custom]'}
-                </option>
-              ))}
-            </select>
-          </div>
-          <CustomTilesetManager />
-          <div className="setting-item">
-            <label htmlFor="mapPinStyle">
-              {t('settings.map_pin_label')}
-              <span className="setting-description">{t('settings.map_pin_description')}</span>
-            </label>
-            <select
-              id="mapPinStyle"
-              value={localMapPinStyle}
-              onChange={(e) => setLocalMapPinStyle(e.target.value as MapPinStyle)}
-              className="setting-input"
-            >
-              <option value="meshmonitor">{t('settings.map_pin_meshmonitor')}</option>
-              <option value="official">{t('settings.map_pin_official')}</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="theme">
-              {t('settings.theme_label')}
-              <span className="setting-description">{t('settings.theme_description')}</span>
-            </label>
-            <select
-              id="theme"
-              value={localTheme}
-              onChange={(e) => setLocalTheme(e.target.value as Theme)}
-              className="setting-input"
-            >
-              <optgroup label={t('settings.theme_catppuccin')}>
-                <option value="mocha">{t('settings.theme_mocha')}</option>
-                <option value="macchiato">{t('settings.theme_macchiato')}</option>
-                <option value="frappe">{t('settings.theme_frappe')}</option>
-                <option value="latte">{t('settings.theme_latte')}</option>
-              </optgroup>
-              <optgroup label={t('settings.theme_popular')}>
-                <option value="nord">{t('settings.theme_nord')}</option>
-                <option value="dracula">{t('settings.theme_dracula')}</option>
-                <option value="solarized-dark">{t('settings.theme_solarized_dark')}</option>
-                <option value="solarized-light">{t('settings.theme_solarized_light')}</option>
-                <option value="gruvbox-dark">{t('settings.theme_gruvbox_dark')}</option>
-                <option value="gruvbox-light">{t('settings.theme_gruvbox_light')}</option>
-              </optgroup>
-              <optgroup label={t('settings.theme_high_contrast')}>
-                <option value="high-contrast-dark">{t('settings.theme_hc_dark')}</option>
-                <option value="high-contrast-light">{t('settings.theme_hc_light')}</option>
-              </optgroup>
-              <optgroup label={t('settings.theme_colorblind')}>
-                <option value="protanopia">{t('settings.theme_protanopia')}</option>
-                <option value="deuteranopia">{t('settings.theme_deuteranopia')}</option>
-                <option value="tritanopia">{t('settings.theme_tritanopia')}</option>
-              </optgroup>
-              {customThemes.length > 0 && (
-                <optgroup label={t('settings.theme_custom')}>
-                  {customThemes.map((customTheme) => (
-                    <option key={customTheme.id} value={customTheme.slug}>
-                      {customTheme.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-        </div>
-
-        <div className="settings-section">
-          <CustomThemeManagement />
-        </div>
-
-        <TapbackEmojiSettings />
-
-        <div className="settings-section">
-          <h3>{t('settings.reset_ui_positions')}</h3>
-          <p className="setting-description">{t('settings.reset_ui_positions_description')}</p>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              // Clear all draggable UI element positions from localStorage
-              localStorage.removeItem('nodesSidebarPosition');
-              localStorage.removeItem('nodesSidebarSize');
-              localStorage.removeItem('mapControlsPosition');
-              localStorage.removeItem('draggable_position_map-legend');
-              localStorage.removeItem('draggable_position_tileset-selector');
-              showToast(t('settings.reset_ui_positions_success'), 'success');
-            }}
-          >
-            {t('settings.reset_ui_positions_button')}
-          </button>
-        </div>
-
-        <div id="settings-packet-monitor" className="settings-section">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={localPacketLogEnabled}
-                onChange={(e) => setLocalPacketLogEnabled(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>{t('settings.packet_monitor')}</span>
-            </label>
-
-          </h3>
-          <p className="setting-description">{t('settings.packet_monitor_description')}</p>
-          <div className="packet-monitor-settings">
-            <PacketMonitorSettings
-              enabled={localPacketLogEnabled}
-              maxCount={localPacketLogMaxCount}
-              maxAgeHours={localPacketLogMaxAgeHours}
-              onMaxCountChange={setLocalPacketLogMaxCount}
-              onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
-            />
-          </div>
-        </div>
-
-        <div className="settings-section">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enableAudioNotifications}
-                onChange={(e) => setEnableAudioNotifications(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>{t('settings.enable_audio_notifications')}</span>
-            </label>
-          </h3>
-          <p className="setting-description">
-            {t('settings.enable_audio_notifications_description')}
-          </p>
-        </div>
-
-        <div className="settings-section">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={localHomoglyphEnabled}
-                onChange={(e) => setLocalHomoglyphEnabled(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>{t('settings.homoglyph_enabled')}</span>
-            </label>
-          </h3>
-          <p className="setting-description">
-            {t('settings.homoglyph_description')}
-          </p>
-        </div>
-
-        <div className="settings-section">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={localHideIncompleteNodes}
-                onChange={(e) => setLocalHideIncompleteNodes(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>{t('settings.hide_incomplete_nodes')}</span>
-            </label>
-          </h3>
-          <p className="setting-description">
-            {t('settings.hide_incomplete_description')}
-          </p>
-        </div>
-
-        <div className="settings-section">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={nodeDimmingEnabled}
-                onChange={(e) => setNodeDimmingEnabled(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>{t('settings.node_dimming_enabled')}</span>
-            </label>
-          </h3>
-          <p className="setting-description">
-            {t('settings.node_dimming_description')}
-          </p>
           {nodeDimmingEnabled && (
             <>
               <div className="setting-item">
@@ -1317,6 +1279,97 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </>
           )}
+        </div>
+
+        <div id="settings-telemetry" className="settings-section">
+          <h3>{t('settings.telemetry')}</h3>
+          <div className="setting-item">
+            <label htmlFor="telemetryVisualizationHours">
+              {t('settings.telemetry_hours_label')}
+              <span className="setting-description">{t('settings.telemetry_hours_description')}</span>
+            </label>
+            <input
+              type="number"
+              id="telemetryVisualizationHours"
+              min="1"
+              max="168"
+              value={localTelemetryHours}
+              onChange={(e) => setLocalTelemetryHours(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="favoriteTelemetryStorageDays">
+              {t('settings.fav_telemetry_label')}
+              <span className="setting-description">{t('settings.fav_telemetry_description')}</span>
+            </label>
+            <input
+              type="number"
+              id="favoriteTelemetryStorageDays"
+              min="7"
+              max="90"
+              value={localFavoriteTelemetryStorageDays}
+              onChange={(e) => setLocalFavoriteTelemetryStorageDays(Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
+              className="setting-input"
+            />
+          </div>
+        </div>
+
+        <div id="settings-notifications" className="settings-section">
+          <h3>{t('settings.notifications_and_security')}</h3>
+          <div className="setting-item">
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={enableAudioNotifications}
+                  onChange={(e) => setEnableAudioNotifications(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.enable_audio_notifications')}
+              </span>
+              <span className="setting-description">{t('settings.enable_audio_notifications_description')}</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={localHomoglyphEnabled}
+                  onChange={(e) => setLocalHomoglyphEnabled(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.homoglyph_enabled')}
+              </span>
+              <span className="setting-description">{t('settings.homoglyph_description')}</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="settings-packet-monitor" className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localPacketLogEnabled}
+                onChange={(e) => setLocalPacketLogEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.packet_monitor')}</span>
+            </label>
+
+          </h3>
+          <p className="setting-description">{t('settings.packet_monitor_description')}</p>
+          <div className="packet-monitor-settings">
+            <PacketMonitorSettings
+              enabled={localPacketLogEnabled}
+              maxCount={localPacketLogMaxCount}
+              maxAgeHours={localPacketLogMaxAgeHours}
+              onMaxCountChange={setLocalPacketLogMaxCount}
+              onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
+            />
+          </div>
         </div>
 
         <div id="settings-solar" className="settings-section">
@@ -1430,14 +1483,171 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         <AutoUpgradeTestSection baseUrl={baseUrl} />
 
-        {isAdmin && (
-          <div id="settings-embed" className="settings-section">
-            <h3>{t('settings.embed_maps', 'Embed Maps')}</h3>
-            <EmbedSettings />
-          </div>
-        )}
-
         {isAdmin && firmwareOtaEnabled && <FirmwareUpdateSection baseUrl={baseUrl} />}
+
+        <div id="settings-reset-ui" className="settings-section">
+          <h3>{t('settings.reset_ui_positions')}</h3>
+          <p className="setting-description">{t('settings.reset_ui_positions_description')}</p>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              // Clear all draggable UI element positions from localStorage
+              localStorage.removeItem('nodesSidebarPosition');
+              localStorage.removeItem('nodesSidebarSize');
+              localStorage.removeItem('mapControlsPosition');
+              localStorage.removeItem('draggable_position_map-legend');
+              localStorage.removeItem('draggable_position_tileset-selector');
+              showToast(t('settings.reset_ui_positions_success'), 'success');
+            }}
+          >
+            {t('settings.reset_ui_positions_button')}
+          </button>
+        </div>
+
+        {isAdmin && (
+        <div id="settings-analytics" className="settings-section">
+          <h3>{t('settings.analytics')}</h3>
+
+          <div className="setting-item">
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1rem 0', padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '4px', borderLeft: '3px solid var(--warning-border, #ffeaa7)' }}>
+              {t('settings.analytics_warning')}
+            </p>
+          </div>
+
+          <div className="setting-item">
+            <label htmlFor="analyticsProvider">
+              {t('settings.analytics_provider_label')}
+              <span className="setting-description">{t('settings.analytics_provider_description')}</span>
+            </label>
+            <select
+              id="analyticsProvider"
+              value={localAnalyticsProvider}
+              onChange={(e) => {
+                setLocalAnalyticsProvider(e.target.value);
+                setLocalAnalyticsConfig({});
+              }}
+              className="setting-input"
+            >
+              <option value="none">{t('settings.analytics_provider_none')}</option>
+              <option value="ga4">{t('settings.analytics_provider_ga4')}</option>
+              <option value="cloudflare">{t('settings.analytics_provider_cloudflare')}</option>
+              <option value="posthog">{t('settings.analytics_provider_posthog')}</option>
+              <option value="plausible">{t('settings.analytics_provider_plausible')}</option>
+              <option value="umami">{t('settings.analytics_provider_umami')}</option>
+              <option value="matomo">{t('settings.analytics_provider_matomo')}</option>
+              <option value="custom">{t('settings.analytics_provider_custom')}</option>
+            </select>
+          </div>
+
+          {localAnalyticsProvider === 'ga4' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsMeasurementId">
+                {t('settings.analytics_measurement_id_label')}
+                <span className="setting-description">{t('settings.analytics_measurement_id_description')}</span>
+              </label>
+              <input id="analyticsMeasurementId" type="text" value={localAnalyticsConfig.measurementId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, measurementId: e.target.value })} className="setting-input" placeholder="G-XXXXXXXXXX" />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'cloudflare' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsBeaconToken">
+                {t('settings.analytics_beacon_token_label')}
+                <span className="setting-description">{t('settings.analytics_beacon_token_description')}</span>
+              </label>
+              <input id="analyticsBeaconToken" type="text" value={localAnalyticsConfig.beaconToken || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, beaconToken: e.target.value })} className="setting-input" />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'posthog' && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="analyticsApiKey">
+                  {t('settings.analytics_api_key_label')}
+                  <span className="setting-description">{t('settings.analytics_api_key_description')}</span>
+                </label>
+                <input id="analyticsApiKey" type="text" value={localAnalyticsConfig.apiKey || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, apiKey: e.target.value })} className="setting-input" placeholder="phc_..." />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="analyticsApiHost">
+                  {t('settings.analytics_api_host_label')}
+                  <span className="setting-description">{t('settings.analytics_api_host_description')}</span>
+                </label>
+                <input id="analyticsApiHost" type="text" value={localAnalyticsConfig.apiHost || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, apiHost: e.target.value })} className="setting-input" placeholder="https://app.posthog.com" />
+              </div>
+            </>
+          )}
+
+          {localAnalyticsProvider === 'plausible' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsDomain">
+                {t('settings.analytics_domain_label')}
+                <span className="setting-description">{t('settings.analytics_domain_description')}</span>
+              </label>
+              <input id="analyticsDomain" type="text" value={localAnalyticsConfig.domain || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, domain: e.target.value })} className="setting-input" placeholder="example.com" />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'umami' && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="analyticsWebsiteId">
+                  {t('settings.analytics_website_id_label')}
+                  <span className="setting-description">{t('settings.analytics_website_id_description')}</span>
+                </label>
+                <input id="analyticsWebsiteId" type="text" value={localAnalyticsConfig.websiteId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, websiteId: e.target.value })} className="setting-input" />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="analyticsScriptUrl">
+                  {t('settings.analytics_script_url_label')}
+                  <span className="setting-description">{t('settings.analytics_script_url_description')}</span>
+                </label>
+                <input id="analyticsScriptUrl" type="text" value={localAnalyticsConfig.scriptUrl || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, scriptUrl: e.target.value })} className="setting-input" placeholder="https://analytics.example.com/script.js" />
+              </div>
+            </>
+          )}
+
+          {localAnalyticsProvider === 'matomo' && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="analyticsSiteUrl">
+                  {t('settings.analytics_site_url_label')}
+                  <span className="setting-description">{t('settings.analytics_site_url_description')}</span>
+                </label>
+                <input id="analyticsSiteUrl" type="text" value={localAnalyticsConfig.siteUrl || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, siteUrl: e.target.value })} className="setting-input" placeholder="https://matomo.example.com" />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="analyticsSiteId">
+                  {t('settings.analytics_site_id_label')}
+                  <span className="setting-description">{t('settings.analytics_site_id_description')}</span>
+                </label>
+                <input id="analyticsSiteId" type="text" value={localAnalyticsConfig.siteId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, siteId: e.target.value })} className="setting-input" placeholder="1" />
+              </div>
+            </>
+          )}
+
+          {localAnalyticsProvider === 'custom' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsCustomScript">
+                {t('settings.analytics_custom_script_label')}
+                <span className="setting-description">{t('settings.analytics_custom_script_description')}</span>
+              </label>
+              <textarea id="analyticsCustomScript" value={localAnalyticsConfig.script || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, script: e.target.value })} className="setting-input" rows={6} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }} placeholder='<script src="https://..."></script>' />
+            </div>
+          )}
+
+          {localAnalyticsProvider === 'custom' && (
+            <div className="setting-item">
+              <label htmlFor="analyticsCustomCspDomains">
+                {t('settings.analytics_custom_csp_label')}
+                <span className="setting-description">{t('settings.analytics_custom_csp_description')}</span>
+              </label>
+              <input type="text" id="analyticsCustomCspDomains" value={localAnalyticsConfig.cspDomains || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, cspDomains: e.target.value })} className="setting-input" placeholder="https://analytics.example.com https://cdn.example.com" />
+            </div>
+          )}
+        </div>
+        )}
 
         <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>

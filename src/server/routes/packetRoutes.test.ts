@@ -24,6 +24,7 @@ import { migration as nodesPrivatePermissionMigration } from '../migrations/044_
 import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
 import { migration as meshcorePermissionMigration } from '../migrations/071_add_meshcore_permission.js';
+import { migration as packetmonitorPermissionMigration } from '../migrations/082_add_packetmonitor_permission.js';
 import packetRoutes from './packetRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -76,6 +77,7 @@ describe('Packet Routes', () => {
     viewOnMapPermissionMigration.up(db);
     mfaMigration.up(db);
     meshcorePermissionMigration.up(db);
+    packetmonitorPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
@@ -249,6 +251,9 @@ describe('Packet Routes', () => {
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
     };
+    (DatabaseService as any).getChannelDatabasePermissionsForUserAsync = async () => {
+      return [];
+    };
 
     // Mock req.user for permission checking
     app.use((req: any, _res, next) => {
@@ -298,6 +303,12 @@ describe('Packet Routes', () => {
     });
 
     // Grant permissions
+    permissionModel.grant({
+      userId: regularUser.id,
+      resource: 'packetmonitor',
+      canRead: true,
+      canWrite: false
+    });
     permissionModel.grant({
       userId: regularUser.id,
       resource: 'channel_0',

@@ -17,6 +17,9 @@
 | **audit** | Audit log viewing | None | GET /api/audit<br>GET /api/audit/:id<br>GET /api/audit/stats/summary | POST /api/audit/cleanup |
 | **security** | Security scanning | None | GET /api/security/issues<br>GET /api/security/scanner/status<br>GET /api/security/export | POST /api/security/scanner/scan |
 | **themes** | Custom themes | Read Only | - | POST /api/themes<br>PUT /api/themes/:slug<br>DELETE /api/themes/:slug |
+| **packetmonitor** | Packet Monitor access | Read Only | GET /api/packets<br>GET /api/packets/stats<br>GET /api/packets/export<br>GET /api/packets/:id | - (read-only) |
+| **nodes_private** | Private node data | None | - | - |
+| **meshcore** | MeshCore features | None | - | - |
 
 ## Key Database Tables
 
@@ -65,9 +68,9 @@ permissions (
 dashboard: R W      messages: R W       audit: R W
 nodes: R W          settings: R W       security: R W
 channel_0: R W      configuration: R W  themes: R W
-channel_1: R W      automation: R W
-channel_2: R W      connection: R W
-channel_3: R W      traceroute: R W
+channel_1: R W      automation: R W     packetmonitor: R -
+channel_2: R W      connection: R W     nodes_private: R W
+channel_3: R W      traceroute: R W     meshcore: R W
 channel_4: R W
 channel_5: R W
 channel_6: R W
@@ -79,9 +82,9 @@ channel_7: R W
 dashboard: R -      messages: R -       audit: - -
 nodes: R -          settings: - -       security: - -
 channel_0: R -      configuration: - -  themes: R -
-channel_1: R -      automation: - -
-channel_2: R -      connection: R -
-channel_3: R -      traceroute: R -
+channel_1: R -      automation: - -     packetmonitor: R -
+channel_2: R -      connection: R -     nodes_private: - -
+channel_3: R -      traceroute: R -     meshcore: - -
 channel_4: R -
 channel_5: R -
 channel_6: R -
@@ -101,7 +104,8 @@ export type ResourceType =
   | 'automation' | 'connection' | 'traceroute'
   | 'audit' | 'security' | 'themes'
   | 'channel_0' | 'channel_1' | 'channel_2' | 'channel_3'
-  | 'channel_4' | 'channel_5' | 'channel_6' | 'channel_7';
+  | 'channel_4' | 'channel_5' | 'channel_6' | 'channel_7'
+  | 'nodes_private' | 'meshcore' | 'packetmonitor';
 
 export type PermissionAction = 'read' | 'write';
 
@@ -182,6 +186,15 @@ Logs to: audit_log
 - Automatically migrated to individual channel_0-7 permissions
 - Old 'channels' permissions are split: read → all channels read, write → all channels write
 
+### Packet Monitor Permission (v3.8.5+)
+- `packetmonitor:read` controls access to the Packet Monitor feature
+- Read-only — no write permission exists
+- Once access is granted, packets are filtered by the user's other permissions:
+  - Encrypted packets are always visible
+  - Decrypted channel packets require `channel_N:read` on the corresponding channel
+  - TEXT_MESSAGE_APP DMs require `messages:read`
+  - Admin users bypass all filtering
+
 ### No Node-Specific Permissions
 - 'nodes' resource is global
 - Cannot restrict access to specific nodes
@@ -204,6 +217,8 @@ Logs to: audit_log
 | Middleware | `/src/server/auth/authMiddleware.ts` |
 | User management API | `/src/server/routes/userRoutes.ts` |
 | Frontend UI | `/src/components/UsersTab.tsx` |
-| Database migrations | `/src/server/migrations/001-024*.ts` |
+| Database migrations | `/src/server/migrations/001-082*.ts` |
 | Per-channel migration | `/src/server/migrations/024_add_per_channel_permissions.ts` |
+| Packet monitor permission | `/src/server/migrations/082_add_packetmonitor_permission.ts` |
+| Packet routes (server-side filtering) | `/src/server/routes/packetRoutes.ts` |
 

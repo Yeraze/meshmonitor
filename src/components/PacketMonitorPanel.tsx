@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { Filter, Trash2, ExternalLink, Download, Pause, Play } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
-import { clearPackets, exportPackets } from '../services/packetApi';
+import { clearPackets, exportPackets, getRelayNodes } from '../services/packetApi';
+import { RelayNodeOption } from '../types/packet';
 import apiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { usePackets } from '../hooks/usePackets';
 import { formatDateTime } from '../utils/datetime';
-import { ResourceType } from '../types/permission';
 import RelayNodeModal from './RelayNodeModal';
 import './PacketMonitorPanel.css';
 
@@ -77,6 +78,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
 
+  // Relay node filter options (distinct values from packet_log)
+  const [relayNodeOptions, setRelayNodeOptions] = useState<RelayNodeOption[]>([]);
+
   // Relay node modal state
   const [relayModalOpen, setRelayModalOpen] = useState(false);
   const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
@@ -86,16 +90,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Check permissions - user needs to have at least one channel permission and messages permission
-  const hasAnyChannelPermission = () => {
-    for (let i = 0; i < 8; i++) {
-      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const canView = hasAnyChannelPermission() && hasPermission('messages', 'read');
+  // Check permissions - user needs packetmonitor:read permission
+  const canView = hasPermission('packetmonitor', 'read');
 
   // Get own node number for filtering
   // Convert nodeId (hex string like "!43588558") to number
@@ -173,6 +169,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   useEffect(() => {
     localStorage.setItem('packetMonitor.autoScroll', JSON.stringify(autoScroll));
   }, [autoScroll]);
+
+  // Fetch distinct relay nodes for filter dropdown
+  useEffect(() => {
+    if (!canView) return;
+    getRelayNodes()
+      .then(setRelayNodeOptions)
+      .catch(() => setRelayNodeOptions([]));
+  }, [canView]);
 
   // Fetch direct neighbor stats on mount for relay estimation
   useEffect(() => {
@@ -424,7 +428,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       <div className="packet-monitor-panel">
         <div className="packet-monitor-header">
           <h3>{t('packet_monitor.title')}</h3>
-          <button className="close-btn" onClick={onClose}>
+          <button className="close-btn" onClick={onClose} aria-label={t('common.close')}>
             ×
           </button>
         </div>
@@ -453,29 +457,31 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               className="control-btn"
               onClick={() => setAutoScroll(!autoScroll)}
               title={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
+              aria-label={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
             >
-              {autoScroll ? '⏸️' : '▶️'}
+              {autoScroll ? <Pause size={14} /> : <Play size={14} />}
             </button>
-            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')}>
-              🔍
+            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')} aria-label={t('packet_monitor.toggle_filters')}>
+              <Filter size={14} />
             </button>
             <button
               className="control-btn"
               onClick={handleExport}
               title={t('packet_monitor.export_title')}
+              aria-label={t('packet_monitor.export_title')}
               disabled={total === 0}
             >
-              📥
+              <Download size={14} />
             </button>
             {authStatus?.user?.isAdmin && (
-              <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')}>
-                🗑️
+              <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')} aria-label={t('packet_monitor.clear_all')}>
+                <Trash2 size={14} />
               </button>
             )}
-            <button className="control-btn" onClick={handlePopout} title={t('packet_monitor.popout')}>
-              ⧉
+            <button className="control-btn" onClick={handlePopout} title={t('packet_monitor.popout')} aria-label={t('packet_monitor.popout')}>
+              <ExternalLink size={14} />
             </button>
-            <button className="close-btn" onClick={onClose}>
+            <button className="close-btn" onClick={onClose} aria-label={t('common.close')}>
               ×
             </button>
           </div>
@@ -526,6 +532,40 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`}
                   </option>
                 ))}
+            </select>
+
+            <select
+              value={filters.relay_node !== undefined ? String(filters.relay_node) : ''}
+              onChange={e => {
+                const val = e.target.value;
+                setFilters({
+                  ...filters,
+                  relay_node: val === '' ? undefined : val === 'unknown' ? 'unknown' : parseInt(val),
+                });
+              }}
+              title={t('packet_monitor.filter.last_hop_tooltip')}
+            >
+              <option value="">{t('packet_monitor.filter.all_last_hops')}</option>
+              <option value="unknown">{t('packet_monitor.filter.unknown_hop')}</option>
+              {relayNodeOptions
+                .sort((a, b) => {
+                  const aName = a.matching_nodes[0]?.longName || a.matching_nodes[0]?.shortName || '';
+                  const bName = b.matching_nodes[0]?.longName || b.matching_nodes[0]?.shortName || '';
+                  return aName.localeCompare(bName);
+                })
+                .map(rn => {
+                  const names = rn.matching_nodes
+                    .map(n => n.longName || n.shortName)
+                    .filter(Boolean);
+                  const label = names.length > 0
+                    ? names.join(', ')
+                    : `!..${rn.relay_node.toString(16).padStart(2, '0')}`;
+                  return (
+                    <option key={rn.relay_node} value={rn.relay_node}>
+                      {label}
+                    </option>
+                  );
+                })}
             </select>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -746,10 +786,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                   onClick={(e) => handleRelayClick(packet, e)}
                                   title={t('packet_monitor.click_for_relay')}
                                 >
-                                  {hops}
+                                  {hops}/{packet.hop_start}
                                 </span>
                               ) : (
-                                hops
+                                <>{hops}/{packet.hop_start}</>
                               )
                             ) : (
                               t('common.na')
@@ -833,7 +873,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             <div className="packet-detail-content" onClick={e => e.stopPropagation()}>
               <div className="packet-detail-header">
                 <h4>{t('packet_monitor.details_title')}</h4>
-                <button className="close-btn" onClick={() => setSelectedPacket(null)}>
+                <button className="close-btn" onClick={() => setSelectedPacket(null)} aria-label={t('common.close')}>
                   ×
                 </button>
               </div>
@@ -894,7 +934,30 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     Object.entries(displayData).filter(([, v]) => v !== undefined && v !== null)
                   );
 
-                  return <pre className="packet-json">{JSON.stringify(cleanedData, null, 2)}</pre>;
+                  // Format field names for display (snake_case → Title Case)
+                  const formatLabel = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                  return (
+                    <div className="packet-detail-fields">
+                      {Object.entries(cleanedData).map(([key, value]) => {
+                        // Show decoded_payload and complex objects as formatted JSON
+                        if (typeof value === 'object' && value !== null) {
+                          return (
+                            <div key={key} className="detail-row detail-row-full">
+                              <span className="detail-label">{formatLabel(key)}</span>
+                              <pre className="detail-value-json">{JSON.stringify(value, null, 2)}</pre>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={key} className="detail-row">
+                            <span className="detail-label">{formatLabel(key)}</span>
+                            <span className="detail-value">{String(value)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
                 })()}
               </div>
             </div>

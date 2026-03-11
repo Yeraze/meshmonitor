@@ -47,7 +47,7 @@ Frontend → Backend API → Command Queue → Serial/TCP → Node
 - Supplement with mesh-propagated telemetry (other nodes)
 - Store both with proper timestamps and attribution
 
-**Location**: `src/services/telemetry.ts` - NodeInfo handling (PR #427)
+**Location**: `src/db/repositories/telemetry.ts`, `src/db/schema/telemetry.ts`, `src/server/routes/v1/telemetry.ts` - NodeInfo handling (PR #427)
 
 ### Protocol Constants
 
@@ -88,7 +88,7 @@ logger.info(`Received ${getPortNumName(portnum)} packet`);
 
 **Common Mistake**: Sending generic config without respecting the requested ID.
 
-**Reference**: Virtual Node implementation - `src/services/virtualNode.ts`
+**Reference**: Virtual Node implementation - `src/server/virtualNodeServer.ts`
 
 ---
 
@@ -342,7 +342,7 @@ async function sendWithRetry(operation: Operation) {
 **Structure**:
 ```json
 {
-  "version": "2.0",
+  "backupVersion": "1.0",
   "meshmonitorVersion": "2.13.0",
   "timestamp": "2025-01-15T10:30:00Z",
   "schemaVersion": 12,
@@ -397,7 +397,7 @@ async function sendWithRetry(operation: Operation) {
 - Fast iteration cycles
 - Protocol validation
 
-**Location**: `src/services/virtualNode.ts`, `tests/test-virtual-node-cli.sh`
+**Location**: `src/server/virtualNodeServer.ts`, `tests/test-virtual-node-cli.sh`
 
 ### Integration Testing is Critical
 
@@ -720,5 +720,5 @@ beforeEach(() => {
 
 ---
 
-**Last Updated**: 2026-01-12
+**Last Updated**: 2026-03-06
 **Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes)

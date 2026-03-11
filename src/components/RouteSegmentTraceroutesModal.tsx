@@ -5,6 +5,7 @@ import { formatDateTime } from '../utils/datetime';
 import { DeviceInfo } from '../types/device';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatNodeName, formatTracerouteRoute } from '../utils/traceroute';
+import Modal from './common/Modal';
 
 interface RouteSegmentTraceroutesModalProps {
   nodeNum1: number;
@@ -70,114 +71,113 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
   }, [traceroutes, nodeNum1, nodeNum2]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '80vh' }}>
-        <div className="modal-header">
-          <h2>{t('route_segment.title')}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={t('route_segment.title')}
+      maxWidth="900px"
+      style={{ maxHeight: '80vh' }}
+    >
+      <div style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <strong>{t('route_segment.segment')}:</strong> {node1Name} ↔ {node2Name}
         </div>
 
-        <div className="modal-body" style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <strong>{t('route_segment.segment')}:</strong> {node1Name} ↔ {node2Name}
+        {relevantTraceroutes.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
+            {t('route_segment.no_traceroutes')}
           </div>
+        )}
 
-          {relevantTraceroutes.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
-              {t('route_segment.no_traceroutes')}
-            </div>
-          )}
+        {relevantTraceroutes.length > 0 && (
+          <div>
+            <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+              {t('route_segment.showing_count', { count: relevantTraceroutes.length })}
+            </p>
 
-          {relevantTraceroutes.length > 0 && (
-            <div>
-              <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
-                {t('route_segment.showing_count', { count: relevantTraceroutes.length })}
-              </p>
+            {relevantTraceroutes.map((tr, index) => {
+              const age = Math.floor((Date.now() - (tr.timestamp || tr.createdAt || Date.now())) / (1000 * 60));
+              const ageStr = age < 60
+                ? t('common.minutes_ago', { count: age })
+                : age < 1440
+                  ? t('common.hours_ago', { count: Math.floor(age / 60) })
+                  : t('common.days_ago', { count: Math.floor(age / 1440) });
 
-              {relevantTraceroutes.map((tr, index) => {
-                const age = Math.floor((Date.now() - (tr.timestamp || tr.createdAt || Date.now())) / (1000 * 60));
-                const ageStr = age < 60
-                  ? t('common.minutes_ago', { count: age })
-                  : age < 1440
-                    ? t('common.hours_ago', { count: Math.floor(age / 60) })
-                    : t('common.days_ago', { count: Math.floor(age / 1440) });
+              const fromNode = nodes.find(n => n.nodeNum === tr.fromNodeNum);
+              const toNode = nodes.find(n => n.nodeNum === tr.toNodeNum);
+              const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || tr.fromNodeId;
+              const toName = toNode?.user?.longName || toNode?.user?.shortName || tr.toNodeId;
 
-                const fromNode = nodes.find(n => n.nodeNum === tr.fromNodeNum);
-                const toNode = nodes.find(n => n.nodeNum === tr.toNodeNum);
-                const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || tr.fromNodeId;
-                const toName = toNode?.user?.longName || toNode?.user?.shortName || tr.toNodeId;
-
-                return (
-                  <div
-                    key={tr.id || index}
-                    style={{
-                      marginBottom: '1.5rem',
-                      padding: '1rem',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
-                      borderRadius: '8px',
-                    }}
-                  >
-                    <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <strong>#{relevantTraceroutes.length - index}</strong>{' '}
-                        <span style={{ color: 'var(--ctp-subtext0)' }}>
-                          {fromName} → {toName}
-                        </span>
-                        <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
-                          {formatDateTime(new Date(tr.timestamp || tr.createdAt || Date.now()), timeFormat, dateFormat)}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
-                        {ageStr}
-                      </span>
-                    </div>
-
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(
-                          tr.route,
-                          tr.snrTowards,
-                          tr.fromNodeNum,
-                          tr.toNodeNum,
-                          nodes,
-                          distanceUnit,
-                          {
-                            highlightSegment: true,
-                            highlightNodeNum1: nodeNum1,
-                            highlightNodeNum2: nodeNum2
-                          }
-                        )}
-                      </span>
-                    </div>
-
+              return (
+                <div
+                  key={tr.id || index}
+                  style={{
+                    marginBottom: '1.5rem',
+                    padding: '1rem',
+                    background: 'var(--ctp-surface0)',
+                    border: '1px solid var(--ctp-surface2)',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(
-                          tr.routeBack,
-                          tr.snrBack,
-                          tr.toNodeNum,
-                          tr.fromNodeNum,
-                          nodes,
-                          distanceUnit,
-                          {
-                            highlightSegment: true,
-                            highlightNodeNum1: nodeNum1,
-                            highlightNodeNum2: nodeNum2
-                          }
-                        )}
+                      <strong>#{relevantTraceroutes.length - index}</strong>{' '}
+                      <span style={{ color: 'var(--ctp-subtext0)' }}>
+                        {fromName} → {toName}
+                      </span>
+                      <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
+                        {formatDateTime(new Date(tr.timestamp || tr.createdAt || Date.now()), timeFormat, dateFormat)}
                       </span>
                     </div>
+                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {ageStr}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
+                      {formatTracerouteRoute(
+                        tr.route,
+                        tr.snrTowards,
+                        tr.fromNodeNum,
+                        tr.toNodeNum,
+                        nodes,
+                        distanceUnit,
+                        {
+                          highlightSegment: true,
+                          highlightNodeNum1: nodeNum1,
+                          highlightNodeNum2: nodeNum2
+                        }
+                      )}
+                    </span>
+                  </div>
+
+                  <div>
+                    <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
+                      {formatTracerouteRoute(
+                        tr.routeBack,
+                        tr.snrBack,
+                        tr.toNodeNum,
+                        tr.fromNodeNum,
+                        nodes,
+                        distanceUnit,
+                        {
+                          highlightSegment: true,
+                          highlightNodeNum1: nodeNum1,
+                          highlightNodeNum2: nodeNum2
+                        }
+                      )}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 };
 

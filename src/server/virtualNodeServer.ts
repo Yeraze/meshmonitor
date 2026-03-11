@@ -22,6 +22,8 @@ interface ConnectedClient {
   buffer: Buffer;
   connectedAt: Date;
   lastActivity: Date;
+  lastConfigSentAt?: Date;
+  lastConfigId?: number;
 }
 
 interface QueuedMessage {
@@ -59,9 +61,6 @@ export class VirtualNodeServer extends EventEmitter {
   private readonly START2 = 0xc3;
   private readonly MAX_PACKET_SIZE = 512;
   private readonly QUEUE_MAX_SIZE = 100;
-
-  // Config replay constants
-  private readonly LOG_EVERY_N_MESSAGES = 10; // Log progress every N messages during config replay
 
   // Client timeout and cleanup constants
   private readonly CLIENT_TIMEOUT_MS = 300000; // 5 minutes of inactivity before disconnect
@@ -507,8 +506,17 @@ export class VirtualNodeServer extends EventEmitter {
         this.queueMessage(clientId, strippedPayload);
       } else if (toRadio.wantConfigId) {
         // Client is requesting config with a specific ID
-        logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
-        await this.sendInitialConfig(clientId, toRadio.wantConfigId);
+        // Rate limit: ignore rapid-fire config requests with the same ID (prevents reconnect loops)
+        // Allow requests with a different wantConfigId (legitimate follow-up from Android clients)
+        const client = this.clients.get(clientId);
+        const CONFIG_COOLDOWN_MS = 5000;
+        const isSameConfigId = client?.lastConfigId === toRadio.wantConfigId;
+        if (isSameConfigId && client?.lastConfigSentAt && (Date.now() - client.lastConfigSentAt.getTime()) < CONFIG_COOLDOWN_MS) {
+          logger.warn(`Virtual node: Ignoring duplicate config request from ${clientId} (ID: ${toRadio.wantConfigId}) - config was sent ${Date.now() - client.lastConfigSentAt.getTime()}ms ago (cooldown: ${CONFIG_COOLDOWN_MS}ms)`);
+        } else {
+          logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
+          await this.sendInitialConfig(clientId, toRadio.wantConfigId);
+        }
       } else if (toRadio.heartbeat) {
         // Handle heartbeat locally - don't forward to physical node
         // iOS clients expect a response packet within a timeout window or they disconnect
@@ -598,53 +606,175 @@ export class VirtualNodeServer extends EventEmitter {
    * - Rebuild dynamic data (MyNodeInfo, NodeInfo) from database for freshness
    * - Use cached static data (config, channels, metadata) for performance
    */
+  /**
+   * Rebuild channel messages from the database.
+   * Channels are rebuilt from DB rather than sent from cache because the physical
+   * radio often sends channels with empty name strings. All 8 channel slots
+   * (including disabled ones with role=0) are sent to match real firmware behavior.
+   */
+  private async sendChannelsFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
+    const dbChannels = await databaseService.getAllChannelsAsync();
+    let sent = 0;
+    for (const ch of dbChannels) {
+      const client = this.clients.get(clientId);
+      if (!client || client.socket.destroyed) {
+        return { sent, disconnected: true };
+      }
+
+      const channelMessage = await meshtasticProtobufService.createChannel({
+        index: ch.id,
+        settings: {
+          name: ch.name || undefined,
+          psk: ch.psk ? Buffer.from(ch.psk, 'base64') : undefined,
+          uplinkEnabled: ch.uplinkEnabled ? true : undefined,
+          downlinkEnabled: ch.downlinkEnabled ? true : undefined,
+          positionPrecision: ch.positionPrecision,
+        },
+        role: ch.role ?? (ch.id === 0 ? 1 : 2),
+      });
+
+      if (channelMessage) {
+        await this.sendToClient(clientId, channelMessage);
+        sent++;
+        logger.debug(`Virtual node: Sent rebuilt channel ${ch.id} (${ch.name || 'unnamed'}) role=${ch.role}`);
+      }
+    }
+    return { sent, disconnected: false };
+  }
+
+  /**
+   * Send NodeInfo entries from the database to a client.
+   */
+  private async sendNodeInfosFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
+    const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+    const maxNodeAgeDays = maxNodeAgeHours / 24;
+    const allNodes = databaseService.getActiveNodes(maxNodeAgeDays);
+    let sent = 0;
+
+    for (const node of allNodes) {
+      const client = this.clients.get(clientId);
+      if (!client || client.socket.destroyed) {
+        return { sent, disconnected: true };
+      }
+
+      const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
+        nodeNum: node.nodeNum,
+        user: {
+          id: node.nodeId,
+          longName: node.longName || 'Unknown',
+          shortName: node.shortName || '????',
+          hwModel: node.hwModel || 0,
+          role: node.role,
+          publicKey: node.publicKey,
+        },
+        position: (node.latitude && node.longitude) ? {
+          latitude: node.latitude,
+          longitude: node.longitude,
+          altitude: node.altitude || 0,
+          time: node.lastHeard || Math.floor(Date.now() / 1000),
+        } : undefined,
+        deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
+                       node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
+          batteryLevel: node.batteryLevel,
+          voltage: node.voltage,
+          channelUtilization: node.channelUtilization,
+          airUtilTx: node.airUtilTx,
+        } : undefined,
+        snr: node.snr,
+        lastHeard: node.lastHeard,
+        hopsAway: node.hopsAway,
+        viaMqtt: node.viaMqtt ? true : false,
+        isFavorite: node.isFavorite ? true : false,
+      });
+
+      if (nodeInfoMessage) {
+        await this.sendToClient(clientId, nodeInfoMessage);
+        sent++;
+      }
+    }
+    return { sent, disconnected: false };
+  }
+
   private async sendInitialConfig(clientId: string, configId?: number): Promise<void> {
-    logger.info(`Virtual node: Starting to send initial config to ${clientId}${configId ? ` (ID: ${configId})` : ''}`);
+    // Meshtastic firmware config state machine order (from PhoneAPI.cpp):
+    //   "the client apps ASSUME THIS SEQUENCE, DO NOT CHANGE IT"
+    //   1. MyNodeInfo  2. OwnNodeInfo  3. Metadata  4. Channels
+    //   5. Config (×8)  6. ModuleConfig (×16)  7. OtherNodeInfos  8. ConfigComplete
+    //
+    // Special nonce values:
+    //   69420 (NONCE_ONLY_CONFIG): skips OtherNodeInfos (step 7)
+    //   69421 (NONCE_ONLY_DB):    skips Channels/Config/ModuleConfig (steps 4-6),
+    //                             jumps from OwnNodeInfo to OtherNodeInfos
+    //   Any other value:          full sequence (all 8 steps)
+    const NONCE_ONLY_CONFIG = 69420;
+    const NONCE_ONLY_DB = 69421;
+    const isDbOnlyRequest = configId === NONCE_ONLY_DB;
+    const isConfigOnly = configId === NONCE_ONLY_CONFIG;
+
+    logger.info(`Virtual node: Starting to send ${isDbOnlyRequest ? 'DB-only' : isConfigOnly ? 'config-only' : 'full'} config to ${clientId}${configId ? ` (ID: ${configId})` : ''}`);
     try {
       // Check if config capture is complete before sending anything
-      // This prevents sending partial/incomplete config when the radio is restarting
       if (!this.config.meshtasticManager.isInitConfigCaptureComplete()) {
         logger.warn(`Virtual node: Config capture not yet complete, cannot send config to ${clientId}`);
         logger.warn(`Virtual node: Physical node may be restarting - client should retry after initialization completes`);
         return;
       }
 
-      // Get cached init config with type metadata from meshtasticManager
       const cachedMessages = this.config.meshtasticManager.getCachedInitConfig();
-
       if (cachedMessages.length === 0) {
         logger.warn(`Virtual node: No cached init config available yet, cannot send config to ${clientId}`);
-        logger.warn(`Virtual node: Waiting for physical node to complete initialization...`);
         return;
       }
 
-      logger.info(`Virtual node: Using hybrid approach - rebuilding dynamic data from database`);
       let sentCount = 0;
 
-      // === STEP 1: Rebuild and send MyNodeInfo from database ===
+      // === DB-ONLY REQUEST (69421): OtherNodeInfos + ConfigComplete ===
+      // Firmware skips channels, config, and moduleConfig for this nonce.
+      if (isDbOnlyRequest) {
+        logger.info(`Virtual node: DB-only config request - sending NodeInfo + ConfigComplete`);
+
+        const nodeResult = await this.sendNodeInfosFromDb(clientId);
+        sentCount += nodeResult.sent;
+        if (nodeResult.disconnected) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during DB-only NodeInfo send`);
+          return;
+        }
+        logger.info(`Virtual node: ✓ Sent ${nodeResult.sent} NodeInfo entries for DB-only request`);
+
+        const configComplete = await meshtasticProtobufService.createConfigComplete(configId || 1);
+        if (configComplete) {
+          await this.sendToClient(clientId, configComplete);
+          sentCount++;
+        }
+
+        logger.info(`Virtual node: ✅ DB-only config sent to ${clientId} (${sentCount} messages)`);
+
+        const client = this.clients.get(clientId);
+        if (client) {
+          client.lastConfigSentAt = new Date();
+          client.lastConfigId = configId;
+        }
+        return;
+      }
+
+      // === CONFIG REPLAY (69420 or full/random) ===
+      // Matches firmware order: MyNodeInfo → Metadata → Channels → Config → ModuleConfig
+      //   → OtherNodeInfos (only for full/random, skipped for 69420) → ConfigComplete
+
+      // --- STEP 1: MyNodeInfo (rebuilt from DB) ---
       const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        logger.debug(`Virtual node: Rebuilding MyNodeInfo for local node ${localNodeInfo.nodeId}`);
         const localNode = databaseService.getNode(localNodeInfo.nodeNum);
 
-        // Try to get firmware version from multiple sources (in order of preference):
-        // 1. localNodeInfo (populated from DeviceMetadata)
-        // 2. database (populated from DeviceMetadata via processDeviceMetadata)
-        // 3. fallback to 2.6.0 (more reasonable than 2.0.0)
         let firmwareVersion = (localNodeInfo as any).firmwareVersion;
         if (!firmwareVersion && localNode?.firmwareVersion) {
           firmwareVersion = localNode.firmwareVersion;
-          logger.debug(`Virtual node: Using firmware version from database: ${firmwareVersion}`);
         }
         if (!firmwareVersion) {
           firmwareVersion = '2.6.0';
-          logger.debug(`Virtual node: Using fallback firmware version: ${firmwareVersion}`);
         }
 
-        // Append MeshMonitor version suffix to firmware version for Virtual Node identification
         const vnFirmwareVersion = `${firmwareVersion}-MM${packageJson.version}`;
-
-        // Log the node ID being sent to help diagnose identity issues
         logger.info(`Virtual node: Sending MyNodeInfo with nodeNum=${localNodeInfo.nodeNum} (${localNodeInfo.nodeId}) fw=${vnFirmwareVersion} to ${clientId}`);
 
         const myNodeInfoMessage = await meshtasticProtobufService.createMyNodeInfo({
@@ -661,173 +791,88 @@ export class VirtualNodeServer extends EventEmitter {
         if (myNodeInfoMessage) {
           await this.sendToClient(clientId, myNodeInfoMessage);
           sentCount++;
-          logger.debug(`Virtual node: ✓ Sent fresh MyNodeInfo from database`);
+          logger.debug(`Virtual node: ✓ Sent MyNodeInfo`);
         }
       } else {
-        logger.warn(`Virtual node: No local node info available, skipping MyNodeInfo - clients may have incorrect identity!`);
+        logger.warn(`Virtual node: No local node info available, skipping MyNodeInfo`);
       }
 
-      // === STEP 2: Rebuild and send all NodeInfo entries from database ===
-      // Apply activity filtering based on maxNodeAgeHours setting
-      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const allNodes = databaseService.getActiveNodes(maxNodeAgeDays);
-      logger.debug(`Virtual node: Rebuilding ${allNodes.length} active NodeInfo entries from database (maxNodeAgeHours: ${maxNodeAgeHours})`);
+      // --- STEP 2: Metadata (from cache, with firmware version rewrite) ---
+      for (const message of cachedMessages) {
+        if (message.type !== 'metadata') continue;
 
-      for (const node of allNodes) {
-        // Check if client is still connected
+        const client = this.clients.get(clientId);
+        if (!client || client.socket.destroyed) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during metadata send`);
+          return;
+        }
+
+        const rewritten = await meshtasticProtobufService.rewriteMetadataFirmwareVersion(
+          message.data,
+          `-MM${packageJson.version}`
+        );
+        await this.sendToClient(clientId, rewritten || message.data);
+        sentCount++;
+        logger.debug(`Virtual node: ✓ Sent metadata`);
+      }
+
+      // --- STEP 3: Channels (rebuilt from DB) ---
+      const channelResult = await this.sendChannelsFromDb(clientId);
+      sentCount += channelResult.sent;
+      if (channelResult.disconnected) {
+        logger.warn(`Virtual node: Client ${clientId} disconnected during channel send`);
+        return;
+      }
+      logger.info(`Virtual node: ✓ Sent ${channelResult.sent} channels from database`);
+
+      // --- STEP 4: Config + ModuleConfig (from cache) ---
+      let staticCount = 0;
+      for (const message of cachedMessages) {
+        if (message.type === 'myInfo' || message.type === 'nodeInfo' ||
+            message.type === 'channel' || message.type === 'configComplete' ||
+            message.type === 'metadata' || message.type === 'fromRadio') {
+          continue;
+        }
+
         const client = this.clients.get(clientId);
         if (!client || client.socket.destroyed) {
           logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount} messages)`);
           return;
         }
 
-        const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
-          nodeNum: node.nodeNum,
-          user: {
-            id: node.nodeId,
-            longName: node.longName || 'Unknown',
-            shortName: node.shortName || '????',
-            hwModel: node.hwModel || 0,
-            role: node.role,
-            publicKey: node.publicKey,
-          },
-          position: (node.latitude && node.longitude) ? {
-            latitude: node.latitude,
-            longitude: node.longitude,
-            altitude: node.altitude || 0,
-            time: node.lastHeard || Math.floor(Date.now() / 1000),
-          } : undefined,
-          deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
-                         node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
-            batteryLevel: node.batteryLevel,
-            voltage: node.voltage,
-            channelUtilization: node.channelUtilization,
-            airUtilTx: node.airUtilTx,
-          } : undefined,
-          snr: node.snr,
-          lastHeard: node.lastHeard,
-          hopsAway: node.hopsAway,
-          viaMqtt: node.viaMqtt ? true : false,
-          isFavorite: node.isFavorite ? true : false,
-        });
-
-        if (nodeInfoMessage) {
-          await this.sendToClient(clientId, nodeInfoMessage);
-          sentCount++;
-
-          if (sentCount % this.LOG_EVERY_N_MESSAGES === 0) {
-            logger.debug(`Virtual node: Rebuilt NodeInfo ${sentCount - 1}/${allNodes.length} (${node.nodeId})`);
-          }
-        }
-      }
-
-      logger.info(`Virtual node: ✓ Sent ${allNodes.length} fresh NodeInfo entries from database`);
-
-      // === STEP 3: Rebuild and send channels from database ===
-      // Channels must be rebuilt from DB rather than sent from cache because the
-      // physical radio often sends channels with empty name strings. The Android
-      // app renders empty channel names as "Channel NAme", effectively wiping the
-      // client's channel database on every container restart.
-      // Send ALL 8 channel slots (including disabled ones with role=0) to match
-      // what a real Meshtastic device does. The app expects to see all slots so it
-      // can properly manage its channel list.
-      const dbChannels = await databaseService.getAllChannelsAsync();
-      let channelCount = 0;
-      for (const ch of dbChannels) {
-        const client = this.clients.get(clientId);
-        if (!client || client.socket.destroyed) {
-          logger.warn(`Virtual node: Client ${clientId} disconnected during channel send (sent ${sentCount} messages)`);
-          return;
-        }
-
-        const channelMessage = await meshtasticProtobufService.createChannel({
-          index: ch.id,
-          settings: {
-            name: ch.name || '',
-            psk: ch.psk ? Buffer.from(ch.psk, 'base64') : undefined,
-            uplinkEnabled: ch.uplinkEnabled,
-            downlinkEnabled: ch.downlinkEnabled,
-          },
-          role: ch.role ?? (ch.id === 0 ? 1 : 2),
-        });
-
-        if (channelMessage) {
-          await this.sendToClient(clientId, channelMessage);
-          sentCount++;
-          channelCount++;
-          logger.debug(`Virtual node: Sent rebuilt channel ${ch.id} (${ch.name || 'unnamed'}) role=${ch.role}`);
-        }
-      }
-      logger.info(`Virtual node: ✓ Sent ${channelCount} channels from database (all slots)`);
-
-      // === STEP 4: Send static config data from cache (config, metadata) ===
-      let staticCount = 0;
-      for (const message of cachedMessages) {
-        // Skip dynamic message types (we already rebuilt those from DB)
-        if (message.type === 'myInfo' || message.type === 'nodeInfo') {
-          continue;
-        }
-
-        // Skip channels (rebuilt from DB in step 3)
-        if (message.type === 'channel') {
-          continue;
-        }
-
-        // Skip configComplete (we'll send a fresh one at the end)
-        if (message.type === 'configComplete') {
-          continue;
-        }
-
-        // Check if client is still connected
-        const client = this.clients.get(clientId);
-        if (!client || client.socket.destroyed) {
-          logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount} total messages)`);
-          return;
-        }
-
-        // For metadata messages, rewrite firmware_version to indicate Virtual Node
-        let dataToSend = message.data;
-        if (message.type === 'metadata') {
-          const rewritten = await meshtasticProtobufService.rewriteMetadataFirmwareVersion(
-            message.data,
-            `-MM${packageJson.version}`
-          );
-          if (rewritten) {
-            dataToSend = rewritten;
-          }
-        }
-
-        // Send the cached static message (possibly with modified metadata)
-        await this.sendToClient(clientId, dataToSend);
+        await this.sendToClient(clientId, message.data);
         sentCount++;
         staticCount++;
+      }
+      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, moduleConfig)`);
 
-        if (staticCount % this.LOG_EVERY_N_MESSAGES === 0) {
-          logger.debug(`Virtual node: Sent cached ${message.type} message (${staticCount} static messages)`);
+      // --- STEP 5: OtherNodeInfos (only for full/random, skipped for 69420) ---
+      if (!isConfigOnly) {
+        const nodeResult = await this.sendNodeInfosFromDb(clientId);
+        sentCount += nodeResult.sent;
+        if (nodeResult.disconnected) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during NodeInfo send`);
+          return;
         }
+        logger.info(`Virtual node: ✓ Sent ${nodeResult.sent} NodeInfo entries from database`);
       }
 
-      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, metadata)`);
-
-      // NOTE: Message history replay was removed in v3.2.6 (issue #1608)
-      // Sending cached messages on each reconnection caused problems with clients
-      // that don't deduplicate messages, leading to duplicate chats and incorrect
-      // hop counts. Clients should rely on real-time message forwarding instead.
-
-      // === STEP 5: Send custom ConfigComplete with client's requested ID ===
+      // --- STEP 6: ConfigComplete ---
       const useConfigId = configId || 1;
-      logger.info(`Virtual node: Sending ConfigComplete to ${clientId} with ID ${useConfigId}...`);
       const configComplete = await meshtasticProtobufService.createConfigComplete(useConfigId);
       if (configComplete) {
         await this.sendToClient(clientId, configComplete);
         sentCount++;
-        logger.info(`Virtual node: ✓ ConfigComplete sent to ${clientId} (ID: ${useConfigId})`);
-      } else {
-        logger.error(`Virtual node: Failed to create ConfigComplete message`);
+        logger.info(`Virtual node: ✓ ConfigComplete sent (ID: ${useConfigId})`);
       }
 
-      logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${channelCount} fresh channels + ${staticCount} cached static)`);
+      logger.info(`Virtual node: ✅ ${isConfigOnly ? 'Config-only' : 'Full'} config sent to ${clientId} (${sentCount} messages)`);
+
+      const client = this.clients.get(clientId);
+      if (client) {
+        client.lastConfigSentAt = new Date();
+        client.lastConfigId = configId;
+      }
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
     }

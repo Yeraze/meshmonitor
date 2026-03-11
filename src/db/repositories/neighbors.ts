@@ -4,7 +4,7 @@
  * Handles neighbor info database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, and, gte, sql } from 'drizzle-orm';
+import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
 import { neighborInfoSqlite, neighborInfoPostgres, neighborInfoMysql } from '../schema/neighbors.js';
 import { packetLogSqlite, packetLogPostgres, packetLogMysql } from '../schema/packets.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
@@ -124,37 +124,28 @@ export class NeighborsRepository extends BaseRepository {
   async deleteNeighborInfoForNode(nodeNum: number): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const toDelete = await db
-        .select({ id: neighborInfoSqlite.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(neighborInfoSqlite)
         .where(eq(neighborInfoSqlite.nodeNum, nodeNum));
-
-      for (const n of toDelete) {
-        await db.delete(neighborInfoSqlite).where(eq(neighborInfoSqlite.id, n.id));
-      }
-      return toDelete.length;
+      await db.delete(neighborInfoSqlite).where(eq(neighborInfoSqlite.nodeNum, nodeNum));
+      return deletedCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const toDelete = await db
-        .select({ id: neighborInfoMysql.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(neighborInfoMysql)
         .where(eq(neighborInfoMysql.nodeNum, nodeNum));
-
-      for (const n of toDelete) {
-        await db.delete(neighborInfoMysql).where(eq(neighborInfoMysql.id, n.id));
-      }
-      return toDelete.length;
+      await db.delete(neighborInfoMysql).where(eq(neighborInfoMysql.nodeNum, nodeNum));
+      return deletedCount;
     } else {
       const db = this.getPostgresDb();
-      const toDelete = await db
-        .select({ id: neighborInfoPostgres.id })
+      const [{ deletedCount }] = await db
+        .select({ deletedCount: count() })
         .from(neighborInfoPostgres)
         .where(eq(neighborInfoPostgres.nodeNum, nodeNum));
-
-      for (const n of toDelete) {
-        await db.delete(neighborInfoPostgres).where(eq(neighborInfoPostgres.id, n.id));
-      }
-      return toDelete.length;
+      await db.delete(neighborInfoPostgres).where(eq(neighborInfoPostgres.nodeNum, nodeNum));
+      return deletedCount;
     }
   }
 
@@ -164,16 +155,16 @@ export class NeighborsRepository extends BaseRepository {
   async getNeighborCount(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const result = await db.select().from(neighborInfoSqlite);
-      return result.length;
+      const result = await db.select({ count: count() }).from(neighborInfoSqlite);
+      return Number(result[0].count);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const result = await db.select().from(neighborInfoMysql);
-      return result.length;
+      const result = await db.select({ count: count() }).from(neighborInfoMysql);
+      return Number(result[0].count);
     } else {
       const db = this.getPostgresDb();
-      const result = await db.select().from(neighborInfoPostgres);
-      return result.length;
+      const result = await db.select({ count: count() }).from(neighborInfoPostgres);
+      return Number(result[0].count);
     }
   }
 
@@ -183,19 +174,22 @@ export class NeighborsRepository extends BaseRepository {
   async deleteAllNeighborInfo(): Promise<number> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const count = await db.select().from(neighborInfoSqlite);
+      const result = await db.select({ count: count() }).from(neighborInfoSqlite);
+      const deleteCount = Number(result[0].count);
       await db.delete(neighborInfoSqlite);
-      return count.length;
+      return deleteCount;
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const count = await db.select().from(neighborInfoMysql);
+      const result = await db.select({ count: count() }).from(neighborInfoMysql);
+      const deleteCount = Number(result[0].count);
       await db.delete(neighborInfoMysql);
-      return count.length;
+      return deleteCount;
     } else {
       const db = this.getPostgresDb();
-      const count = await db.select().from(neighborInfoPostgres);
+      const result = await db.select({ count: count() }).from(neighborInfoPostgres);
+      const deleteCount = Number(result[0].count);
       await db.delete(neighborInfoPostgres);
-      return count.length;
+      return deleteCount;
     }
   }
 

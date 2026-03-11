@@ -50,6 +50,7 @@ export default defineConfig({
             { text: 'Message Search', link: '/features/message-search' },
             { text: 'Embed Maps', link: '/features/embed-maps' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
+            { text: 'Analytics', link: '/features/analytics' },
             { text: 'MeshCore (Experimental)', link: '/features/meshcore' },
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
@@ -76,7 +77,8 @@ export default defineConfig({
             { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
             { text: 'Production Deployment', link: '/configuration/production' },
             { text: '🔄 Automatic Self-Upgrade', link: '/configuration/auto-upgrade' },
-            { text: 'Push Notifications', link: '/features/notifications' }
+            { text: 'Push Notifications', link: '/features/notifications' },
+            { text: '🧪 Tested Hardware', link: '/configuration/tested-hardware' }
           ]
         },
         {

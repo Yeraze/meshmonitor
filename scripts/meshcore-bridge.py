@@ -35,6 +35,7 @@ from typing import Optional, Any
 # Try to import meshcore - will fail gracefully if not installed
 try:
     from meshcore import MeshCore, SerialConnection
+    from meshcore.events import EventType
     try:
         from meshcore import TCPConnection
         TCP_AVAILABLE = True
@@ -48,6 +49,7 @@ except ImportError:
     MeshCore = None
     SerialConnection = None
     TCPConnection = None
+    EventType = None
 
 
 class MeshCoreBridge:
@@ -58,6 +60,7 @@ class MeshCoreBridge:
         self.meshcore: Optional[Any] = None
         self.connected = False
         self.running = True
+        self.subscriptions = []
 
     async def handle_command(self, cmd_data: dict) -> dict:
         """Handle a single command and return response"""
@@ -129,6 +132,9 @@ class MeshCoreBridge:
 
         self.connected = True
 
+        # Start auto message fetching and subscribe to incoming messages
+        await self._setup_message_subscriptions()
+
         # Get initial info
         info = self.meshcore.self_info or {}
 
@@ -141,8 +147,64 @@ class MeshCoreBridge:
             }
         }
 
+    def _emit_event(self, event_type: str, data: dict) -> None:
+        """Emit an unsolicited event to stdout for Node.js to consume"""
+        print(json.dumps({
+            'type': 'event',
+            'event_type': event_type,
+            'data': data
+        }), flush=True)
+
+    async def _setup_message_subscriptions(self) -> None:
+        """Subscribe to incoming message events and start auto-fetching"""
+        if not self.meshcore or not EventType:
+            return
+
+        async def on_contact_message(event):
+            payload = event.payload
+            self._emit_event('contact_message', {
+                'pubkey_prefix': payload.get('pubkey_prefix', ''),
+                'text': payload.get('text', ''),
+                'sender_timestamp': payload.get('sender_timestamp', 0),
+                'path_len': payload.get('path_len', 0),
+                'snr': payload.get('SNR'),
+            })
+
+        async def on_channel_message(event):
+            payload = event.payload
+            self._emit_event('channel_message', {
+                'channel_idx': payload.get('channel_idx', 0),
+                'text': payload.get('text', ''),
+                'sender_timestamp': payload.get('sender_timestamp', 0),
+                'path_len': payload.get('path_len', 0),
+                'snr': payload.get('SNR'),
+            })
+
+        sub1 = self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
+        sub2 = self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
+        self.subscriptions = [sub1, sub2]
+
+        # Start auto message fetching (polls device when MESSAGES_WAITING is received)
+        auto_sub = await self.meshcore.start_auto_message_fetching()
+        self.subscriptions.append(auto_sub)
+
+    async def _cleanup_subscriptions(self) -> None:
+        """Unsubscribe from all message events"""
+        if self.meshcore:
+            try:
+                self.meshcore.stop_auto_message_fetching()
+            except Exception as e:
+                print(json.dumps({'type': 'event', 'event_type': 'debug', 'data': {'message': f'Error stopping auto-fetch: {e}'}}), flush=True)
+            for sub in self.subscriptions:
+                try:
+                    self.meshcore.unsubscribe(sub)
+                except Exception as e:
+                    print(json.dumps({'type': 'event', 'event_type': 'debug', 'data': {'message': f'Error unsubscribing: {e}'}}), flush=True)
+        self.subscriptions = []
+
     async def cmd_disconnect(self, cmd_id: str) -> dict:
         """Disconnect from device"""
+        await self._cleanup_subscriptions()
         if self.meshcore:
             try:
                 await self.meshcore.disconnect()

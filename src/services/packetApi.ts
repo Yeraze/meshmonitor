@@ -1,5 +1,5 @@
 import api from './api';
-import { PacketLog, PacketLogResponse, PacketStats, PacketFilters, PacketDistributionStats } from '../types/packet';
+import { PacketLog, PacketLogResponse, PacketStats, PacketFilters, PacketDistributionStats, RelayNodeOption } from '../types/packet';
 
 /**
  * Fetch packet logs with optional filters
@@ -31,6 +31,9 @@ export const getPackets = async (
   }
   if (filters?.since !== undefined) {
     params.append('since', filters.since.toString());
+  }
+  if (filters?.relay_node !== undefined) {
+    params.append('relay_node', filters.relay_node.toString());
   }
 
   return api.get<PacketLogResponse>(`/api/packets?${params.toString()}`);
@@ -73,6 +76,9 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
   }
   if (filters?.since !== undefined) {
     params.append('since', filters.since.toString());
+  }
+  if (filters?.relay_node !== undefined) {
+    params.append('relay_node', filters.relay_node.toString());
   }
 
   // Fetch export from backend with credentials
@@ -127,6 +133,14 @@ export const getPacketDistributionStats = async (since?: number, from_node?: num
   return api.get<PacketDistributionStats>(`/api/packets/stats/distribution${query ? `?${query}` : ''}`);
 };
 
+
+/**
+ * Fetch distinct relay nodes for filter dropdowns
+ */
+export const getRelayNodes = async (): Promise<RelayNodeOption[]> => {
+  const response = await api.get<{ relayNodes: RelayNodeOption[] }>('/api/packets/relay-nodes');
+  return response.relayNodes;
+};
 
 /**
  * Clear all packet logs (admin only)

@@ -239,17 +239,17 @@ const ThemeCard: React.FC<ThemeCardProps> = ({
           </button>
 
           {canWrite && !theme.is_builtin && (
-            <button onClick={onEdit} className="btn-icon" title={t('common.edit')}>
+            <button onClick={onEdit} className="btn-icon" title={t('common.edit')} aria-label={t('common.edit')}>
               ✏️
             </button>
           )}
 
-          <button onClick={onClone} className="btn-icon" title={t('theme_management.clone')}>
+          <button onClick={onClone} className="btn-icon" title={t('theme_management.clone')} aria-label={t('theme_management.clone')}>
             📋
           </button>
 
           {canWrite && !theme.is_builtin && (
-            <button onClick={onDelete} className="btn-icon btn-danger" title={t('common.delete')}>
+            <button onClick={onDelete} className="btn-icon btn-danger" title={t('common.delete')} aria-label={t('common.delete')}>
               🗑️
             </button>
           )}

@@ -19,6 +19,7 @@ import { migration as nodesPrivatePermissionMigration } from '../migrations/044_
 import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
 import { migration as meshcorePermissionMigration } from '../migrations/071_add_meshcore_permission.js';
+import { migration as packetmonitorPermissionMigration } from '../migrations/082_add_packetmonitor_permission.js';
 
 describe('PermissionModel', () => {
   let db: Database.Database;
@@ -45,6 +46,7 @@ describe('PermissionModel', () => {
     viewOnMapPermissionMigration.up(db);
     mfaMigration.up(db);
     meshcorePermissionMigration.up(db);
+    packetmonitorPermissionMigration.up(db);
 
     // Create model instances
     userModel = new UserModel(db);

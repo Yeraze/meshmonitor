@@ -101,6 +101,11 @@ export interface TelemetryNodeInfo extends BasicNodeInfo {
   hopsAway?: number;
   snr?: number;
   rssi?: number;
+  position?: {
+    latitude?: number;
+    longitude?: number;
+    altitude?: number;
+  };
 }
 
 /**

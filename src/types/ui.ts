@@ -13,7 +13,8 @@ export type TabType =
   | 'security'
   | 'themes'
   | 'admin'
-  | 'meshcore';
+  | 'meshcore'
+  | 'packetmonitor';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
 
@@ -86,6 +87,7 @@ export interface NodeFilters {
   showRemoteAdmin: boolean;
   showUnknown: boolean;
   showIgnored: boolean;
+  showFavoriteLocked: boolean;
   deviceRoles: number[];
   channels: number[];
 }

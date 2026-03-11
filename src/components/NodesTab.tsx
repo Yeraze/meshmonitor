@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/nodes.css';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
-import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows } from '../utils/mapHelpers.tsx';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
@@ -32,6 +32,9 @@ import { getPacketStats } from '../services/packetApi';
 
 import { VectorTileLayer } from './VectorTileLayer';
 import { MapNodePopupContent } from './MapNodePopupContent';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import api from '../services/api';
+import { mapContactsToNodes } from '../utils/meshcoreHelpers';
 
 /**
  * Spiderfier initialization constants
@@ -217,6 +220,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     showMeshCoreNodes,
     setShowMeshCoreNodes,
     meshCoreNodes,
+    setMeshCoreNodes,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -284,6 +288,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useSettings();
 
   const { hasPermission, authStatus } = useAuth();
+  const csrfFetch = useCsrfFetch();
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -302,6 +307,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
     setIsTouchDevice(checkTouch());
   }, []);
+
+  // Poll MeshCore contacts for map display when MeshCore is enabled
+  // Refreshes every 10 seconds to keep map and node list in sync with device
+  useEffect(() => {
+    if (!authStatus?.meshcoreEnabled) return;
+    let cancelled = false;
+
+    const fetchMeshCoreContacts = async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
+        const data = await response.json();
+        if (!cancelled && data.success && Array.isArray(data.data)) {
+          setMeshCoreNodes(mapContactsToNodes(data.data));
+        }
+      } catch {
+        // MeshCore not connected or unavailable — no action needed
+      }
+    };
+
+    fetchMeshCoreContacts();
+    const interval = setInterval(fetchMeshCoreContacts, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [authStatus?.meshcoreEnabled, setMeshCoreNodes, csrfFetch]);
 
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
@@ -445,16 +478,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [mapControlsPosition]);
 
-  // Check if user has permission to view packet monitor - needs at least one channel and messages permission
-  const hasAnyChannelPermission = () => {
-    for (let i = 0; i < 8; i++) {
-      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const canViewPacketMonitor = hasAnyChannelPermission() && hasPermission('messages', 'read');
+  // Check if user has permission to view packet monitor
+  const canViewPacketMonitor = hasPermission('packetmonitor', 'read');
 
   // Fetch packet logging enabled status from server
   useEffect(() => {
@@ -1131,13 +1156,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </div>
                       <div className="node-actions">
                         <div className="node-short" style={{ color: 'var(--ctp-mauve)' }}>
-                          {mcNode.publicKey.substring(0, 4)}...
+                          {mcNode.publicKey ? mcNode.publicKey.substring(0, 4) : '????'}...
                         </div>
                       </div>
                     </div>
                     <div className="node-details">
                       <div className="node-stats">
-                        {mcNode.snr !== undefined && (
+                        {mcNode.snr != null && typeof mcNode.snr === 'number' && (
                           <span className="stat" title="SNR">
                             📶 {mcNode.snr.toFixed(1)}dB
                           </span>
@@ -1233,15 +1258,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         >
                           {node.isFavorite ? '⭐' : '☆'}
                         </button>
-                        {node.isFavorite && toggleFavoriteLock && (
+                        {node.isFavorite && node.favoriteLocked && toggleFavoriteLock && (
                           <button
                             className="favorite-lock"
-                            title={node.favoriteLocked
-                              ? t('nodes.unlock_favorite', 'Unlock — let automation manage this favorite')
-                              : t('nodes.lock_favorite', 'Lock — prevent automation from changing this favorite')}
+                            title={t('nodes.unlock_favorite', 'Unlock — let automation manage this favorite')}
                             onClick={handleLockClick(node)}
                           >
-                            {node.favoriteLocked ? '🔒' : '🔓'}
+                            🔒
                           </button>
                         )}
                       </span>
@@ -1386,8 +1409,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}
         style={showPacketMonitor && canViewPacketMonitor ? { height: `calc(100% - ${packetMonitorHeight}px)` } : undefined}
       >
-        {(shouldShowData() || meshCoreNodes.length > 0) ? (
-          <>
+        {(shouldShowData() || meshCoreNodes.length > 0) && (
             <div
               ref={mapControlsRef}
               className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
@@ -1561,6 +1583,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 </>
               )}
             </div>
+        )}
             <MapContainer
               center={getMapCenter()}
               zoom={mapZoom}
@@ -1672,7 +1695,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* MeshCore nodes */}
               {showMeshCoreNodes && meshCoreNodes
-                .filter(node => node.latitude && node.longitude)
+                .filter(node => typeof node.latitude === 'number' && isFinite(node.latitude)
+                  && typeof node.longitude === 'number' && isFinite(node.longitude))
                 .map(node => {
                   const position: [number, number] = [node.latitude, node.longitude];
                   // Use MeshCore theme color (Catppuccin mauve) for MeshCore nodes
@@ -1730,11 +1754,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           </h3>
                           <div style={{ fontSize: '12px', color: '#666' }}>
                             <strong>Type:</strong> MeshCore Device<br />
-                            <strong>Public Key:</strong> {node.publicKey.substring(0, 16)}...<br />
-                            {node.latitude && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
-                            {node.longitude && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
-                            {node.rssi !== undefined && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
-                            {node.snr !== undefined && <><strong>SNR:</strong> {node.snr} dB<br /></>}
+                            <strong>Public Key:</strong> {node.publicKey ? node.publicKey.substring(0, 16) : '????'}...<br />
+                            {typeof node.latitude === 'number' && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
+                            {typeof node.longitude === 'number' && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
+                            {typeof node.rssi === 'number' && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
+                            {typeof node.snr === 'number' && <><strong>SNR:</strong> {node.snr} dB<br /></>}
                             {node.lastSeen && <><strong>Last Seen:</strong> {new Date(node.lastSeen).toLocaleString()}<br /></>}
                           </div>
                         </div>
@@ -2008,11 +2032,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 );
               })()}
           </MapContainer>
+          {(shouldShowData() || meshCoreNodes.length > 0) && (
           <TilesetSelector
             selectedTilesetId={activeTileset}
             onTilesetChange={setMapTileset}
           />
-          {nodesWithPosition.length === 0 && meshCoreNodes.filter(n => n.latitude && n.longitude).length === 0 && (
+          )}
+          {(shouldShowData() || meshCoreNodes.length > 0) && nodesWithPosition.length === 0 && meshCoreNodes.filter(n => n.latitude && n.longitude).length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">
                 <h3>📍 No Node Locations</h3>
@@ -2021,15 +2047,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
           )}
-          </>
-        ) : (
+          {!(shouldShowData() || meshCoreNodes.length > 0) && (
           <div className="map-placeholder">
             <div className="placeholder-content">
               <h3>Map View</h3>
               <p>Connect to a Meshtastic or MeshCore device to view node locations on the map</p>
             </div>
           </div>
-        )}
+          )}
       </div>
 
       {/* Packet Monitor Panel */}

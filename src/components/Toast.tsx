@@ -18,10 +18,10 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
   }, [id, duration, onClose]);
 
   const backgroundColor = {
-    success: '#4caf50',
-    error: '#f44336',
-    warning: '#ff9800',
-    info: '#2196f3'
+    success: 'var(--ctp-green)',
+    error: 'var(--ctp-red)',
+    warning: 'var(--ctp-peach)',
+    info: 'var(--ctp-blue)'
   }[type];
 
   const icon = {
@@ -35,7 +35,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
     <div
       style={{
         backgroundColor,
-        color: 'white',
+        color: 'var(--ctp-crust, #1e1e2e)',
         padding: '1rem 1.5rem',
         borderRadius: '4px',
         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
@@ -52,10 +52,11 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
       <span style={{ flex: 1, fontSize: '0.95rem' }}>{message}</span>
       <button
         onClick={() => onClose(id)}
+        aria-label="Close notification"
         style={{
           background: 'none',
           border: 'none',
-          color: 'white',
+          color: 'var(--ctp-crust, #1e1e2e)',
           fontSize: '1.25rem',
           cursor: 'pointer',
           padding: '0 0.25rem',

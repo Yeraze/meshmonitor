@@ -27,6 +27,7 @@ import { migration as nodesPrivatePermissionMigration } from '../migrations/044_
 import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
 import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
 import { migration as meshcorePermissionMigration } from '../migrations/071_add_meshcore_permission.js';
+import { migration as packetmonitorPermissionMigration } from '../migrations/082_add_packetmonitor_permission.js';
 
 // Mock dependencies before importing routes
 vi.mock('../../services/database.js', () => ({
@@ -108,6 +109,7 @@ describe('MeshCore Routes', () => {
     viewOnMapPermissionMigration.up(db);
     mfaMigration.up(db);
     meshcorePermissionMigration.up(db);
+    packetmonitorPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);

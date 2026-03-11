@@ -20,6 +20,7 @@ import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import { MeshCoreTab } from './components/MeshCore';
+import PacketMonitorPanel from './components/PacketMonitorPanel';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
@@ -54,6 +55,7 @@ import { MeshMessage } from './types/message';
 import { SortField, SortDirection, NodeFilters } from './types/ui';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
+import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
@@ -65,6 +67,7 @@ import { MapProvider, useMapContext } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
 import { UIProvider, useUI } from './contexts/UIContext';
+import { AutomationProvider, useAutomation } from './contexts/AutomationContext';
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
@@ -77,6 +80,7 @@ import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
 import { SaveBarProvider } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Track pending favorite requests outside component to persist across remounts
 // Maps nodeNum -> expected isFavorite state
@@ -146,6 +150,7 @@ function App() {
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
+  const [packetLogEnabled, setPacketLogEnabled] = useState(false);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -174,6 +179,9 @@ function App() {
         if (parsed.showIgnored === undefined) {
           parsed.showIgnored = false;
         }
+        if (parsed.showFavoriteLocked === undefined) {
+          parsed.showFavoriteLocked = false;
+        }
         return parsed;
       } catch (e) {
         logger.error('Failed to parse saved node filters:', e);
@@ -192,6 +200,7 @@ function App() {
       showRemoteAdmin: false,
       showUnknown: false,
       showIgnored: false,
+      showFavoriteLocked: false,
       deviceRoles: [] as number[], // Empty array means show all roles
       channels: [] as number[],
     };
@@ -214,7 +223,6 @@ function App() {
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
 
-  // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;
@@ -438,6 +446,21 @@ function App() {
     checkUnreadNews();
   }, [authStatus?.authenticated]);
 
+  // Check if packet logging is enabled on the server
+  // Re-check when auth status changes (permissions may have changed)
+  useEffect(() => {
+    const checkPacketLogStatus = async () => {
+      try {
+        const stats = await getPacketStats();
+        setPacketLogEnabled(stats.enabled === true);
+      } catch {
+        // 403 means no permission - packet log may still be enabled but user can't see it
+        setPacketLogEnabled(false);
+      }
+    };
+    checkPacketLogStatus();
+  }, [authStatus]);
+
   // Messaging context
   const {
     selectedDMNode,
@@ -490,93 +513,56 @@ function App() {
     setSystemStatus,
     nodePopup,
     setNodePopup,
-    autoAckEnabled,
-    setAutoAckEnabled,
-    autoAckRegex,
-    setAutoAckRegex,
-    autoAckMessage,
-    setAutoAckMessage,
-    autoAckMessageDirect,
-    setAutoAckMessageDirect,
-    autoAckChannels,
-    setAutoAckChannels,
-    autoAckDirectMessages,
-    setAutoAckDirectMessages,
-    autoAckUseDM,
-    setAutoAckUseDM,
-    autoAckSkipIncompleteNodes,
-    setAutoAckSkipIncompleteNodes,
-    autoAckTapbackEnabled,
-    setAutoAckTapbackEnabled,
-    autoAckReplyEnabled,
-    setAutoAckReplyEnabled,
-    autoAckDirectEnabled,
-    setAutoAckDirectEnabled,
-    autoAckDirectTapbackEnabled,
-    setAutoAckDirectTapbackEnabled,
-    autoAckDirectReplyEnabled,
-    setAutoAckDirectReplyEnabled,
-    autoAckMultihopEnabled,
-    setAutoAckMultihopEnabled,
-    autoAckMultihopTapbackEnabled,
-    setAutoAckMultihopTapbackEnabled,
-    autoAckMultihopReplyEnabled,
-    setAutoAckMultihopReplyEnabled,
-    autoAckTestMessages,
-    setAutoAckTestMessages,
-    autoAnnounceEnabled,
-    setAutoAnnounceEnabled,
-    autoAnnounceIntervalHours,
-    setAutoAnnounceIntervalHours,
-    autoAnnounceMessage,
-    setAutoAnnounceMessage,
-    autoAnnounceChannelIndexes,
-    setAutoAnnounceChannelIndexes,
-    autoAnnounceOnStart,
-    setAutoAnnounceOnStart,
-    autoAnnounceUseSchedule,
-    setAutoAnnounceUseSchedule,
-    autoAnnounceSchedule,
-    setAutoAnnounceSchedule,
-    autoAnnounceNodeInfoEnabled,
-    setAutoAnnounceNodeInfoEnabled,
-    autoAnnounceNodeInfoChannels,
-    setAutoAnnounceNodeInfoChannels,
-    autoAnnounceNodeInfoDelaySeconds,
-    setAutoAnnounceNodeInfoDelaySeconds,
-    autoWelcomeEnabled,
-    setAutoWelcomeEnabled,
-    autoWelcomeMessage,
-    setAutoWelcomeMessage,
-    autoWelcomeTarget,
-    setAutoWelcomeTarget,
-    autoWelcomeWaitForName,
-    setAutoWelcomeWaitForName,
-    autoWelcomeMaxHops,
-    setAutoWelcomeMaxHops,
-    autoResponderEnabled,
-    setAutoResponderEnabled,
-    autoResponderTriggers,
-    setAutoResponderTriggers,
-    autoResponderSkipIncompleteNodes,
-    setAutoResponderSkipIncompleteNodes,
-    autoKeyManagementEnabled,
-    setAutoKeyManagementEnabled,
-    autoKeyManagementIntervalMinutes,
-    setAutoKeyManagementIntervalMinutes,
-    autoKeyManagementMaxExchanges,
-    setAutoKeyManagementMaxExchanges,
-    autoKeyManagementAutoPurge,
-    setAutoKeyManagementAutoPurge,
-    timerTriggers,
-    setTimerTriggers,
-    geofenceTriggers,
-    setGeofenceTriggers,
     showNodeFilterPopup,
     setShowNodeFilterPopup,
     showIncompleteNodes,
     setShowIncompleteNodes,
   } = useUI();
+
+  // Automation context
+  const {
+    autoAckEnabled, setAutoAckEnabled,
+    autoAckRegex, setAutoAckRegex,
+    autoAckMessage, setAutoAckMessage,
+    autoAckMessageDirect, setAutoAckMessageDirect,
+    autoAckChannels, setAutoAckChannels,
+    autoAckDirectMessages, setAutoAckDirectMessages,
+    autoAckUseDM, setAutoAckUseDM,
+    autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckTapbackEnabled, setAutoAckTapbackEnabled,
+    autoAckReplyEnabled, setAutoAckReplyEnabled,
+    autoAckDirectEnabled, setAutoAckDirectEnabled,
+    autoAckDirectTapbackEnabled, setAutoAckDirectTapbackEnabled,
+    autoAckDirectReplyEnabled, setAutoAckDirectReplyEnabled,
+    autoAckMultihopEnabled, setAutoAckMultihopEnabled,
+    autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled,
+    autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled,
+    autoAckTestMessages, setAutoAckTestMessages,
+    autoAnnounceEnabled, setAutoAnnounceEnabled,
+    autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
+    autoAnnounceMessage, setAutoAnnounceMessage,
+    autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceOnStart, setAutoAnnounceOnStart,
+    autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
+    autoAnnounceSchedule, setAutoAnnounceSchedule,
+    autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled,
+    autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels,
+    autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds,
+    autoWelcomeEnabled, setAutoWelcomeEnabled,
+    autoWelcomeMessage, setAutoWelcomeMessage,
+    autoWelcomeTarget, setAutoWelcomeTarget,
+    autoWelcomeWaitForName, setAutoWelcomeWaitForName,
+    autoWelcomeMaxHops, setAutoWelcomeMaxHops,
+    autoResponderEnabled, setAutoResponderEnabled,
+    autoResponderTriggers, setAutoResponderTriggers,
+    autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoKeyManagementEnabled, setAutoKeyManagementEnabled,
+    autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
+    autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
+    autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
+    timerTriggers, setTimerTriggers,
+    geofenceTriggers, setGeofenceTriggers,
+  } = useAutomation();
 
   // Check tab permissions and redirect if unauthorized
   // This prevents users from accessing protected tabs via direct URL navigation
@@ -600,6 +586,7 @@ function App() {
       admin: () => isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
+      packetmonitor: () => hasPermission('packetmonitor', 'read'),
     };
 
     // Check if current tab requires permission
@@ -1718,6 +1705,63 @@ function App() {
       }
     }
   }, [selectedChannel, activeTab]);
+
+  // Auto-scroll to bottom when new messages arrive and user is already at the bottom
+  const prevChannelMsgCountRef = useRef<Record<number, number>>({});
+  useEffect(() => {
+    const currentMessages = channelMessages[selectedChannel] || [];
+    const prevCount = prevChannelMsgCountRef.current[selectedChannel] || 0;
+    const currentCount = currentMessages.length;
+
+    if (currentCount > prevCount && prevCount > 0) {
+      // New messages arrived — auto-scroll if user was near the bottom
+      const container = channelMessagesContainerRef.current;
+      if (container) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+        if (isNearBottom) {
+          setTimeout(() => {
+            if (channelMessagesContainerRef.current) {
+              channelMessagesContainerRef.current.scrollTo({
+                top: channelMessagesContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+              });
+            }
+          }, 50);
+        }
+      }
+    }
+
+    prevChannelMsgCountRef.current = {
+      ...prevChannelMsgCountRef.current,
+      [selectedChannel]: currentCount
+    };
+  }, [channelMessages, selectedChannel]);
+
+  // Auto-scroll DMs to bottom when new messages arrive and user is at the bottom
+  const prevDMMsgCountRef = useRef(0);
+  useEffect(() => {
+    const currentCount = messages.length;
+    const prevCount = prevDMMsgCountRef.current;
+
+    if (currentCount > prevCount && prevCount > 0 && activeTab === 'messages') {
+      const container = dmMessagesContainerRef.current;
+      if (container) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+        if (isNearBottom) {
+          setTimeout(() => {
+            if (dmMessagesContainerRef.current) {
+              dmMessagesContainerRef.current.scrollTo({
+                top: dmMessagesContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+              });
+            }
+          }, 50);
+        }
+      }
+    }
+
+    prevDMMsgCountRef.current = currentCount;
+  }, [messages, activeTab]);
 
   // Auto-load more channel messages if container doesn't have a scrollbar
   // This fixes the case where a channel has no recent messages and infinite scroll never triggers
@@ -3862,6 +3906,13 @@ function App() {
         return false;
       }
 
+      // Favorite locked filter
+      if (nodeFilters.showFavoriteLocked) {
+        const matches = !!node.favoriteLocked;
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
@@ -4331,6 +4382,9 @@ function App() {
 
   return (
     <div className="app">
+      <a href="#main-content" className="skip-to-content">
+        Skip to content
+      </a>
       <AdvancedNodeFilterPopup
         isOpen={showNodeFilterPopup}
         nodeFilters={nodeFilters}
@@ -4489,10 +4543,11 @@ function App() {
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
         meshcoreEnabled={authStatus?.meshcoreEnabled || false}
+        packetLogEnabled={packetLogEnabled}
         onSearchClick={() => setIsSearchOpen(true)}
       />
 
-      <main className="app-main">
+      <main id="main-content" className="app-main">
         {error && (
           <div className="error-panel">
             <h3>Connection Error</h3>
@@ -4509,6 +4564,7 @@ function App() {
         )}
 
         {activeTab === 'nodes' && (
+          <ErrorBoundary fallbackTitle="Nodes failed to load">
           <NodesTab
             processedNodes={processedNodes}
             shouldShowData={shouldShowData}
@@ -4527,8 +4583,10 @@ function App() {
             connectionStatus={connectionStatus}
             tracerouteLoading={tracerouteLoading}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'channels' && (
+          <ErrorBoundary fallbackTitle="Channels failed to load">
           <ChannelsTab
             channels={channels}
             channelDatabaseEntries={channelDatabaseEntries}
@@ -4572,8 +4630,10 @@ function App() {
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'messages' && (
+          <ErrorBoundary fallbackTitle="Messages failed to load">
           <MessagesTab
             processedNodes={processedNodes}
             nodes={nodes}
@@ -4639,6 +4699,7 @@ function App() {
             onFocusMessageHandled={() => setFocusMessageId(null)}
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
+            toggleFavoriteLock={toggleFavoriteLock}
             handleShowOnMap={(nodeId: string) => {
               const node = nodes.find(n => n.user?.id === nodeId);
               if (node?.position?.latitude != null && node?.position?.longitude != null) {
@@ -4648,8 +4709,10 @@ function App() {
               }
             }}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'info' && (
+          <ErrorBoundary fallbackTitle="Info failed to load">
           <InfoTab
             connectionStatus={connectionStatus}
             nodeAddress={nodeAddress}
@@ -4669,8 +4732,10 @@ function App() {
             dateFormat={dateFormat}
             isAuthenticated={authStatus?.authenticated || false}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'dashboard' && (
+          <ErrorBoundary fallbackTitle="Dashboard failed to load">
           <Dashboard
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
@@ -4683,8 +4748,10 @@ function App() {
               setActiveTab('messages');
             }}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'settings' && (
+          <ErrorBoundary fallbackTitle="Settings failed to load">
           <SettingsTab
             maxNodeAgeHours={maxNodeAgeHours}
             inactiveNodeThresholdHours={inactiveNodeThresholdHours}
@@ -4734,8 +4801,10 @@ function App() {
             onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
             onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'automation' && (
+          <ErrorBoundary fallbackTitle="Automation failed to load">
           <div className="settings-tab">
             <SectionNav
               items={[
@@ -4911,8 +4980,10 @@ function App() {
               </div>
             </div>
           </div>
+          </ErrorBoundary>
         )}
         {activeTab === 'configuration' && (
+          <ErrorBoundary fallbackTitle="Configuration failed to load">
           <ConfigurationTab
             baseUrl={baseUrl}
             nodes={nodes}
@@ -4922,22 +4993,32 @@ function App() {
             onChannelsUpdated={() => fetchChannels()}
             refreshTrigger={configRefreshTrigger}
           />
+          </ErrorBoundary>
         )}
-        {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
-        {activeTab === 'users' && <UsersTab />}
-        {activeTab === 'audit' && <AuditLogTab />}
+        {activeTab === 'notifications' && <ErrorBoundary fallbackTitle="Notifications failed to load"><NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} /></ErrorBoundary>}
+        {activeTab === 'users' && <ErrorBoundary fallbackTitle="Users failed to load"><UsersTab /></ErrorBoundary>}
+        {activeTab === 'audit' && <ErrorBoundary fallbackTitle="Audit Log failed to load"><AuditLogTab /></ErrorBoundary>}
         {activeTab === 'admin' && authStatus?.user?.isAdmin && (
+          <ErrorBoundary fallbackTitle="Admin Commands failed to load">
           <AdminCommandsTab
             nodes={nodes}
             currentNodeId={currentNodeId}
             channels={channels}
             onChannelsUpdated={fetchChannels}
           />
+          </ErrorBoundary>
         )}
         {activeTab === 'security' && (
+          <ErrorBoundary fallbackTitle="Security failed to load">
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
+          </ErrorBoundary>
         )}
-        {activeTab === 'meshcore' && <MeshCoreTab baseUrl={baseUrl} />}
+        {activeTab === 'meshcore' && <ErrorBoundary fallbackTitle="MeshCore failed to load"><MeshCoreTab baseUrl={baseUrl} /></ErrorBoundary>}
+        {activeTab === 'packetmonitor' && (
+          <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
+            <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
+          </ErrorBoundary>
+        )}
       </main>
 
       {/* Node Popup */}
@@ -5041,11 +5122,13 @@ const AppWithToast = () => {
         <DataProvider>
           <MessagingProvider baseUrl={initialBaseUrl}>
             <UIProvider>
+              <AutomationProvider>
               <ToastProvider>
                 <SaveBarProvider>
                   <App />
                 </SaveBarProvider>
               </ToastProvider>
+              </AutomationProvider>
             </UIProvider>
           </MessagingProvider>
         </DataProvider>

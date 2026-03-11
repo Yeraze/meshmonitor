@@ -1121,3 +1121,66 @@ export const useSettings = (): SettingsContextType => {
   }
   return context;
 };
+
+// Domain-specific hooks for cleaner imports and focused APIs
+
+export const useDisplaySettings = () => {
+  const s = useSettings();
+  return {
+    temperatureUnit: s.temperatureUnit, setTemperatureUnit: s.setTemperatureUnit,
+    distanceUnit: s.distanceUnit, setDistanceUnit: s.setDistanceUnit,
+    timeFormat: s.timeFormat, setTimeFormat: s.setTimeFormat,
+    dateFormat: s.dateFormat, setDateFormat: s.setDateFormat,
+    language: s.language, setLanguage: s.setLanguage,
+    theme: s.theme, setTheme: s.setTheme,
+    customThemes: s.customThemes, isLoadingThemes: s.isLoadingThemes, loadCustomThemes: s.loadCustomThemes,
+  };
+};
+
+export const useMapSettings = () => {
+  const s = useSettings();
+  return {
+    mapTileset: s.mapTileset, setMapTileset: s.setMapTileset,
+    mapPinStyle: s.mapPinStyle, setMapPinStyle: s.setMapPinStyle,
+    overlayScheme: s.overlayScheme, overlayColors: s.overlayColors,
+    customTilesets: s.customTilesets,
+    addCustomTileset: s.addCustomTileset, updateCustomTileset: s.updateCustomTileset, deleteCustomTileset: s.deleteCustomTileset,
+    positionHistoryLineStyle: s.positionHistoryLineStyle, setPositionHistoryLineStyle: s.setPositionHistoryLineStyle,
+    temporaryTileset: s.temporaryTileset, setTemporaryTileset: s.setTemporaryTileset,
+  };
+};
+
+export const useNodeSettings = () => {
+  const s = useSettings();
+  return {
+    maxNodeAgeHours: s.maxNodeAgeHours, setMaxNodeAgeHours: s.setMaxNodeAgeHours,
+    inactiveNodeThresholdHours: s.inactiveNodeThresholdHours, setInactiveNodeThresholdHours: s.setInactiveNodeThresholdHours,
+    inactiveNodeCheckIntervalMinutes: s.inactiveNodeCheckIntervalMinutes, setInactiveNodeCheckIntervalMinutes: s.setInactiveNodeCheckIntervalMinutes,
+    inactiveNodeCooldownHours: s.inactiveNodeCooldownHours, setInactiveNodeCooldownHours: s.setInactiveNodeCooldownHours,
+    preferredSortField: s.preferredSortField, setPreferredSortField: s.setPreferredSortField,
+    preferredSortDirection: s.preferredSortDirection, setPreferredSortDirection: s.setPreferredSortDirection,
+    nodeDimmingEnabled: s.nodeDimmingEnabled, setNodeDimmingEnabled: s.setNodeDimmingEnabled,
+    nodeDimmingStartHours: s.nodeDimmingStartHours, setNodeDimmingStartHours: s.setNodeDimmingStartHours,
+    nodeDimmingMinOpacity: s.nodeDimmingMinOpacity, setNodeDimmingMinOpacity: s.setNodeDimmingMinOpacity,
+    nodeHopsCalculation: s.nodeHopsCalculation, setNodeHopsCalculation: s.setNodeHopsCalculation,
+  };
+};
+
+export const useTelemetrySettings = () => {
+  const s = useSettings();
+  return {
+    telemetryVisualizationHours: s.telemetryVisualizationHours, setTelemetryVisualizationHours: s.setTelemetryVisualizationHours,
+    favoriteTelemetryStorageDays: s.favoriteTelemetryStorageDays, setFavoriteTelemetryStorageDays: s.setFavoriteTelemetryStorageDays,
+  };
+};
+
+export const useSolarSettings = () => {
+  const s = useSettings();
+  return {
+    solarMonitoringEnabled: s.solarMonitoringEnabled, setSolarMonitoringEnabled: s.setSolarMonitoringEnabled,
+    solarMonitoringLatitude: s.solarMonitoringLatitude, setSolarMonitoringLatitude: s.setSolarMonitoringLatitude,
+    solarMonitoringLongitude: s.solarMonitoringLongitude, setSolarMonitoringLongitude: s.setSolarMonitoringLongitude,
+    solarMonitoringAzimuth: s.solarMonitoringAzimuth, setSolarMonitoringAzimuth: s.setSolarMonitoringAzimuth,
+    solarMonitoringDeclination: s.solarMonitoringDeclination, setSolarMonitoringDeclination: s.setSolarMonitoringDeclination,
+  };
+};

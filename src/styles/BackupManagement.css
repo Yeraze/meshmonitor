@@ -16,11 +16,81 @@
   background-color: #000000;
   padding: 2rem;
   border-radius: 8px;
-  max-width: 800px;
-  width: 90%;
+  max-width: 90vw;
+  width: fit-content;
+  min-width: 600px;
   max-height: 80vh;
   overflow: auto;
   margin-left: var(--sidebar-width, 60px);
+}
+
+/* Override generic modal-content max-width for backup modals */
+.modal-content.backup-modal {
+  max-width: 90vw;
+  width: fit-content;
+  min-width: 600px;
+}
+
+.modal-content.backup-modal .backup-list {
+  padding: 0 1.5rem;
+}
+
+.modal-content.backup-modal .modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--ctp-surface0);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Emoji action buttons — styled consistently */
+.backup-action-button {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.backup-action-button:hover {
+  background: var(--ctp-surface1);
+  transform: translateY(-1px);
+}
+
+.backup-action-button.download:hover {
+  background: var(--ctp-green);
+  border-color: var(--ctp-green);
+}
+
+.backup-action-button.delete:hover {
+  background: var(--ctp-red);
+  border-color: var(--ctp-red);
+}
+
+.backup-version {
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+}
+
+.backup-dirname {
+  font-family: monospace;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.backup-tables-count {
+  text-align: center;
+}
+
+.backup-action-group {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .backup-modal-content h3 {
@@ -57,6 +127,7 @@
 .backup-filename {
   font-family: monospace;
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .backup-date {
