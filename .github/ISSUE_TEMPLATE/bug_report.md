@@ -6,8 +6,6 @@ labels: bug
 assignees: ''
 
 ---
-# If you do not follow this template, your issue may be ignored or delayed due to lack of information.
-
 **Describe the bug**
 A clear and concise description of what the bug is.
 
@@ -33,6 +31,11 @@ If applicable, add screenshots to help explain your problem.
 * Any networking customizations (Reverse proxies, Cloudflare tunnels, Tailscale, etc)
   * docker-compose files are very helpful for networking-related issues.
 * Database backend: SQLite, PostGreSQL, or MySQL
+* Node type: (Heltec V4, Station G2, meshtastid, pi hat, etc)
+* Node Connection Type: Wifi, serial-bridge, ble-bridge, etc
+* If this is about VirtualNode, then what client are you using for testing? (ios meshtatsic app, android meshtastic app, homeassistant, etc)
 
 **Additional context**
 Add any other context about the problem here.  Console Logs, Container Logs, or Screenshots.
+
+# If you do not follow this template, your issue may be ignored or delayed due to lack of information.
