@@ -62,7 +62,7 @@
 
 .embed-button-danger:hover:not(:disabled) {
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 /* Modal override for wider embed form */
@@ -104,7 +104,7 @@
 .embed-map-picker {
   height: 280px;
   width: 100%;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   border: 2px solid var(--ctp-surface2);
   margin-top: 0.5rem;
@@ -127,7 +127,7 @@
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface2);
   border-left: 4px solid var(--ctp-blue);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 1rem;
   margin-top: 1.5rem;
   font-size: 0.875rem;
@@ -156,9 +156,9 @@
 .embed-origin-tag {
   display: inline-block;
   font-size: 0.8rem;
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .embed-origin-tag.valid {
@@ -176,13 +176,13 @@
 /* Embed code textarea */
 .embed-code-textarea {
   width: 100%;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   background: var(--ctp-surface1);
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   resize: vertical;
   margin: 0.75rem 0;
 }

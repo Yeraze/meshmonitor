@@ -14,7 +14,7 @@
 
 .modal-content {
   background: var(--ctp-base);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 0;
   max-width: 500px;
   width: 90%;

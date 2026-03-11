@@ -12,7 +12,7 @@
 .tileset-selector-label {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--ctp-text);
   white-space: nowrap;
 }
 
@@ -26,9 +26,9 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  background: white;
-  border: 2px solid #ddd;
-  border-radius: 6px;
+  background: var(--ctp-base);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: var(--radius-md);
   padding: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -36,31 +36,31 @@
 }
 
 .tileset-button:hover {
-  border-color: #007bff;
+  border-color: var(--ctp-blue);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+  box-shadow: var(--shadow-md);
 }
 
 .tileset-button.active {
-  border-color: #007bff;
-  background: #e7f3ff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+  border-color: var(--ctp-blue);
+  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--ctp-base));
+  box-shadow: var(--shadow-sm);
 }
 
 .tileset-preview {
   width: 64px;
   height: 64px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 .tileset-name {
   font-size: 11px;
   font-weight: 500;
-  color: #555;
+  color: var(--ctp-subtext0);
   text-align: center;
   line-height: 1.2;
   max-width: 80px;
@@ -68,44 +68,44 @@
 }
 
 .tileset-button.active .tileset-name {
-  color: #007bff;
+  color: var(--ctp-blue);
   font-weight: 600;
 }
 
 .collapse-button {
-  background: white;
-  border: 2px solid #ddd;
-  border-radius: 6px;
+  background: var(--ctp-base);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: var(--radius-md);
   padding: 8px 12px;
   cursor: pointer;
   font-size: 16px;
   transition: all 0.2s ease;
-  color: #555;
+  color: var(--ctp-subtext0);
   min-width: 40px;
 }
 
 .collapse-button:hover {
-  border-color: #007bff;
-  color: #007bff;
-  background: #f0f8ff;
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+  background: var(--ctp-surface0);
 }
 
 .expand-button {
-  background: white;
-  border: 2px solid #007bff;
-  border-radius: 6px;
+  background: var(--ctp-base);
+  border: 2px solid var(--ctp-blue);
+  border-radius: var(--radius-md);
   padding: 8px 16px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
   transition: all 0.2s ease;
-  color: #007bff;
+  color: var(--ctp-blue);
   white-space: nowrap;
 }
 
 .expand-button:hover {
-  background: #007bff;
-  color: white;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
 }
 
 /* Hide on mobile devices */
@@ -149,10 +149,10 @@
   display: inline-block;
   margin-left: 4px;
   padding: 1px 4px;
-  background-color: #007bff;
-  color: white;
+  background-color: var(--ctp-blue);
+  color: var(--ctp-base);
   font-size: 9px;
   font-weight: 600;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   text-transform: uppercase;
 }

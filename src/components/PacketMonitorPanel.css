@@ -3,8 +3,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-primary);
-  border-left: 1px solid var(--border-color);
+  background: var(--ctp-base);
+  border-left: 1px solid var(--ctp-surface2);
   overflow: hidden;
 }
 
@@ -20,8 +20,8 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
   flex-shrink: 0;
 }
 
@@ -29,16 +29,16 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ctp-text);
 }
 
 .packet-count {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--ctp-subtext0);
   padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  font-family: 'Courier New', monospace;
+  background: var(--ctp-crust);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
 }
 
 .header-controls {
@@ -50,18 +50,18 @@
 
 .control-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
   cursor: pointer;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--ctp-text);
   transition: all 0.2s;
 }
 
 .control-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  border-color: var(--primary-color);
+  background: var(--ctp-crust);
+  border-color: var(--ctp-blue);
 }
 
 .control-btn:disabled {
@@ -74,13 +74,13 @@
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--ctp-subtext0);
   padding: 0 8px;
   transition: color 0.2s;
 }
 
 .close-btn:hover {
-  color: var(--text-primary);
+  color: var(--ctp-text);
 }
 
 .packet-monitor-no-permission {
@@ -90,19 +90,19 @@
   height: 100%;
   padding: 32px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--ctp-subtext0);
 }
 
 .packet-monitor-no-permission strong {
-  color: var(--primary-color);
+  color: var(--ctp-blue);
 }
 
 .packet-filters {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
   flex-wrap: wrap;
 }
 
@@ -110,10 +110,10 @@
   flex: 1;
   min-width: 150px;
   padding: 6px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
   font-size: 13px;
 }
 
@@ -129,19 +129,19 @@
 
 .clear-filters-btn {
   padding: 6px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
+  background: var(--ctp-crust);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--ctp-text);
   transition: all 0.2s;
 }
 
 .clear-filters-btn:hover {
-  background: var(--primary-color);
+  background: var(--ctp-blue);
   color: white;
-  border-color: var(--primary-color);
+  border-color: var(--ctp-blue);
 }
 
 .packet-table-container {
@@ -156,7 +156,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-secondary);
+  color: var(--ctp-subtext0);
   font-size: 14px;
 }
 
@@ -173,7 +173,7 @@
 .packet-table thead {
   position: sticky;
   top: 0;
-  background: var(--bg-secondary);
+  background: var(--ctp-mantle);
   z-index: 10;
 }
 
@@ -181,19 +181,19 @@
   padding: 10px 8px;
   text-align: left;
   font-weight: 600;
-  color: var(--text-secondary);
-  border-bottom: 2px solid var(--border-color);
+  color: var(--ctp-subtext0);
+  border-bottom: 2px solid var(--ctp-surface2);
   white-space: nowrap;
 }
 
 .packet-table tbody tr {
   cursor: pointer;
   transition: background 0.2s;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--ctp-surface2);
 }
 
 .packet-table tbody tr:hover {
-  background: var(--bg-tertiary);
+  background: var(--ctp-crust);
 }
 
 .packet-table tbody tr.selected {
@@ -202,7 +202,7 @@
 
 .packet-table td {
   padding: 8px;
-  color: var(--text-primary);
+  color: var(--ctp-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -210,15 +210,15 @@
 
 .packet-table .packet-number {
   font-size: 11px;
-  color: var(--text-secondary);
-  font-family: 'Courier New', monospace;
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono);
   font-weight: 600;
   padding-right: 12px;
 }
 
 .packet-table .timestamp {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--ctp-subtext0);
 }
 
 .packet-table .from-node,
@@ -227,7 +227,7 @@
 }
 
 .node-id-link {
-  color: var(--primary-color);
+  color: var(--ctp-blue);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -235,12 +235,12 @@
 }
 
 .node-id-link:hover {
-  color: var(--primary-color-hover, #3d8fff);
+  color: var(--ctp-sapphire);
   text-decoration-style: solid;
 }
 
 .hops-link {
-  color: var(--primary-color);
+  color: var(--ctp-blue);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -248,7 +248,7 @@
 }
 
 .hops-link:hover {
-  color: var(--primary-color-hover, #3d8fff);
+  color: var(--ctp-sapphire);
   text-decoration-style: solid;
 }
 
@@ -259,7 +259,7 @@
 
 .packet-table .channel {
   text-align: center;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .packet-table .snr,
@@ -267,17 +267,17 @@
 .packet-table .hops,
 .packet-table .size {
   text-align: right;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .packet-table .last-hop {
   text-align: center;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
 .relay-link {
-  color: var(--primary-color);
+  color: var(--ctp-blue);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -285,7 +285,7 @@
 }
 
 .relay-link:hover {
-  color: var(--primary-color-hover, #3d8fff);
+  color: var(--ctp-sapphire);
   text-decoration-style: solid;
 }
 
@@ -310,7 +310,7 @@
   font-size: 10px;
   font-weight: 700;
   text-align: center;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   padding: 2px 4px !important;
 }
 
@@ -382,7 +382,7 @@
 .packet-detail-content {
   background: var(--ctp-surface0, #313244);
   border: 3px solid var(--ctp-blue, #4a9eff);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   max-width: 600px;
   width: 100%;
   max-height: 80vh;
@@ -400,8 +400,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
   border-radius: 8px 8px 0 0;
 }
 
@@ -409,7 +409,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ctp-text);
 }
 
 .packet-detail-body {
@@ -426,12 +426,12 @@
 
 .detail-label {
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--ctp-subtext0);
   font-size: 13px;
 }
 
 .detail-value {
-  color: var(--text-primary);
+  color: var(--ctp-text);
   font-size: 13px;
   word-break: break-word;
 }
@@ -451,11 +451,11 @@
 }
 
 .detail-value-json {
-  background: var(--bg-secondary);
+  background: var(--ctp-mantle);
   padding: 8px 12px;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  font-family: 'Courier New', monospace;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ctp-surface2);
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
   max-height: 200px;
@@ -463,17 +463,17 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-primary);
+  color: var(--ctp-text);
 }
 
 .payload-content,
 .metadata-json,
 .packet-json {
-  background: var(--bg-secondary);
+  background: var(--ctp-mantle);
   padding: 12px;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  font-family: 'Courier New', monospace;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ctp-surface2);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.4;
   max-height: 300px;
@@ -503,7 +503,7 @@
 .payload-content::-webkit-scrollbar-track,
 .metadata-json::-webkit-scrollbar-track,
 .packet-json::-webkit-scrollbar-track {
-  background: var(--bg-tertiary);
+  background: var(--ctp-crust);
 }
 
 .packet-table-container::-webkit-scrollbar-thumb,
@@ -511,8 +511,8 @@
 .payload-content::-webkit-scrollbar-thumb,
 .metadata-json::-webkit-scrollbar-thumb,
 .packet-json::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
+  background: var(--ctp-surface2);
+  border-radius: var(--radius-sm);
 }
 
 .packet-table-container::-webkit-scrollbar-thumb:hover,
@@ -520,5 +520,5 @@
 .payload-content::-webkit-scrollbar-thumb:hover,
 .metadata-json::-webkit-scrollbar-thumb:hover,
 .packet-json::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  background: var(--ctp-subtext0);
 }

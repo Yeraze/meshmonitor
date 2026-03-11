@@ -33,7 +33,7 @@
   background: var(--ctp-surface0);
   color: var(--ctp-text);
   border: 2px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font-size: 0.95rem;
   font-weight: 500;
@@ -61,7 +61,7 @@
 .theme-card {
   background: var(--ctp-mantle);
   border: 2px solid var(--ctp-surface1);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 20px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -97,7 +97,7 @@
   background: var(--ctp-green);
   color: var(--ctp-crust);
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -112,7 +112,7 @@
 .accessibility-badge {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-blue);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 10px;
   margin-bottom: 15px;
   display: flex;
@@ -148,7 +148,7 @@
 .swatch-color {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 2px solid var(--ctp-surface2);
   transition: transform 0.2s ease;
 }
@@ -169,7 +169,7 @@
   background: var(--ctp-blue);
   color: var(--ctp-crust);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -191,7 +191,7 @@
 
 .theme-doc-footer {
   background: var(--ctp-mantle);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 30px;
   margin-top: 40px;
 }
@@ -212,7 +212,7 @@
 .info-section {
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 20px;
 }
 

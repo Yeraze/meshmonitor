@@ -27,9 +27,9 @@
 /* Error banner */
 .meshcore-error {
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   margin-bottom: 1rem;
   display: flex;
   justify-content: space-between;
@@ -39,16 +39,16 @@
 .meshcore-error button {
   background: transparent;
   border: 1px solid var(--ctp-base);
-  color: #000000;
+  color: var(--ctp-accent-text);
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
 /* Sections */
 .meshcore-section {
   background: var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1.25rem;
   margin-bottom: 1.5rem;
 }
@@ -77,7 +77,7 @@
   border: 1px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
 }
 
@@ -90,10 +90,10 @@
 /* Buttons */
 .meshcore-tab button {
   background: var(--ctp-mauve);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: 500;
   transition: background 0.2s;
@@ -141,7 +141,7 @@
 .status-dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--ctp-overlay0);
 }
 
@@ -177,7 +177,7 @@
 .meshcore-node-item,
 .meshcore-contact-item {
   background: var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
   display: flex;
   flex-direction: column;
@@ -203,7 +203,7 @@
   background: var(--ctp-surface2);
   color: var(--ctp-subtext0);
   padding: 0.125rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: normal;
 }
@@ -234,7 +234,7 @@
 
 .meshcore-message {
   background: var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 0.75rem;
 }
 
@@ -270,7 +270,7 @@
   border: 1px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   min-width: 150px;
 }
 
@@ -280,7 +280,7 @@
   border: 1px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .meshcore-send-form input:focus {
@@ -298,7 +298,7 @@
 
 .meshcore-admin-status {
   background: var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1rem;
 }
 
@@ -335,14 +335,14 @@
 .meshcore-contact-list::-webkit-scrollbar-track,
 .meshcore-messages::-webkit-scrollbar-track {
   background: var(--ctp-surface0);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .meshcore-node-list::-webkit-scrollbar-thumb,
 .meshcore-contact-list::-webkit-scrollbar-thumb,
 .meshcore-messages::-webkit-scrollbar-thumb {
   background: var(--ctp-surface2);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .meshcore-node-list::-webkit-scrollbar-thumb:hover,

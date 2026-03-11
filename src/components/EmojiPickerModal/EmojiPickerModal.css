@@ -2,7 +2,7 @@
 .emoji-picker-modal {
   background: var(--ctp-base);
   border: 1px solid var(--ctp-surface0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 0;
   max-width: 400px;
   width: 90%;
@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background 0.2s, color 0.2s;
 }
 
@@ -61,7 +61,7 @@
   font-size: 1.5rem;
   padding: 0.5rem;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition: background 0.2s, transform 0.15s;
   display: flex;
   align-items: center;
@@ -100,7 +100,7 @@
   flex: 1;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--ctp-surface0);
   color: var(--ctp-text);
   font-size: 1rem;
@@ -118,9 +118,9 @@
 .emoji-picker-custom-input button {
   padding: 0.5rem 1rem;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;

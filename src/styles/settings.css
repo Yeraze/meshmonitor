@@ -2,7 +2,7 @@
 .settings-header-card {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 2rem;
   margin-bottom: 2rem;
   display: flex;
@@ -40,13 +40,13 @@
   margin: 0;
   color: var(--ctp-subtext1);
   font-size: 1rem;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .settings-content {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 2rem;
   min-height: 200px;
 }
@@ -62,7 +62,7 @@
     break-inside: avoid;
     background: var(--ctp-base);
     border: 1px solid var(--ctp-surface1);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 1.25rem;
   }
 }
@@ -120,7 +120,7 @@
   border: 2px solid var(--ctp-surface2);
   color: var(--ctp-text);
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   width: 200px;
   transition: border-color 0.2s, background-color 0.2s;
@@ -141,7 +141,7 @@
   margin-top: 0.5rem;
   padding: 0.75rem;
   background: var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .channel-checkbox-row {
@@ -190,7 +190,7 @@
 /* Danger Zone Styles */
 .danger-zone {
   border: 2px solid var(--ctp-red);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   background: rgba(243, 139, 168, 0.05);
   margin-top: 2rem;
@@ -216,7 +216,7 @@
   padding: 1rem;
   margin-bottom: 1rem;
   background: var(--ctp-surface0);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface2);
 }
 
@@ -248,10 +248,10 @@
 
 .danger-button {
   background: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -281,7 +281,7 @@
   color: var(--ctp-text);
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -305,7 +305,7 @@
 
 .settings-button-primary {
   background: var(--ctp-green);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .settings-button-primary:hover:not(:disabled) {
@@ -314,10 +314,10 @@
 
 .save-button {
   background: var(--ctp-green);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -345,10 +345,10 @@
 
 .reset-button {
   background: var(--ctp-yellow);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -393,7 +393,7 @@
   align-items: center;
   padding: 10px 12px;
   background: var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--ctp-surface1);
 }
 
@@ -405,7 +405,7 @@
 
 .info-value {
   color: var(--ctp-text);
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   text-align: right;
   word-break: break-all;

@@ -29,7 +29,7 @@
 .date-separator::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--ctp-surface2);
 }
 
 .date-separator-text {
@@ -44,9 +44,9 @@
 .sender-dot {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -74,17 +74,17 @@
 
 .message-bubble.mine {
   background: var(--ctp-chatBubbleSentBg, var(--ctp-blue));
-  color: var(--ctp-chatBubbleSentText, #000000);
+  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
   border-bottom-right-radius: 6px;
 }
 
 .message-bubble.mine,
 .message-bubble.mine * {
-  color: var(--ctp-chatBubbleSentText, #000000);
+  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
 }
 
 .message-bubble.mine a.message-link {
-  color: var(--ctp-chatBubbleSentText, #000000);
+  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
   text-decoration: underline;
 }
 
@@ -140,7 +140,7 @@
 .link-preview {
   display: flex;
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   text-decoration: none;
   color: inherit;
@@ -219,7 +219,7 @@
   color: var(--ctp-subtext0);
   background: var(--ctp-mantle);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .link-preview-spinner {
@@ -249,7 +249,7 @@
 }
 
 .message-bubble.mine .message-time {
-  color: var(--ctp-chatBubbleSentText, #000000);
+  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
   opacity: 0.7;
 }
 
@@ -290,7 +290,7 @@
   background: var(--ctp-surface2);
   color: var(--ctp-text);
   border: 1px solid var(--ctp-overlay0);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
   cursor: pointer;
@@ -324,7 +324,7 @@
 .delete-button:hover {
   background: var(--ctp-red);
   border-color: var(--ctp-red);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 .emoji-button:active,
@@ -336,7 +336,7 @@
 .reply-indicator {
   background: var(--ctp-surface1);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.5rem;
   display: flex;
@@ -377,7 +377,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
   transition: background 0.2s ease, color 0.2s ease;
 }
@@ -445,7 +445,7 @@
 
 .messages-container::-webkit-scrollbar-thumb {
   background: var(--ctp-overlay0);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .messages-container::-webkit-scrollbar-thumb:hover {
@@ -470,7 +470,7 @@
   height: 16px;
   border: 2px solid var(--ctp-surface2);
   border-top-color: var(--ctp-mauve);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   animation: spin 0.8s linear infinite;
 }
 

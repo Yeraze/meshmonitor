@@ -116,7 +116,7 @@ const TapbackEmojiSettings: React.FC = () => {
         gap: '8px',
         marginBottom: '16px',
         padding: '12px',
-        backgroundColor: 'var(--surface0)',
+        backgroundColor: 'var(--ctp-surface0)',
         borderRadius: '8px',
         maxHeight: '200px',
         overflowY: 'auto'
@@ -132,7 +132,7 @@ const TapbackEmojiSettings: React.FC = () => {
               justifyContent: 'center',
               fontSize: '1.5rem',
               padding: '8px',
-              backgroundColor: 'var(--surface1)',
+              backgroundColor: 'var(--ctp-surface1)',
               borderRadius: '6px',
               cursor: 'pointer',
               transition: 'background-color 0.2s'
@@ -153,8 +153,8 @@ const TapbackEmojiSettings: React.FC = () => {
                 padding: 0,
                 border: 'none',
                 borderRadius: '50%',
-                backgroundColor: 'var(--red)',
-                color: 'var(--base)',
+                backgroundColor: 'var(--ctp-red)',
+                color: 'var(--ctp-base)',
                 fontSize: '12px',
                 lineHeight: '18px',
                 cursor: 'pointer',
@@ -192,9 +192,9 @@ const TapbackEmojiSettings: React.FC = () => {
             fontSize: '1.2rem',
             textAlign: 'center',
             borderRadius: '6px',
-            border: '1px solid var(--surface2)',
-            backgroundColor: 'var(--surface0)',
-            color: 'var(--text)'
+            border: '1px solid var(--ctp-surface2)',
+            backgroundColor: 'var(--ctp-surface0)',
+            color: 'var(--ctp-text)'
           }}
         />
         <input
@@ -209,9 +209,9 @@ const TapbackEmojiSettings: React.FC = () => {
             minWidth: '150px',
             padding: '8px 12px',
             borderRadius: '6px',
-            border: '1px solid var(--surface2)',
-            backgroundColor: 'var(--surface0)',
-            color: 'var(--text)'
+            border: '1px solid var(--ctp-surface2)',
+            backgroundColor: 'var(--ctp-surface0)',
+            color: 'var(--ctp-text)'
           }}
         />
         <button
@@ -243,13 +243,13 @@ const TapbackEmojiSettings: React.FC = () => {
       {/* CSS for hover effects */}
       <style>{`
         .tapback-emoji-item:hover {
-          background-color: var(--surface2) !important;
+          background-color: var(--ctp-surface2) !important;
         }
         .tapback-emoji-item:hover .tapback-emoji-remove {
           opacity: 1 !important;
         }
         .tapback-emoji-remove:hover {
-          background-color: var(--maroon) !important;
+          background-color: var(--ctp-maroon) !important;
         }
       `}</style>
     </div>

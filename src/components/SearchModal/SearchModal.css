@@ -13,7 +13,7 @@
 
 .search-modal {
   background: var(--ctp-base);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   max-width: 700px;
   width: 90%;
   max-height: 75vh;
@@ -69,7 +69,7 @@
   padding: 0.6rem 0.75rem;
   background-color: var(--ctp-mantle);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.95rem;
 }
@@ -86,10 +86,10 @@
 
 .search-submit-btn {
   background-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.6rem 1.25rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: 500;
   font-size: 0.95rem;
@@ -133,7 +133,7 @@
   padding: 0.4rem 0.5rem;
   background-color: var(--ctp-mantle);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.85rem;
 }
@@ -174,7 +174,7 @@
 .search-result-item {
   padding: 0.75rem;
   border: 1px solid var(--ctp-surface0);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
@@ -216,8 +216,8 @@
 
 .search-result-text mark {
   background-color: var(--ctp-yellow);
-  color: #000000;
-  border-radius: 2px;
+  color: var(--ctp-accent-text);
+  border-radius: var(--radius-xs);
   padding: 0 2px;
 }
 
@@ -232,7 +232,7 @@
   color: var(--ctp-text);
   border: none;
   padding: 0.5rem 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: 500;
   font-size: 0.9rem;
@@ -309,5 +309,5 @@
 
 .search-highlight {
   animation: search-highlight-pulse 3s ease-out forwards;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }

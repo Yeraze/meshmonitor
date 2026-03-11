@@ -2443,30 +2443,30 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 style={{
                   marginTop: '0.75rem',
                   padding: '1rem',
-                  backgroundColor: 'var(--surface0)',
+                  backgroundColor: 'var(--ctp-surface0)',
                   borderRadius: '8px',
-                  border: '1px solid var(--overlay0)',
+                  border: '1px solid var(--ctp-overlay0)',
                   maxWidth: '600px'
                 }}
               >
-                <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--ctp-text)' }}>
                   {t('admin_commands.device_metadata_title', 'Device Metadata')}
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', fontSize: '0.9rem' }}>
-                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.firmware_version', 'Firmware Version')}:</span>
-                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.firmwareVersion}</span>
+                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.firmware_version', 'Firmware Version')}:</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.firmwareVersion}</span>
 
-                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
-                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.hwModel}</span>
+                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.hwModel}</span>
 
-                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
-                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.role}</span>
+                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.role}</span>
 
-                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
-                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.deviceStateVersion}</span>
+                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.deviceStateVersion}</span>
 
-                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.capabilities', 'Capabilities')}:</span>
-                  <span style={{ color: 'var(--text)' }}>
+                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.capabilities', 'Capabilities')}:</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>
                     {[
                       deviceMetadata.hasWifi && 'WiFi',
                       deviceMetadata.hasBluetooth && 'Bluetooth',
@@ -2476,8 +2476,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     ].filter(Boolean).join(', ') || t('common.none', 'None')}
                   </span>
 
-                  <span style={{ color: 'var(--subtext0)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
-                  <span style={{ color: 'var(--text)' }}>{deviceMetadata.positionFlags}</span>
+                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.positionFlags}</span>
                 </div>
               </div>
             )}

@@ -18,8 +18,8 @@
   padding: 10px 16px;
   background-color: var(--ctp-blue);
   border: none;
-  border-radius: 6px;
-  color: #000000;
+  border-radius: var(--radius-md);
+  color: var(--ctp-accent-text);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -55,7 +55,7 @@
   margin-bottom: 15px;
   padding: 15px;
   background-color: var(--ctp-mantle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface1);
 }
 
@@ -71,9 +71,9 @@
   flex: 1;
   min-width: 200px;
   padding: 8px 12px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.9rem;
   outline: none;
@@ -90,9 +90,9 @@
 
 .dashboard-filter-select {
   padding: 8px 12px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.9rem;
   outline: none;
@@ -119,9 +119,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.9rem;
   cursor: pointer;
@@ -145,9 +145,9 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 8px;
   z-index: 1000;
   max-height: 300px;
@@ -164,7 +164,7 @@
   font-size: 0.85rem;
   padding: 6px 4px;
   transition: background-color 0.2s ease;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .dashboard-role-checkbox-label:hover {
@@ -207,9 +207,9 @@
 
 .dashboard-sort-select {
   padding: 8px 12px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.9rem;
   outline: none;
@@ -240,7 +240,7 @@
   text-align: center;
   padding: 40px 20px;
   background-color: var(--ctp-mantle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   margin: 20px;
 }
 
@@ -265,9 +265,9 @@
 }
 
 .dashboard-chart-container {
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 15px;
   min-width: 0;
 }
@@ -455,9 +455,9 @@
 }
 
 .add-widget-modal {
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   width: 90%;
   max-width: 500px;
   max-height: 80vh;
@@ -508,7 +508,7 @@
   padding: 16px;
   background-color: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -560,7 +560,7 @@
   padding: 8px 12px;
   background-color: var(--ctp-mantle);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.85rem;
   outline: none;
@@ -582,9 +582,9 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   max-height: 200px;
   overflow-y: auto;
   z-index: 1000;
@@ -609,7 +609,7 @@
 .node-status-search-id {
   color: var(--ctp-subtext0);
   font-size: 0.75rem;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .node-status-table {
@@ -720,7 +720,7 @@
   align-items: center;
   padding: 8px 16px;
   background: var(--ctp-surface0);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   min-width: 80px;
 }
 
@@ -763,13 +763,13 @@
   flex: 1;
   height: 20px;
   background: var(--ctp-surface0);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
 .hop-bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: width 0.3s ease;
   min-width: 2px;
 }
@@ -792,7 +792,7 @@
   color: var(--ctp-subtext0);
   background: var(--ctp-surface0);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-left: 8px;
   font-weight: 400;
   text-transform: uppercase;
@@ -812,7 +812,7 @@
   color: var(--ctp-subtext0);
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s;
 }
 
@@ -824,7 +824,7 @@
 .distance-settings-panel {
   padding: 8px 12px;
   background: var(--ctp-surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -843,7 +843,7 @@
   background: var(--ctp-base);
   color: var(--ctp-text);
   border: 1px solid var(--ctp-surface2);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-size: 0.8rem;
   cursor: pointer;
@@ -944,7 +944,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--ctp-text);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   transition: opacity 0.2s;
   cursor: default;
 }
@@ -977,7 +977,7 @@
 .heatmap-legend-cell {
   width: 16px;
   height: 12px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .heatmap-legend-label {
@@ -1009,7 +1009,7 @@
   padding: 8px 12px;
   background-color: var(--ctp-mantle);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
   font-size: 0.85rem;
   outline: none;
@@ -1031,9 +1031,9 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: #000000;
+  background-color: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   max-height: 200px;
   overflow-y: auto;
   z-index: 1000;
@@ -1058,7 +1058,7 @@
 .traceroute-search-id {
   color: var(--ctp-subtext0);
   font-size: 0.75rem;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .traceroute-details {
@@ -1087,7 +1087,7 @@
   padding: 4px 10px;
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--ctp-text);
   font-size: 0.75rem;
   cursor: pointer;
@@ -1124,7 +1124,7 @@
   align-items: center;
   background-color: var(--ctp-surface0);
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--ctp-text);
 }
 
@@ -1152,7 +1152,7 @@
 /* Traceroute Map */
 .traceroute-map-container {
   margin: 8px 0;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--ctp-surface1);
 }
@@ -1177,7 +1177,7 @@
   gap: 6px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s ease;
 }
 
@@ -1193,7 +1193,7 @@
 .traceroute-map-legend .legend-color {
   width: 12px;
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 /* Arrow icon styling for traceroute map */

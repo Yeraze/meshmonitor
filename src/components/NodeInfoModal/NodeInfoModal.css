@@ -39,7 +39,7 @@
 }
 
 .node-info-value.monospace {
-  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 .node-info-value.muted {
@@ -50,20 +50,20 @@
 .node-info-badge {
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 500;
 }
 
 .override-badge {
   background-color: var(--ctp-peach);
-  color: #000000;
+  color: var(--ctp-accent-text);
 }
 
 /* Admin Section */
 .admin-section {
   background-color: var(--ctp-surface0);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-surface1);
   margin-top: 0.5rem;
 }
@@ -72,7 +72,7 @@
 .node-info-warning {
   background-color: rgba(250, 179, 135, 0.15);
   border: 1px solid var(--ctp-peach);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
@@ -104,7 +104,7 @@
   border: 1px solid var(--ctp-green);
   color: var(--ctp-green);
   padding: 0.75rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-bottom: 1rem;
   font-size: 0.9rem;
 }
@@ -115,7 +115,7 @@
   color: var(--ctp-text);
   border: 1px solid var(--ctp-surface2);
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s ease;
@@ -152,11 +152,11 @@
 .node-info-field input {
   padding: 0.75rem;
   border: 1px solid var(--ctp-surface2);
-  border-radius: 4px;
-  background-color: #000000;
+  border-radius: var(--radius-sm);
+  background-color: var(--ctp-crust);
   color: var(--ctp-text);
   font-size: 1rem;
-  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 .node-info-field input:focus {
@@ -191,7 +191,7 @@
   color: var(--ctp-text);
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
 }
@@ -202,10 +202,10 @@
 
 .node-info-form-actions .save-btn {
   background-color: var(--ctp-blue);
-  color: #000000;
+  color: var(--ctp-accent-text);
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
 }
@@ -232,7 +232,7 @@
   color: var(--ctp-text);
   border: none;
   padding: 0.75rem 1.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
   font-size: 1rem;
