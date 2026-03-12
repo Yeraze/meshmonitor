@@ -5756,7 +5756,15 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
             if (finalConfig.deviceConfig?.device) {
               config = {
                 role: finalConfig.deviceConfig.device.role,
-                nodeInfoBroadcastSecs: finalConfig.deviceConfig.device.nodeInfoBroadcastSecs
+                nodeInfoBroadcastSecs: finalConfig.deviceConfig.device.nodeInfoBroadcastSecs,
+                rebroadcastMode: finalConfig.deviceConfig.device.rebroadcastMode,
+                tzdef: finalConfig.deviceConfig.device.tzdef,
+                doubleTapAsButtonPress: finalConfig.deviceConfig.device.doubleTapAsButtonPress,
+                disableTripleClick: finalConfig.deviceConfig.device.disableTripleClick,
+                ledHeartbeatDisabled: finalConfig.deviceConfig.device.ledHeartbeatDisabled,
+                buzzerMode: finalConfig.deviceConfig.device.buzzerMode,
+                buttonGpio: finalConfig.deviceConfig.device.buttonGpio,
+                buzzerGpio: finalConfig.deviceConfig.device.buzzerGpio,
               };
             } else {
               return res.status(404).json({ error: 'Device config not available. The device may not have sent its configuration yet.' });
@@ -5985,7 +5993,15 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'device':
             config = {
               role: remoteConfig.role,
-              nodeInfoBroadcastSecs: remoteConfig.nodeInfoBroadcastSecs
+              nodeInfoBroadcastSecs: remoteConfig.nodeInfoBroadcastSecs,
+              rebroadcastMode: remoteConfig.rebroadcastMode,
+              tzdef: remoteConfig.tzdef,
+              doubleTapAsButtonPress: remoteConfig.doubleTapAsButtonPress,
+              disableTripleClick: remoteConfig.disableTripleClick,
+              ledHeartbeatDisabled: remoteConfig.ledHeartbeatDisabled,
+              buzzerMode: remoteConfig.buzzerMode,
+              buttonGpio: remoteConfig.buttonGpio,
+              buzzerGpio: remoteConfig.buzzerGpio,
             };
             break;
           case 'lora':
