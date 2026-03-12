@@ -597,6 +597,72 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const logLevelDefault: 'debug' | 'info' | 'warn' | 'error' = nodeEnv.value === 'development' ? 'debug' : 'info';
   const logLevel = parseEnum('LOG_LEVEL', process.env.LOG_LEVEL?.toLowerCase(), ['debug', 'info', 'warn', 'error'] as const, logLevelDefault);
 
+  // Log effective environment configuration at startup
+  const src = (provided: boolean) => provided ? 'env' : 'default';
+  logger.info('📋 Environment configuration:');
+  logger.info(`   NODE_ENV: ${nodeEnv.value} (${src(nodeEnv.wasProvided)})`);
+  logger.info(`   PORT: ${port.value} (${src(port.wasProvided)})`);
+  logger.info(`   BASE_URL: ${baseUrl || '/'} (${src(baseUrlProvided)})`);
+  logger.info(`   LOG_LEVEL: ${logLevel.value} (${src(logLevel.wasProvided)})`);
+  logger.info(`   TZ: ${timezone.value} (${src(timezone.wasProvided)})`);
+  logger.info(`   ALLOWED_ORIGINS: ${allowedOrigins.value || '*'} (${src(allowedOrigins.wasProvided)})`);
+  logger.info(`   TRUST_PROXY: ${trustProxy.value} (${src(trustProxy.wasProvided)})`);
+  logger.info(`   VERSION_CHECK_DISABLED: ${versionCheckDisabled}`);
+  logger.info('   --- Session/Security ---');
+  logger.info(`   SESSION_SECRET: ${sessionSecretProvided ? '***provided***' : '(auto-generated)'}`);
+  logger.info(`   SESSION_COOKIE_NAME: ${sessionCookieName.value} (${src(sessionCookieName.wasProvided)})`);
+  logger.info(`   SESSION_MAX_AGE: ${sessionMaxAge.value}ms (${src(sessionMaxAge.wasProvided)})`);
+  logger.info(`   SESSION_ROLLING: ${sessionRolling.value} (${src(sessionRolling.wasProvided)})`);
+  logger.info(`   COOKIE_SECURE: ${cookieSecure.value} (${src(cookieSecure.wasProvided)})`);
+  logger.info(`   COOKIE_SAMESITE: ${cookieSameSite.value} (${src(cookieSameSite.wasProvided)})`);
+  logger.info('   --- Database ---');
+  logger.info(`   DATABASE_TYPE: ${databaseType}`);
+  if (databaseUrl.wasProvided) {
+    logger.info(`   DATABASE_URL: ***provided*** (${databaseType})`);
+  } else {
+    logger.info(`   DATABASE_PATH: ${databasePath.value} (${src(databasePath.wasProvided)})`);
+  }
+  logger.info('   --- Meshtastic ---');
+  logger.info(`   MESHTASTIC_NODE_IP: ${meshtasticNodeIp.value} (${src(meshtasticNodeIp.wasProvided)})`);
+  logger.info(`   MESHTASTIC_TCP_PORT: ${meshtasticTcpPort.value} (${src(meshtasticTcpPort.wasProvided)})`);
+  logger.info(`   MESHTASTIC_STALE_CONNECTION_TIMEOUT: ${meshtasticStaleConnectionTimeout.value}ms (${src(meshtasticStaleConnectionTimeout.wasProvided)})`);
+  logger.info(`   MESHTASTIC_CONNECT_TIMEOUT_MS: ${meshtasticConnectTimeoutMs.value}ms (${src(meshtasticConnectTimeoutMs.wasProvided)})`);
+  logger.info(`   MESHTASTIC_RECONNECT_INITIAL_DELAY_MS: ${meshtasticReconnectInitialDelayMs.value}ms (${src(meshtasticReconnectInitialDelayMs.wasProvided)})`);
+  logger.info(`   MESHTASTIC_RECONNECT_MAX_DELAY_MS: ${meshtasticReconnectMaxDelayMs.value}ms (${src(meshtasticReconnectMaxDelayMs.wasProvided)})`);
+  logger.info(`   MESHTASTIC_MODULE_CONFIG_DELAY_MS: ${meshtasticModuleConfigDelayMs.value}ms (${src(meshtasticModuleConfigDelayMs.wasProvided)})`);
+  if (enableVirtualNode.value) {
+    logger.info('   --- Virtual Node ---');
+    logger.info(`   ENABLE_VIRTUAL_NODE: ${enableVirtualNode.value} (${src(enableVirtualNode.wasProvided)})`);
+    logger.info(`   VIRTUAL_NODE_PORT: ${virtualNodePort.value} (${src(virtualNodePort.wasProvided)})`);
+    logger.info(`   VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS: ${virtualNodeAllowAdminCommands.value} (${src(virtualNodeAllowAdminCommands.wasProvided)})`);
+  }
+  if (oidcEnabled) {
+    logger.info('   --- OIDC ---');
+    logger.info(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
+    logger.info(`   OIDC_CLIENT_ID: ${oidcClientId.value ? '***provided***' : 'not set'}`);
+    logger.info(`   OIDC_AUTO_CREATE_USERS: ${oidcAutoCreateUsers.value} (${src(oidcAutoCreateUsers.wasProvided)})`);
+  }
+  logger.info('   --- Authentication ---');
+  logger.info(`   DISABLE_ANONYMOUS: ${disableAnonymous.value} (${src(disableAnonymous.wasProvided)})`);
+  logger.info(`   DISABLE_LOCAL_AUTH: ${disableLocalAuth.value} (${src(disableLocalAuth.wasProvided)})`);
+  if (adminUsername.wasProvided) {
+    logger.info(`   ADMIN_USERNAME: ${adminUsername.value} (env)`);
+  }
+  logger.info('   --- Rate Limiting ---');
+  logger.info(`   RATE_LIMIT_API: ${rateLimitApi.value} req/min (${src(rateLimitApi.wasProvided)})`);
+  logger.info(`   RATE_LIMIT_AUTH: ${rateLimitAuth.value} req/min (${src(rateLimitAuth.wasProvided)})`);
+  logger.info(`   RATE_LIMIT_MESSAGES: ${rateLimitMessages.value} req/min (${src(rateLimitMessages.wasProvided)})`);
+  if (vapidPublicKey.wasProvided) {
+    logger.info('   --- Push Notifications ---');
+    logger.info(`   VAPID keys: ***provided***`);
+    logger.info(`   PUSH_NOTIFICATION_TTL: ${pushNotificationTtl.value}s (${src(pushNotificationTtl.wasProvided)})`);
+  }
+  if (accessLogEnabled.value) {
+    logger.info('   --- Access Logging ---');
+    logger.info(`   ACCESS_LOG_PATH: ${accessLogPath.value} (${src(accessLogPath.wasProvided)})`);
+    logger.info(`   ACCESS_LOG_FORMAT: ${accessLogFormat.value} (${src(accessLogFormat.wasProvided)})`);
+  }
+
   return {
     // Node environment
     nodeEnv: nodeEnv.value,
