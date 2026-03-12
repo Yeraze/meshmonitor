@@ -7,7 +7,8 @@ import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
-import { encodePositionFlags, decodePositionFlags } from '../utils/positionFlags';
+import { encodePositionFlags, decodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
+import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
@@ -2481,10 +2482,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.firmwareVersion}</span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.hwModel}</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{getHardwareModelName(deviceMetadata.hwModel) || deviceMetadata.hwModel}</span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.role}</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{getRoleName(deviceMetadata.role) || deviceMetadata.role}</span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
                   <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.deviceStateVersion}</span>
@@ -2501,7 +2502,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   </span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.positionFlags}</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{decodePositionFlagNames(deviceMetadata.positionFlags ?? 0)}</span>
                 </div>
               </div>
             )}

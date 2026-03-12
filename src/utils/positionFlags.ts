@@ -74,3 +74,23 @@ export function decodePositionFlags(mask: number): PositionFlagsState {
   };
 }
 
+/**
+ * Decode position flags bit-mask into a list of human-readable flag names
+ * @param mask - Bit-mask value (number)
+ * @returns Comma-separated string of active flag names, or "None" if no flags set
+ */
+export function decodePositionFlagNames(mask: number): string {
+  const names: string[] = [];
+  if (mask & PositionFlag.ALTITUDE) names.push('Altitude');
+  if (mask & PositionFlag.ALTITUDE_MSL) names.push('Altitude MSL');
+  if (mask & PositionFlag.GEOIDAL_SEPARATION) names.push('Geoidal Separation');
+  if (mask & PositionFlag.DOP) names.push('DOP');
+  if (mask & PositionFlag.HVDOP) names.push('HVDOP');
+  if (mask & PositionFlag.SATINVIEW) names.push('Sats in View');
+  if (mask & PositionFlag.SEQ_NO) names.push('Seq No');
+  if (mask & PositionFlag.TIMESTAMP) names.push('Timestamp');
+  if (mask & PositionFlag.HEADING) names.push('Heading');
+  if (mask & PositionFlag.SPEED) names.push('Speed');
+  return names.length > 0 ? names.join(', ') : 'None';
+}
+
