@@ -5140,8 +5140,54 @@ class MeshtasticManager {
       // Look up the original message once for all error handling
       const originalMessage = requestId ? await databaseService.getMessageByRequestIdAsync(requestId) : null;
       if (!originalMessage) {
-        // No original message found - this is likely an external routing packet we didn't send
-        logger.debug(`⚠️  Routing error for unknown requestId ${requestId} (not our message)`);
+        // No message record found — could be a NodeInfo/telemetry/position request that
+        // isn't stored in the messages table. Still check for key mismatch errors using
+        // the packet's destination field.
+        const localNodeId = databaseService.getSetting('localNodeId');
+        const toNum = meshPacket.to ? Number(meshPacket.to) : null;
+
+        if (toNum && toNum !== 0xFFFFFFFF) {
+          const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+
+          // PKI errors from our local node (couldn't encrypt to target)
+          if (isPkiError(errorReason) && fromNodeId === localNodeId) {
+            const errorDescription = errorReason === RoutingError.PKI_FAILED
+              ? 'PKI encryption failed on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
+              : 'Remote node missing public key on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+            logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
+
+            databaseService.upsertNode({
+              nodeNum: toNum,
+              nodeId: toNodeId,
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: errorDescription
+            });
+            dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            this.handlePkiError(toNum);
+          }
+
+          // NO_CHANNEL from the target node (it couldn't decrypt our request)
+          if (errorReason === RoutingError.NO_CHANNEL && fromNodeId === toNodeId) {
+            const existingNode = databaseService.getNode(toNum);
+            if (!existingNode?.keyMismatchDetected) {
+              const errorDescription = 'NO_CHANNEL error on request - target node rejected the message. ' +
+                'Possible key or channel mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+              logger.warn(`🔐 NO_CHANNEL on request detected for node ${toNodeId}: ${errorDescription}`);
+
+              databaseService.upsertNode({
+                nodeNum: toNum,
+                nodeId: toNodeId,
+                keyMismatchDetected: true,
+                keySecurityIssueDetails: errorDescription
+              });
+              dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            }
+          }
+        }
+
+        logger.debug(`⚠️  Routing error for requestId ${requestId} (no message record - likely a request packet)`);
         return;
       }
 
