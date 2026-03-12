@@ -302,7 +302,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   };
 
-  // Format timestamp
+  // Format timestamp — prepend short date for entries before today
   const formatTimestamp = (timestamp: number): string => {
     const date = new Date(timestamp * 1000);
     const time = date.toLocaleTimeString('en-US', {
@@ -312,7 +312,28 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       second: '2-digit',
     });
     const ms = String(date.getMilliseconds()).padStart(3, '0');
-    return `${time}.${ms}`;
+    const timeStr = `${time}.${ms}`;
+
+    const now = new Date();
+    const isToday = date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+
+    if (isToday) {
+      return timeStr;
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    let dateStr: string;
+    if (dateFormat === 'DD/MM/YYYY') {
+      dateStr = `${day}/${month}`;
+    } else if (dateFormat === 'YYYY-MM-DD') {
+      dateStr = `${month}-${day}`;
+    } else {
+      dateStr = `${month}/${day}`;
+    }
+    return `${dateStr} ${timeStr}`;
   };
 
   // Calculate hops
@@ -628,7 +649,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <th style={{ width: '60px' }}>#</th>
                     <th style={{ width: '35px' }}>{t('packet_monitor.column.dir')}</th>
                     <th style={{ width: '45px' }}>{t('packet_monitor.column.via')}</th>
-                    <th style={{ width: '110px' }}>{t('packet_monitor.column.time')}</th>
+                    <th style={{ width: '145px' }}>{t('packet_monitor.column.time')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
                     <th style={{ width: '120px' }}>{t('packet_monitor.column.type')}</th>
@@ -729,7 +750,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           </td>
                           <td
                             className="timestamp"
-                            style={{ width: '110px' }}
+                            style={{ width: '145px' }}
                             title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}
                           >
                             {formatTimestamp(packet.timestamp)}
