@@ -5771,12 +5771,12 @@ class MeshtasticManager {
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
-    logger.info('🔍 getDeviceConfig called - actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
-    logger.info('🔍 getDeviceConfig called - actualModuleConfig present:', !!this.actualModuleConfig);
+    logger.debug('🔍 getDeviceConfig called - actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
+    logger.debug('🔍 getDeviceConfig called - actualModuleConfig present:', !!this.actualModuleConfig);
 
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
       logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
-      logger.info('✅ Returning device config from actualDeviceConfig');
+      logger.debug('✅ Returning device config from actualDeviceConfig');
       return this.buildDeviceConfigFromActual();
     }
 
