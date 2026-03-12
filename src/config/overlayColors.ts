@@ -23,7 +23,7 @@ export interface OverlayColors {
 export const darkOverlayColors: OverlayColors = {
   tracerouteForward: '#89b4fa',
   tracerouteReturn: '#f38ba8',
-  mqttSegment: '#9399b2',
+  mqttSegment: '#94e2d5',
   neighborLine: '#cba6f7',
   positionHistoryOld: { r: 0, g: 191, b: 255 },
   positionHistoryNew: { r: 255, g: 69, b: 0 },
@@ -43,7 +43,7 @@ export const darkOverlayColors: OverlayColors = {
 export const lightOverlayColors: OverlayColors = {
   tracerouteForward: '#1e66f5',
   tracerouteReturn: '#d20f39',
-  mqttSegment: '#7c7f93',
+  mqttSegment: '#179299',
   neighborLine: '#8839ef',
   positionHistoryOld: { r: 0, g: 103, b: 165 },
   positionHistoryNew: { r: 196, g: 32, b: 10 },

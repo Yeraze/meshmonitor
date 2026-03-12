@@ -244,6 +244,21 @@ export const generateCurvedArrowMarkers = (
   return arrows;
 };
 
+/**
+ * Calculate opacity multiplier based on segment age
+ * Fresh segments are fully opaque, older segments fade
+ */
+export const getTemporalOpacityMultiplier = (timestamp: number | undefined): number => {
+  if (!timestamp) return 0.5; // Unknown age = moderate opacity
+  const ageMs = Date.now() - timestamp;
+  const ageHours = ageMs / (1000 * 60 * 60);
+
+  if (ageHours < 1) return 1.0;
+  if (ageHours < 6) return 0.7;
+  if (ageHours < 24) return 0.4;
+  return 0.2;
+};
+
 // Position history color gradient constants
 const POSITION_HISTORY_COLOR_OLD = { r: 0, g: 191, b: 255 };   // Cyan-blue (#00bfff)
 const POSITION_HISTORY_COLOR_NEW = { r: 255, g: 69, b: 0 };    // Orange-red (#ff4500)

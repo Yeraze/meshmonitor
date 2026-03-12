@@ -11,10 +11,11 @@
  */
 
 import React, { useMemo } from 'react';
-import { Popup, Polyline } from 'react-leaflet';
+import { Marker, Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import L from 'leaflet';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -196,6 +197,8 @@ export function useTraceroutePaths({
     // Track segments that have MQTT/unknown hops (-128 raw SNR = -32 scaled indicates MQTT/unknown)
     // Note: -128 (INT8_MIN) is the Meshtastic sentinel value for unknown SNR (MQTT gateways, older firmware)
     const segmentHasMqtt = new Map<string, boolean>();
+    // Track most recent timestamp per segment for temporal fade
+    const segmentLatestTimestamp = new Map<string, number>();
     const segmentsList: Array<{
       key: string;
       positions: [number, number][];
@@ -290,6 +293,12 @@ export function useTraceroutePaths({
             }
           }
 
+          // Track most recent timestamp for temporal fade
+          const existingTsFwd = segmentLatestTimestamp.get(segmentKey) || 0;
+          if (timestamp > existingTsFwd) {
+            segmentLatestTimestamp.set(segmentKey, timestamp);
+          }
+
           segmentsList.push({
             key: `tr-${idx}-fwd-seg-${i}`,
             positions: [from.pos, to.pos],
@@ -333,6 +342,12 @@ export function useTraceroutePaths({
             }
           }
 
+          // Track most recent timestamp for temporal fade
+          const existingTsBack = segmentLatestTimestamp.get(segmentKey) || 0;
+          if (timestamp > existingTsBack) {
+            segmentLatestTimestamp.set(segmentKey, timestamp);
+          }
+
           segmentsList.push({
             key: `tr-${idx}-back-seg-${i}`,
             positions: [from.pos, to.pos],
@@ -361,6 +376,12 @@ export function useTraceroutePaths({
       const weight = Math.min(2 + usage, 8);
       // Check if this segment traversed MQTT (has 0.0 dB SNR)
       const isMqttSegment = segmentHasMqtt.get(segmentKey) || false;
+
+      // Calculate temporal opacity based on segment age
+      const latestTimestamp = segmentLatestTimestamp.get(segmentKey);
+      const temporalMultiplier = getTemporalOpacityMultiplier(latestTimestamp);
+      const baseOpacity = isMqttSegment ? 0.6 : 0.7;
+      const opacity = baseOpacity * temporalMultiplier;
 
       // Get node names for popup
       const node1 = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[0]);
@@ -438,16 +459,19 @@ export function useTraceroutePaths({
         : themeColors.snrColors
           ? getSegmentSnrColor(snrData, themeColors.snrColors, themeColors.neighborLine ?? themeColors.mauve)
           : (themeColors.neighborLine ?? themeColors.mauve);
-      const segmentOpacity = getSegmentSnrOpacity(snrData, isMqttSegment);
+      const baseOpacity = getSegmentSnrOpacity(snrData, isMqttSegment);
+      const latestTimestamp = segmentLatestTimestamp.get(segmentKey);
+      const temporalMultiplier = getTemporalOpacityMultiplier(latestTimestamp);
+      const segmentOpacity = baseOpacity * temporalMultiplier;
 
-      return (
+      const polylineElement = (
         <Polyline
           key={segment.key}
           positions={segment.positions}
           color={segmentColor}
           weight={weight}
           opacity={segmentOpacity}
-          dashArray={isMqttSegment ? '8, 8' : undefined}
+          dashArray={isMqttSegment ? '3, 6' : undefined}
         >
           <Popup>
             <div className="route-popup">
@@ -633,10 +657,32 @@ export function useTraceroutePaths({
           </Popup>
         </Polyline>
       );
+
+      if (isMqttSegment) {
+        const mqttLabel = (
+          <Marker
+            key={`${segment.key}-mqtt-label`}
+            position={[
+              (segment.positions[0][0] + segment.positions[1][0]) / 2,
+              (segment.positions[0][1] + segment.positions[1][1]) / 2,
+            ]}
+            icon={L.divIcon({
+              html: '<span class="mqtt-segment-label">MQTT</span>',
+              className: 'mqtt-segment-label-container',
+              iconSize: [36, 14],
+              iconAnchor: [18, 7],
+            })}
+            interactive={false}
+          />
+        );
+        return [polylineElement, mqttLabel];
+      }
+
+      return [polylineElement];
     });
 
-    // Add route segments to elements
-    allElements.push(...segmentElements);
+    // Add route segments to elements (flatten since MQTT segments produce multiple elements)
+    allElements.push(...segmentElements.flat());
 
     return allElements;
   }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, themeColors.neighborLine, themeColors.mqttSegment, themeColors.snrColors, callbacks, visibleNodeNums]);

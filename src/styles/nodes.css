@@ -2247,3 +2247,21 @@
   50% { filter: drop-shadow(0 0 12px rgba(137, 180, 250, 1)); }
 }
 
+/* MQTT Segment Label */
+.mqtt-segment-label-container {
+  background: none !important;
+  border: none !important;
+}
+
+.mqtt-segment-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+  background: var(--ctp-surface0);
+  padding: 1px 4px;
+  border-radius: 3px;
+  opacity: 0.8;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
