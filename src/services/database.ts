@@ -7745,9 +7745,13 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
-        this.telemetryRepo.deleteAllTelemetry().catch(err => {
+        this.telemetryRepo.deleteAllTelemetry().then(() => {
+          logger.debug('✅ Successfully purged all telemetry');
+        }).catch(err => {
           logger.error('Failed to purge all telemetry:', err);
         });
+      } else {
+        logger.warn('Cannot purge telemetry: telemetry repository not initialized');
       }
       return;
     }
@@ -7871,9 +7875,12 @@ class DatabaseService {
         this.messagesRepo.deleteAllMessages().then(() => {
           // Clear messages cache after purge
           this._messagesCache = [];
+          logger.debug('✅ Successfully purged all messages');
         }).catch(err => {
           logger.error('Failed to purge all messages:', err);
         });
+      } else {
+        logger.warn('Cannot purge messages: messages repository not initialized');
       }
       return;
     }
@@ -7895,6 +7902,8 @@ class DatabaseService {
         }).catch(err => {
           logger.error('Failed to purge all traceroutes:', err);
         });
+      } else {
+        logger.warn('Cannot purge traceroutes: traceroutes repository not initialized');
       }
       return;
     }
