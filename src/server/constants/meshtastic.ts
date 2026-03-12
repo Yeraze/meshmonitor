@@ -202,3 +202,52 @@ export const MIN_TRACEROUTE_INTERVAL_MS = 30 * 1000;
  * Messages longer than this will be truncated or need to be split.
  */
 export const MAX_MESSAGE_BYTES = 200;
+
+/**
+ * Meshtastic default channel encryption key.
+ * This is the well-known key used when PSK is set to shorthand value 1 (AQ== in base64).
+ */
+export const MESHTASTIC_DEFAULT_KEY = Buffer.from([
+  0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59,
+  0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01
+]);
+
+/**
+ * Expand a Meshtastic shorthand PSK (1 byte) to a full 16-byte key.
+ * Shorthand values:
+ *   0 = No crypto (returns null)
+ *   1 = Default key
+ *   2-10 = Default key with (value-1) added to last byte (simple1-simple9)
+ *
+ * @param pskBuffer The raw PSK buffer (may be 1 byte shorthand or full 16/32 byte key)
+ * @returns Expanded buffer (16 or 32 bytes) or null if no crypto
+ */
+export function expandShorthandPsk(pskBuffer: Buffer): Buffer | null {
+  if (pskBuffer.length === 0) {
+    return null; // No crypto
+  }
+
+  // Full-length keys pass through unchanged
+  if (pskBuffer.length === 16 || pskBuffer.length === 32) {
+    return pskBuffer;
+  }
+
+  // Shorthand: single byte
+  if (pskBuffer.length === 1) {
+    const shorthandValue = pskBuffer[0];
+    if (shorthandValue === 0) {
+      return null; // No crypto
+    }
+
+    // Copy the default key
+    const key = Buffer.from(MESHTASTIC_DEFAULT_KEY);
+    if (shorthandValue >= 2 && shorthandValue <= 10) {
+      // simple1-simple9: add (value-1) to last byte
+      key[15] = (key[15] + (shorthandValue - 1)) & 0xff;
+    }
+    return key;
+  }
+
+  // Invalid length
+  return null;
+}

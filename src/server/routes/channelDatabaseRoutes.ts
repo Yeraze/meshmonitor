@@ -14,6 +14,7 @@ import databaseService from '../../services/database.js';
 import { requireAuth } from '../auth/authMiddleware.js';
 import { channelDecryptionService } from '../services/channelDecryptionService.js';
 import { retroactiveDecryptionService } from '../services/retroactiveDecryptionService.js';
+import { expandShorthandPsk } from '../constants/meshtastic.js';
 import { logger } from '../../utils/logger.js';
 
 const router = express.Router();
@@ -204,24 +205,43 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate PSK is valid Base64
+    // Validate PSK is valid Base64 and expand shorthand keys
+    let finalPsk = psk;
+    let finalPskLength: number;
     try {
       const pskBuffer = Buffer.from(psk, 'base64');
-      if (pskBuffer.length !== 16 && pskBuffer.length !== 32) {
+
+      // Expand shorthand PSK (1-byte keys like AQ==) to full 16-byte key
+      const expandedPsk = expandShorthandPsk(pskBuffer);
+      if (!expandedPsk) {
         return res.status(400).json({
           success: false,
           error: 'Bad Request',
-          message: 'PSK must be 16 bytes (AES-128) or 32 bytes (AES-256) when decoded'
+          message: 'PSK value 0 means no encryption, which is not supported for channel database'
         });
       }
 
-      // Validate pskLength matches actual length
-      const expectedLength = pskLength ?? pskBuffer.length;
-      if (expectedLength !== pskBuffer.length) {
+      if (expandedPsk.length !== 16 && expandedPsk.length !== 32) {
         return res.status(400).json({
           success: false,
           error: 'Bad Request',
-          message: `pskLength (${expectedLength}) does not match actual PSK length (${pskBuffer.length})`
+          message: 'PSK must be 1 byte (shorthand), 16 bytes (AES-128), or 32 bytes (AES-256) when decoded'
+        });
+      }
+
+      // Use expanded key if it was a shorthand
+      if (expandedPsk.length !== pskBuffer.length) {
+        finalPsk = expandedPsk.toString('base64');
+        logger.debug(`Expanded shorthand PSK (${pskBuffer.length} byte) to ${expandedPsk.length}-byte key`);
+      }
+      finalPskLength = expandedPsk.length;
+
+      // Validate pskLength if explicitly provided
+      if (pskLength !== undefined && pskLength !== finalPskLength) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: `pskLength (${pskLength}) does not match actual PSK length (${finalPskLength})`
         });
       }
     } catch (_err) {
@@ -234,8 +254,8 @@ router.post('/', async (req: Request, res: Response) => {
 
     const newChannelId = await databaseService.createChannelDatabaseEntryAsync({
       name,
-      psk,
-      pskLength: pskLength ?? Buffer.from(psk, 'base64').length,
+      psk: finalPsk,
+      pskLength: finalPskLength,
       description: description ?? null,
       isEnabled: isEnabled ?? true,
       createdBy: user?.id ?? null,
@@ -412,15 +432,23 @@ router.put('/:id', async (req: Request, res: Response) => {
 
       try {
         const pskBuffer = Buffer.from(psk, 'base64');
-        if (pskBuffer.length !== 16 && pskBuffer.length !== 32) {
+        const expandedPsk = expandShorthandPsk(pskBuffer);
+        if (!expandedPsk) {
           return res.status(400).json({
             success: false,
             error: 'Bad Request',
-            message: 'PSK must be 16 bytes (AES-128) or 32 bytes (AES-256) when decoded'
+            message: 'PSK value 0 means no encryption, which is not supported for channel database'
           });
         }
-        updates.psk = psk;
-        updates.pskLength = pskBuffer.length;
+        if (expandedPsk.length !== 16 && expandedPsk.length !== 32) {
+          return res.status(400).json({
+            success: false,
+            error: 'Bad Request',
+            message: 'PSK must be 1 byte (shorthand), 16 bytes (AES-128), or 32 bytes (AES-256) when decoded'
+          });
+        }
+        updates.psk = expandedPsk.length !== pskBuffer.length ? expandedPsk.toString('base64') : psk;
+        updates.pskLength = expandedPsk.length;
       } catch (_err) {
         return res.status(400).json({
           success: false,
