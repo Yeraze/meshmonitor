@@ -50,6 +50,18 @@
   white-space: nowrap;
 }
 
+.legend-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--ctp-surface1, rgba(255,255,255,0.15));
+  margin: 6px 0;
+}
+
+.legend-line-sample {
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
 /* Hide on mobile devices */
 @media (max-width: 768px) {
   .map-legend-wrapper {

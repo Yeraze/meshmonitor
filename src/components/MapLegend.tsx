@@ -12,6 +12,14 @@ interface LegendItem {
   translate?: boolean;
 }
 
+interface LinkLegendItem {
+  color: string;
+  width: number;
+  dashArray?: string;
+  opacity: number;
+  label: string;
+}
+
 // Default position: top-right, below the Features checkbox panel, right-aligned with it
 // Map container starts at top: 60px (header)
 // Features panel is at right: 10px (relative to map), height ~250px when expanded
@@ -35,6 +43,14 @@ const MapLegend: React.FC = () => {
     { hops: '6+', color: getHopColor(6, overlayColors.hopColors), label: '6+' }
   ];
 
+  const linkItems: LinkLegendItem[] = [
+    { color: overlayColors.neighborLine, width: 2, opacity: 1, label: t('map.legend.route', 'Route') },
+    { color: overlayColors.neighborLine, width: 2, dashArray: '5,5', opacity: 1, label: t('map.legend.neighbor', 'Neighbor') },
+    { color: overlayColors.mqttSegment, width: 2, dashArray: '8,8', opacity: 1, label: t('map.legend.mqtt', 'MQTT') },
+    { color: overlayColors.tracerouteForward, width: 2, opacity: 1, label: t('map.legend.tracerouteForward', 'Traceroute →') },
+    { color: overlayColors.tracerouteReturn, width: 2, dashArray: '5,10', opacity: 1, label: t('map.legend.tracerouteReturn', 'Traceroute ←') },
+  ];
+
   return (
     <DraggableOverlay
       id="map-legend"
@@ -50,6 +66,22 @@ const MapLegend: React.FC = () => {
               style={{ backgroundColor: item.color }}
             />
             <span className="legend-label">{item.translate ? t(item.label) : item.label}</span>
+          </div>
+        ))}
+        <div className="legend-divider" />
+        <span className="legend-title">{t('map.legend.links', 'Links')}</span>
+        {linkItems.map((item, index) => (
+          <div key={`link-${index}`} className="legend-item">
+            <svg width="24" height="12" className="legend-line-sample">
+              <line
+                x1="0" y1="6" x2="24" y2="6"
+                stroke={item.color}
+                strokeWidth={item.width}
+                strokeDasharray={item.dashArray || 'none'}
+                strokeOpacity={item.opacity}
+              />
+            </svg>
+            <span className="legend-label">{item.label}</span>
           </div>
         ))}
       </div>

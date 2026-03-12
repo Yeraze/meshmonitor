@@ -1022,6 +1022,12 @@
   "map.legend.positionHistory": "Position History",
   "map.legend.oldest": "Oldest",
   "map.legend.newest": "Newest",
+  "map.legend.links": "Links:",
+  "map.legend.route": "Route",
+  "map.legend.neighbor": "Neighbor",
+  "map.legend.mqtt": "MQTT",
+  "map.legend.tracerouteForward": "Traceroute \u2192",
+  "map.legend.tracerouteReturn": "Traceroute \u2190",
 
   "traceroute_history.title": "Traceroute History",
   "traceroute_history.from": "From",
