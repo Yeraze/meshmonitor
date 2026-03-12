@@ -3731,7 +3731,7 @@ apiRouter.get('/device/security-keys', requireAuth(), async (_req, res) => {
 
 // Consolidated polling endpoint - reduces multiple API calls to one
 apiRouter.get('/poll', optionalAuth(), async (req, res) => {
-  logger.info('🔔 [POLL] Endpoint called');
+  logger.debug('🔔 [POLL] Endpoint called');
   try {
     const result: {
       connection?: any;
