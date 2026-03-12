@@ -141,7 +141,12 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory }) => {
                 <div className="legend-divider" />
                 <span className="legend-title">{t('map.legend.positionHistory')}</span>
                 <div className="legend-gradient-container">
-                  <div className="legend-gradient-bar" />
+                  <div
+                    className="legend-gradient-bar"
+                    style={{
+                      background: `linear-gradient(to right, rgb(${overlayColors.positionHistoryOld.r}, ${overlayColors.positionHistoryOld.g}, ${overlayColors.positionHistoryOld.b}), rgb(${overlayColors.positionHistoryNew.r}, ${overlayColors.positionHistoryNew.g}, ${overlayColors.positionHistoryNew.b}))`,
+                    }}
+                  />
                   <div className="legend-gradient-labels">
                     <span className="legend-gradient-label oldest">{t('map.legend.oldest')}</span>
                     <span className="legend-gradient-label newest">{t('map.legend.newest')}</span>

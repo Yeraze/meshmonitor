@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
@@ -248,6 +248,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Debounce ref for hover mouseout to prevent flicker from tooltip interaction
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clean up hover timeout on unmount to prevent firing against stale DOM
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
+
   const {
     nodesWithTelemetry,
     nodesWithWeather: nodesWithWeatherTelemetry,
@@ -294,6 +301,104 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
+
+  // Memoize filtered position history to avoid recomputation on every render
+  const filteredPositionHistory = useMemo(() => {
+    if (!showMotion || positionHistory.length < 2) return [];
+    if (positionHistoryHours != null) {
+      return positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000));
+    }
+    return positionHistory;
+  }, [showMotion, positionHistory, positionHistoryHours]);
+
+  // Memoize position history legend data for MapLegend
+  const positionHistoryLegendData = useMemo(() => {
+    if (filteredPositionHistory.length < 2) return undefined;
+    return {
+      oldestTime: filteredPositionHistory[0].timestamp,
+      newestTime: filteredPositionHistory[filteredPositionHistory.length - 1].timestamp,
+      timeFormat,
+      dateFormat,
+    };
+  }, [filteredPositionHistory, timeFormat, dateFormat]);
+
+  // Memoize position history polyline elements
+  const positionHistoryElements = useMemo(() => {
+    if (filteredPositionHistory.length < 2) return null;
+
+    const elements: React.ReactElement[] = [];
+    const segmentCount = filteredPositionHistory.length - 1;
+    const segmentColors: string[] = [];
+
+    for (let i = 0; i < segmentCount; i++) {
+      const startPos = filteredPositionHistory[i];
+      const endPos = filteredPositionHistory[i + 1];
+      const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
+      segmentColors.push(color);
+
+      const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
+        ? generateHeadingAwarePath(
+            [startPos.latitude, startPos.longitude],
+            [endPos.latitude, endPos.longitude],
+            startPos.groundTrack,
+            startPos.groundSpeed,
+            10
+          )
+        : [[startPos.latitude, startPos.longitude] as [number, number], [endPos.latitude, endPos.longitude] as [number, number]];
+
+      elements.push(
+        <Polyline
+          key={`position-history-segment-${i}`}
+          positions={segmentPath}
+          color={color}
+          weight={3}
+          opacity={0.8}
+        >
+          <Popup>
+            <div className="route-popup">
+              <h4>Position Segment {i + 1}</h4>
+              <div className="route-usage">
+                <strong>From:</strong> {formatDateTime(new Date(startPos.timestamp), timeFormat, dateFormat)}
+              </div>
+              <div className="route-usage">
+                <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
+              </div>
+              {startPos.groundSpeed !== undefined && (() => {
+                const converted = startPos.groundSpeed * 3.6;
+                const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
+                const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
+                const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
+                return (
+                  <div className="route-usage">
+                    <strong>Speed:</strong> {speed.toFixed(1)} {unit}
+                  </div>
+                );
+              })()}
+              {startPos.groundTrack !== undefined && (() => {
+                let heading = startPos.groundTrack;
+                if (heading > 360) heading = heading / 1000;
+                return (
+                  <div className="route-usage">
+                    <strong>Heading:</strong> {heading.toFixed(0)}°
+                  </div>
+                );
+              })()}
+            </div>
+          </Popup>
+        </Polyline>
+      );
+    }
+
+    const historyArrows = generatePositionHistoryArrows(
+      filteredPositionHistory,
+      segmentColors,
+      30,
+      distanceUnit
+    );
+    elements.push(...historyArrows);
+
+    return elements;
+  }, [filteredPositionHistory, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, timeFormat, dateFormat, distanceUnit]);
 
   // Detect touch device to disable hover tooltips on mobile
   const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -1629,18 +1734,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend
-                positionHistory={showMotion && positionHistory.length > 1 ? (() => {
-                  const filteredHistory = positionHistoryHours != null
-                    ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
-                    : positionHistory;
-                  if (filteredHistory.length < 2) return undefined;
-                  return {
-                    oldestTime: filteredHistory[0].timestamp,
-                    newestTime: filteredHistory[filteredHistory.length - 1].timestamp,
-                    timeFormat,
-                    dateFormat,
-                  };
-                })() : undefined}
+                positionHistory={positionHistoryLegendData}
               />
               {nodesWithPosition
                 .filter(node => {
@@ -1990,95 +2084,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {/* This is handled by traceroutePathsElements passed from parent */}
 
               {/* Draw position history for mobile nodes with color gradient */}
-              {showMotion && positionHistory.length > 1 && (() => {
-                // Filter position history based on slider value
-                const filteredHistory = positionHistoryHours != null
-                  ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
-                  : positionHistory;
-
-                // Need at least 2 positions to draw a line
-                if (filteredHistory.length < 2) return null;
-
-                const elements: React.ReactElement[] = [];
-                const segmentCount = filteredHistory.length - 1;
-                const segmentColors: string[] = [];
-
-                // Draw individual segments with gradient colors
-                for (let i = 0; i < segmentCount; i++) {
-                  const startPos = filteredHistory[i];
-                  const endPos = filteredHistory[i + 1];
-                  const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
-                  segmentColors.push(color);
-
-                  // Generate path - use Bezier curve if heading data is available
-                  const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
-                    ? generateHeadingAwarePath(
-                        [startPos.latitude, startPos.longitude],
-                        [endPos.latitude, endPos.longitude],
-                        startPos.groundTrack,
-                        startPos.groundSpeed,
-                        10
-                      )
-                    : [[startPos.latitude, startPos.longitude] as [number, number], [endPos.latitude, endPos.longitude] as [number, number]];
-
-                  elements.push(
-                    <Polyline
-                      key={`position-history-segment-${i}`}
-                      positions={segmentPath}
-                      color={color}
-                      weight={3}
-                      opacity={0.8}
-                    >
-                      <Popup>
-                        <div className="route-popup">
-                          <h4>Position Segment {i + 1}</h4>
-                          <div className="route-usage">
-                            <strong>From:</strong> {formatDateTime(new Date(startPos.timestamp), timeFormat, dateFormat)}
-                          </div>
-                          <div className="route-usage">
-                            <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
-                          </div>
-                          {startPos.groundSpeed !== undefined && (() => {
-                            const converted = startPos.groundSpeed * 3.6;
-                            // If converted > 200 km/h, assume raw is already in km/h
-                            const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
-                            // Convert to mph if user prefers miles
-                            const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
-                            const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
-                            return (
-                              <div className="route-usage">
-                                <strong>Speed:</strong> {speed.toFixed(1)} {unit}
-                              </div>
-                            );
-                          })()}
-                          {startPos.groundTrack !== undefined && (() => {
-                            // Data is stored in millidegrees - detect and convert
-                            let heading = startPos.groundTrack;
-                            if (heading > 360) heading = heading / 1000;
-                            return (
-                              <div className="route-usage">
-                                <strong>Heading:</strong> {heading.toFixed(0)}°
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </Popup>
-                    </Polyline>
-                  );
-                }
-
-                // Generate arrow markers with performance limiting (max 30 arrows)
-                // Pass full history items so arrows can show heading and popup info
-                const historyArrows = generatePositionHistoryArrows(
-                  filteredHistory,
-                  segmentColors,
-                  30,
-                  distanceUnit
-                );
-                elements.push(...historyArrows);
-
-                return elements;
-              })()}
+              {positionHistoryElements}
 
           </MapContainer>
           {(shouldShowData() || meshCoreNodes.length > 0) && (
