@@ -7741,6 +7741,17 @@ class DatabaseService {
 
   purgeAllTelemetry(): void {
     logger.debug('⚠️ PURGING all telemetry from database');
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.telemetryRepo) {
+        this.telemetryRepo.deleteAllTelemetry().catch(err => {
+          logger.error('Failed to purge all telemetry:', err);
+        });
+      }
+      return;
+    }
+
     this.db.exec('DELETE FROM telemetry');
   }
 
@@ -7853,11 +7864,41 @@ class DatabaseService {
 
   purgeAllMessages(): void {
     logger.debug('⚠️ PURGING all messages from database');
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.deleteAllMessages().then(() => {
+          // Clear messages cache after purge
+          this._messagesCache = [];
+        }).catch(err => {
+          logger.error('Failed to purge all messages:', err);
+        });
+      }
+      return;
+    }
+
     this.db.exec('DELETE FROM messages');
   }
 
   purgeAllTraceroutes(): void {
     logger.debug('⚠️ PURGING all traceroutes and route segments from database');
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        Promise.all([
+          this.traceroutesRepo.deleteAllTraceroutes(),
+          this.traceroutesRepo.deleteAllRouteSegments(),
+        ]).then(() => {
+          logger.debug('✅ Successfully purged all traceroutes and route segments');
+        }).catch(err => {
+          logger.error('Failed to purge all traceroutes:', err);
+        });
+      }
+      return;
+    }
+
     this.db.exec('DELETE FROM traceroutes');
     this.db.exec('DELETE FROM route_segments');
     logger.debug('✅ Successfully purged all traceroutes and route segments');
