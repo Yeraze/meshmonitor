@@ -725,14 +725,16 @@ jobs:
         run: npm install
 
       # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
+      # IMPORTANT: --target is required because this runs on ARM64 (macos-14) but builds for x64
       - name: Build Tauri app (release)
         working-directory: desktop
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: npm run tauri:build -- --bundles app
+        run: npm run tauri:build -- --target x86_64-apple-darwin --bundles app
 
       # Re-sign node binary inside the app bundle with JIT entitlements
       # Tauri's signing strips our entitlements, so we need to re-apply them
+      # Note: cross-compiled output goes to target/x86_64-apple-darwin/release/
       - name: Re-sign node binary with JIT entitlements
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -742,7 +744,7 @@ jobs:
             exit 0
           fi
 
-          APP_PATH=$(find desktop/src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          APP_PATH=$(find desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos -name "*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then
             echo "ERROR: Could not find .app bundle"
             exit 1
@@ -773,9 +775,9 @@ jobs:
       # Create DMG from the re-signed app
       - name: Create DMG
         run: |
-          APP_PATH=$(find desktop/src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          APP_PATH=$(find desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos -name "*.app" -type d | head -1)
           APP_NAME=$(basename "$APP_PATH" .app)
-          DMG_DIR="desktop/src-tauri/target/release/bundle/dmg"
+          DMG_DIR="desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
           mkdir -p "$DMG_DIR"
 
           echo "Creating DMG from $APP_PATH..."
@@ -793,7 +795,7 @@ jobs:
             exit 0
           fi
 
-          DMG_PATH=$(find desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          DMG_PATH=$(find desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
           echo "Notarizing $DMG_PATH..."
 
           xcrun notarytool submit "$DMG_PATH" \
@@ -817,10 +819,10 @@ jobs:
         id: rename_artifacts
         run: |
           VERSION="${{ steps.get_version.outputs.VERSION }}"
-          DMG_PATH=$(find desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          DMG_PATH=$(find desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
           if [ -n "$DMG_PATH" ]; then
             NEW_NAME="MeshMonitor-Desktop-${VERSION}-x64.dmg"
-            DESTINATION="desktop/src-tauri/target/release/bundle/dmg/$NEW_NAME"
+            DESTINATION="desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/$NEW_NAME"
             cp "$DMG_PATH" "$DESTINATION"
             echo "DMG_PATH=$DESTINATION" >> $GITHUB_OUTPUT
             echo "DMG_NAME=$NEW_NAME" >> $GITHUB_OUTPUT
@@ -861,5 +863,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: meshmonitor-desktop-macos-x64-release
-          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          path: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
           retention-days: 30

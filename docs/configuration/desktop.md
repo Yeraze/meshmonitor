@@ -20,7 +20,7 @@ The desktop application:
 
 ### macOS
 - **Operating System**: macOS 11 (Big Sur) or later
-- **Architecture**: Apple Silicon (M1/M2/M3) native; Intel Macs can run via Rosetta 2
+- **Architecture**: Apple Silicon (M1/M2/M3) and Intel (x64) builds available
 - **Meshtastic Device**: A Meshtastic node with TCP API enabled
 - **Network**: Your Meshtastic node must be accessible via TCP (WiFi or Ethernet connected)
 
@@ -36,13 +36,15 @@ The desktop application:
 ### macOS
 
 1. Go to the [MeshMonitor Releases](https://github.com/Yeraze/MeshMonitor/releases) page
-2. Download the latest `MeshMonitor-Desktop-x.x.x-arm64.dmg`
+2. Download the appropriate DMG for your Mac:
+   - **Apple Silicon** (M1/M2/M3/M4): `MeshMonitor-Desktop-x.x.x-arm64.dmg`
+   - **Intel**: `MeshMonitor-Desktop-x.x.x-x64.dmg`
 3. Open the DMG file and drag MeshMonitor to your Applications folder
 4. Launch MeshMonitor from your Applications folder
 5. MeshMonitor will appear in your menu bar
 
-::: tip Apple Silicon Native
-The macOS version is compiled natively for Apple Silicon (M1/M2/M3). If you're using an Intel Mac, macOS will automatically run it through Rosetta 2.
+::: tip Choose the Right Build
+Download the DMG matching your Mac's processor. To check: Apple menu > About This Mac. If "Chip" says Apple M1/M2/M3/M4, use the arm64 build. If "Processor" says Intel, use the x64 build.
 :::
 
 ## First-Run Setup
