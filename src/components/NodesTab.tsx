@@ -9,7 +9,7 @@ import { TabType } from '../types/ui';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows } from '../utils/mapHelpers.tsx';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
-import PositionHistoryLegend from './PositionHistoryLegend';
+import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
@@ -20,7 +20,6 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResizable } from '../hooks/useResizable';
-import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
@@ -246,6 +245,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const { currentNodeId } = useDeviceConfig();
   const { nodes } = useNodes();
 
+  // Debounce ref for hover mouseout to prevent flicker from tooltip interaction
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const {
     nodesWithTelemetry,
     nodesWithWeather: nodesWithWeatherTelemetry,
@@ -297,13 +299,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   useEffect(() => {
-    // Check if the device supports touch
+    // Check if the PRIMARY input is touch-only (no mouse/trackpad available)
+    // This correctly handles laptops with touchscreens that also have a trackpad
     const checkTouch = () => {
-      return (
-        'ontouchstart' in window ||
-        navigator.maxTouchPoints > 0 ||
-        (navigator as any).msMaxTouchPoints > 0
-      );
+      // pointer: coarse = touch/stylus is primary input
+      // pointer: fine = mouse/trackpad is available
+      // A laptop with both touchscreen and trackpad has pointer: fine → not touch-only
+      if (window.matchMedia) {
+        const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const hasFinePointer = window.matchMedia('(pointer: fine)').matches;
+        return hasCoarsePointer && !hasFinePointer;
+      }
+      // Fallback for browsers without matchMedia
+      return navigator.maxTouchPoints > 0;
     };
     setIsTouchDevice(checkTouch());
   }, []);
@@ -1423,26 +1431,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }
               )}
             >
-              <button
-                className="map-controls-collapse-btn"
-                onClick={handleCollapseMapControls}
-                title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                {isMapControlsCollapsed ? '▼' : '▲'}
-              </button>
               <div
-                className="map-controls-header"
+                className="map-controls-drag-handle"
                 style={{
-                  cursor: (isMapControlsCollapsed || isTouchDevice) ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
+                  cursor: (isTouchDevice) ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
                 }}
                 onMouseDown={handleMapControlsDragStart}
               >
-                {!isMapControlsCollapsed && (
-                  <div className="map-controls-title">
-                    Features
-                  </div>
-                )}
+                <span className="drag-handle-icon">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+              </div>
+              <div className="map-controls-body">
+              <div
+                className="map-controls-header"
+              >
+                <div className="map-controls-title">
+                  Features
+                </div>
+                <button
+                  className="map-controls-collapse-btn"
+                  onClick={handleCollapseMapControls}
+                  title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {isMapControlsCollapsed ? '▼' : '▲'}
+                </button>
               </div>
               {!isMapControlsCollapsed && (
                 <>
@@ -1582,6 +1598,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   )}
                 </>
               )}
+              </div>
             </div>
         )}
             <MapContainer
@@ -1611,7 +1628,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <MapPositionHandler />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
-              <MapLegend />
+              <MapLegend
+                positionHistory={showMotion && positionHistory.length > 1 ? (() => {
+                  const filteredHistory = positionHistoryHours != null
+                    ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
+                    : positionHistory;
+                  if (filteredHistory.length < 2) return undefined;
+                  return {
+                    oldestTime: filteredHistory[0].timestamp,
+                    newestTime: filteredHistory[filteredHistory.length - 1].timestamp,
+                    timeFormat,
+                    dateFormat,
+                  };
+                })() : undefined}
+              />
               {nodesWithPosition
                 .filter(node => {
                   // Apply standard filters
@@ -1645,9 +1675,41 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 opacity={markerOpacity}
                 zIndexOffset={shouldAnimate ? 10000 : 0}
                 ref={(ref) => handleMarkerRef(ref, node.user?.id)}
+                eventHandlers={!isTouchDevice ? {
+                  mouseover: (e: any) => {
+                    if (hoverTimeoutRef.current) {
+                      clearTimeout(hoverTimeoutRef.current);
+                      hoverTimeoutRef.current = null;
+                    }
+                    // Selectively dim polylines not connected to this node
+                    const container = e.target._map?.getContainer();
+                    if (!container) return;
+                    const nodeClass = `node-${node.nodeNum}`;
+                    const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+                    paths.forEach((path: Element) => {
+                      if (path.classList.contains(nodeClass)) {
+                        (path as HTMLElement).style.opacity = '';
+                      } else {
+                        (path as HTMLElement).style.opacity = '0.25';
+                      }
+                    });
+                  },
+                  mouseout: (e: any) => {
+                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                    hoverTimeoutRef.current = setTimeout(() => {
+                      const container = e.target._map?.getContainer();
+                      if (!container) return;
+                      const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+                      paths.forEach((path: Element) => {
+                        (path as HTMLElement).style.opacity = '';
+                      });
+                      hoverTimeoutRef.current = null;
+                    }, 150);
+                  },
+                } : undefined}
               >
                 {!isTouchDevice && (
-                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9} interactive>
+                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontWeight: 'bold' }}>
                         {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
@@ -1891,6 +1953,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   [ni.neighborLatitude, ni.neighborLongitude]
                 ];
 
+                // Zoom-adaptive: hide neighbor lines at low zoom
+                if (mapZoom < 12) return null;
+
                 return (
                   <Polyline
                     key={`neighbor-${idx}`}
@@ -1899,6 +1964,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     weight={4}
                     opacity={0.7}
                     dashArray="5, 5"
+                    className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
                   >
                     <Popup>
                       <div className="route-popup">
@@ -2014,23 +2080,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 return elements;
               })()}
 
-              {/* Position History Legend */}
-              {showMotion && positionHistory.length > 1 && (() => {
-                const filteredHistory = positionHistoryHours != null
-                  ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
-                  : positionHistory;
-
-                if (filteredHistory.length < 2) return null;
-
-                return (
-                  <PositionHistoryLegend
-                    oldestTime={filteredHistory[0].timestamp}
-                    newestTime={filteredHistory[filteredHistory.length - 1].timestamp}
-                    timeFormat={timeFormat}
-                    dateFormat={dateFormat}
-                  />
-                );
-              })()}
           </MapContainer>
           {(shouldShowData() || meshCoreNodes.length > 0) && (
           <TilesetSelector
@@ -2148,6 +2197,11 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
 
   // If visibility changed, must re-render
   if (prevPathsVisible !== nextPathsVisible || prevRouteVisible !== nextRouteVisible) {
+    return false; // Allow re-render
+  }
+
+  // If traceroute paths reference changed (hover dimming, SNR recalc), must re-render
+  if (prevProps.traceroutePathsElements !== nextProps.traceroutePathsElements) {
     return false; // Allow re-render
   }
 

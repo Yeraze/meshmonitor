@@ -2,10 +2,10 @@
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--ctp-surface0);
   backdrop-filter: blur(10px);
   border-radius: var(--radius-lg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   user-select: none;
   transition: box-shadow 0.2s ease;
@@ -22,21 +22,21 @@
   justify-content: center;
   width: 16px;
   min-height: 100%;
-  background: linear-gradient(to right, #e0e0e0, #f0f0f0);
+  background: linear-gradient(to right, var(--ctp-surface1), var(--ctp-surface0));
   cursor: grab;
   flex-shrink: 0;
-  border-right: 1px solid #ddd;
+  border-right: 1px solid var(--ctp-surface1);
   transition: background 0.2s ease;
 }
 
 .drag-handle:hover {
-  background: linear-gradient(to right, #d0d0d0, #e5e5e5);
+  background: linear-gradient(to right, var(--ctp-surface2), var(--ctp-surface1));
 }
 
 .drag-handle:active,
 .draggable-overlay.dragging .drag-handle {
   cursor: grabbing;
-  background: linear-gradient(to right, #c0c0c0, #d5d5d5);
+  background: linear-gradient(to right, var(--ctp-overlay0), var(--ctp-surface2));
 }
 
 .drag-handle-icon {
@@ -50,12 +50,12 @@
   display: block;
   width: 8px;
   height: 2px;
-  background-color: #888;
+  background-color: var(--ctp-overlay0);
   border-radius: 1px;
 }
 
 .draggable-overlay.dragging .drag-handle-icon span {
-  background-color: #666;
+  background-color: var(--ctp-subtext0);
 }
 
 .draggable-content {

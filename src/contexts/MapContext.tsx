@@ -127,7 +127,6 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [positionHistoryHours, setPositionHistoryHoursState] = useState<number | null>(null);
-
   // Create wrapper setters that persist to server (no localStorage)
   const setShowPaths = React.useCallback((value: boolean) => {
     setShowPathsState(value);

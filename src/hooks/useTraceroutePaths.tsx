@@ -11,11 +11,10 @@
  */
 
 import React, { useMemo } from 'react';
-import { Marker, Popup, Polyline } from 'react-leaflet';
+import { Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import L from 'leaflet';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, MQTT_SNR_SENTINEL } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -34,6 +33,7 @@ export interface NodePositionDigest {
     shortName?: string;
     id?: string;
   };
+  viaMqtt?: boolean;
 }
 
 /**
@@ -97,6 +97,8 @@ export interface UseTraceroutePathsParams {
   callbacks: TracerouteCallbacks;
   /** Optional set of visible node numbers - when provided, only show route segments where both endpoints are visible */
   visibleNodeNums?: Set<number>;
+  /** Current map zoom level - controls detail filtering */
+  mapZoom?: number;
 }
 
 /**
@@ -182,6 +184,7 @@ export function useTraceroutePaths({
   themeColors,
   callbacks,
   visibleNodeNums,
+  mapZoom,
 }: UseTraceroutePathsParams): UseTraceroutePathsResult {
   // Memoize base traceroute paths (showPaths) - doesn't depend on selectedNodeId
   // This prevents re-rendering markers when clicking to select a node
@@ -194,8 +197,7 @@ export function useTraceroutePaths({
     // Calculate segment usage counts and collect SNR values with timestamps
     const segmentUsage = new Map<string, number>();
     const segmentSNRs = new Map<string, Array<{ snr: number; timestamp: number }>>();
-    // Track segments that have MQTT/unknown hops (-128 raw SNR = -32 scaled indicates MQTT/unknown)
-    // Note: -128 (INT8_MIN) is the Meshtastic sentinel value for unknown SNR (MQTT gateways, older firmware)
+    // Track segments that have MQTT/unknown hops (SNR sentinel indicates MQTT gateway or unknown)
     const segmentHasMqtt = new Map<string, boolean>();
     // Track most recent timestamp per segment for temporal fade
     const segmentLatestTimestamp = new Map<string, number>();
@@ -286,9 +288,7 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            // Mark segment as MQTT/unknown if SNR is -32 dB (raw -128 / 4 = -32)
-            // -128 (INT8_MIN) is Meshtastic's sentinel value for unknown SNR (MQTT gateways, older firmware)
-            if (snrValue === -32) {
+            if (snrValue === MQTT_SNR_SENTINEL) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -335,9 +335,7 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            // Mark segment as MQTT/unknown if SNR is -32 dB (raw -128 / 4 = -32)
-            // -128 (INT8_MIN) is Meshtastic's sentinel value for unknown SNR (MQTT gateways, older firmware)
-            if (snrValue === -32) {
+            if (snrValue === MQTT_SNR_SENTINEL) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -361,31 +359,40 @@ export function useTraceroutePaths({
 
     // Filter segments to only include those where both endpoints are visible
     // This ensures route segments are hidden when their connected nodes are filtered out
-    const filteredSegments = visibleNodeNums
+    let filteredSegments = visibleNodeNums
       ? segmentsList.filter(segment => {
           const [nodeNum1, nodeNum2] = segment.nodeNums;
           return visibleNodeNums.has(nodeNum1) && visibleNodeNums.has(nodeNum2);
         })
       : segmentsList;
 
+    // Zoom-adaptive filtering: at low zoom levels, only show stronger segments
+    if (mapZoom !== undefined && mapZoom < 8) {
+      // Regional view: only show segments with good or medium SNR (filter out poor/unknown)
+      filteredSegments = filteredSegments.filter(segment => {
+        const segKey = segment.nodeNums.slice().sort().join('-');
+        const snrData = segmentSNRs.get(segKey);
+        if (!snrData || snrData.length === 0) return false; // Hide unknown segments at low zoom
+        const rfSnrs = snrData.filter(d => d.snr !== MQTT_SNR_SENTINEL).map(d => d.snr);
+        if (rfSnrs.length === 0) return false; // Hide pure MQTT at low zoom
+        const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
+        return avgSnr >= -10; // Only good + medium quality links
+      });
+    }
+
     // Render segments with weighted lines
     const segmentElements = filteredSegments.map(segment => {
-      const segmentKey = segment.nodeNums.sort().join('-');
+      const segmentKey = segment.nodeNums.slice().sort().join('-');
       const usage = segmentUsage.get(segmentKey) || 1;
       // Base weight 2, add 1 per usage, max 8
       const weight = Math.min(2 + usage, 8);
-      // Check if this segment traversed MQTT (has 0.0 dB SNR)
-      const isMqttSegment = segmentHasMqtt.get(segmentKey) || false;
-
-      // Calculate temporal opacity based on segment age
-      const latestTimestamp = segmentLatestTimestamp.get(segmentKey);
-      const temporalMultiplier = getTemporalOpacityMultiplier(latestTimestamp);
-      const baseOpacity = isMqttSegment ? 0.6 : 0.7;
-      const opacity = baseOpacity * temporalMultiplier;
-
       // Get node names for popup
       const node1 = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[0]);
       const node2 = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[1]);
+
+      // Check if this segment traversed MQTT: either SNR sentinel or either endpoint is an MQTT node
+      const isMqttSegment = (segmentHasMqtt.get(segmentKey) || false) ||
+        (node1?.viaMqtt === true) || (node2?.viaMqtt === true);
       const node1Name =
         segment.nodeNums[0] === BROADCAST_ADDR
           ? '(unknown)'
@@ -453,7 +460,6 @@ export function useTraceroutePaths({
         }
       }
 
-      const snrData = segmentSNRs.get(segmentKey);
       const segmentColor = isMqttSegment
         ? (themeColors.mqttSegment ?? themeColors.overlay0)
         : themeColors.snrColors
@@ -462,7 +468,7 @@ export function useTraceroutePaths({
       const baseOpacity = getSegmentSnrOpacity(snrData, isMqttSegment);
       const latestTimestamp = segmentLatestTimestamp.get(segmentKey);
       const temporalMultiplier = getTemporalOpacityMultiplier(latestTimestamp);
-      const segmentOpacity = baseOpacity * temporalMultiplier;
+      const segmentOpacity = Math.max(0.15, baseOpacity * temporalMultiplier);
 
       const polylineElement = (
         <Polyline
@@ -472,29 +478,17 @@ export function useTraceroutePaths({
           weight={weight}
           opacity={segmentOpacity}
           dashArray={isMqttSegment ? '3, 6' : undefined}
+          className={`route-segment node-${segment.nodeNums[0]} node-${segment.nodeNums[1]}`}
         >
           <Popup>
             <div className="route-popup">
               <h4>Route Segment</h4>
               {isMqttSegment && (
-                <div
-                  className="mqtt-indicator"
-                  style={{
-                    display: 'inline-block',
-                    backgroundColor: 'var(--ctp-overlay0)',
-                    color: 'var(--ctp-base)',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    marginBottom: '8px',
-                  }}
-                >
-                  via MQTT
-                </div>
+                <div className="mqtt-badge">via MQTT</div>
               )}
               <div className="route-endpoints">
                 <strong
+                  className={node1?.user?.id ? 'route-node-link' : undefined}
                   onClick={e => {
                     e.stopPropagation();
                     const freshNode = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[0]);
@@ -505,16 +499,13 @@ export function useTraceroutePaths({
                       ]);
                     }
                   }}
-                  style={{
-                    cursor: node1?.user?.id ? 'pointer' : 'default',
-                    color: node1?.user?.id ? 'var(--ctp-blue)' : 'inherit',
-                  }}
                   title={node1?.user?.id ? 'Click to select and center on this node' : ''}
                 >
                   {node1Name}
                 </strong>
                 {' ↔ '}
                 <strong
+                  className={node2?.user?.id ? 'route-node-link' : undefined}
                   onClick={e => {
                     e.stopPropagation();
                     const freshNode = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[1]);
@@ -524,10 +515,6 @@ export function useTraceroutePaths({
                         freshNode.position.longitude,
                       ]);
                     }
-                  }}
-                  style={{
-                    cursor: node2?.user?.id ? 'pointer' : 'default',
-                    color: node2?.user?.id ? 'var(--ctp-blue)' : 'inherit',
                   }}
                   title={node2?.user?.id ? 'Click to select and center on this node' : ''}
                 >
@@ -658,34 +645,13 @@ export function useTraceroutePaths({
         </Polyline>
       );
 
-      if (isMqttSegment) {
-        const mqttLabel = (
-          <Marker
-            key={`${segment.key}-mqtt-label`}
-            position={[
-              (segment.positions[0][0] + segment.positions[1][0]) / 2,
-              (segment.positions[0][1] + segment.positions[1][1]) / 2,
-            ]}
-            icon={L.divIcon({
-              html: '<span class="mqtt-segment-label">MQTT</span>',
-              className: 'mqtt-segment-label-container',
-              iconSize: [36, 14],
-              iconAnchor: [18, 7],
-            })}
-            interactive={false}
-          />
-        );
-        return [polylineElement, mqttLabel];
-      }
-
-      return [polylineElement];
+      return polylineElement;
     });
 
-    // Add route segments to elements (flatten since MQTT segments produce multiple elements)
-    allElements.push(...segmentElements.flat());
+    allElements.push(...segmentElements);
 
     return allElements;
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, themeColors.neighborLine, themeColors.mqttSegment, themeColors.snrColors, callbacks, visibleNodeNums]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, themeColors.neighborLine, themeColors.mqttSegment, themeColors.snrColors, callbacks, visibleNodeNums, mapZoom]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
@@ -784,7 +750,7 @@ export function useTraceroutePaths({
              );
              
              const weight = getLineWeight(forwardSegmentSnrs[i]);
-             const isMqtt = forwardSegmentSnrs[i] === -32; // Check for MQTT sentinel
+             const isMqtt = forwardSegmentSnrs[i] === MQTT_SNR_SENTINEL;
 
              allElements.push(
                <Polyline
@@ -794,6 +760,7 @@ export function useTraceroutePaths({
                  weight={weight}
                  opacity={0.9}
                  dashArray="10, 5"
+                 className={`route-segment node-${forwardSequence[i]} node-${forwardSequence[i + 1]}`}
                >
                  <Popup>
                    <div className="route-popup">
@@ -886,7 +853,7 @@ export function useTraceroutePaths({
              );
              
              const weight = getLineWeight(backSegmentSnrs[i]);
-             const isMqtt = backSegmentSnrs[i] === -32;
+             const isMqtt = backSegmentSnrs[i] === MQTT_SNR_SENTINEL;
 
              allElements.push(
                <Polyline
@@ -896,6 +863,7 @@ export function useTraceroutePaths({
                  weight={weight}
                  opacity={0.9}
                  dashArray="5, 10"
+                 className={`route-segment node-${backSequence[i]} node-${backSequence[i + 1]}`}
                >
                  <Popup>
                    <div className="route-popup">

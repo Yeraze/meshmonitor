@@ -14,9 +14,9 @@ export interface OverlayColors {
     gradient: string[];
   };
   snrColors: {
-    good: string;    // SNR > 5dB
-    medium: string;  // SNR -5 to 5dB
-    poor: string;    // SNR < -5dB
+    good: string;    // SNR > 0dB
+    medium: string;  // SNR -10 to 0dB
+    poor: string;    // SNR < -10dB
   };
 }
 

@@ -34,46 +34,39 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
       className="tileset-selector-wrapper"
     >
       <div className={`tileset-selector ${isCollapsed ? 'collapsed' : ''}`}>
-        {!isCollapsed ? (
-          <>
-            <div className="tileset-selector-label">{t('tileset.map_style')}:</div>
-            <div className="tileset-buttons">
-              {tilesets.map((tileset) => (
-                <button
-                  key={tileset.id}
-                  className={`tileset-button ${selectedTilesetId === tileset.id ? 'active' : ''}`}
-                  onClick={() => onTilesetChange(tileset.id)}
-                  title={tileset.description || tileset.name}
-                >
-                  <div
-                    className="tileset-preview"
-                    style={{
-                      backgroundImage: `url(${getTilePreviewUrl(tileset.url)})`
-                    }}
-                  />
-                  <div className="tileset-name">
-                    {tileset.name}
-                    {tileset.isCustom && <span className="custom-badge">{t('tileset.custom')}</span>}
-                  </div>
-                </button>
-              ))}
-            </div>
-            <button
-              className="collapse-button"
-              onClick={() => setIsCollapsed(true)}
-              title={t('tileset.collapse')}
-            >
-              ▼
-            </button>
-          </>
-        ) : (
+        <div className="tileset-header">
+          <div className="tileset-selector-title">{t('tileset.map_style')}</div>
           <button
-            className="expand-button"
-            onClick={() => setIsCollapsed(false)}
-            title={t('tileset.expand')}
+            className="tileset-collapse-btn"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            onMouseDown={(e) => e.stopPropagation()}
+            title={isCollapsed ? t('tileset.expand') : t('tileset.collapse')}
           >
-            {t('tileset.map_style')} ▲
+            {isCollapsed ? '▼' : '▲'}
           </button>
+        </div>
+        {!isCollapsed && (
+          <div className="tileset-buttons">
+            {tilesets.map((tileset) => (
+              <button
+                key={tileset.id}
+                className={`tileset-button ${selectedTilesetId === tileset.id ? 'active' : ''}`}
+                onClick={() => onTilesetChange(tileset.id)}
+                title={tileset.description || tileset.name}
+              >
+                <div
+                  className="tileset-preview"
+                  style={{
+                    backgroundImage: `url(${getTilePreviewUrl(tileset.url)})`
+                  }}
+                />
+                <div className="tileset-name">
+                  {tileset.name}
+                  {tileset.isCustom && <span className="custom-badge">{t('tileset.custom')}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </DraggableOverlay>

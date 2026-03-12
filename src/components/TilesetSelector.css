@@ -1,23 +1,61 @@
 .tileset-selector {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  position: relative;
 }
 
 .tileset-selector.collapsed {
   padding: 8px 12px;
 }
 
-.tileset-selector-label {
-  font-size: 14px;
-  font-weight: 600;
+.tileset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.tileset-collapse-btn {
+  background: var(--ctp-surface1);
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--ctp-text);
-  white-space: nowrap;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tileset-collapse-btn:hover {
+  background: var(--ctp-surface2);
+  transform: scale(1.1);
+}
+
+.tileset-collapse-btn:active {
+  transform: scale(0.95);
+}
+
+.tileset-selector-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ctp-mauve);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .tileset-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -72,40 +110,16 @@
   font-weight: 600;
 }
 
-.collapse-button {
-  background: var(--ctp-base);
-  border: 2px solid var(--ctp-surface2);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 16px;
-  transition: all 0.2s ease;
-  color: var(--ctp-subtext0);
-  min-width: 40px;
-}
-
-.collapse-button:hover {
-  border-color: var(--ctp-blue);
-  color: var(--ctp-blue);
-  background: var(--ctp-surface0);
-}
-
-.expand-button {
-  background: var(--ctp-base);
-  border: 2px solid var(--ctp-blue);
-  border-radius: var(--radius-md);
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  color: var(--ctp-blue);
-  white-space: nowrap;
-}
-
-.expand-button:hover {
-  background: var(--ctp-blue);
+.custom-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 4px;
+  background-color: var(--ctp-blue);
   color: var(--ctp-base);
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  text-transform: uppercase;
 }
 
 /* Hide on mobile devices */
@@ -118,14 +132,11 @@
 /* Responsive adjustments for smaller desktop screens */
 @media (max-width: 1024px) {
   .tileset-selector {
-    padding: 8px 12px;
-  }
-
-  .tileset-selector-label {
-    font-size: 12px;
+    padding: 8px;
   }
 
   .tileset-buttons {
+    grid-template-columns: repeat(2, 1fr);
     gap: 6px;
   }
 
@@ -143,16 +154,4 @@
     font-size: 10px;
     max-width: 70px;
   }
-}
-
-.custom-badge {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 1px 4px;
-  background-color: var(--ctp-blue);
-  color: var(--ctp-base);
-  font-size: 9px;
-  font-weight: 600;
-  border-radius: var(--radius-xs);
-  text-transform: uppercase;
 }

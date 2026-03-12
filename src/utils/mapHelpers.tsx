@@ -3,6 +3,13 @@ import L from 'leaflet';
 import { Marker, Tooltip, Popup } from 'react-leaflet';
 import { PositionHistoryItem } from '../contexts/MapContext';
 
+/**
+ * Scaled SNR sentinel for MQTT/unknown hops.
+ * Raw Meshtastic value is -128 (INT8_MIN), divided by 4 = -32.
+ * Indicates the hop used MQTT gateway or firmware too old to report SNR.
+ */
+export const MQTT_SNR_SENTINEL = -32;
+
 // Constants for arrow generation
 const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
 const MIN_ARROWS_PER_SEGMENT = 1;
@@ -149,12 +156,11 @@ export const getSegmentSnrColor = (
   defaultColor: string
 ): string => {
   if (!snrData || snrData.length === 0) return defaultColor;
-  // Filter out MQTT sentinel values (-32) from average calculation
-  const rfSnrs = snrData.filter(d => d.snr !== -32).map(d => d.snr);
+  const rfSnrs = snrData.filter(d => d.snr !== MQTT_SNR_SENTINEL).map(d => d.snr);
   if (rfSnrs.length === 0) return defaultColor;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
-  if (avgSnr > 5) return snrColors.good;
-  if (avgSnr >= -5) return snrColors.medium;
+  if (avgSnr > 0) return snrColors.good;
+  if (avgSnr >= -10) return snrColors.medium;
   return snrColors.poor;
 };
 
@@ -168,12 +174,12 @@ export const getSegmentSnrOpacity = (
 ): number => {
   if (isMqtt) return 0.5;
   if (!snrData || snrData.length === 0) return 0.5;
-  const rfSnrs = snrData.filter(d => d.snr !== -32).map(d => d.snr);
+  const rfSnrs = snrData.filter(d => d.snr !== MQTT_SNR_SENTINEL).map(d => d.snr);
   if (rfSnrs.length === 0) return 0.5;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
-  // Map from -20..+10 to 0.4..0.85
-  const normalized = Math.max(-20, Math.min(10, avgSnr));
-  return 0.4 + ((normalized + 20) / 30) * 0.45;
+  // Map from -20..+15 to 0.4..0.85
+  const normalized = Math.max(-20, Math.min(15, avgSnr));
+  return 0.4 + ((normalized + 20) / 35) * 0.45;
 };
 
 /**
@@ -250,13 +256,13 @@ export const generateCurvedArrowMarkers = (
  */
 export const getTemporalOpacityMultiplier = (timestamp: number | undefined): number => {
   if (!timestamp) return 0.5; // Unknown age = moderate opacity
-  const ageMs = Date.now() - timestamp;
-  const ageHours = ageMs / (1000 * 60 * 60);
+  const ageHours = (Date.now() - timestamp) / (1000 * 60 * 60);
 
   if (ageHours < 1) return 1.0;
-  if (ageHours < 6) return 0.7;
-  if (ageHours < 24) return 0.4;
-  return 0.2;
+  if (ageHours > 24) return 0.2;
+  // Smooth sqrt decay from 1.0 to 0.2 over 1-24 hours
+  const t = (ageHours - 1) / 23;
+  return 1.0 - 0.8 * Math.sqrt(t);
 };
 
 // Position history color gradient constants
