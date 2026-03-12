@@ -19,7 +19,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
@@ -3845,7 +3845,7 @@ class MeshtasticManager {
           relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message
           replyId: replyId && replyId > 0 ? replyId : undefined,
           emoji: emoji,
-          viaMqtt: meshPacket.viaMqtt === true, // Capture whether message was received via MQTT bridge
+          viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism), // Capture whether message was received via MQTT bridge
           rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr, // SNR of received packet
           rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi, // RSSI of received packet
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
@@ -5405,7 +5405,7 @@ class MeshtasticManager {
       logger.info(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
 
       // Skip MQTT-sourced neighbor info - it represents remote mesh topology, not local connections
-      if (meshPacket.viaMqtt) {
+      if (meshPacket.viaMqtt || isViaMqtt(meshPacket.transportMechanism)) {
         logger.debug(`📡 Skipping MQTT-sourced neighbor info from ${fromNodeId}`);
         return;
       }
