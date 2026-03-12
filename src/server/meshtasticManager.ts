@@ -5177,6 +5177,33 @@ class MeshtasticManager {
         }
       }
 
+      // Detect NO_CHANNEL errors on DMs from the target node — this can indicate a
+      // key/channel mismatch where the firmware used the wrong encryption context.
+      // Flag it for Auto Key Management to attempt repair via NodeInfo exchange.
+      if (errorReason === RoutingError.NO_CHANNEL && isDM && fromNodeId === targetNodeId) {
+        if (originalMessage.toNodeNum) {
+          const targetNodeNum = originalMessage.toNodeNum;
+          const errorDescription = 'NO_CHANNEL error on DM - target node rejected the message. ' +
+            'Possible key or channel mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+          logger.warn(`🔐 NO_CHANNEL on DM detected for node ${targetNodeId}: ${errorDescription}`);
+
+          // Flag the node with the key security issue (if not already flagged)
+          const existingNode = databaseService.getNode(targetNodeNum);
+          if (!existingNode?.keyMismatchDetected) {
+            databaseService.upsertNode({
+              nodeNum: targetNodeNum,
+              nodeId: targetNodeId,
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: errorDescription
+            });
+
+            // Emit event to notify UI of the key issue
+            dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+          }
+        }
+      }
+
       // For DMs, only mark as failed if the routing error comes from the target node
       // Intermediate nodes may report errors (e.g., NO_CHANNEL) but the message might have
       // reached the target via a different route
@@ -5522,23 +5549,47 @@ class MeshtasticManager {
         // Capture public key if present (important for local node)
         if (nodeInfo.user.publicKey && nodeInfo.user.publicKey.length > 0) {
           // Convert Uint8Array to base64 for storage
-          nodeData.publicKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
-          nodeData.hasPKC = true;
-          logger.debug(`🔐 Captured public key for ${nodeId}: ${nodeData.publicKey.substring(0, 16)}...`);
+          const deviceSyncKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
 
-          // Check for key security issues
-          const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
-          const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
+          // Device sync keys should NOT overwrite mesh-received keys for remote nodes.
+          // The connected device's internal nodeDb may have stale/incorrect cached keys,
+          // while mesh-received keys (from processNodeInfoMessageProtobuf) come directly
+          // from the node itself and are authoritative. The local node's own key from
+          // device sync IS authoritative since the device knows its own key.
+          const isLocalNode = this.localNodeInfo?.nodeNum === Number(nodeInfo.num);
+          const existingNode = databaseService.getNode(Number(nodeInfo.num));
 
-          if (isLowEntropy) {
-            nodeData.keyIsLowEntropy = true;
-            nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
-            logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
+          if (!isLocalNode && existingNode?.publicKey && existingNode.publicKey !== deviceSyncKey) {
+            // Device has a different key than what we have from mesh — don't overwrite
+            logger.debug(
+              `🔐 Device sync: Skipping stale public key for ${nodeId} ` +
+              `(device: ${deviceSyncKey.substring(0, 16)}..., ` +
+              `stored: ${existingNode.publicKey.substring(0, 16)}...)`
+            );
+            // Still set hasPKC since the node does have a key
+            nodeData.hasPKC = true;
           } else {
-            // Explicitly clear the flag when key is NOT low-entropy
-            // This ensures that if a node regenerates their key, the flag is cleared immediately
-            nodeData.keyIsLowEntropy = false;
-            nodeData.keySecurityIssueDetails = undefined;
+            nodeData.publicKey = deviceSyncKey;
+            nodeData.hasPKC = true;
+            logger.debug(`🔐 Captured public key for ${nodeId}: ${deviceSyncKey.substring(0, 16)}...`);
+          }
+
+          // Check for key security issues (use stored key if we skipped device key)
+          const keyToCheck = nodeData.publicKey || existingNode?.publicKey;
+          if (keyToCheck) {
+            const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
+            const isLowEntropy = checkLowEntropyKey(keyToCheck, 'base64');
+
+            if (isLowEntropy) {
+              nodeData.keyIsLowEntropy = true;
+              nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+              logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
+            } else {
+              // Explicitly clear the flag when key is NOT low-entropy
+              // This ensures that if a node regenerates their key, the flag is cleared immediately
+              nodeData.keyIsLowEntropy = false;
+              nodeData.keySecurityIssueDetails = undefined;
+            }
           }
         }
       }
