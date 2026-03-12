@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ROLE_OPTIONS } from '../configuration/constants';
+import { ROLE_OPTIONS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS, TIMEZONE_PRESETS } from '../configuration/constants';
 
 interface DeviceConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
@@ -25,6 +25,14 @@ interface DeviceConfigurationSectionProps {
   // Device Config
   deviceRole: number;
   nodeInfoBroadcastSecs: number;
+  rebroadcastMode: number;
+  tzdef: string;
+  doubleTapAsButtonPress: boolean;
+  disableTripleClick: boolean;
+  ledHeartbeatDisabled: boolean;
+  buzzerMode: number;
+  buttonGpio: number;
+  buzzerGpio: number;
   isRoleDropdownOpen: boolean;
   onDeviceConfigChange: (field: string, value: any) => void;
   onRoleDropdownToggle: () => void;
@@ -101,6 +109,14 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
   onSaveOwnerConfig,
   deviceRole,
   nodeInfoBroadcastSecs,
+  rebroadcastMode,
+  tzdef,
+  doubleTapAsButtonPress,
+  disableTripleClick,
+  ledHeartbeatDisabled,
+  buzzerMode,
+  buttonGpio,
+  buzzerGpio,
   isRoleDropdownOpen,
   onDeviceConfigChange,
   onRoleDropdownToggle,
@@ -361,6 +377,166 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             className="setting-input"
             style={{ width: '200px' }}
           />
+        </div>
+        <div className="setting-item">
+          <label>
+            {t('configuration.rebroadcast_mode', 'Rebroadcast Mode')}
+            <span className="setting-description">
+              {t('configuration.rebroadcast_mode_description', 'How messages are rebroadcasted by this device')}
+            </span>
+          </label>
+          <select
+            value={rebroadcastMode}
+            onChange={(e) => onDeviceConfigChange('rebroadcastMode', parseInt(e.target.value))}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '100%', maxWidth: '600px' }}
+          >
+            {REBROADCAST_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.name} - {option.description}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="setting-item">
+          <label>
+            {t('configuration.timezone', 'Timezone')}
+            <span className="setting-description">
+              {t('configuration.timezone_description', 'POSIX timezone definition string')}
+            </span>
+          </label>
+          <select
+            value={TIMEZONE_PRESETS.some(tz => tz.value === tzdef) ? tzdef : '_custom'}
+            onChange={(e) => {
+              if (e.target.value !== '_custom') {
+                onDeviceConfigChange('tzdef', e.target.value);
+              }
+            }}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '100%', maxWidth: '600px', marginBottom: '0.5rem' }}
+          >
+            {TIMEZONE_PRESETS.map((tz) => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+            {!TIMEZONE_PRESETS.some(tz => tz.value === tzdef) && tzdef && (
+              <option value="_custom">Custom: {tzdef}</option>
+            )}
+          </select>
+          <input
+            type="text"
+            value={tzdef}
+            onChange={(e) => onDeviceConfigChange('tzdef', e.target.value)}
+            disabled={isExecuting}
+            placeholder="EST5EDT,M3.2.0,M11.1.0"
+            className="setting-input"
+            style={{ width: '100%', maxWidth: '600px' }}
+          />
+        </div>
+        <div className="setting-item">
+          <label>
+            {t('configuration.buzzer_mode', 'Buzzer Mode')}
+            <span className="setting-description">
+              {t('configuration.buzzer_mode_description', 'Audio feedback mode for the device buzzer')}
+            </span>
+          </label>
+          <select
+            value={buzzerMode}
+            onChange={(e) => onDeviceConfigChange('buzzerMode', parseInt(e.target.value))}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '100%', maxWidth: '600px' }}
+          >
+            {BUZZER_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.name} - {option.description}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={doubleTapAsButtonPress}
+              onChange={(e) => onDeviceConfigChange('doubleTapAsButtonPress', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('configuration.double_tap_as_button_press', 'Double Tap as Button Press')}</div>
+              <span className="setting-description">{t('configuration.double_tap_as_button_press_description', 'Enable double-tap gesture as a button press')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={disableTripleClick}
+              onChange={(e) => onDeviceConfigChange('disableTripleClick', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('configuration.disable_triple_click', 'Disable Triple Click')}</div>
+              <span className="setting-description">{t('configuration.disable_triple_click_description', 'Disable triple-click GPS toggle')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={ledHeartbeatDisabled}
+              onChange={(e) => onDeviceConfigChange('ledHeartbeatDisabled', e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('configuration.led_heartbeat_disabled', 'Disable LED Heartbeat')}</div>
+              <span className="setting-description">{t('configuration.led_heartbeat_disabled_description', 'Disable the LED heartbeat indicator')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
+            {t('configuration.gpio_pins', 'GPIO Pins')}
+            <span className="setting-description">{t('configuration.gpio_pins_description', 'Advanced hardware GPIO pin configuration')}</span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <div>
+              <label>
+                {t('configuration.button_gpio', 'Button GPIO')}
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={buttonGpio}
+                  onChange={(e) => onDeviceConfigChange('buttonGpio', parseInt(e.target.value) || 0)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '150px', marginLeft: '0.5rem' }}
+                />
+              </label>
+            </div>
+            <div>
+              <label>
+                {t('configuration.buzzer_gpio', 'Buzzer GPIO')}
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={buzzerGpio}
+                  onChange={(e) => onDeviceConfigChange('buzzerGpio', parseInt(e.target.value) || 0)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '150px', marginLeft: '0.5rem' }}
+                />
+              </label>
+            </div>
+          </div>
         </div>
         <button
           className="save-button"

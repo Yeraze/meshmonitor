@@ -459,7 +459,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         const config = result.config;
         setDeviceConfig({
           role: config.role,
-          nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+          nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs,
+          rebroadcastMode: config.rebroadcastMode ?? 0,
+          tzdef: config.tzdef ?? '',
+          doubleTapAsButtonPress: config.doubleTapAsButtonPress ?? false,
+          disableTripleClick: config.disableTripleClick ?? false,
+          ledHeartbeatDisabled: config.ledHeartbeatDisabled ?? false,
+          buzzerMode: config.buzzerMode ?? 0,
+          buttonGpio: config.buttonGpio ?? 0,
+          buzzerGpio: config.buzzerGpio ?? 0,
         });
       });
       await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between requests
@@ -998,7 +1006,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               case 'device':
                 setDeviceConfig({
                   role: config.role,
-                  nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+                  nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs,
+                  rebroadcastMode: config.rebroadcastMode ?? 0,
+                  tzdef: config.tzdef ?? '',
+                  doubleTapAsButtonPress: config.doubleTapAsButtonPress ?? false,
+                  disableTripleClick: config.disableTripleClick ?? false,
+                  ledHeartbeatDisabled: config.ledHeartbeatDisabled ?? false,
+                  buzzerMode: config.buzzerMode ?? 0,
+                  buttonGpio: config.buttonGpio ?? 0,
+                  buzzerGpio: config.buzzerGpio ?? 0,
                 });
                 break;
               case 'lora':
@@ -1550,7 +1566,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       await executeCommand('setDeviceConfig', {
         config: {
           role: configState.device.role,
-          nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs
+          nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs,
+          rebroadcastMode: configState.device.rebroadcastMode,
+          tzdef: configState.device.tzdef,
+          doubleTapAsButtonPress: configState.device.doubleTapAsButtonPress,
+          disableTripleClick: configState.device.disableTripleClick,
+          ledHeartbeatDisabled: configState.device.ledHeartbeatDisabled,
+          buzzerMode: configState.device.buzzerMode,
+          buttonGpio: configState.device.buttonGpio,
+          buzzerGpio: configState.device.buzzerGpio,
         }
       });
     } catch (error) {
@@ -3028,6 +3052,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onSaveOwnerConfig={handleSetOwner}
         deviceRole={configState.device.role}
         nodeInfoBroadcastSecs={configState.device.nodeInfoBroadcastSecs}
+        rebroadcastMode={configState.device.rebroadcastMode}
+        tzdef={configState.device.tzdef}
+        doubleTapAsButtonPress={configState.device.doubleTapAsButtonPress}
+        disableTripleClick={configState.device.disableTripleClick}
+        ledHeartbeatDisabled={configState.device.ledHeartbeatDisabled}
+        buzzerMode={configState.device.buzzerMode}
+        buttonGpio={configState.device.buttonGpio}
+        buzzerGpio={configState.device.buzzerGpio}
         isRoleDropdownOpen={isRoleDropdownOpen}
         onDeviceConfigChange={handleDeviceConfigChange}
         onRoleDropdownToggle={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
