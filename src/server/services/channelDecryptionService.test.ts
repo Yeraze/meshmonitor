@@ -87,13 +87,26 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should skip channels with invalid PSK length', async () => {
+      // Use a 20-byte key which is neither a valid shorthand (1), AES-128 (16), nor AES-256 (32)
+      const invalidPsk = Buffer.alloc(20, 0xab).toString('base64');
       (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
-        { id: 1, name: 'Invalid Channel', psk: testPskBase64, pskLength: 24 } // Wrong declared length
+        { id: 1, name: 'Invalid Channel', psk: invalidPsk, pskLength: 20 }
       ]);
 
       await channelDecryptionService.refreshChannelCache();
 
       expect(channelDecryptionService.getCacheSize()).toBe(0);
+    });
+
+    it('should expand shorthand PSK (AQ==) to full 16-byte key', async () => {
+      // AQ== is base64 for a single byte 0x01 (Meshtastic default key shorthand)
+      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Default Key Channel', psk: 'AQ==', pskLength: 1 }
+      ]);
+
+      await channelDecryptionService.refreshChannelCache();
+
+      expect(channelDecryptionService.getCacheSize()).toBe(1);
     });
 
     it('should skip channels without ID', async () => {
