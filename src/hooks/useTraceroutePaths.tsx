@@ -14,7 +14,7 @@ import React, { useMemo } from 'react';
 import { Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -65,6 +65,11 @@ export interface ThemeColors {
   tracerouteReturn?: string;
   mqttSegment?: string;
   neighborLine?: string;
+  snrColors?: {
+    good: string;
+    medium: string;
+    poor: string;
+  };
 }
 
 /**
@@ -427,13 +432,21 @@ export function useTraceroutePaths({
         }
       }
 
+      const snrData = segmentSNRs.get(segmentKey);
+      const segmentColor = isMqttSegment
+        ? (themeColors.mqttSegment ?? themeColors.overlay0)
+        : themeColors.snrColors
+          ? getSegmentSnrColor(snrData, themeColors.snrColors, themeColors.neighborLine ?? themeColors.mauve)
+          : (themeColors.neighborLine ?? themeColors.mauve);
+      const segmentOpacity = getSegmentSnrOpacity(snrData, isMqttSegment);
+
       return (
         <Polyline
           key={segment.key}
           positions={segment.positions}
-          color={isMqttSegment ? (themeColors.mqttSegment ?? themeColors.overlay0) : (themeColors.neighborLine ?? themeColors.mauve)}
+          color={segmentColor}
           weight={weight}
-          opacity={isMqttSegment ? 0.6 : 0.7}
+          opacity={segmentOpacity}
           dashArray={isMqttSegment ? '8, 8' : undefined}
         >
           <Popup>
@@ -626,7 +639,7 @@ export function useTraceroutePaths({
     allElements.push(...segmentElements);
 
     return allElements;
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, themeColors.neighborLine, themeColors.mqttSegment, callbacks, visibleNodeNums]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, themeColors.neighborLine, themeColors.mqttSegment, themeColors.snrColors, callbacks, visibleNodeNums]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers

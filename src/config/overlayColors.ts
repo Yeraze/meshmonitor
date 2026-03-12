@@ -13,6 +13,11 @@ export interface OverlayColors {
     max: string;
     gradient: string[];
   };
+  snrColors: {
+    good: string;    // SNR > 5dB
+    medium: string;  // SNR -5 to 5dB
+    poor: string;    // SNR < -5dB
+  };
 }
 
 export const darkOverlayColors: OverlayColors = {
@@ -28,6 +33,11 @@ export const darkOverlayColors: OverlayColors = {
     max: '#FF0000',
     gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
   },
+  snrColors: {
+    good: '#74c7ec',
+    medium: '#f9e2af',
+    poor: '#f38ba8',
+  },
 };
 
 export const lightOverlayColors: OverlayColors = {
@@ -42,6 +52,11 @@ export const lightOverlayColors: OverlayColors = {
     noData: '#6b7280',
     max: '#b91c1c',
     gradient: ['#1d4ed8', '#4338ca', '#6d28d9', '#a21caf', '#be123c', '#b91c1c'],
+  },
+  snrColors: {
+    good: '#179299',
+    medium: '#df8e1d',
+    poor: '#d20f39',
   },
 };
 

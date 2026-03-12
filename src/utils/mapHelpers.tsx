@@ -140,6 +140,43 @@ export const generateCurvedPath = (
 };
 
 /**
+ * Get color for a route segment based on average SNR
+ * Returns the appropriate color from the SNR gradient
+ */
+export const getSegmentSnrColor = (
+  snrData: Array<{ snr: number }> | undefined,
+  snrColors: { good: string; medium: string; poor: string },
+  defaultColor: string
+): string => {
+  if (!snrData || snrData.length === 0) return defaultColor;
+  // Filter out MQTT sentinel values (-32) from average calculation
+  const rfSnrs = snrData.filter(d => d.snr !== -32).map(d => d.snr);
+  if (rfSnrs.length === 0) return defaultColor;
+  const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
+  if (avgSnr > 5) return snrColors.good;
+  if (avgSnr >= -5) return snrColors.medium;
+  return snrColors.poor;
+};
+
+/**
+ * Get opacity for a route segment based on SNR quality
+ * Better SNR = higher opacity for visual hierarchy
+ */
+export const getSegmentSnrOpacity = (
+  snrData: Array<{ snr: number }> | undefined,
+  isMqtt: boolean
+): number => {
+  if (isMqtt) return 0.5;
+  if (!snrData || snrData.length === 0) return 0.5;
+  const rfSnrs = snrData.filter(d => d.snr !== -32).map(d => d.snr);
+  if (rfSnrs.length === 0) return 0.5;
+  const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
+  // Map from -20..+10 to 0.4..0.85
+  const normalized = Math.max(-20, Math.min(10, avgSnr));
+  return 0.4 + ((normalized + 20) / 30) * 0.45;
+};
+
+/**
  * Calculate line weight based on SNR (-20 to +10 dB range typically)
  */
 export const getLineWeight = (snr: number | undefined): number => {

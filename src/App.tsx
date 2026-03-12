@@ -406,6 +406,7 @@ function App() {
     tracerouteReturn: schemeColors.tracerouteReturn,
     mqttSegment: schemeColors.mqttSegment,
     neighborLine: schemeColors.neighborLine,
+    snrColors: schemeColors.snrColors,
   }), [themeColors, schemeColors]);
 
   // Channel Database entries for displaying names of server-decrypted channels
