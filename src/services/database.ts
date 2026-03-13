@@ -7443,9 +7443,11 @@ class DatabaseService {
   }
 
   clearKeyRepairState(nodeNum: number): void {
-    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    // For PostgreSQL/MySQL, delegate to async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      logger.debug(`clearKeyRepairState not yet implemented for PostgreSQL/MySQL`);
+      this.clearKeyRepairStateAsync(nodeNum).catch(err =>
+        logger.error('Error clearing key repair state:', err)
+      );
       return;
     }
 
@@ -7521,9 +7523,11 @@ class DatabaseService {
 
   // Auto key repair log methods
   logKeyRepairAttempt(nodeNum: number, nodeName: string | null, action: string, success: boolean | null = null): number {
-    // For PostgreSQL/MySQL, key repair logging is not yet implemented
+    // For PostgreSQL/MySQL, delegate to async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      logger.debug(`logKeyRepairAttempt not yet implemented for PostgreSQL/MySQL: ${action} for node ${nodeNum}`);
+      this.logKeyRepairAttemptAsync(nodeNum, nodeName, action, success).catch(err =>
+        logger.error('Error logging key repair attempt:', err)
+      );
       return 0;
     }
 
@@ -7580,6 +7584,137 @@ class DatabaseService {
       ...r,
       success: r.success === null ? null : r.success === 1
     }));
+  }
+
+  async logKeyRepairAttemptAsync(
+    nodeNum: number,
+    nodeName: string | null,
+    action: string,
+    success: boolean | null = null,
+    oldKeyFragment: string | null = null,
+    newKeyFragment: string | null = null
+  ): Promise<number> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await (this as any).pgPool.connect();
+      try {
+        const result = await client.query(
+          `INSERT INTO auto_key_repair_log (timestamp, "nodeNum", "nodeName", action, success, created_at, "oldKeyFragment", "newKeyFragment")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment]
+        );
+        await client.query(
+          `DELETE FROM auto_key_repair_log WHERE id NOT IN (
+            SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100
+          )`
+        );
+        return result.rows[0]?.id || 0;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = (this as any).mysqlPool;
+      const [result] = await pool.query(
+        `INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment]
+      );
+      await pool.query(
+        `DELETE FROM auto_key_repair_log WHERE id NOT IN (
+          SELECT id FROM (SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100) as t
+        )`
+      );
+      return (result as any).insertId || 0;
+    }
+    // SQLite fallback - use existing sync method plus new columns
+    const stmt = this.db.prepare(`
+      INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const info = stmt.run(Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment);
+    this.db.prepare('DELETE FROM auto_key_repair_log WHERE id NOT IN (SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100)').run();
+    return Number(info.lastInsertRowid);
+  }
+
+  async getKeyRepairLogAsync(limit: number = 50): Promise<{
+    id: number;
+    timestamp: number;
+    nodeNum: number;
+    nodeName: string | null;
+    action: string;
+    success: boolean | null;
+    oldKeyFragment: string | null;
+    newKeyFragment: string | null;
+  }[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await (this as any).pgPool.connect();
+      try {
+        const result = await client.query(
+          `SELECT id, timestamp, "nodeNum", "nodeName", action, success, "oldKeyFragment", "newKeyFragment"
+           FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT $1`,
+          [limit]
+        );
+        return result.rows.map((row: any) => ({
+          id: row.id,
+          timestamp: Number(row.timestamp),
+          nodeNum: Number(row.nodeNum),
+          nodeName: row.nodeName,
+          action: row.action,
+          success: row.success === null ? null : Boolean(row.success),
+          oldKeyFragment: row.oldKeyFragment || null,
+          newKeyFragment: row.newKeyFragment || null,
+        }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = (this as any).mysqlPool;
+      const [rows] = await pool.query(
+        `SELECT id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment
+         FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?`,
+        [limit]
+      );
+      return (rows as any[]).map((row: any) => ({
+        id: row.id,
+        timestamp: Number(row.timestamp),
+        nodeNum: Number(row.nodeNum),
+        nodeName: row.nodeName,
+        action: row.action,
+        success: row.success === null ? null : Boolean(row.success),
+        oldKeyFragment: row.oldKeyFragment || null,
+        newKeyFragment: row.newKeyFragment || null,
+      }));
+    }
+    // SQLite — query directly with new columns (available after migration 084)
+    const rows = this.db.prepare(`
+      SELECT id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment
+      FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?
+    `).all(limit) as any[];
+    return rows.map((row: any) => ({
+      id: row.id,
+      timestamp: Number(row.timestamp),
+      nodeNum: Number(row.nodeNum),
+      nodeName: row.nodeName,
+      action: row.action,
+      success: row.success === null ? null : Boolean(row.success),
+      oldKeyFragment: row.oldKeyFragment || null,
+      newKeyFragment: row.newKeyFragment || null,
+    }));
+  }
+
+  async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await (this as any).pgPool.connect();
+      try {
+        await client.query('DELETE FROM auto_key_repair_state WHERE "nodeNum" = $1', [nodeNum]);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = (this as any).mysqlPool;
+      await pool.query('DELETE FROM auto_key_repair_state WHERE nodeNum = ?', [nodeNum]);
+    } else {
+      this.clearKeyRepairState(nodeNum);
+    }
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
