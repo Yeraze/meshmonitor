@@ -415,12 +415,14 @@ setTimeout(async () => {
     const keyRepairInterval = databaseService.getSetting('autoKeyManagementIntervalMinutes');
     const keyRepairMaxExchanges = databaseService.getSetting('autoKeyManagementMaxExchanges');
     const keyRepairAutoPurge = databaseService.getSetting('autoKeyManagementAutoPurge');
+    const keyRepairImmediatePurge = databaseService.getSetting('autoKeyManagementImmediatePurge');
 
     meshtasticManager.setKeyRepairSettings({
       enabled: keyRepairEnabled === 'true',
       intervalMinutes: keyRepairInterval ? parseInt(keyRepairInterval) : 5,
       maxExchanges: keyRepairMaxExchanges ? parseInt(keyRepairMaxExchanges) : 3,
-      autoPurge: keyRepairAutoPurge === 'true'
+      autoPurge: keyRepairAutoPurge === 'true',
+      immediatePurge: keyRepairImmediatePurge === 'true'
     });
     logger.debug('✅ Loaded auto key repair settings');
 
