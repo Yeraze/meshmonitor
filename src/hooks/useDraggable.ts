@@ -171,17 +171,25 @@ export function useDraggable(options: UseDraggableOptions): UseDraggableReturn {
     savePosition(id, defaultPosition);
   }, [id, defaultPosition]);
 
-  // Ensure position is valid on window resize (not on initial mount - let default position be used)
+  // Ensure position is valid on window resize or when element size changes
   useEffect(() => {
     const handleResize = () => {
-      setPosition(pos => constrainPosition(pos));
+      setPosition(pos => {
+        const constrained = constrainPosition(pos);
+        if (constrained.x !== pos.x || constrained.y !== pos.y) {
+          savePosition(id, constrained);
+        }
+        return constrained;
+      });
     };
 
+    // Re-constrain when element size changes (constrainPosition dependency updates)
+    handleResize();
+
     window.addEventListener('resize', handleResize);
-    // Don't run on mount - the default position is already appropriate
 
     return () => window.removeEventListener('resize', handleResize);
-  }, [constrainPosition]);
+  }, [constrainPosition, id]);
 
   return {
     position,

@@ -26,11 +26,22 @@ export const DraggableOverlay: React.FC<DraggableOverlayProps> = ({
   const dragHandleRef = useRef<HTMLDivElement>(null);
   const [elementSize, setElementSize] = useState({ width: 200, height: 100 });
 
-  // Measure element size after mount
+  // Measure element size and keep it updated via ResizeObserver
   useEffect(() => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
       setElementSize({ width: rect.width, height: rect.height });
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateSize);
+      observer.observe(el);
+      return () => observer.disconnect();
     }
   }, []);
 
