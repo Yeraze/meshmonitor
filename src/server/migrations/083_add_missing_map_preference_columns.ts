@@ -1,0 +1,80 @@
+/**
+ * Migration 083: Add missing map preference columns to PostgreSQL/MySQL
+ *
+ * Migration 030 created user_map_preferences for SQLite with all columns,
+ * but Postgres/MySQL tables were created by Drizzle schema with only base columns.
+ * Migrations 031 (sorting), 063 (position_history_hours), 074 (meshcore_nodes),
+ * and 076 (accuracy/estimated) added some columns but the core feature columns
+ * (map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
+ * show_mqtt_nodes, show_animations) were never added to Postgres/MySQL.
+ */
+
+import Database from 'better-sqlite3';
+import { PoolClient } from 'pg';
+import { Pool as MySQLPool } from 'mysql2/promise';
+import { logger } from '../../utils/logger.js';
+
+export function runMigration083Sqlite(_db: Database.Database): void {
+  // SQLite already has all columns from migration 030 — nothing to do
+  logger.debug('Migration 083: SQLite already has all map preference columns, skipping.');
+}
+
+export async function runMigration083Postgres(client: PoolClient): Promise<void> {
+  logger.info('Running migration 083: Add missing map preference columns (PostgreSQL)');
+
+  const columnsToAdd = [
+    { name: 'map_tileset', type: 'TEXT' },
+    { name: 'show_paths', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_neighbor_info', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_route', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_motion', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_mqtt_nodes', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_animations', type: 'BOOLEAN DEFAULT false' },
+    { name: 'created_at', type: 'BIGINT' },
+  ];
+
+  for (const col of columnsToAdd) {
+    const exists = await client.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'user_map_preferences' AND column_name = $1`,
+      [col.name]
+    );
+
+    if (exists.rows.length === 0) {
+      await client.query(`ALTER TABLE user_map_preferences ADD COLUMN ${col.name} ${col.type}`);
+      logger.debug(`✅ Added ${col.name} column to user_map_preferences`);
+    }
+  }
+
+  logger.info('✅ Migration 083 completed: map preference columns added');
+}
+
+export async function runMigration083Mysql(pool: MySQLPool): Promise<void> {
+  logger.info('Running migration 083: Add missing map preference columns (MySQL)');
+
+  const columnsToAdd = [
+    { name: 'map_tileset', type: 'VARCHAR(255)' },
+    { name: 'show_paths', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_neighbor_info', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_route', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_motion', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_mqtt_nodes', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_animations', type: 'BOOLEAN DEFAULT false' },
+    { name: 'created_at', type: 'BIGINT' },
+  ];
+
+  for (const col of columnsToAdd) {
+    const [rows] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_NAME = 'user_map_preferences' AND COLUMN_NAME = ?`,
+      [col.name]
+    );
+
+    if ((rows as any[]).length === 0) {
+      await pool.query(`ALTER TABLE user_map_preferences ADD COLUMN ${col.name} ${col.type}`);
+      logger.debug(`✅ Added ${col.name} column to user_map_preferences`);
+    }
+  }
+
+  logger.info('✅ Migration 083 completed: map preference columns added');
+}

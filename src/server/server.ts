@@ -5065,19 +5065,14 @@ apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'wri
 // User Map Preferences endpoints
 
 // Get user's map preferences
-apiRouter.get('/user/map-preferences', optionalAuth(), (req, res) => {
+apiRouter.get('/user/map-preferences', optionalAuth(), async (req, res) => {
   try {
-    // For PostgreSQL/MySQL, map preferences not yet implemented
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      return res.json({ preferences: null });
-    }
-
     // Anonymous users get null (will fall back to defaults in frontend)
     if (!req.user || req.user.username === 'anonymous') {
       return res.json({ preferences: null });
     }
 
-    const preferences = databaseService.userModel.getMapPreferences(req.user.id);
+    const preferences = await databaseService.getMapPreferencesAsync(req.user.id);
     res.json({ preferences });
   } catch (error) {
     logger.error('Error fetching user map preferences:', error);
@@ -5086,13 +5081,8 @@ apiRouter.get('/user/map-preferences', optionalAuth(), (req, res) => {
 });
 
 // Save user's map preferences
-apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
+apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
   try {
-    // For PostgreSQL/MySQL, map preferences not yet implemented
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      return res.json({ success: true, message: 'Map preferences not yet implemented for PostgreSQL' });
-    }
-
     // Prevent saving preferences for anonymous user
     if (req.user!.username === 'anonymous') {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
@@ -5119,7 +5109,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
     }
 
     // Save preferences
-    databaseService.userModel.saveMapPreferences(req.user!.id, {
+    await databaseService.saveMapPreferencesAsync(req.user!.id, {
       mapTileset,
       showPaths,
       showNeighborInfo,
@@ -5756,7 +5746,15 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
             if (finalConfig.deviceConfig?.device) {
               config = {
                 role: finalConfig.deviceConfig.device.role,
-                nodeInfoBroadcastSecs: finalConfig.deviceConfig.device.nodeInfoBroadcastSecs
+                nodeInfoBroadcastSecs: finalConfig.deviceConfig.device.nodeInfoBroadcastSecs,
+                rebroadcastMode: finalConfig.deviceConfig.device.rebroadcastMode,
+                tzdef: finalConfig.deviceConfig.device.tzdef,
+                doubleTapAsButtonPress: finalConfig.deviceConfig.device.doubleTapAsButtonPress,
+                disableTripleClick: finalConfig.deviceConfig.device.disableTripleClick,
+                ledHeartbeatDisabled: finalConfig.deviceConfig.device.ledHeartbeatDisabled,
+                buzzerMode: finalConfig.deviceConfig.device.buzzerMode,
+                buttonGpio: finalConfig.deviceConfig.device.buttonGpio,
+                buzzerGpio: finalConfig.deviceConfig.device.buzzerGpio,
               };
             } else {
               return res.status(404).json({ error: 'Device config not available. The device may not have sent its configuration yet.' });
@@ -5985,7 +5983,15 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'device':
             config = {
               role: remoteConfig.role,
-              nodeInfoBroadcastSecs: remoteConfig.nodeInfoBroadcastSecs
+              nodeInfoBroadcastSecs: remoteConfig.nodeInfoBroadcastSecs,
+              rebroadcastMode: remoteConfig.rebroadcastMode,
+              tzdef: remoteConfig.tzdef,
+              doubleTapAsButtonPress: remoteConfig.doubleTapAsButtonPress,
+              disableTripleClick: remoteConfig.disableTripleClick,
+              ledHeartbeatDisabled: remoteConfig.ledHeartbeatDisabled,
+              buzzerMode: remoteConfig.buzzerMode,
+              buttonGpio: remoteConfig.buttonGpio,
+              buzzerGpio: remoteConfig.buzzerGpio,
             };
             break;
           case 'lora':

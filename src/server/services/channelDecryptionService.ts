@@ -13,7 +13,7 @@ import { createDecipheriv } from 'crypto';
 import { getProtobufRoot } from '../protobufLoader.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { CHANNEL_CACHE_TTL_MS } from '../constants/meshtastic.js';
+import { CHANNEL_CACHE_TTL_MS, expandShorthandPsk } from '../constants/meshtastic.js';
 
 export interface DecryptionResult {
   success: boolean;
@@ -116,25 +116,27 @@ class ChannelDecryptionService {
             continue;
           }
 
-          const pskBuffer = Buffer.from(channel.psk, 'base64');
+          const rawPskBuffer = Buffer.from(channel.psk, 'base64');
 
-          // Validate PSK length matches declared length
-          if (pskBuffer.length !== channel.pskLength) {
+          // Expand shorthand PSK (1-byte keys like AQ==) to full 16-byte key
+          const pskBuffer = expandShorthandPsk(rawPskBuffer);
+          if (!pskBuffer) {
             logger.warn(
-              `Channel "${channel.name}" (id=${channel.id}): PSK length mismatch. ` +
-                `Expected ${channel.pskLength}, got ${pskBuffer.length}. Skipping.`
+              `Channel "${channel.name}" (id=${channel.id}): PSK indicates no encryption. Skipping.`
             );
             continue;
           }
 
           // Validate PSK length is valid for AES
-          if (channel.pskLength !== 16 && channel.pskLength !== 32) {
+          if (pskBuffer.length !== 16 && pskBuffer.length !== 32) {
             logger.warn(
-              `Channel "${channel.name}" (id=${channel.id}): Invalid PSK length ${channel.pskLength}. ` +
+              `Channel "${channel.name}" (id=${channel.id}): Invalid PSK length ${pskBuffer.length}. ` +
                 `Must be 16 (AES-128) or 32 (AES-256). Skipping.`
             );
             continue;
           }
+
+          const pskLength = pskBuffer.length;
 
           // Compute expected channel hash if name validation is enabled
           const enforceNameValidation = channel.enforceNameValidation ?? false;
@@ -146,7 +148,7 @@ class ChannelDecryptionService {
             id: channel.id,
             name: channel.name,
             psk: pskBuffer,
-            pskLength: channel.pskLength,
+            pskLength,
             enforceNameValidation,
             expectedChannelHash,
             sortOrder: channel.sortOrder ?? 0,

@@ -7,7 +7,8 @@ import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
-import { encodePositionFlags, decodePositionFlags } from '../utils/positionFlags';
+import { encodePositionFlags, decodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
+import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
@@ -459,7 +460,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         const config = result.config;
         setDeviceConfig({
           role: config.role,
-          nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+          nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs,
+          rebroadcastMode: config.rebroadcastMode ?? 0,
+          tzdef: config.tzdef ?? '',
+          doubleTapAsButtonPress: config.doubleTapAsButtonPress ?? false,
+          disableTripleClick: config.disableTripleClick ?? false,
+          ledHeartbeatDisabled: config.ledHeartbeatDisabled ?? false,
+          buzzerMode: config.buzzerMode ?? 0,
+          buttonGpio: config.buttonGpio ?? 0,
+          buzzerGpio: config.buzzerGpio ?? 0,
         });
       });
       await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between requests
@@ -998,7 +1007,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               case 'device':
                 setDeviceConfig({
                   role: config.role,
-                  nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+                  nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs,
+                  rebroadcastMode: config.rebroadcastMode ?? 0,
+                  tzdef: config.tzdef ?? '',
+                  doubleTapAsButtonPress: config.doubleTapAsButtonPress ?? false,
+                  disableTripleClick: config.disableTripleClick ?? false,
+                  ledHeartbeatDisabled: config.ledHeartbeatDisabled ?? false,
+                  buzzerMode: config.buzzerMode ?? 0,
+                  buttonGpio: config.buttonGpio ?? 0,
+                  buzzerGpio: config.buzzerGpio ?? 0,
                 });
                 break;
               case 'lora':
@@ -1550,7 +1567,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       await executeCommand('setDeviceConfig', {
         config: {
           role: configState.device.role,
-          nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs
+          nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs,
+          rebroadcastMode: configState.device.rebroadcastMode,
+          tzdef: configState.device.tzdef,
+          doubleTapAsButtonPress: configState.device.doubleTapAsButtonPress,
+          disableTripleClick: configState.device.disableTripleClick,
+          ledHeartbeatDisabled: configState.device.ledHeartbeatDisabled,
+          buzzerMode: configState.device.buzzerMode,
+          buttonGpio: configState.device.buttonGpio,
+          buzzerGpio: configState.device.buzzerGpio,
         }
       });
     } catch (error) {
@@ -2457,10 +2482,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.firmwareVersion}</span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.hwModel}</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{getHardwareModelName(deviceMetadata.hwModel) || deviceMetadata.hwModel}</span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.role}</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{getRoleName(deviceMetadata.role) || deviceMetadata.role}</span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
                   <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.deviceStateVersion}</span>
@@ -2477,7 +2502,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   </span>
 
                   <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.positionFlags}</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{decodePositionFlagNames(deviceMetadata.positionFlags ?? 0)}</span>
                 </div>
               </div>
             )}
@@ -3028,6 +3053,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onSaveOwnerConfig={handleSetOwner}
         deviceRole={configState.device.role}
         nodeInfoBroadcastSecs={configState.device.nodeInfoBroadcastSecs}
+        rebroadcastMode={configState.device.rebroadcastMode}
+        tzdef={configState.device.tzdef}
+        doubleTapAsButtonPress={configState.device.doubleTapAsButtonPress}
+        disableTripleClick={configState.device.disableTripleClick}
+        ledHeartbeatDisabled={configState.device.ledHeartbeatDisabled}
+        buzzerMode={configState.device.buzzerMode}
+        buttonGpio={configState.device.buttonGpio}
+        buzzerGpio={configState.device.buzzerGpio}
         isRoleDropdownOpen={isRoleDropdownOpen}
         onDeviceConfigChange={handleDeviceConfigChange}
         onRoleDropdownToggle={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}

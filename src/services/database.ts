@@ -88,6 +88,7 @@ import { migration as createGeofenceCooldownsMigration, runMigration079Postgres,
 import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
 import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
 import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
+import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -2605,6 +2606,19 @@ class DatabaseService {
       logger.debug('Add packetmonitor permission migration completed successfully');
     } catch (error) {
       logger.error('Error running migration 082:', error);
+    }
+
+    // Migration 083: Add missing map preference columns
+    const migrationKey083 = 'migration_083_map_preference_columns';
+    if (!this.getSetting(migrationKey083)) {
+      try {
+        logger.debug('Running migration 083: Add missing map preference columns...');
+        runMigration083Sqlite(this.db);
+        this.setSetting(migrationKey083, 'completed');
+        logger.debug('Migration 083 completed successfully');
+      } catch (error) {
+        logger.error('Error running migration 083:', error);
+      }
     }
   }
 
@@ -7741,6 +7755,21 @@ class DatabaseService {
 
   purgeAllTelemetry(): void {
     logger.debug('⚠️ PURGING all telemetry from database');
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.telemetryRepo) {
+        this.telemetryRepo.deleteAllTelemetry().then(() => {
+          logger.debug('✅ Successfully purged all telemetry');
+        }).catch(err => {
+          logger.error('Failed to purge all telemetry:', err);
+        });
+      } else {
+        logger.warn('Cannot purge telemetry: telemetry repository not initialized');
+      }
+      return;
+    }
+
     this.db.exec('DELETE FROM telemetry');
   }
 
@@ -7853,11 +7882,46 @@ class DatabaseService {
 
   purgeAllMessages(): void {
     logger.debug('⚠️ PURGING all messages from database');
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.messagesRepo) {
+        this.messagesRepo.deleteAllMessages().then(() => {
+          // Clear messages cache after purge
+          this._messagesCache = [];
+          logger.debug('✅ Successfully purged all messages');
+        }).catch(err => {
+          logger.error('Failed to purge all messages:', err);
+        });
+      } else {
+        logger.warn('Cannot purge messages: messages repository not initialized');
+      }
+      return;
+    }
+
     this.db.exec('DELETE FROM messages');
   }
 
   purgeAllTraceroutes(): void {
     logger.debug('⚠️ PURGING all traceroutes and route segments from database');
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        Promise.all([
+          this.traceroutesRepo.deleteAllTraceroutes(),
+          this.traceroutesRepo.deleteAllRouteSegments(),
+        ]).then(() => {
+          logger.debug('✅ Successfully purged all traceroutes and route segments');
+        }).catch(err => {
+          logger.error('Failed to purge all traceroutes:', err);
+        });
+      } else {
+        logger.warn('Cannot purge traceroutes: traceroutes repository not initialized');
+      }
+      return;
+    }
+
     this.db.exec('DELETE FROM traceroutes');
     this.db.exec('DELETE FROM route_segments');
     logger.debug('✅ Successfully purged all traceroutes and route segments');
@@ -11609,6 +11673,9 @@ class DatabaseService {
       // Run migration 082: Add packetmonitor permission
       await runMigration082Postgres(client);
 
+      // Run migration 083: Add missing map preference columns
+      await runMigration083Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11766,6 +11833,9 @@ class DatabaseService {
 
       // Run migration 082: Add packetmonitor permission
       await runMigration082Mysql(pool);
+
+      // Run migration 083: Add missing map preference columns
+      await runMigration083Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -12702,6 +12772,190 @@ class DatabaseService {
   async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
     if (this.nodesRepo) {
       await this.nodesRepo.updateNodeTimeSyncAsync(nodeNum, timestamp);
+    }
+  }
+
+  /**
+   * Get user's map preferences - works with all database backends
+   */
+  async getMapPreferencesAsync(userId: number): Promise<Record<string, any> | null> {
+    if (this.drizzleDbType === 'sqlite') {
+      return this.userModel.getMapPreferences(userId);
+    }
+
+    try {
+      const columns = `map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
+        show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
+        show_estimated_positions, position_history_hours`;
+
+      let row: any = null;
+
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query(
+          `SELECT ${columns} FROM user_map_preferences WHERE "userId" = $1`, [userId]
+        );
+        row = result.rows[0] || null;
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [rows] = await this.mysqlPool.query(
+          `SELECT ${columns} FROM user_map_preferences WHERE userId = ?`, [userId]
+        );
+        row = (rows as any[])[0] || null;
+      }
+
+      if (!row) return null;
+
+      return {
+        mapTileset: row.map_tileset || null,
+        showPaths: Boolean(row.show_paths),
+        showNeighborInfo: Boolean(row.show_neighbor_info),
+        showRoute: Boolean(row.show_route),
+        showMotion: Boolean(row.show_motion),
+        showMqttNodes: Boolean(row.show_mqtt_nodes),
+        showMeshCoreNodes: Boolean(row.show_meshcore_nodes),
+        showAnimations: Boolean(row.show_animations),
+        showAccuracyRegions: Boolean(row.show_accuracy_regions),
+        showEstimatedPositions: Boolean(row.show_estimated_positions),
+        positionHistoryHours: row.position_history_hours ?? null,
+      };
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to get map preferences async: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Save user's map preferences - works with all database backends
+   */
+  async saveMapPreferencesAsync(userId: number, preferences: {
+    mapTileset?: string;
+    showPaths?: boolean;
+    showNeighborInfo?: boolean;
+    showRoute?: boolean;
+    showMotion?: boolean;
+    showMqttNodes?: boolean;
+    showMeshCoreNodes?: boolean;
+    showAnimations?: boolean;
+    showAccuracyRegions?: boolean;
+    showEstimatedPositions?: boolean;
+    positionHistoryHours?: number | null;
+  }): Promise<void> {
+    if (this.drizzleDbType === 'sqlite') {
+      this.userModel.saveMapPreferences(userId, preferences);
+      return;
+    }
+
+    const now = Date.now();
+
+    try {
+      // Check if row exists
+      let exists = false;
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query(
+          'SELECT "userId" FROM user_map_preferences WHERE "userId" = $1', [userId]
+        );
+        exists = (result.rows.length > 0);
+      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [rows] = await this.mysqlPool.query(
+          'SELECT userId FROM user_map_preferences WHERE userId = ?', [userId]
+        );
+        exists = ((rows as any[]).length > 0);
+      }
+
+      if (exists) {
+        // Build dynamic UPDATE
+        const updates: string[] = [];
+        const params: any[] = [];
+        let paramIdx = 1; // For Postgres $N placeholders
+
+        const fieldMap: Record<string, string> = {
+          mapTileset: 'map_tileset',
+          showPaths: 'show_paths',
+          showNeighborInfo: 'show_neighbor_info',
+          showRoute: 'show_route',
+          showMotion: 'show_motion',
+          showMqttNodes: 'show_mqtt_nodes',
+          showMeshCoreNodes: 'show_meshcore_nodes',
+          showAnimations: 'show_animations',
+          showAccuracyRegions: 'show_accuracy_regions',
+          showEstimatedPositions: 'show_estimated_positions',
+          positionHistoryHours: 'position_history_hours',
+        };
+
+        for (const [key, col] of Object.entries(fieldMap)) {
+          const value = (preferences as any)[key];
+          if (value !== undefined) {
+            if (this.drizzleDbType === 'postgres') {
+              updates.push(`${col} = $${paramIdx++}`);
+            } else {
+              updates.push(`${col} = ?`);
+            }
+            // Convert booleans for storage
+            if (typeof value === 'boolean') {
+              params.push(value);
+            } else {
+              params.push(value);
+            }
+          }
+        }
+
+        if (updates.length > 0) {
+          if (this.drizzleDbType === 'postgres') {
+            updates.push(`"updatedAt" = $${paramIdx++}`);
+            params.push(now);
+            const sql = `UPDATE user_map_preferences SET ${updates.join(', ')} WHERE "userId" = $${paramIdx}`;
+            params.push(userId);
+            await this.postgresPool!.query(sql, params);
+          } else if (this.drizzleDbType === 'mysql') {
+            updates.push('updatedAt = ?');
+            params.push(now);
+            const sql = `UPDATE user_map_preferences SET ${updates.join(', ')} WHERE userId = ?`;
+            params.push(userId);
+            await this.mysqlPool!.query(sql, params);
+          }
+        }
+      } else {
+        // INSERT new row
+        const boolVal = (v: boolean | undefined, def: boolean) => v !== undefined ? v : def;
+
+        if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+          await this.postgresPool.query(
+            `INSERT INTO user_map_preferences (
+              "userId", map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
+              show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
+              show_estimated_positions, position_history_hours, created_at, "updatedAt"
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            [
+              userId, preferences.mapTileset || null,
+              boolVal(preferences.showPaths, false), boolVal(preferences.showNeighborInfo, false),
+              boolVal(preferences.showRoute, true), boolVal(preferences.showMotion, true),
+              boolVal(preferences.showMqttNodes, true), boolVal(preferences.showMeshCoreNodes, true),
+              boolVal(preferences.showAnimations, true), boolVal(preferences.showAccuracyRegions, false),
+              boolVal(preferences.showEstimatedPositions, true), preferences.positionHistoryHours ?? null,
+              now, now,
+            ]
+          );
+        } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+          await this.mysqlPool.query(
+            `INSERT INTO user_map_preferences (
+              userId, map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
+              show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
+              show_estimated_positions, position_history_hours, created_at, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              userId, preferences.mapTileset || null,
+              boolVal(preferences.showPaths, false), boolVal(preferences.showNeighborInfo, false),
+              boolVal(preferences.showRoute, true), boolVal(preferences.showMotion, true),
+              boolVal(preferences.showMqttNodes, true), boolVal(preferences.showMeshCoreNodes, true),
+              boolVal(preferences.showAnimations, true), boolVal(preferences.showAccuracyRegions, false),
+              boolVal(preferences.showEstimatedPositions, true), preferences.positionHistoryHours ?? null,
+              now, now,
+            ]
+          );
+        }
+      }
+    } catch (error) {
+      logger.error(`[DatabaseService] Failed to save map preferences async: ${error}`);
+      throw error;
     }
   }
 }

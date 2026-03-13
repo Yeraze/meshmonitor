@@ -347,8 +347,15 @@ export default function ChannelsTab({
           return false;
         }
 
-        // Check if user has permission to read this channel
-        if (!hasPermission(`channel_${ch}` as ResourceType, 'read')) {
+        // Check permissions: Channel Database channels (>= 100) use channel database permissions,
+        // device channels (0-7) use standard channel permissions
+        if (ch >= CHANNEL_DB_OFFSET) {
+          // Channel Database channels are accessible if the entry exists in channelDatabaseEntries
+          const channelDbId = ch - CHANNEL_DB_OFFSET;
+          if (!channelDatabaseEntries.some(entry => entry.id === channelDbId)) {
+            return false;
+          }
+        } else if (!hasPermission(`channel_${ch}` as ResourceType, 'read')) {
           return false;
         }
 

@@ -115,6 +115,14 @@ export interface OwnerConfigState {
 export interface DeviceConfigState {
   role: number;
   nodeInfoBroadcastSecs: number;
+  rebroadcastMode: number;
+  tzdef: string;
+  doubleTapAsButtonPress: boolean;
+  disableTripleClick: boolean;
+  ledHeartbeatDisabled: boolean;
+  buzzerMode: number;
+  buttonGpio: number;
+  buzzerGpio: number;
 }
 
 // Telemetry Config State
@@ -287,6 +295,14 @@ const initialState: AdminCommandsState = {
   device: {
     role: 0,
     nodeInfoBroadcastSecs: 3600,
+    rebroadcastMode: 0,
+    tzdef: '',
+    doubleTapAsButtonPress: false,
+    disableTripleClick: false,
+    ledHeartbeatDisabled: false,
+    buzzerMode: 0,
+    buttonGpio: 0,
+    buzzerGpio: 0,
   },
   telemetry: {
     deviceUpdateInterval: 900,

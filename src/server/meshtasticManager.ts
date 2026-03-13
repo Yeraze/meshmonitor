@@ -19,7 +19,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
@@ -3845,7 +3845,7 @@ class MeshtasticManager {
           relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message
           replyId: replyId && replyId > 0 ? replyId : undefined,
           emoji: emoji,
-          viaMqtt: meshPacket.viaMqtt === true, // Capture whether message was received via MQTT bridge
+          viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism), // Capture whether message was received via MQTT bridge
           rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr, // SNR of received packet
           rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi, // RSSI of received packet
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
@@ -5140,8 +5140,54 @@ class MeshtasticManager {
       // Look up the original message once for all error handling
       const originalMessage = requestId ? await databaseService.getMessageByRequestIdAsync(requestId) : null;
       if (!originalMessage) {
-        // No original message found - this is likely an external routing packet we didn't send
-        logger.debug(`⚠️  Routing error for unknown requestId ${requestId} (not our message)`);
+        // No message record found — could be a NodeInfo/telemetry/position request that
+        // isn't stored in the messages table. Still check for key mismatch errors using
+        // the packet's destination field.
+        const localNodeId = databaseService.getSetting('localNodeId');
+        const toNum = meshPacket.to ? Number(meshPacket.to) : null;
+
+        if (toNum && toNum !== 0xFFFFFFFF) {
+          const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+
+          // PKI errors from our local node (couldn't encrypt to target)
+          if (isPkiError(errorReason) && fromNodeId === localNodeId) {
+            const errorDescription = errorReason === RoutingError.PKI_FAILED
+              ? 'PKI encryption failed on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
+              : 'Remote node missing public key on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+            logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
+
+            databaseService.upsertNode({
+              nodeNum: toNum,
+              nodeId: toNodeId,
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: errorDescription
+            });
+            dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            this.handlePkiError(toNum);
+          }
+
+          // NO_CHANNEL from the target node (it couldn't decrypt our request)
+          if (errorReason === RoutingError.NO_CHANNEL && fromNodeId === toNodeId) {
+            const existingNode = databaseService.getNode(toNum);
+            if (!existingNode?.keyMismatchDetected) {
+              const errorDescription = 'NO_CHANNEL error on request - target node rejected the message. ' +
+                'Possible key or channel mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+              logger.warn(`🔐 NO_CHANNEL on request detected for node ${toNodeId}: ${errorDescription}`);
+
+              databaseService.upsertNode({
+                nodeNum: toNum,
+                nodeId: toNodeId,
+                keyMismatchDetected: true,
+                keySecurityIssueDetails: errorDescription
+              });
+              dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            }
+          }
+        }
+
+        logger.debug(`⚠️  Routing error for requestId ${requestId} (no message record - likely a request packet)`);
         return;
       }
 
@@ -5174,6 +5220,33 @@ class MeshtasticManager {
 
           // Penalize Link Quality for PKI error (-5)
           this.handlePkiError(targetNodeNum);
+        }
+      }
+
+      // Detect NO_CHANNEL errors on DMs from the target node — this can indicate a
+      // key/channel mismatch where the firmware used the wrong encryption context.
+      // Flag it for Auto Key Management to attempt repair via NodeInfo exchange.
+      if (errorReason === RoutingError.NO_CHANNEL && isDM && fromNodeId === targetNodeId) {
+        if (originalMessage.toNodeNum) {
+          const targetNodeNum = originalMessage.toNodeNum;
+          const errorDescription = 'NO_CHANNEL error on DM - target node rejected the message. ' +
+            'Possible key or channel mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+
+          logger.warn(`🔐 NO_CHANNEL on DM detected for node ${targetNodeId}: ${errorDescription}`);
+
+          // Flag the node with the key security issue (if not already flagged)
+          const existingNode = databaseService.getNode(targetNodeNum);
+          if (!existingNode?.keyMismatchDetected) {
+            databaseService.upsertNode({
+              nodeNum: targetNodeNum,
+              nodeId: targetNodeId,
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: errorDescription
+            });
+
+            // Emit event to notify UI of the key issue
+            dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+          }
         }
       }
 
@@ -5378,7 +5451,7 @@ class MeshtasticManager {
       logger.info(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
 
       // Skip MQTT-sourced neighbor info - it represents remote mesh topology, not local connections
-      if (meshPacket.viaMqtt) {
+      if (meshPacket.viaMqtt || isViaMqtt(meshPacket.transportMechanism)) {
         logger.debug(`📡 Skipping MQTT-sourced neighbor info from ${fromNodeId}`);
         return;
       }
@@ -5522,23 +5595,47 @@ class MeshtasticManager {
         // Capture public key if present (important for local node)
         if (nodeInfo.user.publicKey && nodeInfo.user.publicKey.length > 0) {
           // Convert Uint8Array to base64 for storage
-          nodeData.publicKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
-          nodeData.hasPKC = true;
-          logger.debug(`🔐 Captured public key for ${nodeId}: ${nodeData.publicKey.substring(0, 16)}...`);
+          const deviceSyncKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
 
-          // Check for key security issues
-          const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
-          const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
+          // Device sync keys should NOT overwrite mesh-received keys for remote nodes.
+          // The connected device's internal nodeDb may have stale/incorrect cached keys,
+          // while mesh-received keys (from processNodeInfoMessageProtobuf) come directly
+          // from the node itself and are authoritative. The local node's own key from
+          // device sync IS authoritative since the device knows its own key.
+          const isLocalNode = this.localNodeInfo?.nodeNum === Number(nodeInfo.num);
+          const existingNode = databaseService.getNode(Number(nodeInfo.num));
 
-          if (isLowEntropy) {
-            nodeData.keyIsLowEntropy = true;
-            nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
-            logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
+          if (!isLocalNode && existingNode?.publicKey && existingNode.publicKey !== deviceSyncKey) {
+            // Device has a different key than what we have from mesh — don't overwrite
+            logger.debug(
+              `🔐 Device sync: Skipping stale public key for ${nodeId} ` +
+              `(device: ${deviceSyncKey.substring(0, 16)}..., ` +
+              `stored: ${existingNode.publicKey.substring(0, 16)}...)`
+            );
+            // Still set hasPKC since the node does have a key
+            nodeData.hasPKC = true;
           } else {
-            // Explicitly clear the flag when key is NOT low-entropy
-            // This ensures that if a node regenerates their key, the flag is cleared immediately
-            nodeData.keyIsLowEntropy = false;
-            nodeData.keySecurityIssueDetails = undefined;
+            nodeData.publicKey = deviceSyncKey;
+            nodeData.hasPKC = true;
+            logger.debug(`🔐 Captured public key for ${nodeId}: ${deviceSyncKey.substring(0, 16)}...`);
+          }
+
+          // Check for key security issues (use stored key if we skipped device key)
+          const keyToCheck = nodeData.publicKey || existingNode?.publicKey;
+          if (keyToCheck) {
+            const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
+            const isLowEntropy = checkLowEntropyKey(keyToCheck, 'base64');
+
+            if (isLowEntropy) {
+              nodeData.keyIsLowEntropy = true;
+              nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+              logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
+            } else {
+              // Explicitly clear the flag when key is NOT low-entropy
+              // This ensures that if a node regenerates their key, the flag is cleared immediately
+              nodeData.keyIsLowEntropy = false;
+              nodeData.keySecurityIssueDetails = undefined;
+            }
           }
         }
       }
