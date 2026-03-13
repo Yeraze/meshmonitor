@@ -415,12 +415,14 @@ setTimeout(async () => {
     const keyRepairInterval = databaseService.getSetting('autoKeyManagementIntervalMinutes');
     const keyRepairMaxExchanges = databaseService.getSetting('autoKeyManagementMaxExchanges');
     const keyRepairAutoPurge = databaseService.getSetting('autoKeyManagementAutoPurge');
+    const keyRepairImmediatePurge = databaseService.getSetting('autoKeyManagementImmediatePurge');
 
     meshtasticManager.setKeyRepairSettings({
       enabled: keyRepairEnabled === 'true',
       intervalMinutes: keyRepairInterval ? parseInt(keyRepairInterval) : 5,
       maxExchanges: keyRepairMaxExchanges ? parseInt(keyRepairMaxExchanges) : 3,
-      autoPurge: keyRepairAutoPurge === 'true'
+      autoPurge: keyRepairAutoPurge === 'true',
+      immediatePurge: keyRepairImmediatePurge === 'true'
     });
     logger.debug('✅ Loaded auto key repair settings');
 
@@ -5023,9 +5025,9 @@ apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'
 });
 
 // Get auto key repair log (recent key repair attempts with success/fail status)
-apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), (_req, res) => {
+apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), async (_req, res) => {
   try {
-    const log = databaseService.getKeyRepairLog(50);
+    const log = await databaseService.getKeyRepairLogAsync(50);
     res.json({
       success: true,
       log,

@@ -115,6 +115,7 @@ export interface SettingsCallbacks {
     intervalMinutes: number;
     maxExchanges: number;
     autoPurge: boolean;
+    immediatePurge: boolean;
   }) => void;
   restartInactiveNodeService?: (threshold: number, check: number, cooldown: number) => void;
   stopInactiveNodeService?: () => void;
@@ -534,6 +535,7 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
       'autoKeyManagementIntervalMinutes',
       'autoKeyManagementMaxExchanges',
       'autoKeyManagementAutoPurge',
+      'autoKeyManagementImmediatePurge',
     ];
     const keyRepairSettingsChanged = keyRepairSettings.some((key) => key in filteredSettings);
     if (keyRepairSettingsChanged) {
@@ -556,6 +558,10 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
           filteredSettings.autoKeyManagementAutoPurge === 'true' ||
           (filteredSettings.autoKeyManagementAutoPurge === undefined &&
             databaseService.getSetting('autoKeyManagementAutoPurge') === 'true'),
+        immediatePurge:
+          filteredSettings.autoKeyManagementImmediatePurge === 'true' ||
+          (filteredSettings.autoKeyManagementImmediatePurge === undefined &&
+            databaseService.getSetting('autoKeyManagementImmediatePurge') === 'true'),
       });
       logger.info('✅ Auto key repair settings updated');
     }

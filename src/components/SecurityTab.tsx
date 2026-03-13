@@ -68,18 +68,21 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [scanning, setScanning] = useState(false);
   const [expandedNode, setExpandedNode] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [mismatchEvents, setMismatchEvents] = useState<any[]>([]);
 
   const canWrite = hasPermission('security', 'write');
 
   const fetchSecurityData = async () => {
     try {
-      const [issuesData, statusData] = await Promise.all([
+      const [issuesData, statusData, mismatchData] = await Promise.all([
         api.get<SecurityIssuesResponse>('/api/security/issues'),
-        api.get<ScannerStatus>('/api/security/scanner/status')
+        api.get<ScannerStatus>('/api/security/scanner/status'),
+        api.get<{ events: any[] }>('/api/security/key-mismatches')
       ]);
 
       setIssues(issuesData);
       setScannerStatus(statusData);
+      setMismatchEvents(mismatchData.events || []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('security.failed_load'));
@@ -226,6 +229,16 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       setError(err instanceof Error ? err.message : t('security.failed_export'));
     }
   }, [t]);
+
+  const getMismatchStatusLabel = (action: string): string => {
+    switch (action) {
+      case 'mismatch': return t('security.key_mismatch_status_pending');
+      case 'purge': return t('security.key_mismatch_status_purged');
+      case 'fixed': return t('security.key_mismatch_status_fixed');
+      case 'exhausted': return t('security.key_mismatch_status_exhausted');
+      default: return action;
+    }
+  };
 
   if (loading) {
     return (
@@ -692,6 +705,40 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                 </div>
               </div>
             )}
+            {/* Key Mismatch Events Section */}
+            <div className="issues-section">
+              <h3>{t('security.key_mismatch_title')}</h3>
+              {mismatchEvents.length === 0 ? (
+                <div className="no-issues">
+                  <p>{t('security.key_mismatch_empty')}</p>
+                </div>
+              ) : (
+                <table className="top-broadcasters-table">
+                  <thead>
+                    <tr>
+                      <th>{t('security.node')}</th>
+                      <th>{t('security.key_mismatch_detected')}</th>
+                      <th>{t('security.key_mismatch_old_key')}</th>
+                      <th>{t('security.key_mismatch_new_key')}</th>
+                      <th>{t('security.key_mismatch_status')}</th>
+                      <th>{t('security.key_mismatch_resolved')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mismatchEvents.map((event) => (
+                      <tr key={event.id}>
+                        <td>{event.nodeName || `!${event.nodeNum.toString(16).padStart(8, '0')}`}</td>
+                        <td>{new Date(event.timestamp).toLocaleString()}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.oldKeyFragment || '-'}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.newKeyFragment || '-'}</td>
+                        <td>{getMismatchStatusLabel(event.action)}</td>
+                        <td>{event.action === 'fixed' ? new Date(event.timestamp).toLocaleString() : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         )}
       </div>

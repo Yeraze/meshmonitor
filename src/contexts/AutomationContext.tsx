@@ -82,6 +82,8 @@ interface AutomationContextType {
   setAutoKeyManagementMaxExchanges: React.Dispatch<React.SetStateAction<number>>;
   autoKeyManagementAutoPurge: boolean;
   setAutoKeyManagementAutoPurge: React.Dispatch<React.SetStateAction<boolean>>;
+  autoKeyManagementImmediatePurge: boolean;
+  setAutoKeyManagementImmediatePurge: React.Dispatch<React.SetStateAction<boolean>>;
   timerTriggers: TimerTrigger[];
   setTimerTriggers: React.Dispatch<React.SetStateAction<TimerTrigger[]>>;
   geofenceTriggers: GeofenceTrigger[];
@@ -136,6 +138,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes] = useState<number>(5);
   const [autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges] = useState<number>(3);
   const [autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge] = useState<boolean>(false);
+  const [autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge] = useState<boolean>(false);
   const [timerTriggers, setTimerTriggers] = useState<TimerTrigger[]>([]);
   const [geofenceTriggers, setGeofenceTriggers] = useState<GeofenceTrigger[]>([]);
 
@@ -182,6 +185,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
         autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
         autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
+        autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
         timerTriggers, setTimerTriggers,
         geofenceTriggers, setGeofenceTriggers,
       }}

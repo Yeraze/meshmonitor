@@ -563,6 +563,7 @@ function App() {
     autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
     autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
     autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
+    autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
     timerTriggers, setTimerTriggers,
     geofenceTriggers, setGeofenceTriggers,
   } = useAutomation();
@@ -1111,6 +1112,9 @@ function App() {
           }
           if (settings.autoKeyManagementAutoPurge !== undefined) {
             setAutoKeyManagementAutoPurge(settings.autoKeyManagementAutoPurge === 'true');
+          }
+          if (settings.autoKeyManagementImmediatePurge !== undefined) {
+            setAutoKeyManagementImmediatePurge(settings.autoKeyManagementImmediatePurge === 'true');
           }
 
           if (settings.timerTriggers) {
@@ -4960,11 +4964,13 @@ function App() {
                   intervalMinutes={autoKeyManagementIntervalMinutes}
                   maxExchanges={autoKeyManagementMaxExchanges}
                   autoPurge={autoKeyManagementAutoPurge}
+                  immediatePurge={autoKeyManagementImmediatePurge}
                   baseUrl={baseUrl}
                   onEnabledChange={setAutoKeyManagementEnabled}
                   onIntervalChange={setAutoKeyManagementIntervalMinutes}
                   onMaxExchangesChange={setAutoKeyManagementMaxExchanges}
                   onAutoPurgeChange={setAutoKeyManagementAutoPurge}
+                  onImmediatePurgeChange={setAutoKeyManagementImmediatePurge}
                 />
               </div>
               <div id="timer-triggers">
