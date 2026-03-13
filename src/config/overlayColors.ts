@@ -13,12 +13,17 @@ export interface OverlayColors {
     max: string;
     gradient: string[];
   };
+  snrColors: {
+    good: string;    // SNR > 0dB
+    medium: string;  // SNR -10 to 0dB
+    poor: string;    // SNR < -10dB
+  };
 }
 
 export const darkOverlayColors: OverlayColors = {
   tracerouteForward: '#89b4fa',
   tracerouteReturn: '#f38ba8',
-  mqttSegment: '#9399b2',
+  mqttSegment: '#94e2d5',
   neighborLine: '#cba6f7',
   positionHistoryOld: { r: 0, g: 191, b: 255 },
   positionHistoryNew: { r: 255, g: 69, b: 0 },
@@ -28,12 +33,17 @@ export const darkOverlayColors: OverlayColors = {
     max: '#FF0000',
     gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
   },
+  snrColors: {
+    good: '#74c7ec',
+    medium: '#f9e2af',
+    poor: '#f38ba8',
+  },
 };
 
 export const lightOverlayColors: OverlayColors = {
   tracerouteForward: '#1e66f5',
   tracerouteReturn: '#d20f39',
-  mqttSegment: '#7c7f93',
+  mqttSegment: '#179299',
   neighborLine: '#8839ef',
   positionHistoryOld: { r: 0, g: 103, b: 165 },
   positionHistoryNew: { r: 196, g: 32, b: 10 },
@@ -42,6 +52,11 @@ export const lightOverlayColors: OverlayColors = {
     noData: '#6b7280',
     max: '#b91c1c',
     gradient: ['#1d4ed8', '#4338ca', '#6d28d9', '#a21caf', '#be123c', '#b91c1c'],
+  },
+  snrColors: {
+    good: '#179299',
+    medium: '#df8e1d',
+    poor: '#d20f39',
   },
 };
 

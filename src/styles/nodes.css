@@ -1276,7 +1276,14 @@
     right: 8px;
     left: auto;
     max-width: calc(100vw - 64px);
+  }
+
+  .map-controls .map-controls-body {
     padding: 0.5rem;
+  }
+
+  .map-controls .map-controls-drag-handle {
+    display: none;
   }
 
   /* When collapsed on mobile, reset to compact button */
@@ -1968,6 +1975,22 @@
   font-weight: 600;
 }
 
+.route-node-link {
+  cursor: pointer;
+  color: var(--ctp-blue) !important;
+}
+
+.mqtt-badge {
+  display: inline-block;
+  background-color: var(--ctp-overlay0);
+  color: var(--ctp-base);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
 .route-usage {
   margin-top: 0.5rem;
   font-size: 0.85rem;
@@ -2040,12 +2063,39 @@
   right: 10px;
   z-index: 1000;
   background: var(--ctp-surface0);
-  padding: 0.75rem;
   border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   user-select: none;
   transition: left 0s, top 0s, right 0s;
-  /* Disable transition for position to enable smooth dragging */
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.map-controls-body {
+  flex: 1;
+  padding: 0.75rem;
+}
+
+.map-controls-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  min-height: 100%;
+  background: linear-gradient(to right, var(--ctp-surface1), var(--ctp-surface0));
+  flex-shrink: 0;
+  border-right: 1px solid var(--ctp-surface1);
+  transition: background 0.2s ease;
+}
+
+.map-controls-drag-handle:hover {
+  background: linear-gradient(to right, var(--ctp-surface2), var(--ctp-surface1));
+}
+
+.map-controls-drag-handle:active {
+  background: linear-gradient(to right, var(--ctp-overlay0), var(--ctp-surface2));
 }
 
 .map-control-item {
@@ -2149,28 +2199,27 @@
 
 /* Map controls title */
 .map-controls-header {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 0.5rem;
 }
 
+.map-controls.collapsed .map-controls-header {
+  margin-bottom: 0;
+}
+
 .map-controls-title {
-  font-size: 0.95rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--ctp-mauve);
-  padding-right: 28px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  flex: 1;
 }
 
 /* Map controls collapse button */
 .map-controls-collapse-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
   background: var(--ctp-surface1);
   border: none;
   border-radius: var(--radius-sm);
@@ -2185,8 +2234,7 @@
   transition: all 0.2s ease;
   padding: 0;
   line-height: 1;
-  z-index: 10;
-  /* Position relative to map-controls container, not header */
+  flex-shrink: 0;
 }
 
 .map-controls-collapse-btn:hover {
@@ -2200,22 +2248,13 @@
 
 /* Collapsed state for map controls */
 .map-controls.collapsed {
-  padding: 0.5rem;
-  min-width: 40px;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   top: 10px !important;
   right: 10px !important;
   left: auto !important;
-  /* Override dynamic positioning when collapsed */
 }
 
-/* Center the collapse button when collapsed */
-.map-controls.collapsed .map-controls-collapse-btn {
-  position: static;
-  margin: 0;
+.map-controls.collapsed .map-controls-body {
+  padding: 0.5rem 0.75rem;
 }
 
 /* Node Pulse Animation */
@@ -2245,5 +2284,11 @@
 @keyframes node-highlight-pulse {
   0%, 100% { filter: drop-shadow(0 0 4px rgba(137, 180, 250, 0.6)); }
   50% { filter: drop-shadow(0 0 12px rgba(137, 180, 250, 1)); }
+}
+
+/* Smooth transition for hover-to-isolate on route/neighbor polylines */
+.leaflet-overlay-pane svg path.route-segment,
+.leaflet-overlay-pane svg path.neighbor-line {
+  transition: opacity 0.2s ease;
 }
 

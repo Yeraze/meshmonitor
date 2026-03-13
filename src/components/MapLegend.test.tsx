@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 // Mock Leaflet before importing components
 vi.mock('leaflet', () => ({
@@ -38,21 +38,60 @@ vi.mock('../contexts/SettingsContext', () => ({
         max: '#FF0000',
         gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
       },
+      snrColors: {
+        good: '#22c55e',
+        medium: '#f59e0b',
+        poor: '#ef4444',
+      },
     },
   }),
 }));
 
 import MapLegend from './MapLegend';
 
+// Helper to render the legend (expanded by default)
+const renderExpanded = () => {
+  return render(<MapLegend />);
+};
+
 describe('MapLegend', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  describe('collapse/expand', () => {
+    it('should start expanded by default', () => {
+      const { container } = render(<MapLegend />);
+      const legend = container.querySelector('.map-legend');
+      expect(legend).not.toHaveClass('collapsed');
+    });
+
+    it('should collapse when collapse button is clicked', () => {
+      const { container } = render(<MapLegend />);
+      const btn = container.querySelector('.legend-collapse-btn')!;
+      fireEvent.click(btn);
+      const legend = container.querySelector('.map-legend');
+      expect(legend).toHaveClass('collapsed');
+    });
+
+    it('should persist collapse state in localStorage', () => {
+      const { container } = render(<MapLegend />);
+      const btn = container.querySelector('.legend-collapse-btn')!;
+      fireEvent.click(btn); // collapse
+      expect(localStorage.getItem('mapLegendCollapsed')).toBe('true');
+      fireEvent.click(btn); // expand
+      expect(localStorage.getItem('mapLegendCollapsed')).toBe('false');
+    });
+  });
+
   describe('rendering', () => {
     it('should render the legend title', () => {
-      render(<MapLegend />);
+      renderExpanded();
       expect(screen.getByText('map.legend.hops')).toBeInTheDocument();
     });
 
     it('should render all 7 hop levels', () => {
-      render(<MapLegend />);
+      renderExpanded();
 
       // Check all legend labels are present
       expect(screen.getByText('map.legend.local')).toBeInTheDocument();
@@ -64,23 +103,18 @@ describe('MapLegend', () => {
       expect(screen.getByText('6+')).toBeInTheDocument();
     });
 
-    it('should render exactly 7 legend items', () => {
-      const { container } = render(<MapLegend />);
+    it('should render all legend items', () => {
+      const { container } = renderExpanded();
 
-      // Count the number of legend item rows (each has a colored circle and label)
-      const legendItems = container.querySelectorAll('div > div > div');
-      // Filter to only the rows with both circle and text (has two child elements)
-      const itemRows = Array.from(legendItems).filter(
-        (item) => item.children.length === 2
-      );
-
-      expect(itemRows.length).toBe(7);
+      // Count legend-item rows: 7 hops + 5 links + 3 SNR = 15
+      const legendItems = container.querySelectorAll('.legend-item');
+      expect(legendItems.length).toBe(15);
     });
   });
 
   describe('color mapping', () => {
     it('should display colors in blue-to-red gradient order', () => {
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
       // Get all the colored circles by class name
       const circles = container.querySelectorAll('.legend-dot');
@@ -94,20 +128,21 @@ describe('MapLegend', () => {
         }
       });
 
-      // We should have 7 colors
-      expect(colors.length).toBe(7);
+      // 7 hop colors + 3 SNR colors = 10
+      expect(colors.length).toBe(10);
 
       // First should be green (local node)
       expect(colors[0]).toContain('34'); // #22c55e contains RGB(34, 197, 94)
 
-      // Last should be red (6+ hops)
+      // 7th (index 6) should be red (6+ hops)
       expect(colors[6]).toContain('255'); // #FF0000 is RGB(255, 0, 0)
     });
 
     it('should use distinct colors for each hop level', () => {
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
-      const circles = container.querySelectorAll('.legend-dot');
+      // Only check the first 7 dots (hop colors) are unique
+      const circles = Array.from(container.querySelectorAll('.legend-dot')).slice(0, 7);
       const colors = new Set<string>();
 
       circles.forEach((circle) => {
@@ -117,14 +152,14 @@ describe('MapLegend', () => {
         }
       });
 
-      // All 7 colors should be unique
+      // All 7 hop colors should be unique
       expect(colors.size).toBe(7);
     });
   });
 
   describe('structure and styling', () => {
     it('should have proper CSS class for map overlay', () => {
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
       // MapLegend is wrapped in DraggableOverlay, so look for the wrapper class
       const overlayContainer = container.firstChild as HTMLElement;
@@ -138,7 +173,7 @@ describe('MapLegend', () => {
     });
 
     it('should have legend title with proper class', () => {
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
       const titleElement = container.querySelector('.legend-title');
       expect(titleElement).toBeInTheDocument();
@@ -146,16 +181,17 @@ describe('MapLegend', () => {
     });
 
     it('should have legend dots with proper class', () => {
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
       const legendDots = container.querySelectorAll('.legend-dot');
-      expect(legendDots.length).toBe(7);
+      // 7 hop dots + 3 SNR dots = 10
+      expect(legendDots.length).toBe(10);
     });
   });
 
   describe('accessibility', () => {
     it('should have readable text for all labels', () => {
-      render(<MapLegend />);
+      renderExpanded();
 
       const labels = [
         'map.legend.local',
@@ -174,17 +210,17 @@ describe('MapLegend', () => {
     });
 
     it('should have legend labels with proper class', () => {
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
       const legendLabels = container.querySelectorAll('.legend-label');
-      // Should have 7 labels (one for each hop level)
-      expect(legendLabels.length).toBe(7);
+      // 7 hop labels + 5 link labels + 3 SNR labels = 15
+      expect(legendLabels.length).toBe(15);
     });
   });
 
   describe('legend items structure', () => {
     it('should have correct hop count order', () => {
-      render(<MapLegend />);
+      renderExpanded();
 
       const orderedLabels = [
         'map.legend.local',
@@ -208,7 +244,7 @@ describe('MapLegend', () => {
     });
 
     it('should use concise numeric labels', () => {
-      render(<MapLegend />);
+      renderExpanded();
 
       // Check for concise labels (no "Hop" or "Hops" suffix)
       expect(screen.getByText('1')).toBeInTheDocument();
@@ -228,11 +264,11 @@ describe('MapLegend', () => {
     it('should call getHopColor for each hop level', () => {
       // This is implicitly tested by the rendering tests
       // getHopColor is called for values 0, 1, 2, 3, 4, 5, 6
-      const { container } = render(<MapLegend />);
+      const { container } = renderExpanded();
 
-      // Should have 7 colored circles (one for each hop level)
+      // 7 hop dots + 3 SNR dots = 10
       const circles = container.querySelectorAll('.legend-dot');
-      expect(circles.length).toBe(7);
+      expect(circles.length).toBe(10);
     });
   });
 });

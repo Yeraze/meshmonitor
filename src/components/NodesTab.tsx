@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
@@ -9,7 +9,7 @@ import { TabType } from '../types/ui';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows } from '../utils/mapHelpers.tsx';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
-import PositionHistoryLegend from './PositionHistoryLegend';
+import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
@@ -20,7 +20,6 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResizable } from '../hooks/useResizable';
-import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
@@ -246,6 +245,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const { currentNodeId } = useDeviceConfig();
   const { nodes } = useNodes();
 
+  // Debounce ref for hover mouseout to prevent flicker from tooltip interaction
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up hover timeout on unmount to prevent firing against stale DOM
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
+
   const {
     nodesWithTelemetry,
     nodesWithWeather: nodesWithWeatherTelemetry,
@@ -293,17 +302,121 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
 
+  // Memoize filtered position history to avoid recomputation on every render
+  const filteredPositionHistory = useMemo(() => {
+    if (!showMotion || positionHistory.length < 2) return [];
+    if (positionHistoryHours != null) {
+      return positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000));
+    }
+    return positionHistory;
+  }, [showMotion, positionHistory, positionHistoryHours]);
+
+  // Memoize position history legend data for MapLegend
+  const positionHistoryLegendData = useMemo(() => {
+    if (filteredPositionHistory.length < 2) return undefined;
+    return {
+      oldestTime: filteredPositionHistory[0].timestamp,
+      newestTime: filteredPositionHistory[filteredPositionHistory.length - 1].timestamp,
+      timeFormat,
+      dateFormat,
+    };
+  }, [filteredPositionHistory, timeFormat, dateFormat]);
+
+  // Memoize position history polyline elements
+  const positionHistoryElements = useMemo(() => {
+    if (filteredPositionHistory.length < 2) return null;
+
+    const elements: React.ReactElement[] = [];
+    const segmentCount = filteredPositionHistory.length - 1;
+    const segmentColors: string[] = [];
+
+    for (let i = 0; i < segmentCount; i++) {
+      const startPos = filteredPositionHistory[i];
+      const endPos = filteredPositionHistory[i + 1];
+      const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
+      segmentColors.push(color);
+
+      const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
+        ? generateHeadingAwarePath(
+            [startPos.latitude, startPos.longitude],
+            [endPos.latitude, endPos.longitude],
+            startPos.groundTrack,
+            startPos.groundSpeed,
+            10
+          )
+        : [[startPos.latitude, startPos.longitude] as [number, number], [endPos.latitude, endPos.longitude] as [number, number]];
+
+      elements.push(
+        <Polyline
+          key={`position-history-segment-${i}`}
+          positions={segmentPath}
+          color={color}
+          weight={3}
+          opacity={0.8}
+        >
+          <Popup>
+            <div className="route-popup">
+              <h4>Position Segment {i + 1}</h4>
+              <div className="route-usage">
+                <strong>From:</strong> {formatDateTime(new Date(startPos.timestamp), timeFormat, dateFormat)}
+              </div>
+              <div className="route-usage">
+                <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
+              </div>
+              {startPos.groundSpeed !== undefined && (() => {
+                const converted = startPos.groundSpeed * 3.6;
+                const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
+                const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
+                const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
+                return (
+                  <div className="route-usage">
+                    <strong>Speed:</strong> {speed.toFixed(1)} {unit}
+                  </div>
+                );
+              })()}
+              {startPos.groundTrack !== undefined && (() => {
+                let heading = startPos.groundTrack;
+                if (heading > 360) heading = heading / 1000;
+                return (
+                  <div className="route-usage">
+                    <strong>Heading:</strong> {heading.toFixed(0)}°
+                  </div>
+                );
+              })()}
+            </div>
+          </Popup>
+        </Polyline>
+      );
+    }
+
+    const historyArrows = generatePositionHistoryArrows(
+      filteredPositionHistory,
+      segmentColors,
+      30,
+      distanceUnit
+    );
+    elements.push(...historyArrows);
+
+    return elements;
+  }, [filteredPositionHistory, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, timeFormat, dateFormat, distanceUnit]);
+
   // Detect touch device to disable hover tooltips on mobile
   const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   useEffect(() => {
-    // Check if the device supports touch
+    // Check if the PRIMARY input is touch-only (no mouse/trackpad available)
+    // This correctly handles laptops with touchscreens that also have a trackpad
     const checkTouch = () => {
-      return (
-        'ontouchstart' in window ||
-        navigator.maxTouchPoints > 0 ||
-        (navigator as any).msMaxTouchPoints > 0
-      );
+      // pointer: coarse = touch/stylus is primary input
+      // pointer: fine = mouse/trackpad is available
+      // A laptop with both touchscreen and trackpad has pointer: fine → not touch-only
+      if (window.matchMedia) {
+        const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const hasFinePointer = window.matchMedia('(pointer: fine)').matches;
+        return hasCoarsePointer && !hasFinePointer;
+      }
+      // Fallback for browsers without matchMedia
+      return navigator.maxTouchPoints > 0;
     };
     setIsTouchDevice(checkTouch());
   }, []);
@@ -1423,26 +1536,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }
               )}
             >
-              <button
-                className="map-controls-collapse-btn"
-                onClick={handleCollapseMapControls}
-                title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                {isMapControlsCollapsed ? '▼' : '▲'}
-              </button>
               <div
-                className="map-controls-header"
+                className="map-controls-drag-handle"
                 style={{
-                  cursor: (isMapControlsCollapsed || isTouchDevice) ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
+                  cursor: (isTouchDevice) ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
                 }}
                 onMouseDown={handleMapControlsDragStart}
               >
-                {!isMapControlsCollapsed && (
-                  <div className="map-controls-title">
-                    Features
-                  </div>
-                )}
+                <span className="drag-handle-icon">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+              </div>
+              <div className="map-controls-body">
+              <div
+                className="map-controls-header"
+              >
+                <div className="map-controls-title">
+                  Features
+                </div>
+                <button
+                  className="map-controls-collapse-btn"
+                  onClick={handleCollapseMapControls}
+                  title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {isMapControlsCollapsed ? '▼' : '▲'}
+                </button>
               </div>
               {!isMapControlsCollapsed && (
                 <>
@@ -1582,6 +1703,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   )}
                 </>
               )}
+              </div>
             </div>
         )}
             <MapContainer
@@ -1611,7 +1733,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <MapPositionHandler />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
-              <MapLegend />
+              <MapLegend
+                positionHistory={positionHistoryLegendData}
+              />
               {nodesWithPosition
                 .filter(node => {
                   // Apply standard filters
@@ -1645,9 +1769,41 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 opacity={markerOpacity}
                 zIndexOffset={shouldAnimate ? 10000 : 0}
                 ref={(ref) => handleMarkerRef(ref, node.user?.id)}
+                eventHandlers={!isTouchDevice ? {
+                  mouseover: (e: any) => {
+                    if (hoverTimeoutRef.current) {
+                      clearTimeout(hoverTimeoutRef.current);
+                      hoverTimeoutRef.current = null;
+                    }
+                    // Selectively dim polylines not connected to this node
+                    const container = e.target._map?.getContainer();
+                    if (!container) return;
+                    const nodeClass = `node-${node.nodeNum}`;
+                    const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+                    paths.forEach((path: Element) => {
+                      if (path.classList.contains(nodeClass)) {
+                        (path as HTMLElement).style.opacity = '';
+                      } else {
+                        (path as HTMLElement).style.opacity = '0.25';
+                      }
+                    });
+                  },
+                  mouseout: (e: any) => {
+                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                    hoverTimeoutRef.current = setTimeout(() => {
+                      const container = e.target._map?.getContainer();
+                      if (!container) return;
+                      const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+                      paths.forEach((path: Element) => {
+                        (path as HTMLElement).style.opacity = '';
+                      });
+                      hoverTimeoutRef.current = null;
+                    }, 150);
+                  },
+                } : undefined}
               >
                 {!isTouchDevice && (
-                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9} interactive>
+                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontWeight: 'bold' }}>
                         {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
@@ -1891,6 +2047,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   [ni.neighborLatitude, ni.neighborLongitude]
                 ];
 
+                // Zoom-adaptive: hide neighbor lines at low zoom
+                if (mapZoom < 12) return null;
+
                 return (
                   <Polyline
                     key={`neighbor-${idx}`}
@@ -1899,6 +2058,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     weight={4}
                     opacity={0.7}
                     dashArray="5, 5"
+                    className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
                   >
                     <Popup>
                       <div className="route-popup">
@@ -1924,113 +2084,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {/* This is handled by traceroutePathsElements passed from parent */}
 
               {/* Draw position history for mobile nodes with color gradient */}
-              {showMotion && positionHistory.length > 1 && (() => {
-                // Filter position history based on slider value
-                const filteredHistory = positionHistoryHours != null
-                  ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
-                  : positionHistory;
+              {positionHistoryElements}
 
-                // Need at least 2 positions to draw a line
-                if (filteredHistory.length < 2) return null;
-
-                const elements: React.ReactElement[] = [];
-                const segmentCount = filteredHistory.length - 1;
-                const segmentColors: string[] = [];
-
-                // Draw individual segments with gradient colors
-                for (let i = 0; i < segmentCount; i++) {
-                  const startPos = filteredHistory[i];
-                  const endPos = filteredHistory[i + 1];
-                  const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
-                  segmentColors.push(color);
-
-                  // Generate path - use Bezier curve if heading data is available
-                  const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
-                    ? generateHeadingAwarePath(
-                        [startPos.latitude, startPos.longitude],
-                        [endPos.latitude, endPos.longitude],
-                        startPos.groundTrack,
-                        startPos.groundSpeed,
-                        10
-                      )
-                    : [[startPos.latitude, startPos.longitude] as [number, number], [endPos.latitude, endPos.longitude] as [number, number]];
-
-                  elements.push(
-                    <Polyline
-                      key={`position-history-segment-${i}`}
-                      positions={segmentPath}
-                      color={color}
-                      weight={3}
-                      opacity={0.8}
-                    >
-                      <Popup>
-                        <div className="route-popup">
-                          <h4>Position Segment {i + 1}</h4>
-                          <div className="route-usage">
-                            <strong>From:</strong> {formatDateTime(new Date(startPos.timestamp), timeFormat, dateFormat)}
-                          </div>
-                          <div className="route-usage">
-                            <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
-                          </div>
-                          {startPos.groundSpeed !== undefined && (() => {
-                            const converted = startPos.groundSpeed * 3.6;
-                            // If converted > 200 km/h, assume raw is already in km/h
-                            const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
-                            // Convert to mph if user prefers miles
-                            const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
-                            const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
-                            return (
-                              <div className="route-usage">
-                                <strong>Speed:</strong> {speed.toFixed(1)} {unit}
-                              </div>
-                            );
-                          })()}
-                          {startPos.groundTrack !== undefined && (() => {
-                            // Data is stored in millidegrees - detect and convert
-                            let heading = startPos.groundTrack;
-                            if (heading > 360) heading = heading / 1000;
-                            return (
-                              <div className="route-usage">
-                                <strong>Heading:</strong> {heading.toFixed(0)}°
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </Popup>
-                    </Polyline>
-                  );
-                }
-
-                // Generate arrow markers with performance limiting (max 30 arrows)
-                // Pass full history items so arrows can show heading and popup info
-                const historyArrows = generatePositionHistoryArrows(
-                  filteredHistory,
-                  segmentColors,
-                  30,
-                  distanceUnit
-                );
-                elements.push(...historyArrows);
-
-                return elements;
-              })()}
-
-              {/* Position History Legend */}
-              {showMotion && positionHistory.length > 1 && (() => {
-                const filteredHistory = positionHistoryHours != null
-                  ? positionHistory.filter(p => p.timestamp >= Date.now() - (positionHistoryHours * 60 * 60 * 1000))
-                  : positionHistory;
-
-                if (filteredHistory.length < 2) return null;
-
-                return (
-                  <PositionHistoryLegend
-                    oldestTime={filteredHistory[0].timestamp}
-                    newestTime={filteredHistory[filteredHistory.length - 1].timestamp}
-                    timeFormat={timeFormat}
-                    dateFormat={dateFormat}
-                  />
-                );
-              })()}
           </MapContainer>
           {(shouldShowData() || meshCoreNodes.length > 0) && (
           <TilesetSelector
@@ -2148,6 +2203,11 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
 
   // If visibility changed, must re-render
   if (prevPathsVisible !== nextPathsVisible || prevRouteVisible !== nextRouteVisible) {
+    return false; // Allow re-render
+  }
+
+  // If traceroute paths reference changed (hover dimming, SNR recalc), must re-render
+  if (prevProps.traceroutePathsElements !== nextProps.traceroutePathsElements) {
     return false; // Allow re-render
   }
 

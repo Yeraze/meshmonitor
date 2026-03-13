@@ -327,6 +327,7 @@ function App() {
     setPositionHistory,
     selectedNodeId,
     setSelectedNodeId,
+    mapZoom,
   } = useMapContext();
 
   // Data context
@@ -406,6 +407,7 @@ function App() {
     tracerouteReturn: schemeColors.tracerouteReturn,
     mqttSegment: schemeColors.mqttSegment,
     neighborLine: schemeColors.neighborLine,
+    snrColors: schemeColors.snrColors,
   }), [themeColors, schemeColors]);
 
   // Channel Database entries for displaying names of server-decrypted channels
@@ -4265,11 +4267,12 @@ function App() {
               id: n.user.id,
             }
           : undefined,
+        viaMqtt: n.viaMqtt ?? false,
       };
     });
   }, [nodes.map(n => {
     const pos = getEffectivePosition(n);
-    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
+    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.viaMqtt ? '1' : '0'}`;
   }).join(',')]);
 
   const traceroutesDigest = useMemo(() => {
@@ -4336,6 +4339,7 @@ function App() {
     themeColors: mergedThemeColors,
     callbacks: tracerouteCallbacks,
     visibleNodeNums,
+    mapZoom,
   });
 
   // Navigate to message from search result

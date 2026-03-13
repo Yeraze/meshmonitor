@@ -4,30 +4,60 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  font-family: system-ui, -apple-system, sans-serif;
   font-size: 12px;
   user-select: none;
   transition: left 0s, top 0s;
-  /* Disable transition for position to enable smooth dragging */
+  position: relative;
+}
+
+.map-legend.collapsed {
+  padding: 0.5rem 0.75rem;
+}
+
+.legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.legend-collapse-btn {
+  background: var(--ctp-surface1);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--ctp-text);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.legend-collapse-btn:hover {
+  background: var(--ctp-surface2);
+  transform: scale(1.1);
+}
+
+.legend-collapse-btn:active {
+  transform: scale(0.95);
 }
 
 .legend-title {
+  font-size: 0.8rem;
   font-weight: 600;
-  color: #333;
+  color: var(--ctp-mauve);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-bottom: 2px;
-  font-size: 11px;
-  cursor: grab;
   padding: 2px 4px;
   border-radius: var(--radius-sm);
-  transition: background-color 0.2s;
-}
-
-.legend-title:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.legend-title:active {
-  cursor: grabbing;
 }
 
 .legend-item {
@@ -40,13 +70,75 @@
   width: 12px;
   height: 12px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--ctp-overlay0);
   flex-shrink: 0;
 }
 
 .legend-label {
-  color: #333;
+  color: var(--ctp-text);
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.legend-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--ctp-surface1, rgba(255,255,255,0.15));
+  margin: 6px 0;
+}
+
+.legend-line-sample {
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+/* Position History section (consolidated from PositionHistoryLegend) */
+.legend-gradient-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legend-gradient-bar {
+  width: 100%;
+  height: 12px;
+  border-radius: var(--radius-sm);
+  /* Gradient set via inline style from overlayColors for theme-awareness */
+  border: 1px solid var(--ctp-surface2);
+}
+
+.legend-gradient-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.legend-gradient-label {
+  font-size: 10px;
+  color: var(--ctp-subtext0);
+  font-weight: 500;
+}
+
+.legend-gradient-label.oldest {
+  color: var(--ctp-sky);
+}
+
+.legend-gradient-label.newest {
+  color: var(--ctp-peach);
+}
+
+.legend-time-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 2px;
+  border-top: 1px solid var(--ctp-surface1);
+}
+
+.legend-time-label {
+  font-size: 9px;
+  color: var(--ctp-overlay0);
   white-space: nowrap;
 }
 
