@@ -1266,7 +1266,20 @@ class MeshtasticManager {
     try {
       const nodesNeedingRepair = databaseService.getNodesNeedingKeyRepair();
 
+      // Pre-fetch repair log for immediate purge skip check
+      const recentRepairLog = this.keyRepairImmediatePurge ? await databaseService.getKeyRepairLogAsync(50) : [];
+
       for (const node of nodesNeedingRepair) {
+        // When immediate purge is enabled, skip nodes whose most recent log action is 'purge'
+        // Those nodes were already purged at detection time and await device sync resolution.
+        if (this.keyRepairImmediatePurge) {
+          const lastAction = recentRepairLog.find(e => e.nodeNum === node.nodeNum);
+          if (lastAction?.action === 'purge') {
+            logger.debug(`🔐 Key repair: skipping ${node.nodeNum} — already immediately purged, awaiting device sync`);
+            continue;
+          }
+        }
+
         const now = Date.now();
         const intervalMs = this.keyRepairIntervalMinutes * 60 * 1000;
 
@@ -1335,6 +1348,7 @@ class MeshtasticManager {
     intervalMinutes?: number;
     maxExchanges?: number;
     autoPurge?: boolean;
+    immediatePurge?: boolean;
   }): void {
     if (settings.enabled !== undefined) {
       this.keyRepairEnabled = settings.enabled;
@@ -1354,8 +1368,11 @@ class MeshtasticManager {
     if (settings.autoPurge !== undefined) {
       this.keyRepairAutoPurge = settings.autoPurge;
     }
+    if (settings.immediatePurge !== undefined) {
+      this.keyRepairImmediatePurge = settings.immediatePurge;
+    }
 
-    logger.debug(`🔐 Key repair settings updated: enabled=${this.keyRepairEnabled}, interval=${this.keyRepairIntervalMinutes}min, maxExchanges=${this.keyRepairMaxExchanges}, autoPurge=${this.keyRepairAutoPurge}`);
+    logger.debug(`🔐 Key repair settings updated: enabled=${this.keyRepairEnabled}, interval=${this.keyRepairIntervalMinutes}min, maxExchanges=${this.keyRepairMaxExchanges}, autoPurge=${this.keyRepairAutoPurge}, immediatePurge=${this.keyRepairImmediatePurge}`);
 
     // Restart scheduler if connected
     if (this.isConnected) {
