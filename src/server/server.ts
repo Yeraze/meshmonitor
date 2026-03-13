@@ -5025,9 +5025,9 @@ apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'
 });
 
 // Get auto key repair log (recent key repair attempts with success/fail status)
-apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), (_req, res) => {
+apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), async (_req, res) => {
   try {
-    const log = databaseService.getKeyRepairLog(50);
+    const log = await databaseService.getKeyRepairLogAsync(50);
     res.json({
       success: true,
       log,
