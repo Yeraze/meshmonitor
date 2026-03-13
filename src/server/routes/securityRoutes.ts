@@ -304,4 +304,34 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
   }
 });
 
+/**
+ * GET /api/security/key-mismatches
+ * Returns recent key mismatch events from the repair log
+ */
+router.get('/key-mismatches', async (_req: Request, res: Response) => {
+  try {
+    const log = await databaseService.getKeyRepairLogAsync(100);
+
+    // Filter to mismatch-related actions
+    const mismatchActions = new Set(['mismatch', 'purge', 'fixed', 'exhausted']);
+    const filtered = log.filter(entry => mismatchActions.has(entry.action));
+
+    // Filter to last 7 days
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const recent = filtered.filter(entry => entry.timestamp >= sevenDaysAgo);
+
+    // Limit to 50 entries
+    const limited = recent.slice(0, 50);
+
+    res.json({
+      success: true,
+      count: limited.length,
+      events: limited
+    });
+  } catch (error) {
+    logger.error('Error fetching key mismatch history:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch key mismatch history' });
+  }
+});
+
 export default router;
