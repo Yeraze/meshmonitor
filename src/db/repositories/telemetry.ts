@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, gte, and, desc, inArray, or, not, SQL, count } from 'drizzle-orm';
+import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
 import { telemetrySqlite, telemetryPostgres, telemetryMysql } from '../schema/telemetry.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
@@ -400,6 +400,57 @@ export class TelemetryRepository extends BaseRepository {
       if (result.length === 0) return null;
       return result[0] as DbTelemetry;
     }
+  }
+
+  /**
+   * Get latest telemetry value for a given type across all nodes in a single query.
+   * Returns a Map of nodeId -> value.
+   */
+  async getLatestTelemetryValueForAllNodes(telemetryType: string): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+
+    if (this.isSQLite()) {
+      const db = this.getSqliteDb();
+      const rows = await db.all<{ nodeId: string; value: number }>(
+        sql`SELECT t.nodeId, t.value FROM telemetry t
+            INNER JOIN (
+              SELECT nodeId, MAX(timestamp) as maxTs
+              FROM telemetry WHERE telemetryType = ${telemetryType}
+              GROUP BY nodeId
+            ) latest ON t.nodeId = latest.nodeId AND t.timestamp = latest.maxTs
+            WHERE t.telemetryType = ${telemetryType}`
+      );
+      for (const row of rows) {
+        result.set(row.nodeId, Number(row.value));
+      }
+    } else if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const [rows] = await (db as any).execute(
+        sql`SELECT t.nodeId, t.value FROM telemetry t
+            INNER JOIN (
+              SELECT nodeId, MAX(timestamp) as maxTs
+              FROM telemetry WHERE telemetryType = ${telemetryType}
+              GROUP BY nodeId
+            ) latest ON t.nodeId = latest.nodeId AND t.timestamp = latest.maxTs
+            WHERE t.telemetryType = ${telemetryType}`
+      );
+      for (const row of rows as any[]) {
+        result.set(row.nodeId, Number(row.value));
+      }
+    } else {
+      const db = this.getPostgresDb();
+      const rows = await db.execute(
+        sql`SELECT DISTINCT ON ("nodeId") "nodeId", value
+            FROM telemetry
+            WHERE "telemetryType" = ${telemetryType}
+            ORDER BY "nodeId", timestamp DESC`
+      );
+      for (const row of rows.rows) {
+        result.set(row.nodeId as string, Number(row.value));
+      }
+    }
+
+    return result;
   }
 
   /**

@@ -10554,13 +10554,25 @@ class MeshtasticManager {
     };
   }
 
+  // Async version that fetches uptimes in a single bulk query - works with all DB backends
+  async getAllNodesAsync(): Promise<DeviceInfo[]> {
+    const uptimeMap = await databaseService.getLatestTelemetryValueForAllNodesAsync('uptimeSeconds');
+    const dbNodes = databaseService.getAllNodes();
+    return dbNodes.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
+  }
+
   // Get data from database instead of maintaining in-memory state
   getAllNodes(): DeviceInfo[] {
     const dbNodes = databaseService.getAllNodes();
     return dbNodes.map(node => {
-      // Get latest uptime from telemetry
+      // Get latest uptime from telemetry (sync - only works for SQLite)
       const uptimeTelemetry = databaseService.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
+      return this.mapDbNodeToDeviceInfo(node, uptimeTelemetry?.value);
+    });
+  }
 
+  // Shared mapping logic for converting a DB node to DeviceInfo
+  private mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): DeviceInfo {
       const deviceInfo: any = {
         nodeNum: node.nodeNum,
         user: {
@@ -10575,7 +10587,7 @@ class MeshtasticManager {
           voltage: node.voltage,
           channelUtilization: node.channelUtilization,
           airUtilTx: node.airUtilTx,
-          uptimeSeconds: uptimeTelemetry?.value
+          uptimeSeconds
         },
         lastHeard: node.lastHeard,
         snr: node.snr,
@@ -10686,7 +10698,6 @@ class MeshtasticManager {
       }
 
       return deviceInfo;
-    });
   }
 
   getRecentMessages(limit: number = 50): MeshMessage[] {

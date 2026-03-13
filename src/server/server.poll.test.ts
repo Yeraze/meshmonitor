@@ -85,6 +85,24 @@ const meshtasticManagerMock = {
       hopsAway: 1
     }
   ]),
+  getAllNodesAsync: vi.fn(async () => [
+    {
+      nodeNum: 1,
+      nodeId: '!node1',
+      longName: 'Test Node 1',
+      shortName: 'TN1',
+      user: { id: '!node1', longName: 'Test Node 1', role: 'CLIENT' },
+      hopsAway: 0
+    },
+    {
+      nodeNum: 2,
+      nodeId: '!node2',
+      longName: 'Test Node 2',
+      shortName: 'TN2',
+      user: { id: '!node2', longName: 'Test Node 2', role: 'CLIENT' },
+      hopsAway: 1
+    }
+  ]),
   getRecentMessages: vi.fn((limit: number) => {
     const messages = [];
     for (let i = 0; i < Math.min(limit, 5); i++) {
