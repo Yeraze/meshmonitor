@@ -5663,19 +5663,50 @@ class MeshtasticManager {
           const isLocalNode = this.localNodeInfo?.nodeNum === Number(nodeInfo.num);
           const existingNode = databaseService.getNode(Number(nodeInfo.num));
 
-          if (!isLocalNode && existingNode?.publicKey && existingNode.publicKey !== deviceSyncKey) {
-            // Device has a different key than what we have from mesh — don't overwrite
-            logger.debug(
-              `🔐 Device sync: Skipping stale public key for ${nodeId} ` +
-              `(device: ${deviceSyncKey.substring(0, 16)}..., ` +
-              `stored: ${existingNode.publicKey.substring(0, 16)}...)`
-            );
-            // Still set hasPKC since the node does have a key
-            nodeData.hasPKC = true;
-          } else {
-            nodeData.publicKey = deviceSyncKey;
-            nodeData.hasPKC = true;
-            logger.debug(`🔐 Captured public key for ${nodeId}: ${deviceSyncKey.substring(0, 16)}...`);
+          // --- Check if device sync resolves a key mismatch ---
+          let mismatchResolved = false;
+
+          if (existingNode?.keyMismatchDetected && existingNode.lastMeshReceivedKey) {
+            if (deviceSyncKey === existingNode.lastMeshReceivedKey) {
+              // Device now has the same key as the mesh broadcast — mismatch resolved!
+              logger.info(`🔐 Key mismatch RESOLVED via device sync for ${nodeId}: device key matches mesh key`);
+              nodeData.keyMismatchDetected = false;
+              nodeData.lastMeshReceivedKey = null;
+              nodeData.publicKey = deviceSyncKey;
+              nodeData.hasPKC = true;
+              mismatchResolved = true;
+
+              const nodeName = nodeInfo.user?.longName || nodeInfo.user?.shortName || nodeId;
+              databaseService.clearKeyRepairStateAsync(Number(nodeInfo.num)).catch(err =>
+                logger.error('Error clearing repair state:', err)
+              );
+              databaseService.logKeyRepairAttemptAsync(
+                Number(nodeInfo.num), nodeName, 'fixed', true
+              ).catch(err => logger.error('Error logging fix:', err));
+
+              dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), {
+                keyMismatchDetected: false,
+                keySecurityIssueDetails: undefined
+              });
+            }
+          }
+
+          // Existing stale-key skip logic — only run if mismatch was NOT just resolved
+          if (!mismatchResolved) {
+            if (!isLocalNode && existingNode?.publicKey && existingNode.publicKey !== deviceSyncKey) {
+              // Device has a different key than what we have from mesh — don't overwrite
+              logger.debug(
+                `🔐 Device sync: Skipping stale public key for ${nodeId} ` +
+                `(device: ${deviceSyncKey.substring(0, 16)}..., ` +
+                `stored: ${existingNode.publicKey.substring(0, 16)}...)`
+              );
+              // Still set hasPKC since the node does have a key
+              nodeData.hasPKC = true;
+            } else {
+              nodeData.publicKey = deviceSyncKey;
+              nodeData.hasPKC = true;
+              logger.debug(`🔐 Captured public key for ${nodeId}: ${deviceSyncKey.substring(0, 16)}...`);
+            }
           }
 
           // Check for key security issues (use stored key if we skipped device key)

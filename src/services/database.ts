@@ -159,6 +159,7 @@ export interface DbNode {
   keyIsLowEntropy?: boolean;
   duplicateKeyDetected?: boolean;
   keyMismatchDetected?: boolean;
+  lastMeshReceivedKey?: string | null;
   keySecurityIssueDetails?: string;
   welcomedAt?: number;
   // Position precision tracking (Migration 020)

@@ -63,6 +63,7 @@ export interface DbNode {
   keyIsLowEntropy?: boolean | null;
   duplicateKeyDetected?: boolean | null;
   keyMismatchDetected?: boolean | null;
+  lastMeshReceivedKey?: string | null;
   keySecurityIssueDetails?: string | null;
   welcomedAt?: number | null;
   positionChannel?: number | null;
