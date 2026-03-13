@@ -9,11 +9,13 @@ interface AutoKeyManagementSectionProps {
   intervalMinutes: number;
   maxExchanges: number;
   autoPurge: boolean;
+  immediatePurge: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onIntervalChange: (minutes: number) => void;
   onMaxExchangesChange: (count: number) => void;
   onAutoPurgeChange: (enabled: boolean) => void;
+  onImmediatePurgeChange: (value: boolean) => void;
 }
 
 interface KeyRepairLogEntry {
@@ -23,6 +25,8 @@ interface KeyRepairLogEntry {
   nodeName: string | null;
   action: string;
   success: boolean | null;
+  oldKeyFragment?: string | null;
+  newKeyFragment?: string | null;
 }
 
 const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
@@ -30,11 +34,13 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
   intervalMinutes,
   maxExchanges,
   autoPurge,
+  immediatePurge,
   baseUrl,
   onEnabledChange,
   onIntervalChange,
   onMaxExchangesChange,
   onAutoPurgeChange,
+  onImmediatePurgeChange,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -43,6 +49,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
   const [localInterval, setLocalInterval] = useState(intervalMinutes || 5);
   const [localMaxExchanges, setLocalMaxExchanges] = useState(maxExchanges || 3);
   const [localAutoPurge, setLocalAutoPurge] = useState(autoPurge);
+  const [localImmediatePurge, setLocalImmediatePurge] = useState(immediatePurge);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [repairLog, setRepairLog] = useState<KeyRepairLogEntry[]>([]);
@@ -53,7 +60,8 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     setLocalInterval(intervalMinutes || 5);
     setLocalMaxExchanges(maxExchanges || 3);
     setLocalAutoPurge(autoPurge);
-  }, [enabled, intervalMinutes, maxExchanges, autoPurge]);
+    setLocalImmediatePurge(immediatePurge);
+  }, [enabled, intervalMinutes, maxExchanges, autoPurge, immediatePurge]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -61,9 +69,10 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
       localEnabled !== enabled ||
       localInterval !== intervalMinutes ||
       localMaxExchanges !== maxExchanges ||
-      localAutoPurge !== autoPurge;
+      localAutoPurge !== autoPurge ||
+      localImmediatePurge !== immediatePurge;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, enabled, intervalMinutes, maxExchanges, autoPurge]);
+  }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, localImmediatePurge, enabled, intervalMinutes, maxExchanges, autoPurge, immediatePurge]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -71,7 +80,8 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     setLocalInterval(intervalMinutes || 5);
     setLocalMaxExchanges(maxExchanges || 3);
     setLocalAutoPurge(autoPurge);
-  }, [enabled, intervalMinutes, maxExchanges, autoPurge]);
+    setLocalImmediatePurge(immediatePurge);
+  }, [enabled, intervalMinutes, maxExchanges, autoPurge, immediatePurge]);
 
   // Fetch repair log
   useEffect(() => {
@@ -104,6 +114,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
           autoKeyManagementIntervalMinutes: String(localInterval),
           autoKeyManagementMaxExchanges: String(localMaxExchanges),
           autoKeyManagementAutoPurge: String(localAutoPurge),
+          autoKeyManagementImmediatePurge: String(localImmediatePurge),
         }),
       });
 
@@ -120,6 +131,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
       onIntervalChange(localInterval);
       onMaxExchangesChange(localMaxExchanges);
       onAutoPurgeChange(localAutoPurge);
+      onImmediatePurgeChange(localImmediatePurge);
 
       setHasChanges(false);
       showToast(t('automation.settings_saved'), 'success');
@@ -129,7 +141,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMaxExchangesChange, onAutoPurgeChange]);
+  }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, localImmediatePurge, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMaxExchangesChange, onAutoPurgeChange, onImmediatePurgeChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -166,6 +178,8 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
         return t('automation.auto_key_management.action_fixed');
       case 'exhausted':
         return t('automation.auto_key_management.action_exhausted');
+      case 'mismatch':
+        return t('automation.auto_key_management.action_mismatch');
       default:
         return action;
     }
@@ -291,6 +305,29 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
           </label>
         </div>
 
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label htmlFor="immediatePurge">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                id="immediatePurge"
+                type="checkbox"
+                checked={localImmediatePurge}
+                onChange={(e) => setLocalImmediatePurge(e.target.checked)}
+                disabled={!localEnabled}
+                style={{
+                  width: 'auto',
+                  margin: 0,
+                  cursor: localEnabled ? 'pointer' : 'not-allowed',
+                }}
+              />
+              {t('automation.auto_key_management.immediate_purge')}
+            </div>
+            <span className="setting-description">
+              {t('automation.auto_key_management.immediate_purge_description')}
+            </span>
+          </label>
+        </div>
+
         {/* Activity Log */}
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label>{t('automation.auto_key_management.activity_log')}</label>
@@ -348,6 +385,24 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
                     <th
                       style={{
                         padding: '0.5rem 0.75rem',
+                        textAlign: 'left',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {t('automation.auto_key_management.log_old_key')}
+                    </th>
+                    <th
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        textAlign: 'left',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {t('automation.auto_key_management.log_new_key')}
+                    </th>
+                    <th
+                      style={{
+                        padding: '0.5rem 0.75rem',
                         textAlign: 'center',
                         fontWeight: 500,
                       }}
@@ -366,6 +421,12 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
                         {entry.nodeName || `!${entry.nodeNum.toString(16).padStart(8, '0')}`}
                       </td>
                       <td style={{ padding: '0.4rem 0.75rem' }}>{getActionLabel(entry.action)}</td>
+                      <td style={{ padding: '0.4rem 0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {entry.oldKeyFragment || '-'}
+                      </td>
+                      <td style={{ padding: '0.4rem 0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {entry.newKeyFragment || '-'}
+                      </td>
                       <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>
                         {getActionIcon(entry.action, entry.success)}
                       </td>
