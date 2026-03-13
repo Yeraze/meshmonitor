@@ -89,6 +89,7 @@ import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMi
 import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
 import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
 import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
+import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -2618,6 +2619,19 @@ class DatabaseService {
         logger.debug('Migration 083 completed successfully');
       } catch (error) {
         logger.error('Error running migration 083:', error);
+      }
+    }
+
+    // Migration 084: Add key mismatch columns
+    const migrationKey084 = 'migration_084_key_mismatch_columns';
+    if (!this.getSetting(migrationKey084)) {
+      try {
+        logger.debug('Running migration 084: Add key mismatch columns...');
+        runMigration084Sqlite(this.db);
+        this.setSetting(migrationKey084, 'completed');
+        logger.debug('Migration 084 completed successfully');
+      } catch (error) {
+        logger.error('Error running migration 084:', error);
       }
     }
   }
@@ -11696,6 +11710,9 @@ class DatabaseService {
       // Run migration 083: Add missing map preference columns
       await runMigration083Postgres(client);
 
+      // Run migration 084: Add key mismatch columns
+      await runMigration084Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -11856,6 +11873,9 @@ class DatabaseService {
 
       // Run migration 083: Add missing map preference columns
       await runMigration083Mysql(pool);
+
+      // Run migration 084: Add key mismatch columns
+      await runMigration084Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
