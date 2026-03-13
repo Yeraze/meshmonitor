@@ -306,6 +306,7 @@ class MeshtasticManager {
   private keyRepairIntervalMinutes: number = 5;  // Default 5 minutes
   private keyRepairMaxExchanges: number = 3;     // Default 3 attempts
   private keyRepairAutoPurge: boolean = false;   // Default: don't auto-purge
+  private keyRepairImmediatePurge: boolean = false; // Default: don't immediately purge on detection
   private serverStartTime: number = Date.now();
   private localNodeInfo: {
     nodeNum: number;
@@ -4200,29 +4201,86 @@ class MeshtasticManager {
 
         // Check if this node had a key mismatch that is now fixed
         const existingNode = databaseService.getNode(fromNum);
-        if (existingNode && existingNode.keyMismatchDetected) {
-          const oldKey = existingNode.publicKey;
-          const newKey = nodeData.publicKey;
 
-          if (oldKey !== newKey) {
-            // Key has changed - the mismatch is fixed!
-            logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - received new key`);
-            nodeData.keyMismatchDetected = false;
-            // Don't clear keySecurityIssueDetails if there's a low-entropy issue
-            if (!isLowEntropy) {
-              nodeData.keySecurityIssueDetails = undefined;
-            }
+        // --- Proactive key mismatch detection ---
+        let newMismatchDetected = false;
 
-            // Clear the repair state and log success
-            databaseService.clearKeyRepairState(fromNum);
+        // Detect key mismatch: incoming mesh key differs from stored key
+        if (existingNode && existingNode.publicKey && nodeData.publicKey && existingNode.publicKey !== nodeData.publicKey) {
+          const oldFragment = existingNode.publicKey.substring(0, 8);
+          const newFragment = nodeData.publicKey.substring(0, 8);
+
+          if (!existingNode.keyMismatchDetected) {
+            // First mismatch — flag it
+            logger.warn(`🔐 Key mismatch detected for node ${nodeId} (${user.longName}): stored=${oldFragment}... mesh=${newFragment}...`);
+
+            nodeData.keyMismatchDetected = true;
+            nodeData.lastMeshReceivedKey = nodeData.publicKey;
+            nodeData.keySecurityIssueDetails = `Key mismatch: node broadcast key ${newFragment}... but device has ${oldFragment}...`;
+            newMismatchDetected = true;
+
             const nodeName = user.longName || user.shortName || nodeId;
-            databaseService.logKeyRepairAttempt(fromNum, nodeName, 'fixed', true);
+            databaseService.logKeyRepairAttemptAsync(
+              fromNum, nodeName, 'mismatch', null, oldFragment, newFragment
+            ).catch(err => logger.error('Error logging mismatch:', err));
 
-            // Emit update to UI
             dataEventEmitter.emitNodeUpdate(fromNum, {
-              keyMismatchDetected: false,
-              keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: nodeData.keySecurityIssueDetails
             });
+
+            // Immediate purge if enabled
+            if (this.keyRepairEnabled && this.keyRepairImmediatePurge) {
+              try {
+                logger.info(`🔐 Immediate purge: removing node ${nodeName} from device database`);
+                await this.sendRemoveNode(fromNum);
+                databaseService.logKeyRepairAttemptAsync(
+                  fromNum, nodeName, 'purge', true, oldFragment, newFragment
+                ).catch(err => logger.error('Error logging purge:', err));
+
+                // Request fresh NodeInfo exchange
+                await this.sendNodeInfoRequest(fromNum, 0);
+              } catch (error) {
+                logger.error(`🔐 Immediate purge failed for ${nodeName}:`, error);
+                databaseService.logKeyRepairAttemptAsync(
+                  fromNum, nodeName, 'purge', false, oldFragment, newFragment
+                ).catch(err => logger.error('Error logging purge failure:', err));
+              }
+            }
+          } else {
+            // Already flagged from prior detection — update lastMeshReceivedKey with latest key
+            nodeData.lastMeshReceivedKey = nodeData.publicKey;
+            newMismatchDetected = true; // prevent existing block from clearing the flag
+          }
+        }
+
+        // Existing block — only runs for PKI-error-based mismatches, NOT our proactive detection
+        if (!newMismatchDetected) {
+          if (existingNode && existingNode.keyMismatchDetected) {
+            const oldKey = existingNode.publicKey;
+            const newKey = nodeData.publicKey;
+
+            if (oldKey !== newKey) {
+              // Key has changed - the mismatch is fixed!
+              logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - received new key`);
+              nodeData.keyMismatchDetected = false;
+              nodeData.lastMeshReceivedKey = undefined;
+              // Don't clear keySecurityIssueDetails if there's a low-entropy issue
+              if (!isLowEntropy) {
+                nodeData.keySecurityIssueDetails = undefined;
+              }
+
+              // Clear the repair state and log success
+              databaseService.clearKeyRepairState(fromNum);
+              const nodeName = user.longName || user.shortName || nodeId;
+              databaseService.logKeyRepairAttempt(fromNum, nodeName, 'fixed', true);
+
+              // Emit update to UI
+              dataEventEmitter.emitNodeUpdate(fromNum, {
+                keyMismatchDetected: false,
+                keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
+              });
+            }
           }
         }
       }
