@@ -1370,6 +1370,8 @@
   "settings.position_history_line_style_description": "How position history paths are drawn on the map",
   "settings.position_history_line_style_linear": "Linear (straight lines)",
   "settings.position_history_line_style_spline": "Spline (curved based on heading)",
+  "settings.neighbor_info_min_zoom_label": "Neighbor Info Minimum Zoom Level",
+  "settings.neighbor_info_min_zoom_description": "Neighbor info lines are hidden on the map when zoomed out below this level (1-18). Lower values show lines at wider zoom levels.",
   "settings.telemetry_hours_label": "Telemetry Visualization (Hours)",
   "settings.telemetry_hours_description": "How many hours of telemetry data to display in graphs (1-168)",
   "settings.fav_telemetry_label": "Favorite Telemetry Storage Length (Days)",

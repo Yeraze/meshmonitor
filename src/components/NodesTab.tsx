@@ -293,6 +293,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeDimmingMinOpacity,
     maxNodeAgeHours,
     nodeHopsCalculation,
+    neighborInfoMinZoom,
     overlayColors,
   } = useSettings();
 
@@ -2048,7 +2049,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 ];
 
                 // Zoom-adaptive: hide neighbor lines at low zoom
-                if (mapZoom < 12) return null;
+                if (mapZoom < neighborInfoMinZoom) return null;
 
                 return (
                   <Polyline

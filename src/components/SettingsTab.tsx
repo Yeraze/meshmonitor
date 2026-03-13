@@ -149,7 +149,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     nodeHopsCalculation,
     setNodeHopsCalculation,
     preferredDashboardSortOption,
-    setPreferredDashboardSortOption
+    setPreferredDashboardSortOption,
+    neighborInfoMinZoom,
+    setNeighborInfoMinZoom
   } = useSettings();
   const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
 
@@ -169,6 +171,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
   const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
+  const [localNeighborInfoMinZoom, setLocalNeighborInfoMinZoom] = useState(neighborInfoMinZoom);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localNodeHopsCalculation, setLocalNodeHopsCalculation] = useState(nodeHopsCalculation);
   const [localDashboardSortOption, setLocalDashboardSortOption] = useState<DashboardSortOption>(preferredDashboardSortOption);
@@ -315,6 +318,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
     setLocalMapPinStyle(mapPinStyle);
+    setLocalNeighborInfoMinZoom(neighborInfoMinZoom);
     setLocalTheme(theme);
     setLocalNodeHopsCalculation(nodeHopsCalculation);
     setLocalDashboardSortOption(preferredDashboardSortOption);
@@ -366,6 +370,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localDateFormat !== dateFormat ||
       localMapTileset !== mapTileset ||
       localMapPinStyle !== mapPinStyle ||
+      localNeighborInfoMinZoom !== neighborInfoMinZoom ||
       localTheme !== theme ||
       localNodeHopsCalculation !== nodeHopsCalculation ||
       localDashboardSortOption !== preferredDashboardSortOption ||
@@ -386,8 +391,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localAnalyticsProvider !== initialAnalyticsProvider ||
       JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme, localNodeHopsCalculation, localDashboardSortOption,
-      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
+  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localNeighborInfoMinZoom, localTheme, localNodeHopsCalculation, localDashboardSortOption,
+      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, neighborInfoMinZoom, theme, nodeHopsCalculation, preferredDashboardSortOption,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
@@ -435,7 +440,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
-      dateFormat, mapTileset, mapPinStyle, theme, nodeHopsCalculation, preferredDashboardSortOption,
+      dateFormat, mapTileset, mapPinStyle, neighborInfoMinZoom, theme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
@@ -461,6 +466,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         dateFormat: localDateFormat,
         mapTileset: localMapTileset,
         mapPinStyle: localMapPinStyle,
+        neighborInfoMinZoom: localNeighborInfoMinZoom.toString(),
         theme: localTheme,
         packet_log_enabled: localPacketLogEnabled ? '1' : '0',
         packet_log_max_count: localPacketLogMaxCount.toString(),
@@ -504,6 +510,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange(localDateFormat);
       onMapTilesetChange(localMapTileset);
       onMapPinStyleChange(localMapPinStyle);
+      setNeighborInfoMinZoom(localNeighborInfoMinZoom);
       onThemeChange(localTheme);
       setNodeHopsCalculation(localNodeHopsCalculation);
       setPreferredDashboardSortOption(localDashboardSortOption);
@@ -538,7 +545,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours,
       localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours,
       localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
-      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
+      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localNeighborInfoMinZoom, localTheme,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
       localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
@@ -546,7 +553,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
       onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
-      onMapPinStyleChange, onThemeChange, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
+      onMapPinStyleChange, setNeighborInfoMinZoom, onThemeChange, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
@@ -1113,6 +1120,27 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="linear">{t('settings.position_history_line_style_linear')}</option>
               <option value="spline">{t('settings.position_history_line_style_spline')}</option>
             </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="neighborInfoMinZoom">
+              {t('settings.neighbor_info_min_zoom_label')}
+              <span className="setting-description">{t('settings.neighbor_info_min_zoom_description')}</span>
+            </label>
+            <input
+              id="neighborInfoMinZoom"
+              type="number"
+              min="1"
+              max="18"
+              value={localNeighborInfoMinZoom}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (value >= 1 && value <= 18) {
+                  setLocalNeighborInfoMinZoom(value);
+                }
+              }}
+              className="setting-input"
+              style={{ width: '100px' }}
+            />
           </div>
           {isAdmin && (
             <div id="settings-embed">

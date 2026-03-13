@@ -61,6 +61,7 @@ interface SettingsContextType {
   overlayScheme: OverlayScheme;
   overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
+  neighborInfoMinZoom: number;
   theme: Theme;
   language: string;
   customThemes: CustomTheme[];
@@ -97,6 +98,7 @@ interface SettingsContextType {
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
+  setNeighborInfoMinZoom: (zoom: number) => void;
   setTheme: (theme: Theme) => void;
   setLanguage: (language: string) => void;
   loadCustomThemes: () => Promise<void>;
@@ -219,6 +221,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
     return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
+  });
+
+  const [neighborInfoMinZoom, setNeighborInfoMinZoomState] = useState<number>(() => {
+    const saved = localStorage.getItem('neighborInfoMinZoom');
+    return saved ? parseInt(saved, 10) : 12;
   });
 
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -425,6 +432,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMapPinStyle = (style: MapPinStyle) => {
     setMapPinStyleState(style);
     localStorage.setItem('mapPinStyle', style);
+  };
+
+  const setNeighborInfoMinZoom = (zoom: number) => {
+    setNeighborInfoMinZoomState(zoom);
+    localStorage.setItem('neighborInfoMinZoom', String(zoom));
   };
 
   /**
@@ -862,6 +874,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
+          if (settings.neighborInfoMinZoom !== undefined) {
+            const zoom = parseInt(settings.neighborInfoMinZoom, 10);
+            if (!isNaN(zoom)) {
+              setNeighborInfoMinZoomState(zoom);
+              localStorage.setItem('neighborInfoMinZoom', String(zoom));
+            }
+          }
+
           if (settings.theme) {
             // Accept any theme (built-in or custom)
             setThemeState(settings.theme as Theme);
@@ -1052,6 +1072,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayScheme,
     overlayColors,
     mapPinStyle,
+    neighborInfoMinZoom,
     theme,
     language,
     customThemes,
@@ -1088,6 +1109,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDateFormat,
     setMapTileset,
     setMapPinStyle,
+    setNeighborInfoMinZoom,
     setTheme,
     setLanguage,
     loadCustomThemes,
@@ -1142,6 +1164,7 @@ export const useMapSettings = () => {
   return {
     mapTileset: s.mapTileset, setMapTileset: s.setMapTileset,
     mapPinStyle: s.mapPinStyle, setMapPinStyle: s.setMapPinStyle,
+    neighborInfoMinZoom: s.neighborInfoMinZoom, setNeighborInfoMinZoom: s.setNeighborInfoMinZoom,
     overlayScheme: s.overlayScheme, overlayColors: s.overlayColors,
     customTilesets: s.customTilesets,
     addCustomTileset: s.addCustomTileset, updateCustomTileset: s.updateCustomTileset, deleteCustomTileset: s.deleteCustomTileset,
