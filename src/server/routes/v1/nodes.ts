@@ -26,14 +26,14 @@ async function hasNodesReadPermission(userId: number | null, isAdmin: boolean): 
 }
 
 /**
- * Enrich node data with latest uptime from telemetry
+ * Enrich node data with latest uptime from telemetry (async - works with all DB backends)
  */
-function enrichNodeWithUptime(node: DbNode): DbNode & { uptimeSeconds?: number } {
-  const uptimeTelemetry = databaseService.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
-  return {
+async function enrichNodesWithUptime(nodes: DbNode[]): Promise<(DbNode & { uptimeSeconds?: number })[]> {
+  const uptimeMap = await databaseService.getLatestTelemetryValueForAllNodesAsync('uptimeSeconds');
+  return nodes.map(node => ({
     ...node,
-    uptimeSeconds: uptimeTelemetry?.value
-  };
+    uptimeSeconds: uptimeMap.get(node.nodeId)
+  }));
 }
 
 /**
@@ -75,7 +75,7 @@ router.get('/', async (req: Request, res: Response) => {
     const filteredNodes = await filterNodesByChannelPermission(nodes, user);
 
     // Enrich nodes with uptime data from telemetry
-    const enrichedNodes = filteredNodes.map(enrichNodeWithUptime);
+    const enrichedNodes = await enrichNodesWithUptime(filteredNodes);
 
     res.json({
       success: true,
@@ -137,7 +137,7 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     }
 
     // Enrich with uptime data from telemetry
-    const enrichedNode = enrichNodeWithUptime(filteredNode);
+    const [enrichedNode] = await enrichNodesWithUptime([filteredNode]);
 
     res.json({
       success: true,

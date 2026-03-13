@@ -173,6 +173,14 @@ vi.mock('../../../services/database.js', () => {
         }
         return null;
       }),
+      getLatestTelemetryValueForAllNodesAsync: vi.fn(async (type: string) => {
+        const map = new Map<string, number>();
+        if (type === 'uptimeSeconds') {
+          map.set('!abc12345', 86400);
+          map.set('!def67890', 86400);
+        }
+        return map;
+      }),
       // Telemetry methods (async)
       getTelemetryByNodeAsync: vi.fn(async () => testTelemetry),
       getTelemetryCountByNodeAsync: vi.fn(async () => testTelemetry.length),

@@ -7659,6 +7659,26 @@ class DatabaseService {
     return this.getLatestTelemetryForType(nodeId, telemetryType);
   }
 
+  /**
+   * Get latest value for a telemetry type across all nodes in a single query.
+   * Returns a Map of nodeId -> value. Works with all database backends.
+   */
+  async getLatestTelemetryValueForAllNodesAsync(telemetryType: string): Promise<Map<string, number>> {
+    if (this.telemetryRepo) {
+      return this.telemetryRepo.getLatestTelemetryValueForAllNodes(telemetryType);
+    }
+    // Fallback for SQLite without repo
+    const result = new Map<string, number>();
+    const nodes = this.getAllNodes();
+    for (const node of nodes) {
+      const telemetry = this.getLatestTelemetryForType(node.nodeId, telemetryType);
+      if (telemetry) {
+        result.set(node.nodeId, telemetry.value);
+      }
+    }
+    return result;
+  }
+
   // Get distinct telemetry types per node (efficient for checking capabilities)
   getNodeTelemetryTypes(nodeId: string): string[] {
     // For PostgreSQL/MySQL, return empty array for sync calls
