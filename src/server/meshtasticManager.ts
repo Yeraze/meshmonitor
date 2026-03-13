@@ -1329,10 +1329,10 @@ class MeshtasticManager {
             startedAt: node.startedAt ?? now
           });
 
-          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exchange', null);
+          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, `exchange (${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`, null);
         } catch (error) {
           logger.error(`🔐 Key repair: Failed to send node info to ${nodeName}:`, error);
-          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exchange', false);
+          databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, `exchange (${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`, false);
         }
       }
     } catch (error) {

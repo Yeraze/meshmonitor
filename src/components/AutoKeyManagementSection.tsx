@@ -153,8 +153,13 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     onDismiss: resetChanges
   });
 
+  const getActionBase = (action: string): string => {
+    // Actions like "exchange (2/3)" — extract the base action
+    return action.split(' ')[0];
+  };
+
   const getActionIcon = (action: string, success: boolean | null): string => {
-    switch (action) {
+    switch (getActionBase(action)) {
       case 'exchange':
         return success === null ? '\u23f3' : success ? '\u2705' : '\u274c'; // hourglass, checkmark, x
       case 'purge':
@@ -163,15 +168,19 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
         return '\u2705'; // checkmark
       case 'exhausted':
         return '\u26a0\ufe0f'; // warning
+      case 'mismatch':
+        return '\u26a0\ufe0f'; // warning
       default:
         return '?';
     }
   };
 
   const getActionLabel = (action: string): string => {
-    switch (action) {
+    const base = getActionBase(action);
+    const suffix = action.includes('(') ? ' ' + action.substring(action.indexOf('(')) : '';
+    switch (base) {
       case 'exchange':
-        return t('automation.auto_key_management.action_exchange');
+        return t('automation.auto_key_management.action_exchange') + suffix;
       case 'purge':
         return t('automation.auto_key_management.action_purge');
       case 'fixed':
