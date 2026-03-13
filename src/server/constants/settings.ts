@@ -89,6 +89,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoKeyManagementIntervalMinutes',
   'autoKeyManagementMaxExchanges',
   'autoKeyManagementAutoPurge',
+  'autoKeyManagementImmediatePurge',
   'remoteAdminScannerIntervalMinutes',
   'remoteAdminScannerExpirationHours',
   'tracerouteScheduleEnabled',
