@@ -1302,8 +1302,10 @@ class MeshtasticManager {
               databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'purge', true);
               logger.info(`🔐 Key repair: Purged node ${nodeName}, sending final node info exchange`);
 
-              // Send one more node info exchange after purge
-              await this.sendNodeInfoRequest(node.nodeNum, 0);
+              // Send one more node info exchange after purge — use channel, not DM
+              // (keys are mismatched so PKI-encrypted DMs would fail)
+              const purgedNodeData = databaseService.getNode(node.nodeNum);
+              await this.sendNodeInfoRequest(node.nodeNum, purgedNodeData?.channel ?? 0);
               databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exchange', null);
             } catch (error) {
               logger.error(`🔐 Key repair: Failed to purge node ${nodeName}:`, error);
@@ -1317,10 +1319,13 @@ class MeshtasticManager {
           continue;
         }
 
-        // Send node info exchange
-        logger.info(`🔐 Key repair: Sending node info exchange to ${nodeName} (attempt ${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`);
+        // Send node info exchange — use node's channel, not DM
+        // (keys are mismatched so PKI-encrypted DMs would fail)
+        const repairNodeData = databaseService.getNode(node.nodeNum);
+        const repairChannel = repairNodeData?.channel ?? 0;
+        logger.info(`🔐 Key repair: Sending node info exchange to ${nodeName} on channel ${repairChannel} (attempt ${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`);
         try {
-          await this.sendNodeInfoRequest(node.nodeNum, 0);
+          await this.sendNodeInfoRequest(node.nodeNum, repairChannel);
 
           // Update repair state
           databaseService.setKeyRepairState(node.nodeNum, {
@@ -4255,8 +4260,10 @@ class MeshtasticManager {
                   fromNum, nodeName, 'purge', true, oldFragment, newFragment
                 ).catch(err => logger.error('Error logging purge:', err));
 
-                // Request fresh NodeInfo exchange
-                await this.sendNodeInfoRequest(fromNum, 0);
+                // Request fresh NodeInfo exchange — use channel, not DM
+                // (keys are mismatched so PKI-encrypted DMs would fail)
+                const nodeChannel = meshPacket.channel ?? 0;
+                await this.sendNodeInfoRequest(fromNum, nodeChannel);
               } catch (error) {
                 logger.error(`🔐 Immediate purge failed for ${nodeName}:`, error);
                 databaseService.logKeyRepairAttemptAsync(
