@@ -83,7 +83,7 @@ interface MapProviderProps {
 }
 
 export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
-  const { getToken: getCsrfToken } = useCsrf();
+  const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
 
   // Initialize with defaults (will be overridden by server preferences when loaded)
   const [showPaths, setShowPathsState] = useState<boolean>(false);
@@ -177,13 +177,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   }, []);
 
   // Helper function to save preference to server
-  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean | number | null>) => {
+  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean | number | null>, isRetry = false) => {
     try {
       const baseUrl = await api.getBaseUrl();
       const csrfToken = getCsrfToken();
-      console.log('[MapContext] Saving preference to server:', preference);
-      console.log('[MapContext] CSRF token:', csrfToken ? 'present' : 'MISSING');
-      console.log('[MapContext] Base URL:', baseUrl);
 
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
 
@@ -198,16 +195,24 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         body: JSON.stringify(preference)
       });
 
-      console.log('[MapContext] Save response status:', response.status);
       if (!response.ok) {
+        // On CSRF failure, refresh token and retry once
+        if (response.status === 403 && !isRetry) {
+          const error = await response.json().catch(() => ({ error: '' }));
+          if (error.error && error.error.toLowerCase().includes('csrf')) {
+            console.warn('[MapContext] CSRF error - refreshing token and retrying...');
+            sessionStorage.removeItem('csrfToken');
+            await refreshCsrfToken();
+            return savePreferenceToServer(preference, true);
+          }
+        }
         const errorText = await response.text();
         console.error('[MapContext] Save failed:', errorText);
       }
     } catch (error) {
-      // Silently fail - localStorage will still work
       console.error('[MapContext] Failed to save map preference to server:', error);
     }
-  }, [getCsrfToken]);
+  }, [getCsrfToken, refreshCsrfToken]);
 
   // Create wrapper setter for positionHistoryHours that persists to server with debouncing
   const positionHistoryDebounceRef = useRef<NodeJS.Timeout | null>(null);

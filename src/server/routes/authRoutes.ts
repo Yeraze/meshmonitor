@@ -23,10 +23,19 @@ import { getEnvironmentConfig } from '../config/environment.js';
 const router = Router();
 
 function regenerateSession(req: Request): Promise<void> {
+  // Preserve CSRF token across session regeneration so the frontend's
+  // cached token remains valid after login (session regeneration creates
+  // a new session ID but should not invalidate the CSRF token)
+  const csrfToken = req.session.csrfToken;
   return new Promise((resolve, reject) => {
     req.session.regenerate((err) => {
       if (err) reject(err);
-      else resolve();
+      else {
+        if (csrfToken) {
+          req.session.csrfToken = csrfToken;
+        }
+        resolve();
+      }
     });
   });
 }
