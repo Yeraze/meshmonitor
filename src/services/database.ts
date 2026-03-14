@@ -3813,8 +3813,14 @@ class DatabaseService {
    */
   async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
     if (this.nodesRepo) {
-      const nodes = await this.nodesRepo.getNodesWithKeySecurityIssues();
-      return nodes as unknown as DbNode[];
+      try {
+        const nodes = await this.nodesRepo.getNodesWithKeySecurityIssues();
+        return nodes as unknown as DbNode[];
+      } catch (error) {
+        // Drizzle schema may reference columns not yet added by migrations (e.g. lastMeshReceivedKey).
+        // Fall back to sync raw SQL path which uses SELECT * and tolerates missing columns.
+        logger.warn('Drizzle query failed for getNodesWithKeySecurityIssues, falling back to raw SQL:', error);
+      }
     }
     // Fallback to sync method for SQLite without repo
     return this.getNodesWithKeySecurityIssues();
