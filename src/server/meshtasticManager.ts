@@ -7588,10 +7588,16 @@ class MeshtasticManager {
           const triggerMatch = normalizedText.match(triggerRegex);
 
           if (triggerMatch) {
-            // Extract parameters
+            // Extract parameters from original text when possible to preserve full
+            // Unicode characters. Homoglyph normalization can mangle Cyrillic words
+            // (e.g., "Барнаул" → "Бapнayл") which breaks geocoding APIs.
+            // The regex usually matches original text too since param patterns like
+            // [^\s]+ accept any non-whitespace character.
+            const originalMatch = message.text.match(triggerRegex);
+
             extractedParams = {};
             params.forEach((param, index) => {
-              extractedParams[param.name] = triggerMatch[index + 1];
+              extractedParams[param.name] = originalMatch?.[index + 1] ?? triggerMatch[index + 1];
             });
             matchedPattern = origPatternStr;
             break; // Found a match, stop trying other patterns
