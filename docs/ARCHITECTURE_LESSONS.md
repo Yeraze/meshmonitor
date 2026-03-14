@@ -733,5 +733,46 @@ beforeEach(() => {
 
 ---
 
-**Last Updated**: 2026-03-06
-**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes)
+## Key Management & PKI
+
+### Key Authority Model
+
+**Problem**: A node's public key can come from two sources: the connected device's local database (device sync) and mesh-received NodeInfo packets. These can disagree after a remote node regenerates its key.
+
+**Rule**: Mesh-received keys are authoritative. Device-synced keys may be stale.
+
+**Implementation** (PR #2243):
+- `lastMeshReceivedKey` field tracks keys received via mesh NodeInfo
+- `keyMismatchDetected` flag marks nodes where device key ≠ mesh key
+- Mismatch detection in `processNodeInfoMessageProtobuf`
+- Resolution in device DB sync when device picks up the new key
+
+### Key Repair Channel Routing
+
+**Problem**: When keys are mismatched, PKI-encrypted DMs fail because they use the wrong (old) key.
+
+**Solution**: Send key repair NodeInfo exchanges on the node's **channel** (shared PSK), not as DMs.
+
+```typescript
+// ✅ DO: Use the node's channel for key repair
+const nodeData = databaseService.getNode(nodeNum);
+await this.sendNodeInfoRequest(nodeNum, nodeData?.channel ?? 0);
+
+// ❌ DON'T: Hardcode channel 0 (DM with PKI encryption)
+await this.sendNodeInfoRequest(nodeNum, 0);
+```
+
+**Location**: `src/server/meshtasticManager.ts` — `processKeyRepairs()` and immediate purge path
+
+### Settings Allowlist
+
+**Problem**: New settings silently fail to save if not added to the allowlist.
+
+**Rule**: When adding any new setting key that gets saved via `POST /api/settings`, add it to `VALID_SETTINGS_KEYS` in `src/server/constants/settings.ts`.
+
+**Location**: `src/server/constants/settings.ts`
+
+---
+
+**Last Updated**: 2026-03-13
+**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes), #2243 (key mismatch detection), #2246 (neighbor info zoom setting)

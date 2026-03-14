@@ -59,7 +59,7 @@ When tests mock DatabaseService, they must provide async method mocks for authMi
 - When testing locally, use the docker-compose.dev.yml to build the local code.  Also, always make sure the proper code was deployed once the container is launched.
 - Official meshtastic protobuf definitions can be found at https://github.com/meshtastic/protobufs/
 - Use shared constants from `src/server/constants/meshtastic.ts` for PortNum, RoutingError, and helper functions - never use magic numbers for protocol values
-- When updating the version, make sure you get both the package.json, Helm chart, and Tauri config.. and regenerate the package-lock
+- When updating the version, make sure you get all five files: package.json, package-lock.json (regenerate via `npm install --package-lock-only --legacy-peer-deps`), helm/meshmonitor/Chart.yaml, desktop/src-tauri/tauri.conf.json, and desktop/package.json
 - Prior to creating a PR, make sure to run the tests/system-tests.sh to ensure success and post the output report
 - When testing, our webserver has BASE_URL configured for /meshmonitor
   Completely shut down the container and tileserver before running system tests
@@ -75,3 +75,14 @@ Use `scripts/api-test.sh` for authenticated API testing against the running dev 
 ./scripts/api-test.sh logout                   # Clear stored session
 ```
 Default credentials: admin/changeme1. Override with `API_USER` and `API_PASS` env vars.
+
+## Adding New Settings
+
+When adding a new user-configurable setting:
+- **MUST** add the key to `src/server/constants/settings.ts` `VALID_SETTINGS_KEYS` — without this, the setting silently fails to save
+- In `SettingsTab.tsx`, the `handleSave` `useCallback` has a large dependency array — new `localFoo` state AND the context `setFoo` setter must be added to it, or the save callback uses stale values
+- See `src/contexts/SettingsContext.tsx` for the full state/setter/localStorage/server-load pattern
+
+## Key Repair / NodeInfo Exchange Routing
+
+When sending NodeInfo exchanges for key repair (auto-key management, immediate purge, or manual button), always send on the **node's channel**, not as a DM. PKI-encrypted DMs use the stored key, which is wrong when there's a key mismatch. Channel routing uses the shared PSK which works regardless.
