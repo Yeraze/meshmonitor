@@ -7596,7 +7596,7 @@ class DatabaseService {
     newKeyFragment: string | null = null
   ): Promise<number> {
     if (this.drizzleDbType === 'postgres') {
-      const client = await (this as any).pgPool.connect();
+      const client = await this.postgresPool!.connect();
       try {
         const result = await client.query(
           `INSERT INTO auto_key_repair_log (timestamp, "nodeNum", "nodeName", action, success, created_at, "oldKeyFragment", "newKeyFragment")
@@ -7613,7 +7613,7 @@ class DatabaseService {
         client.release();
       }
     } else if (this.drizzleDbType === 'mysql') {
-      const pool = (this as any).mysqlPool;
+      const pool = this.mysqlPool!;
       const [result] = await pool.query(
         `INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -7647,7 +7647,7 @@ class DatabaseService {
     newKeyFragment: string | null;
   }[]> {
     if (this.drizzleDbType === 'postgres') {
-      const client = await (this as any).pgPool.connect();
+      const client = await this.postgresPool!.connect();
       try {
         // Check if table exists (may not exist if auto-key management was never enabled)
         const tableCheck = await client.query(
@@ -7683,7 +7683,7 @@ class DatabaseService {
         client.release();
       }
     } else if (this.drizzleDbType === 'mysql') {
-      const pool = (this as any).mysqlPool;
+      const pool = this.mysqlPool!;
 
       // Check if table exists (may not exist if auto-key management was never enabled)
       const [tableRows] = await pool.query(
@@ -7750,14 +7750,14 @@ class DatabaseService {
 
   async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
     if (this.drizzleDbType === 'postgres') {
-      const client = await (this as any).pgPool.connect();
+      const client = await this.postgresPool!.connect();
       try {
         await client.query('DELETE FROM auto_key_repair_state WHERE "nodeNum" = $1', [nodeNum]);
       } finally {
         client.release();
       }
     } else if (this.drizzleDbType === 'mysql') {
-      const pool = (this as any).mysqlPool;
+      const pool = this.mysqlPool!;
       await pool.query('DELETE FROM auto_key_repair_state WHERE nodeNum = ?', [nodeNum]);
     } else {
       this.clearKeyRepairState(nodeNum);
