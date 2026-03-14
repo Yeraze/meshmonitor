@@ -169,6 +169,9 @@ const helmetConfig =
         },
         noSniff: true,
         xssFilter: true,
+        // Send origin as Referer for cross-origin requests (e.g. map tile fetches).
+        // Helmet defaults to no-referrer which violates OSM tile usage policy.
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
       }
     : {
         // Development or HTTP-only: no HSTS
@@ -180,6 +183,7 @@ const helmetConfig =
         },
         noSniff: true,
         xssFilter: true,
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
       };
 
 app.use(helmet(helmetConfig));
