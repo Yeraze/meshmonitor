@@ -143,9 +143,15 @@ describe('Auto Responder - Regex Parameter Matching', () => {
     const match = normalizedMessage.match(regex);
 
     if (match) {
+      // Try to extract params from original text to preserve full Unicode characters.
+      // Homoglyph normalization can mangle Cyrillic words (e.g., "Барнаул" → "Бapнayл")
+      // which breaks geocoding APIs. The regex usually matches original text too since
+      // param patterns like [^\s]+ accept any non-whitespace character.
+      const originalMatch = message.match(regex);
+
       const extractedParams: Record<string, string> = {};
       params.forEach((param, index) => {
-        extractedParams[param.name] = match[index + 1];
+        extractedParams[param.name] = originalMatch?.[index + 1] ?? match[index + 1];
       });
       return { matches: true, params: extractedParams };
     }
@@ -592,6 +598,17 @@ describe('Auto Responder - Regex Parameter Matching', () => {
       const result = testTriggerMatch(trigger, message);
       expect(result.matches).toBe(true);
       expect(result.params).toEqual({ city: 'Moscow' });
+    });
+
+    it('should preserve Cyrillic parameter values from original text (Issue #2258)', () => {
+      // Latin trigger "w {location}" with Cyrillic location parameter
+      // The parameter should be extracted as pure Cyrillic, not mixed encoding
+      const trigger = 'w {location}';
+      const message = 'w \u0411\u0430\u0440\u043D\u0430\u0443\u043B'; // w Барнаул
+      const result = testTriggerMatch(trigger, message);
+      expect(result.matches).toBe(true);
+      // Should be pure Cyrillic "Барнаул", NOT mixed "Бapнayл"
+      expect(result.params).toEqual({ location: '\u0411\u0430\u0440\u043D\u0430\u0443\u043B' });
     });
 
     it('should not match completely different Cyrillic words', () => {
