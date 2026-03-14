@@ -64,10 +64,6 @@ interface UsePacketsResult {
   loadMore: () => Promise<void>;
   /** Refresh packets from server */
   refresh: () => Promise<void>;
-  /** Mark that user has scrolled (enables infinite scroll) */
-  markUserScrolled: () => void;
-  /** Check if should load more based on scroll position */
-  shouldLoadMore: (lastVisibleIndex: number, threshold?: number) => boolean;
 }
 
 /**
@@ -86,8 +82,7 @@ interface UsePacketsResult {
  *   packets,
  *   loading,
  *   loadMore,
- *   hasMore,
- *   shouldLoadMore
+ *   hasMore
  * } = usePackets({
  *   canView: true,
  *   filters: { portnum: 1 },
@@ -105,7 +100,6 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
 
   // Scroll tracking refs
   const lastLoadedRawLengthRef = useRef<number>(0);
-  const userHasScrolledRef = useRef<boolean>(false);
 
   // Query key for this filter combination
   const queryKey = useMemo(() => getPacketsQueryKey(filters), [filters]);
@@ -138,10 +132,18 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
     refetchOnWindowFocus: false,
   });
 
-  // Flatten all pages into raw packets array
+  // Flatten all pages into raw packets array, deduplicating by ID.
+  // Polling refetch can shift offsets causing the same packet to appear
+  // in adjacent pages when new packets arrive between fetches.
   const rawPackets = useMemo(() => {
     if (!data?.pages) return [];
-    return data.pages.flatMap(page => page.packets);
+    const all = data.pages.flatMap(page => page.packets);
+    const seen = new Set<number>();
+    return all.filter(p => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
   }, [data?.pages]);
 
   // Get total from the most recent page response
@@ -160,18 +162,23 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
 
   // Reset scroll tracking when filters change (query is reset)
   useEffect(() => {
-    userHasScrolledRef.current = false;
     lastLoadedRawLengthRef.current = 0;
   }, [queryKey]);
+
+  // Track current rawPackets length via ref so loadMore doesn't need it as a dependency.
+  // This prevents the IntersectionObserver from re-firing on every data change.
+  const rawPacketsLengthRef = useRef(0);
+  rawPacketsLengthRef.current = rawPackets.length;
 
   // Load more packets (infinite scroll)
   const loadMore = useCallback(async () => {
     if (isFetchingNextPage || !hasNextPage || rateLimitError || !canView) return;
 
-    // Record current length before fetching to prevent duplicate loads from same position.
-    // After fetchNextPage resolves and rawPackets grows, this ref will no longer match,
-    // allowing shouldLoadMore to trigger again when the user scrolls further.
-    lastLoadedRawLengthRef.current = rawPackets.length;
+    // Guard: don't re-fetch if we already loaded from this position
+    if (rawPacketsLengthRef.current > 0 && rawPacketsLengthRef.current === lastLoadedRawLengthRef.current) return;
+
+    // Record current length before fetching to prevent duplicate loads
+    lastLoadedRawLengthRef.current = rawPacketsLengthRef.current;
 
     try {
       await fetchNextPage();
@@ -192,7 +199,7 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
         }, 15 * 60 * 1000);
       }
     }
-  }, [isFetchingNextPage, hasNextPage, rateLimitError, canView, fetchNextPage, rawPackets.length]);
+  }, [isFetchingNextPage, hasNextPage, rateLimitError, canView, fetchNextPage]);
 
   // Refresh packets (invalidate cache and refetch)
   const refresh = useCallback(async () => {
@@ -200,38 +207,6 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
     await queryClient.invalidateQueries({ queryKey });
     await refetch();
   }, [queryClient, queryKey, refetch]);
-
-  // Mark that user has scrolled (enables infinite scroll loading)
-  const markUserScrolled = useCallback(() => {
-    userHasScrolledRef.current = true;
-  }, []);
-
-  // Check if should load more based on scroll position
-  const shouldLoadMore = useCallback(
-    (lastVisibleIndex: number, threshold = 10): boolean => {
-      if (lastVisibleIndex < 0) return false;
-
-      // Don't load if we have raw packets but no filtered packets
-      if (packets.length === 0 && rawPackets.length > 0) return false;
-
-      const nearEnd = lastVisibleIndex >= packets.length - threshold;
-      const alreadyLoadedFromHere = rawPackets.length > 0 && rawPackets.length === lastLoadedRawLengthRef.current;
-      const enoughItemsDisplayed = packets.length >= threshold;
-      const shouldRequireScroll = enoughItemsDisplayed && !userHasScrolledRef.current;
-      const hasMorePages = hasNextPage ?? true;
-
-      return (
-        nearEnd &&
-        hasMorePages &&
-        !isFetchingNextPage &&
-        !alreadyLoadedFromHere &&
-        !shouldRequireScroll &&
-        canView &&
-        !rateLimitError
-      );
-    },
-    [packets.length, rawPackets.length, hasNextPage, isFetchingNextPage, canView, rateLimitError]
-  );
 
   // Cleanup rate limit timer on unmount
   useEffect(() => {
@@ -252,7 +227,5 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
     rateLimitError,
     loadMore,
     refresh,
-    markUserScrolled,
-    shouldLoadMore,
   };
 }
