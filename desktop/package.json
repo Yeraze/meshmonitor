@@ -1,7 +1,7 @@
 {
   "name": "meshmonitor-desktop",
   "private": true,
-  "version": "3.9.2",
+  "version": "3.9.3",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
