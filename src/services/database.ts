@@ -7649,9 +7649,24 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres') {
       const client = await (this as any).pgPool.connect();
       try {
+        // Check if table exists (may not exist if auto-key management was never enabled)
+        const tableCheck = await client.query(
+          "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'auto_key_repair_log'"
+        );
+        if (tableCheck.rows.length === 0) {
+          return [];
+        }
+
+        // Check if migration 084 columns exist
+        const colCheck = await client.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+        );
+        const selectCols = colCheck.rows.length > 0
+          ? 'id, timestamp, "nodeNum", "nodeName", action, success, "oldKeyFragment", "newKeyFragment"'
+          : 'id, timestamp, "nodeNum", "nodeName", action, success';
+
         const result = await client.query(
-          `SELECT id, timestamp, "nodeNum", "nodeName", action, success, "oldKeyFragment", "newKeyFragment"
-           FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT $1`,
+          `SELECT ${selectCols} FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT $1`,
           [limit]
         );
         return result.rows.map((row: any) => ({
@@ -7669,9 +7684,25 @@ class DatabaseService {
       }
     } else if (this.drizzleDbType === 'mysql') {
       const pool = (this as any).mysqlPool;
+
+      // Check if table exists (may not exist if auto-key management was never enabled)
+      const [tableRows] = await pool.query(
+        "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log'"
+      );
+      if ((tableRows as any[]).length === 0) {
+        return [];
+      }
+
+      // Check if migration 084 columns exist
+      const [colRows] = await pool.query(
+        "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+      );
+      const selectCols = (colRows as any[]).length > 0
+        ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
+        : 'id, timestamp, nodeNum, nodeName, action, success';
+
       const [rows] = await pool.query(
-        `SELECT id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment
-         FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?`,
+        `SELECT ${selectCols} FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?`,
         [limit]
       );
       return (rows as any[]).map((row: any) => ({
@@ -7685,9 +7716,24 @@ class DatabaseService {
         newKeyFragment: row.newKeyFragment || null,
       }));
     }
-    // SQLite — query directly with new columns (available after migration 084)
+    // SQLite — check if table exists first (may not exist if auto-key management was never enabled)
+    const hasTable = this.db.prepare(
+      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='auto_key_repair_log'"
+    ).get() as { count: number };
+    if (hasTable.count === 0) {
+      return [];
+    }
+
+    // Check if migration 084 columns exist
+    const hasOldKeyCol = this.db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='oldKeyFragment'"
+    ).get() as { count: number };
+    const selectCols = hasOldKeyCol.count > 0
+      ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
+      : 'id, timestamp, nodeNum, nodeName, action, success';
+
     const rows = this.db.prepare(`
-      SELECT id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment
+      SELECT ${selectCols}
       FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?
     `).all(limit) as any[];
     return rows.map((row: any) => ({
