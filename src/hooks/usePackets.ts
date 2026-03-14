@@ -168,9 +168,13 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
   const loadMore = useCallback(async () => {
     if (isFetchingNextPage || !hasNextPage || rateLimitError || !canView) return;
 
+    // Record current length before fetching to prevent duplicate loads from same position.
+    // After fetchNextPage resolves and rawPackets grows, this ref will no longer match,
+    // allowing shouldLoadMore to trigger again when the user scrolls further.
+    lastLoadedRawLengthRef.current = rawPackets.length;
+
     try {
       await fetchNextPage();
-      lastLoadedRawLengthRef.current = rawPackets.length + PACKET_FETCH_LIMIT;
     } catch (error) {
       console.error('Failed to load more packets:', error);
 
