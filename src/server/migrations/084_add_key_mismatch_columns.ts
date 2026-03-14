@@ -10,18 +10,24 @@ export function runMigration084Sqlite(db: Database): void {
     db.exec("ALTER TABLE nodes ADD COLUMN lastMeshReceivedKey TEXT");
   }
 
-  const hasOldKeyFragment = db.prepare(
-    "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='oldKeyFragment'"
+  // auto_key_repair_log may not exist if user never enabled auto-key management (created in migration 046)
+  const hasRepairLogTable = db.prepare(
+    "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='auto_key_repair_log'"
   ).get() as { count: number };
-  if (hasOldKeyFragment.count === 0) {
-    db.exec("ALTER TABLE auto_key_repair_log ADD COLUMN oldKeyFragment TEXT");
-  }
+  if (hasRepairLogTable.count > 0) {
+    const hasOldKeyFragment = db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='oldKeyFragment'"
+    ).get() as { count: number };
+    if (hasOldKeyFragment.count === 0) {
+      db.exec("ALTER TABLE auto_key_repair_log ADD COLUMN oldKeyFragment TEXT");
+    }
 
-  const hasNewKeyFragment = db.prepare(
-    "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='newKeyFragment'"
-  ).get() as { count: number };
-  if (hasNewKeyFragment.count === 0) {
-    db.exec("ALTER TABLE auto_key_repair_log ADD COLUMN newKeyFragment TEXT");
+    const hasNewKeyFragment = db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='newKeyFragment'"
+    ).get() as { count: number };
+    if (hasNewKeyFragment.count === 0) {
+      db.exec("ALTER TABLE auto_key_repair_log ADD COLUMN newKeyFragment TEXT");
+    }
   }
 }
 
@@ -33,18 +39,24 @@ export async function runMigration084Postgres(client: PoolClient): Promise<void>
     await client.query('ALTER TABLE nodes ADD COLUMN "lastMeshReceivedKey" TEXT');
   }
 
-  const oldKeyCheck = await client.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+  // auto_key_repair_log may not exist if user never enabled auto-key management (created in migration 046)
+  const hasRepairLogTable = await client.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'auto_key_repair_log'"
   );
-  if (oldKeyCheck.rows.length === 0) {
-    await client.query('ALTER TABLE auto_key_repair_log ADD COLUMN "oldKeyFragment" VARCHAR(8)');
-  }
+  if (hasRepairLogTable.rows.length > 0) {
+    const oldKeyCheck = await client.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+    );
+    if (oldKeyCheck.rows.length === 0) {
+      await client.query('ALTER TABLE auto_key_repair_log ADD COLUMN "oldKeyFragment" VARCHAR(8)');
+    }
 
-  const newKeyCheck = await client.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'newKeyFragment'"
-  );
-  if (newKeyCheck.rows.length === 0) {
-    await client.query('ALTER TABLE auto_key_repair_log ADD COLUMN "newKeyFragment" VARCHAR(8)');
+    const newKeyCheck = await client.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'newKeyFragment'"
+    );
+    if (newKeyCheck.rows.length === 0) {
+      await client.query('ALTER TABLE auto_key_repair_log ADD COLUMN "newKeyFragment" VARCHAR(8)');
+    }
   }
 }
 
@@ -56,17 +68,24 @@ export async function runMigration084Mysql(pool: Pool): Promise<void> {
     await pool.query('ALTER TABLE nodes ADD COLUMN lastMeshReceivedKey VARCHAR(128)');
   }
 
-  const [oldKeyRows] = await pool.query(
-    "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+  // auto_key_repair_log may not exist if user never enabled auto-key management (created in migration 046)
+  const [repairLogTable] = await pool.query(
+    "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log'"
   );
-  if ((oldKeyRows as any[]).length === 0) {
-    await pool.query('ALTER TABLE auto_key_repair_log ADD COLUMN oldKeyFragment VARCHAR(8)');
-  }
+  if ((repairLogTable as any[]).length > 0) {
+    const [oldKeyRows] = await pool.query(
+      "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+    );
+    if ((oldKeyRows as any[]).length === 0) {
+      await pool.query('ALTER TABLE auto_key_repair_log ADD COLUMN oldKeyFragment VARCHAR(8)');
+    }
 
-  const [newKeyRows] = await pool.query(
-    "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'newKeyFragment'"
-  );
-  if ((newKeyRows as any[]).length === 0) {
-    await pool.query('ALTER TABLE auto_key_repair_log ADD COLUMN newKeyFragment VARCHAR(8)');
+    const [newKeyRows] = await pool.query(
+      "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log'"
+      + " AND column_name = 'newKeyFragment'"
+    );
+    if ((newKeyRows as any[]).length === 0) {
+      await pool.query('ALTER TABLE auto_key_repair_log ADD COLUMN newKeyFragment VARCHAR(8)');
+    }
   }
 }
