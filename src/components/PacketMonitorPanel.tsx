@@ -20,8 +20,7 @@ interface PacketMonitorPanelProps {
   onNodeClick?: (nodeId: string) => void;
 }
 
-// Constants
-const LOAD_MORE_THRESHOLD = 10;
+
 
 // Transport mechanism display names (matches protobufs/meshtastic/mesh.proto TransportMechanism enum)
 const TRANSPORT_MECHANISM_NAMES: Record<number, { short: string; full: string }> = {
@@ -106,12 +105,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     packets,
     total,
     loading,
+    loadingMore,
     hasMore,
     rateLimitError,
     loadMore,
     refresh: fetchPackets,
-    markUserScrolled,
-    shouldLoadMore,
   } = usePackets({
     canView,
     filters,
@@ -127,31 +125,26 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     overscan: 10, // Number of items to render outside of visible area
   });
 
-  // Track scroll to enable infinite loading only after user interaction
-  useEffect(() => {
-    const scrollElement = parentRef.current;
-    if (!scrollElement) return;
-
-    const handleScroll = () => {
-      // Mark that user has scrolled - this enables infinite scroll loading
-      if (scrollElement.scrollTop > 50) {
-        markUserScrolled();
-      }
-    };
-
-    scrollElement.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scrollElement.removeEventListener('scroll', handleScroll);
-  }, [markUserScrolled]);
-
-  // Load more packets when scrolling near the end
+  // Infinite scroll: load more when user scrolls near the end of loaded data.
+  // Uses the virtualizer's visible items rather than IntersectionObserver,
+  // because the virtualizer only renders visible rows — the loading row at
+  // index 100+ may never be in the DOM if the user hasn't scrolled there.
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastVisibleIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1]?.index ?? -1 : -1;
+  const lastVirtualItemIndex = virtualItems[virtualItems.length - 1]?.index;
 
   useEffect(() => {
-    if (shouldLoadMore(lastVisibleIndex, LOAD_MORE_THRESHOLD)) {
+    if (lastVirtualItemIndex === undefined) return;
+
+    // When the last visible virtual item is within 10 items of the end, load more
+    if (
+      lastVirtualItemIndex >= packets.length - 10 &&
+      hasMore &&
+      !loadingMore &&
+      packets.length > 0
+    ) {
       loadMore();
     }
-  }, [lastVisibleIndex, shouldLoadMore, loadMore]);
+  }, [lastVirtualItemIndex, packets.length, hasMore, loadingMore, loadMore]);
 
   // Persist filter settings to localStorage
   useEffect(() => {
@@ -696,6 +689,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                         return (
                           <tr
                             key="loader"
+                            onClick={() => loadMore()}
                             style={{
                               position: 'absolute',
                               top: 0,
@@ -705,10 +699,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               transform: `translateY(${virtualRow.start}px)`,
                               display: 'table',
                               tableLayout: 'fixed',
+                              cursor: 'pointer',
                             }}
                           >
-                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                              {t('packet_monitor.loading_more')}
+                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--ctp-blue, var(--text-secondary))' }}>
+                              {loadingMore ? t('packet_monitor.loading_more') : t('packet_monitor.load_more_click', 'Click to load more packets...')}
                             </td>
                           </tr>
                         );
@@ -750,7 +745,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           </td>
                           <td
                             className="timestamp"
-                            style={{ width: '145px' }}
+                            style={{ width: '110px' }}
                             title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}
                           >
                             {formatTimestamp(packet.timestamp)}
