@@ -111,6 +111,21 @@ export function useDeviceConfig() {
 }
 
 /**
+ * Hook to access device node numbers (nodes in the connected radio's local database)
+ *
+ * @returns Set of node numbers in the radio's DB
+ */
+export function useDeviceNodes() {
+  const { data } = usePoll();
+  const prevRef = useRef<Set<number>>(new Set());
+  const deviceNodeNums = data?.deviceNodeNums;
+  if (deviceNodeNums && deviceNodeNums.length > 0) {
+    prevRef.current = new Set(deviceNodeNums);
+  }
+  return prevRef.current;
+}
+
+/**
  * Hook to access unread counts from the poll cache
  *
  * @returns Object with unread counts for channels and DMs

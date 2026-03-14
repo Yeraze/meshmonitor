@@ -29,6 +29,7 @@ import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId } f
 import { getEffectiveHops } from '../utils/nodeHops';
 import { useMapContext } from '../contexts/MapContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useDeviceNodes } from '../hooks/useServerData';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -275,6 +276,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Get settings and context for effective hops calculation
   const { nodeHopsCalculation } = useSettings();
   const { traceroutes, neighborInfo, setNeighborInfo } = useMapContext();
+  const deviceNodeNums = useDeviceNodes();
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
 
   // Local state for actions menu
@@ -1192,6 +1194,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 }}
               >
                 {selectedNode.keyMismatchDetected ? '🔓' : '⚠️'} {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+              </div>
+            )}
+
+            {/* Not in device DB warning - node exists in MeshMonitor but not on the radio */}
+            {selectedNodeNum !== undefined && deviceNodeNums.size > 0 && !deviceNodeNums.has(selectedNodeNum) && (
+              <div
+                style={{
+                  backgroundColor: 'var(--ctp-peach, #fab387)',
+                  color: 'var(--ctp-base, #1e1e2e)',
+                  padding: '10px 12px',
+                  marginBottom: '10px',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                }}
+              >
+                {t('messages.not_in_device_db', 'This node is not in your radio\'s database. Direct messages will fail until the node exchanges keys with your radio. Use "Exchange Node Info" to request key exchange.')}
               </div>
             )}
 

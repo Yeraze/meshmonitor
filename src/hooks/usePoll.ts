@@ -157,6 +157,7 @@ export interface PollData {
   config?: PollConfig;
   deviceConfig?: DeviceConfig;
   traceroutes?: PollTraceroute[];
+  deviceNodeNums?: number[];
 }
 
 /**

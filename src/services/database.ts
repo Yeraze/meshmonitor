@@ -7379,7 +7379,7 @@ class DatabaseService {
     exhausted: boolean;
     startedAt: number;
   } | null {
-    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
@@ -7405,15 +7405,66 @@ class DatabaseService {
     };
   }
 
+  async getKeyRepairStateAsync(nodeNum: number): Promise<{
+    nodeNum: number;
+    attemptCount: number;
+    lastAttemptTime: number | null;
+    exhausted: boolean;
+    startedAt: number;
+  } | null> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT "nodeNum", "attemptCount", "lastAttemptTime", exhausted, "startedAt"
+           FROM auto_key_repair_state WHERE "nodeNum" = $1`,
+          [nodeNum]
+        );
+        if (result.rows.length === 0) return null;
+        const row = result.rows[0];
+        return {
+          nodeNum: Number(row.nodeNum),
+          attemptCount: row.attemptCount,
+          lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
+          exhausted: row.exhausted === 1,
+          startedAt: Number(row.startedAt),
+        };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt
+         FROM auto_key_repair_state WHERE nodeNum = ?`,
+        [nodeNum]
+      );
+      const resultRows = rows as any[];
+      if (resultRows.length === 0) return null;
+      const row = resultRows[0];
+      return {
+        nodeNum: Number(row.nodeNum),
+        attemptCount: row.attemptCount,
+        lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
+        exhausted: row.exhausted === 1,
+        startedAt: Number(row.startedAt),
+      };
+    }
+    // SQLite fallback
+    return this.getKeyRepairState(nodeNum);
+  }
+
   setKeyRepairState(nodeNum: number, state: {
     attemptCount?: number;
     lastAttemptTime?: number;
     exhausted?: boolean;
     startedAt?: number;
   }): void {
-    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      logger.debug(`setKeyRepairState not yet implemented for PostgreSQL/MySQL`);
+      this.setKeyRepairStateAsync(nodeNum, state).catch(err =>
+        logger.error('Error setting key repair state:', err)
+      );
       return;
     }
 
@@ -7449,6 +7500,80 @@ class DatabaseService {
     }
   }
 
+  async setKeyRepairStateAsync(nodeNum: number, state: {
+    attemptCount?: number;
+    lastAttemptTime?: number;
+    exhausted?: boolean;
+    startedAt?: number;
+  }): Promise<void> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const existing = await this.getKeyRepairStateAsync(nodeNum);
+        const now = Date.now();
+        if (existing) {
+          await client.query(
+            `UPDATE auto_key_repair_state
+             SET "attemptCount" = $1, "lastAttemptTime" = $2, exhausted = $3
+             WHERE "nodeNum" = $4`,
+            [
+              state.attemptCount ?? existing.attemptCount,
+              state.lastAttemptTime ?? existing.lastAttemptTime,
+              (state.exhausted ?? existing.exhausted) ? 1 : 0,
+              nodeNum
+            ]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO auto_key_repair_state ("nodeNum", "attemptCount", "lastAttemptTime", exhausted, "startedAt")
+             VALUES ($1, $2, $3, $4, $5)`,
+            [
+              nodeNum,
+              state.attemptCount ?? 0,
+              state.lastAttemptTime ?? null,
+              (state.exhausted ?? false) ? 1 : 0,
+              state.startedAt ?? now
+            ]
+          );
+        }
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const existing = await this.getKeyRepairStateAsync(nodeNum);
+      const now = Date.now();
+      if (existing) {
+        await pool.query(
+          `UPDATE auto_key_repair_state
+           SET attemptCount = ?, lastAttemptTime = ?, exhausted = ?
+           WHERE nodeNum = ?`,
+          [
+            state.attemptCount ?? existing.attemptCount,
+            state.lastAttemptTime ?? existing.lastAttemptTime,
+            (state.exhausted ?? existing.exhausted) ? 1 : 0,
+            nodeNum
+          ]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO auto_key_repair_state (nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            nodeNum,
+            state.attemptCount ?? 0,
+            state.lastAttemptTime ?? null,
+            (state.exhausted ?? false) ? 1 : 0,
+            state.startedAt ?? now
+          ]
+        );
+      }
+    } else {
+      // SQLite fallback
+      this.setKeyRepairState(nodeNum, state);
+    }
+  }
+
   clearKeyRepairState(nodeNum: number): void {
     // For PostgreSQL/MySQL, delegate to async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -7474,32 +7599,9 @@ class DatabaseService {
     lastAttemptTime: number | null;
     startedAt: number | null;
   }[] {
-    // For PostgreSQL/MySQL, key repair state is not yet implemented
+    // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Return nodes with keyMismatchDetected from cache, without attempt tracking
-      const result: {
-        nodeNum: number;
-        nodeId: string;
-        longName: string | null;
-        shortName: string | null;
-        attemptCount: number;
-        lastAttemptTime: number | null;
-        startedAt: number | null;
-      }[] = [];
-      for (const node of this.nodesCache.values()) {
-        if (node.keyMismatchDetected) {
-          result.push({
-            nodeNum: node.nodeNum,
-            nodeId: node.nodeId,
-            longName: node.longName ?? null,
-            shortName: node.shortName ?? null,
-            attemptCount: 0,
-            lastAttemptTime: null,
-            startedAt: null,
-          });
-        }
-      }
-      return result;
+      return [];
     }
 
     // Get nodes with keyMismatchDetected=true that are not exhausted
@@ -7526,6 +7628,74 @@ class DatabaseService {
       lastAttemptTime: number | null;
       startedAt: number | null;
     }[];
+  }
+
+  async getNodesNeedingKeyRepairAsync(): Promise<{
+    nodeNum: number;
+    nodeId: string;
+    longName: string | null;
+    shortName: string | null;
+    attemptCount: number;
+    lastAttemptTime: number | null;
+    startedAt: number | null;
+  }[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT
+            n."nodeNum",
+            n."nodeId",
+            n."longName",
+            n."shortName",
+            COALESCE(s."attemptCount", 0) as "attemptCount",
+            s."lastAttemptTime",
+            s."startedAt"
+          FROM nodes n
+          LEFT JOIN auto_key_repair_state s ON n."nodeNum" = s."nodeNum"
+          WHERE n."keyMismatchDetected" = true
+            AND (s.exhausted IS NULL OR s.exhausted = 0)`
+        );
+        return result.rows.map((row: any) => ({
+          nodeNum: Number(row.nodeNum),
+          nodeId: row.nodeId,
+          longName: row.longName ?? null,
+          shortName: row.shortName ?? null,
+          attemptCount: Number(row.attemptCount),
+          lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
+          startedAt: row.startedAt ? Number(row.startedAt) : null,
+        }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT
+          n.nodeNum,
+          n.nodeId,
+          n.longName,
+          n.shortName,
+          COALESCE(s.attemptCount, 0) as attemptCount,
+          s.lastAttemptTime,
+          s.startedAt
+        FROM nodes n
+        LEFT JOIN auto_key_repair_state s ON n.nodeNum = s.nodeNum
+        WHERE n.keyMismatchDetected = 1
+          AND (s.exhausted IS NULL OR s.exhausted = 0)`
+      );
+      return (rows as any[]).map((row: any) => ({
+        nodeNum: Number(row.nodeNum),
+        nodeId: row.nodeId,
+        longName: row.longName ?? null,
+        shortName: row.shortName ?? null,
+        attemptCount: Number(row.attemptCount),
+        lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
+        startedAt: row.startedAt ? Number(row.startedAt) : null,
+      }));
+    }
+    // SQLite fallback
+    return this.getNodesNeedingKeyRepair();
   }
 
   // Auto key repair log methods
