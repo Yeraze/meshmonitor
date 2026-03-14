@@ -3749,6 +3749,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       config?: any;
       deviceConfig?: any;
       traceroutes?: any[];
+      deviceNodeNums?: number[];
     } = {};
 
     // Pre-compute shared values used across multiple sections
@@ -4050,6 +4051,9 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     } catch (error) {
       logger.error('Error fetching traceroutes in poll:', error);
     }
+
+    // 10. Device node numbers (nodes in the connected radio's local database)
+    result.deviceNodeNums = meshtasticManager.getDeviceNodeNums();
 
     res.json(result);
   } catch (error) {

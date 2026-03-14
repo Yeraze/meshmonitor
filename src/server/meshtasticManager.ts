@@ -352,6 +352,7 @@ class MeshtasticManager {
   // Auto-welcome tracking to prevent race conditions
   private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
+  private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
   private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
 
   // Virtual Node Server - Message capture for initialization sequence
@@ -615,6 +616,7 @@ class MeshtasticManager {
       this.initConfigCache = [];
       this.configCaptureComplete = false;
       this.isCapturingInitConfig = true;
+      this.deviceNodeNums.clear();
       logger.info('📸 Starting init config capture for virtual node server');
 
       // Send want_config_id to request full node DB and config
@@ -1264,7 +1266,7 @@ class MeshtasticManager {
    */
   private async processKeyRepairs(): Promise<void> {
     try {
-      const nodesNeedingRepair = databaseService.getNodesNeedingKeyRepair();
+      const nodesNeedingRepair = await databaseService.getNodesNeedingKeyRepairAsync();
 
       // Pre-fetch repair log for immediate purge skip check
       const recentRepairLog = this.keyRepairImmediatePurge ? await databaseService.getKeyRepairLogAsync(50) : [];
@@ -1314,7 +1316,7 @@ class MeshtasticManager {
           }
 
           // Mark as exhausted
-          databaseService.setKeyRepairState(node.nodeNum, { exhausted: true });
+          await databaseService.setKeyRepairStateAsync(node.nodeNum, { exhausted: true });
           databaseService.logKeyRepairAttempt(node.nodeNum, nodeName, 'exhausted', null);
           continue;
         }
@@ -1328,7 +1330,7 @@ class MeshtasticManager {
           await this.sendNodeInfoRequest(node.nodeNum, repairChannel);
 
           // Update repair state
-          databaseService.setKeyRepairState(node.nodeNum, {
+          await databaseService.setKeyRepairStateAsync(node.nodeNum, {
             attemptCount: node.attemptCount + 1,
             lastAttemptTime: now,
             startedAt: node.startedAt ?? now
@@ -5233,20 +5235,26 @@ class MeshtasticManager {
 
           // PKI errors from our local node (couldn't encrypt to target)
           if (isPkiError(errorReason) && fromNodeId === localNodeId) {
-            const errorDescription = errorReason === RoutingError.PKI_FAILED
-              ? 'PKI encryption failed on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
-              : 'Remote node missing public key on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+            // PKI_UNKNOWN_PUBKEY when node isn't in the radio's DB is expected after
+            // factory reset or purge — don't flag it as a security issue
+            if ((errorReason === RoutingError.PKI_UNKNOWN_PUBKEY || errorReason === RoutingError.PKI_SEND_FAIL_PUBLIC_KEY) && !this.isNodeInDeviceDb(toNum)) {
+              logger.info(`🔐 PKI key error for node ${toNodeId} — node not in radio's database (expected after factory reset/purge)`);
+            } else {
+              const errorDescription = errorReason === RoutingError.PKI_FAILED
+                ? 'PKI encryption failed on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
+                : 'Remote node missing public key on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
 
-            logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
+              logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
 
-            databaseService.upsertNode({
-              nodeNum: toNum,
-              nodeId: toNodeId,
-              keyMismatchDetected: true,
-              keySecurityIssueDetails: errorDescription
-            });
-            dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
-            this.handlePkiError(toNum);
+              databaseService.upsertNode({
+                nodeNum: toNum,
+                nodeId: toNodeId,
+                keyMismatchDetected: true,
+                keySecurityIssueDetails: errorDescription
+              });
+              dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+              this.handlePkiError(toNum);
+            }
           }
 
           // NO_CHANNEL from the target node (it couldn't decrypt our request)
@@ -5283,25 +5291,32 @@ class MeshtasticManager {
         // PKI_FAILED or PKI_UNKNOWN_PUBKEY - indicates key mismatch
         if (originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
-          const errorDescription = errorReason === RoutingError.PKI_FAILED
-            ? 'PKI encryption failed - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
-            : 'Remote node missing public key - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
 
-          logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
+          // PKI_UNKNOWN_PUBKEY when node isn't in the radio's DB is expected after
+          // factory reset or purge — don't flag it as a security issue
+          if ((errorReason === RoutingError.PKI_UNKNOWN_PUBKEY || errorReason === RoutingError.PKI_SEND_FAIL_PUBLIC_KEY) && !this.isNodeInDeviceDb(targetNodeNum)) {
+            logger.info(`🔐 PKI key error for node ${targetNodeId} — node not in radio's database (expected after factory reset/purge)`);
+          } else {
+            const errorDescription = errorReason === RoutingError.PKI_FAILED
+              ? 'PKI encryption failed - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
+              : 'Remote node missing public key - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
 
-          // Flag the node with the key security issue
-          databaseService.upsertNode({
-            nodeNum: targetNodeNum,
-            nodeId: targetNodeId,
-            keyMismatchDetected: true,
-            keySecurityIssueDetails: errorDescription
-          });
+            logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
 
-          // Emit event to notify UI of the key issue
-          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            // Flag the node with the key security issue
+            databaseService.upsertNode({
+              nodeNum: targetNodeNum,
+              nodeId: targetNodeId,
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: errorDescription
+            });
 
-          // Penalize Link Quality for PKI error (-5)
-          this.handlePkiError(targetNodeNum);
+            // Emit event to notify UI of the key issue
+            dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+
+            // Penalize Link Quality for PKI error (-5)
+            this.handlePkiError(targetNodeNum);
+          }
         }
       }
 
@@ -5610,10 +5625,14 @@ class MeshtasticManager {
     try {
       logger.debug(`🏠 Processing NodeInfo for node ${nodeInfo.num}`);
 
-      const nodeId = `!${Number(nodeInfo.num).toString(16).padStart(8, '0')}`;
+      const nodeNum = Number(nodeInfo.num);
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+
+      // Track that this node exists in the radio's local database
+      this.deviceNodeNums.add(nodeNum);
 
       // Check if node already exists to determine if we should set isFavorite
-      const existingNode = databaseService.getNode(Number(nodeInfo.num));
+      const existingNode = databaseService.getNode(nodeNum);
 
       // Determine lastHeard value carefully to avoid incorrectly updating timestamps
       // during config sync. Only update lastHeard if:
@@ -9567,6 +9586,9 @@ class MeshtasticManager {
 
       await this.transport.send(adminPacket);
       logger.info(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+
+      // Remove from device node tracking so the UI shows the "not in device DB" warning
+      this.deviceNodeNums.delete(nodeNum);
     } catch (error) {
       logger.error('❌ Error sending remove node admin message:', error);
       throw error;
@@ -10671,6 +10693,16 @@ class MeshtasticManager {
       nodeIp: this.getConfig().nodeIp,
       userDisconnected: this.userDisconnectedState
     };
+  }
+
+  // Get node numbers that exist in the connected radio's local database
+  getDeviceNodeNums(): number[] {
+    return Array.from(this.deviceNodeNums);
+  }
+
+  // Check if a node exists in the connected radio's local database
+  isNodeInDeviceDb(nodeNum: number): boolean {
+    return this.deviceNodeNums.has(nodeNum);
   }
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
