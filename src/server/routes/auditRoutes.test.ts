@@ -187,6 +187,10 @@ describe('Audit Log Routes', () => {
       return (DatabaseService as any).getAuditLogs(options);
     };
 
+    (DatabaseService as any).getAuditStatsAsync = async (days: number = 30) => {
+      return (DatabaseService as any).getAuditStats(days);
+    };
+
     (DatabaseService as any).getAuditStats = (days: number = 30) => {
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 

@@ -82,11 +82,6 @@ class InactiveNodeNotificationService {
    */
   private async checkInactiveNodes(): Promise<void> {
     try {
-      // For PostgreSQL/MySQL, inactive node notifications not yet implemented
-      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-        return;
-      }
-
       // Capture current parameter values at the start of the check to ensure consistency
       // throughout the entire check cycle, even if the service is restarted mid-check
       const thresholdHours = this.currentThresholdHours;
@@ -96,17 +91,37 @@ class InactiveNodeNotificationService {
       const cutoffSeconds = Math.floor(now / 1000) - thresholdHours * 60 * 60;
 
       // Get all users who have inactive node notifications enabled
-      const usersStmt = databaseService.db.prepare(`
-        SELECT user_id, monitored_nodes
-        FROM user_notification_preferences
-        WHERE notify_on_inactive_node = 1
-          AND (enable_web_push = 1 OR enable_apprise = 1)
-      `);
+      let users: Array<{ user_id: number; monitored_nodes: string | null }>;
 
-      const users = usersStmt.all() as Array<{
-        user_id: number;
-        monitored_nodes: string | null;
-      }>;
+      if (databaseService.drizzleDbType === 'postgres') {
+        const client = await databaseService.postgresPool!.connect();
+        try {
+          const result = await client.query(
+            `SELECT user_id, monitored_nodes FROM user_notification_preferences
+             WHERE notify_on_inactive_node = true
+               AND (enable_web_push = true OR enable_apprise = true)`
+          );
+          users = result.rows;
+        } finally {
+          client.release();
+        }
+      } else if (databaseService.drizzleDbType === 'mysql') {
+        const pool = databaseService.mysqlPool!;
+        const [rows] = await pool.query(
+          `SELECT user_id, monitored_nodes FROM user_notification_preferences
+           WHERE notify_on_inactive_node = 1
+             AND (enable_web_push = 1 OR enable_apprise = 1)`
+        );
+        users = rows as any[];
+      } else {
+        const usersStmt = databaseService.db.prepare(`
+          SELECT user_id, monitored_nodes
+          FROM user_notification_preferences
+          WHERE notify_on_inactive_node = 1
+            AND (enable_web_push = 1 OR enable_apprise = 1)
+        `);
+        users = usersStmt.all() as Array<{ user_id: number; monitored_nodes: string | null }>;
+      }
 
       if (users.length === 0) {
         logger.debug('✅ No users have inactive node notifications enabled');
@@ -136,23 +151,64 @@ class InactiveNodeNotificationService {
         }
 
         // Get inactive nodes that are in this user's monitored list
-        const placeholders = monitoredNodeIds.map(() => '?').join(',');
-        const stmt = databaseService.db.prepare(`
-          SELECT nodeNum, nodeId, longName, shortName, lastHeard
-          FROM nodes
-          WHERE nodeId IN (${placeholders})
-            AND lastHeard IS NOT NULL 
-            AND lastHeard < ?
-          ORDER BY lastHeard ASC
-        `);
+        let inactiveNodes: Array<{ nodeNum: number; nodeId: string; longName: string; shortName: string; lastHeard: number }>;
 
-        const inactiveNodes = stmt.all(...monitoredNodeIds, cutoffSeconds) as Array<{
-          nodeNum: number;
-          nodeId: string;
-          longName: string;
-          shortName: string;
-          lastHeard: number;
-        }>;
+        if (databaseService.drizzleDbType === 'postgres') {
+          const client = await databaseService.postgresPool!.connect();
+          try {
+            const placeholders = monitoredNodeIds.map((_, i) => `$${i + 1}`).join(',');
+            const result = await client.query(
+              `SELECT "nodeNum", "nodeId", "longName", "shortName", "lastHeard"
+               FROM nodes
+               WHERE "nodeId" IN (${placeholders})
+                 AND "lastHeard" IS NOT NULL
+                 AND "lastHeard" < $${monitoredNodeIds.length + 1}
+               ORDER BY "lastHeard" ASC`,
+              [...monitoredNodeIds, cutoffSeconds]
+            );
+            inactiveNodes = result.rows.map((r: any) => ({
+              nodeNum: Number(r.nodeNum),
+              nodeId: r.nodeId,
+              longName: r.longName,
+              shortName: r.shortName,
+              lastHeard: Number(r.lastHeard),
+            }));
+          } finally {
+            client.release();
+          }
+        } else if (databaseService.drizzleDbType === 'mysql') {
+          const pool = databaseService.mysqlPool!;
+          const placeholders = monitoredNodeIds.map(() => '?').join(',');
+          const [rows] = await pool.query(
+            `SELECT nodeNum, nodeId, longName, shortName, lastHeard
+             FROM nodes
+             WHERE nodeId IN (${placeholders})
+               AND lastHeard IS NOT NULL
+               AND lastHeard < ?
+             ORDER BY lastHeard ASC`,
+            [...monitoredNodeIds, cutoffSeconds]
+          );
+          inactiveNodes = (rows as any[]).map((r: any) => ({
+            nodeNum: Number(r.nodeNum),
+            nodeId: r.nodeId,
+            longName: r.longName,
+            shortName: r.shortName,
+            lastHeard: Number(r.lastHeard),
+          }));
+        } else {
+          const placeholders = monitoredNodeIds.map(() => '?').join(',');
+          const stmt = databaseService.db.prepare(`
+            SELECT nodeNum, nodeId, longName, shortName, lastHeard
+            FROM nodes
+            WHERE nodeId IN (${placeholders})
+              AND lastHeard IS NOT NULL
+              AND lastHeard < ?
+            ORDER BY lastHeard ASC
+          `);
+          inactiveNodes = stmt.all(...monitoredNodeIds, cutoffSeconds) as Array<{
+            nodeNum: number; nodeId: string; longName: string; shortName: string; lastHeard: number;
+          }>;
+        }
 
         if (inactiveNodes.length === 0) {
           continue; // No inactive nodes for this user

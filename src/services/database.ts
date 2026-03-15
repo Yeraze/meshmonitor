@@ -10043,6 +10043,67 @@ class DatabaseService {
     };
   }
 
+  async getAuditStatsAsync(days: number = 30): Promise<any> {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const actionStats = await client.query(
+          `SELECT action, COUNT(*) as count FROM audit_log WHERE timestamp >= $1 GROUP BY action ORDER BY count DESC`,
+          [cutoff]
+        );
+        const userStats = await client.query(
+          `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
+           WHERE al.timestamp >= $1 GROUP BY al.user_id, u.username ORDER BY count DESC LIMIT 10`,
+          [cutoff]
+        );
+        const dailyStats = await client.query(
+          `SELECT to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD') as date, COUNT(*) as count
+           FROM audit_log WHERE timestamp >= $1
+           GROUP BY to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD')
+           ORDER BY date DESC`,
+          [cutoff]
+        );
+        const rows = actionStats.rows.map((r: any) => ({ action: r.action, count: Number(r.count) }));
+        return {
+          actionStats: rows,
+          userStats: userStats.rows.map((r: any) => ({ username: r.username, count: Number(r.count) })),
+          dailyStats: dailyStats.rows.map((r: any) => ({ date: r.date, count: Number(r.count) })),
+          totalEvents: rows.reduce((sum: number, stat: any) => sum + stat.count, 0),
+        };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [actionRows] = await pool.query(
+        `SELECT action, COUNT(*) as count FROM audit_log WHERE timestamp >= ? GROUP BY action ORDER BY count DESC`,
+        [cutoff]
+      );
+      const [userRows] = await pool.query(
+        `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
+         WHERE al.timestamp >= ? GROUP BY al.user_id ORDER BY count DESC LIMIT 10`,
+        [cutoff]
+      );
+      const [dailyRows] = await pool.query(
+        `SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d') as date, COUNT(*) as count
+         FROM audit_log WHERE timestamp >= ?
+         GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d')
+         ORDER BY date DESC`,
+        [cutoff]
+      );
+      const actionStats = (actionRows as any[]).map((r: any) => ({ action: r.action, count: Number(r.count) }));
+      return {
+        actionStats,
+        userStats: (userRows as any[]).map((r: any) => ({ username: r.username, count: Number(r.count) })),
+        dailyStats: (dailyRows as any[]).map((r: any) => ({ date: r.date, count: Number(r.count) })),
+        totalEvents: actionStats.reduce((sum: number, stat: any) => sum + stat.count, 0),
+      };
+    }
+    return this.getAuditStats(days);
+  }
+
   // Cleanup old audit logs
   cleanupAuditLogs(days: number): number {
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -11779,7 +11840,7 @@ class DatabaseService {
    * Get all themes (custom only - built-in themes are in CSS)
    */
   getAllCustomThemes(): DbCustomTheme[] {
-    // For PostgreSQL/MySQL, custom themes not yet implemented
+    // For PostgreSQL/MySQL, use getAllCustomThemesAsync() instead
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
@@ -11798,11 +11859,54 @@ class DatabaseService {
     }
   }
 
+  async getAllCustomThemesAsync(): Promise<DbCustomTheme[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(`
+          SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+          FROM custom_themes
+          ORDER BY name ASC
+        `);
+        return result.rows.map((row: any) => ({
+          id: Number(row.id),
+          name: row.name,
+          slug: row.slug,
+          definition: row.definition,
+          is_builtin: row.is_builtin ? 1 : 0,
+          created_by: row.created_by ? Number(row.created_by) : undefined,
+          created_at: Number(row.created_at),
+          updated_at: Number(row.updated_at),
+        }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(`
+        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+        FROM custom_themes
+        ORDER BY name ASC
+      `);
+      return (rows as any[]).map((row: any) => ({
+        id: Number(row.id),
+        name: row.name,
+        slug: row.slug,
+        definition: row.definition,
+        is_builtin: row.is_builtin ? 1 : 0,
+        created_by: row.created_by ? Number(row.created_by) : undefined,
+        created_at: Number(row.created_at),
+        updated_at: Number(row.updated_at),
+      }));
+    }
+    return this.getAllCustomThemes();
+  }
+
   /**
    * Get a specific theme by slug
    */
   getCustomThemeBySlug(slug: string): DbCustomTheme | undefined {
-    // For PostgreSQL/MySQL, custom themes not yet implemented
+    // For PostgreSQL/MySQL, use getCustomThemeBySlugAsync() instead
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return undefined;
     }
@@ -11823,10 +11927,61 @@ class DatabaseService {
     }
   }
 
+  async getCustomThemeBySlugAsync(slug: string): Promise<DbCustomTheme | undefined> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+           FROM custom_themes WHERE slug = $1`,
+          [slug]
+        );
+        if (result.rows.length === 0) return undefined;
+        const row = result.rows[0];
+        return {
+          id: Number(row.id),
+          name: row.name,
+          slug: row.slug,
+          definition: row.definition,
+          is_builtin: row.is_builtin ? 1 : 0,
+          created_by: row.created_by ? Number(row.created_by) : undefined,
+          created_at: Number(row.created_at),
+          updated_at: Number(row.updated_at),
+        };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+         FROM custom_themes WHERE slug = ?`,
+        [slug]
+      );
+      const arr = rows as any[];
+      if (arr.length === 0) return undefined;
+      const row = arr[0];
+      return {
+        id: Number(row.id),
+        name: row.name,
+        slug: row.slug,
+        definition: row.definition,
+        is_builtin: row.is_builtin ? 1 : 0,
+        created_by: row.created_by ? Number(row.created_by) : undefined,
+        created_at: Number(row.created_at),
+        updated_at: Number(row.updated_at),
+      };
+    }
+    return this.getCustomThemeBySlug(slug);
+  }
+
   /**
    * Create a new custom theme
    */
   createCustomTheme(name: string, slug: string, definition: ThemeDefinition, userId?: number): DbCustomTheme {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('Use createCustomThemeAsync() for PostgreSQL/MySQL');
+    }
     try {
       const now = Math.floor(Date.now() / 1000);
       const definitionJson = JSON.stringify(definition);
@@ -11857,10 +12012,46 @@ class DatabaseService {
     }
   }
 
+  async createCustomThemeAsync(name: string, slug: string, definition: ThemeDefinition, userId?: number): Promise<DbCustomTheme> {
+    const now = Math.floor(Date.now() / 1000);
+    const definitionJson = JSON.stringify(definition);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
+           VALUES ($1, $2, $3, false, $4, $5, $6)
+           RETURNING id`,
+          [name, slug, definitionJson, userId || null, now, now]
+        );
+        const id = Number(result.rows[0].id);
+        logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
+        return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [result] = await pool.query(
+        `INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, 0, ?, ?, ?)`,
+        [name, slug, definitionJson, userId || null, now, now]
+      );
+      const id = Number((result as any).insertId);
+      logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
+      return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+    }
+    return this.createCustomTheme(name, slug, definition, userId);
+  }
+
   /**
    * Update an existing custom theme
    */
   updateCustomTheme(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): boolean {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('Use updateCustomThemeAsync() for PostgreSQL/MySQL');
+    }
     try {
       const theme = this.getCustomThemeBySlug(slug);
       if (!theme) {
@@ -11906,10 +12097,84 @@ class DatabaseService {
     }
   }
 
+  async updateCustomThemeAsync(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): Promise<boolean> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const existing = await client.query('SELECT id, is_builtin FROM custom_themes WHERE slug = $1', [slug]);
+        if (existing.rows.length === 0) {
+          logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
+          return false;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const setClauses: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        if (updates.name !== undefined) {
+          setClauses.push(`name = $${paramIndex++}`);
+          values.push(updates.name);
+        }
+        if (updates.definition !== undefined) {
+          setClauses.push(`definition = $${paramIndex++}`);
+          values.push(JSON.stringify(updates.definition));
+        }
+        if (setClauses.length === 0) return true;
+
+        setClauses.push(`updated_at = $${paramIndex++}`);
+        values.push(now);
+        values.push(slug);
+
+        await client.query(
+          `UPDATE custom_themes SET ${setClauses.join(', ')} WHERE slug = $${paramIndex}`,
+          values
+        );
+        logger.debug(`✅ Updated custom theme: ${slug}`);
+        return true;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [existingRows] = await pool.query('SELECT id, is_builtin FROM custom_themes WHERE slug = ?', [slug]);
+      if ((existingRows as any[]).length === 0) {
+        logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
+        return false;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const setClauses: string[] = [];
+      const values: any[] = [];
+
+      if (updates.name !== undefined) {
+        setClauses.push('name = ?');
+        values.push(updates.name);
+      }
+      if (updates.definition !== undefined) {
+        setClauses.push('definition = ?');
+        values.push(JSON.stringify(updates.definition));
+      }
+      if (setClauses.length === 0) return true;
+
+      setClauses.push('updated_at = ?');
+      values.push(now);
+      values.push(slug);
+
+      await pool.query(`UPDATE custom_themes SET ${setClauses.join(', ')} WHERE slug = ?`, values);
+      logger.debug(`✅ Updated custom theme: ${slug}`);
+      return true;
+    }
+    return this.updateCustomTheme(slug, updates);
+  }
+
   /**
    * Delete a custom theme
    */
   deleteCustomTheme(slug: string): boolean {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('Use deleteCustomThemeAsync() for PostgreSQL/MySQL');
+    }
     try {
       const theme = this.getCustomThemeBySlug(slug);
       if (!theme) {
@@ -11930,6 +12195,41 @@ class DatabaseService {
       logger.error(`❌ Failed to delete custom theme ${slug}:`, error);
       throw error;
     }
+  }
+
+  async deleteCustomThemeAsync(slug: string): Promise<boolean> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const existing = await client.query('SELECT id, is_builtin FROM custom_themes WHERE slug = $1', [slug]);
+        if (existing.rows.length === 0) {
+          logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
+          return false;
+        }
+        if (existing.rows[0].is_builtin) {
+          throw new Error('Cannot delete built-in themes');
+        }
+        await client.query('DELETE FROM custom_themes WHERE slug = $1', [slug]);
+        logger.debug(`🗑️  Deleted custom theme: ${slug}`);
+        return true;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [existingRows] = await pool.query('SELECT id, is_builtin FROM custom_themes WHERE slug = ?', [slug]);
+      if ((existingRows as any[]).length === 0) {
+        logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
+        return false;
+      }
+      if ((existingRows as any[])[0].is_builtin) {
+        throw new Error('Cannot delete built-in themes');
+      }
+      await pool.query('DELETE FROM custom_themes WHERE slug = ?', [slug]);
+      logger.debug(`🗑️  Deleted custom theme: ${slug}`);
+      return true;
+    }
+    return this.deleteCustomTheme(slug);
   }
 
   /**
