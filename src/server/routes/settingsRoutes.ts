@@ -483,6 +483,34 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
       }
     }
 
+    if ('autoDeleteByDistanceIntervalHours' in filteredSettings) {
+      const interval = parseInt(filteredSettings.autoDeleteByDistanceIntervalHours, 10);
+      if (isNaN(interval) || ![6, 12, 24, 48].includes(interval)) {
+        return res.status(400).json({ error: 'autoDeleteByDistanceIntervalHours must be 6, 12, 24, or 48' });
+      }
+    }
+
+    if ('autoDeleteByDistanceThresholdKm' in filteredSettings) {
+      const threshold = parseFloat(filteredSettings.autoDeleteByDistanceThresholdKm);
+      if (isNaN(threshold) || threshold <= 0 || threshold > 50000) {
+        return res.status(400).json({ error: 'autoDeleteByDistanceThresholdKm must be between 0 and 50000' });
+      }
+    }
+
+    if ('autoDeleteByDistanceLat' in filteredSettings) {
+      const lat = parseFloat(filteredSettings.autoDeleteByDistanceLat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'autoDeleteByDistanceLat must be between -90 and 90' });
+      }
+    }
+
+    if ('autoDeleteByDistanceLon' in filteredSettings) {
+      const lon = parseFloat(filteredSettings.autoDeleteByDistanceLon);
+      if (isNaN(lon) || lon < -180 || lon > 180) {
+        return res.status(400).json({ error: 'autoDeleteByDistanceLon must be between -180 and 180' });
+      }
+    }
+
     // Save to database
     databaseService.setSettings(filteredSettings);
 
