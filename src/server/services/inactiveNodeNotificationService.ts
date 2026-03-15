@@ -94,7 +94,7 @@ class InactiveNodeNotificationService {
       let users: Array<{ user_id: number; monitored_nodes: string | null }>;
 
       if (databaseService.drizzleDbType === 'postgres') {
-        const client = await databaseService.postgresPool!.connect();
+        const client = await databaseService.getPostgresPool()!.connect();
         try {
           const result = await client.query(
             `SELECT user_id, monitored_nodes FROM user_notification_preferences
@@ -106,7 +106,7 @@ class InactiveNodeNotificationService {
           client.release();
         }
       } else if (databaseService.drizzleDbType === 'mysql') {
-        const pool = databaseService.mysqlPool!;
+        const pool = databaseService.getMySQLPool()!;
         const [rows] = await pool.query(
           `SELECT user_id, monitored_nodes FROM user_notification_preferences
            WHERE notify_on_inactive_node = 1
@@ -154,7 +154,7 @@ class InactiveNodeNotificationService {
         let inactiveNodes: Array<{ nodeNum: number; nodeId: string; longName: string; shortName: string; lastHeard: number }>;
 
         if (databaseService.drizzleDbType === 'postgres') {
-          const client = await databaseService.postgresPool!.connect();
+          const client = await databaseService.getPostgresPool()!.connect();
           try {
             const placeholders = monitoredNodeIds.map((_, i) => `$${i + 1}`).join(',');
             const result = await client.query(
@@ -177,7 +177,7 @@ class InactiveNodeNotificationService {
             client.release();
           }
         } else if (databaseService.drizzleDbType === 'mysql') {
-          const pool = databaseService.mysqlPool!;
+          const pool = databaseService.getMySQLPool()!;
           const placeholders = monitoredNodeIds.map(() => '?').join(',');
           const [rows] = await pool.query(
             `SELECT nodeNum, nodeId, longName, shortName, lastHeard
