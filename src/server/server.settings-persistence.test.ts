@@ -157,6 +157,10 @@ function validTestValue(key: string, suffix = ''): string {
     dashboardWidgets: JSON.stringify([]),
     autoAnnounceSchedule: JSON.stringify({ start: '08:00', end: '18:00' }),
     autoAnnounceNodeInfoChannels: '0',
+    autoDeleteByDistanceIntervalHours: '24',
+    autoDeleteByDistanceThresholdKm: '100',
+    autoDeleteByDistanceLat: '40.7128',
+    autoDeleteByDistanceLon: '-74.006',
   };
 
   if (key in VALID_VALUES) {
