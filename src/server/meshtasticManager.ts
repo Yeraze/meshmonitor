@@ -3779,6 +3779,14 @@ class MeshtasticManager {
             logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
         }
       }
+      // Preserve the 'from' and 'to' node order for virtual node traceroute requests.
+      // This ensures subsequent responses correctly correlate with this request 
+      // to update route and signal characteristics in the database.
+      else if (normalizedPortNum === PortNum.TRACEROUTE_APP) {
+        const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+        const toNum = meshPacket.to ? Number(meshPacket.to) : 0;
+        databaseService.recordTracerouteRequest(fromNum, toNum);
+      }
     }
   }
 
