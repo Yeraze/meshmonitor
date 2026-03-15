@@ -628,10 +628,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           <input
             id="tracerouteInterval"
             type="number"
-            min="1"
+            min="3"
             max="60"
             value={localInterval}
-            onChange={(e) => setLocalInterval(parseInt(e.target.value))}
+            onChange={(e) => setLocalInterval(Math.max(3, parseInt(e.target.value) || 3))}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -647,10 +647,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           <input
             id="expirationHours"
             type="number"
-            min="1"
+            min="0"
             max="168"
             value={expirationHours}
-            onChange={(e) => setExpirationHours(parseInt(e.target.value) || 24)}
+            onChange={(e) => setExpirationHours(Math.max(0, parseInt(e.target.value) || 0))}
             disabled={!localEnabled}
             className="setting-input"
           />
