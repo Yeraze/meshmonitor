@@ -194,7 +194,7 @@ export class MeshtasticProtobufService {
   /**
    * Create a NodeInfo request ToRadio using proper protobuf encoding
    * This sends a User message with wantResponse=true to request the destination node's user info
-   * Similar to "Exchange User Info" feature in mobile apps - triggers key exchange
+   * Similar to "Exchange Node Info" feature in mobile apps - triggers key exchange
    */
   createNodeInfoRequestMessage(
     destination: number,

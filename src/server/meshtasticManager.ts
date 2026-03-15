@@ -6425,9 +6425,9 @@ class MeshtasticManager {
   }
 
   /**
-   * Send a NodeInfo request to a specific node (Exchange User Info)
+   * Send a NodeInfo request to a specific node (Exchange Node Info)
    * This will request the destination node to send back its user information
-   * Similar to "Exchange User Info" feature in mobile apps - triggers key exchange
+   * Similar to "Exchange Node Info" feature in mobile apps - triggers key exchange
    */
   async sendNodeInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
