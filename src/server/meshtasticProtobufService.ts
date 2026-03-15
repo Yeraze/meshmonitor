@@ -199,7 +199,7 @@ export class MeshtasticProtobufService {
   createNodeInfoRequestMessage(
     destination: number,
     channel?: number,
-    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number; publicKey?: Uint8Array }
+    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number }
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -228,9 +228,9 @@ export class MeshtasticProtobufService {
         if (userInfo.role !== undefined) {
           userData.role = userInfo.role;
         }
-        if (userInfo.publicKey && userInfo.publicKey.length > 0) {
-          userData.publicKey = userInfo.publicKey;
-        }
+        // NOTE: publicKey is intentionally omitted. The device firmware handles its own
+        // key distribution. Broadcasting a DB-cached key risks distributing stale keys
+        // if the device has regenerated its key pair. See issue #2275.
       }
       // If no user info provided, send empty user (fallback behavior)
 
