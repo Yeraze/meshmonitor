@@ -4320,7 +4320,7 @@ class MeshtasticManager {
 
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
-        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr_local');
+        const latestSnrTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'snr_local');
         const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveSnr = !latestSnrTelemetry ||
                               latestSnrTelemetry.value !== meshPacket.rxSnr ||
@@ -4347,7 +4347,7 @@ class MeshtasticManager {
 
         // Save RSSI as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
-        const latestRssiTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'rssi');
+        const latestRssiTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'rssi');
         const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveRssi = !latestRssiTelemetry ||
                                latestRssiTelemetry.value !== meshPacket.rxRssi ||
@@ -5970,7 +5970,7 @@ class MeshtasticManager {
 
         // Save SNR telemetry with same logic as packet processing:
         // Save if it has changed OR if 10+ minutes have passed since last save
-        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr_remote');
+        const latestSnrTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'snr_remote');
         const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveSnr = !latestSnrTelemetry ||
                               latestSnrTelemetry.value !== nodeInfo.snr ||
@@ -6232,7 +6232,9 @@ class MeshtasticManager {
 
         // Automatically mark sent messages as read for the sending user
         if (userId !== undefined) {
-          databaseService.markMessageAsRead(messageId_str, userId);
+          databaseService.markMessageAsReadAsync(messageId_str, userId).catch(err => {
+            logger.debug('Failed to mark message as read:', err);
+          });
           logger.debug(`✅ Automatically marked sent message as read for user ${userId}`);
         }
       }
@@ -10716,7 +10718,6 @@ class MeshtasticManager {
   getAllNodes(): DeviceInfo[] {
     const dbNodes = databaseService.getAllNodes();
     return dbNodes.map(node => {
-      // Get latest uptime from telemetry (sync - only works for SQLite)
       const uptimeTelemetry = databaseService.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
       return this.mapDbNodeToDeviceInfo(node, uptimeTelemetry?.value);
     });

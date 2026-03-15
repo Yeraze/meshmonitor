@@ -826,7 +826,7 @@ setSettingsCallbacks({
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
     const allNodes = meshtasticManager.getAllNodes();
-    const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
+    const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions
     const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
@@ -2025,14 +2025,14 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => 
   }
 });
 
-apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), (req, res) => {
+apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), async (req, res) => {
   try {
     const { nodeId1, nodeId2 } = req.params;
     // Validate and clamp limit (1-500) and offset (0-50000) to prevent abuse
     const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = databaseService.getDirectMessages(nodeId1, nodeId2, limit + 1, offset);
+    const dbMessages = await databaseService.getDirectMessagesAsync(nodeId1, nodeId2, limit + 1, offset);
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -2077,7 +2077,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
 
     if (messageIds && Array.isArray(messageIds)) {
       // Mark specific messages as read
-      databaseService.markMessagesAsRead(messageIds, userId);
+      await databaseService.markMessagesAsReadAsync(messageIds, userId);
       markedCount = messageIds.length;
     } else if (allDMs) {
       // Mark ALL DMs as read
@@ -2734,12 +2734,12 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
   }
 });
 
-apiRouter.get('/stats', requirePermission('dashboard', 'read'), (_req, res) => {
+apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (_req, res) => {
   try {
     const messageCount = databaseService.getMessageCount();
     const nodeCount = databaseService.getNodeCount();
     const channelCount = databaseService.getChannelCount();
-    const messagesByDay = databaseService.getMessagesByDay(7);
+    const messagesByDay = await databaseService.getMessagesByDayAsync(7);
 
     res.json({
       messageCount,
@@ -3524,7 +3524,7 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
         }
       }
     } else {
-      rates = databaseService.getPacketRates(nodeId, packetTypes, cutoffTime);
+      rates = await databaseService.getPacketRatesAsync(nodeId, packetTypes, cutoffTime);
     }
 
     res.json(rates);
@@ -3780,7 +3780,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
-      const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
+      const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
       result.nodes = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);

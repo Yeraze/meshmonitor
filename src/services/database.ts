@@ -4606,6 +4606,37 @@ class DatabaseService {
     return messages.map(message => this.normalizeBigInts(message));
   }
 
+  async getDirectMessagesAsync(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT * FROM messages
+           WHERE portnum = 1 AND channel = -1
+             AND (("fromNodeId" = $1 AND "toNodeId" = $2) OR ("fromNodeId" = $2 AND "toNodeId" = $1))
+           ORDER BY COALESCE("rxTime", timestamp) DESC
+           LIMIT $3 OFFSET $4`,
+          [nodeId1, nodeId2, limit, offset]
+        );
+        return result.rows.map((row: any) => this.normalizeBigInts(row));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT * FROM messages
+         WHERE portnum = 1 AND channel = -1
+           AND ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
+         ORDER BY COALESCE(rxTime, timestamp) DESC
+         LIMIT ? OFFSET ?`,
+        [nodeId1, nodeId2, nodeId2, nodeId1, limit, offset]
+      );
+      return (rows as any[]).map((row: any) => this.normalizeBigInts(row));
+    }
+    return this.getDirectMessages(nodeId1, nodeId2, limit, offset);
+  }
+
   getMessagesAfterTimestamp(timestamp: number): DbMessage[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -4677,6 +4708,23 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM telemetry');
     const result = stmt.get() as { count: number };
     return Number(result.count);
+  }
+
+  async getTelemetryCountAsync(): Promise<number> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query('SELECT COUNT(*) as count FROM telemetry');
+        return Number(result.rows[0].count);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query('SELECT COUNT(*) as count FROM telemetry');
+      return Number((rows as any[])[0].count);
+    }
+    return this.getTelemetryCount();
   }
 
   getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
@@ -4871,6 +4919,37 @@ class DatabaseService {
       date: row.date,
       count: Number(row.count)
     }));
+  }
+
+  async getMessagesByDayAsync(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD') as date, COUNT(*) as count
+           FROM messages WHERE timestamp > $1
+           GROUP BY to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD')
+           ORDER BY date`,
+          [cutoff]
+        );
+        return result.rows.map((row: any) => ({ date: row.date, count: Number(row.count) }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d') as date, COUNT(*) as count
+         FROM messages WHERE timestamp > ?
+         GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d')
+         ORDER BY date`,
+        [cutoff]
+      );
+      return (rows as any[]).map((row: any) => ({ date: row.date, count: Number(row.count) }));
+    }
+    return this.getMessagesByDay(days);
   }
 
   // Cleanup operations
@@ -5657,6 +5736,68 @@ class DatabaseService {
     return positionMap;
   }
 
+  async getAllNodesEstimatedPositionsAsync(): Promise<Map<string, { latitude: number; longitude: number }>> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(`
+          WITH "LatestEstimates" AS (
+            SELECT "nodeId", "telemetryType", MAX(timestamp) as "maxTimestamp"
+            FROM telemetry
+            WHERE "telemetryType" IN ('estimated_latitude', 'estimated_longitude')
+            GROUP BY "nodeId", "telemetryType"
+          )
+          SELECT t."nodeId", t."telemetryType", t.value
+          FROM telemetry t
+          INNER JOIN "LatestEstimates" le
+            ON t."nodeId" = le."nodeId"
+            AND t."telemetryType" = le."telemetryType"
+            AND t.timestamp = le."maxTimestamp"
+        `);
+        return this.buildEstimatedPositionMap(result.rows);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(`
+        WITH LatestEstimates AS (
+          SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
+          FROM telemetry
+          WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
+          GROUP BY nodeId, telemetryType
+        )
+        SELECT t.nodeId, t.telemetryType, t.value
+        FROM telemetry t
+        INNER JOIN LatestEstimates le
+          ON t.nodeId = le.nodeId
+          AND t.telemetryType = le.telemetryType
+          AND t.timestamp = le.maxTimestamp
+      `);
+      return this.buildEstimatedPositionMap(rows as any[]);
+    }
+    return this.getAllNodesEstimatedPositions();
+  }
+
+  private buildEstimatedPositionMap(rows: Array<{ nodeId: string; telemetryType: string; value: number }>): Map<string, { latitude: number; longitude: number }> {
+    const positionMap = new Map<string, { latitude: number; longitude: number }>();
+    for (const row of rows) {
+      const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
+      if (row.telemetryType === 'estimated_latitude') {
+        existing.latitude = Number(row.value);
+      } else if (row.telemetryType === 'estimated_longitude') {
+        existing.longitude = Number(row.value);
+      }
+      positionMap.set(row.nodeId, existing);
+    }
+    for (const [nodeId, pos] of positionMap) {
+      if (pos.latitude === 0 || pos.longitude === 0) {
+        positionMap.delete(nodeId);
+      }
+    }
+    return positionMap;
+  }
+
   /**
    * Get recent estimated positions for a specific node.
    * Returns position estimates with timestamps for time-weighted averaging.
@@ -6039,6 +6180,89 @@ class DatabaseService {
       result[type] = rates;
     }
 
+    return result;
+  }
+
+  async getPacketRatesAsync(
+    nodeId: string,
+    types: string[],
+    sinceTimestamp?: number
+  ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
+    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+    for (const type of types) {
+      result[type] = [];
+    }
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const typePlaceholders = types.map((_, i) => `$${i + 2}`).join(', ');
+        const params: (string | number)[] = [nodeId, ...types];
+        let query = `SELECT "telemetryType", timestamp, value FROM telemetry
+                      WHERE "nodeId" = $1 AND "telemetryType" IN (${typePlaceholders})`;
+        if (sinceTimestamp !== undefined) {
+          params.push(sinceTimestamp);
+          query += ` AND timestamp >= $${params.length}`;
+        }
+        query += ` ORDER BY "telemetryType", timestamp ASC`;
+        const queryResult = await client.query(query, params);
+        return this.calculatePacketRates(queryResult.rows, types);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const typePlaceholders = types.map(() => '?').join(', ');
+      const params: (string | number)[] = [nodeId, ...types];
+      let query = `SELECT telemetryType, timestamp, value FROM telemetry
+                    WHERE nodeId = ? AND telemetryType IN (${typePlaceholders})`;
+      if (sinceTimestamp !== undefined) {
+        params.push(sinceTimestamp);
+        query += ` AND timestamp >= ?`;
+      }
+      query += ` ORDER BY telemetryType, timestamp ASC`;
+      const [rows] = await pool.query(query, params);
+      return this.calculatePacketRates(rows as any[], types);
+    }
+    return this.getPacketRates(nodeId, types, sinceTimestamp);
+  }
+
+  private calculatePacketRates(
+    rows: Array<{ telemetryType: string; timestamp: number; value: number }>,
+    types: string[]
+  ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
+    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+    for (const type of types) {
+      result[type] = [];
+    }
+
+    const groupedByType: Record<string, Array<{ timestamp: number; value: number }>> = {};
+    for (const row of rows) {
+      if (!groupedByType[row.telemetryType]) {
+        groupedByType[row.telemetryType] = [];
+      }
+      groupedByType[row.telemetryType].push({
+        timestamp: Number(row.timestamp),
+        value: Number(row.value),
+      });
+    }
+
+    for (const [type, samples] of Object.entries(groupedByType)) {
+      const rates: Array<{ timestamp: number; ratePerMinute: number }> = [];
+      for (let i = 1; i < samples.length; i++) {
+        const deltaValue = samples[i].value - samples[i - 1].value;
+        const deltaTimeMs = samples[i].timestamp - samples[i - 1].timestamp;
+        const deltaTimeMinutes = deltaTimeMs / 60000;
+        if (deltaValue < 0) continue;
+        if (deltaTimeMinutes > 60) continue;
+        if (deltaTimeMinutes < 0.1) continue;
+        rates.push({
+          timestamp: samples[i].timestamp,
+          ratePerMinute: deltaValue / deltaTimeMinutes,
+        });
+      }
+      result[type] = rates;
+    }
     return result;
   }
 
@@ -10152,6 +10376,69 @@ class DatabaseService {
     transaction();
   }
 
+  async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
+    if (!userId) return;
+    const now = Math.floor(Date.now() / 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        await client.query(
+          `INSERT INTO read_messages ("userId", "messageId", "readAt")
+           VALUES ($1, $2, $3)
+           ON CONFLICT ("userId", "messageId") DO NOTHING`,
+          [userId, messageId, now]
+        );
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      await pool.query(
+        `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
+        [userId, messageId, now]
+      );
+    } else {
+      this.markMessageAsRead(messageId, userId);
+    }
+  }
+
+  async markMessagesAsReadAsync(messageIds: string[], userId: number | null): Promise<void> {
+    if (!userId || messageIds.length === 0) return;
+    const now = Math.floor(Date.now() / 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        await client.query('BEGIN');
+        for (const messageId of messageIds) {
+          await client.query(
+            `INSERT INTO read_messages ("userId", "messageId", "readAt")
+             VALUES ($1, $2, $3)
+             ON CONFLICT ("userId", "messageId") DO NOTHING`,
+            [userId, messageId, now]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      for (const messageId of messageIds) {
+        await pool.query(
+          `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
+          [userId, messageId, now]
+        );
+      }
+    } else {
+      this.markMessagesAsRead(messageIds, userId);
+    }
+  }
+
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
     logger.info(`[DatabaseService] markChannelMessagesAsRead called: channel=${channelId}, userId=${userId}, dbType=${this.drizzleDbType}`);
     // For PostgreSQL/MySQL, use async repo
@@ -11561,6 +11848,37 @@ class DatabaseService {
     const result = stmt.run(cutoffTimestamp);
     logger.debug(`🧹 Cleaned up ${result.changes} packet log entries older than ${maxAgeHours} hours`);
     return Number(result.changes);
+  }
+
+  async cleanupOldPacketLogsAsync(): Promise<number> {
+    const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
+    const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          'DELETE FROM packet_log WHERE timestamp < $1',
+          [cutoffTimestamp]
+        );
+        const deleted = result.rowCount ?? 0;
+        logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
+        return deleted;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [result] = await pool.query(
+        'DELETE FROM packet_log WHERE timestamp < ?',
+        [cutoffTimestamp]
+      );
+      const deleted = (result as any).affectedRows ?? 0;
+      logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
+      return deleted;
+    }
+    return this.cleanupOldPacketLogs();
   }
 
   /**
