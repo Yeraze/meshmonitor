@@ -998,6 +998,7 @@ class DatabaseService {
     this.runAddFavoriteLockedMigration();
     this.runAddTimeOffsetColumnsMigration();
     this.runAddPacketmonitorPermissionMigration();
+    this.runAutoDistanceDeleteLogMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2638,6 +2639,9 @@ class DatabaseService {
       }
     }
 
+  }
+
+  private runAutoDistanceDeleteLogMigration(): void {
     // Migration 086: Add auto_distance_delete_log table
     const migrationKey086 = 'migration_086_auto_distance_delete_log';
     if (!this.getSetting(migrationKey086)) {
