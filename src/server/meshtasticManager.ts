@@ -6403,24 +6403,18 @@ class MeshtasticManager {
 
     try {
       // Get local node's user info from database for exchange
+      // NOTE: We intentionally do NOT include publicKey here. The device's own firmware
+      // handles key distribution via its native NodeInfo broadcasts. If MeshMonitor's
+      // database has a stale key (e.g. after firmware update or NVS corruption), broadcasting
+      // it would cause other mesh nodes to store the wrong key, making the node appear as
+      // a new/untrusted identity. See issue #2275.
       const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
-      // Decode base64 public key to Uint8Array
-      let publicKeyBytes: Uint8Array | undefined;
-      if (localNode?.publicKey) {
-        try {
-          publicKeyBytes = new Uint8Array(Buffer.from(localNode.publicKey, 'base64'));
-          logger.info(`🔐 Including public key in NodeInfo exchange: ${localNode.publicKey.substring(0, 20)}... (${publicKeyBytes.length} bytes)`);
-        } catch (err) {
-          logger.warn('⚠️ Failed to decode public key from base64:', err);
-        }
-      }
       const localUserInfo = localNode ? {
         id: this.localNodeInfo.nodeId,
         longName: localNode.longName || 'Unknown',
         shortName: localNode.shortName || '????',
         hwModel: localNode.hwModel,
         role: localNode.role,
-        publicKey: publicKeyBytes
       } : undefined;
 
       const { data: nodeInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNodeInfoRequestMessage(
