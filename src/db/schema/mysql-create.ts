@@ -236,11 +236,10 @@ export const MYSQL_SCHEMA_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS read_messages (
-    messageId VARCHAR(255) NOT NULL,
-    visitorKey VARCHAR(255) NOT NULL,
-    userId INT,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT NOT NULL,
+    messageId VARCHAR(64) NOT NULL,
     readAt BIGINT NOT NULL,
-    PRIMARY KEY (messageId, visitorKey),
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -326,16 +325,16 @@ export const MYSQL_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS system_backup_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    dirname VARCHAR(255) NOT NULL UNIQUE,
+    backupPath VARCHAR(512) NOT NULL,
+    backupType VARCHAR(32) NOT NULL,
+    schemaVersion INT,
+    appVersion VARCHAR(32),
+    totalSize INT,
+    tableCount INT,
+    rowCount INT,
     timestamp BIGINT NOT NULL,
-    type VARCHAR(50) NOT NULL,
-    size BIGINT NOT NULL,
-    table_count INT NOT NULL,
-    meshmonitor_version VARCHAR(32) NOT NULL,
-    schema_version INT NOT NULL,
     createdAt BIGINT NOT NULL,
-    INDEX idx_system_backup_history_timestamp (timestamp DESC),
-    INDEX idx_system_backup_history_type (type)
+    INDEX idx_system_backup_history_timestamp (timestamp DESC)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS upgrade_history (
@@ -357,20 +356,24 @@ export const MYSQL_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS custom_themes (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(128) NOT NULL,
+    slug VARCHAR(128) NOT NULL UNIQUE,
     definition TEXT NOT NULL,
-    createdBy INT,
-    createdAt BIGINT NOT NULL,
-    updatedAt BIGINT NOT NULL,
-    FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
+    is_builtin BOOLEAN DEFAULT false,
+    created_by INT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
   CREATE TABLE IF NOT EXISTS user_map_preferences (
-    userId INT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId INT NOT NULL,
     centerLat DOUBLE,
     centerLng DOUBLE,
-    zoom INT,
-    selectedNodeNum BIGINT,
+    zoom DOUBLE,
+    selectedLayer VARCHAR(64),
+    createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -90,6 +90,7 @@ import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, ru
 import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
 import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
 import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
+import { runMigration085Postgres, runMigration085Mysql } from '../server/migrations/085_fix_custom_themes_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -4606,6 +4607,37 @@ class DatabaseService {
     return messages.map(message => this.normalizeBigInts(message));
   }
 
+  async getDirectMessagesAsync(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT * FROM messages
+           WHERE portnum = 1 AND channel = -1
+             AND (("fromNodeId" = $1 AND "toNodeId" = $2) OR ("fromNodeId" = $2 AND "toNodeId" = $1))
+           ORDER BY COALESCE("rxTime", timestamp) DESC
+           LIMIT $3 OFFSET $4`,
+          [nodeId1, nodeId2, limit, offset]
+        );
+        return result.rows.map((row: any) => this.normalizeBigInts(row));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT * FROM messages
+         WHERE portnum = 1 AND channel = -1
+           AND ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
+         ORDER BY COALESCE(rxTime, timestamp) DESC
+         LIMIT ? OFFSET ?`,
+        [nodeId1, nodeId2, nodeId2, nodeId1, limit, offset]
+      );
+      return (rows as any[]).map((row: any) => this.normalizeBigInts(row));
+    }
+    return this.getDirectMessages(nodeId1, nodeId2, limit, offset);
+  }
+
   getMessagesAfterTimestamp(timestamp: number): DbMessage[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -4677,6 +4709,23 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM telemetry');
     const result = stmt.get() as { count: number };
     return Number(result.count);
+  }
+
+  async getTelemetryCountAsync(): Promise<number> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query('SELECT COUNT(*) as count FROM telemetry');
+        return Number(result.rows[0].count);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query('SELECT COUNT(*) as count FROM telemetry');
+      return Number((rows as any[])[0].count);
+    }
+    return this.getTelemetryCount();
   }
 
   getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
@@ -4871,6 +4920,37 @@ class DatabaseService {
       date: row.date,
       count: Number(row.count)
     }));
+  }
+
+  async getMessagesByDayAsync(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD') as date, COUNT(*) as count
+           FROM messages WHERE timestamp > $1
+           GROUP BY to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD')
+           ORDER BY date`,
+          [cutoff]
+        );
+        return result.rows.map((row: any) => ({ date: row.date, count: Number(row.count) }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d') as date, COUNT(*) as count
+         FROM messages WHERE timestamp > ?
+         GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d')
+         ORDER BY date`,
+        [cutoff]
+      );
+      return (rows as any[]).map((row: any) => ({ date: row.date, count: Number(row.count) }));
+    }
+    return this.getMessagesByDay(days);
   }
 
   // Cleanup operations
@@ -5657,6 +5737,68 @@ class DatabaseService {
     return positionMap;
   }
 
+  async getAllNodesEstimatedPositionsAsync(): Promise<Map<string, { latitude: number; longitude: number }>> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(`
+          WITH "LatestEstimates" AS (
+            SELECT "nodeId", "telemetryType", MAX(timestamp) as "maxTimestamp"
+            FROM telemetry
+            WHERE "telemetryType" IN ('estimated_latitude', 'estimated_longitude')
+            GROUP BY "nodeId", "telemetryType"
+          )
+          SELECT t."nodeId", t."telemetryType", t.value
+          FROM telemetry t
+          INNER JOIN "LatestEstimates" le
+            ON t."nodeId" = le."nodeId"
+            AND t."telemetryType" = le."telemetryType"
+            AND t.timestamp = le."maxTimestamp"
+        `);
+        return this.buildEstimatedPositionMap(result.rows);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(`
+        WITH LatestEstimates AS (
+          SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
+          FROM telemetry
+          WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
+          GROUP BY nodeId, telemetryType
+        )
+        SELECT t.nodeId, t.telemetryType, t.value
+        FROM telemetry t
+        INNER JOIN LatestEstimates le
+          ON t.nodeId = le.nodeId
+          AND t.telemetryType = le.telemetryType
+          AND t.timestamp = le.maxTimestamp
+      `);
+      return this.buildEstimatedPositionMap(rows as any[]);
+    }
+    return this.getAllNodesEstimatedPositions();
+  }
+
+  private buildEstimatedPositionMap(rows: Array<{ nodeId: string; telemetryType: string; value: number }>): Map<string, { latitude: number; longitude: number }> {
+    const positionMap = new Map<string, { latitude: number; longitude: number }>();
+    for (const row of rows) {
+      const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
+      if (row.telemetryType === 'estimated_latitude') {
+        existing.latitude = Number(row.value);
+      } else if (row.telemetryType === 'estimated_longitude') {
+        existing.longitude = Number(row.value);
+      }
+      positionMap.set(row.nodeId, existing);
+    }
+    for (const [nodeId, pos] of positionMap) {
+      if (pos.latitude === 0 || pos.longitude === 0) {
+        positionMap.delete(nodeId);
+      }
+    }
+    return positionMap;
+  }
+
   /**
    * Get recent estimated positions for a specific node.
    * Returns position estimates with timestamps for time-weighted averaging.
@@ -6039,6 +6181,89 @@ class DatabaseService {
       result[type] = rates;
     }
 
+    return result;
+  }
+
+  async getPacketRatesAsync(
+    nodeId: string,
+    types: string[],
+    sinceTimestamp?: number
+  ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
+    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+    for (const type of types) {
+      result[type] = [];
+    }
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const typePlaceholders = types.map((_, i) => `$${i + 2}`).join(', ');
+        const params: (string | number)[] = [nodeId, ...types];
+        let query = `SELECT "telemetryType", timestamp, value FROM telemetry
+                      WHERE "nodeId" = $1 AND "telemetryType" IN (${typePlaceholders})`;
+        if (sinceTimestamp !== undefined) {
+          params.push(sinceTimestamp);
+          query += ` AND timestamp >= $${params.length}`;
+        }
+        query += ` ORDER BY "telemetryType", timestamp ASC`;
+        const queryResult = await client.query(query, params);
+        return this.calculatePacketRates(queryResult.rows, types);
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const typePlaceholders = types.map(() => '?').join(', ');
+      const params: (string | number)[] = [nodeId, ...types];
+      let query = `SELECT telemetryType, timestamp, value FROM telemetry
+                    WHERE nodeId = ? AND telemetryType IN (${typePlaceholders})`;
+      if (sinceTimestamp !== undefined) {
+        params.push(sinceTimestamp);
+        query += ` AND timestamp >= ?`;
+      }
+      query += ` ORDER BY telemetryType, timestamp ASC`;
+      const [rows] = await pool.query(query, params);
+      return this.calculatePacketRates(rows as any[], types);
+    }
+    return this.getPacketRates(nodeId, types, sinceTimestamp);
+  }
+
+  private calculatePacketRates(
+    rows: Array<{ telemetryType: string; timestamp: number; value: number }>,
+    types: string[]
+  ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
+    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+    for (const type of types) {
+      result[type] = [];
+    }
+
+    const groupedByType: Record<string, Array<{ timestamp: number; value: number }>> = {};
+    for (const row of rows) {
+      if (!groupedByType[row.telemetryType]) {
+        groupedByType[row.telemetryType] = [];
+      }
+      groupedByType[row.telemetryType].push({
+        timestamp: Number(row.timestamp),
+        value: Number(row.value),
+      });
+    }
+
+    for (const [type, samples] of Object.entries(groupedByType)) {
+      const rates: Array<{ timestamp: number; ratePerMinute: number }> = [];
+      for (let i = 1; i < samples.length; i++) {
+        const deltaValue = samples[i].value - samples[i - 1].value;
+        const deltaTimeMs = samples[i].timestamp - samples[i - 1].timestamp;
+        const deltaTimeMinutes = deltaTimeMs / 60000;
+        if (deltaValue < 0) continue;
+        if (deltaTimeMinutes > 60) continue;
+        if (deltaTimeMinutes < 0.1) continue;
+        rates.push({
+          timestamp: samples[i].timestamp,
+          ratePerMinute: deltaValue / deltaTimeMinutes,
+        });
+      }
+      result[type] = rates;
+    }
     return result;
   }
 
@@ -10043,6 +10268,67 @@ class DatabaseService {
     };
   }
 
+  async getAuditStatsAsync(days: number = 30): Promise<any> {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const actionStats = await client.query(
+          `SELECT action, COUNT(*) as count FROM audit_log WHERE timestamp >= $1 GROUP BY action ORDER BY count DESC`,
+          [cutoff]
+        );
+        const userStats = await client.query(
+          `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
+           WHERE al.timestamp >= $1 GROUP BY al.user_id, u.username ORDER BY count DESC LIMIT 10`,
+          [cutoff]
+        );
+        const dailyStats = await client.query(
+          `SELECT to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD') as date, COUNT(*) as count
+           FROM audit_log WHERE timestamp >= $1
+           GROUP BY to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD')
+           ORDER BY date DESC`,
+          [cutoff]
+        );
+        const rows = actionStats.rows.map((r: any) => ({ action: r.action, count: Number(r.count) }));
+        return {
+          actionStats: rows,
+          userStats: userStats.rows.map((r: any) => ({ username: r.username, count: Number(r.count) })),
+          dailyStats: dailyStats.rows.map((r: any) => ({ date: r.date, count: Number(r.count) })),
+          totalEvents: rows.reduce((sum: number, stat: any) => sum + stat.count, 0),
+        };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [actionRows] = await pool.query(
+        `SELECT action, COUNT(*) as count FROM audit_log WHERE timestamp >= ? GROUP BY action ORDER BY count DESC`,
+        [cutoff]
+      );
+      const [userRows] = await pool.query(
+        `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
+         WHERE al.timestamp >= ? GROUP BY al.user_id ORDER BY count DESC LIMIT 10`,
+        [cutoff]
+      );
+      const [dailyRows] = await pool.query(
+        `SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d') as date, COUNT(*) as count
+         FROM audit_log WHERE timestamp >= ?
+         GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d')
+         ORDER BY date DESC`,
+        [cutoff]
+      );
+      const actionStats = (actionRows as any[]).map((r: any) => ({ action: r.action, count: Number(r.count) }));
+      return {
+        actionStats,
+        userStats: (userRows as any[]).map((r: any) => ({ username: r.username, count: Number(r.count) })),
+        dailyStats: (dailyRows as any[]).map((r: any) => ({ date: r.date, count: Number(r.count) })),
+        totalEvents: actionStats.reduce((sum: number, stat: any) => sum + stat.count, 0),
+      };
+    }
+    return this.getAuditStats(days);
+  }
+
   // Cleanup old audit logs
   cleanupAuditLogs(days: number): number {
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -10089,6 +10375,69 @@ class DatabaseService {
     });
 
     transaction();
+  }
+
+  async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
+    if (!userId) return;
+    const now = Math.floor(Date.now() / 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        await client.query(
+          `INSERT INTO read_messages ("userId", "messageId", "readAt")
+           VALUES ($1, $2, $3)
+           ON CONFLICT ("userId", "messageId") DO NOTHING`,
+          [userId, messageId, now]
+        );
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      await pool.query(
+        `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
+        [userId, messageId, now]
+      );
+    } else {
+      this.markMessageAsRead(messageId, userId);
+    }
+  }
+
+  async markMessagesAsReadAsync(messageIds: string[], userId: number | null): Promise<void> {
+    if (!userId || messageIds.length === 0) return;
+    const now = Math.floor(Date.now() / 1000);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        await client.query('BEGIN');
+        for (const messageId of messageIds) {
+          await client.query(
+            `INSERT INTO read_messages ("userId", "messageId", "readAt")
+             VALUES ($1, $2, $3)
+             ON CONFLICT ("userId", "messageId") DO NOTHING`,
+            [userId, messageId, now]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      for (const messageId of messageIds) {
+        await pool.query(
+          `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
+          [userId, messageId, now]
+        );
+      }
+    } else {
+      this.markMessagesAsRead(messageIds, userId);
+    }
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
@@ -11502,6 +11851,37 @@ class DatabaseService {
     return Number(result.changes);
   }
 
+  async cleanupOldPacketLogsAsync(): Promise<number> {
+    const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
+    const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          'DELETE FROM packet_log WHERE timestamp < $1',
+          [cutoffTimestamp]
+        );
+        const deleted = result.rowCount ?? 0;
+        logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
+        return deleted;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [result] = await pool.query(
+        'DELETE FROM packet_log WHERE timestamp < ?',
+        [cutoffTimestamp]
+      );
+      const deleted = (result as any).affectedRows ?? 0;
+      logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
+      return deleted;
+    }
+    return this.cleanupOldPacketLogs();
+  }
+
   /**
    * Get packet counts grouped by from_node (for distribution charts)
    * Returns top N nodes by packet count, plus counts for remainder grouped as "Other"
@@ -11779,7 +12159,7 @@ class DatabaseService {
    * Get all themes (custom only - built-in themes are in CSS)
    */
   getAllCustomThemes(): DbCustomTheme[] {
-    // For PostgreSQL/MySQL, custom themes not yet implemented
+    // For PostgreSQL/MySQL, use getAllCustomThemesAsync() instead
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
@@ -11798,11 +12178,54 @@ class DatabaseService {
     }
   }
 
+  async getAllCustomThemesAsync(): Promise<DbCustomTheme[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(`
+          SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+          FROM custom_themes
+          ORDER BY name ASC
+        `);
+        return result.rows.map((row: any) => ({
+          id: Number(row.id),
+          name: row.name,
+          slug: row.slug,
+          definition: row.definition,
+          is_builtin: row.is_builtin ? 1 : 0,
+          created_by: row.created_by ? Number(row.created_by) : undefined,
+          created_at: Number(row.created_at),
+          updated_at: Number(row.updated_at),
+        }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(`
+        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+        FROM custom_themes
+        ORDER BY name ASC
+      `);
+      return (rows as any[]).map((row: any) => ({
+        id: Number(row.id),
+        name: row.name,
+        slug: row.slug,
+        definition: row.definition,
+        is_builtin: row.is_builtin ? 1 : 0,
+        created_by: row.created_by ? Number(row.created_by) : undefined,
+        created_at: Number(row.created_at),
+        updated_at: Number(row.updated_at),
+      }));
+    }
+    return this.getAllCustomThemes();
+  }
+
   /**
    * Get a specific theme by slug
    */
   getCustomThemeBySlug(slug: string): DbCustomTheme | undefined {
-    // For PostgreSQL/MySQL, custom themes not yet implemented
+    // For PostgreSQL/MySQL, use getCustomThemeBySlugAsync() instead
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return undefined;
     }
@@ -11823,10 +12246,61 @@ class DatabaseService {
     }
   }
 
+  async getCustomThemeBySlugAsync(slug: string): Promise<DbCustomTheme | undefined> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+           FROM custom_themes WHERE slug = $1`,
+          [slug]
+        );
+        if (result.rows.length === 0) return undefined;
+        const row = result.rows[0];
+        return {
+          id: Number(row.id),
+          name: row.name,
+          slug: row.slug,
+          definition: row.definition,
+          is_builtin: row.is_builtin ? 1 : 0,
+          created_by: row.created_by ? Number(row.created_by) : undefined,
+          created_at: Number(row.created_at),
+          updated_at: Number(row.updated_at),
+        };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [rows] = await pool.query(
+        `SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+         FROM custom_themes WHERE slug = ?`,
+        [slug]
+      );
+      const arr = rows as any[];
+      if (arr.length === 0) return undefined;
+      const row = arr[0];
+      return {
+        id: Number(row.id),
+        name: row.name,
+        slug: row.slug,
+        definition: row.definition,
+        is_builtin: row.is_builtin ? 1 : 0,
+        created_by: row.created_by ? Number(row.created_by) : undefined,
+        created_at: Number(row.created_at),
+        updated_at: Number(row.updated_at),
+      };
+    }
+    return this.getCustomThemeBySlug(slug);
+  }
+
   /**
    * Create a new custom theme
    */
   createCustomTheme(name: string, slug: string, definition: ThemeDefinition, userId?: number): DbCustomTheme {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('Use createCustomThemeAsync() for PostgreSQL/MySQL');
+    }
     try {
       const now = Math.floor(Date.now() / 1000);
       const definitionJson = JSON.stringify(definition);
@@ -11857,10 +12331,46 @@ class DatabaseService {
     }
   }
 
+  async createCustomThemeAsync(name: string, slug: string, definition: ThemeDefinition, userId?: number): Promise<DbCustomTheme> {
+    const now = Math.floor(Date.now() / 1000);
+    const definitionJson = JSON.stringify(definition);
+
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const result = await client.query(
+          `INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
+           VALUES ($1, $2, $3, false, $4, $5, $6)
+           RETURNING id`,
+          [name, slug, definitionJson, userId || null, now, now]
+        );
+        const id = Number(result.rows[0].id);
+        logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
+        return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [result] = await pool.query(
+        `INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, 0, ?, ?, ?)`,
+        [name, slug, definitionJson, userId || null, now, now]
+      );
+      const id = Number((result as any).insertId);
+      logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
+      return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+    }
+    return this.createCustomTheme(name, slug, definition, userId);
+  }
+
   /**
    * Update an existing custom theme
    */
   updateCustomTheme(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): boolean {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('Use updateCustomThemeAsync() for PostgreSQL/MySQL');
+    }
     try {
       const theme = this.getCustomThemeBySlug(slug);
       if (!theme) {
@@ -11906,10 +12416,84 @@ class DatabaseService {
     }
   }
 
+  async updateCustomThemeAsync(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): Promise<boolean> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const existing = await client.query('SELECT id, is_builtin FROM custom_themes WHERE slug = $1', [slug]);
+        if (existing.rows.length === 0) {
+          logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
+          return false;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const setClauses: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        if (updates.name !== undefined) {
+          setClauses.push(`name = $${paramIndex++}`);
+          values.push(updates.name);
+        }
+        if (updates.definition !== undefined) {
+          setClauses.push(`definition = $${paramIndex++}`);
+          values.push(JSON.stringify(updates.definition));
+        }
+        if (setClauses.length === 0) return true;
+
+        setClauses.push(`updated_at = $${paramIndex++}`);
+        values.push(now);
+        values.push(slug);
+
+        await client.query(
+          `UPDATE custom_themes SET ${setClauses.join(', ')} WHERE slug = $${paramIndex}`,
+          values
+        );
+        logger.debug(`✅ Updated custom theme: ${slug}`);
+        return true;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [existingRows] = await pool.query('SELECT id, is_builtin FROM custom_themes WHERE slug = ?', [slug]);
+      if ((existingRows as any[]).length === 0) {
+        logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
+        return false;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const setClauses: string[] = [];
+      const values: any[] = [];
+
+      if (updates.name !== undefined) {
+        setClauses.push('name = ?');
+        values.push(updates.name);
+      }
+      if (updates.definition !== undefined) {
+        setClauses.push('definition = ?');
+        values.push(JSON.stringify(updates.definition));
+      }
+      if (setClauses.length === 0) return true;
+
+      setClauses.push('updated_at = ?');
+      values.push(now);
+      values.push(slug);
+
+      await pool.query(`UPDATE custom_themes SET ${setClauses.join(', ')} WHERE slug = ?`, values);
+      logger.debug(`✅ Updated custom theme: ${slug}`);
+      return true;
+    }
+    return this.updateCustomTheme(slug, updates);
+  }
+
   /**
    * Delete a custom theme
    */
   deleteCustomTheme(slug: string): boolean {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('Use deleteCustomThemeAsync() for PostgreSQL/MySQL');
+    }
     try {
       const theme = this.getCustomThemeBySlug(slug);
       if (!theme) {
@@ -11930,6 +12514,41 @@ class DatabaseService {
       logger.error(`❌ Failed to delete custom theme ${slug}:`, error);
       throw error;
     }
+  }
+
+  async deleteCustomThemeAsync(slug: string): Promise<boolean> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.postgresPool!.connect();
+      try {
+        const existing = await client.query('SELECT id, is_builtin FROM custom_themes WHERE slug = $1', [slug]);
+        if (existing.rows.length === 0) {
+          logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
+          return false;
+        }
+        if (existing.rows[0].is_builtin) {
+          throw new Error('Cannot delete built-in themes');
+        }
+        await client.query('DELETE FROM custom_themes WHERE slug = $1', [slug]);
+        logger.debug(`🗑️  Deleted custom theme: ${slug}`);
+        return true;
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const pool = this.mysqlPool!;
+      const [existingRows] = await pool.query('SELECT id, is_builtin FROM custom_themes WHERE slug = ?', [slug]);
+      if ((existingRows as any[]).length === 0) {
+        logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
+        return false;
+      }
+      if ((existingRows as any[])[0].is_builtin) {
+        throw new Error('Cannot delete built-in themes');
+      }
+      await pool.query('DELETE FROM custom_themes WHERE slug = ?', [slug]);
+      logger.debug(`🗑️  Deleted custom theme: ${slug}`);
+      return true;
+    }
+    return this.deleteCustomTheme(slug);
   }
 
   /**
@@ -12070,6 +12689,9 @@ class DatabaseService {
 
       // Run migration 084: Add key mismatch columns
       await runMigration084Postgres(client);
+
+      // Run migration 085: Fix custom_themes column names and add missing columns
+      await runMigration085Postgres(client);
 
       // Verify all expected tables exist
       const result = await client.query(`
@@ -12234,6 +12856,9 @@ class DatabaseService {
 
       // Run migration 084: Add key mismatch columns
       await runMigration084Mysql(pool);
+
+      // Run migration 085: Fix custom_themes column names and add missing columns
+      await runMigration085Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

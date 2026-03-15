@@ -36,7 +36,7 @@ import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
-import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefix } from './utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
@@ -826,7 +826,7 @@ setSettingsCallbacks({
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
     const allNodes = meshtasticManager.getAllNodes();
-    const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
+    const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions
     const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
@@ -2025,14 +2025,14 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => 
   }
 });
 
-apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), (req, res) => {
+apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), async (req, res) => {
   try {
     const { nodeId1, nodeId2 } = req.params;
     // Validate and clamp limit (1-500) and offset (0-50000) to prevent abuse
     const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = databaseService.getDirectMessages(nodeId1, nodeId2, limit + 1, offset);
+    const dbMessages = await databaseService.getDirectMessagesAsync(nodeId1, nodeId2, limit + 1, offset);
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -2077,7 +2077,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
 
     if (messageIds && Array.isArray(messageIds)) {
       // Mark specific messages as read
-      databaseService.markMessagesAsRead(messageIds, userId);
+      await databaseService.markMessagesAsReadAsync(messageIds, userId);
       markedCount = messageIds.length;
     } else if (allDMs) {
       // Mark ALL DMs as read
@@ -2734,12 +2734,12 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
   }
 });
 
-apiRouter.get('/stats', requirePermission('dashboard', 'read'), (_req, res) => {
+apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (_req, res) => {
   try {
     const messageCount = databaseService.getMessageCount();
     const nodeCount = databaseService.getNodeCount();
     const channelCount = databaseService.getChannelCount();
-    const messagesByDay = databaseService.getMessagesByDay(7);
+    const messagesByDay = await databaseService.getMessagesByDayAsync(7);
 
     res.json({
       messageCount,
@@ -3524,7 +3524,7 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
         }
       }
     } else {
-      rates = databaseService.getPacketRates(nodeId, packetTypes, cutoffTime);
+      rates = await databaseService.getPacketRatesAsync(nodeId, packetTypes, cutoffTime);
     }
 
     res.json(rates);
@@ -3780,7 +3780,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
-      const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
+      const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
       result.nodes = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
@@ -5143,9 +5143,9 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
 // Custom Themes endpoints
 
 // Get all custom themes (available to all users for reading)
-apiRouter.get('/themes', optionalAuth(), (_req, res) => {
+apiRouter.get('/themes', optionalAuth(), async (_req, res) => {
   try {
-    const themes = databaseService.getAllCustomThemes();
+    const themes = await databaseService.getAllCustomThemesAsync();
     res.json({ themes });
   } catch (error) {
     logger.error('Error fetching custom themes:', error);
@@ -5154,10 +5154,10 @@ apiRouter.get('/themes', optionalAuth(), (_req, res) => {
 });
 
 // Get a specific theme by slug
-apiRouter.get('/themes/:slug', optionalAuth(), (req, res) => {
+apiRouter.get('/themes/:slug', optionalAuth(), async (req, res) => {
   try {
     const { slug } = req.params;
-    const theme = databaseService.getCustomThemeBySlug(slug);
+    const theme = await databaseService.getCustomThemeBySlugAsync(slug);
 
     if (!theme) {
       return res.status(404).json({ error: 'Theme not found' });
@@ -5171,7 +5171,7 @@ apiRouter.get('/themes/:slug', optionalAuth(), (req, res) => {
 });
 
 // Create a new custom theme
-apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
+apiRouter.post('/themes', requirePermission('themes', 'write'), async (req, res) => {
   try {
     const { name, slug, definition } = req.body;
 
@@ -5187,7 +5187,7 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
     }
 
     // Check if theme already exists
-    const existingTheme = databaseService.getCustomThemeBySlug(slug);
+    const existingTheme = await databaseService.getCustomThemeBySlugAsync(slug);
     if (existingTheme) {
       return res.status(409).json({ error: 'Theme with this slug already exists' });
     }
@@ -5200,7 +5200,7 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
     }
 
     // Create the theme
-    const theme = databaseService.createCustomTheme(name, slug, definition, req.user!.id);
+    const theme = await databaseService.createCustomThemeAsync(name, slug, definition, req.user!.id);
 
     // Audit log
     databaseService.auditLog(
@@ -5221,13 +5221,13 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
 });
 
 // Update an existing custom theme
-apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), (req, res) => {
+apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), async (req, res) => {
   try {
     const { slug } = req.params;
     const { name, definition } = req.body;
 
     // Get existing theme for audit log
-    const existingTheme = databaseService.getCustomThemeBySlug(slug);
+    const existingTheme = await databaseService.getCustomThemeBySlugAsync(slug);
     if (!existingTheme) {
       return res.status(404).json({ error: 'Theme not found' });
     }
@@ -5261,7 +5261,7 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), (req, res) 
     }
 
     // Update the theme
-    databaseService.updateCustomTheme(slug, updates);
+    await databaseService.updateCustomThemeAsync(slug, updates);
 
     // Audit log
     databaseService.auditLog(
@@ -5282,12 +5282,12 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), (req, res) 
 });
 
 // Delete a custom theme
-apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), (req, res) => {
+apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (req, res) => {
   try {
     const { slug } = req.params;
 
     // Get theme for audit log before deletion
-    const theme = databaseService.getCustomThemeBySlug(slug);
+    const theme = await databaseService.getCustomThemeBySlugAsync(slug);
     if (!theme) {
       return res.status(404).json({ error: 'Theme not found' });
     }
@@ -5297,7 +5297,7 @@ apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), (req, re
     }
 
     // Delete the theme
-    databaseService.deleteCustomTheme(slug);
+    await databaseService.deleteCustomThemeAsync(slug);
 
     // Audit log
     databaseService.auditLog(
@@ -7491,7 +7491,7 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
 
     // Apply prefix if user has it enabled
     const baseBody = 'This is a test push notification from MeshMonitor';
-    const body = applyNodeNamePrefix(userId, baseBody, localNodeName);
+    const body = await applyNodeNamePrefixAsync(userId, baseBody, localNodeName);
 
     const result = await pushNotificationService.sendToUser(userId, {
       title: 'Test Notification',
@@ -7689,7 +7689,7 @@ apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
 
     // Apply prefix if user has it enabled
     const baseBody = 'This is a test notification from MeshMonitor via Apprise';
-    const body = applyNodeNamePrefix(userId, baseBody, localNodeName);
+    const body = await applyNodeNamePrefixAsync(userId, baseBody, localNodeName);
 
     // Send to user's configured URLs
     const success = await appriseNotificationService.sendNotificationToUrls(

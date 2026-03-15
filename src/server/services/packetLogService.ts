@@ -26,9 +26,9 @@ class PacketLogService {
   /**
    * Run cleanup of old packet logs
    */
-  runCleanup(): void {
+  async runCleanup(): Promise<void> {
     try {
-      const deletedCount = databaseService.cleanupOldPacketLogs();
+      const deletedCount = await databaseService.cleanupOldPacketLogsAsync();
       if (deletedCount > 0) {
         logger.debug(`🧹 Packet log cleanup: removed ${deletedCount} old packets`);
       }

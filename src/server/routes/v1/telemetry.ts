@@ -86,9 +86,9 @@ router.get('/', async (req: Request, res: Response) => {
  * GET /api/v1/telemetry/count
  * Get total count of telemetry records
  */
-router.get('/count', (_req: Request, res: Response) => {
+router.get('/count', async (_req: Request, res: Response) => {
   try {
-    const count = databaseService.getTelemetryCount();
+    const count = await databaseService.getTelemetryCountAsync();
 
     res.json({
       success: true,

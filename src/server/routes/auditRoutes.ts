@@ -57,21 +57,8 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // Get audit log statistics (must be before /:id to avoid route conflict)
-router.get('/stats/summary', (req: Request, res: Response) => {
+router.get('/stats/summary', async (req: Request, res: Response) => {
   try {
-    // For PostgreSQL/MySQL, audit stats not yet implemented
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      return res.json({
-        stats: {
-          actionStats: [],
-          userStats: [],
-          dailyStats: [],
-          totalEvents: 0
-        },
-        days: parseInt(req.query.days as string, 10) || 30
-      });
-    }
-
     const daysParam = req.query.days as string;
 
     // Validate days parameter if provided
@@ -83,7 +70,7 @@ router.get('/stats/summary', (req: Request, res: Response) => {
     }
 
     const days = parseInt(daysParam, 10) || 30;
-    const stats = databaseService.getAuditStats(days);
+    const stats = await databaseService.getAuditStatsAsync(days);
 
     return res.json({
       stats,
