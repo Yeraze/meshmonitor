@@ -2063,15 +2063,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   else { lineWeight = 2; lineOpacity = 0.4; }
                 } else { lineWeight = 2; lineOpacity = 0.3; }
 
-                // Calculate distance between nodes
-                let distStr = '';
-                if (ni.nodeLatitude && ni.nodeLongitude && ni.neighborLatitude && ni.neighborLongitude) {
-                  const distKm = calculateDistance(ni.nodeLatitude, ni.nodeLongitude, ni.neighborLatitude, ni.neighborLongitude);
-                  distStr = formatDistance(distKm, distanceUnit);
-                }
+                // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
+                const distKm = calculateDistance(ni.nodeLatitude!, ni.nodeLongitude!, ni.neighborLatitude!, ni.neighborLongitude!);
+                const distStr = formatDistance(distKm, distanceUnit);
 
-                // Data age
-                const ageMs = Date.now() - ni.timestamp;
+                // Data age (clamped to 0 to handle clock skew)
+                const ageMs = Math.max(0, Date.now() - ni.timestamp);
                 const ageMin = Math.floor(ageMs / 60000);
                 const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
 
@@ -2081,10 +2078,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   : undefined;
 
                 // Calculate bearing for unidirectional arrow (degrees from north)
-                const bearing = !isBidirectional && ni.nodeLatitude && ni.neighborLatitude
+                // Scale longitude difference by cos(lat) to correct for latitude
+                const latMid = (ni.nodeLatitude! + ni.neighborLatitude!) / 2;
+                const bearing = !isBidirectional
                   ? Math.atan2(
-                      ni.neighborLongitude! - ni.nodeLongitude!,
-                      ni.neighborLatitude - ni.nodeLatitude
+                      (ni.neighborLongitude! - ni.nodeLongitude!) * Math.cos(latMid * Math.PI / 180),
+                      ni.neighborLatitude! - ni.nodeLatitude!
                     ) * (180 / Math.PI)
                   : 0;
 

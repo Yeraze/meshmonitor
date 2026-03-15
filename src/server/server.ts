@@ -3065,7 +3065,7 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
     const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum;
     const node = databaseService.getNode(destinationNum);
     const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
-    const isDirectNode = node && Number(node.hopsAway) === 0;
+    const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
 
     if (!isLocalNode && !isDirectNode) {
       return res.status(403).json({
