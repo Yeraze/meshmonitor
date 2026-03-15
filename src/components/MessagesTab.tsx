@@ -1065,7 +1065,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               }}
                               disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
                             >
-                              🔑 {t('messages.exchange_user_info')}
+                              🔑 {t('messages.exchange_node_info')}
                               {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                             <button
@@ -1734,7 +1734,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     fontSize: '0.9rem'
                   }}
                 >
-                  {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🔑'} {t('messages.exchange_user_info')}
+                  {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🔑'} {t('messages.exchange_node_info')}
                 </button>
               )}
 

@@ -2994,7 +2994,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
   }
 });
 
-// NodeInfo request endpoint (Exchange User Info - triggers key exchange)
+// NodeInfo request endpoint (Exchange Node Info - triggers key exchange)
 apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), async (req, res) => {
   try {
     const { destination } = req.body;
