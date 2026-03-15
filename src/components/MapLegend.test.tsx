@@ -42,6 +42,7 @@ vi.mock('../contexts/SettingsContext', () => ({
         good: '#22c55e',
         medium: '#f59e0b',
         poor: '#ef4444',
+        noData: '#6c7086',
       },
     },
   }),
@@ -106,9 +107,9 @@ describe('MapLegend', () => {
     it('should render all legend items', () => {
       const { container } = renderExpanded();
 
-      // Count legend-item rows: 7 hops + 5 links + 3 SNR = 15
+      // Count legend-item rows: 7 hops + 2 neighbor styles + 4 SNR lines + 3 other lines = 16
       const legendItems = container.querySelectorAll('.legend-item');
-      expect(legendItems.length).toBe(15);
+      expect(legendItems.length).toBe(16);
     });
   });
 
@@ -128,8 +129,8 @@ describe('MapLegend', () => {
         }
       });
 
-      // 7 hop colors + 3 SNR colors = 10
-      expect(colors.length).toBe(10);
+      // 7 hop colors (SNR is now shown as line samples, not dots)
+      expect(colors.length).toBe(7);
 
       // First should be green (local node)
       expect(colors[0]).toContain('34'); // #22c55e contains RGB(34, 197, 94)
@@ -184,8 +185,8 @@ describe('MapLegend', () => {
       const { container } = renderExpanded();
 
       const legendDots = container.querySelectorAll('.legend-dot');
-      // 7 hop dots + 3 SNR dots = 10
-      expect(legendDots.length).toBe(10);
+      // 7 hop dots only (SNR is now shown as line samples, not dots)
+      expect(legendDots.length).toBe(7);
     });
   });
 
@@ -213,8 +214,8 @@ describe('MapLegend', () => {
       const { container } = renderExpanded();
 
       const legendLabels = container.querySelectorAll('.legend-label');
-      // 7 hop labels + 5 link labels + 3 SNR labels = 15
-      expect(legendLabels.length).toBe(15);
+      // 7 hop labels + 2 neighbor styles + 4 SNR lines + 3 other lines = 16
+      expect(legendLabels.length).toBe(16);
     });
   });
 
@@ -266,9 +267,9 @@ describe('MapLegend', () => {
       // getHopColor is called for values 0, 1, 2, 3, 4, 5, 6
       const { container } = renderExpanded();
 
-      // 7 hop dots + 3 SNR dots = 10
+      // 7 hop dots only (SNR is now shown as line samples, not dots)
       const circles = container.querySelectorAll('.legend-dot');
-      expect(circles.length).toBe(10);
+      expect(circles.length).toBe(7);
     });
   });
 });
