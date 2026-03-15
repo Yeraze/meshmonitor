@@ -124,6 +124,8 @@ export interface SettingsCallbacks {
   restartGeofenceEngine?: () => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
+  restartAutoDeleteByDistanceService?: (intervalHours: number) => void;
+  stopAutoDeleteByDistanceService?: () => void;
 }
 
 let callbacks: SettingsCallbacks = {};
@@ -646,6 +648,35 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
 
     if ('geofenceTriggers' in filteredSettings) {
       callbacks.restartGeofenceEngine?.();
+    }
+
+    const distanceDeleteSettings = [
+      'autoDeleteByDistanceEnabled',
+      'autoDeleteByDistanceIntervalHours',
+      'autoDeleteByDistanceThresholdKm',
+      'autoDeleteByDistanceLat',
+      'autoDeleteByDistanceLon',
+    ];
+    const distanceDeleteSettingsChanged = distanceDeleteSettings.some((key) => key in filteredSettings);
+    if (distanceDeleteSettingsChanged) {
+      const enabled =
+        filteredSettings.autoDeleteByDistanceEnabled === 'true' ||
+        (filteredSettings.autoDeleteByDistanceEnabled === undefined &&
+          databaseService.getSetting('autoDeleteByDistanceEnabled') === 'true');
+
+      if (enabled) {
+        const intervalHours = parseInt(
+          filteredSettings.autoDeleteByDistanceIntervalHours ||
+            databaseService.getSetting('autoDeleteByDistanceIntervalHours') ||
+            '24',
+          10
+        );
+        callbacks.restartAutoDeleteByDistanceService?.(intervalHours);
+        logger.info(`✅ Auto-delete-by-distance service restarted (interval: ${intervalHours}h)`);
+      } else {
+        callbacks.stopAutoDeleteByDistanceService?.();
+        logger.info('⏹️ Auto-delete-by-distance service stopped');
+      }
     }
 
     // Audit log with before/after values
