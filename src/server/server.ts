@@ -36,6 +36,7 @@ import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
+import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
@@ -525,6 +526,13 @@ setTimeout(async () => {
     inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
     logger.info('✅ Inactive node notification service started');
 
+    // Start auto-delete-by-distance service if enabled
+    const autoDeleteByDistanceEnabled = databaseService.getSetting('autoDeleteByDistanceEnabled');
+    if (autoDeleteByDistanceEnabled === 'true') {
+      const intervalHours = parseInt(databaseService.getSetting('autoDeleteByDistanceIntervalHours') || '24', 10);
+      autoDeleteByDistanceService.start(intervalHours);
+    }
+
     // Note: Virtual node server initialization has been moved to a callback
     // that triggers when config capture completes (see registerConfigCaptureCompleteCallback above)
   } catch (error) {
@@ -816,6 +824,9 @@ setSettingsCallbacks({
   restartGeofenceEngine: () => meshtasticManager.restartGeofenceEngine(),
   handleAutoWelcomeEnabled: () => databaseService.handleAutoWelcomeEnabled(),
   invalidateHtmlCache,
+  restartAutoDeleteByDistanceService: (intervalHours: number) =>
+    autoDeleteByDistanceService.start(intervalHours),
+  stopAutoDeleteByDistanceService: () => autoDeleteByDistanceService.stop(),
 });
 
 // API Routes
@@ -5043,6 +5054,28 @@ apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'),
   } catch (error) {
     logger.error('Error fetching auto key repair log:', error);
     res.status(500).json({ error: 'Failed to fetch auto key repair log' });
+  }
+});
+
+// Auto-delete-by-distance log
+apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 'read'), async (_req, res) => {
+  try {
+    const entries = await databaseService.getDistanceDeleteLogAsync(10);
+    res.json(entries);
+  } catch (error) {
+    logger.error('Error fetching distance-delete log:', error);
+    res.status(500).json({ error: 'Failed to fetch log' });
+  }
+});
+
+// Auto-delete-by-distance run now
+apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings', 'write'), async (_req, res) => {
+  try {
+    const result = await autoDeleteByDistanceService.runNow();
+    res.json(result);
+  } catch (error) {
+    logger.error('Error running distance-delete:', error);
+    res.status(500).json({ error: 'Failed to run distance delete' });
   }
 });
 

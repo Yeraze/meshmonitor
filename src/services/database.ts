@@ -91,6 +91,7 @@ import { migration as addPacketmonitorPermissionMigration, runMigration082Postgr
 import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
 import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
 import { runMigration085Postgres, runMigration085Mysql } from '../server/migrations/085_fix_custom_themes_columns.js';
+import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } from '../server/migrations/086_add_auto_distance_delete_log.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -997,6 +998,7 @@ class DatabaseService {
     this.runAddFavoriteLockedMigration();
     this.runAddTimeOffsetColumnsMigration();
     this.runAddPacketmonitorPermissionMigration();
+    this.runAutoDistanceDeleteLogMigration();
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -2634,6 +2636,22 @@ class DatabaseService {
         logger.debug('Migration 084 completed successfully');
       } catch (error) {
         logger.error('Error running migration 084:', error);
+      }
+    }
+
+  }
+
+  private runAutoDistanceDeleteLogMigration(): void {
+    // Migration 086: Add auto_distance_delete_log table
+    const migrationKey086 = 'migration_086_auto_distance_delete_log';
+    if (!this.getSetting(migrationKey086)) {
+      try {
+        logger.debug('Running migration 086: Add auto_distance_delete_log table...');
+        runMigration086Sqlite(this.db);
+        this.setSetting(migrationKey086, 'completed');
+        logger.debug('Migration 086 completed successfully');
+      } catch (error) {
+        logger.error('Error running migration 086:', error);
       }
     }
   }
@@ -8149,6 +8167,79 @@ class DatabaseService {
     }));
   }
 
+  /**
+   * Get auto-delete-by-distance log entries
+   */
+  async getDistanceDeleteLogAsync(limit: number = 10): Promise<any[]> {
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.getPostgresPool()!.connect();
+      try {
+        const result = await client.query(
+          'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT $1',
+          [limit]
+        );
+        return result.rows.map((e: any) => ({
+          ...e,
+          details: e.details ? JSON.parse(e.details) : [],
+        }));
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      const [rows] = await this.getMySQLPool()!.query(
+        'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ?',
+        [limit]
+      );
+      return (rows as any[]).map((e: any) => ({
+        ...e,
+        details: e.details ? JSON.parse(e.details) : [],
+      }));
+    } else {
+      const entries = this.db.prepare(
+        'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ?'
+      ).all(limit);
+      return (entries as any[]).map((e: any) => ({
+        ...e,
+        details: e.details ? JSON.parse(e.details) : [],
+      }));
+    }
+  }
+
+  /**
+   * Add an entry to the auto-delete-by-distance log
+   */
+  async addDistanceDeleteLogEntryAsync(entry: {
+    timestamp: number;
+    nodesDeleted: number;
+    thresholdKm: number;
+    details: string;
+  }): Promise<void> {
+    const now = Date.now();
+    if (this.drizzleDbType === 'postgres') {
+      const client = await this.getPostgresPool()!.connect();
+      try {
+        await client.query(
+          `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now]
+        );
+      } finally {
+        client.release();
+      }
+    } else if (this.drizzleDbType === 'mysql') {
+      await this.getMySQLPool()!.query(
+        `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now]
+      );
+    } else {
+      this.db.prepare(
+        `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now);
+    }
+  }
+
   async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
     if (this.drizzleDbType === 'postgres') {
       const client = await this.postgresPool!.connect();
@@ -12693,6 +12784,9 @@ class DatabaseService {
       // Run migration 085: Fix custom_themes column names and add missing columns
       await runMigration085Postgres(client);
 
+      // Run migration 086: Add auto_distance_delete_log table
+      await runMigration086Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -12859,6 +12953,9 @@ class DatabaseService {
 
       // Run migration 085: Fix custom_themes column names and add missing columns
       await runMigration085Mysql(pool);
+
+      // Run migration 086: Add auto_distance_delete_log table
+      await runMigration086Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

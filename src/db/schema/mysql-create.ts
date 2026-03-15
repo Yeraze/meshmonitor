@@ -472,6 +472,16 @@ export const MYSQL_SCHEMA_SQL = `
     firedAt BIGINT NOT NULL,
     PRIMARY KEY (triggerId, nodeNum)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  CREATE TABLE IF NOT EXISTS auto_distance_delete_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    nodes_deleted INT NOT NULL,
+    threshold_km REAL NOT NULL,
+    details TEXT,
+    created_at BIGINT,
+    INDEX idx_auto_distance_delete_log_timestamp (timestamp DESC)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 `;
 
 export const MYSQL_TABLE_NAMES = [
@@ -508,4 +518,5 @@ export const MYSQL_TABLE_NAMES = [
   'ignored_nodes',
   'embed_profiles',
   'geofence_cooldowns',
+  'auto_distance_delete_log',
 ];

@@ -84,6 +84,16 @@ interface AutomationContextType {
   setAutoKeyManagementAutoPurge: React.Dispatch<React.SetStateAction<boolean>>;
   autoKeyManagementImmediatePurge: boolean;
   setAutoKeyManagementImmediatePurge: React.Dispatch<React.SetStateAction<boolean>>;
+  autoDeleteByDistanceEnabled: boolean;
+  setAutoDeleteByDistanceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoDeleteByDistanceIntervalHours: number;
+  setAutoDeleteByDistanceIntervalHours: React.Dispatch<React.SetStateAction<number>>;
+  autoDeleteByDistanceThresholdKm: number;
+  setAutoDeleteByDistanceThresholdKm: React.Dispatch<React.SetStateAction<number>>;
+  autoDeleteByDistanceLat: number | null;
+  setAutoDeleteByDistanceLat: React.Dispatch<React.SetStateAction<number | null>>;
+  autoDeleteByDistanceLon: number | null;
+  setAutoDeleteByDistanceLon: React.Dispatch<React.SetStateAction<number | null>>;
   timerTriggers: TimerTrigger[];
   setTimerTriggers: React.Dispatch<React.SetStateAction<TimerTrigger[]>>;
   geofenceTriggers: GeofenceTrigger[];
@@ -139,6 +149,11 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges] = useState<number>(3);
   const [autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge] = useState<boolean>(false);
   const [autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge] = useState<boolean>(false);
+  const [autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled] = useState<boolean>(false);
+  const [autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours] = useState<number>(24);
+  const [autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm] = useState<number>(100);
+  const [autoDeleteByDistanceLat, setAutoDeleteByDistanceLat] = useState<number | null>(null);
+  const [autoDeleteByDistanceLon, setAutoDeleteByDistanceLon] = useState<number | null>(null);
   const [timerTriggers, setTimerTriggers] = useState<TimerTrigger[]>([]);
   const [geofenceTriggers, setGeofenceTriggers] = useState<GeofenceTrigger[]>([]);
 
@@ -186,6 +201,11 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
         autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
         autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
+        autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled,
+        autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours,
+        autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
+        autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
+        autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
         timerTriggers, setTimerTriggers,
         geofenceTriggers, setGeofenceTriggers,
       }}

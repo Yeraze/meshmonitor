@@ -27,6 +27,7 @@ import AutoAnnounceSection from './components/AutoAnnounceSection';
 import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
 import AutoKeyManagementSection from './components/AutoKeyManagementSection';
+import AutoDeleteByDistanceSection from './components/AutoDeleteByDistanceSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
 import GeofenceTriggersSection from './components/GeofenceTriggersSection';
 import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
@@ -566,6 +567,11 @@ function App() {
     autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
     timerTriggers, setTimerTriggers,
     geofenceTriggers, setGeofenceTriggers,
+    autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled,
+    autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours,
+    autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
+    autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
+    autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
   } = useAutomation();
 
   // Check tab permissions and redirect if unauthorized
@@ -1115,6 +1121,23 @@ function App() {
           }
           if (settings.autoKeyManagementImmediatePurge !== undefined) {
             setAutoKeyManagementImmediatePurge(settings.autoKeyManagementImmediatePurge === 'true');
+          }
+
+          // Auto delete by distance settings
+          if (settings.autoDeleteByDistanceEnabled !== undefined) {
+            setAutoDeleteByDistanceEnabled(settings.autoDeleteByDistanceEnabled === 'true');
+          }
+          if (settings.autoDeleteByDistanceIntervalHours !== undefined) {
+            setAutoDeleteByDistanceIntervalHours(parseInt(settings.autoDeleteByDistanceIntervalHours) || 24);
+          }
+          if (settings.autoDeleteByDistanceThresholdKm !== undefined) {
+            setAutoDeleteByDistanceThresholdKm(parseFloat(settings.autoDeleteByDistanceThresholdKm) || 100);
+          }
+          if (settings.autoDeleteByDistanceLat !== undefined) {
+            setAutoDeleteByDistanceLat(settings.autoDeleteByDistanceLat ? parseFloat(settings.autoDeleteByDistanceLat) : null);
+          }
+          if (settings.autoDeleteByDistanceLon !== undefined) {
+            setAutoDeleteByDistanceLon(settings.autoDeleteByDistanceLon ? parseFloat(settings.autoDeleteByDistanceLon) : null);
           }
 
           if (settings.timerTriggers) {
@@ -4833,6 +4856,7 @@ function App() {
                 { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management') },
                 { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
                 { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
+                { id: 'auto-delete-by-distance', label: t('automation.distance_delete.title', 'Auto Delete by Distance') },
                 { id: 'ignored-nodes', label: t('automation.ignored_nodes.title', 'Ignored Nodes') },
               ]}
             />
@@ -4988,6 +5012,23 @@ function App() {
                   nodes={nodes}
                   baseUrl={baseUrl}
                   onTriggersChange={setGeofenceTriggers}
+                />
+              </div>
+              <div id="auto-delete-by-distance">
+                <AutoDeleteByDistanceSection
+                  enabled={autoDeleteByDistanceEnabled}
+                  intervalHours={autoDeleteByDistanceIntervalHours}
+                  thresholdKm={autoDeleteByDistanceThresholdKm}
+                  homeLat={autoDeleteByDistanceLat}
+                  homeLon={autoDeleteByDistanceLon}
+                  localNodeLat={currentNodeId ? nodes.find((n: any) => n.user?.id === currentNodeId)?.position?.latitude : undefined}
+                  localNodeLon={currentNodeId ? nodes.find((n: any) => n.user?.id === currentNodeId)?.position?.longitude : undefined}
+                  baseUrl={baseUrl}
+                  onEnabledChange={setAutoDeleteByDistanceEnabled}
+                  onIntervalChange={setAutoDeleteByDistanceIntervalHours}
+                  onThresholdChange={setAutoDeleteByDistanceThresholdKm}
+                  onHomeLatChange={setAutoDeleteByDistanceLat}
+                  onHomeLonChange={setAutoDeleteByDistanceLon}
                 />
               </div>
               <div id="ignored-nodes">

@@ -454,6 +454,18 @@ export const POSTGRES_SCHEMA_SQL = `
     "firedAt" BIGINT NOT NULL,
     PRIMARY KEY ("triggerId", "nodeNum")
   );
+
+  CREATE TABLE IF NOT EXISTS auto_distance_delete_log (
+    id SERIAL PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    nodes_deleted INTEGER NOT NULL,
+    threshold_km REAL NOT NULL,
+    details TEXT,
+    created_at BIGINT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_auto_distance_delete_log_timestamp
+    ON auto_distance_delete_log(timestamp DESC);
 `;
 
 export const POSTGRES_TABLE_NAMES = [
@@ -490,4 +502,5 @@ export const POSTGRES_TABLE_NAMES = [
   'ignored_nodes',
   'embed_profiles',
   'geofence_cooldowns',
+  'auto_distance_delete_log',
 ];
