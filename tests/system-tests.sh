@@ -22,6 +22,14 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
 cd "$PROJECT_ROOT"
 
+# Shut down any running dev containers to avoid port conflicts
+echo -e "${BLUE}Stopping dev containers to avoid port conflicts...${NC}"
+for profile in sqlite postgres mysql; do
+    docker compose -f docker-compose.dev.yml --profile "$profile" down 2>/dev/null || true
+done
+echo -e "${GREEN}✓${NC} Dev containers stopped"
+echo ""
+
 # Cleanup function
 cleanup() {
     if [ "$KEEP_ALIVE" = "true" ]; then

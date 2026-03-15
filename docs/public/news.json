@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-03-09T18:00:00Z",
+  "lastUpdated": "2026-03-15T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.9.4",
+      "id": "news-2026-03-15-distance-delete-traceroute",
+      "title": "MeshMonitor v3.9.4 - Auto Delete by Distance & Traceroute Improvements",
+      "content": "MeshMonitor v3.9.4 introduces **Auto Delete by Distance**, a new automation feature that automatically removes nodes beyond a configurable distance threshold from your home coordinate.\n\n## Auto Delete by Distance\n\nKeep your node database focused on your local mesh by automatically purging distant nodes that are unlikely to be relevant.\n\n### Key Features\n\n- **Home coordinate** — Set your location manually or use your connected node's position\n- **Distance threshold** — Configure the maximum distance (in km or miles) to keep nodes\n- **Configurable interval** — Run cleanup every 6, 12, 24, or 48 hours\n- **Protected nodes** — Favorited nodes and your local node are never deleted\n- **Activity log** — Track what was deleted and when\n- **Run Now** — Trigger an immediate cleanup from the Automation tab\n\nFind it in **Automation > Auto Delete by Distance**.\n\n## Auto Traceroute Improvements\n\n- **Retraceroute After** now accepts **0 hours**, meaning nodes are always eligible for retraceroute on every cycle ([#2269](https://github.com/Yeraze/meshmonitor/issues/2269))\n- **Minimum interval** raised to **3 minutes** to prevent excessive mesh traffic\n\n## Bug Fixes\n\n- **Multi-database parity** — Implemented missing PostgreSQL/MySQL methods for full feature parity across all backends ([#2267](https://github.com/Yeraze/meshmonitor/pull/2267))\n- **Auto-key repair** — Fixed state tracking on PostgreSQL/MySQL and improved device DB awareness ([#2264](https://github.com/Yeraze/meshmonitor/pull/2264))\n- **Translation updates** — Updated Spanish translations ([#2271](https://github.com/Yeraze/meshmonitor/pull/2271))",
+      "date": "2026-03-15T18:00:00Z",
+      "category": "feature",
+      "priority": "important"
+    },
     {
       "minVersion": "3.8.5",
       "id": "news-2026-03-09-packet-monitor-permissions",
