@@ -90,6 +90,7 @@ import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, ru
 import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
 import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
 import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
+import { runMigration085Postgres, runMigration085Mysql } from '../server/migrations/085_fix_custom_themes_columns.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -12689,6 +12690,9 @@ class DatabaseService {
       // Run migration 084: Add key mismatch columns
       await runMigration084Postgres(client);
 
+      // Run migration 085: Fix custom_themes column names and add missing columns
+      await runMigration085Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -12852,6 +12856,9 @@ class DatabaseService {
 
       // Run migration 084: Add key mismatch columns
       await runMigration084Mysql(pool);
+
+      // Run migration 085: Fix custom_themes column names and add missing columns
+      await runMigration085Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`

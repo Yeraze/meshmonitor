@@ -447,7 +447,6 @@ export const POSTGRES_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_packet_log_createdat ON packet_log(created_at);
   CREATE INDEX IF NOT EXISTS idx_backup_history_timestamp ON backup_history(timestamp DESC);
   CREATE INDEX IF NOT EXISTS idx_system_backup_history_timestamp ON system_backup_history(timestamp DESC);
-  CREATE INDEX IF NOT EXISTS idx_system_backup_history_type ON system_backup_history("backupType");
 
   CREATE TABLE IF NOT EXISTS geofence_cooldowns (
     "triggerId" TEXT NOT NULL,
