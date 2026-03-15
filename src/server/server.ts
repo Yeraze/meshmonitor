@@ -4831,11 +4831,11 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       return res.status(400).json({ error: (error as Error).message });
     }
 
-    // Validate expirationHours (optional, must be a positive integer between 1 and 168)
+    // Validate expirationHours (optional, must be an integer between 0 and 168; 0 = always retraceroute)
     let validatedExpirationHours: number | undefined;
     if (expirationHours !== undefined) {
-      if (!Number.isInteger(expirationHours) || expirationHours < 1 || expirationHours > 168) {
-        return res.status(400).json({ error: 'Invalid expirationHours value. Must be an integer between 1 and 168.' });
+      if (!Number.isInteger(expirationHours) || expirationHours < 0 || expirationHours > 168) {
+        return res.status(400).json({ error: 'Invalid expirationHours value. Must be an integer between 0 and 168.' });
       }
       validatedExpirationHours = expirationHours;
     }

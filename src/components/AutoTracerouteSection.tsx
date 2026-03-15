@@ -65,7 +65,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(intervalMinutes > 0);
-  const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 15);
+  const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 10);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -116,7 +116,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // Update local state when props change
   useEffect(() => {
     setLocalEnabled(intervalMinutes > 0);
-    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 15);
+    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 10);
   }, [intervalMinutes]);
 
   // Fetch available nodes
@@ -261,7 +261,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // Reset local state to initial settings (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
     setLocalEnabled(intervalMinutes > 0);
-    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 15);
+    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 10);
     if (initialSettings) {
       setFilterEnabled(initialSettings.enabled);
       setSelectedNodeNums(initialSettings.nodeNums || []);
@@ -628,10 +628,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           <input
             id="tracerouteInterval"
             type="number"
-            min="1"
+            min="3"
             max="60"
             value={localInterval}
-            onChange={(e) => setLocalInterval(parseInt(e.target.value))}
+            onChange={(e) => setLocalInterval(Math.max(3, parseInt(e.target.value) || 3))}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -647,10 +647,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           <input
             id="expirationHours"
             type="number"
-            min="1"
+            min="0"
             max="168"
             value={expirationHours}
-            onChange={(e) => setExpirationHours(parseInt(e.target.value) || 24)}
+            onChange={(e) => setExpirationHours(Math.max(0, parseInt(e.target.value) || 0))}
             disabled={!localEnabled}
             className="setting-input"
           />
