@@ -220,10 +220,10 @@ export const POSTGRES_SCHEMA_SQL = `
   );
 
   CREATE TABLE IF NOT EXISTS read_messages (
-    "messageId" TEXT NOT NULL,
+    id SERIAL PRIMARY KEY,
     "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    "readAt" BIGINT NOT NULL,
-    PRIMARY KEY ("messageId", "userId")
+    "messageId" TEXT NOT NULL,
+    "readAt" BIGINT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -304,13 +304,14 @@ export const POSTGRES_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS system_backup_history (
     id SERIAL PRIMARY KEY,
-    dirname TEXT NOT NULL UNIQUE,
+    "backupPath" TEXT NOT NULL,
+    "backupType" TEXT NOT NULL,
+    "schemaVersion" INTEGER,
+    "appVersion" TEXT,
+    "totalSize" INTEGER,
+    "tableCount" INTEGER,
+    "rowCount" INTEGER,
     timestamp BIGINT NOT NULL,
-    type TEXT NOT NULL,
-    size BIGINT NOT NULL,
-    table_count INTEGER NOT NULL,
-    meshmonitor_version TEXT NOT NULL,
-    schema_version INTEGER NOT NULL,
     "createdAt" BIGINT NOT NULL
   );
 
@@ -333,19 +334,23 @@ export const POSTGRES_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS custom_themes (
     id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
     definition TEXT NOT NULL,
-    "createdBy" INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    "createdAt" BIGINT NOT NULL,
-    "updatedAt" BIGINT NOT NULL
+    is_builtin BOOLEAN DEFAULT false,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS user_map_preferences (
-    "userId" INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    "centerLat" DOUBLE PRECISION,
-    "centerLng" DOUBLE PRECISION,
-    zoom INTEGER,
-    "selectedNodeNum" BIGINT,
+    id SERIAL PRIMARY KEY,
+    "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "centerLat" REAL,
+    "centerLng" REAL,
+    zoom REAL,
+    "selectedLayer" TEXT,
+    "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL
   );
 
