@@ -54,7 +54,9 @@ export const generateArrowMarkers = (
     const arrowsToAdd = Math.min(numArrows, MAX_TOTAL_ARROWS - (currentArrowCount + arrowsGenerated));
 
     // Calculate angle for arrow direction (pointing from start to end)
-    const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI + ARROW_ROTATION_OFFSET;
+    // Scale longitude by cos(lat) to correct for latitude distortion
+    const latAvg = (start[0] + end[0]) / 2;
+    const angle = Math.atan2(lngDiff * Math.cos(latAvg * Math.PI / 180), latDiff) * 180 / Math.PI + ARROW_ROTATION_OFFSET;
 
     for (let j = 0; j < arrowsToAdd; j++) {
       // Distribute arrows evenly along the segment
@@ -427,7 +429,9 @@ export const generatePositionHistoryArrows = (
       const latDiff = next.latitude - item.latitude;
       const lngDiff = next.longitude - item.longitude;
       // atan2 returns radians with 0 = East, we need 0 = North
-      angle = (Math.atan2(lngDiff, latDiff) * 180 / Math.PI);
+      // Scale longitude by cos(lat) to correct for latitude distortion
+      const latAvg = (item.latitude + next.latitude) / 2;
+      angle = (Math.atan2(lngDiff * Math.cos(latAvg * Math.PI / 180), latDiff) * 180 / Math.PI);
     } else {
       // Last point with no heading data - skip arrow
       continue;

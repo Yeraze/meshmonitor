@@ -759,7 +759,7 @@ export function useTraceroutePaths({
                  color={themeColors.tracerouteForward ?? themeColors.blue}
                  weight={weight}
                  opacity={0.9}
-                 dashArray="10, 5"
+                 dashArray="8, 4"
                  className={`route-segment node-${forwardSequence[i]} node-${forwardSequence[i + 1]}`}
                >
                  <Popup>
@@ -862,7 +862,7 @@ export function useTraceroutePaths({
                  color={themeColors.tracerouteReturn ?? themeColors.red}
                  weight={weight}
                  opacity={0.9}
-                 dashArray="5, 10"
+                 dashArray="8, 4"
                  className={`route-segment node-${backSequence[i]} node-${backSequence[i + 1]}`}
                >
                  <Popup>
