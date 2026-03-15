@@ -7,11 +7,11 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
-import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows } from '../utils/mapHelpers.tsx';
+import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
-import { getDistanceToNode } from '../utils/distance';
+import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops } from '../utils/nodeHops';
 import { useMapContext } from '../contexts/MapContext';
@@ -1896,6 +1896,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       key={`meshcore-${node.publicKey}`}
                       position={position}
                       icon={meshCoreIcon}
+                      ref={(ref) => handleMarkerRef(ref, `mc-${node.publicKey}`)}
                     >
                       <Tooltip>
                         <strong>{node.name || 'MeshCore Node'}</strong>
@@ -2051,33 +2052,90 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 // Zoom-adaptive: hide neighbor lines at low zoom
                 if (mapZoom < neighborInfoMinZoom) return null;
 
+                const isBidirectional = ni.bidirectional === true;
+
+                // SNR encoded in weight + opacity (color is uniform amber from overlayColors.neighborLine)
+                let lineWeight: number;
+                let lineOpacity: number;
+                if (ni.snr != null) {
+                  if (ni.snr > 10) { lineWeight = 4; lineOpacity = 0.85; }
+                  else if (ni.snr >= 0) { lineWeight = 3; lineOpacity = 0.6; }
+                  else { lineWeight = 2; lineOpacity = 0.4; }
+                } else { lineWeight = 2; lineOpacity = 0.3; }
+
+                // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
+                const distKm = calculateDistance(ni.nodeLatitude!, ni.nodeLongitude!, ni.neighborLatitude!, ni.neighborLongitude!);
+                const distStr = formatDistance(distKm, distanceUnit);
+
+                // Data age (clamped to 0 to handle clock skew)
+                const ageMs = Math.max(0, Date.now() - ni.timestamp);
+                const ageMin = Math.floor(ageMs / 60000);
+                const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
+
+                // SNR text color for popup
+                const snrTextColor = ni.snr != null
+                  ? ni.snr > 10 ? overlayColors.snrColors.good : ni.snr >= 0 ? overlayColors.snrColors.medium : overlayColors.snrColors.poor
+                  : undefined;
+
+                // Calculate bearing for unidirectional arrow (degrees from north)
+                // Scale longitude difference by cos(lat) to correct for latitude
+                const latMid = (ni.nodeLatitude! + ni.neighborLatitude!) / 2;
+                const bearing = !isBidirectional
+                  ? Math.atan2(
+                      (ni.neighborLongitude! - ni.nodeLongitude!) * Math.cos(latMid * Math.PI / 180),
+                      ni.neighborLatitude! - ni.nodeLatitude!
+                    ) * (180 / Math.PI)
+                  : 0;
+
                 return (
-                  <Polyline
-                    key={`neighbor-${idx}`}
-                    positions={positions}
-                    color={overlayColors.neighborLine}
-                    weight={4}
-                    opacity={0.7}
-                    dashArray="5, 5"
-                    className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
-                  >
-                    <Popup>
-                      <div className="route-popup">
-                        <h4>Neighbor Connection</h4>
-                        <div className="route-endpoints">
-                          <strong>{ni.nodeName}</strong> ↔ <strong>{ni.neighborName}</strong>
-                        </div>
-                        {ni.snr !== null && ni.snr !== undefined && (
-                          <div className="route-usage">
-                            SNR: <strong>{ni.snr.toFixed(1)} dB</strong>
+                  <React.Fragment key={`neighbor-${idx}`}>
+                    <Polyline
+                      positions={positions}
+                      color={overlayColors.neighborLine}
+                      weight={lineWeight}
+                      opacity={lineOpacity}
+                      dashArray={isBidirectional ? undefined : '5, 5'}
+                      className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
+                    >
+                      <Popup>
+                        <div className="route-popup">
+                          <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
+                          <div className="route-endpoints">
+                            <strong>{ni.nodeName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.neighborName}</strong>
                           </div>
-                        )}
-                        <div className="route-usage">
-                          Last seen: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong>
+                          {isBidirectional && (
+                            <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
+                              ↔ {t('direct_links.bidirectional', 'Bidirectional')}
+                            </div>
+                          )}
+                          {ni.snr !== null && ni.snr !== undefined && (
+                            <div className="route-usage">
+                              SNR: <strong style={{ color: snrTextColor }}>{ni.snr.toFixed(1)} dB</strong>
+                            </div>
+                          )}
+                          {distStr && (
+                            <div className="route-usage">
+                              {t('direct_links.distance', 'Distance')}: <strong>{distStr}</strong>
+                            </div>
+                          )}
+                          <div className="route-usage">
+                            {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong> ({ageStr})
+                          </div>
                         </div>
-                      </div>
-                    </Popup>
-                  </Polyline>
+                      </Popup>
+                    </Polyline>
+                    {/* Midpoint arrow for unidirectional lines */}
+                    {!isBidirectional && ni.nodeLatitude && ni.neighborLatitude && (
+                      <Marker
+                        position={[
+                          (ni.nodeLatitude + ni.neighborLatitude) / 2,
+                          (ni.nodeLongitude! + ni.neighborLongitude!) / 2
+                        ]}
+                        icon={createArrowIcon(bearing, overlayColors.neighborLine)}
+                        interactive={false}
+                      />
+                    )}
+                  </React.Fragment>
                 );
               })}
 

@@ -1036,13 +1036,20 @@
   "map.legend.links": "Links:",
   "map.legend.route": "Route",
   "map.legend.neighbor": "Neighbor",
+  "map.legend.neighbors": "Neighbors",
+  "map.legend.bidirectional": "Bidirectional",
+  "map.legend.unidirectional": "One-way",
+  "map.legend.thickerBrighter": "Thicker line = stronger signal",
+  "map.legend.otherLines": "Other Lines",
   "map.legend.mqtt": "MQTT",
+  "map.legend.traceroute": "Traceroute",
   "map.legend.tracerouteForward": "Traceroute \u2192",
   "map.legend.tracerouteReturn": "Traceroute \u2190",
   "map.legend.snrQuality": "SNR Quality",
-  "map.legend.snrGood": "Good (> 0 dB)",
-  "map.legend.snrMedium": "Medium",
-  "map.legend.snrPoor": "Poor (< -10 dB)",
+  "map.legend.snrGood": "Good (> 10 dB)",
+  "map.legend.snrMedium": "Medium (0\u201310 dB)",
+  "map.legend.snrPoor": "Poor (< 0 dB)",
+  "map.legend.snrNoData": "No data",
 
   "traceroute_history.title": "Traceroute History",
   "traceroute_history.from": "From",
@@ -4167,5 +4174,10 @@
   "firmware.ota_bootloader_warning": "Wi-Fi OTA requires a one-time OTA bootloader flash via USB. If this is your first OTA update, ensure the bootloader has been installed.",
   "firmware.ota_bootloader_learn_more": "Learn More",
   "firmware.retry_flash": "Retry Flash",
-  "firmware.retry_flash_unavailable": "Cannot retry: firmware files are no longer available. Please start a new update."
+  "firmware.retry_flash_unavailable": "Cannot retry: firmware files are no longer available. Please start a new update.",
+
+  "direct_links.neighbor_connection": "Neighbor Connection",
+  "direct_links.bidirectional": "Bidirectional",
+  "direct_links.distance": "Distance",
+  "direct_links.last_seen": "Last seen"
 }
