@@ -63,7 +63,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   const [isSaving, setIsSaving] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isMiles = distanceUnit === 'miles';
+  const isMiles = distanceUnit === 'mi';
 
   // Convert km to display unit
   const toDisplayUnit = useCallback((km: number) => isMiles ? kmToMiles(km) : km, [isMiles]);
