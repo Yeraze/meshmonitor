@@ -541,7 +541,7 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
 
     if ('tracerouteIntervalMinutes' in filteredSettings) {
       const interval = parseInt(filteredSettings.tracerouteIntervalMinutes);
-      if (!isNaN(interval) && interval >= 0 && interval <= 60) {
+      if (!isNaN(interval) && (interval === 0 || (interval >= 3 && interval <= 60))) {
         callbacks.setTracerouteInterval?.(interval);
       }
     }
