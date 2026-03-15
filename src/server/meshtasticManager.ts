@@ -354,6 +354,7 @@ class MeshtasticManager {
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
   private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
   private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
+  private rebootMergeInProgress = false;  // Guard against broadcasts during node identity merge
 
   // Virtual Node Server - Message capture for initialization sequence
   private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
@@ -1265,6 +1266,11 @@ class MeshtasticManager {
    * Process pending key repairs for nodes with key mismatches
    */
   private async processKeyRepairs(): Promise<void> {
+    if (this.rebootMergeInProgress) {
+      logger.debug('🔐 Key repair: skipping - reboot merge in progress');
+      return;
+    }
+
     try {
       const nodesNeedingRepair = await databaseService.getNodesNeedingKeyRepairAsync();
 
@@ -1280,6 +1286,18 @@ class MeshtasticManager {
             logger.debug(`🔐 Key repair: skipping ${node.nodeNum} — already immediately purged, awaiting device sync`);
             continue;
           }
+        }
+
+        // Never attempt key repair on the local node
+        if (this.localNodeInfo && node.nodeNum === this.localNodeInfo.nodeNum) {
+          logger.debug(`🔐 Key repair: skipping local node ${node.nodeNum}`);
+          continue;
+        }
+
+        // Skip ghost-suppressed nodes (recently merged/deleted after reboot)
+        if (databaseService.isNodeSuppressed(node.nodeNum)) {
+          logger.debug(`🔐 Key repair: skipping ghost-suppressed node ${node.nodeNum}`);
+          continue;
         }
 
         const now = Date.now();
@@ -2905,6 +2923,7 @@ class MeshtasticManager {
           // Same physical device rebooted with a different nodeNum.
           // Accept the new nodeNum, merge old node metadata into it, and delete the old ghost.
           // The firmware is already broadcasting on the new nodeNum, so we must match it.
+          this.rebootMergeInProgress = true;
           logger.info(`📱 Reboot detected for same device (device_id: ${deviceId}), accepting new nodeNum ${nodeId} (${nodeNum}) and merging from old ${previousNodeId} (${prevNum})`);
 
           // Fetch old node data to merge
@@ -2973,6 +2992,7 @@ class MeshtasticManager {
             }
           }, 5000);
 
+          this.rebootMergeInProgress = false;
           return;
         } else {
           // Different device connected (or no device_id available for comparison)
@@ -4186,6 +4206,15 @@ class MeshtasticManager {
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       const timestamp = Date.now();
+
+      // Skip processing for local node echoes - the device echoes our own NodeInfo broadcasts
+      // back via TCP, which would overwrite local node data with stale info or trigger false
+      // key mismatch detection. Local node identity is managed via processMyNodeInfo().
+      if (this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum) {
+        logger.debug(`👤 Skipping NodeInfo processing for local node ${nodeId} (echo of own broadcast)`);
+        return;
+      }
+
       const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
       // Channel is now updated centrally in the packet processing pipeline (processPacket),
       // so we don't set it here to avoid redundant writes and keep a single source of truth.
@@ -6583,6 +6612,11 @@ class MeshtasticManager {
    * Used by auto-announce feature to broadcast on secondary channels
    */
   async broadcastNodeInfoToChannels(channels: number[], delaySeconds: number): Promise<void> {
+    if (this.rebootMergeInProgress) {
+      logger.debug('📢 Skipping NodeInfo broadcast - reboot merge in progress');
+      return;
+    }
+
     if (!this.isConnected || !this.transport) {
       logger.warn('📢 Cannot broadcast NodeInfo - not connected');
       return;
@@ -8620,6 +8654,11 @@ class MeshtasticManager {
   }
 
   async sendAutoAnnouncement(): Promise<void> {
+    if (this.rebootMergeInProgress) {
+      logger.debug('📢 Skipping auto-announcement - reboot merge in progress');
+      return;
+    }
+
     try {
       const message = databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
 
