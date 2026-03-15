@@ -11,7 +11,7 @@ import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHist
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
-import { getDistanceToNode } from '../utils/distance';
+import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops } from '../utils/nodeHops';
 import { useMapContext } from '../contexts/MapContext';
@@ -2051,29 +2051,57 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 // Zoom-adaptive: hide neighbor lines at low zoom
                 if (mapZoom < neighborInfoMinZoom) return null;
 
+                // SNR-based line coloring (uses overlayColors for legend consistency)
+                const snrColor = ni.snr != null
+                  ? ni.snr > 10 ? overlayColors.snrColors.good : ni.snr >= 0 ? overlayColors.snrColors.medium : overlayColors.snrColors.poor
+                  : overlayColors.snrColors.noData;
+                const isBidirectional = ni.bidirectional === true;
+
+                // Calculate distance between nodes
+                let distStr = '';
+                if (ni.nodeLatitude && ni.nodeLongitude && ni.neighborLatitude && ni.neighborLongitude) {
+                  const distKm = calculateDistance(ni.nodeLatitude, ni.nodeLongitude, ni.neighborLatitude, ni.neighborLongitude);
+                  distStr = formatDistance(distKm, distanceUnit);
+                }
+
+                // Data age
+                const ageMs = Date.now() - ni.timestamp;
+                const ageMin = Math.floor(ageMs / 60000);
+                const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
+
                 return (
                   <Polyline
                     key={`neighbor-${idx}`}
                     positions={positions}
-                    color={overlayColors.neighborLine}
-                    weight={4}
+                    color={snrColor}
+                    weight={isBidirectional ? 5 : 3}
                     opacity={0.7}
-                    dashArray="5, 5"
+                    dashArray={isBidirectional ? undefined : '5, 5'}
                     className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
                   >
                     <Popup>
                       <div className="route-popup">
-                        <h4>Neighbor Connection</h4>
+                        <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
                         <div className="route-endpoints">
                           <strong>{ni.nodeName}</strong> ↔ <strong>{ni.neighborName}</strong>
                         </div>
+                        {isBidirectional && (
+                          <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
+                            ↔ {t('direct_links.bidirectional', 'Bidirectional')}
+                          </div>
+                        )}
                         {ni.snr !== null && ni.snr !== undefined && (
                           <div className="route-usage">
                             SNR: <strong>{ni.snr.toFixed(1)} dB</strong>
                           </div>
                         )}
+                        {distStr && (
+                          <div className="route-usage">
+                            {t('direct_links.distance', 'Distance')}: <strong>{distStr}</strong>
+                          </div>
+                        )}
                         <div className="route-usage">
-                          Last seen: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong>
+                          {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong> ({ageStr})
                         </div>
                       </div>
                     </Popup>

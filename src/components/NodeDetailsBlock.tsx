@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
+import { ResourceType } from '../types/permission';
 import { getHardwareModelName, parseNodeId } from '../utils/nodeHelpers';
 import { getDeviceRoleName } from '../utils/deviceRole';
 import { getHardwareImageUrl } from '../utils/hardwareImages';
@@ -9,15 +10,31 @@ import { getEffectiveHops } from '../utils/nodeHops';
 import { TimeFormat, DateFormat, useSettings } from '../contexts/SettingsContext';
 import { useMapContext } from '../contexts/MapContext';
 import { useChannels, useDeviceConfig } from '../hooks/useServerData';
+import DirectLinksSection from './DirectLinksSection';
 import './NodeDetailsBlock.css';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
   timeFormat?: TimeFormat;
   dateFormat?: DateFormat;
+  /** Optional neighbor info props — when provided, DirectLinksSection is shown */
+  connectionStatus?: string;
+  hasPermission?: (resource: ResourceType, action: 'read' | 'write') => boolean;
+  onRequestNeighborInfo?: (nodeId: string) => Promise<void>;
+  neighborInfoLoading?: string | null;
+  onNodeClick?: (nodeId: string) => void;
 }
 
-const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
+const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({
+  node,
+  timeFormat = '24',
+  dateFormat = 'MM/DD/YYYY',
+  connectionStatus,
+  hasPermission,
+  onRequestNeighborInfo,
+  neighborInfoLoading,
+  onNodeClick,
+}) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
@@ -429,6 +446,23 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Direct Radio Links section — shown when neighbor info props are provided */}
+      {connectionStatus && hasPermission && onRequestNeighborInfo && node.user?.id && (
+        <div style={{ marginTop: '0.75rem' }}>
+          <DirectLinksSection
+            nodeNum={node.nodeNum}
+            nodeId={node.user.id}
+            hopsAway={node.hopsAway}
+            isLocalNode={node.user.id === currentNodeId}
+            connectionStatus={connectionStatus}
+            hasPermission={hasPermission}
+            onRequestNeighborInfo={onRequestNeighborInfo}
+            neighborInfoLoading={neighborInfoLoading ?? null}
+            onNodeClick={onNodeClick}
+          />
         </div>
       )}
     </div>

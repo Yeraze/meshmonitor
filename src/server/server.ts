@@ -3048,6 +3048,10 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
 });
 
 // NeighborInfo request endpoint (request neighbor info from remote node)
+// Rate limit: one request per destination every 180 seconds (firmware limit is ~3 minutes)
+const neighborInfoRequestTimestamps = new Map<number, number>();
+const NEIGHBOR_INFO_RATE_LIMIT_MS = 180_000;
+
 apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write'), async (req, res) => {
   try {
     const { destination } = req.body;
@@ -3057,11 +3061,38 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
+    // Eligibility check: only allow requests to local node or 0-hop nodes
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum;
     const node = databaseService.getNode(destinationNum);
+    const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
+    const isDirectNode = node && Number(node.hopsAway) === 0;
+
+    if (!isLocalNode && !isDirectNode) {
+      return res.status(403).json({
+        error: 'Neighbor info requests are only allowed for the local node or directly-heard (0-hop) nodes',
+        eligible: false,
+      });
+    }
+
+    // Rate limiting per destination
+    const lastRequest = neighborInfoRequestTimestamps.get(Number(destinationNum));
+    const now = Date.now();
+    if (lastRequest) {
+      if ((now - lastRequest) < NEIGHBOR_INFO_RATE_LIMIT_MS) {
+        const retryAfter = Math.ceil((NEIGHBOR_INFO_RATE_LIMIT_MS - (now - lastRequest)) / 1000);
+        return res.status(429).json({
+          error: 'Rate limited: firmware limits neighbor info responses to once per 3 minutes',
+          retryAfter,
+        });
+      }
+      // Expired entry — clean up
+      neighborInfoRequestTimestamps.delete(Number(destinationNum));
+    }
+
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     const { packetId, requestId } = await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
+    neighborInfoRequestTimestamps.set(Number(destinationNum), now);
 
     logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
 
@@ -3307,7 +3338,10 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
     const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
     const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
 
-    // Enrich with node names and filter by node age
+    // Build a set of all link keys for bidirectionality detection
+    const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
+
+    // Enrich with node names, bidirectionality, and filter by node age
     const enrichedNeighborInfo = neighborInfo
       .map(ni => {
         const node = databaseService.getNode(ni.nodeNum);
@@ -3325,6 +3359,7 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
           nodeLongitude: nodePos.longitude,
           neighborLatitude: neighborPos.latitude,
           neighborLongitude: neighborPos.longitude,
+          bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
           node,
           neighbor,
         };

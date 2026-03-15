@@ -21,6 +21,7 @@ export interface EnrichedNeighborInfo extends DbNeighborInfo {
   nodeLongitude?: number;
   neighborLatitude?: number;
   neighborLongitude?: number;
+  bidirectional?: boolean;
 }
 
 // MeshCore node for map display
