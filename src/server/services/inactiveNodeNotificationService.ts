@@ -131,6 +131,7 @@ class InactiveNodeNotificationService {
 
         // Check each inactive node and send notification if needed
         for (const node of inactiveNodes) {
+          if (node.lastHeard == null) continue;
           const lastHeardMs = node.lastHeard * 1000;
           const inactiveHours = Math.floor((now - lastHeardMs) / (60 * 60 * 1000));
 
