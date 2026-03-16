@@ -5,7 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq } from 'drizzle-orm';
-import { settingsSqlite, settingsPostgres, settingsMysql } from '../schema/settings.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -21,66 +20,28 @@ export class SettingsRepository extends BaseRepository {
    * Get a single setting value by key
    */
   async getSetting(key: string): Promise<string | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select({ value: settingsSqlite.value })
-        .from(settingsSqlite)
-        .where(eq(settingsSqlite.key, key))
-        .limit(1);
-      return result.length > 0 ? result[0].value : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select({ value: settingsMysql.value })
-        .from(settingsMysql)
-        .where(eq(settingsMysql.key, key))
-        .limit(1);
-      return result.length > 0 ? result[0].value : null;
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select({ value: settingsPostgres.value })
-        .from(settingsPostgres)
-        .where(eq(settingsPostgres.key, key))
-        .limit(1);
-      return result.length > 0 ? result[0].value : null;
-    }
+    const { settings } = this.tables;
+    const result = await this.db
+      .select({ value: settings.value })
+      .from(settings)
+      .where(eq(settings.key, key))
+      .limit(1);
+    return result.length > 0 ? result[0].value : null;
   }
 
   /**
    * Get all settings as a key-value object
    */
   async getAllSettings(): Promise<Record<string, string>> {
-    const settings: Record<string, string> = {};
-
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const rows = await db
-        .select({ key: settingsSqlite.key, value: settingsSqlite.value })
-        .from(settingsSqlite);
-      rows.forEach(row => {
-        settings[row.key] = row.value;
-      });
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const rows = await db
-        .select({ key: settingsMysql.key, value: settingsMysql.value })
-        .from(settingsMysql);
-      rows.forEach(row => {
-        settings[row.key] = row.value;
-      });
-    } else {
-      const db = this.getPostgresDb();
-      const rows = await db
-        .select({ key: settingsPostgres.key, value: settingsPostgres.value })
-        .from(settingsPostgres);
-      rows.forEach(row => {
-        settings[row.key] = row.value;
-      });
-    }
-
-    return settings;
+    const { settings } = this.tables;
+    const allSettings: Record<string, string> = {};
+    const rows = await this.db
+      .select({ key: settings.key, value: settings.value })
+      .from(settings);
+    rows.forEach(row => {
+      allSettings[row.key] = row.value;
+    });
+    return allSettings;
   }
 
   /**
@@ -88,31 +49,23 @@ export class SettingsRepository extends BaseRepository {
    */
   async setSetting(key: string, value: string): Promise<void> {
     const now = this.now();
+    const { settings } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .insert(settingsSqlite)
-        .values({ key, value, createdAt: now, updatedAt: now })
-        .onConflictDoUpdate({
-          target: settingsSqlite.key,
-          set: { value, updatedAt: now },
-        });
-    } else if (this.isMySQL()) {
+    if (this.isMySQL()) {
       const db = this.getMysqlDb();
       await db
-        .insert(settingsMysql)
+        .insert(settings)
         .values({ key, value, createdAt: now, updatedAt: now })
         .onDuplicateKeyUpdate({
           set: { value, updatedAt: now },
         });
     } else {
-      const db = this.getPostgresDb();
-      await db
-        .insert(settingsPostgres)
+      // SQLite and PostgreSQL both use onConflictDoUpdate
+      await (this.db as any)
+        .insert(settings)
         .values({ key, value, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
-          target: settingsPostgres.key,
+          target: settings.key,
           set: { value, updatedAt: now },
         });
     }
@@ -129,35 +82,26 @@ export class SettingsRepository extends BaseRepository {
       return;
     }
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      for (const [key, value] of entries) {
-        await db
-          .insert(settingsSqlite)
-          .values({ key, value, createdAt: now, updatedAt: now })
-          .onConflictDoUpdate({
-            target: settingsSqlite.key,
-            set: { value, updatedAt: now },
-          });
-      }
-    } else if (this.isMySQL()) {
+    const { settings: settingsTable } = this.tables;
+
+    if (this.isMySQL()) {
       const db = this.getMysqlDb();
       for (const [key, value] of entries) {
         await db
-          .insert(settingsMysql)
+          .insert(settingsTable)
           .values({ key, value, createdAt: now, updatedAt: now })
           .onDuplicateKeyUpdate({
             set: { value, updatedAt: now },
           });
       }
     } else {
-      const db = this.getPostgresDb();
+      // SQLite and PostgreSQL both use onConflictDoUpdate
       for (const [key, value] of entries) {
-        await db
-          .insert(settingsPostgres)
+        await (this.db as any)
+          .insert(settingsTable)
           .values({ key, value, createdAt: now, updatedAt: now })
           .onConflictDoUpdate({
-            target: settingsPostgres.key,
+            target: settingsTable.key,
             set: { value, updatedAt: now },
           });
       }
@@ -168,32 +112,16 @@ export class SettingsRepository extends BaseRepository {
    * Delete a single setting by key
    */
   async deleteSetting(key: string): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(settingsSqlite).where(eq(settingsSqlite.key, key));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(settingsMysql).where(eq(settingsMysql.key, key));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(settingsPostgres).where(eq(settingsPostgres.key, key));
-    }
+    const { settings } = this.tables;
+    await this.db.delete(settings).where(eq(settings.key, key));
   }
 
   /**
    * Delete all settings
    */
   async deleteAllSettings(): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(settingsSqlite);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(settingsMysql);
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(settingsPostgres);
-    }
+    const { settings } = this.tables;
+    await this.db.delete(settings);
   }
 
   /**
