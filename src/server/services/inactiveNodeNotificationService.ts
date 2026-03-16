@@ -97,9 +97,9 @@ class InactiveNodeNotificationService {
         const client = await databaseService.getPostgresPool()!.connect();
         try {
           const result = await client.query(
-            `SELECT user_id, monitored_nodes FROM user_notification_preferences
-             WHERE notify_on_inactive_node = true
-               AND (enable_web_push = true OR enable_apprise = true)`
+            `SELECT "userId" AS user_id, "monitoredNodes" AS monitored_nodes FROM user_notification_preferences
+             WHERE "notifyOnInactiveNode" = true
+               AND ("notifyOnMessage" = true OR "appriseEnabled" = true)`
           );
           users = result.rows;
         } finally {
@@ -108,9 +108,9 @@ class InactiveNodeNotificationService {
       } else if (databaseService.drizzleDbType === 'mysql') {
         const pool = databaseService.getMySQLPool()!;
         const [rows] = await pool.query(
-          `SELECT user_id, monitored_nodes FROM user_notification_preferences
-           WHERE notify_on_inactive_node = 1
-             AND (enable_web_push = 1 OR enable_apprise = 1)`
+          `SELECT userId AS user_id, monitoredNodes AS monitored_nodes FROM user_notification_preferences
+           WHERE notifyOnInactiveNode = 1
+             AND (notifyOnMessage = 1 OR appriseEnabled = 1)`
         );
         users = rows as any[];
       } else {
