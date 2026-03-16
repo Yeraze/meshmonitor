@@ -5,7 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count } from 'drizzle-orm';
-import { nodesSqlite, nodesPostgres, nodesMysql } from '../schema/nodes.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';

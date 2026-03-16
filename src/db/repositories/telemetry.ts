@@ -5,7 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
-import { telemetrySqlite, telemetryPostgres, telemetryMysql } from '../schema/telemetry.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 

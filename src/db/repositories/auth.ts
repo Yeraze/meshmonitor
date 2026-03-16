@@ -9,11 +9,10 @@ import { eq, lt, desc, and } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import {
-  usersSqlite, usersPostgres, usersMysql,
-  permissionsSqlite, permissionsPostgres, permissionsMysql,
-  sessionsSqlite, sessionsPostgres, sessionsMysql,
-  auditLogSqlite, auditLogPostgres, auditLogMysql,
-  apiTokensSqlite, apiTokensPostgres, apiTokensMysql,
+  usersPostgres,
+  permissionsPostgres,
+  auditLogPostgres,
+  apiTokensPostgres,
 } from '../schema/auth.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
