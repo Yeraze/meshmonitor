@@ -2598,19 +2598,16 @@ class DatabaseService {
 
   private runAddPacketmonitorPermissionMigration(): void {
     // Run migration 082: Add packetmonitor permission resource
-    try {
-      const migrationKey = 'migration_082_packetmonitor_permission';
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 082 (add packetmonitor permission) already completed');
-        return;
+    const migrationKey082 = 'migration_082_packetmonitor_permission';
+    if (!this.getSetting(migrationKey082)) {
+      try {
+        logger.debug('Running migration 082: Add packetmonitor permission...');
+        addPacketmonitorPermissionMigration.up(this.db);
+        this.setSetting(migrationKey082, 'completed');
+        logger.debug('Add packetmonitor permission migration completed successfully');
+      } catch (error) {
+        logger.error('Error running migration 082:', error);
       }
-      logger.debug('Running migration 082: Add packetmonitor permission...');
-      addPacketmonitorPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Add packetmonitor permission migration completed successfully');
-    } catch (error) {
-      logger.error('Error running migration 082:', error);
     }
 
     // Migration 083: Add missing map preference columns
