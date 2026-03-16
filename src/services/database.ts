@@ -7205,17 +7205,17 @@ class DatabaseService {
       return 24; // Default to 24 hours
     }
     const hours = parseInt(value, 10);
-    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
-    if (isNaN(hours) || hours < 1 || hours > 168) {
+    // Validate range (0-168 hours; 0 = always re-traceroute, up to 1 week)
+    if (isNaN(hours) || hours < 0 || hours > 168) {
       return 24;
     }
     return hours;
   }
 
   setTracerouteExpirationHours(hours: number): void {
-    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
-    if (hours < 1 || hours > 168) {
-      throw new Error('Traceroute expiration hours must be between 1 and 168 (1 week)');
+    // Validate range (0-168 hours; 0 = always re-traceroute, up to 1 week)
+    if (hours < 0 || hours > 168) {
+      throw new Error('Traceroute expiration hours must be between 0 and 168 (1 week)');
     }
     this.setSetting('tracerouteExpirationHours', hours.toString());
     logger.debug(`✅ Set traceroute expiration hours to: ${hours}`);
