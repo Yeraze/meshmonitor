@@ -92,6 +92,7 @@ import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } 
 import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
 import { runMigration085Postgres, runMigration085Mysql } from '../server/migrations/085_fix_custom_themes_columns.js';
 import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } from '../server/migrations/086_add_auto_distance_delete_log.js';
+import { runMigration087Postgres, runMigration087Mysql } from '../server/migrations/087_fix_message_nodenum_bigint.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -12809,6 +12810,9 @@ class DatabaseService {
       // Run migration 086: Add auto_distance_delete_log table
       await runMigration086Postgres(client);
 
+      // Run migration 087: Fix messages relayNode/ackFromNode to BIGINT
+      await runMigration087Postgres(client);
+
       // Verify all expected tables exist
       const result = await client.query(`
         SELECT table_name FROM information_schema.tables
@@ -12978,6 +12982,9 @@ class DatabaseService {
 
       // Run migration 086: Add auto_distance_delete_log table
       await runMigration086Mysql(pool);
+
+      // Run migration 087: Fix messages relayNode/ackFromNode to BIGINT
+      await runMigration087Mysql(pool);
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
