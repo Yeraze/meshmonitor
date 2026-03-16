@@ -32,7 +32,7 @@ export abstract class BaseRepository {
    * For raw SQL or dialect-specific features, use the typed accessors instead:
    *   this.getSqliteDb(), this.getPostgresDb(), this.getMysqlDb()
    */
-  protected readonly db: DrizzleDatabase;
+  protected readonly db: any; // eslint-disable-line @typescript-eslint/no-explicit-any -- Union type can't resolve method overloads; runtime behavior is identical across dialects
 
   /**
    * Runtime table map resolving the active dialect's Drizzle table objects.
