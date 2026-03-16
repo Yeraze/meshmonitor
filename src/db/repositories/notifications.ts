@@ -73,7 +73,7 @@ export class NotificationsRepository extends BaseRepository {
         .select()
         .from(pushSubscriptions)
         .orderBy(desc(pushSubscriptions.createdAt));
-      return rows.map(row => this.mapSubscriptionRow(row));
+      return rows.map((row: any) => this.mapSubscriptionRow(row));
     } catch (error) {
       logger.error('Failed to get all subscriptions:', error);
       return [];
@@ -96,7 +96,7 @@ export class NotificationsRepository extends BaseRepository {
             .select()
             .from(pushSubscriptions)
             .orderBy(desc(pushSubscriptions.createdAt));
-      return rows.map(row => this.mapSubscriptionRow(row));
+      return rows.map((row: any) => this.mapSubscriptionRow(row));
     } catch (error) {
       logger.error('Failed to get user subscriptions:', error);
       return [];
@@ -293,7 +293,7 @@ export class NotificationsRepository extends BaseRepository {
         .from(userNotificationPreferences)
         .where(eq(column, true));
 
-      return rows.map(row => row.userId);
+      return rows.map((row: any) => row.userId);
     } catch (error) {
       logger.debug('No user_notification_preferences table yet, returning empty array');
       return [];

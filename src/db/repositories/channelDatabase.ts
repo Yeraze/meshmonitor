@@ -89,7 +89,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       .from(channelDatabase)
       .orderBy(asc(channelDatabase.sortOrder), asc(channelDatabase.id));
 
-    return results.map(r => this.mapToDbChannelDatabase(r));
+    return results.map((r: any) => this.mapToDbChannelDatabase(r));
   }
 
   /**
@@ -103,7 +103,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       .where(eq(channelDatabase.isEnabled, true))
       .orderBy(asc(channelDatabase.sortOrder), asc(channelDatabase.id));
 
-    return results.map(r => this.mapToDbChannelDatabase(r));
+    return results.map((r: any) => this.mapToDbChannelDatabase(r));
   }
 
   /**
@@ -240,7 +240,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       .from(channelDatabasePermissions)
       .where(eq(channelDatabasePermissions.userId, userId));
 
-    return results.map(r => this.mapToDbChannelDatabasePermission(r));
+    return results.map((r: any) => this.mapToDbChannelDatabasePermission(r));
   }
 
   /**
@@ -253,7 +253,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       .from(channelDatabasePermissions)
       .where(eq(channelDatabasePermissions.channelDatabaseId, channelDatabaseId));
 
-    return results.map(r => this.mapToDbChannelDatabasePermission(r));
+    return results.map((r: any) => this.mapToDbChannelDatabasePermission(r));
   }
 
   /**

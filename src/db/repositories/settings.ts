@@ -38,7 +38,7 @@ export class SettingsRepository extends BaseRepository {
     const rows = await this.db
       .select({ key: settings.key, value: settings.value })
       .from(settings);
-    rows.forEach(row => {
+    rows.forEach((row: any) => {
       allSettings[row.key] = row.value;
     });
     return allSettings;

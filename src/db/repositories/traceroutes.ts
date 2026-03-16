@@ -87,7 +87,7 @@ export class TraceroutesRepository extends BaseRepository {
       ))
       .orderBy(desc(traceroutes.timestamp))
       .limit(keepCount);
-    const keepIds = toKeep.map(r => r.id);
+    const keepIds = toKeep.map((r: any) => r.id);
     if (keepIds.length > 0) {
       // Delete all except the ones to keep in a single statement
       await this.db.delete(traceroutes).where(and(

@@ -261,7 +261,7 @@ export class TelemetryRepository extends BaseRepository {
       .from(telemetry)
       .where(eq(telemetry.nodeId, nodeId));
 
-    return result.map(r => r.type);
+    return result.map((r: any) => r.type);
   }
 
   /**

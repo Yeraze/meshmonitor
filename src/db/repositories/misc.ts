@@ -168,7 +168,7 @@ export class MiscRepository extends BaseRepository {
       .select({ nodeNum: autoTracerouteNodes.nodeNum })
       .from(autoTracerouteNodes)
       .orderBy(asc(autoTracerouteNodes.createdAt));
-    return results.map(r => Number(r.nodeNum));
+    return results.map((r: any) => Number(r.nodeNum));
   }
 
   /**
@@ -554,7 +554,7 @@ export class MiscRepository extends BaseRepository {
       .select({ nodeNum: autoTimeSyncNodes.nodeNum })
       .from(autoTimeSyncNodes)
       .orderBy(asc(autoTimeSyncNodes.createdAt));
-    return results.map(r => Number(r.nodeNum));
+    return results.map((r: any) => Number(r.nodeNum));
   }
 
   /**

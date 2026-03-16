@@ -842,7 +842,7 @@ export class NodesRepository extends BaseRepository {
           lt(nodes.lastHeard, cutoffSeconds)
         ))
         .orderBy(asc(nodes.lastHeard));
-      return rows.map(r => ({ ...r, nodeNum: Number(r.nodeNum) }));
+      return rows.map((r: any) => ({ ...r, nodeNum: Number(r.nodeNum) }));
     } catch (error) {
       logger.error('Failed to query inactive monitored nodes:', error);
       return [];
