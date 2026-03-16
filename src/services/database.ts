@@ -621,13 +621,7 @@ class DatabaseService {
     }
 
     // Now attempt to open the database with better error handling
-    try {
-      this.db = this.openSqliteDatabase(dbPath, dbDir);
-    } catch (error: unknown) {
-      const err = error as Error & { code?: string };
-      logger.error('═══════════════════════════════════════════════════════════');
-      throw new Error(`Database initialization failed: ${err.message}`);
-    }
+    this.db = this.openSqliteDatabase(dbPath, dbDir);
 
     // Initialize models
     this.userModel = new UserModel(this.db);
@@ -5204,11 +5198,12 @@ class DatabaseService {
 
       // Stale SHM file from a previous version — remove it and retry
       const shmPath = `${dbPath}-shm`;
-      if (err.code?.startsWith('SQLITE_IOERR') && fs.existsSync(shmPath)) {
+      const isShmError = err.code === 'SQLITE_IOERR_SHMSIZE' || err.code === 'SQLITE_IOERR_SHMMAP';
+      if (isShmError) {
         logger.warn('⚠️  SQLite SHM file appears stale (common after upgrades)');
         logger.warn(`   Removing ${shmPath} and retrying — data is safe in the WAL`);
+        fs.rmSync(shmPath, { force: true });
         try {
-          fs.unlinkSync(shmPath);
           return attemptOpen();
         } catch (retryError: unknown) {
           const retryErr = retryError as Error & { code?: string };
