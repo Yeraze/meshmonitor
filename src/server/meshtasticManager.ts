@@ -4882,7 +4882,8 @@ class MeshtasticManager {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
-          const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
+          const rawSnr = snrTowards[index];
+          const snr = rawSnr === undefined ? 'N/A' : (rawSnr === -128 || rawSnr === 0) ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
           const dist = calcDistance(fullPath[index], nodeNum);
           if (dist) {
             routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
@@ -4956,7 +4957,8 @@ class MeshtasticManager {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
-          const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
+          const rawSnr = snrBack[index];
+          const snr = rawSnr === undefined ? 'N/A' : (rawSnr === -128 || rawSnr === 0) ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
           const dist = calcDistanceReturn(fullReturnPath[index], nodeNum);
           if (dist) {
             routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
