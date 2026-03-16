@@ -1546,4 +1546,60 @@ export class NodesRepository extends BaseRepository {
         .where(eq(nodesPostgres.nodeNum, nodeNum));
     }
   }
+
+  /**
+   * Get inactive monitored nodes — nodes in the given nodeId list whose lastHeard is before the cutoff
+   */
+  async getInactiveMonitoredNodes(
+    nodeIds: string[],
+    cutoffSeconds: number
+  ): Promise<Array<{ nodeNum: number; nodeId: string; longName: string | null; shortName: string | null; lastHeard: number | null }>> {
+    if (nodeIds.length === 0) return [];
+
+    try {
+      if (this.isSQLite()) {
+        const db = this.getSqliteDb();
+        const t = nodesSqlite;
+        const rows = await db
+          .select({ nodeNum: t.nodeNum, nodeId: t.nodeId, longName: t.longName, shortName: t.shortName, lastHeard: t.lastHeard })
+          .from(t)
+          .where(and(
+            inArray(t.nodeId, nodeIds),
+            isNotNull(t.lastHeard),
+            lt(t.lastHeard, cutoffSeconds)
+          ))
+          .orderBy(asc(t.lastHeard));
+        return rows.map(r => ({ ...r, nodeNum: Number(r.nodeNum) }));
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        const t = nodesMysql;
+        const rows = await db
+          .select({ nodeNum: t.nodeNum, nodeId: t.nodeId, longName: t.longName, shortName: t.shortName, lastHeard: t.lastHeard })
+          .from(t)
+          .where(and(
+            inArray(t.nodeId, nodeIds),
+            isNotNull(t.lastHeard),
+            lt(t.lastHeard, cutoffSeconds)
+          ))
+          .orderBy(asc(t.lastHeard));
+        return rows.map(r => ({ ...r, nodeNum: Number(r.nodeNum) }));
+      } else {
+        const db = this.getPostgresDb();
+        const t = nodesPostgres;
+        const rows = await db
+          .select({ nodeNum: t.nodeNum, nodeId: t.nodeId, longName: t.longName, shortName: t.shortName, lastHeard: t.lastHeard })
+          .from(t)
+          .where(and(
+            inArray(t.nodeId, nodeIds),
+            isNotNull(t.lastHeard),
+            lt(t.lastHeard, cutoffSeconds)
+          ))
+          .orderBy(asc(t.lastHeard));
+        return rows.map(r => ({ ...r, nodeNum: Number(r.nodeNum) }));
+      }
+    } catch (error) {
+      logger.error('Failed to query inactive monitored nodes:', error);
+      return [];
+    }
+  }
 }

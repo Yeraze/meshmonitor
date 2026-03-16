@@ -8857,6 +8857,31 @@ class DatabaseService {
   }
 
   /**
+   * Get users who have inactive node notifications enabled and at least one notification channel active.
+   * Database-agnostic via Drizzle ORM.
+   */
+  async getUsersWithInactiveNodeNotificationsAsync(): Promise<Array<{ userId: number; monitoredNodes: string | null }>> {
+    if (this.notificationsRepo) {
+      return this.notificationsRepo.getUsersWithInactiveNodeNotifications();
+    }
+    return [];
+  }
+
+  /**
+   * Get inactive monitored nodes — nodes in the given nodeId list whose lastHeard is before the cutoff.
+   * Database-agnostic via Drizzle ORM.
+   */
+  async getInactiveMonitoredNodesAsync(
+    nodeIds: string[],
+    cutoffSeconds: number
+  ): Promise<Array<{ nodeNum: number; nodeId: string; longName: string | null; shortName: string | null; lastHeard: number | null }>> {
+    if (this.nodesRepo) {
+      return this.nodesRepo.getInactiveMonitoredNodes(nodeIds, cutoffSeconds);
+    }
+    return [];
+  }
+
+  /**
    * Delete a node and all associated data (async version for PostgreSQL)
    */
   async deleteNodeAsync(nodeNum: number): Promise<{
