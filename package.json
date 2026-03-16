@@ -35,7 +35,7 @@
     "@types/pbf": "^3.0.5",
     "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.8.0",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
     "cron-validator": "^1.4.0",
