@@ -622,38 +622,9 @@ class DatabaseService {
 
     // Now attempt to open the database with better error handling
     try {
-      this.db = new BetterSqlite3Database(dbPath);
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('foreign_keys = ON');
-      this.db.pragma('busy_timeout = 5000'); // 5 second timeout for locked database
+      this.db = this.openSqliteDatabase(dbPath, dbDir);
     } catch (error: unknown) {
       const err = error as Error & { code?: string };
-      logger.error('❌ DATABASE OPEN ERROR ❌');
-      logger.error('═══════════════════════════════════════════════════════════');
-      logger.error(`Failed to open SQLite database at: ${dbPath}`);
-      logger.error('');
-
-      if (err.code === 'SQLITE_CANTOPEN') {
-        logger.error('SQLITE_CANTOPEN - Unable to open database file.');
-        logger.error('');
-        logger.error('Common causes:');
-        logger.error('  1. Directory permissions - the database directory is not writable');
-        logger.error('  2. Missing volume mount - check your docker-compose.yml');
-        logger.error('  3. Disk space - ensure the filesystem is not full');
-        logger.error('  4. File locked by another process');
-        logger.error('');
-        logger.error('Troubleshooting steps:');
-        logger.error('  1. Check directory permissions:');
-        logger.error(`     ls -la ${dbDir}`);
-        logger.error('  2. Check disk space:');
-        logger.error('     df -h');
-        logger.error('  3. Verify Docker volume mount (if using Docker):');
-        logger.error('     docker compose config | grep volumes -A 5');
-      } else {
-        logger.error(`Error: ${err.message}`);
-        logger.error(`Error code: ${err.code || 'unknown'}`);
-      }
-
       logger.error('═══════════════════════════════════════════════════════════');
       throw new Error(`Database initialization failed: ${err.message}`);
     }
@@ -5209,6 +5180,77 @@ class DatabaseService {
     return obj;
   }
 
+  /**
+   * Attempt to open a SQLite database, with automatic recovery from stale WAL/SHM files.
+   *
+   * After a version upgrade (e.g. new Node.js or better-sqlite3), the shared memory
+   * file (.db-shm) left by the previous version may be incompatible, causing
+   * SQLITE_IOERR_SHMSIZE. This method detects that error, removes the stale .db-shm
+   * file, and retries the open — SQLite reconstructs what it needs from the WAL.
+   */
+  private openSqliteDatabase(dbPath: string, dbDir: string): BetterSqlite3Database.Database {
+    const attemptOpen = (): BetterSqlite3Database.Database => {
+      const db = new BetterSqlite3Database(dbPath);
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+      db.pragma('busy_timeout = 5000');
+      return db;
+    };
+
+    try {
+      return attemptOpen();
+    } catch (error: unknown) {
+      const err = error as Error & { code?: string };
+
+      // Stale SHM file from a previous version — remove it and retry
+      const shmPath = `${dbPath}-shm`;
+      if (err.code?.startsWith('SQLITE_IOERR') && fs.existsSync(shmPath)) {
+        logger.warn('⚠️  SQLite SHM file appears stale (common after upgrades)');
+        logger.warn(`   Removing ${shmPath} and retrying — data is safe in the WAL`);
+        try {
+          fs.unlinkSync(shmPath);
+          return attemptOpen();
+        } catch (retryError: unknown) {
+          const retryErr = retryError as Error & { code?: string };
+          logger.error('❌ DATABASE OPEN ERROR ❌');
+          logger.error('═══════════════════════════════════════════════════════════');
+          logger.error(`Failed to open SQLite database at: ${dbPath}`);
+          logger.error(`Retry after SHM removal also failed: ${retryErr.message}`);
+          throw retryError;
+        }
+      }
+
+      // Other errors — log diagnostics
+      logger.error('❌ DATABASE OPEN ERROR ❌');
+      logger.error('═══════════════════════════════════════════════════════════');
+      logger.error(`Failed to open SQLite database at: ${dbPath}`);
+      logger.error('');
+
+      if (err.code === 'SQLITE_CANTOPEN') {
+        logger.error('SQLITE_CANTOPEN - Unable to open database file.');
+        logger.error('');
+        logger.error('Common causes:');
+        logger.error('  1. Directory permissions - the database directory is not writable');
+        logger.error('  2. Missing volume mount - check your docker-compose.yml');
+        logger.error('  3. Disk space - ensure the filesystem is not full');
+        logger.error('  4. File locked by another process');
+        logger.error('');
+        logger.error('Troubleshooting steps:');
+        logger.error('  1. Check directory permissions:');
+        logger.error(`     ls -la ${dbDir}`);
+        logger.error('  2. Check disk space:');
+        logger.error('     df -h');
+        logger.error('  3. Verify Docker volume mount (if using Docker):');
+        logger.error('     docker compose config | grep volumes -A 5');
+      } else {
+        logger.error(`Error: ${err.message}`);
+        logger.error(`Error code: ${err.code || 'unknown'}`);
+      }
+
+      throw error;
+    }
+  }
+
   close(): void {
     // For PostgreSQL/MySQL, we don't have a direct close method
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -5217,6 +5259,12 @@ class DatabaseService {
     }
 
     if (this.db) {
+      // Checkpoint WAL to prevent stale SHM files after container restarts/upgrades
+      try {
+        this.db.pragma('wal_checkpoint(TRUNCATE)');
+      } catch (error) {
+        logger.warn('WAL checkpoint failed during shutdown:', error);
+      }
       this.db.close();
     }
   }
