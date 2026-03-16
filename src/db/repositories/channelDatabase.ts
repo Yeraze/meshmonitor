@@ -5,14 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, and, asc } from 'drizzle-orm';
-import {
-  channelDatabaseSqlite,
-  channelDatabasePostgres,
-  channelDatabaseMysql,
-  channelDatabasePermissionsSqlite,
-  channelDatabasePermissionsPostgres,
-  channelDatabasePermissionsMysql,
-} from '../schema/channelDatabase.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbChannelDatabase, DbChannelDatabasePermission } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -76,162 +68,76 @@ export class ChannelDatabaseRepository extends BaseRepository {
    * Get a channel database entry by ID
    */
   async getByIdAsync(id: number): Promise<DbChannelDatabase | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(channelDatabaseSqlite)
-        .where(eq(channelDatabaseSqlite.id, id))
-        .limit(1);
+    const { channelDatabase } = this.tables;
+    const result = await this.db
+      .select()
+      .from(channelDatabase)
+      .where(eq(channelDatabase.id, id))
+      .limit(1);
 
-      if (result.length === 0) return null;
-      return this.mapSqliteToDbChannelDatabase(result[0]);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(channelDatabaseMysql)
-        .where(eq(channelDatabaseMysql.id, id))
-        .limit(1);
-
-      if (result.length === 0) return null;
-      return this.mapMysqlToDbChannelDatabase(result[0]);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(channelDatabasePostgres)
-        .where(eq(channelDatabasePostgres.id, id))
-        .limit(1);
-
-      if (result.length === 0) return null;
-      return this.mapPostgresToDbChannelDatabase(result[0]);
-    }
+    if (result.length === 0) return null;
+    return this.mapToDbChannelDatabase(result[0]);
   }
 
   /**
    * Get all channel database entries (ordered by sortOrder, then id)
    */
   async getAllAsync(): Promise<DbChannelDatabase[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(channelDatabaseSqlite)
-        .orderBy(asc(channelDatabaseSqlite.sortOrder), asc(channelDatabaseSqlite.id));
+    const { channelDatabase } = this.tables;
+    const results = await this.db
+      .select()
+      .from(channelDatabase)
+      .orderBy(asc(channelDatabase.sortOrder), asc(channelDatabase.id));
 
-      return results.map(r => this.mapSqliteToDbChannelDatabase(r));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(channelDatabaseMysql)
-        .orderBy(asc(channelDatabaseMysql.sortOrder), asc(channelDatabaseMysql.id));
-
-      return results.map(r => this.mapMysqlToDbChannelDatabase(r));
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePostgres)
-        .orderBy(asc(channelDatabasePostgres.sortOrder), asc(channelDatabasePostgres.id));
-
-      return results.map(r => this.mapPostgresToDbChannelDatabase(r));
-    }
+    return results.map(r => this.mapToDbChannelDatabase(r));
   }
 
   /**
    * Get all enabled channel database entries (for decryption, ordered by sortOrder)
    */
   async getEnabledAsync(): Promise<DbChannelDatabase[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(channelDatabaseSqlite)
-        .where(eq(channelDatabaseSqlite.isEnabled, true))
-        .orderBy(asc(channelDatabaseSqlite.sortOrder), asc(channelDatabaseSqlite.id));
+    const { channelDatabase } = this.tables;
+    const results = await this.db
+      .select()
+      .from(channelDatabase)
+      .where(eq(channelDatabase.isEnabled, true))
+      .orderBy(asc(channelDatabase.sortOrder), asc(channelDatabase.id));
 
-      return results.map(r => this.mapSqliteToDbChannelDatabase(r));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(channelDatabaseMysql)
-        .where(eq(channelDatabaseMysql.isEnabled, true))
-        .orderBy(asc(channelDatabaseMysql.sortOrder), asc(channelDatabaseMysql.id));
-
-      return results.map(r => this.mapMysqlToDbChannelDatabase(r));
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePostgres)
-        .where(eq(channelDatabasePostgres.isEnabled, true))
-        .orderBy(asc(channelDatabasePostgres.sortOrder), asc(channelDatabasePostgres.id));
-
-      return results.map(r => this.mapPostgresToDbChannelDatabase(r));
-    }
+    return results.map(r => this.mapToDbChannelDatabase(r));
   }
 
   /**
-   * Create a new channel database entry
+   * Create a new channel database entry.
+   * Keeps branching: MySQL returns insertId differently, SQLite/Postgres use .returning().
    */
   async createAsync(data: ChannelDatabaseInput): Promise<number> {
     const now = this.now();
+    const { channelDatabase } = this.tables;
+    const values = {
+      name: data.name,
+      psk: data.psk,
+      pskLength: data.pskLength,
+      description: data.description ?? null,
+      isEnabled: data.isEnabled ?? true,
+      enforceNameValidation: data.enforceNameValidation ?? false,
+      decryptedPacketCount: 0,
+      lastDecryptedAt: null,
+      createdBy: data.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db.insert(channelDatabaseSqlite).values({
-        name: data.name,
-        psk: data.psk,
-        pskLength: data.pskLength,
-        description: data.description ?? null,
-        isEnabled: data.isEnabled ?? true,
-        enforceNameValidation: data.enforceNameValidation ?? false,
-        decryptedPacketCount: 0,
-        lastDecryptedAt: null,
-        createdBy: data.createdBy ?? null,
-        createdAt: now,
-        updatedAt: now,
-      }).returning({ id: channelDatabaseSqlite.id });
-
-      const insertId = Number(result[0].id);
-      logger.debug(`Created channel database entry: ${data.name} (ID: ${insertId})`);
-      return insertId;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db.insert(channelDatabaseMysql).values({
-        name: data.name,
-        psk: data.psk,
-        pskLength: data.pskLength,
-        description: data.description ?? null,
-        isEnabled: data.isEnabled ?? true,
-        enforceNameValidation: data.enforceNameValidation ?? false,
-        decryptedPacketCount: 0,
-        lastDecryptedAt: null,
-        createdBy: data.createdBy ?? null,
-        createdAt: now,
-        updatedAt: now,
-      });
-
+    if (this.isMySQL()) {
       // MySQL returns insertId from mysql2
+      const db = this.getMysqlDb();
+      const result = await db.insert(channelDatabase).values(values);
       return Number(result[0].insertId);
     } else {
-      const db = this.getPostgresDb();
-      const result = await db.insert(channelDatabasePostgres).values({
-        name: data.name,
-        psk: data.psk,
-        pskLength: data.pskLength,
-        description: data.description ?? null,
-        isEnabled: data.isEnabled ?? true,
-        enforceNameValidation: data.enforceNameValidation ?? false,
-        decryptedPacketCount: 0,
-        lastDecryptedAt: null,
-        createdBy: data.createdBy ?? null,
-        createdAt: now,
-        updatedAt: now,
-      }).returning({ id: channelDatabasePostgres.id });
+      // SQLite and PostgreSQL support .returning()
+      const result = await (this.db as any)
+        .insert(channelDatabase)
+        .values(values)
+        .returning({ id: channelDatabase.id });
 
       const insertId = Number(result[0].id);
       logger.debug(`Created channel database entry: ${data.name} (ID: ${insertId})`);
@@ -244,35 +150,15 @@ export class ChannelDatabaseRepository extends BaseRepository {
    */
   async updateAsync(id: number, data: ChannelDatabaseUpdate): Promise<void> {
     const now = this.now();
+    const { channelDatabase } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .update(channelDatabaseSqlite)
-        .set({
-          ...data,
-          updatedAt: now,
-        })
-        .where(eq(channelDatabaseSqlite.id, id));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .update(channelDatabaseMysql)
-        .set({
-          ...data,
-          updatedAt: now,
-        })
-        .where(eq(channelDatabaseMysql.id, id));
-    } else {
-      const db = this.getPostgresDb();
-      await db
-        .update(channelDatabasePostgres)
-        .set({
-          ...data,
-          updatedAt: now,
-        })
-        .where(eq(channelDatabasePostgres.id, id));
-    }
+    await this.db
+      .update(channelDatabase)
+      .set({
+        ...data,
+        updatedAt: now,
+      })
+      .where(eq(channelDatabase.id, id));
 
     logger.debug(`Updated channel database entry ID: ${id}`);
   }
@@ -281,17 +167,8 @@ export class ChannelDatabaseRepository extends BaseRepository {
    * Delete a channel database entry
    */
   async deleteAsync(id: number): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(channelDatabaseSqlite).where(eq(channelDatabaseSqlite.id, id));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(channelDatabaseMysql).where(eq(channelDatabaseMysql.id, id));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(channelDatabasePostgres).where(eq(channelDatabasePostgres.id, id));
-    }
-
+    const { channelDatabase } = this.tables;
+    await this.db.delete(channelDatabase).where(eq(channelDatabase.id, id));
     logger.debug(`Deleted channel database entry ID: ${id}`);
   }
 
@@ -300,43 +177,16 @@ export class ChannelDatabaseRepository extends BaseRepository {
    */
   async incrementDecryptedCountAsync(id: number): Promise<void> {
     const now = this.now();
-
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const current = await this.getByIdAsync(id);
-      if (current) {
-        await db
-          .update(channelDatabaseSqlite)
-          .set({
-            decryptedPacketCount: current.decryptedPacketCount + 1,
-            lastDecryptedAt: now,
-          })
-          .where(eq(channelDatabaseSqlite.id, id));
-      }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const current = await this.getByIdAsync(id);
-      if (current) {
-        await db
-          .update(channelDatabaseMysql)
-          .set({
-            decryptedPacketCount: current.decryptedPacketCount + 1,
-            lastDecryptedAt: now,
-          })
-          .where(eq(channelDatabaseMysql.id, id));
-      }
-    } else {
-      const db = this.getPostgresDb();
-      const current = await this.getByIdAsync(id);
-      if (current) {
-        await db
-          .update(channelDatabasePostgres)
-          .set({
-            decryptedPacketCount: current.decryptedPacketCount + 1,
-            lastDecryptedAt: now,
-          })
-          .where(eq(channelDatabasePostgres.id, id));
-      }
+    const { channelDatabase } = this.tables;
+    const current = await this.getByIdAsync(id);
+    if (current) {
+      await this.db
+        .update(channelDatabase)
+        .set({
+          decryptedPacketCount: current.decryptedPacketCount + 1,
+          lastDecryptedAt: now,
+        })
+        .where(eq(channelDatabase.id, id));
     }
   }
 
@@ -346,31 +196,13 @@ export class ChannelDatabaseRepository extends BaseRepository {
    */
   async reorderAsync(updates: ChannelReorderEntry[]): Promise<void> {
     const now = this.now();
+    const { channelDatabase } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      for (const { id, sortOrder } of updates) {
-        await db
-          .update(channelDatabaseSqlite)
-          .set({ sortOrder, updatedAt: now })
-          .where(eq(channelDatabaseSqlite.id, id));
-      }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      for (const { id, sortOrder } of updates) {
-        await db
-          .update(channelDatabaseMysql)
-          .set({ sortOrder, updatedAt: now })
-          .where(eq(channelDatabaseMysql.id, id));
-      }
-    } else {
-      const db = this.getPostgresDb();
-      for (const { id, sortOrder } of updates) {
-        await db
-          .update(channelDatabasePostgres)
-          .set({ sortOrder, updatedAt: now })
-          .where(eq(channelDatabasePostgres.id, id));
-      }
+    for (const { id, sortOrder } of updates) {
+      await this.db
+        .update(channelDatabase)
+        .set({ sortOrder, updatedAt: now })
+        .where(eq(channelDatabase.id, id));
     }
 
     logger.debug(`Reordered ${updates.length} channel database entries`);
@@ -382,114 +214,46 @@ export class ChannelDatabaseRepository extends BaseRepository {
    * Get permission for a specific user and channel
    */
   async getPermissionAsync(userId: number, channelDatabaseId: number): Promise<DbChannelDatabasePermission | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(channelDatabasePermissionsSqlite)
-        .where(
-          and(
-            eq(channelDatabasePermissionsSqlite.userId, userId),
-            eq(channelDatabasePermissionsSqlite.channelDatabaseId, channelDatabaseId)
-          )
+    const { channelDatabasePermissions } = this.tables;
+    const result = await this.db
+      .select()
+      .from(channelDatabasePermissions)
+      .where(
+        and(
+          eq(channelDatabasePermissions.userId, userId),
+          eq(channelDatabasePermissions.channelDatabaseId, channelDatabaseId)
         )
-        .limit(1);
+      )
+      .limit(1);
 
-      if (result.length === 0) return null;
-      return this.mapSqliteToDbChannelDatabasePermission(result[0]);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(channelDatabasePermissionsMysql)
-        .where(
-          and(
-            eq(channelDatabasePermissionsMysql.userId, userId),
-            eq(channelDatabasePermissionsMysql.channelDatabaseId, channelDatabaseId)
-          )
-        )
-        .limit(1);
-
-      if (result.length === 0) return null;
-      return this.mapMysqlToDbChannelDatabasePermission(result[0]);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(channelDatabasePermissionsPostgres)
-        .where(
-          and(
-            eq(channelDatabasePermissionsPostgres.userId, userId),
-            eq(channelDatabasePermissionsPostgres.channelDatabaseId, channelDatabaseId)
-          )
-        )
-        .limit(1);
-
-      if (result.length === 0) return null;
-      return this.mapPostgresToDbChannelDatabasePermission(result[0]);
-    }
+    if (result.length === 0) return null;
+    return this.mapToDbChannelDatabasePermission(result[0]);
   }
 
   /**
    * Get all permissions for a user
    */
   async getPermissionsForUserAsync(userId: number): Promise<DbChannelDatabasePermission[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePermissionsSqlite)
-        .where(eq(channelDatabasePermissionsSqlite.userId, userId));
+    const { channelDatabasePermissions } = this.tables;
+    const results = await this.db
+      .select()
+      .from(channelDatabasePermissions)
+      .where(eq(channelDatabasePermissions.userId, userId));
 
-      return results.map(r => this.mapSqliteToDbChannelDatabasePermission(r));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePermissionsMysql)
-        .where(eq(channelDatabasePermissionsMysql.userId, userId));
-
-      return results.map(r => this.mapMysqlToDbChannelDatabasePermission(r));
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePermissionsPostgres)
-        .where(eq(channelDatabasePermissionsPostgres.userId, userId));
-
-      return results.map(r => this.mapPostgresToDbChannelDatabasePermission(r));
-    }
+    return results.map(r => this.mapToDbChannelDatabasePermission(r));
   }
 
   /**
    * Get all permissions for a channel
    */
   async getPermissionsForChannelAsync(channelDatabaseId: number): Promise<DbChannelDatabasePermission[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePermissionsSqlite)
-        .where(eq(channelDatabasePermissionsSqlite.channelDatabaseId, channelDatabaseId));
+    const { channelDatabasePermissions } = this.tables;
+    const results = await this.db
+      .select()
+      .from(channelDatabasePermissions)
+      .where(eq(channelDatabasePermissions.channelDatabaseId, channelDatabaseId));
 
-      return results.map(r => this.mapSqliteToDbChannelDatabasePermission(r));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePermissionsMysql)
-        .where(eq(channelDatabasePermissionsMysql.channelDatabaseId, channelDatabaseId));
-
-      return results.map(r => this.mapMysqlToDbChannelDatabasePermission(r));
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(channelDatabasePermissionsPostgres)
-        .where(eq(channelDatabasePermissionsPostgres.channelDatabaseId, channelDatabaseId));
-
-      return results.map(r => this.mapPostgresToDbChannelDatabasePermission(r));
-    }
+    return results.map(r => this.mapToDbChannelDatabasePermission(r));
   }
 
   /**
@@ -497,77 +261,30 @@ export class ChannelDatabaseRepository extends BaseRepository {
    */
   async setPermissionAsync(data: ChannelDatabasePermissionInput): Promise<void> {
     const now = this.now();
+    const { channelDatabasePermissions } = this.tables;
     const existing = await this.getPermissionAsync(data.userId, data.channelDatabaseId);
 
     if (existing) {
       // Update existing permission
-      if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        await db
-          .update(channelDatabasePermissionsSqlite)
-          .set({
-            canViewOnMap: data.canViewOnMap,
-            canRead: data.canRead,
-            grantedBy: data.grantedBy ?? existing.grantedBy,
-            grantedAt: now,
-          })
-          .where(eq(channelDatabasePermissionsSqlite.id, existing.id!));
-      } else if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        await db
-          .update(channelDatabasePermissionsMysql)
-          .set({
-            canViewOnMap: data.canViewOnMap,
-            canRead: data.canRead,
-            grantedBy: data.grantedBy ?? existing.grantedBy,
-            grantedAt: now,
-          })
-          .where(eq(channelDatabasePermissionsMysql.id, existing.id!));
-      } else {
-        const db = this.getPostgresDb();
-        await db
-          .update(channelDatabasePermissionsPostgres)
-          .set({
-            canViewOnMap: data.canViewOnMap,
-            canRead: data.canRead,
-            grantedBy: data.grantedBy ?? existing.grantedBy,
-            grantedAt: now,
-          })
-          .where(eq(channelDatabasePermissionsPostgres.id, existing.id!));
-      }
+      await this.db
+        .update(channelDatabasePermissions)
+        .set({
+          canViewOnMap: data.canViewOnMap,
+          canRead: data.canRead,
+          grantedBy: data.grantedBy ?? existing.grantedBy,
+          grantedAt: now,
+        })
+        .where(eq(channelDatabasePermissions.id, existing.id!));
     } else {
       // Create new permission
-      if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        await db.insert(channelDatabasePermissionsSqlite).values({
-          userId: data.userId,
-          channelDatabaseId: data.channelDatabaseId,
-          canViewOnMap: data.canViewOnMap,
-          canRead: data.canRead,
-          grantedBy: data.grantedBy ?? null,
-          grantedAt: now,
-        });
-      } else if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        await db.insert(channelDatabasePermissionsMysql).values({
-          userId: data.userId,
-          channelDatabaseId: data.channelDatabaseId,
-          canViewOnMap: data.canViewOnMap,
-          canRead: data.canRead,
-          grantedBy: data.grantedBy ?? null,
-          grantedAt: now,
-        });
-      } else {
-        const db = this.getPostgresDb();
-        await db.insert(channelDatabasePermissionsPostgres).values({
-          userId: data.userId,
-          channelDatabaseId: data.channelDatabaseId,
-          canViewOnMap: data.canViewOnMap,
-          canRead: data.canRead,
-          grantedBy: data.grantedBy ?? null,
-          grantedAt: now,
-        });
-      }
+      await this.db.insert(channelDatabasePermissions).values({
+        userId: data.userId,
+        channelDatabaseId: data.channelDatabaseId,
+        canViewOnMap: data.canViewOnMap,
+        canRead: data.canRead,
+        grantedBy: data.grantedBy ?? null,
+        grantedAt: now,
+      });
     }
 
     logger.debug(`Set permission for user ${data.userId} on channel_db ${data.channelDatabaseId}: canViewOnMap=${data.canViewOnMap}, canRead=${data.canRead}`);
@@ -577,81 +294,27 @@ export class ChannelDatabaseRepository extends BaseRepository {
    * Delete permission for a user on a channel
    */
   async deletePermissionAsync(userId: number, channelDatabaseId: number): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .delete(channelDatabasePermissionsSqlite)
-        .where(
-          and(
-            eq(channelDatabasePermissionsSqlite.userId, userId),
-            eq(channelDatabasePermissionsSqlite.channelDatabaseId, channelDatabaseId)
-          )
-        );
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .delete(channelDatabasePermissionsMysql)
-        .where(
-          and(
-            eq(channelDatabasePermissionsMysql.userId, userId),
-            eq(channelDatabasePermissionsMysql.channelDatabaseId, channelDatabaseId)
-          )
-        );
-    } else {
-      const db = this.getPostgresDb();
-      await db
-        .delete(channelDatabasePermissionsPostgres)
-        .where(
-          and(
-            eq(channelDatabasePermissionsPostgres.userId, userId),
-            eq(channelDatabasePermissionsPostgres.channelDatabaseId, channelDatabaseId)
-          )
-        );
-    }
+    const { channelDatabasePermissions } = this.tables;
+    await this.db
+      .delete(channelDatabasePermissions)
+      .where(
+        and(
+          eq(channelDatabasePermissions.userId, userId),
+          eq(channelDatabasePermissions.channelDatabaseId, channelDatabaseId)
+        )
+      );
 
     logger.debug(`Deleted permission for user ${userId} on channel_db ${channelDatabaseId}`);
   }
 
   // ============ MAPPING HELPERS ============
 
-  private mapSqliteToDbChannelDatabase(row: any): DbChannelDatabase {
+  /**
+   * Unified mapper for all dialects. Uses normalizeBigInts for BigInt->Number
+   * and Boolean() for boolean coercion (handles SQLite 0/1 and MySQL tinyint).
+   */
+  private mapToDbChannelDatabase(row: any): DbChannelDatabase {
     return this.normalizeBigInts({
-      id: row.id,
-      name: row.name,
-      psk: row.psk,
-      pskLength: row.pskLength,
-      description: row.description,
-      isEnabled: Boolean(row.isEnabled),
-      enforceNameValidation: Boolean(row.enforceNameValidation),
-      sortOrder: row.sortOrder ?? 0,
-      decryptedPacketCount: row.decryptedPacketCount,
-      lastDecryptedAt: row.lastDecryptedAt,
-      createdBy: row.createdBy,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    });
-  }
-
-  private mapPostgresToDbChannelDatabase(row: any): DbChannelDatabase {
-    return {
-      id: row.id,
-      name: row.name,
-      psk: row.psk,
-      pskLength: row.pskLength,
-      description: row.description,
-      isEnabled: row.isEnabled,
-      enforceNameValidation: row.enforceNameValidation,
-      sortOrder: row.sortOrder ?? 0,
-      decryptedPacketCount: row.decryptedPacketCount,
-      lastDecryptedAt: row.lastDecryptedAt ? Number(row.lastDecryptedAt) : null,
-      createdBy: row.createdBy,
-      createdAt: Number(row.createdAt),
-      updatedAt: Number(row.updatedAt),
-    };
-  }
-
-  private mapMysqlToDbChannelDatabase(row: any): DbChannelDatabase {
-    return {
       id: row.id,
       name: row.name,
       psk: row.psk,
@@ -665,10 +328,10 @@ export class ChannelDatabaseRepository extends BaseRepository {
       createdBy: row.createdBy,
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
-    };
+    });
   }
 
-  private mapSqliteToDbChannelDatabasePermission(row: any): DbChannelDatabasePermission {
+  private mapToDbChannelDatabasePermission(row: any): DbChannelDatabasePermission {
     return this.normalizeBigInts({
       id: row.id,
       userId: row.userId,
@@ -676,31 +339,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       canViewOnMap: Boolean(row.canViewOnMap),
       canRead: Boolean(row.canRead),
       grantedBy: row.grantedBy,
-      grantedAt: row.grantedAt,
+      grantedAt: Number(row.grantedAt),
     });
-  }
-
-  private mapPostgresToDbChannelDatabasePermission(row: any): DbChannelDatabasePermission {
-    return {
-      id: row.id,
-      userId: row.userId,
-      channelDatabaseId: row.channelDatabaseId,
-      canViewOnMap: row.canViewOnMap,
-      canRead: row.canRead,
-      grantedBy: row.grantedBy,
-      grantedAt: Number(row.grantedAt),
-    };
-  }
-
-  private mapMysqlToDbChannelDatabasePermission(row: any): DbChannelDatabasePermission {
-    return {
-      id: row.id,
-      userId: row.userId,
-      channelDatabaseId: row.channelDatabaseId,
-      canViewOnMap: Boolean(row.canViewOnMap),
-      canRead: Boolean(row.canRead),
-      grantedBy: row.grantedBy,
-      grantedAt: Number(row.grantedAt),
-    };
   }
 }
