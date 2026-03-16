@@ -556,6 +556,51 @@ export class NotificationsRepository extends BaseRepository {
     return this.getUsersWithServiceEnabled('apprise');
   }
 
+  /**
+   * Get users who have inactive node notifications enabled and at least one notification channel active
+   */
+  async getUsersWithInactiveNodeNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null }>> {
+    try {
+      if (this.isSQLite()) {
+        const db = this.getSqliteDb();
+        const t = userNotificationPreferencesSqlite;
+        const rows = await db
+          .select({ userId: t.userId, monitoredNodes: t.monitoredNodes })
+          .from(t)
+          .where(and(
+            eq(t.notifyOnInactiveNode, true),
+            or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
+          ));
+        return rows;
+      } else if (this.isMySQL()) {
+        const db = this.getMysqlDb();
+        const t = userNotificationPreferencesMysql;
+        const rows = await db
+          .select({ userId: t.userId, monitoredNodes: t.monitoredNodes })
+          .from(t)
+          .where(and(
+            eq(t.notifyOnInactiveNode, true),
+            or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
+          ));
+        return rows;
+      } else {
+        const db = this.getPostgresDb();
+        const t = userNotificationPreferencesPostgres;
+        const rows = await db
+          .select({ userId: t.userId, monitoredNodes: t.monitoredNodes })
+          .from(t)
+          .where(and(
+            eq(t.notifyOnInactiveNode, true),
+            or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
+          ));
+        return rows;
+      }
+    } catch (error) {
+      logger.debug('Failed to query users with inactive node notifications:', error);
+      return [];
+    }
+  }
+
   // ============ READ MESSAGE TRACKING ============
 
   /**
