@@ -241,6 +241,34 @@ export interface DbPacketLog {
   created_at?: number | null;
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
+  transport_mechanism?: number | null;
+}
+
+/**
+ * Packet count grouped by node
+ */
+export interface DbPacketCountByNode {
+  from_node: number;
+  from_node_id: string | null;
+  from_node_longName: string | null;
+  count: number;
+}
+
+/**
+ * Distinct relay node with matching node info
+ */
+export interface DbDistinctRelayNode {
+  relay_node: number;
+  matching_nodes: Array<{ longName: string | null; shortName: string | null }>;
+}
+
+/**
+ * Packet count grouped by portnum
+ */
+export interface DbPacketCountByPortnum {
+  portnum: number;
+  portnum_name: string;
+  count: number;
 }
 
 /**

@@ -31,7 +31,7 @@ function getAllowedChannels(permissions: PermissionSet): Set<number> {
  * - TEXT_MESSAGE_APP DMs (to_node != broadcast) require messages:read permission
  * - Decrypted packets require read permission on the packet's channel
  */
-function filterPacketsByPermissions<T extends { encrypted: boolean; channel?: number; portnum?: number; to_node?: number }>(
+function filterPacketsByPermissions<T extends { encrypted: boolean; channel?: number | null; portnum?: number | null; to_node?: number | null }>(
   packets: T[],
   allowedChannels: Set<number>,
   isAdmin: boolean,

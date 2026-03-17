@@ -4016,17 +4016,17 @@ class MeshtasticManager {
         const localNodeInfo = this.getLocalNodeInfo();
         if (localNodeInfo) {
           const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
-          const pendingMessages = databaseService.getDirectMessages(localNodeId, nodeId, 100);
+          const pendingMessages = await databaseService.messages.getDirectMessages(localNodeId, nodeId, 100) as DbMessage[];
           const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
             msg.text === 'Position exchange requested' &&
             msg.fromNodeNum === localNodeInfo.nodeNum &&
             msg.toNodeNum === fromNum &&
-            msg.requestId !== undefined // Must have a requestId
+            msg.requestId != null // Must have a requestId
           );
 
-          if (pendingExchangeRequest && pendingExchangeRequest.requestId !== undefined) {
+          if (pendingExchangeRequest && pendingExchangeRequest.requestId != null) {
             // Mark the position exchange request as delivered
-            databaseService.updateMessageDeliveryState(pendingExchangeRequest.requestId, 'delivered');
+            databaseService.updateMessageDeliveryState(pendingExchangeRequest.requestId!, 'delivered');
             logger.info(`📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`);
           }
         }
