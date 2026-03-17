@@ -510,7 +510,7 @@ router.get('/:id/channel-database-permissions', async (req: Request, res: Respon
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const permissions = await databaseService.getChannelDatabasePermissionsForUserAsync(userId);
+    const permissions = await databaseService.channelDatabase.getPermissionsForUserAsync(userId);
 
     return res.json({
       success: true,
@@ -584,7 +584,7 @@ router.put('/:id/channel-database-permissions', async (req: Request, res: Respon
       }
 
       // Verify channel database entry exists
-      const channel = await databaseService.getChannelDatabaseByIdAsync(perm.channelDatabaseId);
+      const channel = await databaseService.channelDatabase.getByIdAsync(perm.channelDatabaseId);
       if (!channel) {
         return res.status(404).json({
           error: `Channel database entry ${perm.channelDatabaseId} not found`
@@ -596,9 +596,9 @@ router.put('/:id/channel-database-permissions', async (req: Request, res: Respon
     for (const perm of permissions) {
       if (!perm.canViewOnMap && !perm.canRead) {
         // If both permissions are false, delete the permission record
-        await databaseService.deleteChannelDatabasePermissionAsync(userId, perm.channelDatabaseId);
+        await databaseService.channelDatabase.deletePermissionAsync(userId, perm.channelDatabaseId);
       } else {
-        await databaseService.setChannelDatabasePermissionAsync({
+        await databaseService.channelDatabase.setPermissionAsync({
           userId,
           channelDatabaseId: perm.channelDatabaseId,
           canViewOnMap: perm.canViewOnMap,

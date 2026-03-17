@@ -11482,159 +11482,17 @@ class DatabaseService {
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============
-  // These methods provide server-side decryption channel management
-
-  /**
-   * Get a channel database entry by ID
-   */
-  async getChannelDatabaseByIdAsync(id: number): Promise<import('../db/types.js').DbChannelDatabase | null> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getByIdAsync(id);
-  }
-
-  /**
-   * Get all channel database entries
-   */
-  async getAllChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getAllAsync();
-  }
-
-  /**
-   * Get all enabled channel database entries (for decryption)
-   */
-  async getEnabledChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getEnabledAsync();
-  }
-
-  /**
-   * Create a new channel database entry
-   */
-  async createChannelDatabaseEntryAsync(data: {
-    name: string;
-    psk: string;
-    pskLength: number;
-    description?: string | null;
-    isEnabled?: boolean;
-    enforceNameValidation?: boolean;
-    createdBy?: number | null;
-  }): Promise<number> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.createAsync(data);
-  }
-
-  /**
-   * Update a channel database entry
-   */
-  async updateChannelDatabaseEntryAsync(id: number, data: {
-    name?: string;
-    psk?: string;
-    pskLength?: number;
-    description?: string | null;
-    isEnabled?: boolean;
-    enforceNameValidation?: boolean;
-    sortOrder?: number;
-  }): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.updateAsync(id, data);
-  }
-
-  /**
-   * Delete a channel database entry
-   */
-  async deleteChannelDatabaseEntryAsync(id: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.deleteAsync(id);
-  }
-
-  /**
-   * Reorder channel database entries
-   * Updates the sortOrder for each entry in the provided array
-   */
-  async reorderChannelDatabaseEntriesAsync(updates: { id: number; sortOrder: number }[]): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.reorderAsync(updates);
-  }
-
-  /**
-   * Increment decrypted packet count for a channel
-   */
-  async incrementChannelDatabaseDecryptedCountAsync(id: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.incrementDecryptedCountAsync(id);
-  }
-
-  /**
-   * Get permission for a specific user and channel database
-   */
-  async getChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission | null> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionAsync(userId, channelDatabaseId);
-  }
-
-  /**
-   * Get all channel database permissions for a user
-   */
-  async getChannelDatabasePermissionsForUserAsync(userId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionsForUserAsync(userId);
-  }
-
-  /**
-   * Get all permissions for a channel database entry
-   */
-  async getChannelDatabasePermissionsForChannelAsync(channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionsForChannelAsync(channelDatabaseId);
-  }
-
-  /**
-   * Set permission for a user on a channel database entry
-   */
-  async setChannelDatabasePermissionAsync(data: {
-    userId: number;
-    channelDatabaseId: number;
-    canViewOnMap: boolean;
-    canRead: boolean;
-    grantedBy?: number | null;
-  }): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.setPermissionAsync(data);
-  }
+  // ============ CHANNEL DATABASE (business logic only) ============
 
   /**
    * Get channel database permissions for a user as a map keyed by channel database ID
    * Returns { [channelDbId]: { viewOnMap: boolean, read: boolean } }
+   * KEPT: Has business logic (transforms permissions list into a lookup map)
    */
   async getChannelDatabasePermissionsForUserAsSetAsync(userId: number): Promise<{
     [channelDbId: number]: { viewOnMap: boolean; read: boolean }
   }> {
-    const permissions = await this.getChannelDatabasePermissionsForUserAsync(userId);
+    const permissions = await this.channelDatabase.getPermissionsForUserAsync(userId);
     const result: { [channelDbId: number]: { viewOnMap: boolean; read: boolean } } = {};
     for (const perm of permissions) {
       result[perm.channelDatabaseId] = {
@@ -11643,16 +11501,6 @@ class DatabaseService {
       };
     }
     return result;
-  }
-
-  /**
-   * Delete permission for a user on a channel database entry
-   */
-  async deleteChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.deletePermissionAsync(userId, channelDatabaseId);
   }
 
   // ============ NEWS CACHE ============

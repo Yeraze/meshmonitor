@@ -18,8 +18,10 @@ vi.mock('../protobufLoader.js', () => ({
 // Mock database service
 vi.mock('../../services/database.js', () => ({
   default: {
-    getEnabledChannelDatabaseEntriesAsync: vi.fn(),
-    incrementChannelDatabaseDecryptedCountAsync: vi.fn()
+    channelDatabase: {
+      getEnabledAsync: vi.fn(),
+      incrementDecryptedCountAsync: vi.fn()
+    }
   }
 }));
 
@@ -77,7 +79,7 @@ describe('ChannelDecryptionService', () => {
 
   describe('Cache Management', () => {
     it('should load channels into cache', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -89,7 +91,7 @@ describe('ChannelDecryptionService', () => {
     it('should skip channels with invalid PSK length', async () => {
       // Use a 20-byte key which is neither a valid shorthand (1), AES-128 (16), nor AES-256 (32)
       const invalidPsk = Buffer.alloc(20, 0xab).toString('base64');
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Invalid Channel', psk: invalidPsk, pskLength: 20 }
       ]);
 
@@ -100,7 +102,7 @@ describe('ChannelDecryptionService', () => {
 
     it('should expand shorthand PSK (AQ==) to full 16-byte key', async () => {
       // AQ== is base64 for a single byte 0x01 (Meshtastic default key shorthand)
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Default Key Channel', psk: 'AQ==', pskLength: 1 }
       ]);
 
@@ -110,7 +112,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should skip channels without ID', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { name: 'No ID Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -120,7 +122,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should invalidate cache', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -132,7 +134,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should get enabled channel IDs', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Channel 1', psk: testPskBase64, pskLength: 32 },
         { id: 2, name: 'Channel 2', psk: testPsk128Base64, pskLength: 16 }
       ]);
@@ -144,7 +146,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should get channel info by ID', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -156,7 +158,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should return null for non-existent channel', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([]);
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([]);
 
       const info = await channelDecryptionService.getChannelInfo(999);
 
@@ -206,7 +208,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should return error when no channels configured', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([]);
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([]);
 
       const result = await channelDecryptionService.tryDecrypt(
         new Uint8Array([1, 2, 3]),
@@ -219,10 +221,10 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should successfully decrypt with correct AES-256 key', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       // Create a valid protobuf-like test payload
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
@@ -243,10 +245,10 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should successfully decrypt with correct AES-128 key', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 2, name: 'AES-128 Channel', psk: testPsk128Base64, pskLength: 16 }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
       const encrypted = encryptTestData(testPayload, testPsk128, packetId, fromNode);
@@ -265,7 +267,7 @@ describe('ChannelDecryptionService', () => {
 
     it('should fail decryption with wrong key', async () => {
       const wrongKey = Buffer.from('wrongkey12345678wrongkey12345678', 'utf8');
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Wrong Key Channel', psk: wrongKey.toString('base64'), pskLength: 32 }
       ]);
 
@@ -290,11 +292,11 @@ describe('ChannelDecryptionService', () => {
     it('should try multiple channels until one succeeds', async () => {
       const wrongKey = Buffer.from('wrongkey12345678wrongkey12345678', 'utf8');
 
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Wrong Key', psk: wrongKey.toString('base64'), pskLength: 32 },
         { id: 2, name: 'Correct Key', psk: testPskBase64, pskLength: 32 }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
       const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
@@ -328,7 +330,7 @@ describe('ChannelDecryptionService', () => {
         pskLength: 32
       }));
 
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue(channels);
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue(channels);
       channelDecryptionService.setMaxDecryptionAttempts(10);
 
       // All decryptions will fail (wrong keys)
@@ -365,7 +367,7 @@ describe('ChannelDecryptionService', () => {
     }
 
     it('should decrypt with specific channel ID', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 5, name: 'Specific Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -386,7 +388,7 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should fail for non-existent channel ID', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Channel 1', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -404,7 +406,7 @@ describe('ChannelDecryptionService', () => {
 
   describe('Protobuf Validation', () => {
     it('should reject portnum outside valid range', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -422,7 +424,7 @@ describe('ChannelDecryptionService', () => {
 
     it('should handle protobuf root not loaded', async () => {
       (protobufLoader.getProtobufRoot as Mock).mockReturnValue(null);
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
@@ -454,7 +456,7 @@ describe('ChannelDecryptionService', () => {
 
     it('should skip channel when hash does not match and enforceNameValidation is true', async () => {
       // Channel with enforceNameValidation enabled
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
       ]);
 
@@ -475,10 +477,10 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should try channel when hash matches and enforceNameValidation is true', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
       const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
@@ -510,10 +512,10 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should ignore hash validation when enforceNameValidation is false', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: false }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
       const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
@@ -533,10 +535,10 @@ describe('ChannelDecryptionService', () => {
     });
 
     it('should ignore hash validation when channelHash is undefined (backward compatibility)', async () => {
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
       const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
@@ -558,11 +560,11 @@ describe('ChannelDecryptionService', () => {
     it('should select correct channel from multiple when using hash validation', async () => {
       const wrongPsk = Buffer.from('wrongkey12345678wrongkey12345678', 'utf8');
 
-      (databaseService.getEnabledChannelDatabaseEntriesAsync as Mock).mockResolvedValue([
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
         { id: 1, name: 'Wrong Channel', psk: wrongPsk.toString('base64'), pskLength: 32, enforceNameValidation: true },
         { id: 2, name: 'Correct Channel', psk: testPskBase64, pskLength: 32, enforceNameValidation: true }
       ]);
-      (databaseService.incrementChannelDatabaseDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
 
       const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
       const encrypted = encryptTestData(testPayload, testPsk, packetId, fromNode);
