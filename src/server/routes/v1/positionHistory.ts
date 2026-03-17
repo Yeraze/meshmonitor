@@ -141,8 +141,8 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
         pos.groundTrack = t.value;
       }
 
-      if (t.packetId !== undefined && pos.packetId === undefined) {
-        pos.packetId = t.packetId;
+      if (t.packetId != null && pos.packetId === undefined) {
+        pos.packetId = t.packetId ?? undefined;
       }
     });
 
