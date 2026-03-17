@@ -6403,78 +6403,7 @@ class DatabaseService {
     }));
   }
 
-  /**
-   * Get auto-delete-by-distance log entries
-   */
-  async getDistanceDeleteLogAsync(limit: number = 10): Promise<any[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.getPostgresPool()!.connect();
-      try {
-        const result = await client.query(
-          'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT $1',
-          [limit]
-        );
-        return result.rows.map((e: any) => ({
-          ...e,
-          details: e.details ? JSON.parse(e.details) : [],
-        }));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const [rows] = await this.getMySQLPool()!.query(
-        'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ?',
-        [limit]
-      );
-      return (rows as any[]).map((e: any) => ({
-        ...e,
-        details: e.details ? JSON.parse(e.details) : [],
-      }));
-    } else {
-      const entries = this.db.prepare(
-        'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ?'
-      ).all(limit);
-      return (entries as any[]).map((e: any) => ({
-        ...e,
-        details: e.details ? JSON.parse(e.details) : [],
-      }));
-    }
-  }
-
-  /**
-   * Add an entry to the auto-delete-by-distance log
-   */
-  async addDistanceDeleteLogEntryAsync(entry: {
-    timestamp: number;
-    nodesDeleted: number;
-    thresholdKm: number;
-    details: string;
-  }): Promise<void> {
-    const now = Date.now();
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.getPostgresPool()!.connect();
-      try {
-        await client.query(
-          `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now]
-        );
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      await this.getMySQLPool()!.query(
-        `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now]
-      );
-    } else {
-      this.db.prepare(
-        `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-         VALUES (?, ?, ?, ?, ?)`
-      ).run(entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now);
-    }
-  }
+  // Distance delete log methods moved to MiscRepository (databaseService.misc.getDistanceDeleteLog / addDistanceDeleteLogEntry)
 
   async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
     if (this.drizzleDbType === 'postgres') {

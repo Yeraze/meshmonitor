@@ -799,4 +799,38 @@ export class MiscRepository extends BaseRepository {
       throw error;
     }
   }
+
+  // ============ DISTANCE DELETE LOG ============
+
+  /**
+   * Get auto-delete-by-distance log entries
+   */
+  async getDistanceDeleteLog(limit: number = 10): Promise<any[]> {
+    const results = await this.db.execute(
+      sql`SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ${limit}`
+    );
+
+    // MySQL returns [rows, fields], others return rows directly
+    const rows = this.isMySQL() ? (results as any)[0] : (results as any).rows ?? results;
+    return (rows as any[]).map((e: any) => ({
+      ...e,
+      details: e.details ? JSON.parse(e.details) : [],
+    }));
+  }
+
+  /**
+   * Add an entry to the auto-delete-by-distance log
+   */
+  async addDistanceDeleteLogEntry(entry: {
+    timestamp: number;
+    nodesDeleted: number;
+    thresholdKm: number;
+    details: string;
+  }): Promise<void> {
+    const now = Date.now();
+    await this.db.execute(
+      sql`INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
+          VALUES (${entry.timestamp}, ${entry.nodesDeleted}, ${entry.thresholdKm}, ${entry.details}, ${now})`
+    );
+  }
 }
