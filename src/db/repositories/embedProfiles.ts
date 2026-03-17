@@ -5,11 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq } from 'drizzle-orm';
-import {
-  embedProfilesSqlite,
-  embedProfilesPostgres,
-  embedProfilesMysql,
-} from '../schema/embedProfiles.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -80,50 +75,22 @@ export class EmbedProfileRepository extends BaseRepository {
    * Get all embed profiles
    */
   async getAllAsync(): Promise<EmbedProfile[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const rows = await db.select().from(embedProfilesSqlite);
-      return rows.map(deserializeRow);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const rows = await db.select().from(embedProfilesMysql);
-      return rows.map(deserializeRow);
-    } else {
-      const db = this.getPostgresDb();
-      const rows = await db.select().from(embedProfilesPostgres);
-      return rows.map(deserializeRow);
-    }
+    const { embedProfiles } = this.tables;
+    const rows = await this.db.select().from(embedProfiles);
+    return rows.map(deserializeRow);
   }
 
   /**
    * Get a single embed profile by ID
    */
   async getByIdAsync(id: string): Promise<EmbedProfile | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const rows = await db
-        .select()
-        .from(embedProfilesSqlite)
-        .where(eq(embedProfilesSqlite.id, id))
-        .limit(1);
-      return rows.length > 0 ? deserializeRow(rows[0]) : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const rows = await db
-        .select()
-        .from(embedProfilesMysql)
-        .where(eq(embedProfilesMysql.id, id))
-        .limit(1);
-      return rows.length > 0 ? deserializeRow(rows[0]) : null;
-    } else {
-      const db = this.getPostgresDb();
-      const rows = await db
-        .select()
-        .from(embedProfilesPostgres)
-        .where(eq(embedProfilesPostgres.id, id))
-        .limit(1);
-      return rows.length > 0 ? deserializeRow(rows[0]) : null;
-    }
+    const { embedProfiles } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(embedProfiles)
+      .where(eq(embedProfiles.id, id))
+      .limit(1);
+    return rows.length > 0 ? deserializeRow(rows[0]) : null;
   }
 
   /**
@@ -131,6 +98,7 @@ export class EmbedProfileRepository extends BaseRepository {
    */
   async createAsync(input: EmbedProfileInput): Promise<EmbedProfile> {
     const now = this.now();
+    const { embedProfiles } = this.tables;
     const values = {
       id: input.id,
       name: input.name,
@@ -152,16 +120,7 @@ export class EmbedProfileRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.insert(embedProfilesSqlite).values(values);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.insert(embedProfilesMysql).values(values);
-    } else {
-      const db = this.getPostgresDb();
-      await db.insert(embedProfilesPostgres).values(values);
-    }
+    await this.db.insert(embedProfiles).values(values);
 
     return deserializeRow({ ...values, channels: values.channels, allowedOrigins: values.allowedOrigins });
   }
@@ -171,6 +130,7 @@ export class EmbedProfileRepository extends BaseRepository {
    */
   async updateAsync(id: string, input: Partial<EmbedProfileInput>): Promise<EmbedProfile | null> {
     const now = this.now();
+    const { embedProfiles } = this.tables;
     const updateValues: Record<string, any> = { updatedAt: now };
 
     if (input.name !== undefined) updateValues.name = input.name;
@@ -189,16 +149,7 @@ export class EmbedProfileRepository extends BaseRepository {
     if (input.pollIntervalSeconds !== undefined) updateValues.pollIntervalSeconds = input.pollIntervalSeconds;
     if (input.allowedOrigins !== undefined) updateValues.allowedOrigins = JSON.stringify(input.allowedOrigins);
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.update(embedProfilesSqlite).set(updateValues).where(eq(embedProfilesSqlite.id, id));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.update(embedProfilesMysql).set(updateValues).where(eq(embedProfilesMysql.id, id));
-    } else {
-      const db = this.getPostgresDb();
-      await db.update(embedProfilesPostgres).set(updateValues).where(eq(embedProfilesPostgres.id, id));
-    }
+    await this.db.update(embedProfiles).set(updateValues).where(eq(embedProfiles.id, id));
 
     return this.getByIdAsync(id);
   }
@@ -211,16 +162,8 @@ export class EmbedProfileRepository extends BaseRepository {
     const existing = await this.getByIdAsync(id);
     if (!existing) return false;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(embedProfilesSqlite).where(eq(embedProfilesSqlite.id, id));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(embedProfilesMysql).where(eq(embedProfilesMysql.id, id));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(embedProfilesPostgres).where(eq(embedProfilesPostgres.id, id));
-    }
+    const { embedProfiles } = this.tables;
+    await this.db.delete(embedProfiles).where(eq(embedProfiles.id, id));
 
     return true;
   }

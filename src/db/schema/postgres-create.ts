@@ -76,7 +76,7 @@ export const POSTGRES_SCHEMA_SQL = `
     "rxTime" BIGINT,
     "hopStart" INTEGER,
     "hopLimit" INTEGER,
-    "relayNode" INTEGER,
+    "relayNode" BIGINT,
     "replyId" BIGINT,
     emoji INTEGER,
     "viaMqtt" BOOLEAN DEFAULT false,
@@ -86,7 +86,7 @@ export const POSTGRES_SCHEMA_SQL = `
     "routingErrorReceived" BOOLEAN,
     "deliveryState" TEXT,
     "wantAck" BOOLEAN,
-    "ackFromNode" INTEGER,
+    "ackFromNode" BIGINT,
     "createdAt" BIGINT NOT NULL
   );
 

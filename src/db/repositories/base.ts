@@ -9,6 +9,7 @@ import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { MySql2Database } from 'drizzle-orm/mysql2';
 import * as schema from '../schema/index.js';
 import { DatabaseType } from '../types.js';
+import { buildActiveSchema, ActiveSchema } from '../activeSchema.js';
 
 // Specific database types for type narrowing
 export type SQLiteDrizzle = BetterSQLite3Database<typeof schema>;
@@ -24,13 +25,30 @@ export type DrizzleDatabase = SQLiteDrizzle | PostgresDrizzle | MySQLDrizzle;
 export abstract class BaseRepository {
   protected readonly dbType: DatabaseType;
 
-  // Store the specific typed databases
+  /**
+   * Unified database accessor — use with `this.tables` for dialect-agnostic queries:
+   *   this.db.select().from(this.tables.nodes).where(...)
+   *
+   * For raw SQL or dialect-specific features, use the typed accessors instead:
+   *   this.getSqliteDb(), this.getPostgresDb(), this.getMysqlDb()
+   */
+  protected readonly db: any; // eslint-disable-line @typescript-eslint/no-explicit-any -- Union type can't resolve method overloads; runtime behavior is identical across dialects
+
+  /**
+   * Runtime table map resolving the active dialect's Drizzle table objects.
+   * Keys match the export name prefix (e.g., `nodes`, `packetLog`, `neighborInfo`).
+   */
+  protected readonly tables: ActiveSchema;
+
+  // Store the specific typed databases (kept for raw SQL escape hatches)
   protected readonly sqliteDb: SQLiteDrizzle | null;
   protected readonly postgresDb: PostgresDrizzle | null;
   protected readonly mysqlDb: MySQLDrizzle | null;
 
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     this.dbType = dbType;
+    this.db = db;
+    this.tables = buildActiveSchema(dbType);
 
     // Type narrow at construction time
     if (dbType === 'sqlite') {

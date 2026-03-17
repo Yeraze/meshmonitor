@@ -5,29 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, desc, asc, and, gte, lte, lt, inArray, sql } from 'drizzle-orm';
-import {
-  solarEstimatesSqlite,
-  solarEstimatesPostgres,
-  solarEstimatesMysql,
-  autoTracerouteNodesSqlite,
-  autoTracerouteNodesPostgres,
-  autoTracerouteNodesMysql,
-  autoTimeSyncNodesSqlite,
-  autoTimeSyncNodesPostgres,
-  autoTimeSyncNodesMysql,
-  upgradeHistorySqlite,
-  upgradeHistoryPostgres,
-  upgradeHistoryMysql,
-  newsCacheSqlite,
-  newsCachePostgres,
-  newsCacheMysql,
-  userNewsStatusSqlite,
-  userNewsStatusPostgres,
-  userNewsStatusMysql,
-  backupHistorySqlite,
-  backupHistoryPostgres,
-  backupHistoryMysql,
-} from '../schema/misc.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -115,58 +92,36 @@ export class MiscRepository extends BaseRepository {
   // ============ SOLAR ESTIMATES ============
 
   /**
-   * Upsert a solar estimate (insert or update on conflict)
+   * Upsert a solar estimate (insert or update on conflict).
+   * Keeps branching: MySQL uses onDuplicateKeyUpdate vs onConflictDoUpdate.
    */
   async upsertSolarEstimate(estimate: SolarEstimate): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .insert(solarEstimatesSqlite)
-        .values({
-          timestamp: estimate.timestamp,
-          watt_hours: estimate.watt_hours,
-          fetched_at: estimate.fetched_at,
-          created_at: estimate.created_at ?? this.now(),
-        })
-        .onConflictDoUpdate({
-          target: solarEstimatesSqlite.timestamp,
-          set: {
-            watt_hours: estimate.watt_hours,
-            fetched_at: estimate.fetched_at,
-          },
-        });
-    } else if (this.isMySQL()) {
+    const { solarEstimates } = this.tables;
+    const values = {
+      timestamp: estimate.timestamp,
+      watt_hours: estimate.watt_hours,
+      fetched_at: estimate.fetched_at,
+      created_at: estimate.created_at ?? this.now(),
+    };
+    const setData = {
+      watt_hours: estimate.watt_hours,
+      fetched_at: estimate.fetched_at,
+    };
+
+    if (this.isMySQL()) {
       const db = this.getMysqlDb();
       await db
-        .insert(solarEstimatesMysql)
-        .values({
-          timestamp: estimate.timestamp,
-          watt_hours: estimate.watt_hours,
-          fetched_at: estimate.fetched_at,
-          created_at: estimate.created_at ?? this.now(),
-        })
-        .onDuplicateKeyUpdate({
-          set: {
-            watt_hours: estimate.watt_hours,
-            fetched_at: estimate.fetched_at,
-          },
-        });
+        .insert(solarEstimates)
+        .values(values)
+        .onDuplicateKeyUpdate({ set: setData });
     } else {
-      const db = this.getPostgresDb();
-      await db
-        .insert(solarEstimatesPostgres)
-        .values({
-          timestamp: estimate.timestamp,
-          watt_hours: estimate.watt_hours,
-          fetched_at: estimate.fetched_at,
-          created_at: estimate.created_at ?? this.now(),
-        })
+      // SQLite and PostgreSQL both use onConflictDoUpdate
+      await (this.db as any)
+        .insert(solarEstimates)
+        .values(values)
         .onConflictDoUpdate({
-          target: solarEstimatesPostgres.timestamp,
-          set: {
-            watt_hours: estimate.watt_hours,
-            fetched_at: estimate.fetched_at,
-          },
+          target: solarEstimates.timestamp,
+          set: setData,
         });
     }
   }
@@ -175,77 +130,31 @@ export class MiscRepository extends BaseRepository {
    * Get recent solar estimates
    */
   async getRecentSolarEstimates(limit: number = 100): Promise<SolarEstimate[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(solarEstimatesSqlite)
-        .orderBy(desc(solarEstimatesSqlite.timestamp))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(solarEstimatesMysql)
-        .orderBy(desc(solarEstimatesMysql.timestamp))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(solarEstimatesPostgres)
-        .orderBy(desc(solarEstimatesPostgres.timestamp))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    }
+    const { solarEstimates } = this.tables;
+    const results = await this.db
+      .select()
+      .from(solarEstimates)
+      .orderBy(desc(solarEstimates.timestamp))
+      .limit(limit);
+    return this.normalizeBigInts(results);
   }
 
   /**
    * Get solar estimates within a time range
    */
   async getSolarEstimatesInRange(startTimestamp: number, endTimestamp: number): Promise<SolarEstimate[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(solarEstimatesSqlite)
-        .where(
-          and(
-            gte(solarEstimatesSqlite.timestamp, startTimestamp),
-            lte(solarEstimatesSqlite.timestamp, endTimestamp)
-          )
+    const { solarEstimates } = this.tables;
+    const results = await this.db
+      .select()
+      .from(solarEstimates)
+      .where(
+        and(
+          gte(solarEstimates.timestamp, startTimestamp),
+          lte(solarEstimates.timestamp, endTimestamp)
         )
-        .orderBy(asc(solarEstimatesSqlite.timestamp));
-      return this.normalizeBigInts(results);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(solarEstimatesMysql)
-        .where(
-          and(
-            gte(solarEstimatesMysql.timestamp, startTimestamp),
-            lte(solarEstimatesMysql.timestamp, endTimestamp)
-          )
-        )
-        .orderBy(asc(solarEstimatesMysql.timestamp));
-      return this.normalizeBigInts(results);
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(solarEstimatesPostgres)
-        .where(
-          and(
-            gte(solarEstimatesPostgres.timestamp, startTimestamp),
-            lte(solarEstimatesPostgres.timestamp, endTimestamp)
-          )
-        )
-        .orderBy(asc(solarEstimatesPostgres.timestamp));
-      return this.normalizeBigInts(results);
-    }
+      )
+      .orderBy(asc(solarEstimates.timestamp));
+    return this.normalizeBigInts(results);
   }
 
   // ============ AUTO-TRACEROUTE NODES ============
@@ -254,28 +163,12 @@ export class MiscRepository extends BaseRepository {
    * Get all auto-traceroute nodes
    */
   async getAutoTracerouteNodes(): Promise<number[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select({ nodeNum: autoTracerouteNodesSqlite.nodeNum })
-        .from(autoTracerouteNodesSqlite)
-        .orderBy(asc(autoTracerouteNodesSqlite.createdAt));
-      return results.map(r => Number(r.nodeNum));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select({ nodeNum: autoTracerouteNodesMysql.nodeNum })
-        .from(autoTracerouteNodesMysql)
-        .orderBy(asc(autoTracerouteNodesMysql.createdAt));
-      return results.map(r => Number(r.nodeNum));
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select({ nodeNum: autoTracerouteNodesPostgres.nodeNum })
-        .from(autoTracerouteNodesPostgres)
-        .orderBy(asc(autoTracerouteNodesPostgres.createdAt));
-      return results.map(r => Number(r.nodeNum));
-    }
+    const { autoTracerouteNodes } = this.tables;
+    const results = await this.db
+      .select({ nodeNum: autoTracerouteNodes.nodeNum })
+      .from(autoTracerouteNodes)
+      .orderBy(asc(autoTracerouteNodes.createdAt));
+    return results.map((r: any) => Number(r.nodeNum));
   }
 
   /**
@@ -283,68 +176,39 @@ export class MiscRepository extends BaseRepository {
    */
   async setAutoTracerouteNodes(nodeNums: number[]): Promise<void> {
     const now = this.now();
+    const { autoTracerouteNodes } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      // Delete all existing entries
-      await db.delete(autoTracerouteNodesSqlite);
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        await db
-          .insert(autoTracerouteNodesSqlite)
-          .values({ nodeNum, createdAt: now })
-          .onConflictDoNothing();
-      }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // Delete all existing entries
-      await db.delete(autoTracerouteNodesMysql);
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        await db
-          .insert(autoTracerouteNodesMysql)
-          .values({ nodeNum, createdAt: now });
-      }
-    } else {
-      const db = this.getPostgresDb();
-      // Delete all existing entries
-      await db.delete(autoTracerouteNodesPostgres);
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        await db
-          .insert(autoTracerouteNodesPostgres)
-          .values({ nodeNum, createdAt: now })
-          .onConflictDoNothing();
-      }
+    // Delete all existing entries
+    await this.db.delete(autoTracerouteNodes);
+    // Insert new entries
+    for (const nodeNum of nodeNums) {
+      await this.db
+        .insert(autoTracerouteNodes)
+        .values({ nodeNum, createdAt: now });
     }
   }
 
   /**
-   * Add a single auto-traceroute node
+   * Add a single auto-traceroute node.
+   * Keeps branching: MySQL lacks onConflictDoNothing.
    */
   async addAutoTracerouteNode(nodeNum: number): Promise<void> {
     const now = this.now();
+    const { autoTracerouteNodes } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .insert(autoTracerouteNodesSqlite)
-        .values({ nodeNum, createdAt: now })
-        .onConflictDoNothing();
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // MySQL doesn't have onConflictDoNothing, use INSERT IGNORE via raw
+    if (this.isMySQL()) {
+      // MySQL doesn't have onConflictDoNothing, use try/catch
       try {
-        await db
-          .insert(autoTracerouteNodesMysql)
+        await this.db
+          .insert(autoTracerouteNodes)
           .values({ nodeNum, createdAt: now });
       } catch {
         // Ignore duplicate key errors
       }
     } else {
-      const db = this.getPostgresDb();
-      await db
-        .insert(autoTracerouteNodesPostgres)
+      // SQLite and PostgreSQL support onConflictDoNothing
+      await (this.db as any)
+        .insert(autoTracerouteNodes)
         .values({ nodeNum, createdAt: now })
         .onConflictDoNothing();
     }
@@ -354,16 +218,8 @@ export class MiscRepository extends BaseRepository {
    * Remove a single auto-traceroute node
    */
   async removeAutoTracerouteNode(nodeNum: number): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(autoTracerouteNodesSqlite).where(eq(autoTracerouteNodesSqlite.nodeNum, nodeNum));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(autoTracerouteNodesMysql).where(eq(autoTracerouteNodesMysql.nodeNum, nodeNum));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(autoTracerouteNodesPostgres).where(eq(autoTracerouteNodesPostgres.nodeNum, nodeNum));
-    }
+    const { autoTracerouteNodes } = this.tables;
+    await this.db.delete(autoTracerouteNodes).where(eq(autoTracerouteNodes.nodeNum, nodeNum));
   }
 
   // ============ UPGRADE HISTORY ============
@@ -375,114 +231,46 @@ export class MiscRepository extends BaseRepository {
    * Create a new upgrade history record
    */
   async createUpgradeHistory(upgrade: NewUpgradeHistory): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.insert(upgradeHistorySqlite).values({
-        id: upgrade.id,
-        fromVersion: upgrade.fromVersion,
-        toVersion: upgrade.toVersion,
-        deploymentMethod: upgrade.deploymentMethod,
-        status: upgrade.status,
-        progress: upgrade.progress ?? 0,
-        currentStep: upgrade.currentStep,
-        logs: upgrade.logs,
-        startedAt: upgrade.startedAt,
-        initiatedBy: upgrade.initiatedBy,
-        rollbackAvailable: upgrade.rollbackAvailable,
-      });
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.insert(upgradeHistoryMysql).values({
-        id: upgrade.id,
-        fromVersion: upgrade.fromVersion,
-        toVersion: upgrade.toVersion,
-        deploymentMethod: upgrade.deploymentMethod,
-        status: upgrade.status,
-        progress: upgrade.progress ?? 0,
-        currentStep: upgrade.currentStep,
-        logs: upgrade.logs,
-        startedAt: upgrade.startedAt,
-        initiatedBy: upgrade.initiatedBy,
-        rollbackAvailable: upgrade.rollbackAvailable,
-      });
-    } else {
-      const db = this.getPostgresDb();
-      await db.insert(upgradeHistoryPostgres).values({
-        id: upgrade.id,
-        fromVersion: upgrade.fromVersion,
-        toVersion: upgrade.toVersion,
-        deploymentMethod: upgrade.deploymentMethod,
-        status: upgrade.status,
-        progress: upgrade.progress ?? 0,
-        currentStep: upgrade.currentStep,
-        logs: upgrade.logs,
-        startedAt: upgrade.startedAt,
-        initiatedBy: upgrade.initiatedBy,
-        rollbackAvailable: upgrade.rollbackAvailable,
-      });
-    }
+    const { upgradeHistory } = this.tables;
+    await this.db.insert(upgradeHistory).values({
+      id: upgrade.id,
+      fromVersion: upgrade.fromVersion,
+      toVersion: upgrade.toVersion,
+      deploymentMethod: upgrade.deploymentMethod,
+      status: upgrade.status,
+      progress: upgrade.progress ?? 0,
+      currentStep: upgrade.currentStep,
+      logs: upgrade.logs,
+      startedAt: upgrade.startedAt,
+      initiatedBy: upgrade.initiatedBy,
+      rollbackAvailable: upgrade.rollbackAvailable,
+    });
   }
 
   /**
    * Get upgrade history record by ID
    */
   async getUpgradeById(id: string): Promise<UpgradeHistoryRecord | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(upgradeHistorySqlite)
-        .where(eq(upgradeHistorySqlite.id, id))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryMysql)
-        .where(eq(upgradeHistoryMysql.id, id))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryPostgres)
-        .where(eq(upgradeHistoryPostgres.id, id))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    }
+    const { upgradeHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(upgradeHistory)
+      .where(eq(upgradeHistory.id, id))
+      .limit(1);
+    return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
   }
 
   /**
    * Get upgrade history (most recent first)
    */
   async getUpgradeHistoryList(limit: number = 10): Promise<UpgradeHistoryRecord[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(upgradeHistorySqlite)
-        .orderBy(desc(upgradeHistorySqlite.startedAt))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryMysql)
-        .orderBy(desc(upgradeHistoryMysql.startedAt))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryPostgres)
-        .orderBy(desc(upgradeHistoryPostgres.startedAt))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    }
+    const { upgradeHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(upgradeHistory)
+      .orderBy(desc(upgradeHistory.startedAt))
+      .limit(limit);
+    return this.normalizeBigInts(results);
   }
 
   /**
@@ -497,135 +285,53 @@ export class MiscRepository extends BaseRepository {
    * Find stale upgrades (stuck for too long)
    */
   async findStaleUpgrades(staleThreshold: number): Promise<UpgradeHistoryRecord[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(upgradeHistorySqlite)
-        .where(
-          and(
-            inArray(upgradeHistorySqlite.status, this.IN_PROGRESS_STATUSES),
-            lt(upgradeHistorySqlite.startedAt, staleThreshold)
-          )
-        );
-      return this.normalizeBigInts(results);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryMysql)
-        .where(
-          and(
-            inArray(upgradeHistoryMysql.status, this.IN_PROGRESS_STATUSES),
-            lt(upgradeHistoryMysql.startedAt, staleThreshold)
-          )
-        );
-      return this.normalizeBigInts(results);
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryPostgres)
-        .where(
-          and(
-            inArray(upgradeHistoryPostgres.status, this.IN_PROGRESS_STATUSES),
-            lt(upgradeHistoryPostgres.startedAt, staleThreshold)
-          )
-        );
-      return this.normalizeBigInts(results);
-    }
+    const { upgradeHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(upgradeHistory)
+      .where(
+        and(
+          inArray(upgradeHistory.status, this.IN_PROGRESS_STATUSES),
+          lt(upgradeHistory.startedAt, staleThreshold)
+        )
+      );
+    return this.normalizeBigInts(results);
   }
 
   /**
    * Count in-progress upgrades (non-stale)
    */
   async countInProgressUpgrades(staleThreshold: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(upgradeHistorySqlite)
-        .where(
-          and(
-            inArray(upgradeHistorySqlite.status, this.IN_PROGRESS_STATUSES),
-            gte(upgradeHistorySqlite.startedAt, staleThreshold)
-          )
-        );
-      return Number(result[0]?.count ?? 0);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(upgradeHistoryMysql)
-        .where(
-          and(
-            inArray(upgradeHistoryMysql.status, this.IN_PROGRESS_STATUSES),
-            gte(upgradeHistoryMysql.startedAt, staleThreshold)
-          )
-        );
-      return Number(result[0]?.count ?? 0);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(upgradeHistoryPostgres)
-        .where(
-          and(
-            inArray(upgradeHistoryPostgres.status, this.IN_PROGRESS_STATUSES),
-            gte(upgradeHistoryPostgres.startedAt, staleThreshold)
-          )
-        );
-      return Number(result[0]?.count ?? 0);
-    }
+    const { upgradeHistory } = this.tables;
+    const result = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(upgradeHistory)
+      .where(
+        and(
+          inArray(upgradeHistory.status, this.IN_PROGRESS_STATUSES),
+          gte(upgradeHistory.startedAt, staleThreshold)
+        )
+      );
+    return Number(result[0]?.count ?? 0);
   }
 
   /**
    * Find the currently active upgrade (if any)
    */
   async findActiveUpgrade(staleThreshold: number): Promise<UpgradeHistoryRecord | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(upgradeHistorySqlite)
-        .where(
-          and(
-            inArray(upgradeHistorySqlite.status, this.IN_PROGRESS_STATUSES),
-            gte(upgradeHistorySqlite.startedAt, staleThreshold)
-          )
+    const { upgradeHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(upgradeHistory)
+      .where(
+        and(
+          inArray(upgradeHistory.status, this.IN_PROGRESS_STATUSES),
+          gte(upgradeHistory.startedAt, staleThreshold)
         )
-        .orderBy(desc(upgradeHistorySqlite.startedAt))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryMysql)
-        .where(
-          and(
-            inArray(upgradeHistoryMysql.status, this.IN_PROGRESS_STATUSES),
-            gte(upgradeHistoryMysql.startedAt, staleThreshold)
-          )
-        )
-        .orderBy(desc(upgradeHistoryMysql.startedAt))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(upgradeHistoryPostgres)
-        .where(
-          and(
-            inArray(upgradeHistoryPostgres.status, this.IN_PROGRESS_STATUSES),
-            gte(upgradeHistoryPostgres.startedAt, staleThreshold)
-          )
-        )
-        .orderBy(desc(upgradeHistoryPostgres.startedAt))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    }
+      )
+      .orderBy(desc(upgradeHistory.startedAt))
+      .limit(1);
+    return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
   }
 
   /**
@@ -633,37 +339,15 @@ export class MiscRepository extends BaseRepository {
    */
   async markUpgradeFailed(id: string, errorMessage: string): Promise<void> {
     const now = this.now();
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .update(upgradeHistorySqlite)
-        .set({
-          status: 'failed',
-          completedAt: now,
-          errorMessage: errorMessage,
-        })
-        .where(eq(upgradeHistorySqlite.id, id));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .update(upgradeHistoryMysql)
-        .set({
-          status: 'failed',
-          completedAt: now,
-          errorMessage: errorMessage,
-        })
-        .where(eq(upgradeHistoryMysql.id, id));
-    } else {
-      const db = this.getPostgresDb();
-      await db
-        .update(upgradeHistoryPostgres)
-        .set({
-          status: 'failed',
-          completedAt: now,
-          errorMessage: errorMessage,
-        })
-        .where(eq(upgradeHistoryPostgres.id, id));
-    }
+    const { upgradeHistory } = this.tables;
+    await this.db
+      .update(upgradeHistory)
+      .set({
+        status: 'failed',
+        completedAt: now,
+        errorMessage: errorMessage,
+      })
+      .where(eq(upgradeHistory.id, id));
   }
 
   /**
@@ -671,37 +355,15 @@ export class MiscRepository extends BaseRepository {
    */
   async markUpgradeComplete(id: string): Promise<void> {
     const now = this.now();
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .update(upgradeHistorySqlite)
-        .set({
-          status: 'complete',
-          completedAt: now,
-          currentStep: 'Upgrade complete',
-        })
-        .where(eq(upgradeHistorySqlite.id, id));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .update(upgradeHistoryMysql)
-        .set({
-          status: 'complete',
-          completedAt: now,
-          currentStep: 'Upgrade complete',
-        })
-        .where(eq(upgradeHistoryMysql.id, id));
-    } else {
-      const db = this.getPostgresDb();
-      await db
-        .update(upgradeHistoryPostgres)
-        .set({
-          status: 'complete',
-          completedAt: now,
-          currentStep: 'Upgrade complete',
-        })
-        .where(eq(upgradeHistoryPostgres.id, id));
-    }
+    const { upgradeHistory } = this.tables;
+    await this.db
+      .update(upgradeHistory)
+      .set({
+        status: 'complete',
+        completedAt: now,
+        currentStep: 'Upgrade complete',
+      })
+      .where(eq(upgradeHistory.id, id));
   }
 
   // ============ NEWS CACHE ============
@@ -710,31 +372,13 @@ export class MiscRepository extends BaseRepository {
    * Get the cached news feed
    */
   async getNewsCache(): Promise<NewsCache | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(newsCacheSqlite)
-        .orderBy(desc(newsCacheSqlite.fetchedAt))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(newsCacheMysql)
-        .orderBy(desc(newsCacheMysql.fetchedAt))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(newsCachePostgres)
-        .orderBy(desc(newsCachePostgres.fetchedAt))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    }
+    const { newsCache } = this.tables;
+    const results = await this.db
+      .select()
+      .from(newsCache)
+      .orderBy(desc(newsCache.fetchedAt))
+      .limit(1);
+    return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
   }
 
   /**
@@ -742,33 +386,15 @@ export class MiscRepository extends BaseRepository {
    */
   async saveNewsCache(cache: NewsCache): Promise<void> {
     const now = this.now();
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      // Delete old cache entries
-      await db.delete(newsCacheSqlite);
-      // Insert new cache
-      await db.insert(newsCacheSqlite).values({
-        feedData: cache.feedData,
-        fetchedAt: cache.fetchedAt ?? now,
-        sourceUrl: cache.sourceUrl,
-      });
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(newsCacheMysql);
-      await db.insert(newsCacheMysql).values({
-        feedData: cache.feedData,
-        fetchedAt: cache.fetchedAt ?? now,
-        sourceUrl: cache.sourceUrl,
-      });
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(newsCachePostgres);
-      await db.insert(newsCachePostgres).values({
-        feedData: cache.feedData,
-        fetchedAt: cache.fetchedAt ?? now,
-        sourceUrl: cache.sourceUrl,
-      });
-    }
+    const { newsCache } = this.tables;
+    // Delete old cache entries
+    await this.db.delete(newsCache);
+    // Insert new cache
+    await this.db.insert(newsCache).values({
+      feedData: cache.feedData,
+      fetchedAt: cache.fetchedAt ?? now,
+      sourceUrl: cache.sourceUrl,
+    });
   }
 
   // ============ USER NEWS STATUS ============
@@ -777,31 +403,13 @@ export class MiscRepository extends BaseRepository {
    * Get user's news status
    */
   async getUserNewsStatus(userId: number): Promise<UserNewsStatus | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(userNewsStatusSqlite)
-        .where(eq(userNewsStatusSqlite.userId, userId))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(userNewsStatusMysql)
-        .where(eq(userNewsStatusMysql.userId, userId))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(userNewsStatusPostgres)
-        .where(eq(userNewsStatusPostgres.userId, userId))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    }
+    const { userNewsStatus } = this.tables;
+    const results = await this.db
+      .select()
+      .from(userNewsStatus)
+      .where(eq(userNewsStatus.userId, userId))
+      .limit(1);
+    return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
   }
 
   /**
@@ -809,82 +417,31 @@ export class MiscRepository extends BaseRepository {
    */
   async saveUserNewsStatus(status: UserNewsStatus): Promise<void> {
     const now = this.now();
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      // Check if exists
-      const existing = await db
-        .select()
-        .from(userNewsStatusSqlite)
-        .where(eq(userNewsStatusSqlite.userId, status.userId))
-        .limit(1);
+    const { userNewsStatus } = this.tables;
 
-      if (existing.length > 0) {
-        await db
-          .update(userNewsStatusSqlite)
-          .set({
-            lastSeenNewsId: status.lastSeenNewsId,
-            dismissedNewsIds: status.dismissedNewsIds,
-            updatedAt: now,
-          })
-          .where(eq(userNewsStatusSqlite.userId, status.userId));
-      } else {
-        await db.insert(userNewsStatusSqlite).values({
-          userId: status.userId,
+    // Check if exists
+    const existing = await this.db
+      .select()
+      .from(userNewsStatus)
+      .where(eq(userNewsStatus.userId, status.userId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await this.db
+        .update(userNewsStatus)
+        .set({
           lastSeenNewsId: status.lastSeenNewsId,
           dismissedNewsIds: status.dismissedNewsIds,
           updatedAt: now,
-        });
-      }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const existing = await db
-        .select()
-        .from(userNewsStatusMysql)
-        .where(eq(userNewsStatusMysql.userId, status.userId))
-        .limit(1);
-
-      if (existing.length > 0) {
-        await db
-          .update(userNewsStatusMysql)
-          .set({
-            lastSeenNewsId: status.lastSeenNewsId,
-            dismissedNewsIds: status.dismissedNewsIds,
-            updatedAt: now,
-          })
-          .where(eq(userNewsStatusMysql.userId, status.userId));
-      } else {
-        await db.insert(userNewsStatusMysql).values({
-          userId: status.userId,
-          lastSeenNewsId: status.lastSeenNewsId,
-          dismissedNewsIds: status.dismissedNewsIds,
-          updatedAt: now,
-        });
-      }
+        })
+        .where(eq(userNewsStatus.userId, status.userId));
     } else {
-      const db = this.getPostgresDb();
-      const existing = await db
-        .select()
-        .from(userNewsStatusPostgres)
-        .where(eq(userNewsStatusPostgres.userId, status.userId))
-        .limit(1);
-
-      if (existing.length > 0) {
-        await db
-          .update(userNewsStatusPostgres)
-          .set({
-            lastSeenNewsId: status.lastSeenNewsId,
-            dismissedNewsIds: status.dismissedNewsIds,
-            updatedAt: now,
-          })
-          .where(eq(userNewsStatusPostgres.userId, status.userId));
-      } else {
-        await db.insert(userNewsStatusPostgres).values({
-          userId: status.userId,
-          lastSeenNewsId: status.lastSeenNewsId,
-          dismissedNewsIds: status.dismissedNewsIds,
-          updatedAt: now,
-        });
-      }
+      await this.db.insert(userNewsStatus).values({
+        userId: status.userId,
+        lastSeenNewsId: status.lastSeenNewsId,
+        dismissedNewsIds: status.dismissedNewsIds,
+        updatedAt: now,
+      });
     }
   }
 
@@ -894,232 +451,96 @@ export class MiscRepository extends BaseRepository {
    * Insert a new backup history record
    */
   async insertBackupHistory(backup: BackupHistory): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.insert(backupHistorySqlite).values({
-        nodeId: backup.nodeId,
-        nodeNum: backup.nodeNum,
-        filename: backup.filename,
-        filePath: backup.filePath,
-        fileSize: backup.fileSize,
-        backupType: backup.backupType,
-        timestamp: backup.timestamp,
-        createdAt: backup.createdAt,
-      });
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.insert(backupHistoryMysql).values({
-        nodeId: backup.nodeId,
-        nodeNum: backup.nodeNum,
-        filename: backup.filename,
-        filePath: backup.filePath,
-        fileSize: backup.fileSize,
-        backupType: backup.backupType,
-        timestamp: backup.timestamp,
-        createdAt: backup.createdAt,
-      });
-    } else {
-      const db = this.getPostgresDb();
-      await db.insert(backupHistoryPostgres).values({
-        nodeId: backup.nodeId,
-        nodeNum: backup.nodeNum,
-        filename: backup.filename,
-        filePath: backup.filePath,
-        fileSize: backup.fileSize,
-        backupType: backup.backupType,
-        timestamp: backup.timestamp,
-        createdAt: backup.createdAt,
-      });
-    }
+    const { backupHistory } = this.tables;
+    await this.db.insert(backupHistory).values({
+      nodeId: backup.nodeId,
+      nodeNum: backup.nodeNum,
+      filename: backup.filename,
+      filePath: backup.filePath,
+      fileSize: backup.fileSize,
+      backupType: backup.backupType,
+      timestamp: backup.timestamp,
+      createdAt: backup.createdAt,
+    });
   }
 
   /**
    * Get all backup history records ordered by timestamp (newest first)
    */
   async getBackupHistoryList(): Promise<BackupHistory[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(backupHistorySqlite)
-        .orderBy(desc(backupHistorySqlite.timestamp));
-      return this.normalizeBigInts(results);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(backupHistoryMysql)
-        .orderBy(desc(backupHistoryMysql.timestamp));
-      return this.normalizeBigInts(results);
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(backupHistoryPostgres)
-        .orderBy(desc(backupHistoryPostgres.timestamp));
-      return this.normalizeBigInts(results);
-    }
+    const { backupHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(backupHistory)
+      .orderBy(desc(backupHistory.timestamp));
+    return this.normalizeBigInts(results);
   }
 
   /**
    * Get a backup history record by filename
    */
   async getBackupByFilename(filename: string): Promise<BackupHistory | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(backupHistorySqlite)
-        .where(eq(backupHistorySqlite.filename, filename))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(backupHistoryMysql)
-        .where(eq(backupHistoryMysql.filename, filename))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(backupHistoryPostgres)
-        .where(eq(backupHistoryPostgres.filename, filename))
-        .limit(1);
-      return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
-    }
+    const { backupHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(backupHistory)
+      .where(eq(backupHistory.filename, filename))
+      .limit(1);
+    return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
   }
 
   /**
    * Delete a backup history record by filename
    */
   async deleteBackupHistory(filename: string): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(backupHistorySqlite).where(eq(backupHistorySqlite.filename, filename));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(backupHistoryMysql).where(eq(backupHistoryMysql.filename, filename));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(backupHistoryPostgres).where(eq(backupHistoryPostgres.filename, filename));
-    }
+    const { backupHistory } = this.tables;
+    await this.db.delete(backupHistory).where(eq(backupHistory.filename, filename));
   }
 
   /**
    * Count total backup history records
    */
   async countBackups(): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(backupHistorySqlite);
-      return Number(result[0]?.count ?? 0);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(backupHistoryMysql);
-      return Number(result[0]?.count ?? 0);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(backupHistoryPostgres);
-      return Number(result[0]?.count ?? 0);
-    }
+    const { backupHistory } = this.tables;
+    const result = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(backupHistory);
+    return Number(result[0]?.count ?? 0);
   }
 
   /**
    * Get oldest backup history records (for purging)
    */
   async getOldestBackups(limit: number): Promise<BackupHistory[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select()
-        .from(backupHistorySqlite)
-        .orderBy(asc(backupHistorySqlite.timestamp))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select()
-        .from(backupHistoryMysql)
-        .orderBy(asc(backupHistoryMysql.timestamp))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select()
-        .from(backupHistoryPostgres)
-        .orderBy(asc(backupHistoryPostgres.timestamp))
-        .limit(limit);
-      return this.normalizeBigInts(results);
-    }
+    const { backupHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(backupHistory)
+      .orderBy(asc(backupHistory.timestamp))
+      .limit(limit);
+    return this.normalizeBigInts(results);
   }
 
   /**
    * Get backup statistics
    */
   async getBackupStats(): Promise<{ count: number; totalSize: number; oldestTimestamp: number | null; newestTimestamp: number | null }> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select({
-          count: sql<number>`count(*)`,
-          totalSize: sql<number>`coalesce(sum(${backupHistorySqlite.fileSize}), 0)`,
-          oldestTimestamp: sql<number>`min(${backupHistorySqlite.timestamp})`,
-          newestTimestamp: sql<number>`max(${backupHistorySqlite.timestamp})`,
-        })
-        .from(backupHistorySqlite);
-      const row = result[0];
-      return {
-        count: Number(row?.count ?? 0),
-        totalSize: Number(row?.totalSize ?? 0),
-        oldestTimestamp: row?.oldestTimestamp ? Number(row.oldestTimestamp) : null,
-        newestTimestamp: row?.newestTimestamp ? Number(row.newestTimestamp) : null,
-      };
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select({
-          count: sql<number>`count(*)`,
-          totalSize: sql<number>`coalesce(sum(${backupHistoryMysql.fileSize}), 0)`,
-          oldestTimestamp: sql<number>`min(${backupHistoryMysql.timestamp})`,
-          newestTimestamp: sql<number>`max(${backupHistoryMysql.timestamp})`,
-        })
-        .from(backupHistoryMysql);
-      const row = result[0];
-      return {
-        count: Number(row?.count ?? 0),
-        totalSize: Number(row?.totalSize ?? 0),
-        oldestTimestamp: row?.oldestTimestamp ? Number(row.oldestTimestamp) : null,
-        newestTimestamp: row?.newestTimestamp ? Number(row.newestTimestamp) : null,
-      };
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select({
-          count: sql<number>`count(*)`,
-          totalSize: sql<number>`coalesce(sum(${backupHistoryPostgres.fileSize}), 0)`,
-          oldestTimestamp: sql<number>`min(${backupHistoryPostgres.timestamp})`,
-          newestTimestamp: sql<number>`max(${backupHistoryPostgres.timestamp})`,
-        })
-        .from(backupHistoryPostgres);
-      const row = result[0];
-      return {
-        count: Number(row?.count ?? 0),
-        totalSize: Number(row?.totalSize ?? 0),
-        oldestTimestamp: row?.oldestTimestamp ? Number(row.oldestTimestamp) : null,
-        newestTimestamp: row?.newestTimestamp ? Number(row.newestTimestamp) : null,
-      };
-    }
+    const { backupHistory } = this.tables;
+    const result = await this.db
+      .select({
+        count: sql<number>`count(*)`,
+        totalSize: sql<number>`coalesce(sum(${backupHistory.fileSize}), 0)`,
+        oldestTimestamp: sql<number>`min(${backupHistory.timestamp})`,
+        newestTimestamp: sql<number>`max(${backupHistory.timestamp})`,
+      })
+      .from(backupHistory);
+    const row = result[0];
+    return {
+      count: Number(row?.count ?? 0),
+      totalSize: Number(row?.totalSize ?? 0),
+      oldestTimestamp: row?.oldestTimestamp ? Number(row.oldestTimestamp) : null,
+      newestTimestamp: row?.newestTimestamp ? Number(row.newestTimestamp) : null,
+    };
   }
 
   // ============ AUTO TIME SYNC NODES ============
@@ -1128,28 +549,12 @@ export class MiscRepository extends BaseRepository {
    * Get all auto time sync nodes
    */
   async getAutoTimeSyncNodes(): Promise<number[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const results = await db
-        .select({ nodeNum: autoTimeSyncNodesSqlite.nodeNum })
-        .from(autoTimeSyncNodesSqlite)
-        .orderBy(asc(autoTimeSyncNodesSqlite.createdAt));
-      return results.map(r => Number(r.nodeNum));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const results = await db
-        .select({ nodeNum: autoTimeSyncNodesMysql.nodeNum })
-        .from(autoTimeSyncNodesMysql)
-        .orderBy(asc(autoTimeSyncNodesMysql.createdAt));
-      return results.map(r => Number(r.nodeNum));
-    } else {
-      const db = this.getPostgresDb();
-      const results = await db
-        .select({ nodeNum: autoTimeSyncNodesPostgres.nodeNum })
-        .from(autoTimeSyncNodesPostgres)
-        .orderBy(asc(autoTimeSyncNodesPostgres.createdAt));
-      return results.map(r => Number(r.nodeNum));
-    }
+    const { autoTimeSyncNodes } = this.tables;
+    const results = await this.db
+      .select({ nodeNum: autoTimeSyncNodes.nodeNum })
+      .from(autoTimeSyncNodes)
+      .orderBy(asc(autoTimeSyncNodes.createdAt));
+    return results.map((r: any) => Number(r.nodeNum));
   }
 
   /**
@@ -1157,68 +562,39 @@ export class MiscRepository extends BaseRepository {
    */
   async setAutoTimeSyncNodes(nodeNums: number[]): Promise<void> {
     const now = this.now();
+    const { autoTimeSyncNodes } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      // Delete all existing entries
-      await db.delete(autoTimeSyncNodesSqlite);
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        await db
-          .insert(autoTimeSyncNodesSqlite)
-          .values({ nodeNum, createdAt: now })
-          .onConflictDoNothing();
-      }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // Delete all existing entries
-      await db.delete(autoTimeSyncNodesMysql);
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        await db
-          .insert(autoTimeSyncNodesMysql)
-          .values({ nodeNum, createdAt: now });
-      }
-    } else {
-      const db = this.getPostgresDb();
-      // Delete all existing entries
-      await db.delete(autoTimeSyncNodesPostgres);
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        await db
-          .insert(autoTimeSyncNodesPostgres)
-          .values({ nodeNum, createdAt: now })
-          .onConflictDoNothing();
-      }
+    // Delete all existing entries
+    await this.db.delete(autoTimeSyncNodes);
+    // Insert new entries
+    for (const nodeNum of nodeNums) {
+      await this.db
+        .insert(autoTimeSyncNodes)
+        .values({ nodeNum, createdAt: now });
     }
   }
 
   /**
-   * Add a single auto time sync node
+   * Add a single auto time sync node.
+   * Keeps branching: MySQL lacks onConflictDoNothing.
    */
   async addAutoTimeSyncNode(nodeNum: number): Promise<void> {
     const now = this.now();
+    const { autoTimeSyncNodes } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .insert(autoTimeSyncNodesSqlite)
-        .values({ nodeNum, createdAt: now })
-        .onConflictDoNothing();
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
+    if (this.isMySQL()) {
       // MySQL doesn't have onConflictDoNothing, use try/catch
       try {
-        await db
-          .insert(autoTimeSyncNodesMysql)
+        await this.db
+          .insert(autoTimeSyncNodes)
           .values({ nodeNum, createdAt: now });
       } catch {
         // Ignore duplicate key errors
       }
     } else {
-      const db = this.getPostgresDb();
-      await db
-        .insert(autoTimeSyncNodesPostgres)
+      // SQLite and PostgreSQL support onConflictDoNothing
+      await (this.db as any)
+        .insert(autoTimeSyncNodes)
         .values({ nodeNum, createdAt: now })
         .onConflictDoNothing();
     }
@@ -1228,15 +604,7 @@ export class MiscRepository extends BaseRepository {
    * Remove a single auto time sync node
    */
   async removeAutoTimeSyncNode(nodeNum: number): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(autoTimeSyncNodesSqlite).where(eq(autoTimeSyncNodesSqlite.nodeNum, nodeNum));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(autoTimeSyncNodesMysql).where(eq(autoTimeSyncNodesMysql.nodeNum, nodeNum));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(autoTimeSyncNodesPostgres).where(eq(autoTimeSyncNodesPostgres.nodeNum, nodeNum));
-    }
+    const { autoTimeSyncNodes } = this.tables;
+    await this.db.delete(autoTimeSyncNodes).where(eq(autoTimeSyncNodes.nodeNum, nodeNum));
   }
 }
