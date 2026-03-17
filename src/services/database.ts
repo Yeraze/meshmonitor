@@ -432,6 +432,75 @@ class DatabaseService {
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
 
+  /**
+   * Typed repository accessors — throw if database not initialized.
+   * Prefer these over the nullable public fields.
+   */
+  get nodes(): NodesRepository {
+    if (!this.nodesRepo) throw new Error('Database not initialized');
+    return this.nodesRepo;
+  }
+
+  get messages(): MessagesRepository {
+    if (!this.messagesRepo) throw new Error('Database not initialized');
+    return this.messagesRepo;
+  }
+
+  get channels(): ChannelsRepository {
+    if (!this.channelsRepo) throw new Error('Database not initialized');
+    return this.channelsRepo;
+  }
+
+  get settings(): SettingsRepository {
+    if (!this.settingsRepo) throw new Error('Database not initialized');
+    return this.settingsRepo;
+  }
+
+  get telemetry(): TelemetryRepository {
+    if (!this.telemetryRepo) throw new Error('Database not initialized');
+    return this.telemetryRepo;
+  }
+
+  get traceroutes(): TraceroutesRepository {
+    if (!this.traceroutesRepo) throw new Error('Database not initialized');
+    return this.traceroutesRepo;
+  }
+
+  get neighbors(): NeighborsRepository {
+    if (!this.neighborsRepo) throw new Error('Database not initialized');
+    return this.neighborsRepo;
+  }
+
+  get auth(): AuthRepository {
+    if (!this.authRepo) throw new Error('Database not initialized');
+    return this.authRepo;
+  }
+
+  get notifications(): NotificationsRepository {
+    if (!this.notificationsRepo) throw new Error('Database not initialized');
+    return this.notificationsRepo;
+  }
+
+  get misc(): MiscRepository {
+    if (!this.miscRepo) throw new Error('Database not initialized');
+    return this.miscRepo;
+  }
+
+  get channelDatabase(): ChannelDatabaseRepository {
+    if (!this.channelDatabaseRepo) throw new Error('Database not initialized');
+    return this.channelDatabaseRepo;
+  }
+
+  get ignoredNodes(): IgnoredNodesRepository {
+    if (!this.ignoredNodesRepo) throw new Error('Database not initialized');
+    return this.ignoredNodesRepo;
+  }
+
+  get embedProfiles(): EmbedProfileRepository {
+    if (!this.embedProfileRepo) throw new Error('Database not initialized');
+    return this.embedProfileRepo;
+  }
+
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
 
