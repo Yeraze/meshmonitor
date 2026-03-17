@@ -151,6 +151,12 @@ describe('TelemetryRepository - PostgreSQL Backend', () => {
       `);
       console.log('✓ PostgreSQL connection established');
     } catch (error) {
+      if (process.env.CI === 'true') {
+        throw new Error(
+          'PostgreSQL is required in CI but not available on port 5433. ' +
+          'Check the GitHub Actions service container configuration.'
+        );
+      }
       console.log('⚠ PostgreSQL not available, skipping PostgreSQL tests');
       console.log('  Run: docker run -d --name meshmonitor-test-postgres -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=meshmonitor_test -p 5433:5432 postgres:16');
       pgAvailable = false;
