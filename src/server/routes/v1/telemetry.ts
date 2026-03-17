@@ -42,10 +42,10 @@ router.get('/', async (req: Request, res: Response) => {
       }
 
       const typeStr = type ? type as string : undefined;
-      telemetry = await databaseService.getTelemetryByNodeAsync(nodeId as string, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
-      total = await databaseService.getTelemetryCountByNodeAsync(nodeId as string, sinceTimestamp, beforeTimestamp, typeStr);
+      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId as string, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
+      total = await databaseService.telemetry.getTelemetryCountByNode(nodeId as string, sinceTimestamp, beforeTimestamp, typeStr);
     } else if (type) {
-      telemetry = await databaseService.getTelemetryByTypeAsync(type as string, maxLimit);
+      telemetry = await databaseService.telemetry.getTelemetryByType(type as string, maxLimit);
       // Filter by since/before if provided
       if (sinceTimestamp) {
         telemetry = telemetry.filter(t => t.timestamp >= sinceTimestamp);
@@ -59,7 +59,7 @@ router.get('/', async (req: Request, res: Response) => {
       telemetry = [];
       const perNodeLimit = Math.max(1, Math.floor(maxLimit / 10));
       for (const node of nodes.slice(0, 10)) { // Limit to first 10 nodes to avoid huge response
-        const nodeTelemetry = await databaseService.getTelemetryByNodeAsync(node.nodeId, perNodeLimit, sinceTimestamp, beforeTimestamp);
+        const nodeTelemetry = await databaseService.telemetry.getTelemetryByNode(node.nodeId, perNodeLimit, sinceTimestamp, beforeTimestamp);
         telemetry.push(...nodeTelemetry);
       }
     }
@@ -88,7 +88,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.get('/count', async (_req: Request, res: Response) => {
   try {
-    const count = await databaseService.getTelemetryCountAsync();
+    const count = await databaseService.telemetry.getTelemetryCount();
 
     res.json({
       success: true,
@@ -132,8 +132,8 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     const beforeTimestamp = before ? parseInt(before as string) : undefined;
 
     const typeStr = type ? type as string : undefined;
-    const telemetry = await databaseService.getTelemetryByNodeAsync(nodeId, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
-    const total = await databaseService.getTelemetryCountByNodeAsync(nodeId, sinceTimestamp, beforeTimestamp, typeStr);
+    const telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
+    const total = await databaseService.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, typeStr);
 
     res.json({
       success: true,

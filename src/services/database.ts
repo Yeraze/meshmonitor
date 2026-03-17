@@ -3033,19 +3033,10 @@ class DatabaseService {
     return Number(result.count);
   }
 
+  /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
   async getTelemetryCountAsync(): Promise<number> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query('SELECT COUNT(*) as count FROM telemetry');
-        return Number(result.rows[0].count);
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query('SELECT COUNT(*) as count FROM telemetry');
-      return Number((rows as any[])[0].count);
+    if (this.telemetryRepo) {
+      return this.telemetryRepo.getTelemetryCount();
     }
     return this.getTelemetryCount();
   }
@@ -3079,9 +3070,7 @@ class DatabaseService {
     return Number(result.count);
   }
 
-  /**
-   * Async version of getTelemetryCountByNode - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryCountByNode() instead */
   async getTelemetryCountByNodeAsync(
     nodeId: string,
     sinceTimestamp?: number,
@@ -3091,7 +3080,6 @@ class DatabaseService {
     if (this.telemetryRepo) {
       return this.telemetryRepo.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
     }
-    // Fallback to sync for SQLite if repo not ready
     return this.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
@@ -3166,7 +3154,9 @@ class DatabaseService {
       // Get last 500 position telemetry records for this node
       // Using a larger limit ensures we capture movement over a longer time period
       // (50 was too small - nodes parked for a while would show only recent stationary positions)
-      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 500);
+      const positionTelemetry = this.telemetryRepo
+        ? await this.telemetryRepo.getPositionTelemetryByNode(nodeId, 500)
+        : this.getPositionTelemetryByNode(nodeId, 500);
 
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
@@ -3993,9 +3983,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTelemetryByNode - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryByNode() instead */
   async getTelemetryByNodeAsync(
     nodeId: string,
     limit: number = 100,
@@ -4048,7 +4036,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  // Async version of getPositionTelemetryByNode - works for all database backends
+  /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
   async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number): Promise<DbTelemetry[]> {
     if (this.telemetryRepo) {
       // Cast to local DbTelemetry type (they have compatible structure)
@@ -6595,9 +6583,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTelemetryByType - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
   async getTelemetryByTypeAsync(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
     if (this.telemetryRepo) {
       // Cast to local DbTelemetry type (they have compatible structure)
@@ -6670,10 +6656,7 @@ class DatabaseService {
     return this.getLatestTelemetryForType(nodeId, telemetryType);
   }
 
-  /**
-   * Get latest value for a telemetry type across all nodes in a single query.
-   * Returns a Map of nodeId -> value. Works with all database backends.
-   */
+  /** @deprecated Use databaseService.telemetry.getLatestTelemetryValueForAllNodes() instead */
   async getLatestTelemetryValueForAllNodesAsync(telemetryType: string): Promise<Map<string, number>> {
     if (this.telemetryRepo) {
       return this.telemetryRepo.getLatestTelemetryValueForAllNodes(telemetryType);
@@ -11076,47 +11059,11 @@ class DatabaseService {
     return this.getMessage(id);
   }
 
-  /**
-   * Async method to delete a message by ID.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async deleteMessageAsync(id: string): Promise<boolean> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.deleteMessage(id);
-    }
-    // Fallback to sync for SQLite
-    return this.deleteMessage(id);
-  }
-
-  /**
-   * Async method to purge all messages from a channel.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeChannelMessagesAsync(channel: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeChannelMessages(channel);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeChannelMessages(channel);
-  }
-
-  /**
-   * Async method to purge all direct messages with a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeDirectMessagesAsync(nodeNum: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeDirectMessages(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeDirectMessages(nodeNum);
-  }
+  // deleteMessageAsync, purgeChannelMessagesAsync, purgeDirectMessagesAsync
+  // migrated to direct repository access: databaseService.messages.deleteMessage(), etc.
 
 
-  /**
-   * Async method to purge all telemetry for a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
+  /** @deprecated Use databaseService.telemetry.purgeNodeTelemetry() instead */
   async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
     if (this.telemetryRepo) {
       return this.telemetryRepo.purgeNodeTelemetry(nodeNum);
@@ -11125,11 +11072,7 @@ class DatabaseService {
     return this.purgeNodeTelemetry(nodeNum);
   }
 
-  /**
-   * Async method to purge position history for a node.
-   * Deletes only position-related telemetry types.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
+  /** @deprecated Use databaseService.telemetry.purgePositionHistory() instead */
   async purgePositionHistoryAsync(nodeNum: number): Promise<number> {
     if (this.telemetryRepo) {
       return this.telemetryRepo.purgePositionHistory(nodeNum);

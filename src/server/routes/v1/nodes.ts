@@ -29,7 +29,7 @@ async function hasNodesReadPermission(userId: number | null, isAdmin: boolean): 
  * Enrich node data with latest uptime from telemetry (async - works with all DB backends)
  */
 async function enrichNodesWithUptime(nodes: DbNode[]): Promise<(DbNode & { uptimeSeconds?: number })[]> {
-  const uptimeMap = await databaseService.getLatestTelemetryValueForAllNodesAsync('uptimeSeconds');
+  const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds');
   return nodes.map(node => ({
     ...node,
     uptimeSeconds: uptimeMap.get(node.nodeId)

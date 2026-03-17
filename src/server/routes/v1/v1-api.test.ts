@@ -192,7 +192,7 @@ vi.mock('../../../services/database.js', () => {
         }
         return map;
       }),
-      // Telemetry methods (async)
+      // Telemetry methods (async) - deprecated wrappers kept for backward compat
       getTelemetryByNodeAsync: vi.fn(async () => testTelemetry),
       getTelemetryCountByNodeAsync: vi.fn(async () => testTelemetry.length),
       getTelemetryByTypeAsync: vi.fn(async () => testTelemetry),
@@ -201,6 +201,24 @@ vi.mock('../../../services/database.js', () => {
       getAllNodesAsync: vi.fn(async () => testNodes),
       nodes: {
         getAllNodes: vi.fn(async () => testNodes),
+      },
+      // Telemetry repository (direct access)
+      telemetry: {
+        getTelemetryByNode: vi.fn(async () => testTelemetry),
+        getTelemetryCountByNode: vi.fn(async () => testTelemetry.length),
+        getTelemetryByType: vi.fn(async () => testTelemetry),
+        getTelemetryCount: vi.fn(async () => testTelemetry.length),
+        getLatestTelemetryValueForAllNodes: vi.fn(async (type: string) => {
+          const map = new Map<string, number>();
+          if (type === 'uptimeSeconds') {
+            map.set('!abc12345', 86400);
+            map.set('!def67890', 86400);
+          }
+          return map;
+        }),
+        getPositionTelemetryByNode: vi.fn(async () => testPositionTelemetry),
+        purgeNodeTelemetry: vi.fn(async () => 0),
+        purgePositionHistory: vi.fn(async () => 0),
       },
       // Position history methods
       // getNode takes a decimal nodeNum; position history route converts hex nodeId to decimal
@@ -1353,14 +1371,14 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should pass since parameter to database query', async () => {
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockClear();
+    vi.mocked(databaseService.default.telemetry.getPositionTelemetryByNode).mockClear();
 
     await request(app)
       .get('/api/v1/nodes/2882400001/position-history?since=1500')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
-    expect(databaseService.default.getPositionTelemetryByNodeAsync).toHaveBeenCalledWith(
+    expect(databaseService.default.telemetry.getPositionTelemetryByNode).toHaveBeenCalledWith(
       '2882400001',
       5000, // 1000 * 5 internal limit
       1500  // since parameter
@@ -1369,7 +1387,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return empty array for node with no position history', async () => {
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockResolvedValueOnce([]);
+    vi.mocked(databaseService.default.telemetry.getPositionTelemetryByNode).mockResolvedValueOnce([]);
 
     const response = await request(app)
       .get('/api/v1/nodes/2882400001/position-history')

@@ -104,7 +104,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     // `total` reflects all matching positions, not just the current page.
     const TELEMETRY_TYPES_PER_POSITION = 5;
     const internalLimit = (offsetNum + maxLimit) * TELEMETRY_TYPES_PER_POSITION;
-    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(
+    const positionTelemetry = await databaseService.telemetry.getPositionTelemetryByNode(
       nodeId,
       internalLimit,
       sinceTimestamp

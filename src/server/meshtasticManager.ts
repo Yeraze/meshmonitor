@@ -10750,7 +10750,7 @@ class MeshtasticManager {
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
   async getAllNodesAsync(): Promise<DeviceInfo[]> {
-    const uptimeMap = await databaseService.getLatestTelemetryValueForAllNodesAsync('uptimeSeconds');
+    const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds');
     const dbNodes = databaseService.getAllNodes();
     return dbNodes.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
   }
