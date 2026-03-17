@@ -3,9 +3,9 @@
  * Includes: backup_history, system_backup_history, custom_themes, user_map_preferences, upgrade_history
  * Supports SQLite, PostgreSQL, and MySQL
  */
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, doublePrecision as pgDoublePrecision } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real, primaryKey as sqlitePrimaryKey } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, doublePrecision as pgDoublePrecision, primaryKey as pgPrimaryKey } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial, primaryKey as myPrimaryKey } from 'drizzle-orm/mysql-core';
 import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
 // ============ BACKUP HISTORY ============
@@ -197,6 +197,104 @@ export const autoTimeSyncNodesPostgres = pgTable('auto_time_sync_nodes', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
+// ============ AUTO TRACEROUTE LOG ============
+
+export const autoTracerouteLogSqlite = sqliteTable('auto_traceroute_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  timestamp: integer('timestamp').notNull(),
+  toNodeNum: integer('to_node_num').notNull(),
+  toNodeName: text('to_node_name'),
+  success: integer('success'),
+  createdAt: integer('created_at'),
+});
+
+export const autoTracerouteLogPostgres = pgTable('auto_traceroute_log', {
+  id: pgSerial('id').primaryKey(),
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
+  toNodeNum: pgBigint('to_node_num', { mode: 'number' }).notNull(),
+  toNodeName: pgText('to_node_name'),
+  success: pgInteger('success'),
+  createdAt: pgBigint('created_at', { mode: 'number' }),
+});
+
+// ============ AUTO KEY REPAIR STATE ============
+
+export const autoKeyRepairStateSqlite = sqliteTable('auto_key_repair_state', {
+  nodeNum: integer('nodeNum').primaryKey(),
+  attemptCount: integer('attemptCount').default(0),
+  lastAttemptTime: integer('lastAttemptTime'),
+  exhausted: integer('exhausted').default(0),
+  startedAt: integer('startedAt').notNull(),
+});
+
+export const autoKeyRepairStatePostgres = pgTable('auto_key_repair_state', {
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).primaryKey(),
+  attemptCount: pgInteger('attemptCount').default(0),
+  lastAttemptTime: pgBigint('lastAttemptTime', { mode: 'number' }),
+  exhausted: pgInteger('exhausted').default(0),
+  startedAt: pgBigint('startedAt', { mode: 'number' }).notNull(),
+});
+
+// ============ AUTO KEY REPAIR LOG ============
+
+export const autoKeyRepairLogSqlite = sqliteTable('auto_key_repair_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  timestamp: integer('timestamp').notNull(),
+  nodeNum: integer('nodeNum').notNull(),
+  nodeName: text('nodeName'),
+  action: text('action').notNull(),
+  success: integer('success'),
+  createdAt: integer('created_at'),
+});
+
+export const autoKeyRepairLogPostgres = pgTable('auto_key_repair_log', {
+  id: pgSerial('id').primaryKey(),
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull(),
+  nodeName: pgText('nodeName'),
+  action: pgText('action').notNull(),
+  success: pgInteger('success'),
+  createdAt: pgBigint('created_at', { mode: 'number' }),
+});
+
+// ============ AUTO DISTANCE DELETE LOG ============
+
+export const autoDistanceDeleteLogSqlite = sqliteTable('auto_distance_delete_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  timestamp: integer('timestamp').notNull(),
+  nodesDeleted: integer('nodes_deleted').notNull(),
+  thresholdKm: real('threshold_km').notNull(),
+  details: text('details'),
+  createdAt: integer('created_at'),
+});
+
+export const autoDistanceDeleteLogPostgres = pgTable('auto_distance_delete_log', {
+  id: pgSerial('id').primaryKey(),
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
+  nodesDeleted: pgInteger('nodes_deleted').notNull(),
+  thresholdKm: pgReal('threshold_km').notNull(),
+  details: pgText('details'),
+  createdAt: pgBigint('created_at', { mode: 'number' }),
+});
+
+// ============ GEOFENCE COOLDOWNS ============
+
+export const geofenceCooldownsSqlite = sqliteTable('geofence_cooldowns', {
+  triggerId: text('triggerId').notNull(),
+  nodeNum: integer('nodeNum').notNull(),
+  firedAt: integer('firedAt').notNull(),
+}, (table) => [
+  sqlitePrimaryKey({ columns: [table.triggerId, table.nodeNum] }),
+]);
+
+export const geofenceCooldownsPostgres = pgTable('geofence_cooldowns', {
+  triggerId: pgText('triggerId').notNull(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull(),
+  firedAt: pgBigint('firedAt', { mode: 'number' }).notNull(),
+}, (table) => [
+  pgPrimaryKey({ columns: [table.triggerId, table.nodeNum] }),
+]);
+
 // ============ MYSQL SCHEMAS ============
 
 export const backupHistoryMysql = mysqlTable('backup_history', {
@@ -284,6 +382,50 @@ export const autoTimeSyncNodesMysql = mysqlTable('auto_time_sync_nodes', {
   enabled: myBoolean('enabled').default(true),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });
+
+export const autoTracerouteLogMysql = mysqlTable('auto_traceroute_log', {
+  id: mySerial('id').primaryKey(),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  toNodeNum: myBigint('to_node_num', { mode: 'number' }).notNull(),
+  toNodeName: myText('to_node_name'),
+  success: myInt('success'),
+  createdAt: myBigint('created_at', { mode: 'number' }),
+});
+
+export const autoKeyRepairStateMysql = mysqlTable('auto_key_repair_state', {
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).primaryKey(),
+  attemptCount: myInt('attemptCount').default(0),
+  lastAttemptTime: myBigint('lastAttemptTime', { mode: 'number' }),
+  exhausted: myInt('exhausted').default(0),
+  startedAt: myBigint('startedAt', { mode: 'number' }).notNull(),
+});
+
+export const autoKeyRepairLogMysql = mysqlTable('auto_key_repair_log', {
+  id: mySerial('id').primaryKey(),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
+  nodeName: myText('nodeName'),
+  action: myText('action').notNull(),
+  success: myInt('success'),
+  createdAt: myBigint('created_at', { mode: 'number' }),
+});
+
+export const autoDistanceDeleteLogMysql = mysqlTable('auto_distance_delete_log', {
+  id: mySerial('id').primaryKey(),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  nodesDeleted: myInt('nodes_deleted').notNull(),
+  thresholdKm: myDouble('threshold_km').notNull(),
+  details: myText('details'),
+  createdAt: myBigint('created_at', { mode: 'number' }),
+});
+
+export const geofenceCooldownsMysql = mysqlTable('geofence_cooldowns', {
+  triggerId: myVarchar('triggerId', { length: 255 }).notNull(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
+  firedAt: myBigint('firedAt', { mode: 'number' }).notNull(),
+}, (table) => [
+  myPrimaryKey({ columns: [table.triggerId, table.nodeNum] }),
+]);
 
 // ============ NEWS CACHE ============
 // Stores cached news feed from meshmonitor.org
