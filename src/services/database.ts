@@ -2514,10 +2514,7 @@ class DatabaseService {
    * Get all nodes with excessive packet rates (async)
    */
   async getNodesWithExcessivePacketsAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Use cache for now since we don't have a repo method yet
-      return this.getNodesWithExcessivePackets();
-    }
+    // Uses cache-based method (no dedicated repo method yet)
     return this.getNodesWithExcessivePackets();
   }
 
@@ -2606,10 +2603,7 @@ class DatabaseService {
    * Get all nodes with time offset issues (async)
    */
   async getNodesWithTimeOffsetIssuesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Use cache for now since we don't have a repo method yet
-      return this.getNodesWithTimeOffsetIssues();
-    }
+    // Uses cache-based method (no dedicated repo method yet)
     return this.getNodesWithTimeOffsetIssues();
   }
 
@@ -2987,14 +2981,11 @@ class DatabaseService {
     limit?: number;
     offset?: number;
   }): Promise<{ messages: DbMessage[]; total: number }> {
-    if (this.messagesRepo) {
-      const result = await this.messagesRepo.searchMessages(options);
-      return {
-        messages: result.messages.map(msg => this.convertRepoMessage(msg)),
-        total: result.total,
-      };
-    }
-    return { messages: [], total: 0 };
+    const result = await this.messages.searchMessages(options);
+    return {
+      messages: result.messages.map(msg => this.convertRepoMessage(msg)),
+      total: result.total,
+    };
   }
 
   // Statistics
@@ -3035,10 +3026,7 @@ class DatabaseService {
 
   /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
   async getTelemetryCountAsync(): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getTelemetryCount();
-    }
-    return this.getTelemetryCount();
+    return this.telemetry.getTelemetryCount();
   }
 
   getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
@@ -3077,10 +3065,7 @@ class DatabaseService {
     beforeTimestamp?: number,
     telemetryType?: string
   ): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
-    }
-    return this.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
+    return this.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
   /**
@@ -3941,13 +3926,8 @@ class DatabaseService {
    * Async version of insertTelemetry - works with all database backends
    */
   async insertTelemetryAsync(telemetryData: DbTelemetry): Promise<void> {
-    if (this.telemetryRepo) {
-      await this.telemetryRepo.insertTelemetry(telemetryData);
-      this.invalidateTelemetryTypesCache();
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.insertTelemetry(telemetryData);
+    await this.telemetry.insertTelemetry(telemetryData);
+    this.invalidateTelemetryTypesCache();
   }
 
   getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
@@ -3992,12 +3972,8 @@ class DatabaseService {
     offset: number = 0,
     telemetryType?: string
   ): Promise<DbTelemetry[]> {
-    if (this.telemetryRepo) {
-      // Cast to local DbTelemetry type (they have compatible structure)
-      return this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType);
+    // Cast to local DbTelemetry type (they have compatible structure)
+    return this.telemetry.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
   }
 
   /**
@@ -4038,12 +4014,8 @@ class DatabaseService {
 
   /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
   async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number): Promise<DbTelemetry[]> {
-    if (this.telemetryRepo) {
-      // Cast to local DbTelemetry type (they have compatible structure)
-      return this.telemetryRepo.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp) as unknown as Promise<DbTelemetry[]>;
-    }
-    // Fallback to sync method for SQLite when repo not available
-    return this.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp);
+    // Cast to local DbTelemetry type (they have compatible structure)
+    return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp) as unknown as Promise<DbTelemetry[]>;
   }
 
   /**
@@ -4174,10 +4146,7 @@ class DatabaseService {
    */
   async getRecentEstimatedPositionsAsync(nodeNum: number, limit: number = 10): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
     const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    return this.telemetryRepo.getRecentEstimatedPositions(nodeId, limit);
+    return this.telemetry.getRecentEstimatedPositions(nodeId, limit);
   }
 
   /**
@@ -4194,10 +4163,7 @@ class DatabaseService {
     sinceTimestamp: number,
     intervalMinutes: number = 15
   ): Promise<Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }>> {
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    return this.telemetryRepo.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes);
+    return this.telemetry.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes);
   }
 
   /**
@@ -4212,10 +4178,7 @@ class DatabaseService {
     nodeId: string,
     sinceTimestamp: number
   ): Promise<Array<{ timestamp: number; quality: number }>> {
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    return this.telemetryRepo.getLinkQualityHistory(nodeId, sinceTimestamp);
+    return this.telemetry.getLinkQualityHistory(nodeId, sinceTimestamp);
   }
 
   /**
@@ -5333,57 +5296,19 @@ class DatabaseService {
 
   // Solar Estimates methods
   async upsertSolarEstimateAsync(timestamp: number, wattHours: number, fetchedAt: number): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.upsertSolarEstimate({
-        timestamp,
-        watt_hours: wattHours,
-        fetched_at: fetchedAt,
-      });
-      return;
-    }
-    // Fallback to sync SQLite method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'upsertSolarEstimate' called but using ${this.drizzleDbType} database. MiscRepository not initialized.`);
-    }
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO solar_estimates (timestamp, watt_hours, fetched_at)
-      VALUES (?, ?, ?)
-    `);
-    stmt.run(timestamp, wattHours, fetchedAt);
+    await this.misc.upsertSolarEstimate({
+      timestamp,
+      watt_hours: wattHours,
+      fetched_at: fetchedAt,
+    });
   }
 
   async getRecentSolarEstimatesAsync(limit: number = 100): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getRecentSolarEstimates(limit);
-    }
-    // Fallback to sync SQLite method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'getRecentSolarEstimates' called but using ${this.drizzleDbType} database. MiscRepository not initialized.`);
-    }
-    const stmt = this.db.prepare(`
-      SELECT timestamp, watt_hours, fetched_at
-      FROM solar_estimates
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    return stmt.all(limit) as Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
+    return this.misc.getRecentSolarEstimates(limit);
   }
 
   async getSolarEstimatesInRangeAsync(startTimestamp: number, endTimestamp: number): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getSolarEstimatesInRange(startTimestamp, endTimestamp);
-    }
-    // Fallback to sync SQLite method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'getSolarEstimatesInRange' called but using ${this.drizzleDbType} database. MiscRepository not initialized.`);
-    }
-    const stmt = this.db.prepare(`
-      SELECT timestamp, watt_hours, fetched_at
-      FROM solar_estimates
-      WHERE timestamp >= ? AND timestamp <= ?
-      ORDER BY timestamp ASC
-    `);
-    return stmt.all(startTimestamp, endTimestamp) as Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
+    return this.misc.getSolarEstimatesInRange(startTimestamp, endTimestamp);
   }
 
   isAutoTracerouteNodeFilterEnabled(): boolean {
@@ -6585,12 +6510,8 @@ class DatabaseService {
 
   /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
   async getTelemetryByTypeAsync(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
-    if (this.telemetryRepo) {
-      // Cast to local DbTelemetry type (they have compatible structure)
-      return this.telemetryRepo.getTelemetryByType(telemetryType, limit) as unknown as DbTelemetry[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getTelemetryByType(telemetryType, limit);
+    // Cast to local DbTelemetry type (they have compatible structure)
+    return this.telemetry.getTelemetryByType(telemetryType, limit) as unknown as DbTelemetry[];
   }
 
   getLatestTelemetryByNode(nodeId: string): DbTelemetry[] {
@@ -6633,44 +6554,28 @@ class DatabaseService {
    * Async version of getLatestTelemetryForType - works with all database backends
    */
   async getLatestTelemetryForTypeAsync(nodeId: string, telemetryType: string): Promise<DbTelemetry | null> {
-    if (this.telemetryRepo) {
-      const result = await this.telemetryRepo.getLatestTelemetryForType(nodeId, telemetryType);
-      if (!result) return null;
-      // Normalize the result to match DbTelemetry interface (convert null to undefined)
-      return {
-        id: result.id,
-        nodeId: result.nodeId,
-        nodeNum: result.nodeNum,
-        telemetryType: result.telemetryType,
-        timestamp: result.timestamp,
-        value: result.value,
-        unit: result.unit ?? undefined,
-        createdAt: result.createdAt,
-        packetTimestamp: result.packetTimestamp ?? undefined,
-        channel: result.channel ?? undefined,
-        precisionBits: result.precisionBits ?? undefined,
-        gpsAccuracy: result.gpsAccuracy ?? undefined,
-      };
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getLatestTelemetryForType(nodeId, telemetryType);
+    const result = await this.telemetry.getLatestTelemetryForType(nodeId, telemetryType);
+    if (!result) return null;
+    // Normalize the result to match DbTelemetry interface (convert null to undefined)
+    return {
+      id: result.id,
+      nodeId: result.nodeId,
+      nodeNum: result.nodeNum,
+      telemetryType: result.telemetryType,
+      timestamp: result.timestamp,
+      value: result.value,
+      unit: result.unit ?? undefined,
+      createdAt: result.createdAt,
+      packetTimestamp: result.packetTimestamp ?? undefined,
+      channel: result.channel ?? undefined,
+      precisionBits: result.precisionBits ?? undefined,
+      gpsAccuracy: result.gpsAccuracy ?? undefined,
+    };
   }
 
   /** @deprecated Use databaseService.telemetry.getLatestTelemetryValueForAllNodes() instead */
   async getLatestTelemetryValueForAllNodesAsync(telemetryType: string): Promise<Map<string, number>> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getLatestTelemetryValueForAllNodes(telemetryType);
-    }
-    // Fallback for SQLite without repo
-    const result = new Map<string, number>();
-    const nodes = this.getAllNodes();
-    for (const node of nodes) {
-      const telemetry = this.getLatestTelemetryForType(node.nodeId, telemetryType);
-      if (telemetry) {
-        result.set(node.nodeId, telemetry.value);
-      }
-    }
-    return result;
+    return this.telemetry.getLatestTelemetryValueForAllNodes(telemetryType);
   }
 
   // Get distinct telemetry types per node (efficient for checking capabilities)
@@ -7452,11 +7357,7 @@ class DatabaseService {
    * @returns Record mapping nodeNum to stats {avgRssi, packetCount, lastHeard}
    */
   async getDirectNeighborStatsAsync(hoursBack: number = 24): Promise<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>> {
-    if (!this.neighborsRepo) {
-      return {};
-    }
-
-    const stats = await this.neighborsRepo.getDirectNeighborRssiAsync(hoursBack);
+    const stats = await this.neighbors.getDirectNeighborRssiAsync(hoursBack);
     const result: Record<number, { avgRssi: number; packetCount: number; lastHeard: number }> = {};
 
     for (const [nodeNum, stat] of stats) {
@@ -7477,16 +7378,12 @@ class DatabaseService {
    * @returns Number of neighbor records deleted
    */
   async deleteNeighborInfoForNodeAsync(nodeNum: number): Promise<number> {
-    if (!this.neighborsRepo) {
-      return 0;
-    }
-
     // Clear from cache
     this._neighborsByNodeCache.delete(nodeNum);
     this._neighborsCache = this._neighborsCache.filter(n => n.nodeNum !== nodeNum);
 
     // Delete from database
-    const deleted = await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum);
+    const deleted = await this.neighbors.deleteNeighborInfoForNode(nodeNum);
     logger.info(`Deleted ${deleted} neighbor records for node ${nodeNum}`);
     return deleted;
   }
@@ -8556,20 +8453,12 @@ class DatabaseService {
 
   async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
     if (!userId) return;
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.markMessagesAsReadByIds([messageId], userId);
-    }
-    // Fallback to sync SQLite method
-    this.markMessageAsRead(messageId, userId);
+    return this.notifications.markMessagesAsReadByIds([messageId], userId);
   }
 
   async markMessagesAsReadAsync(messageIds: string[], userId: number | null): Promise<void> {
     if (!userId || messageIds.length === 0) return;
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.markMessagesAsReadByIds(messageIds, userId);
-    }
-    // Fallback to sync SQLite method
-    this.markMessagesAsRead(messageIds, userId);
+    return this.notifications.markMessagesAsReadByIds(messageIds, userId);
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
@@ -11028,35 +10917,31 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async getMessageAsync(id: string): Promise<DbMessage | null> {
-    if (this.messagesRepo) {
-      const result = await this.messagesRepo.getMessage(id);
-      // Transform null values to undefined to match DbMessage type
-      if (result) {
-        return {
-          ...result,
-          portnum: result.portnum ?? undefined,
-          requestId: result.requestId ?? undefined,
-          rxTime: result.rxTime ?? undefined,
-          hopStart: result.hopStart ?? undefined,
-          hopLimit: result.hopLimit ?? undefined,
-          relayNode: result.relayNode ?? undefined,
-          replyId: result.replyId ?? undefined,
-          emoji: result.emoji ?? undefined,
-          viaMqtt: result.viaMqtt ?? undefined,
-          rxSnr: result.rxSnr ?? undefined,
-          rxRssi: result.rxRssi ?? undefined,
-          ackFailed: result.ackFailed ?? undefined,
-          routingErrorReceived: result.routingErrorReceived ?? undefined,
-          deliveryState: result.deliveryState ?? undefined,
-          wantAck: result.wantAck ?? undefined,
-          ackFromNode: result.ackFromNode ?? undefined,
-          decryptedBy: result.decryptedBy ?? undefined,
-        };
-      }
-      return null;
+    const result = await this.messages.getMessage(id);
+    // Transform null values to undefined to match DbMessage type
+    if (result) {
+      return {
+        ...result,
+        portnum: result.portnum ?? undefined,
+        requestId: result.requestId ?? undefined,
+        rxTime: result.rxTime ?? undefined,
+        hopStart: result.hopStart ?? undefined,
+        hopLimit: result.hopLimit ?? undefined,
+        relayNode: result.relayNode ?? undefined,
+        replyId: result.replyId ?? undefined,
+        emoji: result.emoji ?? undefined,
+        viaMqtt: result.viaMqtt ?? undefined,
+        rxSnr: result.rxSnr ?? undefined,
+        rxRssi: result.rxRssi ?? undefined,
+        ackFailed: result.ackFailed ?? undefined,
+        routingErrorReceived: result.routingErrorReceived ?? undefined,
+        deliveryState: result.deliveryState ?? undefined,
+        wantAck: result.wantAck ?? undefined,
+        ackFromNode: result.ackFromNode ?? undefined,
+        decryptedBy: result.decryptedBy ?? undefined,
+      };
     }
-    // Fallback to sync for SQLite
-    return this.getMessage(id);
+    return null;
   }
 
   // deleteMessageAsync, purgeChannelMessagesAsync, purgeDirectMessagesAsync
@@ -11065,20 +10950,12 @@ class DatabaseService {
 
   /** @deprecated Use databaseService.telemetry.purgeNodeTelemetry() instead */
   async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.purgeNodeTelemetry(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeNodeTelemetry(nodeNum);
+    return this.telemetry.purgeNodeTelemetry(nodeNum);
   }
 
   /** @deprecated Use databaseService.telemetry.purgePositionHistory() instead */
   async purgePositionHistoryAsync(nodeNum: number): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.purgePositionHistory(nodeNum);
-    }
-    // No sync fallback - position history purge is only available through async repo
-    return 0;
+    return this.telemetry.purgePositionHistory(nodeNum);
   }
 
   /**
@@ -11176,11 +11053,8 @@ class DatabaseService {
    * Save news feed to cache
    */
   async saveNewsCacheAsync(feedData: string, sourceUrl: string): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
     const now = Math.floor(Date.now() / 1000);
-    return this.miscRepo.saveNewsCache({
+    return this.misc.saveNewsCache({
       feedData,
       fetchedAt: now,
       sourceUrl,
@@ -11193,10 +11067,7 @@ class DatabaseService {
    * Get user's news status
    */
   async getUserNewsStatusAsync(userId: number): Promise<{ lastSeenNewsId: string | null; dismissedNewsIds: string[] } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    const status = await this.miscRepo.getUserNewsStatus(userId);
+    const status = await this.misc.getUserNewsStatus(userId);
     if (!status) {
       return null;
     }
@@ -11210,10 +11081,7 @@ class DatabaseService {
    * Save user's news status
    */
   async saveUserNewsStatusAsync(userId: number, lastSeenNewsId: string | null, dismissedNewsIds: string[]): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.saveUserNewsStatus({
+    return this.misc.saveUserNewsStatus({
       userId,
       lastSeenNewsId,
       dismissedNewsIds: JSON.stringify(dismissedNewsIds),
@@ -11235,10 +11103,7 @@ class DatabaseService {
     nodeId?: string | null;
     nodeNum?: number | null;
   }): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.insertBackupHistory({
+    return this.misc.insertBackupHistory({
       ...backup,
       createdAt: Date.now(),
     });
@@ -11253,10 +11118,7 @@ class DatabaseService {
     oldestBackup: string | null;
     newestBackup: string | null;
   }> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    const stats = await this.miscRepo.getBackupStats();
+    const stats = await this.misc.getBackupStats();
     return {
       count: stats.count,
       totalSize: stats.totalSize,
@@ -11382,10 +11244,6 @@ class DatabaseService {
    * Get a node that needs time sync
    */
   async getNodeNeedingTimeSyncAsync(): Promise<DbNode | null> {
-    if (!this.nodesRepo) {
-      return null;
-    }
-
     const activeHours = 48; // Only consider nodes heard in last 48 hours
     // lastHeard is stored in seconds, so convert cutoff to seconds
     const activeNodeCutoff = Math.floor((Date.now() - (activeHours * 60 * 60 * 1000)) / 1000);
@@ -11403,7 +11261,7 @@ class DatabaseService {
       }
     }
 
-    const node = await this.nodesRepo.getNodeNeedingTimeSyncAsync(
+    const node = await this.nodes.getNodeNeedingTimeSyncAsync(
       activeNodeCutoff,
       expirationMsAgo,
       filterNodeNums
