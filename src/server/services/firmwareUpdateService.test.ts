@@ -42,13 +42,15 @@ const MOCK_RELEASE_ALPHA = {
 };
 
 // ---------- hoisted mocks ----------
-const mockGetSettingAsync = vi.fn();
-const mockSetSettingAsync = vi.fn();
+const mockGetSetting = vi.fn();
+const mockSetSetting = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    getSettingAsync: (...args: unknown[]) => mockGetSettingAsync(...args),
-    setSettingAsync: (...args: unknown[]) => mockSetSettingAsync(...args),
+    settings: {
+      getSetting: (...args: unknown[]) => mockGetSetting(...args),
+      setSetting: (...args: unknown[]) => mockSetSetting(...args),
+    },
   },
 }));
 
@@ -422,41 +424,41 @@ describe('FirmwareUpdateService', () => {
   // ---- channel settings ----
   describe('channel settings', () => {
     it('should return stable as default channel', async () => {
-      mockGetSettingAsync.mockResolvedValueOnce(null);
+      mockGetSetting.mockResolvedValueOnce(null);
       const channel = await service.getChannel();
       expect(channel).toBe('stable');
-      expect(mockGetSettingAsync).toHaveBeenCalledWith('firmwareChannel');
+      expect(mockGetSetting).toHaveBeenCalledWith('firmwareChannel');
     });
 
     it('should return stored channel from database', async () => {
-      mockGetSettingAsync.mockResolvedValueOnce('alpha');
+      mockGetSetting.mockResolvedValueOnce('alpha');
       const channel = await service.getChannel();
       expect(channel).toBe('alpha');
     });
 
     it('should write channel to database', async () => {
-      mockSetSettingAsync.mockResolvedValueOnce(undefined);
+      mockSetSetting.mockResolvedValueOnce(undefined);
       await service.setChannel('alpha');
-      expect(mockSetSettingAsync).toHaveBeenCalledWith('firmwareChannel', 'alpha');
+      expect(mockSetSetting).toHaveBeenCalledWith('firmwareChannel', 'alpha');
     });
 
     it('should read custom URL from database', async () => {
-      mockGetSettingAsync.mockResolvedValueOnce('https://my-firmware.example.com');
+      mockGetSetting.mockResolvedValueOnce('https://my-firmware.example.com');
       const url = await service.getCustomUrl();
       expect(url).toBe('https://my-firmware.example.com');
-      expect(mockGetSettingAsync).toHaveBeenCalledWith('firmwareCustomUrl');
+      expect(mockGetSetting).toHaveBeenCalledWith('firmwareCustomUrl');
     });
 
     it('should return null when no custom URL is set', async () => {
-      mockGetSettingAsync.mockResolvedValueOnce(null);
+      mockGetSetting.mockResolvedValueOnce(null);
       const url = await service.getCustomUrl();
       expect(url).toBeNull();
     });
 
     it('should write custom URL to database', async () => {
-      mockSetSettingAsync.mockResolvedValueOnce(undefined);
+      mockSetSetting.mockResolvedValueOnce(undefined);
       await service.setCustomUrl('https://custom.example.com/firmware');
-      expect(mockSetSettingAsync).toHaveBeenCalledWith('firmwareCustomUrl', 'https://custom.example.com/firmware');
+      expect(mockSetSetting).toHaveBeenCalledWith('firmwareCustomUrl', 'https://custom.example.com/firmware');
     });
   });
 

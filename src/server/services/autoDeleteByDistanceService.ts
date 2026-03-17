@@ -87,7 +87,7 @@ class AutoDeleteByDistanceService {
       const localNodeNum = localNodeNumStr ? Number(localNodeNumStr) : null;
 
       // Get all nodes (must use async for PostgreSQL/MySQL)
-      const allNodes = await databaseService.getAllNodesAsync();
+      const allNodes = await databaseService.nodes.getAllNodes();
 
       for (const node of allNodes) {
         // Protect local node

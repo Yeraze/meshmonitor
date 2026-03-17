@@ -251,8 +251,11 @@ describe('Packet Routes', () => {
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
     };
-    (DatabaseService as any).getChannelDatabasePermissionsForUserAsync = async () => {
-      return [];
+    (DatabaseService as any).channelDatabase = {
+      ...(DatabaseService as any).channelDatabase,
+      getPermissionsForUserAsync: async () => {
+        return [];
+      },
     };
 
     // Mock req.user for permission checking

@@ -70,8 +70,10 @@ vi.mock('../../services/database.js', () => ({
     checkPermissionAsync: vi.fn().mockResolvedValue(true),
     getUserPermissionSetAsync: vi.fn().mockResolvedValue({ resources: {}, isAdmin: true }),
     auditLog: vi.fn(),
-    getSettingAsync: vi.fn().mockResolvedValue(null),
-    setSettingAsync: vi.fn().mockResolvedValue(undefined),
+    settings: {
+      getSetting: vi.fn().mockResolvedValue(null),
+      setSetting: vi.fn().mockResolvedValue(undefined),
+    },
   },
 }));
 

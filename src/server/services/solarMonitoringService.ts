@@ -71,17 +71,17 @@ class SolarMonitoringService {
   private async fetchAndStoreSolarEstimates(): Promise<void> {
     try {
       // Check if solar monitoring is enabled
-      const enabled = await databaseService.getSettingAsync('solarMonitoringEnabled');
+      const enabled = await databaseService.settings.getSetting('solarMonitoringEnabled');
       if (enabled !== '1' && enabled !== 'true') {
         logger.debug('☀️  Solar monitoring is disabled, skipping fetch');
         return;
       }
 
       // Get configuration from settings
-      const latitude = parseFloat(await databaseService.getSettingAsync('solarMonitoringLatitude') || '0');
-      const longitude = parseFloat(await databaseService.getSettingAsync('solarMonitoringLongitude') || '0');
-      const declination = parseFloat(await databaseService.getSettingAsync('solarMonitoringDeclination') || '0');
-      const azimuth = parseFloat(await databaseService.getSettingAsync('solarMonitoringAzimuth') || '0');
+      const latitude = parseFloat(await databaseService.settings.getSetting('solarMonitoringLatitude') || '0');
+      const longitude = parseFloat(await databaseService.settings.getSetting('solarMonitoringLongitude') || '0');
+      const declination = parseFloat(await databaseService.settings.getSetting('solarMonitoringDeclination') || '0');
+      const azimuth = parseFloat(await databaseService.settings.getSetting('solarMonitoringAzimuth') || '0');
 
       // Validate coordinates
       if (latitude === 0 && longitude === 0) {

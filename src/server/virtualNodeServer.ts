@@ -613,7 +613,7 @@ export class VirtualNodeServer extends EventEmitter {
    * (including disabled ones with role=0) are sent to match real firmware behavior.
    */
   private async sendChannelsFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
-    const dbChannels = await databaseService.getAllChannelsAsync();
+    const dbChannels = await databaseService.channels.getAllChannels();
     let sent = 0;
     for (const ch of dbChannels) {
       const client = this.clients.get(clientId);

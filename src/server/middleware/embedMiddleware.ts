@@ -22,7 +22,7 @@ export function createEmbedCspMiddleware() {
         return res.status(404).json({ error: 'Embed profile not found' });
       }
 
-      const profile = await databaseService.getEmbedProfileByIdAsync(profileId);
+      const profile = await databaseService.embedProfiles.getByIdAsync(profileId);
 
       if (!profile || !profile.enabled) {
         return res.status(404).json({ error: 'Embed profile not found' });

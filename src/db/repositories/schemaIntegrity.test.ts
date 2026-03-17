@@ -265,24 +265,40 @@ describe('Schema integrity after all migrations', () => {
     `);
 
     // === Step 2: Run all registered migrations ===
-    // This replicates what the migration runner does for SQLite
+    // The base schema above replicates createTables() + migrateSchema() which means
+    // columns added by old-style migrations (002-046) already exist. However, those
+    // migrations also CREATE TABLE for auth, notifications, etc. We run all migrations
+    // in order: old-style ones (002-046) are wrapped in try/catch so ALTER TABLE
+    // duplicate-column errors are harmlessly ignored while CREATE TABLE IF NOT EXISTS
+    // calls succeed. New-style migrations (047+) use settingsKey guards.
     const migrations = registry.getAll();
+
     for (const migration of migrations) {
       if (!migration.sqlite) continue;
 
       if (migration.selfIdempotent) {
-        // Old-style migrations handle their own idempotency
+        // selfIdempotent migrations handle their own idempotency
         try {
           migration.sqlite(db, getSetting, setSetting);
-        } catch (error: any) {
-          // Some old-style migrations may fail on fresh DB (e.g., duplicate column)
-          // This is expected - they use try/catch internally
+        } catch {
+          // Expected: some may fail on fresh DB with full base schema
         }
       } else if (migration.settingsKey) {
-        // New-style migrations use settings key for idempotency
         const completed = getSetting(migration.settingsKey);
         if (completed !== 'completed') {
-          migration.sqlite(db, getSetting, setSetting);
+          if (migration.number <= 46) {
+            // Old-style migrations: run with try/catch since ALTER TABLE ADD COLUMN
+            // will fail for columns already in the base schema, but CREATE TABLE
+            // IF NOT EXISTS and other operations will succeed.
+            try {
+              migration.sqlite(db, getSetting, setSetting);
+            } catch {
+              // Expected: duplicate column errors from ALTER TABLE
+            }
+          } else {
+            // New-style migrations (047+): run normally
+            migration.sqlite(db, getSetting, setSetting);
+          }
           setSetting(migration.settingsKey, 'completed');
         }
       }

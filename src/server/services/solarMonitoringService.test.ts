@@ -29,7 +29,7 @@ vi.mock('node-cron', () => ({
 
 // Create in-memory database for tests
 let testDb: Database.Database;
-const mockGetSettingAsync = vi.fn();
+const mockGetSetting = vi.fn();
 const mockUpsertSolarEstimateAsync = vi.fn();
 const mockGetRecentSolarEstimatesAsync = vi.fn();
 const mockGetSolarEstimatesInRangeAsync = vi.fn();
@@ -38,7 +38,9 @@ const mockSetSetting = vi.fn();
 // Mock the database service
 vi.mock('../../services/database.js', () => ({
   default: {
-    getSettingAsync: (...args: unknown[]) => mockGetSettingAsync(...args),
+    settings: {
+      getSetting: (...args: unknown[]) => mockGetSetting(...args),
+    },
     setSetting: (...args: unknown[]) => mockSetSetting(...args),
     upsertSolarEstimateAsync: (...args: unknown[]) => mockUpsertSolarEstimateAsync(...args),
     getRecentSolarEstimatesAsync: (...args: unknown[]) => mockGetRecentSolarEstimatesAsync(...args),
@@ -80,7 +82,7 @@ describe('SolarMonitoringService', () => {
     solarEstimates = [];
 
     // Set up default mock implementations
-    mockGetSettingAsync.mockImplementation(async (key: string) => {
+    mockGetSetting.mockImplementation(async (key: string) => {
       const row = testDb.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
       return row?.value || null;
     });

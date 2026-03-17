@@ -105,7 +105,7 @@ class ChannelDecryptionService {
    */
   async refreshChannelCache(): Promise<void> {
     try {
-      const channels = await databaseService.getEnabledChannelDatabaseEntriesAsync();
+      const channels = await databaseService.channelDatabase.getEnabledAsync();
       this.channelCache.clear();
 
       for (const channel of channels) {
@@ -341,7 +341,7 @@ class ChannelDecryptionService {
 
       // Success! Update the channel's decrypted count
       try {
-        await databaseService.incrementChannelDatabaseDecryptedCountAsync(id);
+        await databaseService.channelDatabase.incrementDecryptedCountAsync(id);
       } catch (err) {
         logger.warn(`Failed to update decrypted count for channel ${id}:`, err);
       }
