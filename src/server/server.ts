@@ -1424,7 +1424,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
 // Get persistent ignored nodes list
 apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (_req, res) => {
   try {
-    const ignoredNodes = await databaseService.getIgnoredNodesAsync();
+    const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync();
     res.json(ignoredNodes);
   } catch (error) {
     logger.error('Error fetching ignored nodes:', error);
@@ -1459,7 +1459,7 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Remove from persistent ignore list
-    await databaseService.removeIgnoredNodeAsync(nodeNum);
+    await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum);
 
     // Also un-ignore the node record if it still exists
     try {

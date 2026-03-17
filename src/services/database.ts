@@ -1720,7 +1720,7 @@ class DatabaseService {
         if (!existingNode && nodeData.nodeNum !== 4294967295) {
           // Check if this node was previously ignored
           if (this.ignoredNodesRepo) {
-            this.ignoredNodesRepo.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
+            this.ignoredNodes.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
               if (wasIgnored) {
                 logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum}`);
                 updatedNode.isIgnored = true;
@@ -7830,34 +7830,16 @@ class DatabaseService {
     const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
 
     // Persist to/remove from the ignored_nodes table
-    if (this.ignoredNodesRepo) {
-      if (isIgnored) {
-        this.ignoredNodesRepo.addIgnoredNodeAsync(
-          nodeNum, nodeId, node?.longName, node?.shortName
-        ).catch(err => {
-          logger.error('Failed to add node to persistent ignore list:', err);
-        });
-      } else {
-        this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum).catch(err => {
-          logger.error('Failed to remove node from persistent ignore list:', err);
-        });
-      }
+    if (isIgnored) {
+      this.ignoredNodes.addIgnoredNodeAsync(
+        nodeNum, nodeId, node?.longName, node?.shortName
+      ).catch(err => {
+        logger.error('Failed to add node to persistent ignore list:', err);
+      });
     } else {
-      // SQLite fallback: use raw SQL for the ignored_nodes table
-      try {
-        if (isIgnored) {
-          const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt)
-            VALUES (?, ?, ?, ?, ?)
-          `);
-          stmt.run(nodeNum, nodeId, node?.longName || null, node?.shortName || null, Date.now());
-        } else {
-          const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
-          stmt.run(nodeNum);
-        }
-      } catch (err) {
-        logger.error('Failed to update persistent ignore list:', err);
-      }
+      this.ignoredNodes.removeIgnoredNodeAsync(nodeNum).catch(err => {
+        logger.error('Failed to remove node from persistent ignore list:', err);
+      });
     }
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
@@ -7896,59 +7878,7 @@ class DatabaseService {
     logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
   }
 
-  // Persistent ignored nodes operations
-  async addIgnoredNodeAsync(
-    nodeNum: number,
-    nodeId: string,
-    longName?: string | null,
-    shortName?: string | null,
-    ignoredBy?: string | null,
-  ): Promise<void> {
-    if (this.ignoredNodesRepo) {
-      await this.ignoredNodesRepo.addIgnoredNodeAsync(nodeNum, nodeId, longName, shortName, ignoredBy);
-    } else {
-      const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt, ignoredBy)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(nodeNum, nodeId, longName || null, shortName || null, Date.now(), ignoredBy || null);
-    }
-  }
-
-  async removeIgnoredNodeAsync(nodeNum: number): Promise<void> {
-    if (this.ignoredNodesRepo) {
-      await this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum);
-    } else {
-      const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
-      stmt.run(nodeNum);
-    }
-  }
-
-  async getIgnoredNodesAsync(): Promise<Array<{
-    nodeNum: number;
-    nodeId: string;
-    longName: string | null;
-    shortName: string | null;
-    ignoredAt: number;
-    ignoredBy: string | null;
-  }>> {
-    if (this.ignoredNodesRepo) {
-      return this.ignoredNodesRepo.getIgnoredNodesAsync();
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare('SELECT * FROM ignored_nodes');
-    return stmt.all() as any[];
-  }
-
-  async isNodeIgnoredAsync(nodeNum: number): Promise<boolean> {
-    if (this.ignoredNodesRepo) {
-      return this.ignoredNodesRepo.isNodeIgnoredAsync(nodeNum);
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare('SELECT nodeNum FROM ignored_nodes WHERE nodeNum = ?');
-    const row = stmt.get(nodeNum);
-    return !!row;
-  }
+  // Persistent ignored nodes operations — use databaseService.ignoredNodes.xxxAsync() directly
 
   // Embed profile operations — use databaseService.embedProfiles.xxxAsync() directly
 
