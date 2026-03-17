@@ -1973,15 +1973,15 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     toNodeId: msg.toNodeId,
     text: msg.text,
     channel: msg.channel,
-    portnum: msg.portnum,
+    portnum: msg.portnum ?? undefined,
     timestamp: new Date(msg.rxTime ?? msg.timestamp),
-    hopStart: msg.hopStart,
-    hopLimit: msg.hopLimit,
-    relayNode: msg.relayNode,
-    replyId: msg.replyId,
-    emoji: msg.emoji,
-    rxSnr: msg.rxSnr,
-    rxRssi: msg.rxRssi,
+    hopStart: msg.hopStart ?? undefined,
+    hopLimit: msg.hopLimit ?? undefined,
+    relayNode: msg.relayNode ?? undefined,
+    replyId: msg.replyId ?? undefined,
+    emoji: msg.emoji ?? undefined,
+    rxSnr: msg.rxSnr ?? undefined,
+    rxRssi: msg.rxRssi ?? undefined,
     requestId: (msg as any).requestId,
     wantAck: Boolean((msg as any).wantAck),
     ackFailed: Boolean((msg as any).ackFailed),
@@ -2043,7 +2043,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
     const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset);
+    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset) as DbMessage[];
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
