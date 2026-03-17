@@ -79,7 +79,7 @@ export const MYSQL_SCHEMA_SQL = `
     rxTime BIGINT,
     hopStart INT,
     hopLimit INT,
-    relayNode INT,
+    relayNode BIGINT,
     replyId BIGINT,
     emoji INT,
     viaMqtt BOOLEAN DEFAULT false,
@@ -89,7 +89,7 @@ export const MYSQL_SCHEMA_SQL = `
     routingErrorReceived BOOLEAN,
     deliveryState VARCHAR(50),
     wantAck BOOLEAN,
-    ackFromNode INT,
+    ackFromNode BIGINT,
     createdAt BIGINT NOT NULL,
     INDEX idx_messages_timestamp (timestamp),
     INDEX idx_messages_channel (channel)

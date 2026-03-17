@@ -93,6 +93,30 @@ Added Telemetry Configuration section to the Admin Commands tab's Module Configu
 
 ---
 
+### Request Telemetry Feature (#1400)
+
+**Completed:**
+- [x] Update `createTelemetryRequestMessage` in meshtasticProtobufService.ts to accept telemetry type parameter
+  - Added `telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'` parameter
+  - Creates appropriate empty variant (DeviceMetrics, EnvironmentMetrics, AirQualityMetrics, PowerMetrics)
+  - Changed hop limit from 0 to 3 for multi-hop delivery
+- [x] Add `sendTelemetryRequest` method to meshtasticManager.ts
+  - Follows `sendNeighborInfoRequest` pattern
+  - Logs to packet monitor with TELEMETRY_APP portnum (67)
+  - Broadcasts to virtual node clients
+- [x] Add POST `/api/telemetry/request` endpoint to server.ts
+  - Accepts destination and telemetryType parameters
+  - Validates telemetry type
+  - Uses `messages:write` permission
+- [x] Add `handleRequestTelemetry` handler and `telemetryRequestLoading` state to App.tsx
+- [x] Create `TelemetryRequestModal` component with buttons for each telemetry type
+- [x] Update MessagesTab.tsx with new props and "Request Telemetry" button in actions menu
+- [x] Add translation keys to public/locales/en.json
+
+**Summary:**
+Users can now request specific telemetry types (Device Metrics, Environment Metrics, Air Quality Metrics, Power Metrics) from remote nodes via the Messages tab actions menu. The feature sends an empty telemetry packet with `wantResponse: true` to trigger a response from the remote node.
+
+---
 ### Channel-Based Node Visibility (Discussion #1503)
 
 **Completed:**

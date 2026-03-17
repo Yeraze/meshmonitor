@@ -5,7 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
-import { telemetrySqlite, telemetryPostgres, telemetryMysql } from '../schema/telemetry.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 
@@ -21,6 +20,7 @@ export class TelemetryRepository extends BaseRepository {
    * Insert a telemetry record
    */
   async insertTelemetry(telemetryData: DbTelemetry): Promise<void> {
+    const { telemetry } = this.tables;
     const values = {
       nodeId: telemetryData.nodeId,
       nodeNum: telemetryData.nodeNum,
@@ -36,35 +36,16 @@ export class TelemetryRepository extends BaseRepository {
       gpsAccuracy: telemetryData.gpsAccuracy ?? null,
     };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.insert(telemetrySqlite).values(values);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.insert(telemetryMysql).values(values);
-    } else {
-      const db = this.getPostgresDb();
-      await db.insert(telemetryPostgres).values(values);
-    }
+    await this.db.insert(telemetry).values(values);
   }
 
   /**
    * Get telemetry count
    */
   async getTelemetryCount(): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db.select({ count: count() }).from(telemetrySqlite);
-      return Number(result[0].count);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db.select({ count: count() }).from(telemetryMysql);
-      return Number(result[0].count);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db.select({ count: count() }).from(telemetryPostgres);
-      return Number(result[0].count);
-    }
+    const { telemetry } = this.tables;
+    const result = await this.db.select({ count: count() }).from(telemetry);
+    return Number(result[0].count);
   }
 
   /**
@@ -76,67 +57,25 @@ export class TelemetryRepository extends BaseRepository {
     beforeTimestamp?: number,
     telemetryType?: string
   ): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      let conditions = [eq(telemetrySqlite.nodeId, nodeId)];
+    const { telemetry } = this.tables;
+    let conditions = [eq(telemetry.nodeId, nodeId)];
 
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetrySqlite.timestamp, sinceTimestamp));
-      }
-      if (beforeTimestamp !== undefined) {
-        conditions.push(lt(telemetrySqlite.timestamp, beforeTimestamp));
-      }
-      if (telemetryType !== undefined) {
-        conditions.push(eq(telemetrySqlite.telemetryType, telemetryType));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetrySqlite)
-        .where(and(...conditions));
-
-      return result.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      let conditions = [eq(telemetryMysql.nodeId, nodeId)];
-
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetryMysql.timestamp, sinceTimestamp));
-      }
-      if (beforeTimestamp !== undefined) {
-        conditions.push(lt(telemetryMysql.timestamp, beforeTimestamp));
-      }
-      if (telemetryType !== undefined) {
-        conditions.push(eq(telemetryMysql.telemetryType, telemetryType));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetryMysql)
-        .where(and(...conditions));
-
-      return result.length;
-    } else {
-      const db = this.getPostgresDb();
-      let conditions = [eq(telemetryPostgres.nodeId, nodeId)];
-
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetryPostgres.timestamp, sinceTimestamp));
-      }
-      if (beforeTimestamp !== undefined) {
-        conditions.push(lt(telemetryPostgres.timestamp, beforeTimestamp));
-      }
-      if (telemetryType !== undefined) {
-        conditions.push(eq(telemetryPostgres.telemetryType, telemetryType));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetryPostgres)
-        .where(and(...conditions));
-
-      return result.length;
+    if (sinceTimestamp !== undefined) {
+      conditions.push(gte(telemetry.timestamp, sinceTimestamp));
     }
+    if (beforeTimestamp !== undefined) {
+      conditions.push(lt(telemetry.timestamp, beforeTimestamp));
+    }
+    if (telemetryType !== undefined) {
+      conditions.push(eq(telemetry.telemetryType, telemetryType));
+    }
+
+    const result = await this.db
+      .select()
+      .from(telemetry)
+      .where(and(...conditions));
+
+    return result.length;
   }
 
   /**
@@ -150,76 +89,28 @@ export class TelemetryRepository extends BaseRepository {
     offset: number = 0,
     telemetryType?: string
   ): Promise<DbTelemetry[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      let conditions = [eq(telemetrySqlite.nodeId, nodeId)];
+    const { telemetry } = this.tables;
+    let conditions = [eq(telemetry.nodeId, nodeId)];
 
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetrySqlite.timestamp, sinceTimestamp));
-      }
-      if (beforeTimestamp !== undefined) {
-        conditions.push(lt(telemetrySqlite.timestamp, beforeTimestamp));
-      }
-      if (telemetryType !== undefined) {
-        conditions.push(eq(telemetrySqlite.telemetryType, telemetryType));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetrySqlite)
-        .where(and(...conditions))
-        .orderBy(desc(telemetrySqlite.timestamp))
-        .limit(limit)
-        .offset(offset);
-
-      return result.map(t => this.normalizeBigInts(t) as DbTelemetry);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      let conditions = [eq(telemetryMysql.nodeId, nodeId)];
-
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetryMysql.timestamp, sinceTimestamp));
-      }
-      if (beforeTimestamp !== undefined) {
-        conditions.push(lt(telemetryMysql.timestamp, beforeTimestamp));
-      }
-      if (telemetryType !== undefined) {
-        conditions.push(eq(telemetryMysql.telemetryType, telemetryType));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetryMysql)
-        .where(and(...conditions))
-        .orderBy(desc(telemetryMysql.timestamp))
-        .limit(limit)
-        .offset(offset);
-
-      return result as DbTelemetry[];
-    } else {
-      const db = this.getPostgresDb();
-      let conditions = [eq(telemetryPostgres.nodeId, nodeId)];
-
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetryPostgres.timestamp, sinceTimestamp));
-      }
-      if (beforeTimestamp !== undefined) {
-        conditions.push(lt(telemetryPostgres.timestamp, beforeTimestamp));
-      }
-      if (telemetryType !== undefined) {
-        conditions.push(eq(telemetryPostgres.telemetryType, telemetryType));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetryPostgres)
-        .where(and(...conditions))
-        .orderBy(desc(telemetryPostgres.timestamp))
-        .limit(limit)
-        .offset(offset);
-
-      return result as DbTelemetry[];
+    if (sinceTimestamp !== undefined) {
+      conditions.push(gte(telemetry.timestamp, sinceTimestamp));
     }
+    if (beforeTimestamp !== undefined) {
+      conditions.push(lt(telemetry.timestamp, beforeTimestamp));
+    }
+    if (telemetryType !== undefined) {
+      conditions.push(eq(telemetry.telemetryType, telemetryType));
+    }
+
+    const result = await this.db
+      .select()
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(desc(telemetry.timestamp))
+      .limit(limit)
+      .offset(offset);
+
+    return this.normalizeBigInts(result) as DbTelemetry[];
   }
 
   /**
@@ -231,102 +122,40 @@ export class TelemetryRepository extends BaseRepository {
     sinceTimestamp?: number
   ): Promise<DbTelemetry[]> {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
+    const { telemetry } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      let conditions = [
-        eq(telemetrySqlite.nodeId, nodeId),
-        inArray(telemetrySqlite.telemetryType, positionTypes),
-      ];
+    let conditions = [
+      eq(telemetry.nodeId, nodeId),
+      inArray(telemetry.telemetryType, positionTypes),
+    ];
 
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetrySqlite.timestamp, sinceTimestamp));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetrySqlite)
-        .where(and(...conditions))
-        .orderBy(desc(telemetrySqlite.timestamp))
-        .limit(limit);
-
-      return result.map(t => this.normalizeBigInts(t) as DbTelemetry);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      let conditions = [
-        eq(telemetryMysql.nodeId, nodeId),
-        inArray(telemetryMysql.telemetryType, positionTypes),
-      ];
-
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetryMysql.timestamp, sinceTimestamp));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetryMysql)
-        .where(and(...conditions))
-        .orderBy(desc(telemetryMysql.timestamp))
-        .limit(limit);
-
-      return result as DbTelemetry[];
-    } else {
-      const db = this.getPostgresDb();
-      let conditions = [
-        eq(telemetryPostgres.nodeId, nodeId),
-        inArray(telemetryPostgres.telemetryType, positionTypes),
-      ];
-
-      if (sinceTimestamp !== undefined) {
-        conditions.push(gte(telemetryPostgres.timestamp, sinceTimestamp));
-      }
-
-      const result = await db
-        .select()
-        .from(telemetryPostgres)
-        .where(and(...conditions))
-        .orderBy(desc(telemetryPostgres.timestamp))
-        .limit(limit);
-
-      return result as DbTelemetry[];
+    if (sinceTimestamp !== undefined) {
+      conditions.push(gte(telemetry.timestamp, sinceTimestamp));
     }
+
+    const result = await this.db
+      .select()
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(desc(telemetry.timestamp))
+      .limit(limit);
+
+    return this.normalizeBigInts(result) as DbTelemetry[];
   }
 
   /**
    * Get telemetry by type
    */
   async getTelemetryByType(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(telemetrySqlite)
-        .where(eq(telemetrySqlite.telemetryType, telemetryType))
-        .orderBy(desc(telemetrySqlite.timestamp))
-        .limit(limit);
+    const { telemetry } = this.tables;
+    const result = await this.db
+      .select()
+      .from(telemetry)
+      .where(eq(telemetry.telemetryType, telemetryType))
+      .orderBy(desc(telemetry.timestamp))
+      .limit(limit);
 
-      return result.map(t => this.normalizeBigInts(t) as DbTelemetry);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(telemetryMysql)
-        .where(eq(telemetryMysql.telemetryType, telemetryType))
-        .orderBy(desc(telemetryMysql.timestamp))
-        .limit(limit);
-
-      return result as DbTelemetry[];
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(telemetryPostgres)
-        .where(eq(telemetryPostgres.telemetryType, telemetryType))
-        .orderBy(desc(telemetryPostgres.timestamp))
-        .limit(limit);
-
-      return result as DbTelemetry[];
-    }
+    return this.normalizeBigInts(result) as DbTelemetry[];
   }
 
   /**
@@ -351,60 +180,29 @@ export class TelemetryRepository extends BaseRepository {
    * Get latest telemetry for a specific type for a node
    */
   async getLatestTelemetryForType(nodeId: string, telemetryType: string): Promise<DbTelemetry | null> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(telemetrySqlite)
-        .where(
-          and(
-            eq(telemetrySqlite.nodeId, nodeId),
-            eq(telemetrySqlite.telemetryType, telemetryType)
-          )
+    const { telemetry } = this.tables;
+    const result = await this.db
+      .select()
+      .from(telemetry)
+      .where(
+        and(
+          eq(telemetry.nodeId, nodeId),
+          eq(telemetry.telemetryType, telemetryType)
         )
-        .orderBy(desc(telemetrySqlite.timestamp))
-        .limit(1);
+      )
+      .orderBy(desc(telemetry.timestamp))
+      .limit(1);
 
-      if (result.length === 0) return null;
-      return this.normalizeBigInts(result[0]) as DbTelemetry;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(telemetryMysql)
-        .where(
-          and(
-            eq(telemetryMysql.nodeId, nodeId),
-            eq(telemetryMysql.telemetryType, telemetryType)
-          )
-        )
-        .orderBy(desc(telemetryMysql.timestamp))
-        .limit(1);
-
-      if (result.length === 0) return null;
-      return result[0] as DbTelemetry;
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(telemetryPostgres)
-        .where(
-          and(
-            eq(telemetryPostgres.nodeId, nodeId),
-            eq(telemetryPostgres.telemetryType, telemetryType)
-          )
-        )
-        .orderBy(desc(telemetryPostgres.timestamp))
-        .limit(1);
-
-      if (result.length === 0) return null;
-      return result[0] as DbTelemetry;
-    }
+    if (result.length === 0) return null;
+    return this.normalizeBigInts(result[0]) as DbTelemetry;
   }
 
   /**
    * Get latest telemetry value for a given type across all nodes in a single query.
    * Returns a Map of nodeId -> value.
+   *
+   * Keeps branching: PostgreSQL uses DISTINCT ON, SQLite/MySQL use subquery with MAX.
+   * Different raw SQL and result shapes per dialect.
    */
   async getLatestTelemetryValueForAllNodes(telemetryType: string): Promise<Map<string, number>> {
     const result = new Map<string, number>();
@@ -457,64 +255,36 @@ export class TelemetryRepository extends BaseRepository {
    * Get all telemetry types for a node
    */
   async getNodeTelemetryTypes(nodeId: string): Promise<string[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .selectDistinct({ type: telemetrySqlite.telemetryType })
-        .from(telemetrySqlite)
-        .where(eq(telemetrySqlite.nodeId, nodeId));
+    const { telemetry } = this.tables;
+    const result = await this.db
+      .selectDistinct({ type: telemetry.telemetryType })
+      .from(telemetry)
+      .where(eq(telemetry.nodeId, nodeId));
 
-      return result.map(r => r.type);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .selectDistinct({ type: telemetryMysql.telemetryType })
-        .from(telemetryMysql)
-        .where(eq(telemetryMysql.nodeId, nodeId));
-
-      return result.map(r => r.type);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .selectDistinct({ type: telemetryPostgres.telemetryType })
-        .from(telemetryPostgres)
-        .where(eq(telemetryPostgres.nodeId, nodeId));
-
-      return result.map(r => r.type);
-    }
+    return result.map((r: any) => r.type);
   }
 
   /**
    * Delete telemetry by node and type.
-   * Uses direct DELETE WHERE for optimal performance.
+   * Keeps branching: MySQL doesn't support .returning().
    */
   async deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): Promise<boolean> {
-    const condition = (schema: { nodeId: any; telemetryType: any }) =>
-      and(eq(schema.nodeId, nodeId), eq(schema.telemetryType, telemetryType));
+    const { telemetry } = this.tables;
+    const condition = and(eq(telemetry.nodeId, nodeId), eq(telemetry.telemetryType, telemetryType));
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const deleted = await db
-        .delete(telemetrySqlite)
-        .where(condition(telemetrySqlite))
-        .returning({ id: telemetrySqlite.id });
-      return deleted.length > 0;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // MySQL doesn't support .returning(), so count first
-      const countResult = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(condition(telemetryMysql));
+    if (this.isMySQL()) {
+      const countResult = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(condition);
       if (countResult.length === 0) return false;
-      await db.delete(telemetryMysql).where(condition(telemetryMysql));
+      await this.db.delete(telemetry).where(condition);
       return true;
     } else {
-      const db = this.getPostgresDb();
-      const deleted = await db
-        .delete(telemetryPostgres)
-        .where(condition(telemetryPostgres))
-        .returning({ id: telemetryPostgres.id });
+      const deleted = await (this.db as any)
+        .delete(telemetry)
+        .where(condition)
+        .returning({ id: telemetry.id });
       return deleted.length > 0;
     }
   }
@@ -530,6 +300,7 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Purge position history for a specific node.
    * Deletes only position-related telemetry types (latitude, longitude, altitude, etc.)
+   * Keeps branching: MySQL doesn't support .returning().
    */
   async purgePositionHistory(nodeNum: number): Promise<number> {
     const positionTypes = [
@@ -537,42 +308,25 @@ export class TelemetryRepository extends BaseRepository {
       'ground_speed', 'ground_track',
       'estimated_latitude', 'estimated_longitude',
     ];
+    const { telemetry } = this.tables;
+    const condition = and(
+      eq(telemetry.nodeNum, nodeNum),
+      inArray(telemetry.telemetryType, positionTypes)
+    );
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const deleted = await db
-        .delete(telemetrySqlite)
-        .where(and(
-          eq(telemetrySqlite.nodeNum, nodeNum),
-          inArray(telemetrySqlite.telemetryType, positionTypes)
-        ))
-        .returning({ id: telemetrySqlite.id });
-      return deleted.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // MySQL doesn't support .returning(), so count first
-      const countResult = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(and(
-          eq(telemetryMysql.nodeNum, nodeNum),
-          inArray(telemetryMysql.telemetryType, positionTypes)
-        ));
-      const count = countResult.length;
-      await db.delete(telemetryMysql).where(and(
-        eq(telemetryMysql.nodeNum, nodeNum),
-        inArray(telemetryMysql.telemetryType, positionTypes)
-      ));
-      return count;
+    if (this.isMySQL()) {
+      const countResult = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(condition);
+      const cnt = countResult.length;
+      await this.db.delete(telemetry).where(condition);
+      return cnt;
     } else {
-      const db = this.getPostgresDb();
-      const deleted = await db
-        .delete(telemetryPostgres)
-        .where(and(
-          eq(telemetryPostgres.nodeNum, nodeNum),
-          inArray(telemetryPostgres.telemetryType, positionTypes)
-        ))
-        .returning({ id: telemetryPostgres.id });
+      const deleted = await (this.db as any)
+        .delete(telemetry)
+        .where(condition)
+        .returning({ id: telemetry.id });
       return deleted.length;
     }
   }
@@ -588,34 +342,24 @@ export class TelemetryRepository extends BaseRepository {
 
   /**
    * Delete telemetry older than a given timestamp.
-   * Uses direct DELETE WHERE for optimal performance.
+   * Keeps branching: MySQL doesn't support .returning().
    */
   async deleteOldTelemetry(cutoffTimestamp: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const deleted = await db
-        .delete(telemetrySqlite)
-        .where(lt(telemetrySqlite.timestamp, cutoffTimestamp))
-        .returning({ id: telemetrySqlite.id });
-      return deleted.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // MySQL doesn't support .returning(), so count first
-      const countResult = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(lt(telemetryMysql.timestamp, cutoffTimestamp));
-      const count = countResult.length;
-      await db
-        .delete(telemetryMysql)
-        .where(lt(telemetryMysql.timestamp, cutoffTimestamp));
-      return count;
+    const { telemetry } = this.tables;
+
+    if (this.isMySQL()) {
+      const countResult = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(lt(telemetry.timestamp, cutoffTimestamp));
+      const cnt = countResult.length;
+      await this.db.delete(telemetry).where(lt(telemetry.timestamp, cutoffTimestamp));
+      return cnt;
     } else {
-      const db = this.getPostgresDb();
-      const deleted = await db
-        .delete(telemetryPostgres)
-        .where(lt(telemetryPostgres.timestamp, cutoffTimestamp))
-        .returning({ id: telemetryPostgres.id });
+      const deleted = await (this.db as any)
+        .delete(telemetry)
+        .where(lt(telemetry.timestamp, cutoffTimestamp))
+        .returning({ id: telemetry.id });
       return deleted.length;
     }
   }
@@ -624,14 +368,14 @@ export class TelemetryRepository extends BaseRepository {
    * Build a SQL condition that matches any of the favorited (nodeId, telemetryType) pairs.
    * Returns null if favorites array is empty.
    */
-  private buildFavoritesCondition<T extends { nodeId: any; telemetryType: any }>(
-    schema: T,
+  private buildFavoritesCondition(
     favorites: Array<{ nodeId: string; telemetryType: string }>
   ): SQL | null {
     if (favorites.length === 0) return null;
+    const { telemetry } = this.tables;
 
     const conditions = favorites.map(f =>
-      and(eq(schema.nodeId, f.nodeId), eq(schema.telemetryType, f.telemetryType))
+      and(eq(telemetry.nodeId, f.nodeId), eq(telemetry.telemetryType, f.telemetryType))
     );
 
     return conditions.length === 1 ? conditions[0]! : or(...conditions)!;
@@ -642,12 +386,7 @@ export class TelemetryRepository extends BaseRepository {
    * Non-favorited telemetry is deleted if older than regularCutoff.
    * Favorited telemetry is deleted if older than favoriteCutoff.
    *
-   * Uses database-level filtering and batch deletes for optimal performance.
-   *
-   * @param regularCutoffTimestamp - Cutoff for non-favorited telemetry (shorter retention)
-   * @param favoriteCutoffTimestamp - Cutoff for favorited telemetry (longer retention, should be <= regularCutoff)
-   * @param favorites - Array of { nodeId, telemetryType } that are favorited
-   * @returns Number of deleted records for each category
+   * Keeps branching: MySQL doesn't support .returning().
    */
   async deleteOldTelemetryWithFavorites(
     regularCutoffTimestamp: number,
@@ -661,73 +400,46 @@ export class TelemetryRepository extends BaseRepository {
     }
 
     // Validate: favoriteCutoff should be <= regularCutoff (earlier timestamp = longer retention)
-    // If misconfigured, use the more conservative (earlier) cutoff for favorites
     const effectiveFavoriteCutoff = Math.min(favoriteCutoffTimestamp, regularCutoffTimestamp);
+    const { telemetry } = this.tables;
+    const favoritesCondition = this.buildFavoritesCondition(favorites);
 
     let nonFavoritesDeleted = 0;
     let favoritesDeleted = 0;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const favoritesCondition = this.buildFavoritesCondition(telemetrySqlite, favorites);
-
-      // Delete non-favorited telemetry older than regularCutoff using direct DELETE WHERE
-      // Uses .returning() to get count of deleted rows (SQLite supports this)
-      const deletedNonFavorites = await db
-        .delete(telemetrySqlite)
-        .where(and(lt(telemetrySqlite.timestamp, regularCutoffTimestamp), not(favoritesCondition!)))
-        .returning({ id: telemetrySqlite.id });
-      nonFavoritesDeleted = deletedNonFavorites.length;
-
-      // Delete favorited telemetry older than favoriteCutoff
-      const deletedFavorites = await db
-        .delete(telemetrySqlite)
-        .where(and(lt(telemetrySqlite.timestamp, effectiveFavoriteCutoff), favoritesCondition!))
-        .returning({ id: telemetrySqlite.id });
-      favoritesDeleted = deletedFavorites.length;
-
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const favoritesCondition = this.buildFavoritesCondition(telemetryMysql, favorites);
-
+    if (this.isMySQL()) {
       // MySQL doesn't support .returning(), so count before deleting
-      const nonFavoritesCount = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(and(lt(telemetryMysql.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
+      const nonFavoritesCount = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
       nonFavoritesDeleted = nonFavoritesCount.length;
 
-      await db
-        .delete(telemetryMysql)
-        .where(and(lt(telemetryMysql.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
+      await this.db
+        .delete(telemetry)
+        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
 
-      const favoritesCount = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(and(lt(telemetryMysql.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
+      const favoritesCount = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
       favoritesDeleted = favoritesCount.length;
 
-      await db
-        .delete(telemetryMysql)
-        .where(and(lt(telemetryMysql.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
-
+      await this.db
+        .delete(telemetry)
+        .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
     } else {
-      const db = this.getPostgresDb();
-      const favoritesCondition = this.buildFavoritesCondition(telemetryPostgres, favorites);
-
-      // Delete non-favorited telemetry older than regularCutoff using direct DELETE WHERE
-      // Uses .returning() to get count of deleted rows (PostgreSQL supports this)
-      const deletedNonFavorites = await db
-        .delete(telemetryPostgres)
-        .where(and(lt(telemetryPostgres.timestamp, regularCutoffTimestamp), not(favoritesCondition!)))
-        .returning({ id: telemetryPostgres.id });
+      // SQLite and PostgreSQL support .returning()
+      const deletedNonFavorites = await (this.db as any)
+        .delete(telemetry)
+        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)))
+        .returning({ id: telemetry.id });
       nonFavoritesDeleted = deletedNonFavorites.length;
 
-      // Delete favorited telemetry older than favoriteCutoff
-      const deletedFavorites = await db
-        .delete(telemetryPostgres)
-        .where(and(lt(telemetryPostgres.timestamp, effectiveFavoriteCutoff), favoritesCondition!))
-        .returning({ id: telemetryPostgres.id });
+      const deletedFavorites = await (this.db as any)
+        .delete(telemetry)
+        .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!))
+        .returning({ id: telemetry.id });
       favoritesDeleted = deletedFavorites.length;
     }
 
@@ -736,32 +448,24 @@ export class TelemetryRepository extends BaseRepository {
 
   /**
    * Delete all telemetry for a specific node.
-   * Uses direct DELETE WHERE for optimal performance.
+   * Keeps branching: MySQL doesn't support .returning().
    */
   async deleteTelemetryByNode(nodeNum: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const deleted = await db
-        .delete(telemetrySqlite)
-        .where(eq(telemetrySqlite.nodeNum, nodeNum))
-        .returning({ id: telemetrySqlite.id });
-      return deleted.length;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      // MySQL doesn't support .returning(), so count first
-      const countResult = await db
-        .select({ id: telemetryMysql.id })
-        .from(telemetryMysql)
-        .where(eq(telemetryMysql.nodeNum, nodeNum));
-      const count = countResult.length;
-      await db.delete(telemetryMysql).where(eq(telemetryMysql.nodeNum, nodeNum));
-      return count;
+    const { telemetry } = this.tables;
+
+    if (this.isMySQL()) {
+      const countResult = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(eq(telemetry.nodeNum, nodeNum));
+      const cnt = countResult.length;
+      await this.db.delete(telemetry).where(eq(telemetry.nodeNum, nodeNum));
+      return cnt;
     } else {
-      const db = this.getPostgresDb();
-      const deleted = await db
-        .delete(telemetryPostgres)
-        .where(eq(telemetryPostgres.nodeNum, nodeNum))
-        .returning({ id: telemetryPostgres.id });
+      const deleted = await (this.db as any)
+        .delete(telemetry)
+        .where(eq(telemetry.nodeNum, nodeNum))
+        .returning({ id: telemetry.id });
       return deleted.length;
     }
   }
@@ -770,25 +474,11 @@ export class TelemetryRepository extends BaseRepository {
    * Delete all telemetry
    */
   async deleteAllTelemetry(): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db.select({ count: count() }).from(telemetrySqlite);
-      const deleteCount = Number(result[0].count);
-      await db.delete(telemetrySqlite);
-      return deleteCount;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db.select({ count: count() }).from(telemetryMysql);
-      const deleteCount = Number(result[0].count);
-      await db.delete(telemetryMysql);
-      return deleteCount;
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db.select({ count: count() }).from(telemetryPostgres);
-      const deleteCount = Number(result[0].count);
-      await db.delete(telemetryPostgres);
-      return deleteCount;
-    }
+    const { telemetry } = this.tables;
+    const result = await this.db.select({ count: count() }).from(telemetry);
+    const deleteCount = Number(result[0].count);
+    await this.db.delete(telemetry);
+    return deleteCount;
   }
 
   /**
@@ -858,46 +548,18 @@ export class TelemetryRepository extends BaseRepository {
    */
   async getAllNodesTelemetryTypes(): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>();
+    const { telemetry } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .selectDistinct({ nodeId: telemetrySqlite.nodeId, type: telemetrySqlite.telemetryType })
-        .from(telemetrySqlite);
+    const result = await this.db
+      .selectDistinct({ nodeId: telemetry.nodeId, type: telemetry.telemetryType })
+      .from(telemetry);
 
-      for (const r of result) {
-        const types = map.get(r.nodeId) || [];
-        if (!types.includes(r.type)) {
-          types.push(r.type);
-        }
-        map.set(r.nodeId, types);
+    for (const r of result) {
+      const types = map.get(r.nodeId) || [];
+      if (!types.includes(r.type)) {
+        types.push(r.type);
       }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .selectDistinct({ nodeId: telemetryMysql.nodeId, type: telemetryMysql.telemetryType })
-        .from(telemetryMysql);
-
-      for (const r of result) {
-        const types = map.get(r.nodeId) || [];
-        if (!types.includes(r.type)) {
-          types.push(r.type);
-        }
-        map.set(r.nodeId, types);
-      }
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .selectDistinct({ nodeId: telemetryPostgres.nodeId, type: telemetryPostgres.telemetryType })
-        .from(telemetryPostgres);
-
-      for (const r of result) {
-        const types = map.get(r.nodeId) || [];
-        if (!types.includes(r.type)) {
-          types.push(r.type);
-        }
-        map.set(r.nodeId, types);
-      }
+      map.set(r.nodeId, types);
     }
 
     return map;
