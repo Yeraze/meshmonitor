@@ -583,7 +583,7 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, async (req, res) => {
     }
 
     // Get node name for logging (async for multi-database support)
-    const nodes = await databaseService.getAllNodesAsync();
+    const nodes = await databaseService.nodes.getAllNodes();
     const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
@@ -668,7 +668,7 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     }
 
     // Get node name for logging (async for multi-database support)
-    const nodes = await databaseService.getAllNodesAsync();
+    const nodes = await databaseService.nodes.getAllNodes();
     const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 

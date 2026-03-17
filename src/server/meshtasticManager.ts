@@ -1163,7 +1163,7 @@ class MeshtasticManager {
 
     try {
       await this.sendSetTimeCommand(targetNode.nodeNum);
-      await databaseService.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now());
+      await databaseService.nodes.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now());
       logger.info(`🕐 Time sync: Successfully synced time to ${targetName}`);
     } catch (error) {
       logger.error(`🕐 Time sync: Failed to sync time to ${targetName}:`, error);

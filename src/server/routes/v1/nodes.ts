@@ -68,7 +68,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (active) {
       nodes = databaseService.getActiveNodes(sinceDays);
     } else {
-      nodes = await databaseService.getAllNodesAsync();
+      nodes = await databaseService.nodes.getAllNodes() as unknown as DbNode[];
     }
 
     // Filter nodes based on channel read permissions
@@ -114,7 +114,7 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     }
 
     const { nodeId } = req.params;
-    const allNodes = await databaseService.getAllNodesAsync();
+    const allNodes = await databaseService.nodes.getAllNodes() as unknown as DbNode[];
     const node = allNodes.find(n => n.nodeId === nodeId);
 
     if (!node) {

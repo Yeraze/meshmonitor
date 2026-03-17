@@ -199,6 +199,9 @@ vi.mock('../../../services/database.js', () => {
       getTelemetryCountAsync: vi.fn(async () => testTelemetry.length),
       // Nodes async method
       getAllNodesAsync: vi.fn(async () => testNodes),
+      nodes: {
+        getAllNodes: vi.fn(async () => testNodes),
+      },
       // Position history methods
       // getNode takes a decimal nodeNum; position history route converts hex nodeId to decimal
       getNode: vi.fn((_nodeNum: number) => {

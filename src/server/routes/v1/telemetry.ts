@@ -55,7 +55,7 @@ router.get('/', async (req: Request, res: Response) => {
       }
     } else {
       // Get all telemetry by getting all nodes and their telemetry
-      const nodes = await databaseService.getAllNodesAsync();
+      const nodes = await databaseService.nodes.getAllNodes();
       telemetry = [];
       const perNodeLimit = Math.max(1, Math.floor(maxLimit / 10));
       for (const node of nodes.slice(0, 10)) { // Limit to first 10 nodes to avoid huge response

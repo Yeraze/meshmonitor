@@ -121,7 +121,7 @@ class InactiveNodeNotificationService {
         }
 
         // Get inactive nodes that are in this user's monitored list (database-agnostic via Drizzle ORM)
-        const inactiveNodes = await databaseService.getInactiveMonitoredNodesAsync(monitoredNodeIds, cutoffSeconds);
+        const inactiveNodes = await databaseService.nodes.getInactiveMonitoredNodes(monitoredNodeIds, cutoffSeconds);
 
         if (inactiveNodes.length === 0) {
           continue; // No inactive nodes for this user

@@ -1962,15 +1962,10 @@ class DatabaseService {
   }
 
   /**
-   * Async version of getAllNodes - works with all database backends
+   * @deprecated Use databaseService.nodes.getAllNodes() directly. Kept for internal/test compatibility.
    */
   async getAllNodesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Cast to local DbNode type (they have compatible structure)
-      return this.nodesRepo.getAllNodes() as unknown as DbNode[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllNodes();
+    return this.nodes.getAllNodes() as unknown as DbNode[];
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
@@ -7072,20 +7067,6 @@ class DatabaseService {
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
 
   /**
-   * Get inactive monitored nodes — nodes in the given nodeId list whose lastHeard is before the cutoff.
-   * Database-agnostic via Drizzle ORM.
-   */
-  async getInactiveMonitoredNodesAsync(
-    nodeIds: string[],
-    cutoffSeconds: number
-  ): Promise<Array<{ nodeNum: number; nodeId: string; longName: string | null; shortName: string | null; lastHeard: number | null }>> {
-    if (this.nodesRepo) {
-      return this.nodesRepo.getInactiveMonitoredNodes(nodeIds, cutoffSeconds);
-    }
-    return [];
-  }
-
-  /**
    * Delete a node and all associated data (async version for PostgreSQL)
    */
   async deleteNodeAsync(nodeNum: number): Promise<{
@@ -11485,15 +11466,6 @@ class DatabaseService {
       filterNodeNums
     );
     return node as DbNode | null;
-  }
-
-  /**
-   * Update a node's lastTimeSync timestamp
-   */
-  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
-    if (this.nodesRepo) {
-      await this.nodesRepo.updateNodeTimeSyncAsync(nodeNum, timestamp);
-    }
   }
 
   /**
