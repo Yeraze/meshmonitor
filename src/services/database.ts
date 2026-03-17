@@ -8965,22 +8965,23 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  // Packet Log operations
-  insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): number {
-    // Check if packet logging is enabled
-    const enabled = this.getSetting('packet_log_enabled');
-    if (enabled !== '1') {
-      return 0;
-    }
 
-    // For PostgreSQL/MySQL, use async method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.insertPacketLogAsync(packet).catch((error) => {
-        logger.error(`[DatabaseService] Failed to insert packet log: ${error}`);
+  // Packet Log operations — delegated to MiscRepository (this.misc)
+  // Sync methods retain SQLite fallbacks for test compatibility and pre-init callers.
+
+  insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): number {
+    const enabled = this.getSetting('packet_log_enabled');
+    if (enabled !== '1') return 0;
+
+    // For non-SQLite, fire-and-forget via repository
+    if (this.drizzleDbType !== 'sqlite' && this.miscRepo) {
+      this.miscRepo.insertPacketLog(packet).catch(error => {
+        logger.error('[DatabaseService] Failed to insert packet log:', error);
       });
       return 0;
     }
 
+    // SQLite: use synchronous raw SQL for immediate consistency
     const stmt = this.db.prepare(`
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
@@ -8989,197 +8990,77 @@ class DatabaseService {
         transport_mechanism, decrypted_by, decrypted_channel_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-
     const result = stmt.run(
-      packet.packet_id ?? null,
-      packet.timestamp,
-      packet.from_node,
-      packet.from_node_id ?? null,
-      packet.to_node ?? null,
-      packet.to_node_id ?? null,
-      packet.channel ?? null,
-      packet.portnum,
-      packet.portnum_name ?? null,
-      packet.encrypted ? 1 : 0,
-      packet.snr ?? null,
-      packet.rssi ?? null,
-      packet.hop_limit ?? null,
-      packet.hop_start ?? null,
-      packet.relay_node ?? null,
-      packet.payload_size ?? null,
-      packet.want_ack ? 1 : 0,
-      packet.priority ?? null,
-      packet.payload_preview ?? null,
-      packet.metadata ?? null,
-      packet.direction ?? 'rx',
-      packet.transport_mechanism ?? null,
-      packet.decrypted_by ?? null,
-      packet.decrypted_channel_id ?? null
+      packet.packet_id ?? null, packet.timestamp, packet.from_node,
+      packet.from_node_id ?? null, packet.to_node ?? null, packet.to_node_id ?? null,
+      packet.channel ?? null, packet.portnum, packet.portnum_name ?? null,
+      packet.encrypted ? 1 : 0, packet.snr ?? null, packet.rssi ?? null,
+      packet.hop_limit ?? null, packet.hop_start ?? null, packet.relay_node ?? null,
+      packet.payload_size ?? null, packet.want_ack ? 1 : 0, packet.priority ?? null,
+      packet.payload_preview ?? null, packet.metadata ?? null, packet.direction ?? 'rx',
+      packet.transport_mechanism ?? null, packet.decrypted_by ?? null, packet.decrypted_channel_id ?? null
     );
 
-    // Enforce max count limit
-    this.enforcePacketLogMaxCount();
+    // Enforce max count
+    const maxCountStr = this.getSetting('packet_log_max_count');
+    const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
+    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM packet_log');
+    const countResult = countStmt.get() as { count: number };
+    if (Number(countResult.count) > maxCount) {
+      const deleteCount = Number(countResult.count) - maxCount;
+      this.db.prepare(`DELETE FROM packet_log WHERE id IN (SELECT id FROM packet_log ORDER BY timestamp ASC LIMIT ?)`).run(deleteCount);
+    }
 
     return Number(result.lastInsertRowid);
   }
 
-  private enforcePacketLogMaxCount(): void {
-    const maxCountStr = this.getSetting('packet_log_max_count');
-    const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
-
-    // Get current count
-    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM packet_log');
-    const countResult = countStmt.get() as { count: number };
-    const currentCount = Number(countResult.count);
-
-    if (currentCount > maxCount) {
-      // Delete oldest packets to get back to max count
-      const deleteCount = currentCount - maxCount;
-      const deleteStmt = this.db.prepare(`
-        DELETE FROM packet_log
-        WHERE id IN (
-          SELECT id FROM packet_log
-          ORDER BY timestamp ASC
-          LIMIT ?
-        )
-      `);
-      deleteStmt.run(deleteCount);
-      logger.debug(`🧹 Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
-    }
-  }
-
-  /**
-   * Async version of insertPacketLog - works with all database backends
-   */
   async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
-    // Check if packet logging is enabled
     const enabled = await this.settings.getSetting('packet_log_enabled');
-    if (enabled !== '1') {
-      return 0;
-    }
-
-    if (!this.drizzleDatabase) {
-      // Fallback to sync for SQLite if drizzle not ready
-      return this.insertPacketLog(packet);
-    }
-
-    try {
-      const values = {
-        packet_id: packet.packet_id ?? null,
-        timestamp: packet.timestamp,
-        from_node: packet.from_node,
-        from_node_id: packet.from_node_id ?? null,
-        to_node: packet.to_node ?? null,
-        to_node_id: packet.to_node_id ?? null,
-        channel: packet.channel ?? null,
-        portnum: packet.portnum,
-        portnum_name: packet.portnum_name ?? null,
-        encrypted: packet.encrypted,
-        snr: packet.snr ?? null,
-        rssi: packet.rssi ?? null,
-        hop_limit: packet.hop_limit ?? null,
-        hop_start: packet.hop_start ?? null,
-        relay_node: packet.relay_node ?? null,
-        payload_size: packet.payload_size ?? null,
-        want_ack: packet.want_ack ?? false,
-        priority: packet.priority ?? null,
-        payload_preview: packet.payload_preview ?? null,
-        metadata: packet.metadata ?? null,
-        direction: packet.direction ?? 'rx',
-        created_at: Date.now(),
-        transport_mechanism: packet.transport_mechanism ?? null,
-        decrypted_by: packet.decrypted_by ?? null,
-        decrypted_channel_id: packet.decrypted_channel_id ?? null,
-      };
-
-      // Use type assertion to avoid complex type narrowing
-      // The drizzleDatabase is the raw Drizzle ORM database instance
-      const db = this.drizzleDatabase as any;
-      if (this.drizzleDbType === 'postgres') {
-        await db.insert(packetLogPostgres).values(values);
-      } else if (this.drizzleDbType === 'mysql') {
-        await db.insert(packetLogMysql).values(values);
-      } else {
-        await db.insert(packetLogSqlite).values(values);
-      }
-
-      // TODO: Enforce max count for async version
-      return 0;
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to insert packet log async: ${error}`);
-      return 0;
-    }
+    if (enabled !== '1') return 0;
+    return this.misc.insertPacketLog(packet);
   }
 
   getPacketLogs(options: {
-    offset?: number;
-    limit?: number;
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
+    offset?: number; limit?: number; portnum?: number; from_node?: number;
+    to_node?: number; channel?: number; encrypted?: boolean; since?: number;
     relay_node?: number | 'unknown';
   }): DbPacketLog[] {
+    // SQLite fallback for sync callers
     const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
     let query = `
-      SELECT
-        pl.*,
-        from_nodes.longName as from_node_longName,
-        to_nodes.longName as to_node_longName
+      SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
       FROM packet_log pl
       LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
       LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
       WHERE 1=1
     `;
     const params: any[] = [];
-
-    if (portnum !== undefined) {
-      query += ' AND pl.portnum = ?';
-      params.push(portnum);
-    }
-    if (from_node !== undefined) {
-      query += ' AND pl.from_node = ?';
-      params.push(from_node);
-    }
-    if (to_node !== undefined) {
-      query += ' AND pl.to_node = ?';
-      params.push(to_node);
-    }
-    if (channel !== undefined) {
-      query += ' AND pl.channel = ?';
-      params.push(channel);
-    }
-    if (encrypted !== undefined) {
-      query += ' AND pl.encrypted = ?';
-      params.push(encrypted ? 1 : 0);
-    }
-    if (since !== undefined) {
-      query += ' AND pl.timestamp >= ?';
-      params.push(since);
-    }
-    if (relay_node === 'unknown') {
-      query += ' AND pl.relay_node IS NULL';
-    } else if (relay_node !== undefined) {
-      query += ' AND pl.relay_node = ?';
-      params.push(relay_node);
-    }
-
+    if (portnum !== undefined) { query += ' AND pl.portnum = ?'; params.push(portnum); }
+    if (from_node !== undefined) { query += ' AND pl.from_node = ?'; params.push(from_node); }
+    if (to_node !== undefined) { query += ' AND pl.to_node = ?'; params.push(to_node); }
+    if (channel !== undefined) { query += ' AND pl.channel = ?'; params.push(channel); }
+    if (encrypted !== undefined) { query += ' AND pl.encrypted = ?'; params.push(encrypted ? 1 : 0); }
+    if (since !== undefined) { query += ' AND pl.timestamp >= ?'; params.push(since); }
+    if (relay_node === 'unknown') { query += ' AND pl.relay_node IS NULL'; }
+    else if (relay_node !== undefined) { query += ' AND pl.relay_node = ?'; params.push(relay_node); }
     query += ' ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
-
     const stmt = this.db.prepare(query);
     return stmt.all(...params) as DbPacketLog[];
   }
 
+  async getPacketLogsAsync(options: {
+    offset?: number; limit?: number; portnum?: number; from_node?: number;
+    to_node?: number; channel?: number; encrypted?: boolean; since?: number;
+    relay_node?: number | 'unknown';
+  }): Promise<DbPacketLog[]> {
+    if (this.miscRepo) return this.miscRepo.getPacketLogs(options);
+    return this.getPacketLogs(options);
+  }
+
   getPacketLogById(id: number): DbPacketLog | null {
     const stmt = this.db.prepare(`
-      SELECT
-        pl.*,
-        from_nodes.longName as from_node_longName,
-        to_nodes.longName as to_node_longName
+      SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
       FROM packet_log pl
       LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
       LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
@@ -9190,491 +9071,54 @@ class DatabaseService {
   }
 
   async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
-    // For PostgreSQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const result = await this.postgresPool.query(`
-          SELECT
-            pl.*,
-            from_nodes."longName" as "from_node_longName",
-            to_nodes."longName" as "to_node_longName"
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
-          WHERE pl.id = $1
-        `, [id]);
-        const row = result.rows?.[0];
-        if (!row) return null;
-        return {
-          ...row,
-          id: row.id != null ? Number(row.id) : row.id,
-          packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
-          timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
-          from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
-          to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
-          relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
-          created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
-        } as DbPacketLog;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log by id:', error);
-        return null;
-      }
-    }
-    // For MySQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const [rows] = await this.mysqlPool.query(`
-          SELECT
-            pl.*,
-            from_nodes.longName as from_node_longName,
-            to_nodes.longName as to_node_longName
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-          WHERE pl.id = ?
-        `, [id]);
-        const row = (rows as any[])?.[0];
-        return row ? (row as DbPacketLog) : null;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log by id:', error);
-        return null;
-      }
-    }
-    // For SQLite, use sync method
+    if (this.miscRepo) return this.miscRepo.getPacketLogById(id);
     return this.getPacketLogById(id);
   }
 
   getPacketLogCount(options: {
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-    relay_node?: number | 'unknown';
+    portnum?: number; from_node?: number; to_node?: number; channel?: number;
+    encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
   } = {}): number {
     const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
     const params: any[] = [];
-
-    if (portnum !== undefined) {
-      query += ' AND portnum = ?';
-      params.push(portnum);
-    }
-    if (from_node !== undefined) {
-      query += ' AND from_node = ?';
-      params.push(from_node);
-    }
-    if (to_node !== undefined) {
-      query += ' AND to_node = ?';
-      params.push(to_node);
-    }
-    if (channel !== undefined) {
-      query += ' AND channel = ?';
-      params.push(channel);
-    }
-    if (encrypted !== undefined) {
-      query += ' AND encrypted = ?';
-      params.push(encrypted ? 1 : 0);
-    }
-    if (since !== undefined) {
-      query += ' AND timestamp >= ?';
-      params.push(since);
-    }
-    if (relay_node === 'unknown') {
-      query += ' AND relay_node IS NULL';
-    } else if (relay_node !== undefined) {
-      query += ' AND relay_node = ?';
-      params.push(relay_node);
-    }
-
+    if (portnum !== undefined) { query += ' AND portnum = ?'; params.push(portnum); }
+    if (from_node !== undefined) { query += ' AND from_node = ?'; params.push(from_node); }
+    if (to_node !== undefined) { query += ' AND to_node = ?'; params.push(to_node); }
+    if (channel !== undefined) { query += ' AND channel = ?'; params.push(channel); }
+    if (encrypted !== undefined) { query += ' AND encrypted = ?'; params.push(encrypted ? 1 : 0); }
+    if (since !== undefined) { query += ' AND timestamp >= ?'; params.push(since); }
+    if (relay_node === 'unknown') { query += ' AND relay_node IS NULL'; }
+    else if (relay_node !== undefined) { query += ' AND relay_node = ?'; params.push(relay_node); }
     const stmt = this.db.prepare(query);
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
   }
 
-  clearPacketLogs(): number {
-    const stmt = this.db.prepare('DELETE FROM packet_log');
-    const result = stmt.run();
-    logger.debug(`🧹 Cleared ${result.changes} packet log entries`);
-    return Number(result.changes);
-  }
-
-  /**
-   * Clear all packet logs - async version for PostgreSQL/MySQL
-   */
-  async clearPacketLogsAsync(): Promise<number> {
-    // For PostgreSQL
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const result = await this.postgresPool.query('DELETE FROM packet_log');
-        const deletedCount = result.rowCount ?? 0;
-        logger.debug(`🧹 Cleared ${deletedCount} packet log entries (PostgreSQL)`);
-        return deletedCount;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to clear packet logs (PostgreSQL):', error);
-        throw error;
-      }
-    }
-
-    // For MySQL/MariaDB
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const [result] = await this.mysqlPool.execute('DELETE FROM packet_log');
-        const deletedCount = (result as any).affectedRows ?? 0;
-        logger.debug(`🧹 Cleared ${deletedCount} packet log entries (MySQL)`);
-        return deletedCount;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to clear packet logs (MySQL):', error);
-        throw error;
-      }
-    }
-
-    // Fallback to SQLite
-    return this.clearPacketLogs();
-  }
-
-  /**
-   * Get packet log count - async version for PostgreSQL/MySQL
-   */
   async getPacketLogCountAsync(options: {
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-    relay_node?: number | 'unknown';
+    portnum?: number; from_node?: number; to_node?: number; channel?: number;
+    encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
   } = {}): Promise<number> {
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
-    // For PostgreSQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-        let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
-
-        if (portnum !== undefined) {
-          query += ` AND portnum = $${paramIndex++}`;
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ` AND from_node = $${paramIndex++}`;
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ` AND to_node = $${paramIndex++}`;
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ` AND channel = $${paramIndex++}`;
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ` AND encrypted = $${paramIndex++}`;
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ` AND timestamp >= $${paramIndex++}`;
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ` AND relay_node = $${paramIndex++}`;
-          params.push(relay_node);
-        }
-
-        const result = await this.postgresPool.query(query, params);
-        return Number(result.rows?.[0]?.count ?? 0);
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log count:', error);
-        return 0;
-      }
-    }
-
-    // For MySQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-        let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
-
-        if (portnum !== undefined) {
-          query += ' AND portnum = ?';
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ' AND from_node = ?';
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ' AND to_node = ?';
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ' AND channel = ?';
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ' AND encrypted = ?';
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ' AND timestamp >= ?';
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ' AND relay_node = ?';
-          params.push(relay_node);
-        }
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return Number((rows as any[])?.[0]?.count ?? 0);
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log count:', error);
-        return 0;
-      }
-    }
-
-    // For SQLite, use sync method
+    if (this.miscRepo) return this.miscRepo.getPacketLogCount(options);
     return this.getPacketLogCount(options);
   }
 
-  /**
-   * Get packet logs - async version for PostgreSQL/MySQL
-   */
-  async getPacketLogsAsync(options: {
-    offset?: number;
-    limit?: number;
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-    relay_node?: number | 'unknown';
-  }): Promise<DbPacketLog[]> {
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
-    // For PostgreSQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-
-        let query = `
-          SELECT
-            pl.*,
-            from_nodes."longName" as "from_node_longName",
-            to_nodes."longName" as "to_node_longName"
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
-          WHERE 1=1
-        `;
-
-        if (portnum !== undefined) {
-          query += ` AND pl.portnum = $${paramIndex++}`;
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ` AND pl.from_node = $${paramIndex++}`;
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ` AND pl.to_node = $${paramIndex++}`;
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ` AND pl.channel = $${paramIndex++}`;
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ` AND pl.encrypted = $${paramIndex++}`;
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ` AND pl.timestamp >= $${paramIndex++}`;
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND pl.relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ` AND pl.relay_node = $${paramIndex++}`;
-          params.push(relay_node);
-        }
-
-        query += ` ORDER BY pl.timestamp DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-        params.push(limit, offset);
-
-        const result = await this.postgresPool.query(query, params);
-        // Convert BIGINT fields from strings to numbers (PostgreSQL returns BIGINT as strings)
-        return (result.rows ?? []).map((row: any) => ({
-          ...row,
-          id: row.id != null ? Number(row.id) : row.id,
-          packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
-          timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
-          from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
-          to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
-          relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
-          created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
-        })) as DbPacketLog[];
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet logs:', error);
-        return [];
-      }
-    }
-    // For MySQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-
-        let query = `
-          SELECT
-            pl.*,
-            from_nodes.longName as from_node_longName,
-            to_nodes.longName as to_node_longName
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-          WHERE 1=1
-        `;
-
-        if (portnum !== undefined) {
-          query += ` AND pl.portnum = ?`;
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ` AND pl.from_node = ?`;
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ` AND pl.to_node = ?`;
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ` AND pl.channel = ?`;
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ` AND pl.encrypted = ?`;
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ` AND pl.timestamp >= ?`;
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND pl.relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ' AND pl.relay_node = ?';
-          params.push(relay_node);
-        }
-
-        query += ` ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?`;
-        params.push(limit, offset);
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return (rows ?? []) as DbPacketLog[];
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet logs:', error);
-        return [];
-      }
-    }
-    // For SQLite, use sync method
-    return this.getPacketLogs(options);
+  clearPacketLogs(): number {
+    const stmt = this.db.prepare('DELETE FROM packet_log');
+    const result = stmt.run();
+    logger.debug(`Cleared ${result.changes} packet log entries`);
+    return Number(result.changes);
   }
 
-  /**
-   * Get distinct relay_node values from packet_log for filter dropdowns
-   */
+  async clearPacketLogsAsync(): Promise<number> {
+    if (this.miscRepo) return this.miscRepo.clearPacketLogs();
+    return this.clearPacketLogs();
+  }
+
   async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
-    // relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
-    // We match by (nodeNum & 0xFF) to find candidate node names.
-    const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL AND relay_node > 0';
-
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const distinctResult = await this.postgresPool.query(distinctQuery);
-        const relayValues = (distinctResult.rows ?? []).map((r: any) => Number(r.relay_node));
-
-        const results: DbDistinctRelayNode[] = [];
-        for (const rv of relayValues) {
-          const matchResult = await this.postgresPool.query(
-            `SELECT "longName", "shortName" FROM nodes WHERE ("nodeNum" & 255) = $1`,
-            [rv]
-          );
-          results.push({
-            relay_node: rv,
-            matching_nodes: (matchResult.rows ?? []).map((r: any) => ({
-              longName: r.longName ?? null,
-              shortName: r.shortName ?? null,
-            })),
-          });
-        }
-        return results;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
-        return [];
-      }
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const [distinctRows] = await this.mysqlPool.query(distinctQuery);
-        const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
-
-        const results: DbDistinctRelayNode[] = [];
-        for (const rv of relayValues) {
-          const [matchRows] = await this.mysqlPool.query(
-            'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?',
-            [rv]
-          );
-          results.push({
-            relay_node: rv,
-            matching_nodes: (matchRows as any[]).map((r: any) => ({
-              longName: r.longName ?? null,
-              shortName: r.shortName ?? null,
-            })),
-          });
-        }
-        return results;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
-        return [];
-      }
-    }
-
-    // SQLite sync
-    try {
-      const distinctStmt = this.db.prepare(distinctQuery);
-      const relayValues = (distinctStmt.all() as any[]).map((r: any) => Number(r.relay_node));
-
-      const matchStmt = this.db.prepare(
-        'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?'
-      );
-
-      return relayValues.map(rv => ({
-        relay_node: rv,
-        matching_nodes: (matchStmt.all(rv) as any[]).map((r: any) => ({
-          longName: r.longName ?? null,
-          shortName: r.shortName ?? null,
-        })),
-      }));
-    } catch (error) {
-      logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
-      return [];
-    }
+    return this.misc.getDistinctRelayNodes();
   }
 
-  /**
-   * Update packet log entry with decryption results (for retroactive decryption)
-   * Updates the decrypted_by, decrypted_channel_id, portnum, and metadata fields
-   */
   async updatePacketLogDecryptionAsync(
     id: number,
     decryptedBy: 'server' | 'node',
@@ -9682,376 +9126,41 @@ class DatabaseService {
     portnum: number,
     metadata: string
   ): Promise<void> {
-    if (this.drizzleDbType === 'postgres' && this.drizzleDatabase) {
-      const db = this.drizzleDatabase as any;
-      await db.execute(sql`
-        UPDATE packet_log
-        SET decrypted_by = ${decryptedBy},
-            decrypted_channel_id = ${decryptedChannelId},
-            portnum = ${portnum},
-            encrypted = false,
-            metadata = ${metadata}
-        WHERE id = ${id}
-      `);
-    } else if (this.drizzleDbType === 'mysql' && this.drizzleDatabase) {
-      const db = this.drizzleDatabase as any;
-      await db.execute(sql`
-        UPDATE packet_log
-        SET decrypted_by = ${decryptedBy},
-            decrypted_channel_id = ${decryptedChannelId},
-            portnum = ${portnum},
-            encrypted = false,
-            metadata = ${metadata}
-        WHERE id = ${id}
-      `);
-    } else {
-      // SQLite
-      const stmt = this.db.prepare(`
-        UPDATE packet_log
-        SET decrypted_by = ?,
-            decrypted_channel_id = ?,
-            portnum = ?,
-            encrypted = 0,
-            metadata = ?
-        WHERE id = ?
-      `);
-      stmt.run(decryptedBy, decryptedChannelId, portnum, metadata, id);
+    if (this.miscRepo) {
+      return this.miscRepo.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
     }
-  }
-
-  /**
-   * Get database size - async version for PostgreSQL/MySQL
-   * Note: PostgreSQL uses pg_database_size() which requires different permissions
-   * Returns 0 for PostgreSQL/MySQL as exact size calculation differs
-   */
-  async getDatabaseSizeAsync(): Promise<number> {
-    // For PostgreSQL/MySQL, return 0 (size calculation is different)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
-    }
-    // For SQLite, use sync method
-    return this.getDatabaseSize();
+    // SQLite fallback
+    const stmt = this.db.prepare(`
+      UPDATE packet_log SET decrypted_by = ?, decrypted_channel_id = ?,
+      portnum = ?, encrypted = 0, metadata = ? WHERE id = ?
+    `);
+    stmt.run(decryptedBy, decryptedChannelId, portnum, metadata, id);
   }
 
   cleanupOldPacketLogs(): number {
-    // For PostgreSQL/MySQL, packet log cleanup not yet implemented
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO: Implement packet log cleanup for PostgreSQL via repository
-      logger.debug('🧹 Packet log cleanup skipped (PostgreSQL/MySQL not yet implemented)');
-      return 0;
-    }
-
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
     const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
-
     const stmt = this.db.prepare('DELETE FROM packet_log WHERE timestamp < ?');
     const result = stmt.run(cutoffTimestamp);
-    logger.debug(`🧹 Cleaned up ${result.changes} packet log entries older than ${maxAgeHours} hours`);
     return Number(result.changes);
   }
 
   async cleanupOldPacketLogsAsync(): Promise<number> {
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          'DELETE FROM packet_log WHERE timestamp < $1',
-          [cutoffTimestamp]
-        );
-        const deleted = result.rowCount ?? 0;
-        logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
-        return deleted;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [result] = await pool.query(
-        'DELETE FROM packet_log WHERE timestamp < ?',
-        [cutoffTimestamp]
-      );
-      const deleted = (result as any).affectedRows ?? 0;
-      logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
-      return deleted;
-    }
+    if (this.miscRepo) return this.miscRepo.cleanupOldPacketLogs(maxAgeHours);
     return this.cleanupOldPacketLogs();
   }
 
-  /**
-   * Get packet counts grouped by from_node (for distribution charts)
-   * Returns top N nodes by packet count, plus counts for remainder grouped as "Other"
-   */
   async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
-    const { since, limit = 10, portnum } = options || {};
-
-    // For PostgreSQL
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`pl.timestamp >= $${paramIndex++}`);
-          params.push(since);
-        }
-        if (portnum !== undefined) {
-          conditions.push(`pl.portnum = $${paramIndex++}`);
-          params.push(portnum);
-        }
-
-        let query = `
-          SELECT
-            pl.from_node,
-            n."nodeId" as "from_node_id",
-            n."longName" as "from_node_longName",
-            COUNT(*) as count
-          FROM packet_log pl
-          LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY pl.from_node, n."nodeId", n."longName" ORDER BY count DESC LIMIT $${paramIndex++}`;
-        params.push(limit);
-
-        const result = await this.postgresPool.query(query, params);
-        return (result.rows ?? []).map((row: any) => ({
-          from_node: Number(row.from_node),
-          from_node_id: row.from_node_id,
-          from_node_longName: row.from_node_longName,
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by node:', error);
-        return [];
-      }
-    }
-
-    // For MySQL
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`pl.timestamp >= ?`);
-          params.push(since);
-        }
-        if (portnum !== undefined) {
-          conditions.push(`pl.portnum = ?`);
-          params.push(portnum);
-        }
-
-        let query = `
-          SELECT
-            pl.from_node,
-            n.nodeId as from_node_id,
-            n.longName as from_node_longName,
-            COUNT(*) as count
-          FROM packet_log pl
-          LEFT JOIN nodes n ON pl.from_node = n.nodeNum
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY pl.from_node, n.nodeId, n.longName ORDER BY count DESC LIMIT ?`;
-        params.push(limit);
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return ((rows as any[]) ?? []).map((row: any) => ({
-          from_node: Number(row.from_node),
-          from_node_id: row.from_node_id,
-          from_node_longName: row.from_node_longName,
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by node:', error);
-        return [];
-      }
-    }
-
-    // For SQLite
-    try {
-      const params: any[] = [];
-      const conditions: string[] = [];
-
-      if (since !== undefined) {
-        conditions.push(`pl.timestamp >= ?`);
-        params.push(since);
-      }
-      if (portnum !== undefined) {
-        conditions.push(`pl.portnum = ?`);
-        params.push(portnum);
-      }
-
-      let query = `
-        SELECT
-          pl.from_node,
-          n.nodeId as from_node_id,
-          n.longName as from_node_longName,
-          COUNT(*) as count
-        FROM packet_log pl
-        LEFT JOIN nodes n ON pl.from_node = n.nodeNum
-      `;
-
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.join(' AND ')}`;
-      }
-
-      query += ` GROUP BY pl.from_node ORDER BY count DESC LIMIT ?`;
-      params.push(limit);
-
-      const stmt = this.db.prepare(query);
-      const rows = stmt.all(...params) as any[];
-      return rows.map((row: any) => ({
-        from_node: Number(row.from_node),
-        from_node_id: row.from_node_id,
-        from_node_longName: row.from_node_longName,
-        count: Number(row.count),
-      }));
-    } catch (error) {
-      logger.error('[DatabaseService] Failed to get packet counts by node:', error);
-      return [];
-    }
+    return this.misc.getPacketCountsByNode(options);
   }
 
-  /**
-   * Get packet counts grouped by portnum (for distribution charts)
-   * Includes port name from meshtastic constants
-   */
   async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
-    const { since, from_node } = options || {};
-
-    // For PostgreSQL
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`timestamp >= $${paramIndex++}`);
-          params.push(since);
-        }
-        if (from_node !== undefined) {
-          conditions.push(`from_node = $${paramIndex++}`);
-          params.push(from_node);
-        }
-
-        let query = `
-          SELECT
-            portnum,
-            COUNT(*) as count
-          FROM packet_log
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY portnum ORDER BY count DESC`;
-
-        const result = await this.postgresPool.query(query, params);
-        return (result.rows ?? []).map((row: any) => ({
-          portnum: Number(row.portnum),
-          portnum_name: getPortNumName(Number(row.portnum)),
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
-        return [];
-      }
-    }
-
-    // For MySQL
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`timestamp >= ?`);
-          params.push(since);
-        }
-        if (from_node !== undefined) {
-          conditions.push(`from_node = ?`);
-          params.push(from_node);
-        }
-
-        let query = `
-          SELECT
-            portnum,
-            COUNT(*) as count
-          FROM packet_log
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY portnum ORDER BY count DESC`;
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return ((rows as any[]) ?? []).map((row: any) => ({
-          portnum: Number(row.portnum),
-          portnum_name: getPortNumName(Number(row.portnum)),
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
-        return [];
-      }
-    }
-
-    // For SQLite
-    try {
-      const conditions: string[] = [];
-      const params: any[] = [];
-
-      if (since !== undefined) {
-        conditions.push(`timestamp >= ?`);
-        params.push(since);
-      }
-      if (from_node !== undefined) {
-        conditions.push(`from_node = ?`);
-        params.push(from_node);
-      }
-
-      let query = `
-        SELECT
-          portnum,
-          COUNT(*) as count
-        FROM packet_log
-      `;
-
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.join(' AND ')}`;
-      }
-
-      query += ` GROUP BY portnum ORDER BY count DESC`;
-
-      const stmt = this.db.prepare(query);
-      const rows = stmt.all(...params) as any[];
-      return rows.map((row: any) => ({
-        portnum: Number(row.portnum),
-        portnum_name: getPortNumName(Number(row.portnum)),
-        count: Number(row.count),
-      }));
-    } catch (error) {
-      logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
-      return [];
-    }
+    return this.misc.getPacketCountsByPortnum(options);
   }
+
 
   /**
    * Validate that a theme definition has all required color variables
