@@ -45,18 +45,18 @@ class PushNotificationService {
       try {
         await databaseService.waitForReady();
 
-        const storedPublicKey = await databaseService.getSettingAsync('vapid_public_key');
-        const storedPrivateKey = await databaseService.getSettingAsync('vapid_private_key');
-        const storedSubject = await databaseService.getSettingAsync('vapid_subject');
+        const storedPublicKey = await databaseService.settings.getSetting('vapid_public_key');
+        const storedPrivateKey = await databaseService.settings.getSetting('vapid_private_key');
+        const storedSubject = await databaseService.settings.getSetting('vapid_subject');
 
         if (!storedPublicKey || !storedPrivateKey) {
           // Auto-generate VAPID keys on first run
           logger.info('🔑 No VAPID keys found, generating new keys...');
           const vapidKeys = webpush.generateVAPIDKeys();
 
-          await databaseService.setSettingAsync('vapid_public_key', vapidKeys.publicKey);
-          await databaseService.setSettingAsync('vapid_private_key', vapidKeys.privateKey);
-          await databaseService.setSettingAsync('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
+          await databaseService.settings.setSetting('vapid_public_key', vapidKeys.publicKey);
+          await databaseService.settings.setSetting('vapid_private_key', vapidKeys.privateKey);
+          await databaseService.settings.setSetting('vapid_subject', storedSubject || 'mailto:admin@meshmonitor.local');
 
           publicKey = vapidKeys.publicKey;
           privateKey = vapidKeys.privateKey;
@@ -125,7 +125,7 @@ class PushNotificationService {
     if (config.vapidPublicKey) {
       return config.vapidPublicKey;
     }
-    return databaseService.getSettingAsync('vapid_public_key');
+    return databaseService.settings.getSetting('vapid_public_key');
   }
 
   /**
@@ -138,7 +138,7 @@ class PushNotificationService {
     subscriptionCount: number;
   }> {
     const publicKey = await this.getPublicKeyAsync();
-    const subject = await databaseService.getSettingAsync('vapid_subject');
+    const subject = await databaseService.settings.getSetting('vapid_subject');
     const subscriptions = await this.getAllSubscriptionsAsync();
 
     return {
@@ -156,7 +156,7 @@ class PushNotificationService {
     if (!subject.startsWith('mailto:')) {
       throw new Error('VAPID subject must start with mailto:');
     }
-    await databaseService.setSettingAsync('vapid_subject', subject);
+    await databaseService.settings.setSetting('vapid_subject', subject);
     logger.info(`✅ Updated VAPID subject to: ${subject}`);
     // Reinitialize to apply new subject
     await this.initializeAsync();
@@ -477,7 +477,7 @@ class PushNotificationService {
       localNodeName = localNodeInfo.longName;
     } else {
       // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = await databaseService.getSettingAsync('localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
         const localNode = await databaseService.nodesRepo?.getNode(localNodeNum);

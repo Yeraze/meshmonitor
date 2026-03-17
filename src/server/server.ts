@@ -462,8 +462,8 @@ setTimeout(async () => {
 
     // Clear any runtime IP/port overrides from previous sessions
     // These are temporary settings that should reset on container restart
-    await databaseService.setSettingAsync('meshtasticNodeIpOverride', '');
-    await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+    await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
+    await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
 
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');

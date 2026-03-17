@@ -491,12 +491,12 @@ class MeshtasticManager {
       port = portMatch[2];
     }
 
-    await databaseService.setSettingAsync('meshtasticNodeIpOverride', ip);
+    await databaseService.settings.setSetting('meshtasticNodeIpOverride', ip);
     if (port) {
-      await databaseService.setSettingAsync('meshtasticTcpPortOverride', port);
+      await databaseService.settings.setSetting('meshtasticTcpPortOverride', port);
     } else {
       // Clear port override if not specified (use default)
-      await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+      await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
     }
 
     // Disconnect and reconnect with new IP/port
@@ -508,8 +508,8 @@ class MeshtasticManager {
    * Clear the runtime IP/port override and revert to defaults
    */
   async clearNodeIpOverride(): Promise<void> {
-    await databaseService.setSettingAsync('meshtasticNodeIpOverride', '');
-    await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+    await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
+    await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
     this.disconnect();
     await this.connect();
   }

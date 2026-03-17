@@ -258,7 +258,7 @@ export class FirmwareUpdateService {
    * Get the configured firmware channel. Defaults to 'stable'.
    */
   async getChannel(): Promise<FirmwareChannel> {
-    const stored = await databaseService.getSettingAsync('firmwareChannel');
+    const stored = await databaseService.settings.getSetting('firmwareChannel');
     if (stored === 'alpha' || stored === 'stable' || stored === 'custom') {
       return stored;
     }
@@ -269,21 +269,21 @@ export class FirmwareUpdateService {
    * Set the firmware channel.
    */
   async setChannel(channel: FirmwareChannel): Promise<void> {
-    await databaseService.setSettingAsync('firmwareChannel', channel);
+    await databaseService.settings.setSetting('firmwareChannel', channel);
   }
 
   /**
    * Get the custom firmware URL, or null if not set.
    */
   async getCustomUrl(): Promise<string | null> {
-    return await databaseService.getSettingAsync('firmwareCustomUrl');
+    return await databaseService.settings.getSetting('firmwareCustomUrl');
   }
 
   /**
    * Set the custom firmware URL.
    */
   async setCustomUrl(url: string): Promise<void> {
-    await databaseService.setSettingAsync('firmwareCustomUrl', url);
+    await databaseService.settings.setSetting('firmwareCustomUrl', url);
   }
 
   // ---- Status Management ----
