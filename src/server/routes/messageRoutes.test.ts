@@ -36,10 +36,20 @@ const createApp = (user: any = null) => {
   return app;
 };
 
+// Mock traceroutes repository for direct repo access
+const mockTraceroutesRepo = {
+  deleteTraceroutesForNode: vi.fn(),
+};
+
 describe('Message Deletion Routes', () => {
   beforeEach(() => {
     // Reset all mocks before each test
     vi.clearAllMocks();
+    // Set up traceroutes repo mock
+    Object.defineProperty(databaseService, 'traceroutes', {
+      get: () => mockTraceroutesRepo,
+      configurable: true,
+    });
   });
 
   describe('DELETE /api/messages/:id - Single message deletion', () => {
@@ -361,7 +371,7 @@ describe('Message Deletion Routes', () => {
 
     it('should successfully purge traceroutes for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeNodeTraceroutesAsync').mockResolvedValue(15);
+      mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(15);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
@@ -369,7 +379,7 @@ describe('Message Deletion Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 15);
       expect(response.body).toHaveProperty('message', 'Node traceroutes purged successfully');
-      expect(databaseService.purgeNodeTraceroutesAsync).toHaveBeenCalledWith(123456);
+      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456);
     });
 
     it('should successfully purge traceroutes for user with messages:write', async () => {
@@ -377,18 +387,18 @@ describe('Message Deletion Routes', () => {
       vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
         messages: { read: true, write: true }
       });
-      vi.spyOn(databaseService, 'purgeNodeTraceroutesAsync').mockResolvedValue(8);
+      mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(8);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
 
       expect(response.status).toBe(200);
-      expect(databaseService.purgeNodeTraceroutesAsync).toHaveBeenCalledWith(123456);
+      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456);
     });
 
     it('should log audit event for traceroutes purge', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      vi.spyOn(databaseService, 'purgeNodeTraceroutesAsync').mockResolvedValue(20);
+      mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(20);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
       await request(app).delete('/api/messages/nodes/123456/traceroutes');

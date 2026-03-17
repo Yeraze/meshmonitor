@@ -427,7 +427,7 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, async (req, r
       });
     }
 
-    const deletedCount = await databaseService.purgeNodeTraceroutesAsync(nodeNum);
+    const deletedCount = await databaseService.traceroutes.deleteTraceroutesForNode(nodeNum);
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} traceroutes for node ${nodeNum}`);
 

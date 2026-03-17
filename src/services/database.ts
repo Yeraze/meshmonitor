@@ -4840,25 +4840,6 @@ class DatabaseService {
     return traceroutes.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTraceroutesByNodes for PostgreSQL/MySQL
-   */
-  async getTraceroutesByNodesAsync(fromNodeNum: number, toNodeNum: number, limit: number = 10): Promise<DbTraceroute[]> {
-    if (this.traceroutesRepo) {
-      const traceroutes = await this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
-      return traceroutes.map(t => ({
-        ...t,
-        route: t.route || '',
-        routeBack: t.routeBack || '',
-        snrTowards: t.snrTowards || '',
-        snrBack: t.snrBack || '',
-      })) as DbTraceroute[];
-    }
-
-    // Fallback to sync for SQLite
-    return this.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
-  }
-
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
     // For PostgreSQL/MySQL, use cached traceroutes or return empty
     // Traceroute data is primarily real-time from mesh traffic
@@ -7407,15 +7388,6 @@ class DatabaseService {
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  async getLongestActiveRouteSegmentAsync(): Promise<DbRouteSegment | null> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      const segment = await this.traceroutesRepo.getLongestActiveRouteSegment();
-      if (!segment) return null;
-      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
-    }
-    return this.getLongestActiveRouteSegment();
-  }
-
   getRecordHolderRouteSegment(): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -7429,15 +7401,6 @@ class DatabaseService {
     `);
     const segment = stmt.get() as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
-  }
-
-  async getRecordHolderRouteSegmentAsync(): Promise<DbRouteSegment | null> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      const segment = await this.traceroutesRepo.getRecordHolderRouteSegment();
-      if (!segment) return null;
-      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
-    }
-    return this.getRecordHolderRouteSegment();
   }
 
   updateRecordHolderSegment(newSegment: DbRouteSegment): void {
@@ -11377,17 +11340,6 @@ class DatabaseService {
     return this.purgeDirectMessages(nodeNum);
   }
 
-  /**
-   * Async method to purge all traceroutes for a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeNodeTraceroutesAsync(nodeNum: number): Promise<number> {
-    if (this.traceroutesRepo) {
-      return this.traceroutesRepo.deleteTraceroutesForNode(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeNodeTraceroutes(nodeNum);
-  }
 
   /**
    * Async method to purge all telemetry for a node.
