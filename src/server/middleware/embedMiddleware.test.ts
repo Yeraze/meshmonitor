@@ -6,12 +6,16 @@ import databaseService from '../../services/database.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    getEmbedProfileByIdAsync: vi.fn(),
+    embedProfiles: {
+      getByIdAsync: vi.fn(),
+    },
   }
 }));
 
 const mockDb = databaseService as unknown as {
-  getEmbedProfileByIdAsync: ReturnType<typeof vi.fn>;
+  embedProfiles: {
+    getByIdAsync: ReturnType<typeof vi.fn>;
+  };
 };
 
 const sampleProfile = {
@@ -54,7 +58,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('sets frame-ancestors with allowedOrigins from profile', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue(sampleProfile);
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue(sampleProfile);
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');
@@ -65,7 +69,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('removes X-Frame-Options header', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue(sampleProfile);
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue(sampleProfile);
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');
@@ -75,7 +79,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('returns 404 for disabled profile', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue({ ...sampleProfile, enabled: false });
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue({ ...sampleProfile, enabled: false });
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');
@@ -85,7 +89,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('returns 404 for nonexistent profile', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue(null);
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue(null);
     const app = createApp();
 
     const response = await request(app).get('/embed/nonexistent-id');
@@ -95,7 +99,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('attaches profile to request object', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue(sampleProfile);
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue(sampleProfile);
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');
@@ -105,7 +109,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('sets CSP with default-src, script-src, style-src, img-src, connect-src, worker-src', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue(sampleProfile);
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue(sampleProfile);
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');
@@ -120,7 +124,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('handles profile with empty allowedOrigins by allowing any origin', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockResolvedValue({ ...sampleProfile, allowedOrigins: [] });
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue({ ...sampleProfile, allowedOrigins: [] });
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');
@@ -132,7 +136,7 @@ describe('Embed CSP Middleware', () => {
   });
 
   it('returns 500 when database throws', async () => {
-    mockDb.getEmbedProfileByIdAsync.mockRejectedValue(new Error('db down'));
+    mockDb.embedProfiles.getByIdAsync.mockRejectedValue(new Error('db down'));
     const app = createApp();
 
     const response = await request(app).get('/embed/profile-uuid-123');

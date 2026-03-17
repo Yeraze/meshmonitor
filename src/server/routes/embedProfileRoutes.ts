@@ -64,7 +64,7 @@ router.use(requireAdmin());
 // GET / — list all embed profiles
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const profiles = await databaseService.getEmbedProfilesAsync();
+    const profiles = await databaseService.embedProfiles.getAllAsync();
     res.json(profiles);
   } catch (error) {
     logger.error('Error fetching embed profiles:', error);
@@ -99,7 +99,7 @@ router.post('/', async (req: Request, res: Response) => {
       : [];
     const enabled = req.body.enabled !== false;
 
-    const profile = await databaseService.createEmbedProfileAsync({
+    const profile = await databaseService.embedProfiles.createAsync({
       id,
       name: name.trim(),
       enabled,
@@ -157,7 +157,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (req.body.allowedOrigins !== undefined) updates.allowedOrigins = Array.isArray(req.body.allowedOrigins)
       ? req.body.allowedOrigins.filter(isValidOrigin) : [];
 
-    const profile = await databaseService.updateEmbedProfileAsync(id, updates);
+    const profile = await databaseService.embedProfiles.updateAsync(id, updates);
 
     if (!profile) {
       return res.status(404).json({ error: 'Embed profile not found' });
@@ -182,7 +182,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const deleted = await databaseService.deleteEmbedProfileAsync(id);
+    const deleted = await databaseService.embedProfiles.deleteAsync(id);
 
     if (!deleted) {
       return res.status(404).json({ error: 'Embed profile not found' });

@@ -35,7 +35,6 @@ import {
   IgnoredNodesRepository,
   EmbedProfileRepository,
 } from '../db/repositories/index.js';
-import type { EmbedProfile, EmbedProfileInput } from '../db/repositories/index.js';
 import type { DatabaseType } from '../db/types.js';
 import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
 import { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } from '../db/schema/postgres-create.js';
@@ -7951,26 +7950,7 @@ class DatabaseService {
     return !!row;
   }
 
-  // Embed profile operations
-  async getEmbedProfilesAsync(): Promise<EmbedProfile[]> {
-    return this.embedProfileRepo!.getAllAsync();
-  }
-
-  async getEmbedProfileByIdAsync(id: string): Promise<EmbedProfile | null> {
-    return this.embedProfileRepo!.getByIdAsync(id);
-  }
-
-  async createEmbedProfileAsync(input: EmbedProfileInput): Promise<EmbedProfile> {
-    return this.embedProfileRepo!.createAsync(input);
-  }
-
-  async updateEmbedProfileAsync(id: string, input: Partial<EmbedProfileInput>): Promise<EmbedProfile | null> {
-    return this.embedProfileRepo!.updateAsync(id, input);
-  }
-
-  async deleteEmbedProfileAsync(id: string): Promise<boolean> {
-    return this.embedProfileRepo!.deleteAsync(id);
-  }
+  // Embed profile operations — use databaseService.embedProfiles.xxxAsync() directly
 
   // Geofence cooldown operations
   getGeofenceCooldownAsync(triggerId: string, nodeNum: number): Promise<number | null> {

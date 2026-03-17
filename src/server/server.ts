@@ -208,7 +208,7 @@ let embedOriginsCacheTime = 0;
 const EMBED_ORIGINS_CACHE_TTL = 60000;
 
 function refreshEmbedOriginsCache(): void {
-  databaseService.getEmbedProfilesAsync().then(profiles => {
+  databaseService.embedProfiles.getAllAsync().then(profiles => {
     embedOriginsCache = [...new Set(
       profiles.filter(p => p.enabled).flatMap(p => p.allowedOrigins)
     )];
