@@ -153,7 +153,7 @@ class AutoDeleteByDistanceService {
     details: DeletedNodeInfo[]
   ): Promise<void> {
     try {
-      await databaseService.addDistanceDeleteLogEntryAsync({
+      await databaseService.misc.addDistanceDeleteLogEntry({
         timestamp,
         nodesDeleted,
         thresholdKm,

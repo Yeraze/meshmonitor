@@ -1973,15 +1973,15 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     toNodeId: msg.toNodeId,
     text: msg.text,
     channel: msg.channel,
-    portnum: msg.portnum,
+    portnum: msg.portnum ?? undefined,
     timestamp: new Date(msg.rxTime ?? msg.timestamp),
-    hopStart: msg.hopStart,
-    hopLimit: msg.hopLimit,
-    relayNode: msg.relayNode,
-    replyId: msg.replyId,
-    emoji: msg.emoji,
-    rxSnr: msg.rxSnr,
-    rxRssi: msg.rxRssi,
+    hopStart: msg.hopStart ?? undefined,
+    hopLimit: msg.hopLimit ?? undefined,
+    relayNode: msg.relayNode ?? undefined,
+    replyId: msg.replyId ?? undefined,
+    emoji: msg.emoji ?? undefined,
+    rxSnr: msg.rxSnr ?? undefined,
+    rxRssi: msg.rxRssi ?? undefined,
     requestId: (msg as any).requestId,
     wantAck: Boolean((msg as any).wantAck),
     ackFailed: Boolean((msg as any).ackFailed),
@@ -2043,7 +2043,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
     const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = await databaseService.getDirectMessagesAsync(nodeId1, nodeId2, limit + 1, offset);
+    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset) as DbMessage[];
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -5095,7 +5095,7 @@ apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'),
 // Auto-delete-by-distance log
 apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 'read'), async (_req, res) => {
   try {
-    const entries = await databaseService.getDistanceDeleteLogAsync(10);
+    const entries = await databaseService.misc.getDistanceDeleteLog(10);
     res.json(entries);
   } catch (error) {
     logger.error('Error fetching distance-delete log:', error);
@@ -5213,7 +5213,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
 // Get all custom themes (available to all users for reading)
 apiRouter.get('/themes', optionalAuth(), async (_req, res) => {
   try {
-    const themes = await databaseService.getAllCustomThemesAsync();
+    const themes = await databaseService.misc.getAllCustomThemes();
     res.json({ themes });
   } catch (error) {
     logger.error('Error fetching custom themes:', error);
@@ -5225,7 +5225,7 @@ apiRouter.get('/themes', optionalAuth(), async (_req, res) => {
 apiRouter.get('/themes/:slug', optionalAuth(), async (req, res) => {
   try {
     const { slug } = req.params;
-    const theme = await databaseService.getCustomThemeBySlugAsync(slug);
+    const theme = await databaseService.misc.getCustomThemeBySlug(slug);
 
     if (!theme) {
       return res.status(404).json({ error: 'Theme not found' });
@@ -5255,7 +5255,7 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), async (req, res)
     }
 
     // Check if theme already exists
-    const existingTheme = await databaseService.getCustomThemeBySlugAsync(slug);
+    const existingTheme = await databaseService.misc.getCustomThemeBySlug(slug);
     if (existingTheme) {
       return res.status(409).json({ error: 'Theme with this slug already exists' });
     }
@@ -5268,7 +5268,7 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), async (req, res)
     }
 
     // Create the theme
-    const theme = await databaseService.createCustomThemeAsync(name, slug, definition, req.user!.id);
+    const theme = await databaseService.misc.createCustomTheme(name, slug, JSON.stringify(definition), req.user!.id);
 
     // Audit log
     databaseService.auditLog(
@@ -5295,7 +5295,7 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), async (req,
     const { name, definition } = req.body;
 
     // Get existing theme for audit log
-    const existingTheme = await databaseService.getCustomThemeBySlugAsync(slug);
+    const existingTheme = await databaseService.misc.getCustomThemeBySlug(slug);
     if (!existingTheme) {
       return res.status(404).json({ error: 'Theme not found' });
     }
@@ -5329,7 +5329,10 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), async (req,
     }
 
     // Update the theme
-    await databaseService.updateCustomThemeAsync(slug, updates);
+    const repoUpdates: Record<string, string> = {};
+    if (updates.name) repoUpdates.name = updates.name;
+    if (updates.definition) repoUpdates.definition = JSON.stringify(updates.definition);
+    await databaseService.misc.updateCustomTheme(slug, repoUpdates);
 
     // Audit log
     databaseService.auditLog(
@@ -5355,7 +5358,7 @@ apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (r
     const { slug } = req.params;
 
     // Get theme for audit log before deletion
-    const theme = await databaseService.getCustomThemeBySlugAsync(slug);
+    const theme = await databaseService.misc.getCustomThemeBySlug(slug);
     if (!theme) {
       return res.status(404).json({ error: 'Theme not found' });
     }
@@ -5365,7 +5368,7 @@ apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (r
     }
 
     // Delete the theme
-    await databaseService.deleteCustomThemeAsync(slug);
+    await databaseService.misc.deleteCustomTheme(slug);
 
     // Audit log
     databaseService.auditLog(

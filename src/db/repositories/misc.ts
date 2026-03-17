@@ -6,7 +6,9 @@
  */
 import { eq, desc, asc, and, gte, lte, lt, inArray, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
-import { DatabaseType } from '../types.js';
+import { DatabaseType, DbCustomTheme, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
+import { logger } from '../../utils/logger.js';
+import { getPortNumName } from '../../server/constants/meshtastic.js';
 
 export interface SolarEstimate {
   id?: number;
@@ -607,4 +609,664 @@ export class MiscRepository extends BaseRepository {
     const { autoTimeSyncNodes } = this.tables;
     await this.db.delete(autoTimeSyncNodes).where(eq(autoTimeSyncNodes.nodeNum, nodeNum));
   }
+
+  // ============ CUSTOM THEMES ============
+
+  /**
+   * Normalize a raw theme row into DbCustomTheme format.
+   * Ensures is_builtin is coerced to 0/1 for consistency across dialects.
+   */
+  private normalizeThemeRow(row: any): DbCustomTheme {
+    return {
+      id: Number(row.id),
+      name: row.name,
+      slug: row.slug,
+      definition: row.definition,
+      is_builtin: row.is_builtin ? 1 : 0,
+      created_by: row.created_by != null ? Number(row.created_by) : undefined,
+      created_at: Number(row.created_at),
+      updated_at: Number(row.updated_at),
+    };
+  }
+
+  /**
+   * Get all custom themes ordered by name
+   */
+  async getAllCustomThemes(): Promise<DbCustomTheme[]> {
+    const { customThemes } = this.tables;
+    try {
+      const results = await this.db
+        .select()
+        .from(customThemes)
+        .orderBy(asc(customThemes.name));
+      return results.map((row: any) => this.normalizeThemeRow(row));
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get custom themes:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific custom theme by slug
+   */
+  async getCustomThemeBySlug(slug: string): Promise<DbCustomTheme | undefined> {
+    const { customThemes } = this.tables;
+    try {
+      const results = await this.db
+        .select()
+        .from(customThemes)
+        .where(eq(customThemes.slug, slug))
+        .limit(1);
+      if (results.length === 0) return undefined;
+      return this.normalizeThemeRow(results[0]);
+    } catch (error) {
+      logger.error(`[MiscRepository] Failed to get custom theme ${slug}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new custom theme
+   */
+  async createCustomTheme(name: string, slug: string, definitionJson: string, userId?: number): Promise<DbCustomTheme> {
+    const now = Math.floor(Date.now() / 1000);
+    const { customThemes } = this.tables;
+
+    try {
+      if (this.isMySQL()) {
+        // MySQL: use raw query for RETURNING-like behavior via insertId
+        const db = this.getMysqlDb();
+        const result = await db
+          .insert(customThemes)
+          .values({
+            name,
+            slug,
+            definition: definitionJson,
+            is_builtin: false,
+            created_by: userId ?? null,
+            created_at: now,
+            updated_at: now,
+          });
+        const id = Number((result as any)[0].insertId);
+        logger.debug(`[MiscRepository] Created custom theme: ${name} (slug: ${slug})`);
+        return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+      } else if (this.isPostgres()) {
+        // PostgreSQL: use returning()
+        const db = this.getPostgresDb();
+        const result = await db
+          .insert(customThemes)
+          .values({
+            name,
+            slug,
+            definition: definitionJson,
+            is_builtin: false,
+            created_by: userId ?? null,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning({ id: customThemes.id });
+        const id = Number(result[0].id);
+        logger.debug(`[MiscRepository] Created custom theme: ${name} (slug: ${slug})`);
+        return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+      } else {
+        // SQLite: use returning()
+        const db = this.getSqliteDb();
+        const result = await db
+          .insert(customThemes)
+          .values({
+            name,
+            slug,
+            definition: definitionJson,
+            is_builtin: false,
+            created_by: userId ?? null,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning({ id: customThemes.id });
+        const id = Number(result[0].id);
+        logger.debug(`[MiscRepository] Created custom theme: ${name} (slug: ${slug})`);
+        return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
+      }
+    } catch (error) {
+      logger.error(`[MiscRepository] Failed to create custom theme ${name}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing custom theme
+   */
+  async updateCustomTheme(slug: string, updates: Partial<{ name: string; definition: string }>): Promise<boolean> {
+    const { customThemes } = this.tables;
+
+    try {
+      // Check if theme exists
+      const existing = await this.getCustomThemeBySlug(slug);
+      if (!existing) {
+        logger.warn(`[MiscRepository] Cannot update non-existent theme: ${slug}`);
+        return false;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const setData: Record<string, any> = { updated_at: now };
+
+      if (updates.name !== undefined) {
+        setData.name = updates.name;
+      }
+      if (updates.definition !== undefined) {
+        setData.definition = typeof updates.definition === 'string'
+          ? updates.definition
+          : JSON.stringify(updates.definition);
+      }
+
+      await this.db
+        .update(customThemes)
+        .set(setData)
+        .where(eq(customThemes.slug, slug));
+
+      logger.debug(`[MiscRepository] Updated custom theme: ${slug}`);
+      return true;
+    } catch (error) {
+      logger.error(`[MiscRepository] Failed to update custom theme ${slug}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a custom theme by slug
+   */
+  async deleteCustomTheme(slug: string): Promise<boolean> {
+    const { customThemes } = this.tables;
+
+    try {
+      // Check if theme exists and is not built-in
+      const existing = await this.getCustomThemeBySlug(slug);
+      if (!existing) {
+        logger.warn(`[MiscRepository] Cannot delete non-existent theme: ${slug}`);
+        return false;
+      }
+      if (existing.is_builtin) {
+        throw new Error('Cannot delete built-in themes');
+      }
+
+      await this.db
+        .delete(customThemes)
+        .where(eq(customThemes.slug, slug));
+
+      logger.debug(`[MiscRepository] Deleted custom theme: ${slug}`);
+      return true;
+    } catch (error) {
+      logger.error(`[MiscRepository] Failed to delete custom theme ${slug}:`, error);
+      throw error;
+    }
+  }
+
+  // ============ DISTANCE DELETE LOG ============
+
+  /**
+   * Get auto-delete-by-distance log entries
+   */
+  async getDistanceDeleteLog(limit: number = 10): Promise<any[]> {
+    const results = await this.db.execute(
+      sql`SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ${limit}`
+    );
+
+    // MySQL returns [rows, fields], others return rows directly
+    const rows = this.isMySQL() ? (results as any)[0] : (results as any).rows ?? results;
+    return (rows as any[]).map((e: any) => ({
+      ...e,
+      details: e.details ? JSON.parse(e.details) : [],
+    }));
+  }
+
+  /**
+   * Add an entry to the auto-delete-by-distance log
+   */
+  async addDistanceDeleteLogEntry(entry: {
+    timestamp: number;
+    nodesDeleted: number;
+    thresholdKm: number;
+    details: string;
+  }): Promise<void> {
+    const now = Date.now();
+    await this.db.execute(
+      sql`INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
+          VALUES (${entry.timestamp}, ${entry.nodesDeleted}, ${entry.thresholdKm}, ${entry.details}, ${now})`
+    );
+  }
+
+  // ============ PACKET LOG ============
+
+  /**
+   * Filter options for packet log queries
+   */
+  private buildPacketLogWhere(options: PacketLogFilterOptions): { conditions: any[]; } {
+    const conditions: any[] = [];
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
+
+    if (portnum !== undefined) conditions.push(sql`portnum = ${portnum}`);
+    if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
+    if (to_node !== undefined) conditions.push(sql`to_node = ${to_node}`);
+    if (channel !== undefined) conditions.push(sql`channel = ${channel}`);
+    if (encrypted !== undefined) {
+      if (this.isSQLite()) {
+        conditions.push(sql`encrypted = ${encrypted ? 1 : 0}`);
+      } else {
+        conditions.push(sql`encrypted = ${encrypted}`);
+      }
+    }
+    if (since !== undefined) conditions.push(sql`timestamp >= ${since}`);
+    if (relay_node === 'unknown') {
+      conditions.push(sql`relay_node IS NULL`);
+    } else if (relay_node !== undefined) {
+      conditions.push(sql`relay_node = ${relay_node}`);
+    }
+
+    return { conditions };
+  }
+
+  /**
+   * Combine SQL conditions with AND
+   */
+  private combineConditions(conditions: any[]): any {
+    if (conditions.length === 0) return sql`1=1`;
+    return conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`);
+  }
+
+  /**
+   * Normalize a raw packet log row — coerce BIGINT fields to number
+   */
+  private normalizePacketLogRow(row: any): DbPacketLog {
+    return {
+      ...row,
+      id: row.id != null ? Number(row.id) : row.id,
+      packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
+      timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
+      from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
+      to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
+      relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
+      created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
+    } as DbPacketLog;
+  }
+
+  /**
+   * Extract rows from db.execute result (handles MySQL [rows, fields] vs others)
+   */
+  private extractRows(results: any): any[] {
+    return this.isMySQL() ? (results as any)[0] : ((results as any).rows ?? results);
+  }
+
+  /**
+   * Insert a packet log entry
+   */
+  async insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
+    const { packetLog } = this.tables;
+
+    try {
+      const values = {
+        packet_id: packet.packet_id ?? null,
+        timestamp: packet.timestamp,
+        from_node: packet.from_node,
+        from_node_id: packet.from_node_id ?? null,
+        to_node: packet.to_node ?? null,
+        to_node_id: packet.to_node_id ?? null,
+        channel: packet.channel ?? null,
+        portnum: packet.portnum,
+        portnum_name: packet.portnum_name ?? null,
+        encrypted: packet.encrypted,
+        snr: packet.snr ?? null,
+        rssi: packet.rssi ?? null,
+        hop_limit: packet.hop_limit ?? null,
+        hop_start: packet.hop_start ?? null,
+        relay_node: packet.relay_node ?? null,
+        payload_size: packet.payload_size ?? null,
+        want_ack: packet.want_ack ?? false,
+        priority: packet.priority ?? null,
+        payload_preview: packet.payload_preview ?? null,
+        metadata: packet.metadata ?? null,
+        direction: packet.direction ?? 'rx',
+        created_at: Date.now(),
+        transport_mechanism: packet.transport_mechanism ?? null,
+        decrypted_by: packet.decrypted_by ?? null,
+        decrypted_channel_id: packet.decrypted_channel_id ?? null,
+      };
+
+      await this.db.insert(packetLog).values(values);
+      return 0;
+    } catch (error) {
+      logger.error(`[MiscRepository] Failed to insert packet log: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Enforce max count limit on packet logs (deletes oldest entries)
+   */
+  async enforcePacketLogMaxCount(maxCount: number): Promise<void> {
+    try {
+      const countResult = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(this.tables.packetLog);
+      const currentCount = Number(countResult[0]?.count ?? 0);
+
+      if (currentCount > maxCount) {
+        const deleteCount = currentCount - maxCount;
+        // Use raw SQL for the DELETE with subquery — Drizzle doesn't support DELETE ... WHERE id IN (SELECT ...)
+        await this.db.execute(
+          sql`DELETE FROM packet_log WHERE id IN (SELECT id FROM packet_log ORDER BY timestamp ASC LIMIT ${deleteCount})`
+        );
+        logger.debug(`[MiscRepository] Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
+      }
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to enforce packet log max count:', error);
+    }
+  }
+
+  /**
+   * Get packet logs with optional filters and pagination
+   */
+  async getPacketLogs(options: PacketLogFilterOptions & { offset?: number; limit?: number }): Promise<DbPacketLog[]> {
+    const { offset = 0, limit = 100 } = options;
+    const { conditions } = this.buildPacketLogWhere(options);
+    const whereClause = this.combineConditions(conditions);
+
+    try {
+      // Use raw SQL for the JOIN query
+      let joinQuery;
+      if (this.isPostgres()) {
+        joinQuery = sql`
+          SELECT pl.*, from_nodes."longName" as "from_node_longName", to_nodes."longName" as "to_node_longName"
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
+          WHERE ${whereClause}
+          ORDER BY pl.timestamp DESC LIMIT ${limit} OFFSET ${offset}
+        `;
+      } else {
+        joinQuery = sql`
+          SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
+          WHERE ${whereClause}
+          ORDER BY pl.timestamp DESC LIMIT ${limit} OFFSET ${offset}
+        `;
+      }
+
+      const results = await this.db.execute(joinQuery);
+      const rows = this.extractRows(results);
+      return (rows as any[]).map((row: any) => this.normalizePacketLogRow(row));
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get packet logs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a single packet log entry by ID
+   */
+  async getPacketLogById(id: number): Promise<DbPacketLog | null> {
+    try {
+      let joinQuery;
+      if (this.isPostgres()) {
+        joinQuery = sql`
+          SELECT pl.*, from_nodes."longName" as "from_node_longName", to_nodes."longName" as "to_node_longName"
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
+          WHERE pl.id = ${id}
+        `;
+      } else {
+        joinQuery = sql`
+          SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
+          FROM packet_log pl
+          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
+          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
+          WHERE pl.id = ${id}
+        `;
+      }
+
+      const results = await this.db.execute(joinQuery);
+      const rows = this.extractRows(results);
+      if (!rows || rows.length === 0) return null;
+      return this.normalizePacketLogRow(rows[0]);
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get packet log by id:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get packet log count with optional filters
+   */
+  async getPacketLogCount(options: PacketLogFilterOptions = {}): Promise<number> {
+    const { conditions } = this.buildPacketLogWhere(options);
+    const whereClause = this.combineConditions(conditions);
+
+    try {
+      const results = await this.db.execute(
+        sql`SELECT COUNT(*) as count FROM packet_log WHERE ${whereClause}`
+      );
+      const rows = this.extractRows(results);
+      return Number(rows[0]?.count ?? 0);
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get packet log count:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Clear all packet logs
+   */
+  async clearPacketLogs(): Promise<number> {
+    try {
+      const results = await this.db.execute(sql`DELETE FROM packet_log`);
+      let deletedCount: number;
+      if (this.isMySQL()) {
+        deletedCount = (results as any)[0]?.affectedRows ?? 0;
+      } else if (this.isPostgres()) {
+        deletedCount = (results as any).rowCount ?? 0;
+      } else {
+        deletedCount = (results as any).changes ?? (results as any).rowsAffected ?? 0;
+      }
+      logger.debug(`[MiscRepository] Cleared ${deletedCount} packet log entries`);
+      return deletedCount;
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to clear packet logs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cleanup old packet logs based on max age
+   */
+  async cleanupOldPacketLogs(maxAgeHours: number): Promise<number> {
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+
+    try {
+      const results = await this.db.execute(
+        sql`DELETE FROM packet_log WHERE timestamp < ${cutoffTimestamp}`
+      );
+      let deleted: number;
+      if (this.isMySQL()) {
+        deleted = (results as any)[0]?.affectedRows ?? 0;
+      } else if (this.isPostgres()) {
+        deleted = (results as any).rowCount ?? 0;
+      } else {
+        deleted = (results as any).changes ?? (results as any).rowsAffected ?? 0;
+      }
+      if (deleted > 0) {
+        logger.debug(`[MiscRepository] Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
+      }
+      return deleted;
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to cleanup old packet logs:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Get distinct relay_node values from packet_log for filter dropdowns.
+   * relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
+   * We match by (nodeNum & 0xFF) to find candidate node names.
+   */
+  async getDistinctRelayNodes(): Promise<DbDistinctRelayNode[]> {
+    const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL';
+    const matchQuery = this.isPostgres()
+      ? 'SELECT "longName", "shortName" FROM nodes WHERE ("nodeNum" & 255) = '
+      : 'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ';
+
+    try {
+      const distinctResults = await this.db.execute(sql.raw(distinctQuery));
+      const distinctRows = this.extractRows(distinctResults);
+      const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
+
+      const results: DbDistinctRelayNode[] = [];
+      for (const rv of relayValues) {
+        const matchResults = await this.db.execute(sql.raw(`${matchQuery}${rv}`));
+        const matchRows = this.extractRows(matchResults);
+        results.push({
+          relay_node: rv,
+          matching_nodes: (matchRows as any[]).map((r: any) => ({
+            longName: r.longName ?? null,
+            shortName: r.shortName ?? null,
+          })),
+        });
+      }
+      return results;
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get distinct relay nodes:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Update packet log entry with decryption results (for retroactive decryption)
+   */
+  async updatePacketLogDecryption(
+    id: number,
+    decryptedBy: 'server' | 'node',
+    decryptedChannelId: number | null,
+    portnum: number,
+    metadata: string
+  ): Promise<void> {
+    if (this.isSQLite()) {
+      // SQLite uses 0 for false
+      await this.db.execute(sql`
+        UPDATE packet_log
+        SET decrypted_by = ${decryptedBy},
+            decrypted_channel_id = ${decryptedChannelId},
+            portnum = ${portnum},
+            encrypted = 0,
+            metadata = ${metadata}
+        WHERE id = ${id}
+      `);
+    } else {
+      await this.db.execute(sql`
+        UPDATE packet_log
+        SET decrypted_by = ${decryptedBy},
+            decrypted_channel_id = ${decryptedChannelId},
+            portnum = ${portnum},
+            encrypted = false,
+            metadata = ${metadata}
+        WHERE id = ${id}
+      `);
+    }
+  }
+
+  /**
+   * Get packet counts grouped by from_node (for distribution charts).
+   * Returns top N nodes by packet count.
+   */
+  async getPacketCountsByNode(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
+    const { since, limit = 10, portnum } = options || {};
+
+    try {
+      const conditions: any[] = [];
+      if (since !== undefined) conditions.push(sql`pl.timestamp >= ${since}`);
+      if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
+      const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
+
+      let query;
+      if (this.isPostgres()) {
+        query = sql`
+          SELECT pl.from_node, pl.from_node_id, n."longName" as "from_node_longName", COUNT(*)::int as count
+          FROM packet_log pl
+          LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
+          WHERE ${whereClause}
+          GROUP BY pl.from_node, pl.from_node_id, n."longName"
+          ORDER BY count DESC
+          LIMIT ${limit}
+        `;
+      } else {
+        query = sql`
+          SELECT pl.from_node, pl.from_node_id, n.longName as from_node_longName, COUNT(*) as count
+          FROM packet_log pl
+          LEFT JOIN nodes n ON pl.from_node = n.nodeNum
+          WHERE ${whereClause}
+          GROUP BY pl.from_node, pl.from_node_id, n.longName
+          ORDER BY count DESC
+          LIMIT ${limit}
+        `;
+      }
+
+      const results = await this.db.execute(query);
+      const rows = this.extractRows(results);
+      return (rows as any[]).map((row: any) => ({
+        from_node: Number(row.from_node),
+        from_node_id: row.from_node_id,
+        from_node_longName: row.from_node_longName ?? row.from_node_longname ?? null,
+        count: Number(row.count),
+      }));
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get packet counts by node:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get packet counts grouped by portnum (for distribution charts).
+   * Includes port name from meshtastic constants.
+   */
+  async getPacketCountsByPortnum(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
+    const { since, from_node } = options || {};
+
+    try {
+      const conditions: any[] = [];
+      if (since !== undefined) conditions.push(sql`timestamp >= ${since}`);
+      if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
+      const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
+
+      const results = await this.db.execute(sql`
+        SELECT portnum, COUNT(*) as count
+        FROM packet_log
+        WHERE ${whereClause}
+        GROUP BY portnum
+        ORDER BY count DESC
+      `);
+
+      const rows = this.extractRows(results);
+      return (rows as any[]).map((row: any) => ({
+        portnum: Number(row.portnum),
+        portnum_name: getPortNumName(Number(row.portnum)),
+        count: Number(row.count),
+      }));
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get packet counts by portnum:', error);
+      return [];
+    }
+  }
+}
+
+/**
+ * Filter options for packet log queries
+ */
+export interface PacketLogFilterOptions {
+  portnum?: number;
+  from_node?: number;
+  to_node?: number;
+  channel?: number;
+  encrypted?: boolean;
+  since?: number;
+  relay_node?: number | 'unknown';
 }
