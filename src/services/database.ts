@@ -1,11 +1,9 @@
 import BetterSqlite3Database from 'better-sqlite3';
-import { sql } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
-import { getPortNumName } from '../server/constants/meshtastic.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
@@ -35,8 +33,7 @@ import {
   IgnoredNodesRepository,
   EmbedProfileRepository,
 } from '../db/repositories/index.js';
-import type { DatabaseType } from '../db/types.js';
-import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
+import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } from '../db/schema/postgres-create.js';
 import { MYSQL_SCHEMA_SQL, MYSQL_TABLE_NAMES } from '../db/schema/mysql-create.js';
 
@@ -208,54 +205,9 @@ export interface DbPushSubscription {
   lastUsedAt?: number;
 }
 
-export interface DbPacketLog {
-  id?: number;
-  packet_id?: number;
-  timestamp: number;
-  from_node: number;
-  from_node_id?: string;
-  from_node_longName?: string;
-  to_node?: number;
-  to_node_id?: string;
-  to_node_longName?: string;
-  channel?: number;
-  portnum: number;
-  portnum_name?: string;
-  encrypted: boolean;
-  snr?: number;
-  rssi?: number;
-  hop_limit?: number;
-  hop_start?: number;
-  relay_node?: number;
-  payload_size?: number;
-  want_ack?: boolean;
-  priority?: number;
-  payload_preview?: string;
-  metadata?: string;
-  direction?: 'rx' | 'tx';
-  created_at?: number;
-  decrypted_by?: 'node' | 'server' | null;
-  decrypted_channel_id?: number | null;
-  transport_mechanism?: number;
-}
-
-export interface DbPacketCountByNode {
-  from_node: number;
-  from_node_id: string | null;
-  from_node_longName: string | null;
-  count: number;
-}
-
-export interface DbDistinctRelayNode {
-  relay_node: number;
-  matching_nodes: Array<{ longName: string | null; shortName: string | null }>;
-}
-
-export interface DbPacketCountByPortnum {
-  portnum: number;
-  portnum_name: string;
-  count: number;
-}
+// Re-export DbPacketLog from canonical db/types location
+export type DbPacketLog = DbTypesPacketLog;
+export type { DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode };
 
 export interface DbCustomTheme {
   id?: number;
