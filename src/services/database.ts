@@ -2902,57 +2902,7 @@ class DatabaseService {
     return messages.map(message => this.normalizeBigInts(message));
   }
 
-  getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): DbMessage[] {
-    // For PostgreSQL/MySQL, messages are not cached - return empty for sync calls
-    // Messages are fetched via API endpoints which can be async
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-    const stmt = this.db.prepare(`
-      SELECT * FROM messages
-      WHERE portnum = 1
-        AND channel = -1
-        AND (
-          (fromNodeId = ? AND toNodeId = ?)
-          OR (fromNodeId = ? AND toNodeId = ?)
-        )
-      ORDER BY COALESCE(rxTime, timestamp) DESC
-      LIMIT ? OFFSET ?
-    `);
-    const messages = stmt.all(nodeId1, nodeId2, nodeId2, nodeId1, limit, offset) as DbMessage[];
-    return messages.map(message => this.normalizeBigInts(message));
-  }
-
-  async getDirectMessagesAsync(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `SELECT * FROM messages
-           WHERE portnum = 1 AND channel = -1
-             AND (("fromNodeId" = $1 AND "toNodeId" = $2) OR ("fromNodeId" = $2 AND "toNodeId" = $1))
-           ORDER BY COALESCE("rxTime", timestamp) DESC
-           LIMIT $3 OFFSET $4`,
-          [nodeId1, nodeId2, limit, offset]
-        );
-        return result.rows.map((row: any) => this.normalizeBigInts(row));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(
-        `SELECT * FROM messages
-         WHERE portnum = 1 AND channel = -1
-           AND ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
-         ORDER BY COALESCE(rxTime, timestamp) DESC
-         LIMIT ? OFFSET ?`,
-        [nodeId1, nodeId2, nodeId2, nodeId1, limit, offset]
-      );
-      return (rows as any[]).map((row: any) => this.normalizeBigInts(row));
-    }
-    return this.getDirectMessages(nodeId1, nodeId2, limit, offset);
-  }
+  // Direct messages methods moved to MessagesRepository (databaseService.messages.getDirectMessages)
 
   getMessagesAfterTimestamp(timestamp: number): DbMessage[] {
     // For PostgreSQL/MySQL, use cache

@@ -4016,7 +4016,7 @@ class MeshtasticManager {
         const localNodeInfo = this.getLocalNodeInfo();
         if (localNodeInfo) {
           const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
-          const pendingMessages = databaseService.getDirectMessages(localNodeId, nodeId, 100);
+          const pendingMessages = await databaseService.messages.getDirectMessages(localNodeId, nodeId, 100);
           const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
             msg.text === 'Position exchange requested' &&
             msg.fromNodeNum === localNodeInfo.nodeNum &&

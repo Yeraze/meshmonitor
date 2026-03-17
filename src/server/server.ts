@@ -2043,7 +2043,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
     const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = await databaseService.getDirectMessagesAsync(nodeId1, nodeId2, limit + 1, offset);
+    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset);
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
