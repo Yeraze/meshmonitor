@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock dependencies before any imports
-const mockGetUsersWithInactiveNodeNotificationsAsync = vi.fn();
+const mockGetUsersWithInactiveNodeNotifications = vi.fn();
 const mockGetInactiveMonitoredNodesAsync = vi.fn();
 const mockFindUserByIdAsync = vi.fn();
 const mockFindUserByUsernameAsync = vi.fn();
@@ -20,7 +20,9 @@ const mockGetUserPermissionSetAsync = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    getUsersWithInactiveNodeNotificationsAsync: mockGetUsersWithInactiveNodeNotificationsAsync,
+    notifications: {
+      getUsersWithInactiveNodeNotifications: mockGetUsersWithInactiveNodeNotifications,
+    },
     getInactiveMonitoredNodesAsync: mockGetInactiveMonitoredNodesAsync,
     findUserByIdAsync: mockFindUserByIdAsync,
     findUserByUsernameAsync: mockFindUserByUsernameAsync,
@@ -69,16 +71,16 @@ describe('InactiveNodeNotificationService', () => {
 
   describe('checkInactiveNodes', () => {
     it('should skip when no users have notifications enabled', async () => {
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([]);
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
 
       await service.checkInactiveNodes();
 
-      expect(mockGetUsersWithInactiveNodeNotificationsAsync).toHaveBeenCalled();
+      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalled();
       expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
     });
 
     it('should skip users with no monitored nodes', async () => {
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: null },
       ]);
 
@@ -89,7 +91,7 @@ describe('InactiveNodeNotificationService', () => {
     });
 
     it('should skip users with empty monitored nodes list', async () => {
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: '[]' },
       ]);
 
@@ -100,7 +102,7 @@ describe('InactiveNodeNotificationService', () => {
 
     it('should query for inactive nodes using parsed monitored list', async () => {
       const monitoredNodes = ['!aabbccdd', '!11223344'];
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: JSON.stringify(monitoredNodes) },
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);
@@ -117,7 +119,7 @@ describe('InactiveNodeNotificationService', () => {
       const now = Date.now();
       const lastHeardSeconds = Math.floor(now / 1000) - 48 * 3600; // 48 hours ago
 
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: '["!aabbccdd"]' },
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([
@@ -141,7 +143,7 @@ describe('InactiveNodeNotificationService', () => {
       const now = Date.now();
       const lastHeardSeconds = Math.floor(now / 1000) - 48 * 3600;
 
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: '["!aabbccdd"]' },
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([
@@ -160,7 +162,7 @@ describe('InactiveNodeNotificationService', () => {
     });
 
     it('should handle malformed monitored_nodes JSON gracefully', async () => {
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: 'not valid json' },
       ]);
 
@@ -171,7 +173,7 @@ describe('InactiveNodeNotificationService', () => {
     });
 
     it('should not send notification when no nodes are inactive', async () => {
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: '["!aabbccdd"]' },
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);
@@ -186,7 +188,7 @@ describe('InactiveNodeNotificationService', () => {
       const now = Date.now();
       const expectedCutoff = Math.floor(now / 1000) - 12 * 3600;
 
-      mockGetUsersWithInactiveNodeNotificationsAsync.mockResolvedValue([
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: '["!aabbccdd"]' },
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);

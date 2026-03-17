@@ -5071,7 +5071,7 @@ class DatabaseService {
 
       if (filterEnabled) {
         // Get all filter settings (use async for specificNodes)
-        const specificNodes = await this.getAutoTracerouteNodesAsync();
+        const specificNodes = await this.misc.getAutoTracerouteNodes();
         const filterChannels = this.getTracerouteFilterChannels();
         const filterRoles = this.getTracerouteFilterRoles();
         const filterHwModels = this.getTracerouteFilterHwModels();
@@ -5339,14 +5339,6 @@ class DatabaseService {
     return nodes.map(n => Number(n.nodeNum));
   }
 
-  async getAutoTracerouteNodesAsync(): Promise<number[]> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getAutoTracerouteNodes();
-    }
-    // Fallback to sync method for SQLite
-    return this.getAutoTracerouteNodes();
-  }
-
   setAutoTracerouteNodes(nodeNums: number[]): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'setAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use setAutoTracerouteNodesAsync() instead.`);
@@ -5376,16 +5368,6 @@ class DatabaseService {
     })();
 
     logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
-  }
-
-  async setAutoTracerouteNodesAsync(nodeNums: number[]): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.setAutoTracerouteNodes(nodeNums);
-      logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
-      return;
-    }
-    // Fallback to sync method for SQLite
-    this.setAutoTracerouteNodes(nodeNums);
   }
 
   // Solar Estimates methods
@@ -5697,7 +5679,7 @@ class DatabaseService {
     expirationHours: number;
     sortByHops: boolean;
   }> {
-    const nodeNums = await this.getAutoTracerouteNodesAsync();
+    const nodeNums = await this.misc.getAutoTracerouteNodes();
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
       nodeNums,
@@ -5731,7 +5713,7 @@ class DatabaseService {
     sortByHops?: boolean;
   }): Promise<void> {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
-    await this.setAutoTracerouteNodesAsync(settings.nodeNums);
+    await this.misc.setAutoTracerouteNodes(settings.nodeNums);
     this.setTracerouteFilterChannels(settings.filterChannels);
     this.setTracerouteFilterRoles(settings.filterRoles);
     this.setTracerouteFilterHwModels(settings.filterHwModels);
@@ -7167,73 +7149,6 @@ class DatabaseService {
   }
 
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
-
-  /**
-   * Async method to get user notification preferences.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async getUserNotificationPreferencesAsync(userId: number): Promise<{
-    enableWebPush: boolean;
-    enableApprise: boolean;
-    enabledChannels: number[];
-    enableDirectMessages: boolean;
-    notifyOnEmoji: boolean;
-    notifyOnMqtt: boolean;
-    notifyOnNewNode: boolean;
-    notifyOnTraceroute: boolean;
-    notifyOnInactiveNode: boolean;
-    notifyOnServerEvents: boolean;
-    prefixWithNodeName: boolean;
-    monitoredNodes: string[];
-    whitelist: string[];
-    blacklist: string[];
-    appriseUrls: string[];
-  } | null> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.getUserPreferences(userId);
-    }
-    // Fallback to sync SQLite method if repo not ready
-    return null;
-  }
-
-  /**
-   * Async method to save user notification preferences.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async saveUserNotificationPreferencesAsync(userId: number, prefs: {
-    enableWebPush: boolean;
-    enableApprise: boolean;
-    enabledChannels: number[];
-    enableDirectMessages: boolean;
-    notifyOnEmoji: boolean;
-    notifyOnMqtt: boolean;
-    notifyOnNewNode: boolean;
-    notifyOnTraceroute: boolean;
-    notifyOnInactiveNode: boolean;
-    notifyOnServerEvents: boolean;
-    prefixWithNodeName: boolean;
-    monitoredNodes: string[];
-    whitelist: string[];
-    blacklist: string[];
-    appriseUrls: string[];
-  }): Promise<boolean> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.saveUserPreferences(userId, prefs);
-    }
-    // Fallback - return false if repo not ready
-    return false;
-  }
-
-  /**
-   * Get users who have inactive node notifications enabled and at least one notification channel active.
-   * Database-agnostic via Drizzle ORM.
-   */
-  async getUsersWithInactiveNodeNotificationsAsync(): Promise<Array<{ userId: number; monitoredNodes: string | null }>> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.getUsersWithInactiveNodeNotifications();
-    }
-    return [];
-  }
 
   /**
    * Get inactive monitored nodes — nodes in the given nodeId list whose lastHeard is before the cutoff.
@@ -8756,65 +8671,20 @@ class DatabaseService {
 
   async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
     if (!userId) return;
-    const now = Math.floor(Date.now() / 1000);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query(
-          `INSERT INTO read_messages ("userId", "messageId", "readAt")
-           VALUES ($1, $2, $3)
-           ON CONFLICT ("userId", "messageId") DO NOTHING`,
-          [userId, messageId, now]
-        );
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      await pool.query(
-        `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
-        [userId, messageId, now]
-      );
-    } else {
-      this.markMessageAsRead(messageId, userId);
+    if (this.notificationsRepo) {
+      return this.notificationsRepo.markMessagesAsReadByIds([messageId], userId);
     }
+    // Fallback to sync SQLite method
+    this.markMessageAsRead(messageId, userId);
   }
 
   async markMessagesAsReadAsync(messageIds: string[], userId: number | null): Promise<void> {
     if (!userId || messageIds.length === 0) return;
-    const now = Math.floor(Date.now() / 1000);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query('BEGIN');
-        for (const messageId of messageIds) {
-          await client.query(
-            `INSERT INTO read_messages ("userId", "messageId", "readAt")
-             VALUES ($1, $2, $3)
-             ON CONFLICT ("userId", "messageId") DO NOTHING`,
-            [userId, messageId, now]
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      for (const messageId of messageIds) {
-        await pool.query(
-          `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
-          [userId, messageId, now]
-        );
-      }
-    } else {
-      this.markMessagesAsRead(messageIds, userId);
+    if (this.notificationsRepo) {
+      return this.notificationsRepo.markMessagesAsReadByIds(messageIds, userId);
     }
+    // Fallback to sync SQLite method
+    this.markMessagesAsRead(messageIds, userId);
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
@@ -11458,16 +11328,6 @@ class DatabaseService {
   // ============ NEWS CACHE ============
 
   /**
-   * Get cached news feed
-   */
-  async getNewsCacheAsync(): Promise<{ feedData: string; fetchedAt: number; sourceUrl: string } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getNewsCache();
-  }
-
-  /**
    * Save news feed to cache
    */
   async saveNewsCacheAsync(feedData: string, sourceUrl: string): Promise<void> {
@@ -11537,86 +11397,6 @@ class DatabaseService {
       ...backup,
       createdAt: Date.now(),
     });
-  }
-
-  /**
-   * Get all backup history records ordered by timestamp (newest first)
-   */
-  async getBackupHistoryListAsync(): Promise<Array<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  }>> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getBackupHistoryList();
-  }
-
-  /**
-   * Get a backup history record by filename
-   */
-  async getBackupByFilenameAsync(filename: string): Promise<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getBackupByFilename(filename);
-  }
-
-  /**
-   * Delete a backup history record by filename
-   */
-  async deleteBackupHistoryAsync(filename: string): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.deleteBackupHistory(filename);
-  }
-
-  /**
-   * Count total backup history records
-   */
-  async countBackupsAsync(): Promise<number> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.countBackups();
-  }
-
-  /**
-   * Get oldest backup history records (for purging)
-   */
-  async getOldestBackupsAsync(limit: number): Promise<Array<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  }>> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getOldestBackups(limit);
   }
 
   /**
@@ -11705,23 +11485,6 @@ class DatabaseService {
   /**
    * Get auto time sync nodes
    */
-  async getAutoTimeSyncNodesAsync(): Promise<number[]> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getAutoTimeSyncNodes();
-    }
-    return [];
-  }
-
-  /**
-   * Set auto time sync nodes
-   */
-  async setAutoTimeSyncNodesAsync(nodeNums: number[]): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.setAutoTimeSyncNodes(nodeNums);
-      logger.debug(`✅ Set auto-time-sync filter to ${nodeNums.length} nodes`);
-    }
-  }
-
   /**
    * Get time sync filter settings
    */
@@ -11732,7 +11495,7 @@ class DatabaseService {
     expirationHours: number;
     intervalMinutes: number;
   }> {
-    const nodeNums = await this.getAutoTimeSyncNodesAsync();
+    const nodeNums = await this.misc.getAutoTimeSyncNodes();
     return {
       enabled: this.isAutoTimeSyncEnabled(),
       nodeNums,
@@ -11756,7 +11519,7 @@ class DatabaseService {
       this.setAutoTimeSyncEnabled(settings.enabled);
     }
     if (settings.nodeNums !== undefined) {
-      await this.setAutoTimeSyncNodesAsync(settings.nodeNums);
+      await this.misc.setAutoTimeSyncNodes(settings.nodeNums);
     }
     if (settings.filterEnabled !== undefined) {
       this.setAutoTimeSyncNodeFilterEnabled(settings.filterEnabled);
@@ -11788,7 +11551,7 @@ class DatabaseService {
     // Get filter settings
     let filterNodeNums: number[] | undefined;
     if (this.isAutoTimeSyncNodeFilterEnabled()) {
-      filterNodeNums = await this.getAutoTimeSyncNodesAsync();
+      filterNodeNums = await this.misc.getAutoTimeSyncNodes();
       if (filterNodeNums.length === 0) {
         // Filter is enabled but no nodes selected - skip
         return null;

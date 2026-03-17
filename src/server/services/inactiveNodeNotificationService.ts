@@ -91,7 +91,7 @@ class InactiveNodeNotificationService {
       const cutoffSeconds = Math.floor(now / 1000) - thresholdHours * 60 * 60;
 
       // Get all users who have inactive node notifications enabled (database-agnostic via Drizzle ORM)
-      const users = await databaseService.getUsersWithInactiveNodeNotificationsAsync();
+      const users = await databaseService.notifications.getUsersWithInactiveNodeNotifications();
 
       if (users.length === 0) {
         logger.debug('✅ No users have inactive node notifications enabled');
