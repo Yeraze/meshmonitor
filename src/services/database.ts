@@ -3834,28 +3834,6 @@ class DatabaseService {
     return channels.map(channel => this.normalizeBigInts(channel));
   }
 
-  /**
-   * Async version of getAllChannels - works with all database backends
-   */
-  async getAllChannelsAsync(): Promise<DbChannel[]> {
-    if (this.channelsRepo) {
-      return this.channelsRepo.getAllChannels() as unknown as DbChannel[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllChannels();
-  }
-
-  /**
-   * Async version of getChannelById - works with all database backends
-   */
-  async getChannelByIdAsync(id: number): Promise<DbChannel | null> {
-    if (this.channelsRepo) {
-      return this.channelsRepo.getChannelById(id) as unknown as DbChannel | null;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getChannelById(id);
-  }
-
   getChannelCount(): number {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -7000,17 +6978,6 @@ class DatabaseService {
     return row ? row.value : null;
   }
 
-  /**
-   * Async version of getSetting - works with all database backends
-   */
-  async getSettingAsync(key: string): Promise<string | null> {
-    if (this.settingsRepo) {
-      return this.settingsRepo.getSetting(key);
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getSetting(key);
-  }
-
   getAllSettings(): Record<string, string> {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -7033,26 +7000,17 @@ class DatabaseService {
     return settings;
   }
 
-  /**
-   * Async version of getAllSettings - works with all database backends
-   */
-  async getAllSettingsAsync(): Promise<Record<string, string>> {
-    if (this.settingsRepo) {
-      return this.settingsRepo.getAllSettings();
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllSettings();
-  }
-
   setSetting(key: string, value: string): void {
     // For PostgreSQL/MySQL, use async repo and update cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Update cache immediately for sync access
       this.settingsCache.set(key, value);
-      // Fire and forget async version
-      this.setSettingAsync(key, value).catch(err => {
-        logger.error(`Failed to set setting ${key}:`, err);
-      });
+      // Fire and forget repo write
+      if (this.settingsRepo) {
+        this.settingsRepo.setSetting(key, value).catch(err => {
+          logger.error(`Failed to set setting ${key}:`, err);
+        });
+      }
       return;
     }
     const now = Date.now();
@@ -7066,23 +7024,6 @@ class DatabaseService {
     stmt.run(key, value, now, now);
   }
 
-  /**
-   * Async version of setSetting - works with all database backends
-   */
-  async setSettingAsync(key: string, value: string): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.setSetting(key, value);
-      return;
-    }
-    // For PostgreSQL/MySQL without repo, just update cache (don't recurse into setSetting)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.settingsCache.set(key, value);
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.setSetting(key, value);
-  }
-
   setSettings(settings: Record<string, string>): void {
     // For PostgreSQL/MySQL, use async repo and update cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -7090,9 +7031,11 @@ class DatabaseService {
       for (const [key, value] of Object.entries(settings)) {
         this.settingsCache.set(key, value);
       }
-      this.setSettingsAsync(settings).catch(err => {
-        logger.error('Failed to set settings:', err);
-      });
+      if (this.settingsRepo) {
+        this.settingsRepo.setSettings(settings).catch(err => {
+          logger.error('Failed to set settings:', err);
+        });
+      }
       return;
     }
     const now = Date.now();
@@ -7111,41 +7054,19 @@ class DatabaseService {
     })();
   }
 
-  /**
-   * Async version of setSettings - works with all database backends
-   */
-  async setSettingsAsync(settings: Record<string, string>): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.setSettings(settings);
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.setSettings(settings);
-  }
-
   deleteAllSettings(): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Clear cache immediately
       this.settingsCache.clear();
-      this.deleteAllSettingsAsync().catch(err => {
-        logger.error('Failed to delete all settings:', err);
-      });
+      if (this.settingsRepo) {
+        this.settingsRepo.deleteAllSettings().catch(err => {
+          logger.error('Failed to delete all settings:', err);
+        });
+      }
       return;
     }
     logger.debug('🔄 Resetting all settings to defaults');
     this.db.exec('DELETE FROM settings');
-  }
-
-  /**
-   * Async version of deleteAllSettings - works with all database backends
-   */
-  async deleteAllSettingsAsync(): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.deleteAllSettings();
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.deleteAllSettings();
   }
 
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
@@ -8052,7 +7973,7 @@ class DatabaseService {
         ).catch(err => logger.error('Failed to write audit log:', err));
 
         // Save to settings
-        await this.setSettingAsync('setup_complete', 'true');
+        await this.settings.setSetting('setup_complete', 'true');
       } else {
         // SQLite: use sync models
         if (this.userModel.hasAdminUser()) {
@@ -9400,7 +9321,7 @@ class DatabaseService {
    */
   async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
     // Check if packet logging is enabled
-    const enabled = await this.getSettingAsync('packet_log_enabled');
+    const enabled = await this.settings.getSetting('packet_log_enabled');
     if (enabled !== '1') {
       return 0;
     }

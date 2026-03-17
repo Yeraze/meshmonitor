@@ -157,6 +157,17 @@ vi.mock('../../../services/database.js', () => {
         if (id === 1) return { id: 1, name: 'Secondary', role: 2 };
         return null;
       }),
+      channels: {
+        getAllChannels: vi.fn(async () => [
+          { id: 0, name: 'Primary', role: 1 },
+          { id: 1, name: 'Secondary', role: 2 }
+        ]),
+        getChannelById: vi.fn(async (id: number) => {
+          if (id === 0) return { id: 0, name: 'Primary', role: 1 };
+          if (id === 1) return { id: 1, name: 'Secondary', role: 2 };
+          return null;
+        }),
+      },
       // Messages methods
       getMessages: vi.fn(() => testMessages),
       getMessagesByChannel: vi.fn(() => testMessages),
