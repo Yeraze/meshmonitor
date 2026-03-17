@@ -40,7 +40,7 @@ For PostgreSQL/MySQL, check if the `ignored_nodes` table exists (present since v
 
 `src/server/migrations/001_v37_baseline.ts`
 
-Creates the complete v3.7 schema (32 tables) for all 3 backends:
+Creates the complete v3.7 schema (35 tables) for all 3 backends:
 
 - **SQLite**: Check if settings table exists. If yes and migration 077 key is present, this is an existing v3.7+ database — skip entirely. If settings table doesn't exist, this is a fresh install — create all tables.
 - **PostgreSQL**: `CREATE TABLE IF NOT EXISTS` for all 32 tables with correct column types, indexes, and constraints. Derived from current `POSTGRES_SCHEMA_SQL` content.
