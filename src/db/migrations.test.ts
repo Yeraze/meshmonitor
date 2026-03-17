@@ -33,10 +33,21 @@ describe('migrations registry', () => {
     }
   });
 
-  it('old-style migrations (1-46) are selfIdempotent', () => {
+  it('migration 001 is selfIdempotent (uses CREATE TABLE IF NOT EXISTS)', () => {
     const all = registry.getAll();
-    for (let i = 0; i < 46; i++) {
-      expect(all[i].selfIdempotent, `Migration ${all[i].number} should be selfIdempotent`).toBe(true);
+    expect(all[0].selfIdempotent).toBe(true);
+    expect(all[0].settingsKey).toBeFalsy();
+  });
+
+  it('old-style migrations (2-46) all have settingsKey', () => {
+    const all = registry.getAll();
+    // All old-style migrations (002-046) use settingsKey guards since none are truly
+    // idempotent — they use ALTER TABLE ADD COLUMN which SQLite doesn't support with
+    // IF NOT EXISTS, or INSERT without required NOT NULL columns.
+    for (let i = 1; i < 46; i++) {
+      const m = all[i];
+      expect(m.settingsKey, `Migration ${m.number} should have settingsKey`).toBeTruthy();
+      expect(m.selfIdempotent, `Migration ${m.number} should NOT be selfIdempotent`).toBeFalsy();
     }
   });
 

@@ -2,13 +2,15 @@
  * Migration Registry Barrel File
  *
  * Registers all 87 migrations in sequential order for use by the migration runner.
- * Old-style migrations (001-046) are marked selfIdempotent — they handle their own
- * CREATE TABLE IF NOT EXISTS or settings-key checks internally.
- * New-style migrations (047+) use settingsKey for SQLite idempotency tracking.
+ * Migration 001 is selfIdempotent (uses CREATE TABLE IF NOT EXISTS).
+ * Migrations 002-046 use settingsKey guards — they are NOT truly idempotent
+ * (permissions rebuild migrations use CREATE TABLE _new / SELECT * / DROP / RENAME
+ * which fails if re-run on a DB with more columns than expected).
+ * New-style migrations (047+) also use settingsKey for SQLite idempotency tracking.
  *
  * Note: Some migrations (026, 027, 029, 031) exist as files but were never wired
- * into database.ts. They are registered here as selfIdempotent SQLite-only stubs
- * to maintain sequential numbering.
+ * into database.ts. They are registered here with settingsKey guards like all
+ * other non-idempotent migrations, to maintain sequential numbering.
  */
 
 import { MigrationRegistry } from './migrationRegistry.js';
@@ -112,7 +114,9 @@ export const registry = new MigrationRegistry();
 
 // ---------------------------------------------------------------------------
 // Old-style migrations (001-046)
-// These are selfIdempotent — they check sqlite_master or use IF NOT EXISTS internally.
+// Migration 001 is truly selfIdempotent (uses CREATE TABLE IF NOT EXISTS).
+// Migrations 002-046 need settingsKey guards — many do table rebuilds with
+// CREATE TABLE _new / SELECT * / DROP / RENAME that fail if re-run.
 // Only SQLite functions are registered (Postgres/MySQL use base schema SQL).
 // ---------------------------------------------------------------------------
 
@@ -126,319 +130,322 @@ registry.register({
 registry.register({
   number: 2,
   name: 'add_channels_permission',
-  selfIdempotent: true,
+  settingsKey: 'migration_002_channels_permission',
   sqlite: (db) => channelsMigration.up(db),
 });
 
 registry.register({
   number: 3,
   name: 'add_connection_permission',
-  selfIdempotent: true,
+  settingsKey: 'migration_003_connection_permission',
   sqlite: (db) => connectionMigration.up(db),
 });
 
 registry.register({
   number: 4,
   name: 'add_traceroute_permission',
-  selfIdempotent: true,
+  settingsKey: 'migration_004_traceroute_permission',
   sqlite: (db) => tracerouteMigration.up(db),
 });
 
 registry.register({
   number: 5,
   name: 'enhance_audit_log',
-  selfIdempotent: true,
+  settingsKey: 'migration_005_enhance_audit_log',
   sqlite: (db) => auditLogMigration.up(db),
 });
 
 registry.register({
   number: 6,
   name: 'add_audit_permission',
-  selfIdempotent: true,
+  settingsKey: 'migration_006_audit_permission',
   sqlite: (db) => auditPermissionMigration.up(db),
 });
 
 registry.register({
   number: 7,
   name: 'add_read_messages',
-  selfIdempotent: true,
+  settingsKey: 'migration_007_read_messages',
   sqlite: (db) => readMessagesMigration.up(db),
 });
 
 registry.register({
   number: 8,
   name: 'add_push_subscriptions',
-  selfIdempotent: true,
+  settingsKey: 'migration_008_push_subscriptions',
   sqlite: (db) => pushSubscriptionsMigration.up(db),
 });
 
 registry.register({
   number: 9,
   name: 'add_notification_preferences',
-  selfIdempotent: true,
+  settingsKey: 'migration_009_notification_preferences',
   sqlite: (db) => notificationPreferencesMigration.up(db),
 });
 
 registry.register({
   number: 10,
   name: 'add_notify_on_emoji',
-  selfIdempotent: true,
+  settingsKey: 'migration_010_notify_on_emoji',
   sqlite: (db) => notifyOnEmojiMigration.up(db),
 });
 
 registry.register({
   number: 11,
   name: 'add_packet_log',
-  selfIdempotent: true,
+  settingsKey: 'migration_011_packet_log',
   sqlite: (db) => packetLogMigration.up(db),
 });
 
 registry.register({
   number: 12,
   name: 'add_channel_role_and_position',
-  selfIdempotent: true,
+  settingsKey: 'migration_012_channel_role',
   sqlite: (db) => channelRoleMigration.up(db),
 });
 
 registry.register({
   number: 13,
   name: 'add_backup_tables',
-  selfIdempotent: true,
+  settingsKey: 'migration_013_add_backup_tables',
   sqlite: (db) => backupTablesMigration.up(db),
 });
 
 registry.register({
   number: 14,
   name: 'add_message_delivery_tracking',
-  selfIdempotent: true,
+  settingsKey: 'migration_014_message_delivery_tracking',
   sqlite: (db) => messageDeliveryTrackingMigration.up(db),
 });
 
 registry.register({
   number: 15,
   name: 'add_auto_traceroute_filter',
-  selfIdempotent: true,
+  settingsKey: 'migration_015_auto_traceroute_filter',
   sqlite: (db) => autoTracerouteFilterMigration.up(db),
 });
 
 registry.register({
   number: 16,
   name: 'add_security_permission',
-  selfIdempotent: true,
+  settingsKey: 'migration_016_security_permission',
   sqlite: (db) => securityPermissionMigration.up(db),
 });
 
 registry.register({
   number: 17,
   name: 'add_channel_to_nodes',
-  selfIdempotent: true,
+  settingsKey: 'migration_017_add_channel_to_nodes',
   sqlite: (db) => channelColumnMigration.up(db),
 });
 
 registry.register({
   number: 18,
   name: 'add_mobile_to_nodes',
-  selfIdempotent: true,
+  settingsKey: 'migration_018_add_mobile_to_nodes',
   sqlite: (db) => mobileMigration.up(db),
 });
 
 registry.register({
   number: 19,
   name: 'add_solar_estimates',
-  selfIdempotent: true,
+  settingsKey: 'migration_019_solar_estimates',
   sqlite: (db) => solarEstimatesMigration.up(db),
 });
 
 registry.register({
   number: 20,
   name: 'add_position_precision_tracking',
-  selfIdempotent: true,
+  settingsKey: 'migration_020_position_precision',
   sqlite: (db) => positionPrecisionMigration.up(db),
 });
 
 registry.register({
   number: 21,
   name: 'add_system_backup_table',
-  selfIdempotent: true,
+  settingsKey: 'migration_021_system_backup_table',
   sqlite: (db) => systemBackupTableMigration.up(db),
 });
 
 registry.register({
   number: 22,
   name: 'add_custom_themes',
-  selfIdempotent: true,
+  settingsKey: 'migration_022_custom_themes',
   sqlite: (db) => customThemesMigration.up(db),
 });
 
 registry.register({
   number: 23,
   name: 'add_password_locked_flag',
-  selfIdempotent: true,
+  settingsKey: 'migration_023_password_locked',
   sqlite: (db) => passwordLockedMigration.up(db),
 });
 
 registry.register({
   number: 24,
   name: 'add_per_channel_permissions',
-  selfIdempotent: true,
+  settingsKey: 'migration_024_per_channel_permissions',
   sqlite: (db) => perChannelPermissionsMigration.up(db),
 });
 
 registry.register({
   number: 25,
   name: 'add_api_tokens',
-  selfIdempotent: true,
+  settingsKey: 'migration_025_api_tokens',
   sqlite: (db) => apiTokensMigration.up(db),
 });
 
 // Migrations 026, 027 exist as files but were never wired into database.ts.
-// Registered as selfIdempotent to maintain sequential numbering.
+// They use bare ALTER TABLE ADD COLUMN (no IF NOT EXISTS check), so they need settingsKey guards.
 registry.register({
   number: 26,
   name: 'add_relay_node_to_messages',
-  selfIdempotent: true,
+  settingsKey: 'migration_026_relay_node_messages',
   sqlite: (db) => relayNodeMessagesMigration.up(db),
 });
 
 registry.register({
   number: 27,
   name: 'add_ack_from_node_to_messages',
-  selfIdempotent: true,
+  settingsKey: 'migration_027_ack_from_node_messages',
   sqlite: (db) => ackFromNodeMessagesMigration.up(db),
 });
 
 registry.register({
   number: 28,
   name: 'add_cascade_to_foreign_keys',
-  selfIdempotent: true,
+  settingsKey: 'migration_028_cascade_foreign_keys',
   sqlite: (db) => cascadeForeignKeysMigration.up(db),
 });
 
 // Migration 029 exists as file but was never wired into database.ts.
+// Uses INSERT OR IGNORE but the settings table requires NOT NULL on createdAt/updatedAt,
+// so the INSERT would fail. Use settingsKey guard instead.
 registry.register({
   number: 29,
   name: 'add_auto_ack_direct_message',
-  selfIdempotent: true,
+  settingsKey: 'migration_029_auto_ack_direct',
   sqlite: (db) => autoAckDirectMigration.up(db),
 });
 
 registry.register({
   number: 30,
   name: 'add_user_map_preferences',
-  selfIdempotent: true,
+  settingsKey: 'migration_030_user_map_preferences',
   sqlite: (db) => userMapPreferencesMigration.up(db),
 });
 
 // Migration 031 exists as file but was never wired into database.ts.
+// Uses bare ALTER TABLE ADD COLUMN (no IF NOT EXISTS check), so it needs a settingsKey guard.
 registry.register({
   number: 31,
   name: 'add_sorting_to_user_preferences',
-  selfIdempotent: true,
+  settingsKey: 'migration_031_sorting_preferences',
   sqlite: (db) => sortingPreferencesMigration.up(db),
 });
 
 registry.register({
   number: 32,
   name: 'add_notify_on_inactive_node',
-  selfIdempotent: true,
+  settingsKey: 'migration_032_inactive_node_notification',
   sqlite: (db) => inactiveNodeNotificationMigration.up(db),
 });
 
 registry.register({
   number: 33,
   name: 'add_is_ignored_to_nodes',
-  selfIdempotent: true,
+  settingsKey: 'migration_033_is_ignored',
   sqlite: (db) => isIgnoredMigration.up(db),
 });
 
 registry.register({
   number: 34,
   name: 'add_notify_on_server_events',
-  selfIdempotent: true,
+  settingsKey: 'migration_034_notify_on_server_events',
   sqlite: (db) => notifyOnServerEventsMigration.up(db),
 });
 
 registry.register({
   number: 35,
   name: 'add_prefix_with_node_name',
-  selfIdempotent: true,
+  settingsKey: 'migration_035_prefix_with_node_name',
   sqlite: (db) => prefixWithNodeNameMigration.up(db),
 });
 
 registry.register({
   number: 36,
   name: 'add_per_user_apprise_urls',
-  selfIdempotent: true,
+  settingsKey: 'migration_036_per_user_apprise_urls',
   sqlite: (db) => perUserAppriseUrlsMigration.up(db),
 });
 
 registry.register({
   number: 37,
   name: 'add_notify_on_mqtt',
-  selfIdempotent: true,
+  settingsKey: 'migration_037_notify_on_mqtt',
   sqlite: (db) => notifyOnMqttMigration.up(db),
 });
 
 registry.register({
   number: 38,
   name: 'recalculate_estimated_positions',
-  selfIdempotent: true,
+  settingsKey: 'migration_038_recalculate_estimated_positions',
   sqlite: (db) => recalculateEstimatedPositionsMigration.up(db),
 });
 
 registry.register({
   number: 39,
   name: 'recalculate_estimated_positions_fix',
-  selfIdempotent: true,
+  settingsKey: 'migration_039_recalculate_estimated_positions_fix',
   sqlite: (db) => recalculateEstimatedPositionsFixMigration.up(db),
 });
 
 registry.register({
   number: 40,
   name: 'add_position_override_to_nodes',
-  selfIdempotent: true,
+  settingsKey: 'migration_040_position_override',
   sqlite: (db) => positionOverrideMigration.up(db),
 });
 
 registry.register({
   number: 41,
   name: 'add_auto_traceroute_log',
-  selfIdempotent: true,
+  settingsKey: 'migration_041_auto_traceroute_log',
   sqlite: (db) => autoTracerouteLogMigration.up(db),
 });
 
 registry.register({
   number: 42,
   name: 'add_relay_node_to_packet_log',
-  selfIdempotent: true,
+  settingsKey: 'migration_042_relay_node_packet_log',
   sqlite: (db) => relayNodePacketLogMigration.up(db),
 });
 
 registry.register({
   number: 43,
   name: 'add_position_override_privacy',
-  selfIdempotent: true,
+  settingsKey: 'migration_043_position_override_privacy',
   sqlite: (db) => positionOverridePrivacyMigration.up(db),
 });
 
 registry.register({
   number: 44,
   name: 'add_nodes_private_permission',
-  selfIdempotent: true,
+  settingsKey: 'migration_044_nodes_private_permission',
   sqlite: (db) => nodesPrivatePermissionMigration.up(db),
 });
 
 registry.register({
   number: 45,
   name: 'add_packet_direction',
-  selfIdempotent: true,
+  settingsKey: 'migration_045_packet_direction',
   sqlite: (db) => packetDirectionMigration.up(db),
 });
 
 registry.register({
   number: 46,
   name: 'add_auto_key_repair',
-  selfIdempotent: true,
+  settingsKey: 'migration_046_auto_key_repair',
   sqlite: (db) => autoKeyRepairMigration.up(db),
 });
 

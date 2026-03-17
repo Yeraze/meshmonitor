@@ -208,7 +208,7 @@ let embedOriginsCacheTime = 0;
 const EMBED_ORIGINS_CACHE_TTL = 60000;
 
 function refreshEmbedOriginsCache(): void {
-  databaseService.getEmbedProfilesAsync().then(profiles => {
+  databaseService.embedProfiles.getAllAsync().then(profiles => {
     embedOriginsCache = [...new Set(
       profiles.filter(p => p.enabled).flatMap(p => p.allowedOrigins)
     )];
@@ -462,8 +462,8 @@ setTimeout(async () => {
 
     // Clear any runtime IP/port overrides from previous sessions
     // These are temporary settings that should reset on container restart
-    await databaseService.setSettingAsync('meshtasticNodeIpOverride', '');
-    await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+    await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
+    await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
 
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
@@ -1424,7 +1424,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
 // Get persistent ignored nodes list
 apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (_req, res) => {
   try {
-    const ignoredNodes = await databaseService.getIgnoredNodesAsync();
+    const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync();
     res.json(ignoredNodes);
   } catch (error) {
     logger.error('Error fetching ignored nodes:', error);
@@ -1459,7 +1459,7 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Remove from persistent ignore list
-    await databaseService.removeIgnoredNodeAsync(nodeNum);
+    await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum);
 
     // Also un-ignore the node record if it still exists
     try {
@@ -3235,7 +3235,7 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
       return;
     }
 
-    const traceroutes = await databaseService.getTraceroutesByNodesAsync(fromNodeNum, toNodeNum, limit);
+    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;
@@ -3264,7 +3264,7 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
 // Get longest active route segment (within last 7 days)
 apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (_req, res) => {
   try {
-    const segment = await databaseService.getLongestActiveRouteSegmentAsync();
+    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment();
     if (!segment) {
       res.json(null);
       return;
@@ -3290,7 +3290,7 @@ apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'
 // Get record holder route segment
 apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (_req, res) => {
   try {
-    const segment = await databaseService.getRecordHolderRouteSegmentAsync();
+    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment();
     if (!segment) {
       res.json(null);
       return;

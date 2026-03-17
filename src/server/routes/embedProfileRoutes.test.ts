@@ -12,11 +12,13 @@ vi.mock('../../services/database.js', () => ({
     findUserByUsernameAsync: vi.fn(),
     checkPermissionAsync: vi.fn(),
     getUserPermissionSetAsync: vi.fn(),
-    getEmbedProfilesAsync: vi.fn(),
-    getEmbedProfileByIdAsync: vi.fn(),
-    createEmbedProfileAsync: vi.fn(),
-    updateEmbedProfileAsync: vi.fn(),
-    deleteEmbedProfileAsync: vi.fn(),
+    embedProfiles: {
+      getAllAsync: vi.fn(),
+      getByIdAsync: vi.fn(),
+      createAsync: vi.fn(),
+      updateAsync: vi.fn(),
+      deleteAsync: vi.fn(),
+    },
     auditLog: vi.fn(),
   }
 }));
@@ -26,11 +28,13 @@ const mockDb = databaseService as unknown as {
   findUserByUsernameAsync: ReturnType<typeof vi.fn>;
   checkPermissionAsync: ReturnType<typeof vi.fn>;
   getUserPermissionSetAsync: ReturnType<typeof vi.fn>;
-  getEmbedProfilesAsync: ReturnType<typeof vi.fn>;
-  getEmbedProfileByIdAsync: ReturnType<typeof vi.fn>;
-  createEmbedProfileAsync: ReturnType<typeof vi.fn>;
-  updateEmbedProfileAsync: ReturnType<typeof vi.fn>;
-  deleteEmbedProfileAsync: ReturnType<typeof vi.fn>;
+  embedProfiles: {
+    getAllAsync: ReturnType<typeof vi.fn>;
+    getByIdAsync: ReturnType<typeof vi.fn>;
+    createAsync: ReturnType<typeof vi.fn>;
+    updateAsync: ReturnType<typeof vi.fn>;
+    deleteAsync: ReturnType<typeof vi.fn>;
+  };
   auditLog: ReturnType<typeof vi.fn>;
 };
 
@@ -98,14 +102,14 @@ describe('Embed Profile Admin Routes', () => {
 
   describe('GET /api/embed-profiles', () => {
     it('returns profiles for admin user', async () => {
-      mockDb.getEmbedProfilesAsync.mockResolvedValue([sampleProfile]);
+      mockDb.embedProfiles.getAllAsync.mockResolvedValue([sampleProfile]);
       const app = createApp();
 
       const response = await request(app).get('/api/embed-profiles');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual([sampleProfile]);
-      expect(mockDb.getEmbedProfilesAsync).toHaveBeenCalled();
+      expect(mockDb.embedProfiles.getAllAsync).toHaveBeenCalled();
     });
 
     it('returns 401 for unauthenticated request', async () => {
@@ -127,7 +131,7 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('returns 500 when database fails', async () => {
-      mockDb.getEmbedProfilesAsync.mockRejectedValue(new Error('db down'));
+      mockDb.embedProfiles.getAllAsync.mockRejectedValue(new Error('db down'));
       const app = createApp();
 
       const response = await request(app).get('/api/embed-profiles');
@@ -139,7 +143,7 @@ describe('Embed Profile Admin Routes', () => {
 
   describe('POST /api/embed-profiles', () => {
     it('creates a profile and returns 201', async () => {
-      mockDb.createEmbedProfileAsync.mockResolvedValue(sampleProfile);
+      mockDb.embedProfiles.createAsync.mockResolvedValue(sampleProfile);
       const app = createApp();
 
       const response = await request(app)
@@ -148,7 +152,7 @@ describe('Embed Profile Admin Routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual(sampleProfile);
-      expect(mockDb.createEmbedProfileAsync).toHaveBeenCalledWith(
+      expect(mockDb.embedProfiles.createAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Test Profile',
           channels: [0, 1],
@@ -193,14 +197,14 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('applies default values for missing fields', async () => {
-      mockDb.createEmbedProfileAsync.mockResolvedValue(sampleProfile);
+      mockDb.embedProfiles.createAsync.mockResolvedValue(sampleProfile);
       const app = createApp();
 
       await request(app)
         .post('/api/embed-profiles')
         .send({ name: 'Minimal Profile' });
 
-      expect(mockDb.createEmbedProfileAsync).toHaveBeenCalledWith(
+      expect(mockDb.embedProfiles.createAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Minimal Profile',
           enabled: true,
@@ -222,14 +226,14 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('accepts CSP wildcard origins like https://*.example.com', async () => {
-      mockDb.createEmbedProfileAsync.mockResolvedValue(sampleProfile);
+      mockDb.embedProfiles.createAsync.mockResolvedValue(sampleProfile);
       const app = createApp();
 
       await request(app)
         .post('/api/embed-profiles')
         .send({ name: 'Wildcard', allowedOrigins: ['https://*.example.com', 'http://*.test.org:8080'] });
 
-      expect(mockDb.createEmbedProfileAsync).toHaveBeenCalledWith(
+      expect(mockDb.embedProfiles.createAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           allowedOrigins: ['https://*.example.com', 'http://*.test.org:8080'],
         })
@@ -237,14 +241,14 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('rejects invalid wildcard origins', async () => {
-      mockDb.createEmbedProfileAsync.mockResolvedValue(sampleProfile);
+      mockDb.embedProfiles.createAsync.mockResolvedValue(sampleProfile);
       const app = createApp();
 
       await request(app)
         .post('/api/embed-profiles')
         .send({ name: 'Bad Wildcard', allowedOrigins: ['https://*', 'https://*.', 'ftp://*.example.com'] });
 
-      expect(mockDb.createEmbedProfileAsync).toHaveBeenCalledWith(
+      expect(mockDb.embedProfiles.createAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           allowedOrigins: [],
         })
@@ -252,7 +256,7 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('returns 500 when database fails', async () => {
-      mockDb.createEmbedProfileAsync.mockRejectedValue(new Error('db failure'));
+      mockDb.embedProfiles.createAsync.mockRejectedValue(new Error('db failure'));
       const app = createApp();
 
       const response = await request(app)
@@ -267,7 +271,7 @@ describe('Embed Profile Admin Routes', () => {
   describe('PUT /api/embed-profiles/:id', () => {
     it('updates a profile and returns 200', async () => {
       const updated = { ...sampleProfile, name: 'Updated Name' };
-      mockDb.updateEmbedProfileAsync.mockResolvedValue(updated);
+      mockDb.embedProfiles.updateAsync.mockResolvedValue(updated);
       const app = createApp();
 
       const response = await request(app)
@@ -276,7 +280,7 @@ describe('Embed Profile Admin Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(updated);
-      expect(mockDb.updateEmbedProfileAsync).toHaveBeenCalledWith(
+      expect(mockDb.embedProfiles.updateAsync).toHaveBeenCalledWith(
         'test-uuid-1234',
         { name: 'Updated Name' }
       );
@@ -284,7 +288,7 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('returns 404 for nonexistent profile', async () => {
-      mockDb.updateEmbedProfileAsync.mockResolvedValue(null);
+      mockDb.embedProfiles.updateAsync.mockResolvedValue(null);
       const app = createApp();
 
       const response = await request(app)
@@ -296,7 +300,7 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('returns 500 when database fails', async () => {
-      mockDb.updateEmbedProfileAsync.mockRejectedValue(new Error('db failure'));
+      mockDb.embedProfiles.updateAsync.mockRejectedValue(new Error('db failure'));
       const app = createApp();
 
       const response = await request(app)
@@ -310,19 +314,19 @@ describe('Embed Profile Admin Routes', () => {
 
   describe('DELETE /api/embed-profiles/:id', () => {
     it('deletes a profile and returns 204', async () => {
-      mockDb.deleteEmbedProfileAsync.mockResolvedValue(true);
+      mockDb.embedProfiles.deleteAsync.mockResolvedValue(true);
       const app = createApp();
 
       const response = await request(app)
         .delete('/api/embed-profiles/test-uuid-1234');
 
       expect(response.status).toBe(204);
-      expect(mockDb.deleteEmbedProfileAsync).toHaveBeenCalledWith('test-uuid-1234');
+      expect(mockDb.embedProfiles.deleteAsync).toHaveBeenCalledWith('test-uuid-1234');
       expect(mockDb.auditLog).toHaveBeenCalled();
     });
 
     it('returns 404 for nonexistent profile', async () => {
-      mockDb.deleteEmbedProfileAsync.mockResolvedValue(false);
+      mockDb.embedProfiles.deleteAsync.mockResolvedValue(false);
       const app = createApp();
 
       const response = await request(app)
@@ -333,7 +337,7 @@ describe('Embed Profile Admin Routes', () => {
     });
 
     it('returns 500 when database fails', async () => {
-      mockDb.deleteEmbedProfileAsync.mockRejectedValue(new Error('db failure'));
+      mockDb.embedProfiles.deleteAsync.mockRejectedValue(new Error('db failure'));
       const app = createApp();
 
       const response = await request(app)

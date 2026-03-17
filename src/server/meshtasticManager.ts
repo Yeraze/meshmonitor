@@ -491,12 +491,12 @@ class MeshtasticManager {
       port = portMatch[2];
     }
 
-    await databaseService.setSettingAsync('meshtasticNodeIpOverride', ip);
+    await databaseService.settings.setSetting('meshtasticNodeIpOverride', ip);
     if (port) {
-      await databaseService.setSettingAsync('meshtasticTcpPortOverride', port);
+      await databaseService.settings.setSetting('meshtasticTcpPortOverride', port);
     } else {
       // Clear port override if not specified (use default)
-      await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+      await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
     }
 
     // Disconnect and reconnect with new IP/port
@@ -508,8 +508,8 @@ class MeshtasticManager {
    * Clear the runtime IP/port override and revert to defaults
    */
   async clearNodeIpOverride(): Promise<void> {
-    await databaseService.setSettingAsync('meshtasticNodeIpOverride', '');
-    await databaseService.setSettingAsync('meshtasticTcpPortOverride', '');
+    await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
+    await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
     this.disconnect();
     await this.connect();
   }
@@ -1163,7 +1163,7 @@ class MeshtasticManager {
 
     try {
       await this.sendSetTimeCommand(targetNode.nodeNum);
-      await databaseService.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now());
+      await databaseService.nodes.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now());
       logger.info(`🕐 Time sync: Successfully synced time to ${targetName}`);
     } catch (error) {
       logger.error(`🕐 Time sync: Failed to sync time to ${targetName}:`, error);
@@ -10750,7 +10750,7 @@ class MeshtasticManager {
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
   async getAllNodesAsync(): Promise<DeviceInfo[]> {
-    const uptimeMap = await databaseService.getLatestTelemetryValueForAllNodesAsync('uptimeSeconds');
+    const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds');
     const dbNodes = databaseService.getAllNodes();
     return dbNodes.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
   }

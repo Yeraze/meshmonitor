@@ -10,89 +10,7 @@ import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
 import { APITokenModel } from '../server/models/APIToken.js';
-import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
-import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
-import { migration as connectionMigration } from '../server/migrations/003_add_connection_permission.js';
-import { migration as tracerouteMigration } from '../server/migrations/004_add_traceroute_permission.js';
-import { migration as auditLogMigration } from '../server/migrations/005_enhance_audit_log.js';
-import { migration as auditPermissionMigration } from '../server/migrations/006_add_audit_permission.js';
-import { migration as readMessagesMigration } from '../server/migrations/007_add_read_messages.js';
-import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
-import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
-import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
-import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
-import { migration as inactiveNodeNotificationMigration } from '../server/migrations/032_add_notify_on_inactive_node.js';
-import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
-import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
-import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
-import { migration as autoTracerouteFilterMigration } from '../server/migrations/015_add_auto_traceroute_filter.js';
-import { migration as securityPermissionMigration } from '../server/migrations/016_add_security_permission.js';
-import { migration as channelColumnMigration } from '../server/migrations/017_add_channel_to_nodes.js';
-import { migration as mobileMigration } from '../server/migrations/018_add_mobile_to_nodes.js';
-import { migration as solarEstimatesMigration } from '../server/migrations/019_add_solar_estimates.js';
-import { migration as positionPrecisionMigration } from '../server/migrations/020_add_position_precision_tracking.js';
-import { migration as systemBackupTableMigration } from '../server/migrations/021_add_system_backup_table.js';
-import { migration as customThemesMigration } from '../server/migrations/022_add_custom_themes.js';
-import { migration as passwordLockedMigration } from '../server/migrations/023_add_password_locked_flag.js';
-import { migration as perChannelPermissionsMigration } from '../server/migrations/024_add_per_channel_permissions.js';
-import { migration as apiTokensMigration } from '../server/migrations/025_add_api_tokens.js';
-import { migration as cascadeForeignKeysMigration } from '../server/migrations/028_add_cascade_to_foreign_keys.js';
-import { migration as userMapPreferencesMigration } from '../server/migrations/030_add_user_map_preferences.js';
-import { migration as isIgnoredMigration } from '../server/migrations/033_add_is_ignored_to_nodes.js';
-import { migration as notifyOnServerEventsMigration } from '../server/migrations/034_add_notify_on_server_events.js';
-import { migration as prefixWithNodeNameMigration } from '../server/migrations/035_add_prefix_with_node_name.js';
-import { migration as perUserAppriseUrlsMigration } from '../server/migrations/036_add_per_user_apprise_urls.js';
-import { migration as notifyOnMqttMigration } from '../server/migrations/037_add_notify_on_mqtt.js';
-import { migration as recalculateEstimatedPositionsMigration } from '../server/migrations/038_recalculate_estimated_positions.js';
-import { migration as recalculateEstimatedPositionsFixMigration } from '../server/migrations/039_recalculate_estimated_positions_fix.js';
-import { migration as positionOverrideMigration } from '../server/migrations/040_add_position_override_to_nodes.js';
-import { migration as autoTracerouteLogMigration } from '../server/migrations/041_add_auto_traceroute_log.js';
-import { migration as relayNodePacketLogMigration } from '../server/migrations/042_add_relay_node_to_packet_log.js';
-import { migration as positionOverridePrivacyMigration } from '../server/migrations/043_add_position_override_privacy.js';
-import { migration as nodesPrivatePermissionMigration } from '../server/migrations/044_add_nodes_private_permission.js';
-import { migration as packetDirectionMigration } from '../server/migrations/045_add_packet_direction.js';
-import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
-import { migration as positionOverrideBooleanMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_fix_position_override_boolean_types.js';
-import { migration as autoTracerouteColumnMigration } from '../server/migrations/048_fix_auto_traceroute_column_name.js';
-import { migration as notificationChannelSettingsMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_add_notification_channel_settings.js';
-import { migration as channelDatabaseMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_add_channel_database.js';
-import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
-import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
-import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
-import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
-import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_add_remote_admin_columns.js';
-import { migration as backupHistoryColumnsMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_fix_backup_history_columns.js';
-import { migration as packetViaMqttMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_packet_via_mqtt.js';
-import { migration as transportMechanismMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_convert_via_mqtt_to_transport_mechanism.js';
-import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_add_channel_database_view_on_map.js';
-import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_add_auto_traceroute_enabled_column.js';
-import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
-import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
-import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
-import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
-import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
-import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
-import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
-import { migration as mfaColumnsMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_add_mfa_columns.js';
-import { migration as traceroutePositionsMigration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_add_traceroute_positions.js';
-import { migration as meshcoreTablesMigration, runMigration070Postgres as runMigration070MeshcorePostgres, runMigration070Mysql as runMigration070MeshcoreMysql } from '../server/migrations/070_add_meshcore_tables.js';
-import { migration as meshcorePermissionMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_add_meshcore_permission.js';
-import { migration as dmUnreadIndexMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_add_messages_dm_unread_index.js';
-import { migration as packetIdMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_add_packet_id_to_telemetry.js';
-import { migration as showMeshCoreNodesMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_meshcore_nodes_preference.js';
-import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_upgrade_telemetry_packetid_bigint.js';
-import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_accuracy_and_estimated_position_prefs.js';
-import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_upgrade_ignored_nodes_nodenum_bigint.js';
-import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
-import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
-import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
-import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
-import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
-import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
-import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
-import { runMigration085Postgres, runMigration085Mysql } from '../server/migrations/085_fix_custom_themes_columns.js';
-import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } from '../server/migrations/086_add_auto_distance_delete_log.js';
-import { runMigration087Postgres, runMigration087Mysql } from '../server/migrations/087_fix_message_nodenum_bigint.js';
+import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -117,7 +35,6 @@ import {
   IgnoredNodesRepository,
   EmbedProfileRepository,
 } from '../db/repositories/index.js';
-import type { EmbedProfile, EmbedProfileInput } from '../db/repositories/index.js';
 import type { DatabaseType } from '../db/types.js';
 import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
 import { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } from '../db/schema/postgres-create.js';
@@ -514,6 +431,75 @@ class DatabaseService {
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
 
+  /**
+   * Typed repository accessors — throw if database not initialized.
+   * Prefer these over the nullable public fields.
+   */
+  get nodes(): NodesRepository {
+    if (!this.nodesRepo) throw new Error('Database not initialized');
+    return this.nodesRepo;
+  }
+
+  get messages(): MessagesRepository {
+    if (!this.messagesRepo) throw new Error('Database not initialized');
+    return this.messagesRepo;
+  }
+
+  get channels(): ChannelsRepository {
+    if (!this.channelsRepo) throw new Error('Database not initialized');
+    return this.channelsRepo;
+  }
+
+  get settings(): SettingsRepository {
+    if (!this.settingsRepo) throw new Error('Database not initialized');
+    return this.settingsRepo;
+  }
+
+  get telemetry(): TelemetryRepository {
+    if (!this.telemetryRepo) throw new Error('Database not initialized');
+    return this.telemetryRepo;
+  }
+
+  get traceroutes(): TraceroutesRepository {
+    if (!this.traceroutesRepo) throw new Error('Database not initialized');
+    return this.traceroutesRepo;
+  }
+
+  get neighbors(): NeighborsRepository {
+    if (!this.neighborsRepo) throw new Error('Database not initialized');
+    return this.neighborsRepo;
+  }
+
+  get auth(): AuthRepository {
+    if (!this.authRepo) throw new Error('Database not initialized');
+    return this.authRepo;
+  }
+
+  get notifications(): NotificationsRepository {
+    if (!this.notificationsRepo) throw new Error('Database not initialized');
+    return this.notificationsRepo;
+  }
+
+  get misc(): MiscRepository {
+    if (!this.miscRepo) throw new Error('Database not initialized');
+    return this.miscRepo;
+  }
+
+  get channelDatabase(): ChannelDatabaseRepository {
+    if (!this.channelDatabaseRepo) throw new Error('Database not initialized');
+    return this.channelDatabaseRepo;
+  }
+
+  get ignoredNodes(): IgnoredNodesRepository {
+    if (!this.ignoredNodesRepo) throw new Error('Database not initialized');
+    return this.ignoredNodesRepo;
+  }
+
+  get embedProfiles(): EmbedProfileRepository {
+    if (!this.embedProfileRepo) throw new Error('Database not initialized');
+    return this.embedProfileRepo;
+  }
+
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
 
@@ -884,87 +870,35 @@ class DatabaseService {
     this.migrateSchema();
     this.createIndexes();
     this.runDataMigrations();
-    this.runAuthMigration();
-    this.runChannelsMigration();
-    this.runConnectionMigration();
-    this.runTracerouteMigration();
-    this.runAuditLogMigration();
-    this.runAuditPermissionMigration();
-    this.runReadMessagesMigration();
-    this.runPushSubscriptionsMigration();
-    this.runNotificationPreferencesMigration();
-    this.runNotifyOnEmojiMigration();
-    this.runPacketLogMigration();
-    this.runChannelRoleMigration();
-    this.runBackupTablesMigration();
-    this.runMessageDeliveryTrackingMigration();
-    this.runAutoTracerouteFilterMigration();
-    this.runSecurityPermissionMigration();
-    this.runChannelColumnMigration();
-    this.runMobileMigration();
-    this.runSolarEstimatesMigration();
-    this.runPositionPrecisionMigration();
-    this.runSystemBackupTableMigration();
-    this.runCustomThemesMigration();
-    this.runPasswordLockedMigration();
-    this.runPerChannelPermissionsMigration();
-    this.runAPITokensMigration();
-    this.runCascadeForeignKeysMigration();
-    // NOTE: Auto-welcome migration is now handled when the feature is first enabled
-    // See handleAutoWelcomeEnabled() which is called from the settings POST endpoint in server.ts
-    this.runUserMapPreferencesMigration();
-    this.runInactiveNodeNotificationMigration();
-    this.runIsIgnoredMigration();
-    this.runNotifyOnServerEventsMigration();
-    this.runPrefixWithNodeNameMigration();
-    this.runPerUserAppriseUrlsMigration();
-    this.runNotifyOnMqttMigration();
-    this.runRecalculateEstimatedPositionsMigration();
-    this.runRecalculateEstimatedPositionsFixMigration();
-    this.runPositionOverrideMigration();
-    this.runPositionOverridePrivacyMigration();
-    this.runNodesPrivatePermissionMigration();
-    this.runPacketDirectionMigration();
-    this.runAutoTracerouteLogMigration();
-    this.runRelayNodePacketLogMigration();
-    this.runAutoKeyRepairMigration();
-    this.runPositionOverrideBooleanMigration();
-    this.runAutoTracerouteColumnMigration();
-    this.runNotificationChannelSettingsMigration();
-    this.runChannelDatabaseMigration();
-    this.runDecryptedByMessagesMigration();
-    this.runUpgradeHistorySchemaMigration();
-    this.runViewOnMapPermissionMigration();
-    this.runNewsTablesMigration();
-    this.runRemoteAdminColumnsMigration();
-    this.runBackupHistoryColumnsMigration();
-    this.runPacketViaMqttMigration();
-    this.runTransportMechanismMigration();
-    this.runChannelDbViewOnMapMigration();
-    this.runAutoTracerouteEnabledMigration();
-    this.runSpamDetectionMigration();
-    this.runPositionDoublePrecisionMigration();
-    this.runPositionHistoryHoursMigration();
-    this.runEnforceNameValidationMigration();
-    this.runSortOrderMigration();
-    this.runIgnoredNodesTableMigration();
-    this.runAutoTimeSyncMigration();
-    this.runMfaColumnsMigration();
-    this.runTraceroutePositionsMigration();
-    this.runMeshcoreTablesMigration();
-    this.runMeshcorePermissionMigration();
-    this.runDmUnreadIndexMigration();
-    this.runPacketIdMigration();
-    this.runShowMeshCoreNodesMigration();
-    this.runTelemetryPacketIdBigintMigration();
-    this.runAccuracyEstimatedPrefsMigration();
-    this.runIgnoredNodesNodeNumBigintMigration();
-    this.runCreateEmbedProfilesMigration();
-    this.runCreateGeofenceCooldownsMigration();
-    this.runAddFavoriteLockedMigration();
-    this.runAddTimeOffsetColumnsMigration();
-    this.runAddPacketmonitorPermissionMigration();
-    this.runAutoDistanceDeleteLogMigration();
+
+    // Run all registered SQLite migrations via the migration registry
+    for (const migration of registry.getAll()) {
+      if (!migration.sqlite) continue;
+
+      try {
+        if (migration.selfIdempotent) {
+          // Old-style migrations (001-046) handle their own idempotency
+          migration.sqlite(this.db,
+            (key: string) => this.getSetting(key),
+            (key: string, value: string) => this.setSetting(key, value)
+          );
+        } else if (migration.settingsKey) {
+          // New-style migrations use settings key guard
+          if (this.getSetting(migration.settingsKey) !== 'completed') {
+            logger.debug(`Running migration ${String(migration.number).padStart(3, '0')}: ${migration.name}...`);
+            migration.sqlite(this.db,
+              (key: string) => this.getSetting(key),
+              (key: string, value: string) => this.setSetting(key, value)
+            );
+            this.setSetting(migration.settingsKey, 'completed');
+            logger.debug(`Migration ${String(migration.number).padStart(3, '0')} completed successfully`);
+          }
+        }
+      } catch (error) {
+        logger.error(`Error running migration ${String(migration.number).padStart(3, '0')} (${migration.name}):`, error);
+        throw error;
+      }
+    }
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1030,1594 +964,6 @@ class DatabaseService {
     }
   }
 
-  private runAuthMigration(): void {
-    logger.debug('Running authentication migration...');
-    try {
-      // Check if migration has already been run
-      const tableCheck = this.db.prepare(`
-        SELECT name FROM sqlite_master WHERE type='table' AND name='users'
-      `).get();
-
-      if (!tableCheck) {
-        logger.debug('Authentication tables not found, running migration...');
-        authMigration.up(this.db);
-        logger.debug('✅ Authentication migration completed successfully');
-      } else {
-        logger.debug('✅ Authentication tables already exist, skipping migration');
-      }
-    } catch (error) {
-      logger.error('❌ Failed to run authentication migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelsMigration(): void {
-    logger.debug('Running channels permission migration...');
-    try {
-      // Check if migration has already been run by checking if 'channels' is in the CHECK constraint
-      // We'll use a setting to track this migration
-      const migrationKey = 'migration_002_channels_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channels permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 002: Add channels permission resource...');
-      channelsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channels permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channels permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runConnectionMigration(): void {
-    logger.debug('Running connection permission migration...');
-    try {
-      const migrationKey = 'migration_003_connection_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Connection permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 003: Add connection permission resource...');
-      connectionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Connection permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run connection permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runTracerouteMigration(): void {
-    logger.debug('Running traceroute permission migration...');
-    try {
-      const migrationKey = 'migration_004_traceroute_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Traceroute permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 004: Add traceroute permission resource...');
-      tracerouteMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Traceroute permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run traceroute permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runAuditLogMigration(): void {
-    logger.debug('Running audit log enhancement migration...');
-    try {
-      const migrationKey = 'migration_005_enhance_audit_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Audit log enhancement migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 005: Enhance audit log table...');
-      auditLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Audit log enhancement migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run audit log enhancement migration:', error);
-      throw error;
-    }
-  }
-
-  private runAuditPermissionMigration(): void {
-    logger.debug('Running audit permission migration...');
-    try {
-      const migrationKey = 'migration_006_audit_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Audit permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 006: Add audit permission resource...');
-      auditPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Audit permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run audit permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runReadMessagesMigration(): void {
-    logger.debug('Running read messages migration...');
-    try {
-      const migrationKey = 'migration_007_read_messages';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Read messages migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 007: Add read_messages table...');
-      readMessagesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Read messages migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run read messages migration:', error);
-      throw error;
-    }
-  }
-
-  private runPushSubscriptionsMigration(): void {
-    logger.debug('Running push subscriptions migration...');
-    try {
-      const migrationKey = 'migration_008_push_subscriptions';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Push subscriptions migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 008: Add push_subscriptions table...');
-      pushSubscriptionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Push subscriptions migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run push subscriptions migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotificationPreferencesMigration(): void {
-    logger.debug('Running notification preferences migration...');
-    try {
-      const migrationKey = 'migration_009_notification_preferences';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Notification preferences migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 009: Add user_notification_preferences table...');
-      notificationPreferencesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notification preferences migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notification preferences migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotifyOnEmojiMigration(): void {
-    logger.debug('Running notify on emoji migration...');
-    try {
-      const migrationKey = 'migration_010_notify_on_emoji';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Notify on emoji migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 010: Add notify_on_emoji column...');
-      notifyOnEmojiMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notify on emoji migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notify on emoji migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketLogMigration(): void {
-    logger.debug('Running packet log migration...');
-    try {
-      const migrationKey = 'migration_011_packet_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Packet log migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 011: Add packet log table...');
-      packetLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Packet log migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run packet log migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelRoleMigration(): void {
-    try {
-      const migrationKey = 'migration_012_channel_role';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel role migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 012: Add channel role and position precision...');
-      channelRoleMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel role migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel role migration:', error);
-      throw error;
-    }
-  }
-
-  private runBackupTablesMigration(): void {
-    try {
-      const migrationKey = 'migration_013_add_backup_tables';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Backup tables migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 013: Add backup tables...');
-      backupTablesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Backup tables migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run backup tables migration:', error);
-      throw error;
-    }
-  }
-
-  private runMessageDeliveryTrackingMigration(): void {
-    try {
-      const migrationKey = 'migration_014_message_delivery_tracking';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Message delivery tracking migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 014: Add message delivery tracking fields...');
-      messageDeliveryTrackingMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Message delivery tracking migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run message delivery tracking migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteFilterMigration(): void {
-    try {
-      const migrationKey = 'migration_015_auto_traceroute_filter';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto-traceroute filter migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 015: Add auto-traceroute node filter...');
-      autoTracerouteFilterMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto-traceroute filter migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto-traceroute filter migration:', error);
-      throw error;
-    }
-  }
-
-  private runSecurityPermissionMigration(): void {
-    logger.debug('Running security permission migration...');
-    try {
-      const migrationKey = 'migration_016_security_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Security permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 016: Add security permission resource...');
-      securityPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Security permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run security permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelColumnMigration(): void {
-    logger.debug('Running channel column migration...');
-    try {
-      const migrationKey = 'migration_017_add_channel_to_nodes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 017: Add channel column to nodes table...');
-      channelColumnMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel column migration:', error);
-      throw error;
-    }
-  }
-
-  private runMobileMigration(): void {
-    logger.debug('Running mobile column migration...');
-    try {
-      const migrationKey = 'migration_018_add_mobile_to_nodes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Mobile column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 018: Add mobile column to nodes table...');
-      mobileMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Mobile column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run mobile column migration:', error);
-      throw error;
-    }
-  }
-
-  private runSolarEstimatesMigration(): void {
-    try {
-      const migrationKey = 'migration_019_solar_estimates';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Solar estimates migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 019: Add solar estimates table...');
-      solarEstimatesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Solar estimates migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run solar estimates migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionPrecisionMigration(): void {
-    try {
-      const migrationKey = 'migration_020_position_precision';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position precision migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 020: Add position precision tracking...');
-      positionPrecisionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position precision migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position precision migration:', error);
-      throw error;
-    }
-  }
-
-  private runSystemBackupTableMigration(): void {
-    try {
-      const migrationKey = 'migration_021_system_backup_table';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ System backup table migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 021: Add system_backup_history table...');
-      systemBackupTableMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ System backup table migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run system backup table migration:', error);
-      throw error;
-    }
-  }
-
-  private runCustomThemesMigration(): void {
-    try {
-      const migrationKey = 'migration_022_custom_themes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Custom themes migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 022: Add custom_themes table...');
-      customThemesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Custom themes migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run custom themes migration:', error);
-      throw error;
-    }
-  }
-
-  private runPasswordLockedMigration(): void {
-    try {
-      const migrationKey = 'migration_023_password_locked';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Password locked migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 023: Add password_locked flag to users table...');
-      passwordLockedMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Password locked migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run password locked migration:', error);
-      throw error;
-    }
-  }
-
-  private runPerChannelPermissionsMigration(): void {
-    try {
-      const migrationKey = 'migration_024_per_channel_permissions';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Per-channel permissions migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 024: Add per-channel permissions...');
-      perChannelPermissionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Per-channel permissions migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run per-channel permissions migration:', error);
-      throw error;
-    }
-  }
-
-  private runAPITokensMigration(): void {
-    const migrationKey = 'migration_025_api_tokens';
-
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ API tokens migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 025: Add API tokens table...');
-      apiTokensMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ API tokens migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run API tokens migration:', error);
-      throw error;
-    }
-  }
-
-  private runCascadeForeignKeysMigration(): void {
-    const migrationKey = 'migration_028_cascade_foreign_keys';
-
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ CASCADE foreign keys migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 028: Add CASCADE to foreign keys...');
-      cascadeForeignKeysMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ CASCADE foreign keys migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run CASCADE foreign keys migration:', error);
-      throw error;
-    }
-  }
-
-  private runUserMapPreferencesMigration(): void {
-    const migrationKey = 'migration_030_user_map_preferences';
-
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ User map preferences migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 030: Add user_map_preferences table...');
-      userMapPreferencesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ User map preferences migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run user map preferences migration:', error);
-      throw error;
-    }
-  }
-
-  private runIsIgnoredMigration(): void {
-    const migrationKey = 'migration_033_is_ignored';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ isIgnored migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 033: Add isIgnored column to nodes table...');
-      isIgnoredMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ isIgnored migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run isIgnored migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotifyOnServerEventsMigration(): void {
-    const migrationKey = 'migration_034_notify_on_server_events';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Notify on server events migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 034: Add notify_on_server_events column...');
-      notifyOnServerEventsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notify on server events migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notify on server events migration:', error);
-      throw error;
-    }
-  }
-
-  private runPrefixWithNodeNameMigration(): void {
-    const migrationKey = 'migration_035_prefix_with_node_name';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Prefix with node name migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 035: Add prefix_with_node_name column...');
-      prefixWithNodeNameMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Prefix with node name migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run prefix with node name migration:', error);
-      throw error;
-    }
-  }
-
-  private runPerUserAppriseUrlsMigration(): void {
-    const migrationKey = 'migration_036_per_user_apprise_urls';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Per-user Apprise URLs migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 036: Add per-user apprise_urls column...');
-      perUserAppriseUrlsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Per-user Apprise URLs migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run per-user Apprise URLs migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotifyOnMqttMigration(): void {
-    const migrationKey = 'migration_037_notify_on_mqtt';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Notify on MQTT migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 037: Add notify_on_mqtt column...');
-      notifyOnMqttMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notify on MQTT migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notify on MQTT migration:', error);
-      throw error;
-    }
-  }
-
-  private runRecalculateEstimatedPositionsMigration(): void {
-    const migrationKey = 'migration_038_recalculate_estimated_positions';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Recalculate estimated positions migration already completed');
-        return;
-      }
-
-      logger.info('Running migration 038: Recalculate estimated positions...');
-      recalculateEstimatedPositionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.info('✅ Recalculate estimated positions migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run recalculate estimated positions migration:', error);
-      throw error;
-    }
-  }
-
-  private runRecalculateEstimatedPositionsFixMigration(): void {
-    const migrationKey = 'migration_039_recalculate_estimated_positions_fix';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Recalculate estimated positions fix migration already completed');
-        return;
-      }
-
-      logger.info('Running migration 039: Recalculate estimated positions (fix route order)...');
-      recalculateEstimatedPositionsFixMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.info('✅ Recalculate estimated positions fix migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run recalculate estimated positions fix migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionOverrideMigration(): void {
-    try {
-      const migrationKey = 'migration_040_position_override';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position override migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 040: Add position override columns to nodes table...');
-      positionOverrideMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position override migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position override migration:', error);
-      throw error;
-    }
-  }
-   
-  private runPositionOverridePrivacyMigration(): void {
-    try {
-      const migrationKey = 'migration_043_position_override_privacy';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position override privacy migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 043: Add position privacy column to nodes table...');
-      positionOverridePrivacyMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position override privacy migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position override privacy migration:', error);
-      throw error;
-    }
-  }
-  
-  private runNodesPrivatePermissionMigration(): void {
-    try {
-      const migrationKey = 'migration_044_nodes_private_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Nodes private permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 044: Add nodes_private resource to permissions table...');
-      nodesPrivatePermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Nodes private permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run nodes private permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketDirectionMigration(): void {
-    try {
-      const migrationKey = 'migration_045_packet_direction';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Packet direction migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 045: Add direction field to packet_log table...');
-      packetDirectionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Packet direction migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run packet direction migration:', error);
-      throw error;
-    }
-  }
-
-  private runInactiveNodeNotificationMigration(): void {
-    logger.debug('Running inactive node notification migration...');
-    try {
-      const migrationKey = 'migration_032_inactive_node_notification';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Inactive node notification migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 032: Add notify_on_inactive_node and monitored_nodes columns...');
-      inactiveNodeNotificationMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Inactive node notification migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run inactive node notification migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteLogMigration(): void {
-    logger.debug('Running auto-traceroute log migration...');
-    try {
-      const migrationKey = 'migration_041_auto_traceroute_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto-traceroute log migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 041: Add auto_traceroute_log table...');
-      autoTracerouteLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto-traceroute log migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto-traceroute log migration:', error);
-      throw error;
-    }
-  }
-
-  private runRelayNodePacketLogMigration(): void {
-    logger.debug('Running relay_node packet_log migration...');
-    try {
-      const migrationKey = 'migration_042_relay_node_packet_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Relay node packet log migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 042: Add relay_node to packet_log table...');
-      relayNodePacketLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Relay node packet log migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run relay node packet log migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoKeyRepairMigration(): void {
-    logger.debug('Running auto key repair migration...');
-    try {
-      const migrationKey = 'migration_046_auto_key_repair';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto key repair migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 046: Add auto key repair tables...');
-      autoKeyRepairMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto key repair migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto key repair migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionOverrideBooleanMigration(): void {
-    logger.debug('Running position override boolean migration...');
-    try {
-      const migrationKey = 'migration_047_position_override_boolean';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position override boolean migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 047: Fix position override boolean types...');
-      positionOverrideBooleanMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position override boolean migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position override boolean migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteColumnMigration(): void {
-    logger.debug('Running auto traceroute column name migration...');
-    try {
-      const migrationKey = 'migration_048_auto_traceroute_column';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto traceroute column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 048: Fix auto_traceroute_nodes column name...');
-      autoTracerouteColumnMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto traceroute column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto traceroute column migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotificationChannelSettingsMigration(): void {
-    logger.debug('Running notification channel settings migration...');
-    try {
-      const migrationKey = 'migration_049_notification_channel_settings';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Notification channel settings migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 049: Add notification channel settings columns...');
-      notificationChannelSettingsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notification channel settings migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notification channel settings migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelDatabaseMigration(): void {
-    logger.debug('Running channel database migration...');
-    try {
-      const migrationKey = 'migration_050_channel_database';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel database migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 050: Add channel database tables...');
-      channelDatabaseMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel database migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel database migration:', error);
-      throw error;
-    }
-  }
-
-  private runDecryptedByMessagesMigration(): void {
-    logger.debug('Running decrypted_by messages migration...');
-    try {
-      const migrationKey = 'migration_051_decrypted_by_messages';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Decrypted_by messages migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 051: Add decrypted_by column to messages...');
-      decryptedByMessagesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Decrypted_by messages migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run decrypted_by messages migration:', error);
-      throw error;
-    }
-  }
-
-  private runUpgradeHistorySchemaMigration(): void {
-    try {
-      const migrationKey = 'migration_052_upgrade_history_schema';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Upgrade history schema migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 052: Fix upgrade_history schema...');
-      upgradeHistorySchemaMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Upgrade history schema migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run upgrade history schema migration:', error);
-      throw error;
-    }
-  }
-
-  private runViewOnMapPermissionMigration(): void {
-    try {
-      const migrationKey = 'migration_053_view_on_map_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ View on map permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 053: Add view on map permission column...');
-      viewOnMapPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ View on map permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run view on map permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runNewsTablesMigration(): void {
-    try {
-      const migrationKey = 'migration_054_news_tables';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ News tables migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 054: Add news tables...');
-      newsTablesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ News tables migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run news tables migration:', error);
-      throw error;
-    }
-  }
-
-  private runRemoteAdminColumnsMigration(): void {
-    try {
-      const migrationKey = 'migration_055_remote_admin_columns';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Remote admin columns migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 055: Add remote admin columns...');
-      remoteAdminColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Remote admin columns migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run remote admin columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runBackupHistoryColumnsMigration(): void {
-    try {
-      const migrationKey = 'migration_056_backup_history_columns';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Backup history columns migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 056: Fix backup_history column names...');
-      backupHistoryColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Backup history columns migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run backup history columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketViaMqttMigration(): void {
-    try {
-      const migrationKey = 'migration_057_packet_via_mqtt';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Packet via_mqtt migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 057: Add via_mqtt column to packet_log...');
-      packetViaMqttMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Packet via_mqtt migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run packet via_mqtt migration:', error);
-      throw error;
-    }
-  }
-
-  private runTransportMechanismMigration(): void {
-    try {
-      const migrationKey = 'migration_058_transport_mechanism';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Transport mechanism migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 058: Convert via_mqtt to transport_mechanism...');
-      transportMechanismMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Transport mechanism migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run transport mechanism migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelDbViewOnMapMigration(): void {
-    try {
-      const migrationKey = 'migration_059_channel_db_view_on_map';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel database view on map migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 059: Add can_view_on_map to channel_database_permissions...');
-      channelDbViewOnMapMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel database view on map migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel database view on map migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteEnabledMigration(): void {
-    try {
-      const migrationKey = 'migration_060_auto_traceroute_enabled';
-      // Always run the migration check - it's idempotent and verifies
-      // the column exists regardless of whether it was previously marked complete.
-      // This guards against edge cases where the setting was marked complete
-      // but the column is actually missing (e.g., restored backups).
-      autoTracerouteEnabledMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto traceroute enabled column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto traceroute enabled column migration:', error);
-      throw error;
-    }
-  }
-
-  private runSpamDetectionMigration(): void {
-    try {
-      const migrationKey = 'migration_061_spam_detection';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Spam detection columns migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 061: Add spam detection columns to nodes...');
-      spamDetectionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Spam detection columns migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run spam detection columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionDoublePrecisionMigration(): void {
-    try {
-      const migrationKey = 'migration_062_position_double_precision';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position double precision migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 062: Position double precision (no-op for SQLite)...');
-      positionDoublePrecisionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position double precision migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position double precision migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionHistoryHoursMigration(): void {
-    try {
-      const migrationKey = 'migration_063_position_history_hours';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position history hours migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 063: Add position_history_hours column...');
-      positionHistoryHoursMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position history hours migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position history hours migration:', error);
-      throw error;
-    }
-  }
-
-  private runEnforceNameValidationMigration(): void {
-    const migrationKey = 'migration_064_enforce_name_validation';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 064 (enforce_name_validation) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 064: Add enforce_name_validation column...');
-      enforceNameValidationMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Enforce name validation migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run enforce name validation migration:', error);
-      throw error;
-    }
-  }
-
-  private runSortOrderMigration(): void {
-    const migrationKey = 'migration_065_sortorder';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 065 (sortOrder) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 065: Add sort_order column...');
-      sortOrderMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Sort order migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run sort order migration:', error);
-      throw error;
-    }
-  }
-
-  private runIgnoredNodesTableMigration(): void {
-    const migrationKey = 'migration_066_ignored_nodes_table';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 066 (ignored_nodes table) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 066: Add ignored_nodes table...');
-      ignoredNodesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 066 (ignored_nodes table) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run ignored_nodes table migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTimeSyncMigration(): void {
-    const migrationKey = 'migration_067_auto_time_sync';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 067 (auto time sync) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 067: Add auto time sync schema...');
-      autoTimeSyncMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 067 (auto time sync) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run auto time sync migration:', error);
-      throw error;
-    }
-  }
-
-  private runMfaColumnsMigration(): void {
-    const migrationKey = 'migration_068_mfa_columns';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 068 (MFA columns) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 068: Add MFA columns to users table...');
-      mfaColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 068 (MFA columns) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run MFA columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runTraceroutePositionsMigration(): void {
-    const migrationKey = 'migration_069_traceroute_positions';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 069 (traceroute positions) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 069: Add position snapshot columns to traceroutes and route_segments...');
-      traceroutePositionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 069 (traceroute positions) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run traceroute positions migration:', error);
-      throw error;
-    }
-  }
-
-  private runMeshcoreTablesMigration(): void {
-    const migrationKey = 'migration_070_meshcore_tables';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 070 (meshcore tables) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 070: Add MeshCore tables...');
-      meshcoreTablesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('MeshCore tables migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run MeshCore tables migration:', error);
-      throw error;
-    }
-  }
-
-  private runMeshcorePermissionMigration(): void {
-    const migrationKey = 'migration_071_meshcore_permission';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 071 (meshcore permission) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 071: Add meshcore permission resource...');
-      meshcorePermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('MeshCore permission migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run MeshCore permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runDmUnreadIndexMigration(): void {
-    const migrationKey = 'migration_072_dm_unread_index';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 072 (DM unread index) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 072: Add DM unread index...');
-      dmUnreadIndexMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('DM unread index migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run DM unread index migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketIdMigration(): void {
-    const migrationKey = 'migration_073_packet_id_telemetry';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 073 (packetId telemetry) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 073: Add packetId to telemetry...');
-      packetIdMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('PacketId telemetry migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run packetId telemetry migration:', error);
-      throw error;
-    }
-  }
-
-  private runShowMeshCoreNodesMigration(): void {
-    const migrationKey = 'migration_074_show_meshcore_nodes';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 074 (show_meshcore_nodes) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 074: Add show_meshcore_nodes to user_map_preferences...');
-      showMeshCoreNodesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('show_meshcore_nodes migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run show_meshcore_nodes migration:', error);
-      throw error;
-    }
-  }
-
-  private runTelemetryPacketIdBigintMigration(): void {
-    const migrationKey = 'migration_075_telemetry_packetid_bigint';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 075 (telemetry_packetid_bigint) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 075: Upgrade telemetry packetId to BIGINT...');
-      telemetryPacketIdBigintMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('telemetry packetId bigint migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run telemetry packetId bigint migration:', error);
-      throw error;
-    }
-  }
-
-  private runAccuracyEstimatedPrefsMigration(): void {
-    const migrationKey = 'migration_076_accuracy_estimated_prefs';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 076 (accuracy_estimated_prefs) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 076: Add show_accuracy_regions and show_estimated_positions to user_map_preferences...');
-      accuracyEstimatedPrefsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('accuracy_estimated_prefs migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run accuracy_estimated_prefs migration:', error);
-      throw error;
-    }
-  }
-
-  private runIgnoredNodesNodeNumBigintMigration(): void {
-    const migrationKey = 'migration_077_ignored_nodes_nodenum_bigint';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 077 (ignored_nodes nodeNum bigint) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 077: Upgrade ignored_nodes.nodeNum to BIGINT...');
-      ignoredNodesNodeNumBigintMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('ignored_nodes nodeNum bigint migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run ignored_nodes nodeNum bigint migration:', error);
-      throw error;
-    }
-  }
-
-  private runCreateEmbedProfilesMigration(): void {
-    const migrationKey = 'migration_078_create_embed_profiles';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 078 (create embed_profiles) already completed');
-        return;
-      }
-      logger.debug('Running migration 078: Create embed_profiles table...');
-      createEmbedProfilesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Create embed_profiles migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run create embed_profiles migration:', error);
-      throw error;
-    }
-  }
-
-  private runCreateGeofenceCooldownsMigration(): void {
-    const migrationKey = 'migration_079_create_geofence_cooldowns';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 079 (create geofence_cooldowns) already completed');
-        return;
-      }
-      logger.debug('Running migration 079: Create geofence_cooldowns table...');
-      createGeofenceCooldownsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Create geofence_cooldowns migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run create geofence_cooldowns migration:', error);
-      throw error;
-    }
-  }
-
-  private runAddFavoriteLockedMigration(): void {
-    const migrationKey = 'migration_080_add_favorite_locked';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 080 (add favoriteLocked) already completed');
-        return;
-      }
-      logger.debug('Running migration 080: Add favoriteLocked column...');
-      addFavoriteLockedMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Add favoriteLocked migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run add favoriteLocked migration:', error);
-      throw error;
-    }
-  }
-
-  private runAddTimeOffsetColumnsMigration(): void {
-    // Run migration 081: Add time offset detection columns to nodes
-    try {
-      const migrationKey = 'migration_081_time_offset_columns';
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 081 (add time offset columns) already completed');
-        return;
-      }
-      logger.debug('Running migration 081: Add time offset detection columns...');
-      addTimeOffsetColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Add time offset columns migration completed successfully');
-    } catch (error) {
-      logger.error('Error running migration 081:', error);
-    }
-  }
-
-  private runAddPacketmonitorPermissionMigration(): void {
-    // Run migration 082: Add packetmonitor permission resource
-    const migrationKey082 = 'migration_082_packetmonitor_permission';
-    if (!this.getSetting(migrationKey082)) {
-      try {
-        logger.debug('Running migration 082: Add packetmonitor permission...');
-        addPacketmonitorPermissionMigration.up(this.db);
-        this.setSetting(migrationKey082, 'completed');
-        logger.debug('Add packetmonitor permission migration completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 082:', error);
-      }
-    }
-
-    // Migration 083: Add missing map preference columns
-    const migrationKey083 = 'migration_083_map_preference_columns';
-    if (!this.getSetting(migrationKey083)) {
-      try {
-        logger.debug('Running migration 083: Add missing map preference columns...');
-        runMigration083Sqlite(this.db);
-        this.setSetting(migrationKey083, 'completed');
-        logger.debug('Migration 083 completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 083:', error);
-      }
-    }
-
-    // Migration 084: Add key mismatch columns
-    const migrationKey084 = 'migration_084_key_mismatch_columns';
-    if (!this.getSetting(migrationKey084)) {
-      try {
-        logger.debug('Running migration 084: Add key mismatch columns...');
-        runMigration084Sqlite(this.db);
-        this.setSetting(migrationKey084, 'completed');
-        logger.debug('Migration 084 completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 084:', error);
-      }
-    }
-
-  }
-
-  private runAutoDistanceDeleteLogMigration(): void {
-    // Migration 086: Add auto_distance_delete_log table
-    const migrationKey086 = 'migration_086_auto_distance_delete_log';
-    if (!this.getSetting(migrationKey086)) {
-      try {
-        logger.debug('Running migration 086: Add auto_distance_delete_log table...');
-        runMigration086Sqlite(this.db);
-        this.setSetting(migrationKey086, 'completed');
-        logger.debug('Migration 086 completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 086:', error);
-      }
-    }
-  }
 
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
@@ -3374,7 +1720,7 @@ class DatabaseService {
         if (!existingNode && nodeData.nodeNum !== 4294967295) {
           // Check if this node was previously ignored
           if (this.ignoredNodesRepo) {
-            this.ignoredNodesRepo.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
+            this.ignoredNodes.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
               if (wasIgnored) {
                 logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum}`);
                 updatedNode.isIgnored = true;
@@ -3616,15 +1962,10 @@ class DatabaseService {
   }
 
   /**
-   * Async version of getAllNodes - works with all database backends
+   * @deprecated Use databaseService.nodes.getAllNodes() directly. Kept for internal/test compatibility.
    */
   async getAllNodesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Cast to local DbNode type (they have compatible structure)
-      return this.nodesRepo.getAllNodes() as unknown as DbNode[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllNodes();
+    return this.nodes.getAllNodes() as unknown as DbNode[];
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
@@ -4692,19 +3033,10 @@ class DatabaseService {
     return Number(result.count);
   }
 
+  /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
   async getTelemetryCountAsync(): Promise<number> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query('SELECT COUNT(*) as count FROM telemetry');
-        return Number(result.rows[0].count);
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query('SELECT COUNT(*) as count FROM telemetry');
-      return Number((rows as any[])[0].count);
+    if (this.telemetryRepo) {
+      return this.telemetryRepo.getTelemetryCount();
     }
     return this.getTelemetryCount();
   }
@@ -4738,9 +3070,7 @@ class DatabaseService {
     return Number(result.count);
   }
 
-  /**
-   * Async version of getTelemetryCountByNode - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryCountByNode() instead */
   async getTelemetryCountByNodeAsync(
     nodeId: string,
     sinceTimestamp?: number,
@@ -4750,7 +3080,6 @@ class DatabaseService {
     if (this.telemetryRepo) {
       return this.telemetryRepo.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
     }
-    // Fallback to sync for SQLite if repo not ready
     return this.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
@@ -4825,7 +3154,9 @@ class DatabaseService {
       // Get last 500 position telemetry records for this node
       // Using a larger limit ensures we capture movement over a longer time period
       // (50 was too small - nodes parked for a while would show only recent stationary positions)
-      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 500);
+      const positionTelemetry = this.telemetryRepo
+        ? await this.telemetryRepo.getPositionTelemetryByNode(nodeId, 500)
+        : this.getPositionTelemetryByNode(nodeId, 500);
 
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
@@ -5488,28 +3819,6 @@ class DatabaseService {
     return channels.map(channel => this.normalizeBigInts(channel));
   }
 
-  /**
-   * Async version of getAllChannels - works with all database backends
-   */
-  async getAllChannelsAsync(): Promise<DbChannel[]> {
-    if (this.channelsRepo) {
-      return this.channelsRepo.getAllChannels() as unknown as DbChannel[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllChannels();
-  }
-
-  /**
-   * Async version of getChannelById - works with all database backends
-   */
-  async getChannelByIdAsync(id: number): Promise<DbChannel | null> {
-    if (this.channelsRepo) {
-      return this.channelsRepo.getChannelById(id) as unknown as DbChannel | null;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getChannelById(id);
-  }
-
   getChannelCount(): number {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -5674,9 +3983,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTelemetryByNode - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryByNode() instead */
   async getTelemetryByNodeAsync(
     nodeId: string,
     limit: number = 100,
@@ -5729,7 +4036,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  // Async version of getPositionTelemetryByNode - works for all database backends
+  /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
   async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number): Promise<DbTelemetry[]> {
     if (this.telemetryRepo) {
       // Cast to local DbTelemetry type (they have compatible structure)
@@ -6494,25 +4801,6 @@ class DatabaseService {
     return traceroutes.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTraceroutesByNodes for PostgreSQL/MySQL
-   */
-  async getTraceroutesByNodesAsync(fromNodeNum: number, toNodeNum: number, limit: number = 10): Promise<DbTraceroute[]> {
-    if (this.traceroutesRepo) {
-      const traceroutes = await this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
-      return traceroutes.map(t => ({
-        ...t,
-        route: t.route || '',
-        routeBack: t.routeBack || '',
-        snrTowards: t.snrTowards || '',
-        snrBack: t.snrBack || '',
-      })) as DbTraceroute[];
-    }
-
-    // Fallback to sync for SQLite
-    return this.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
-  }
-
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
     // For PostgreSQL/MySQL, use cached traceroutes or return empty
     // Traceroute data is primarily real-time from mesh traffic
@@ -6744,7 +5032,7 @@ class DatabaseService {
 
       if (filterEnabled) {
         // Get all filter settings (use async for specificNodes)
-        const specificNodes = await this.getAutoTracerouteNodesAsync();
+        const specificNodes = await this.misc.getAutoTracerouteNodes();
         const filterChannels = this.getTracerouteFilterChannels();
         const filterRoles = this.getTracerouteFilterRoles();
         const filterHwModels = this.getTracerouteFilterHwModels();
@@ -7012,14 +5300,6 @@ class DatabaseService {
     return nodes.map(n => Number(n.nodeNum));
   }
 
-  async getAutoTracerouteNodesAsync(): Promise<number[]> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getAutoTracerouteNodes();
-    }
-    // Fallback to sync method for SQLite
-    return this.getAutoTracerouteNodes();
-  }
-
   setAutoTracerouteNodes(nodeNums: number[]): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'setAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use setAutoTracerouteNodesAsync() instead.`);
@@ -7049,16 +5329,6 @@ class DatabaseService {
     })();
 
     logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
-  }
-
-  async setAutoTracerouteNodesAsync(nodeNums: number[]): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.setAutoTracerouteNodes(nodeNums);
-      logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
-      return;
-    }
-    // Fallback to sync method for SQLite
-    this.setAutoTracerouteNodes(nodeNums);
   }
 
   // Solar Estimates methods
@@ -7370,7 +5640,7 @@ class DatabaseService {
     expirationHours: number;
     sortByHops: boolean;
   }> {
-    const nodeNums = await this.getAutoTracerouteNodesAsync();
+    const nodeNums = await this.misc.getAutoTracerouteNodes();
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
       nodeNums,
@@ -7404,7 +5674,7 @@ class DatabaseService {
     sortByHops?: boolean;
   }): Promise<void> {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
-    await this.setAutoTracerouteNodesAsync(settings.nodeNums);
+    await this.misc.setAutoTracerouteNodes(settings.nodeNums);
     this.setTracerouteFilterChannels(settings.filterChannels);
     this.setTracerouteFilterRoles(settings.filterRoles);
     this.setTracerouteFilterHwModels(settings.filterHwModels);
@@ -8313,9 +6583,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTelemetryByType - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
   async getTelemetryByTypeAsync(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
     if (this.telemetryRepo) {
       // Cast to local DbTelemetry type (they have compatible structure)
@@ -8388,10 +6656,7 @@ class DatabaseService {
     return this.getLatestTelemetryForType(nodeId, telemetryType);
   }
 
-  /**
-   * Get latest value for a telemetry type across all nodes in a single query.
-   * Returns a Map of nodeId -> value. Works with all database backends.
-   */
+  /** @deprecated Use databaseService.telemetry.getLatestTelemetryValueForAllNodes() instead */
   async getLatestTelemetryValueForAllNodesAsync(telemetryType: string): Promise<Map<string, number>> {
     if (this.telemetryRepo) {
       return this.telemetryRepo.getLatestTelemetryValueForAllNodes(telemetryType);
@@ -8691,17 +6956,6 @@ class DatabaseService {
     return row ? row.value : null;
   }
 
-  /**
-   * Async version of getSetting - works with all database backends
-   */
-  async getSettingAsync(key: string): Promise<string | null> {
-    if (this.settingsRepo) {
-      return this.settingsRepo.getSetting(key);
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getSetting(key);
-  }
-
   getAllSettings(): Record<string, string> {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -8724,26 +6978,17 @@ class DatabaseService {
     return settings;
   }
 
-  /**
-   * Async version of getAllSettings - works with all database backends
-   */
-  async getAllSettingsAsync(): Promise<Record<string, string>> {
-    if (this.settingsRepo) {
-      return this.settingsRepo.getAllSettings();
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllSettings();
-  }
-
   setSetting(key: string, value: string): void {
     // For PostgreSQL/MySQL, use async repo and update cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Update cache immediately for sync access
       this.settingsCache.set(key, value);
-      // Fire and forget async version
-      this.setSettingAsync(key, value).catch(err => {
-        logger.error(`Failed to set setting ${key}:`, err);
-      });
+      // Fire and forget repo write
+      if (this.settingsRepo) {
+        this.settingsRepo.setSetting(key, value).catch(err => {
+          logger.error(`Failed to set setting ${key}:`, err);
+        });
+      }
       return;
     }
     const now = Date.now();
@@ -8757,23 +7002,6 @@ class DatabaseService {
     stmt.run(key, value, now, now);
   }
 
-  /**
-   * Async version of setSetting - works with all database backends
-   */
-  async setSettingAsync(key: string, value: string): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.setSetting(key, value);
-      return;
-    }
-    // For PostgreSQL/MySQL without repo, just update cache (don't recurse into setSetting)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.settingsCache.set(key, value);
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.setSetting(key, value);
-  }
-
   setSettings(settings: Record<string, string>): void {
     // For PostgreSQL/MySQL, use async repo and update cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -8781,9 +7009,11 @@ class DatabaseService {
       for (const [key, value] of Object.entries(settings)) {
         this.settingsCache.set(key, value);
       }
-      this.setSettingsAsync(settings).catch(err => {
-        logger.error('Failed to set settings:', err);
-      });
+      if (this.settingsRepo) {
+        this.settingsRepo.setSettings(settings).catch(err => {
+          logger.error('Failed to set settings:', err);
+        });
+      }
       return;
     }
     const now = Date.now();
@@ -8802,125 +7032,22 @@ class DatabaseService {
     })();
   }
 
-  /**
-   * Async version of setSettings - works with all database backends
-   */
-  async setSettingsAsync(settings: Record<string, string>): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.setSettings(settings);
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.setSettings(settings);
-  }
-
   deleteAllSettings(): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Clear cache immediately
       this.settingsCache.clear();
-      this.deleteAllSettingsAsync().catch(err => {
-        logger.error('Failed to delete all settings:', err);
-      });
+      if (this.settingsRepo) {
+        this.settingsRepo.deleteAllSettings().catch(err => {
+          logger.error('Failed to delete all settings:', err);
+        });
+      }
       return;
     }
     logger.debug('🔄 Resetting all settings to defaults');
     this.db.exec('DELETE FROM settings');
   }
 
-  /**
-   * Async version of deleteAllSettings - works with all database backends
-   */
-  async deleteAllSettingsAsync(): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.deleteAllSettings();
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.deleteAllSettings();
-  }
-
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
-
-  /**
-   * Async method to get user notification preferences.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async getUserNotificationPreferencesAsync(userId: number): Promise<{
-    enableWebPush: boolean;
-    enableApprise: boolean;
-    enabledChannels: number[];
-    enableDirectMessages: boolean;
-    notifyOnEmoji: boolean;
-    notifyOnMqtt: boolean;
-    notifyOnNewNode: boolean;
-    notifyOnTraceroute: boolean;
-    notifyOnInactiveNode: boolean;
-    notifyOnServerEvents: boolean;
-    prefixWithNodeName: boolean;
-    monitoredNodes: string[];
-    whitelist: string[];
-    blacklist: string[];
-    appriseUrls: string[];
-  } | null> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.getUserPreferences(userId);
-    }
-    // Fallback to sync SQLite method if repo not ready
-    return null;
-  }
-
-  /**
-   * Async method to save user notification preferences.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async saveUserNotificationPreferencesAsync(userId: number, prefs: {
-    enableWebPush: boolean;
-    enableApprise: boolean;
-    enabledChannels: number[];
-    enableDirectMessages: boolean;
-    notifyOnEmoji: boolean;
-    notifyOnMqtt: boolean;
-    notifyOnNewNode: boolean;
-    notifyOnTraceroute: boolean;
-    notifyOnInactiveNode: boolean;
-    notifyOnServerEvents: boolean;
-    prefixWithNodeName: boolean;
-    monitoredNodes: string[];
-    whitelist: string[];
-    blacklist: string[];
-    appriseUrls: string[];
-  }): Promise<boolean> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.saveUserPreferences(userId, prefs);
-    }
-    // Fallback - return false if repo not ready
-    return false;
-  }
-
-  /**
-   * Get users who have inactive node notifications enabled and at least one notification channel active.
-   * Database-agnostic via Drizzle ORM.
-   */
-  async getUsersWithInactiveNodeNotificationsAsync(): Promise<Array<{ userId: number; monitoredNodes: string | null }>> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.getUsersWithInactiveNodeNotifications();
-    }
-    return [];
-  }
-
-  /**
-   * Get inactive monitored nodes — nodes in the given nodeId list whose lastHeard is before the cutoff.
-   * Database-agnostic via Drizzle ORM.
-   */
-  async getInactiveMonitoredNodesAsync(
-    nodeIds: string[],
-    cutoffSeconds: number
-  ): Promise<Array<{ nodeNum: number; nodeId: string; longName: string | null; shortName: string | null; lastHeard: number | null }>> {
-    if (this.nodesRepo) {
-      return this.nodesRepo.getInactiveMonitoredNodes(nodeIds, cutoffSeconds);
-    }
-    return [];
-  }
 
   /**
    * Delete a node and all associated data (async version for PostgreSQL)
@@ -9061,15 +7188,6 @@ class DatabaseService {
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  async getLongestActiveRouteSegmentAsync(): Promise<DbRouteSegment | null> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      const segment = await this.traceroutesRepo.getLongestActiveRouteSegment();
-      if (!segment) return null;
-      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
-    }
-    return this.getLongestActiveRouteSegment();
-  }
-
   getRecordHolderRouteSegment(): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -9083,15 +7201,6 @@ class DatabaseService {
     `);
     const segment = stmt.get() as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
-  }
-
-  async getRecordHolderRouteSegmentAsync(): Promise<DbRouteSegment | null> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      const segment = await this.traceroutesRepo.getRecordHolderRouteSegment();
-      if (!segment) return null;
-      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
-    }
-    return this.getRecordHolderRouteSegment();
   }
 
   updateRecordHolderSegment(newSegment: DbRouteSegment): void {
@@ -9484,34 +7593,16 @@ class DatabaseService {
     const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
 
     // Persist to/remove from the ignored_nodes table
-    if (this.ignoredNodesRepo) {
-      if (isIgnored) {
-        this.ignoredNodesRepo.addIgnoredNodeAsync(
-          nodeNum, nodeId, node?.longName, node?.shortName
-        ).catch(err => {
-          logger.error('Failed to add node to persistent ignore list:', err);
-        });
-      } else {
-        this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum).catch(err => {
-          logger.error('Failed to remove node from persistent ignore list:', err);
-        });
-      }
+    if (isIgnored) {
+      this.ignoredNodes.addIgnoredNodeAsync(
+        nodeNum, nodeId, node?.longName, node?.shortName
+      ).catch(err => {
+        logger.error('Failed to add node to persistent ignore list:', err);
+      });
     } else {
-      // SQLite fallback: use raw SQL for the ignored_nodes table
-      try {
-        if (isIgnored) {
-          const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt)
-            VALUES (?, ?, ?, ?, ?)
-          `);
-          stmt.run(nodeNum, nodeId, node?.longName || null, node?.shortName || null, Date.now());
-        } else {
-          const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
-          stmt.run(nodeNum);
-        }
-      } catch (err) {
-        logger.error('Failed to update persistent ignore list:', err);
-      }
+      this.ignoredNodes.removeIgnoredNodeAsync(nodeNum).catch(err => {
+        logger.error('Failed to remove node from persistent ignore list:', err);
+      });
     }
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
@@ -9550,80 +7641,9 @@ class DatabaseService {
     logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
   }
 
-  // Persistent ignored nodes operations
-  async addIgnoredNodeAsync(
-    nodeNum: number,
-    nodeId: string,
-    longName?: string | null,
-    shortName?: string | null,
-    ignoredBy?: string | null,
-  ): Promise<void> {
-    if (this.ignoredNodesRepo) {
-      await this.ignoredNodesRepo.addIgnoredNodeAsync(nodeNum, nodeId, longName, shortName, ignoredBy);
-    } else {
-      const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt, ignoredBy)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(nodeNum, nodeId, longName || null, shortName || null, Date.now(), ignoredBy || null);
-    }
-  }
+  // Persistent ignored nodes operations — use databaseService.ignoredNodes.xxxAsync() directly
 
-  async removeIgnoredNodeAsync(nodeNum: number): Promise<void> {
-    if (this.ignoredNodesRepo) {
-      await this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum);
-    } else {
-      const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
-      stmt.run(nodeNum);
-    }
-  }
-
-  async getIgnoredNodesAsync(): Promise<Array<{
-    nodeNum: number;
-    nodeId: string;
-    longName: string | null;
-    shortName: string | null;
-    ignoredAt: number;
-    ignoredBy: string | null;
-  }>> {
-    if (this.ignoredNodesRepo) {
-      return this.ignoredNodesRepo.getIgnoredNodesAsync();
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare('SELECT * FROM ignored_nodes');
-    return stmt.all() as any[];
-  }
-
-  async isNodeIgnoredAsync(nodeNum: number): Promise<boolean> {
-    if (this.ignoredNodesRepo) {
-      return this.ignoredNodesRepo.isNodeIgnoredAsync(nodeNum);
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare('SELECT nodeNum FROM ignored_nodes WHERE nodeNum = ?');
-    const row = stmt.get(nodeNum);
-    return !!row;
-  }
-
-  // Embed profile operations
-  async getEmbedProfilesAsync(): Promise<EmbedProfile[]> {
-    return this.embedProfileRepo!.getAllAsync();
-  }
-
-  async getEmbedProfileByIdAsync(id: string): Promise<EmbedProfile | null> {
-    return this.embedProfileRepo!.getByIdAsync(id);
-  }
-
-  async createEmbedProfileAsync(input: EmbedProfileInput): Promise<EmbedProfile> {
-    return this.embedProfileRepo!.createAsync(input);
-  }
-
-  async updateEmbedProfileAsync(id: string, input: Partial<EmbedProfileInput>): Promise<EmbedProfile | null> {
-    return this.embedProfileRepo!.updateAsync(id, input);
-  }
-
-  async deleteEmbedProfileAsync(id: string): Promise<boolean> {
-    return this.embedProfileRepo!.deleteAsync(id);
-  }
+  // Embed profile operations — use databaseService.embedProfiles.xxxAsync() directly
 
   // Geofence cooldown operations
   getGeofenceCooldownAsync(triggerId: string, nodeNum: number): Promise<number | null> {
@@ -9917,7 +7937,7 @@ class DatabaseService {
         ).catch(err => logger.error('Failed to write audit log:', err));
 
         // Save to settings
-        await this.setSettingAsync('setup_complete', 'true');
+        await this.settings.setSetting('setup_complete', 'true');
       } else {
         // SQLite: use sync models
         if (this.userModel.hasAdminUser()) {
@@ -10536,65 +8556,20 @@ class DatabaseService {
 
   async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
     if (!userId) return;
-    const now = Math.floor(Date.now() / 1000);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query(
-          `INSERT INTO read_messages ("userId", "messageId", "readAt")
-           VALUES ($1, $2, $3)
-           ON CONFLICT ("userId", "messageId") DO NOTHING`,
-          [userId, messageId, now]
-        );
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      await pool.query(
-        `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
-        [userId, messageId, now]
-      );
-    } else {
-      this.markMessageAsRead(messageId, userId);
+    if (this.notificationsRepo) {
+      return this.notificationsRepo.markMessagesAsReadByIds([messageId], userId);
     }
+    // Fallback to sync SQLite method
+    this.markMessageAsRead(messageId, userId);
   }
 
   async markMessagesAsReadAsync(messageIds: string[], userId: number | null): Promise<void> {
     if (!userId || messageIds.length === 0) return;
-    const now = Math.floor(Date.now() / 1000);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query('BEGIN');
-        for (const messageId of messageIds) {
-          await client.query(
-            `INSERT INTO read_messages ("userId", "messageId", "readAt")
-             VALUES ($1, $2, $3)
-             ON CONFLICT ("userId", "messageId") DO NOTHING`,
-            [userId, messageId, now]
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      for (const messageId of messageIds) {
-        await pool.query(
-          `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
-          [userId, messageId, now]
-        );
-      }
-    } else {
-      this.markMessagesAsRead(messageIds, userId);
+    if (this.notificationsRepo) {
+      return this.notificationsRepo.markMessagesAsReadByIds(messageIds, userId);
     }
+    // Fallback to sync SQLite method
+    this.markMessagesAsRead(messageIds, userId);
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
@@ -11310,7 +9285,7 @@ class DatabaseService {
    */
   async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
     // Check if packet logging is enabled
-    const enabled = await this.getSettingAsync('packet_log_enabled');
+    const enabled = await this.settings.getSetting('packet_log_enabled');
     if (enabled !== '1') {
       return 0;
     }
@@ -12733,128 +10708,22 @@ class DatabaseService {
     try {
       // Run migration 056 FIRST to fix backup_history table schema
       // This must run before POSTGRES_SCHEMA_SQL which creates indexes on columns that may not exist
-      await runMigration056Postgres(client);
+      const migration056 = registry.getAll().find(m => m.number === 56);
+      if (migration056?.postgres) {
+        await migration056.postgres(client);
+      }
 
       // Execute the canonical schema SQL - all statements are idempotent
       // (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
       await client.query(POSTGRES_SCHEMA_SQL);
 
-      // Run migration 047: Convert position override columns to BOOLEAN
-      await runMigration047Postgres(client);
-
-      // Run migration 049: Add missing notification channel settings columns
-      await runMigration049Postgres(client);
-
-      // Run migration 050: Add channel database tables
-      await runMigration050Postgres(client);
-
-      // Run migration 051: Add decrypted_by column to messages
-      await runMigration051Postgres(client);
-
-      // Run migration 052: Fix upgrade_history schema
-      await runMigration052Postgres(client);
-
-      // Run migration 053: Add viewOnMap permission column
-      await runMigration053Postgres(client);
-
-      // Run migration 054: Add news tables
-      await runMigration054Postgres(client);
-
-      // Run migration 055: Add remote admin discovery columns
-      await runMigration055Postgres(client);
-
-      // Run migration 057: Add via_mqtt column to packet_log
-      await runMigration057Postgres(client);
-
-      // Run migration 058: Convert via_mqtt to transport_mechanism
-      await runMigration058Postgres(client);
-
-      // Run migration 059: Add canViewOnMap to channel_database_permissions
-      await runMigration059Postgres(client);
-
-      // Run migration 060: Add enabled column to auto_traceroute_nodes
-      await runMigration060Postgres(client);
-
-      // Run migration 061: Add spam detection columns to nodes
-      await runMigration061Postgres(client);
-
-      // Run migration 062: Upgrade position columns from REAL to DOUBLE PRECISION
-      await runMigration062Postgres(client);
-
-      // Run migration 063: Add position_history_hours column
-      await runMigration063Postgres(client);
-
-      // Run migration 064: Add enforce_name_validation column to channel_database
-      await runMigration064Postgres(client);
-
-      // Run migration 065: Add sortOrder column to channel_database
-      await runMigration065Postgres(client);
-
-      // Run migration 066: Add ignored_nodes table
-      await runMigration066Postgres(client);
-
-      // Run migration 067: Add auto time sync schema
-      await runMigration067Postgres(client);
-
-      // Run migration 068: Add MFA columns to users table
-      await runMigration068Postgres(client);
-
-      // Run migration 069: Add position snapshot columns to traceroutes and route_segments
-      await runMigration069Postgres(client);
-
-      // Run migration 070: Add MeshCore tables
-      await runMigration070MeshcorePostgres(client);
-
-      // Run migration 071: Add meshcore permission resource
-      await runMigration071Postgres(client);
-
-      // Run migration 072: Add DM unread index
-      await runMigration072Postgres(client);
-
-      // Run migration 073: Add packetId to telemetry
-      await runMigration073Postgres(client);
-
-      // Run migration 074: Add show_meshcore_nodes to user_map_preferences
-      await runMigration074Postgres(client);
-
-      // Run migration 075: Upgrade telemetry packetId to BIGINT
-      await runMigration075Postgres(client);
-
-      // Run migration 076: Add show_accuracy_regions and show_estimated_positions
-      await runMigration076Postgres(client);
-
-      // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
-      await runMigration077Postgres(client);
-
-      // Run migration 078: Create embed_profiles table
-      await runMigration078Postgres(client);
-
-      // Run migration 079: Create geofence_cooldowns table
-      await runMigration079Postgres(client);
-
-      // Run migration 080: Add favoriteLocked column to nodes
-      await runMigration080Postgres(client);
-
-      // Run migration 081: Add time offset detection columns to nodes
-      await runMigration081Postgres(client);
-
-      // Run migration 082: Add packetmonitor permission
-      await runMigration082Postgres(client);
-
-      // Run migration 083: Add missing map preference columns
-      await runMigration083Postgres(client);
-
-      // Run migration 084: Add key mismatch columns
-      await runMigration084Postgres(client);
-
-      // Run migration 085: Fix custom_themes column names and add missing columns
-      await runMigration085Postgres(client);
-
-      // Run migration 086: Add auto_distance_delete_log table
-      await runMigration086Postgres(client);
-
-      // Run migration 087: Fix messages relayNode/ackFromNode to BIGINT
-      await runMigration087Postgres(client);
+      // Run all registered Postgres migrations (047+) via the migration registry
+      for (const migration of registry.getFrom(47)) {
+        if (migration.number === 56) continue; // Already ran above
+        if (migration.postgres) {
+          await migration.postgres(client);
+        }
+      }
 
       // Verify all expected tables exist
       const result = await client.query(`
@@ -12884,7 +10753,10 @@ class DatabaseService {
 
     // Run migration 056 FIRST to fix backup_history table schema
     // This must run before MYSQL_SCHEMA_SQL which creates indexes on columns that may not exist
-    await runMigration056Mysql(pool);
+    const migration056 = registry.getAll().find(m => m.number === 56);
+    if (migration056?.mysql) {
+      await migration056.mysql(pool);
+    }
 
     const connection = await pool.getConnection();
     try {
@@ -12912,122 +10784,13 @@ class DatabaseService {
 
       logger.debug(`[MySQL] Executed ${executed} schema statements`);
 
-      // Run migration 047: Convert position override columns to BOOLEAN
-      await runMigration047Mysql(pool);
-
-      // Run migration 049: Add missing notification channel settings columns
-      await runMigration049Mysql(pool);
-
-      // Run migration 050: Add channel database tables
-      await runMigration050Mysql(pool);
-
-      // Run migration 051: Add decrypted_by column to messages
-      await runMigration051Mysql(pool);
-
-      // Run migration 052: Fix upgrade_history schema
-      await runMigration052Mysql(pool);
-
-      // Run migration 053: Add viewOnMap permission column
-      await runMigration053Mysql(pool);
-
-      // Run migration 054: Add news tables
-      await runMigration054Mysql(pool);
-
-      // Run migration 055: Add remote admin discovery columns
-      await runMigration055Mysql(pool);
-
-      // Run migration 057: Add via_mqtt column to packet_log
-      await runMigration057Mysql(pool);
-
-      // Run migration 058: Convert via_mqtt to transport_mechanism
-      await runMigration058Mysql(pool);
-
-      // Run migration 059: Add canViewOnMap to channel_database_permissions
-      await runMigration059Mysql(pool);
-
-      // Run migration 060: Add enabled column to auto_traceroute_nodes
-      await runMigration060Mysql(pool);
-
-      // Run migration 061: Add spam detection columns to nodes
-      await runMigration061Mysql(pool);
-
-      // Run migration 062: Position precision (no-op for MySQL, already uses DOUBLE)
-      await runMigration062Mysql(pool);
-
-      // Run migration 063: Add position_history_hours column
-      await runMigration063Mysql(pool);
-
-      // Run migration 064: Add enforce_name_validation column to channel_database
-      await runMigration064Mysql(pool);
-
-      // Run migration 065: Add sortOrder column to channel_database
-      await runMigration065Mysql(pool);
-
-      // Run migration 066: Add ignored_nodes table
-      await runMigration066Mysql(pool);
-
-      // Run migration 067: Add auto time sync schema
-      await runMigration067Mysql(pool);
-
-      // Run migration 068: Add MFA columns to users table
-      await runMigration068Mysql(pool);
-
-      // Run migration 069: Add position snapshot columns to traceroutes and route_segments
-      await runMigration069Mysql(pool);
-
-      // Run migration 070: Add MeshCore tables
-      await runMigration070MeshcoreMysql(pool);
-
-      // Run migration 071: Add meshcore permission resource
-      await runMigration071Mysql(pool);
-
-      // Run migration 072: Add DM unread index
-      await runMigration072Mysql(pool);
-
-      // Run migration 073: Add packetId to telemetry
-      await runMigration073Mysql(pool);
-
-      // Run migration 074: Add show_meshcore_nodes to user_map_preferences
-      await runMigration074Mysql(pool);
-
-      // Run migration 075: Upgrade telemetry packetId to BIGINT
-      await runMigration075Mysql(pool);
-
-      // Run migration 076: Add show_accuracy_regions and show_estimated_positions
-      await runMigration076Mysql(pool);
-
-      // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
-      await runMigration077Mysql(pool);
-
-      // Run migration 078: Create embed_profiles table
-      await runMigration078Mysql(pool);
-
-      // Run migration 079: Create geofence_cooldowns table
-      await runMigration079Mysql(pool);
-
-      // Run migration 080: Add favoriteLocked column to nodes
-      await runMigration080Mysql(pool);
-
-      // Run migration 081: Add time offset detection columns to nodes
-      await runMigration081Mysql(pool);
-
-      // Run migration 082: Add packetmonitor permission
-      await runMigration082Mysql(pool);
-
-      // Run migration 083: Add missing map preference columns
-      await runMigration083Mysql(pool);
-
-      // Run migration 084: Add key mismatch columns
-      await runMigration084Mysql(pool);
-
-      // Run migration 085: Fix custom_themes column names and add missing columns
-      await runMigration085Mysql(pool);
-
-      // Run migration 086: Add auto_distance_delete_log table
-      await runMigration086Mysql(pool);
-
-      // Run migration 087: Fix messages relayNode/ackFromNode to BIGINT
-      await runMigration087Mysql(pool);
+      // Run all registered MySQL migrations (047+) via the migration registry
+      for (const migration of registry.getFrom(47)) {
+        if (migration.number === 56) continue; // Already ran above
+        if (migration.mysql) {
+          await migration.mysql(pool);
+        }
+      }
 
       // Verify all expected tables exist
       const [rows] = await connection.query(`
@@ -13296,58 +11059,11 @@ class DatabaseService {
     return this.getMessage(id);
   }
 
-  /**
-   * Async method to delete a message by ID.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async deleteMessageAsync(id: string): Promise<boolean> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.deleteMessage(id);
-    }
-    // Fallback to sync for SQLite
-    return this.deleteMessage(id);
-  }
+  // deleteMessageAsync, purgeChannelMessagesAsync, purgeDirectMessagesAsync
+  // migrated to direct repository access: databaseService.messages.deleteMessage(), etc.
 
-  /**
-   * Async method to purge all messages from a channel.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeChannelMessagesAsync(channel: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeChannelMessages(channel);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeChannelMessages(channel);
-  }
 
-  /**
-   * Async method to purge all direct messages with a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeDirectMessagesAsync(nodeNum: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeDirectMessages(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeDirectMessages(nodeNum);
-  }
-
-  /**
-   * Async method to purge all traceroutes for a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeNodeTraceroutesAsync(nodeNum: number): Promise<number> {
-    if (this.traceroutesRepo) {
-      return this.traceroutesRepo.deleteTraceroutesForNode(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeNodeTraceroutes(nodeNum);
-  }
-
-  /**
-   * Async method to purge all telemetry for a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
+  /** @deprecated Use databaseService.telemetry.purgeNodeTelemetry() instead */
   async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
     if (this.telemetryRepo) {
       return this.telemetryRepo.purgeNodeTelemetry(nodeNum);
@@ -13356,11 +11072,7 @@ class DatabaseService {
     return this.purgeNodeTelemetry(nodeNum);
   }
 
-  /**
-   * Async method to purge position history for a node.
-   * Deletes only position-related telemetry types.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
+  /** @deprecated Use databaseService.telemetry.purgePositionHistory() instead */
   async purgePositionHistoryAsync(nodeNum: number): Promise<number> {
     if (this.telemetryRepo) {
       return this.telemetryRepo.purgePositionHistory(nodeNum);
@@ -13437,159 +11149,17 @@ class DatabaseService {
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============
-  // These methods provide server-side decryption channel management
-
-  /**
-   * Get a channel database entry by ID
-   */
-  async getChannelDatabaseByIdAsync(id: number): Promise<import('../db/types.js').DbChannelDatabase | null> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getByIdAsync(id);
-  }
-
-  /**
-   * Get all channel database entries
-   */
-  async getAllChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getAllAsync();
-  }
-
-  /**
-   * Get all enabled channel database entries (for decryption)
-   */
-  async getEnabledChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getEnabledAsync();
-  }
-
-  /**
-   * Create a new channel database entry
-   */
-  async createChannelDatabaseEntryAsync(data: {
-    name: string;
-    psk: string;
-    pskLength: number;
-    description?: string | null;
-    isEnabled?: boolean;
-    enforceNameValidation?: boolean;
-    createdBy?: number | null;
-  }): Promise<number> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.createAsync(data);
-  }
-
-  /**
-   * Update a channel database entry
-   */
-  async updateChannelDatabaseEntryAsync(id: number, data: {
-    name?: string;
-    psk?: string;
-    pskLength?: number;
-    description?: string | null;
-    isEnabled?: boolean;
-    enforceNameValidation?: boolean;
-    sortOrder?: number;
-  }): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.updateAsync(id, data);
-  }
-
-  /**
-   * Delete a channel database entry
-   */
-  async deleteChannelDatabaseEntryAsync(id: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.deleteAsync(id);
-  }
-
-  /**
-   * Reorder channel database entries
-   * Updates the sortOrder for each entry in the provided array
-   */
-  async reorderChannelDatabaseEntriesAsync(updates: { id: number; sortOrder: number }[]): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.reorderAsync(updates);
-  }
-
-  /**
-   * Increment decrypted packet count for a channel
-   */
-  async incrementChannelDatabaseDecryptedCountAsync(id: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.incrementDecryptedCountAsync(id);
-  }
-
-  /**
-   * Get permission for a specific user and channel database
-   */
-  async getChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission | null> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionAsync(userId, channelDatabaseId);
-  }
-
-  /**
-   * Get all channel database permissions for a user
-   */
-  async getChannelDatabasePermissionsForUserAsync(userId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionsForUserAsync(userId);
-  }
-
-  /**
-   * Get all permissions for a channel database entry
-   */
-  async getChannelDatabasePermissionsForChannelAsync(channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionsForChannelAsync(channelDatabaseId);
-  }
-
-  /**
-   * Set permission for a user on a channel database entry
-   */
-  async setChannelDatabasePermissionAsync(data: {
-    userId: number;
-    channelDatabaseId: number;
-    canViewOnMap: boolean;
-    canRead: boolean;
-    grantedBy?: number | null;
-  }): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.setPermissionAsync(data);
-  }
+  // ============ CHANNEL DATABASE (business logic only) ============
 
   /**
    * Get channel database permissions for a user as a map keyed by channel database ID
    * Returns { [channelDbId]: { viewOnMap: boolean, read: boolean } }
+   * KEPT: Has business logic (transforms permissions list into a lookup map)
    */
   async getChannelDatabasePermissionsForUserAsSetAsync(userId: number): Promise<{
     [channelDbId: number]: { viewOnMap: boolean; read: boolean }
   }> {
-    const permissions = await this.getChannelDatabasePermissionsForUserAsync(userId);
+    const permissions = await this.channelDatabase.getPermissionsForUserAsync(userId);
     const result: { [channelDbId: number]: { viewOnMap: boolean; read: boolean } } = {};
     for (const perm of permissions) {
       result[perm.channelDatabaseId] = {
@@ -13600,27 +11170,7 @@ class DatabaseService {
     return result;
   }
 
-  /**
-   * Delete permission for a user on a channel database entry
-   */
-  async deleteChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.deletePermissionAsync(userId, channelDatabaseId);
-  }
-
   // ============ NEWS CACHE ============
-
-  /**
-   * Get cached news feed
-   */
-  async getNewsCacheAsync(): Promise<{ feedData: string; fetchedAt: number; sourceUrl: string } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getNewsCache();
-  }
 
   /**
    * Save news feed to cache
@@ -13692,86 +11242,6 @@ class DatabaseService {
       ...backup,
       createdAt: Date.now(),
     });
-  }
-
-  /**
-   * Get all backup history records ordered by timestamp (newest first)
-   */
-  async getBackupHistoryListAsync(): Promise<Array<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  }>> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getBackupHistoryList();
-  }
-
-  /**
-   * Get a backup history record by filename
-   */
-  async getBackupByFilenameAsync(filename: string): Promise<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getBackupByFilename(filename);
-  }
-
-  /**
-   * Delete a backup history record by filename
-   */
-  async deleteBackupHistoryAsync(filename: string): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.deleteBackupHistory(filename);
-  }
-
-  /**
-   * Count total backup history records
-   */
-  async countBackupsAsync(): Promise<number> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.countBackups();
-  }
-
-  /**
-   * Get oldest backup history records (for purging)
-   */
-  async getOldestBackupsAsync(limit: number): Promise<Array<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  }>> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getOldestBackups(limit);
   }
 
   /**
@@ -13860,23 +11330,6 @@ class DatabaseService {
   /**
    * Get auto time sync nodes
    */
-  async getAutoTimeSyncNodesAsync(): Promise<number[]> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getAutoTimeSyncNodes();
-    }
-    return [];
-  }
-
-  /**
-   * Set auto time sync nodes
-   */
-  async setAutoTimeSyncNodesAsync(nodeNums: number[]): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.setAutoTimeSyncNodes(nodeNums);
-      logger.debug(`✅ Set auto-time-sync filter to ${nodeNums.length} nodes`);
-    }
-  }
-
   /**
    * Get time sync filter settings
    */
@@ -13887,7 +11340,7 @@ class DatabaseService {
     expirationHours: number;
     intervalMinutes: number;
   }> {
-    const nodeNums = await this.getAutoTimeSyncNodesAsync();
+    const nodeNums = await this.misc.getAutoTimeSyncNodes();
     return {
       enabled: this.isAutoTimeSyncEnabled(),
       nodeNums,
@@ -13911,7 +11364,7 @@ class DatabaseService {
       this.setAutoTimeSyncEnabled(settings.enabled);
     }
     if (settings.nodeNums !== undefined) {
-      await this.setAutoTimeSyncNodesAsync(settings.nodeNums);
+      await this.misc.setAutoTimeSyncNodes(settings.nodeNums);
     }
     if (settings.filterEnabled !== undefined) {
       this.setAutoTimeSyncNodeFilterEnabled(settings.filterEnabled);
@@ -13943,7 +11396,7 @@ class DatabaseService {
     // Get filter settings
     let filterNodeNums: number[] | undefined;
     if (this.isAutoTimeSyncNodeFilterEnabled()) {
-      filterNodeNums = await this.getAutoTimeSyncNodesAsync();
+      filterNodeNums = await this.misc.getAutoTimeSyncNodes();
       if (filterNodeNums.length === 0) {
         // Filter is enabled but no nodes selected - skip
         return null;
@@ -13956,15 +11409,6 @@ class DatabaseService {
       filterNodeNums
     );
     return node as DbNode | null;
-  }
-
-  /**
-   * Update a node's lastTimeSync timestamp
-   */
-  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
-    if (this.nodesRepo) {
-      await this.nodesRepo.updateNodeTimeSyncAsync(nodeNum, timestamp);
-    }
   }
 
   /**

@@ -98,7 +98,7 @@ const requirePacketPermissions: RequestHandler = async (req, res, next) => {
 
     // Also check channel database permissions for virtual channels
     if (userId !== null) {
-      const channelDbPerms = await databaseService.getChannelDatabasePermissionsForUserAsync(userId);
+      const channelDbPerms = await databaseService.channelDatabase.getPermissionsForUserAsync(userId);
       const allowedDbChannels = channelDbPerms
         .filter((p: { canRead: boolean }) => p.canRead)
         .map((p: { channelDatabaseId: number }) => p.channelDatabaseId);
