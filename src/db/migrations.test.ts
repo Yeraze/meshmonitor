@@ -33,10 +33,24 @@ describe('migrations registry', () => {
     }
   });
 
-  it('old-style migrations (1-46) are selfIdempotent', () => {
+  it('migration 001 is selfIdempotent (uses CREATE TABLE IF NOT EXISTS)', () => {
     const all = registry.getAll();
-    for (let i = 0; i < 46; i++) {
-      expect(all[i].selfIdempotent, `Migration ${all[i].number} should be selfIdempotent`).toBe(true);
+    expect(all[0].selfIdempotent).toBe(true);
+    expect(all[0].settingsKey).toBeFalsy();
+  });
+
+  it('old-style migrations (2-46) have settingsKey or are selfIdempotent stubs', () => {
+    const all = registry.getAll();
+    // Migrations that were never wired into database.ts are selfIdempotent stubs
+    const selfIdempotentStubs = new Set([26, 27, 29, 31]);
+    for (let i = 1; i < 46; i++) {
+      const m = all[i];
+      if (selfIdempotentStubs.has(m.number)) {
+        expect(m.selfIdempotent, `Migration ${m.number} should be selfIdempotent stub`).toBe(true);
+      } else {
+        expect(m.settingsKey, `Migration ${m.number} should have settingsKey`).toBeTruthy();
+        expect(m.selfIdempotent, `Migration ${m.number} should NOT be selfIdempotent`).toBeFalsy();
+      }
     }
   });
 
