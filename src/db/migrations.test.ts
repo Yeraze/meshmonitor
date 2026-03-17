@@ -39,18 +39,15 @@ describe('migrations registry', () => {
     expect(all[0].settingsKey).toBeFalsy();
   });
 
-  it('old-style migrations (2-46) have settingsKey or are selfIdempotent stubs', () => {
+  it('old-style migrations (2-46) all have settingsKey', () => {
     const all = registry.getAll();
-    // Migrations that were never wired into database.ts are selfIdempotent stubs
-    const selfIdempotentStubs = new Set([26, 27, 29, 31]);
+    // All old-style migrations (002-046) use settingsKey guards since none are truly
+    // idempotent — they use ALTER TABLE ADD COLUMN which SQLite doesn't support with
+    // IF NOT EXISTS, or INSERT without required NOT NULL columns.
     for (let i = 1; i < 46; i++) {
       const m = all[i];
-      if (selfIdempotentStubs.has(m.number)) {
-        expect(m.selfIdempotent, `Migration ${m.number} should be selfIdempotent stub`).toBe(true);
-      } else {
-        expect(m.settingsKey, `Migration ${m.number} should have settingsKey`).toBeTruthy();
-        expect(m.selfIdempotent, `Migration ${m.number} should NOT be selfIdempotent`).toBeFalsy();
-      }
+      expect(m.settingsKey, `Migration ${m.number} should have settingsKey`).toBeTruthy();
+      expect(m.selfIdempotent, `Migration ${m.number} should NOT be selfIdempotent`).toBeFalsy();
     }
   });
 

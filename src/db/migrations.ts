@@ -9,8 +9,8 @@
  * New-style migrations (047+) also use settingsKey for SQLite idempotency tracking.
  *
  * Note: Some migrations (026, 027, 029, 031) exist as files but were never wired
- * into database.ts. They are registered here as selfIdempotent SQLite-only stubs
- * to maintain sequential numbering (they use IF NOT EXISTS internally).
+ * into database.ts. They are registered here with settingsKey guards like all
+ * other non-idempotent migrations, to maintain sequential numbering.
  */
 
 import { MigrationRegistry } from './migrationRegistry.js';
@@ -296,18 +296,18 @@ registry.register({
 });
 
 // Migrations 026, 027 exist as files but were never wired into database.ts.
-// They use ALTER TABLE ... ADD COLUMN with IF NOT EXISTS, so selfIdempotent is safe.
+// They use bare ALTER TABLE ADD COLUMN (no IF NOT EXISTS check), so they need settingsKey guards.
 registry.register({
   number: 26,
   name: 'add_relay_node_to_messages',
-  selfIdempotent: true,
+  settingsKey: 'migration_026_relay_node_messages',
   sqlite: (db) => relayNodeMessagesMigration.up(db),
 });
 
 registry.register({
   number: 27,
   name: 'add_ack_from_node_to_messages',
-  selfIdempotent: true,
+  settingsKey: 'migration_027_ack_from_node_messages',
   sqlite: (db) => ackFromNodeMessagesMigration.up(db),
 });
 
@@ -319,11 +319,12 @@ registry.register({
 });
 
 // Migration 029 exists as file but was never wired into database.ts.
-// Uses ALTER TABLE ... ADD COLUMN with IF NOT EXISTS, so selfIdempotent is safe.
+// Uses INSERT OR IGNORE but the settings table requires NOT NULL on createdAt/updatedAt,
+// so the INSERT would fail. Use settingsKey guard instead.
 registry.register({
   number: 29,
   name: 'add_auto_ack_direct_message',
-  selfIdempotent: true,
+  settingsKey: 'migration_029_auto_ack_direct',
   sqlite: (db) => autoAckDirectMigration.up(db),
 });
 
@@ -335,11 +336,11 @@ registry.register({
 });
 
 // Migration 031 exists as file but was never wired into database.ts.
-// Uses ALTER TABLE ... ADD COLUMN with IF NOT EXISTS, so selfIdempotent is safe.
+// Uses bare ALTER TABLE ADD COLUMN (no IF NOT EXISTS check), so it needs a settingsKey guard.
 registry.register({
   number: 31,
   name: 'add_sorting_to_user_preferences',
-  selfIdempotent: true,
+  settingsKey: 'migration_031_sorting_preferences',
   sqlite: (db) => sortingPreferencesMigration.up(db),
 });
 
