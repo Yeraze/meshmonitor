@@ -396,7 +396,7 @@ export class VirtualNodeServer extends EventEmitter {
                     logger.info(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
                     // Update database
-                    databaseService.setNodeFavorite(targetNodeNum, true);
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is now favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -408,7 +408,7 @@ export class VirtualNodeServer extends EventEmitter {
                     logger.info(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
                     // Update database
-                    databaseService.setNodeFavorite(targetNodeNum, false);
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is no longer favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -646,9 +646,9 @@ export class VirtualNodeServer extends EventEmitter {
    * Send NodeInfo entries from the database to a client.
    */
   private async sendNodeInfosFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
-    const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+    const maxNodeAgeHours = parseInt(await databaseService.getSettingAsync('maxNodeAgeHours') || '24');
     const maxNodeAgeDays = maxNodeAgeHours / 24;
-    const allNodes = databaseService.getActiveNodes(maxNodeAgeDays);
+    const allNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
     let sent = 0;
 
     for (const node of allNodes) {
@@ -764,7 +764,7 @@ export class VirtualNodeServer extends EventEmitter {
       // --- STEP 1: MyNodeInfo (rebuilt from DB) ---
       const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        const localNode = databaseService.getNode(localNodeInfo.nodeNum);
+        const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
 
         let firmwareVersion = (localNodeInfo as any).firmwareVersion;
         if (!firmwareVersion && localNode?.firmwareVersion) {
