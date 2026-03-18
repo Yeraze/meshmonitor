@@ -939,6 +939,9 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "isAdmin" BOOLEAN NOT NULL DEFAULT false,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "passwordLocked" BOOLEAN NOT NULL DEFAULT false,
+    "mfaEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "mfaSecret" TEXT,
+    "mfaBackupCodes" TEXT,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     "lastLoginAt" BIGINT
@@ -948,6 +951,7 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     id SERIAL PRIMARY KEY,
     "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     resource TEXT NOT NULL,
+    "canViewOnMap" BOOLEAN NOT NULL DEFAULT false,
     "canRead" BOOLEAN NOT NULL DEFAULT false,
     "canWrite" BOOLEAN NOT NULL DEFAULT false,
     "canDelete" BOOLEAN NOT NULL DEFAULT false
@@ -1378,6 +1382,9 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       isAdmin BOOLEAN NOT NULL DEFAULT false,
       isActive BOOLEAN NOT NULL DEFAULT true,
       passwordLocked BOOLEAN NOT NULL DEFAULT false,
+      mfaEnabled BOOLEAN NOT NULL DEFAULT false,
+      mfaSecret TEXT,
+      mfaBackupCodes TEXT,
       createdAt BIGINT NOT NULL,
       updatedAt BIGINT NOT NULL,
       lastLoginAt BIGINT
@@ -1387,6 +1394,7 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       id INT AUTO_INCREMENT PRIMARY KEY,
       userId INT NOT NULL,
       resource VARCHAR(255) NOT NULL,
+      canViewOnMap BOOLEAN NOT NULL DEFAULT false,
       canRead BOOLEAN NOT NULL DEFAULT false,
       canWrite BOOLEAN NOT NULL DEFAULT false,
       canDelete BOOLEAN NOT NULL DEFAULT false,
