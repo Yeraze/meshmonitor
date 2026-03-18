@@ -807,12 +807,9 @@ export class MiscRepository extends BaseRepository {
    * Get auto-delete-by-distance log entries
    */
   async getDistanceDeleteLog(limit: number = 10): Promise<any[]> {
-    const results = await this.db.execute(
+    const rows = await this.executeQuery(
       sql`SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ${limit}`
     );
-
-    // MySQL returns [rows, fields], others return rows directly
-    const rows = this.isMySQL() ? (results as any)[0] : (results as any).rows ?? results;
     return (rows as any[]).map((e: any) => ({
       ...e,
       details: e.details ? JSON.parse(e.details) : [],
@@ -829,7 +826,7 @@ export class MiscRepository extends BaseRepository {
     details: string;
   }): Promise<void> {
     const now = Date.now();
-    await this.db.execute(
+    await this.executeRun(
       sql`INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
           VALUES (${entry.timestamp}, ${entry.nodesDeleted}, ${entry.thresholdKm}, ${entry.details}, ${now})`
     );
@@ -890,13 +887,6 @@ export class MiscRepository extends BaseRepository {
   }
 
   /**
-   * Extract rows from db.execute result (handles MySQL [rows, fields] vs others)
-   */
-  private extractRows(results: any): any[] {
-    return this.isMySQL() ? (results as any)[0] : ((results as any).rows ?? results);
-  }
-
-  /**
    * Insert a packet log entry
    */
   async insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
@@ -952,7 +942,7 @@ export class MiscRepository extends BaseRepository {
       if (currentCount > maxCount) {
         const deleteCount = currentCount - maxCount;
         // Use raw SQL for the DELETE with subquery — Drizzle doesn't support DELETE ... WHERE id IN (SELECT ...)
-        await this.db.execute(
+        await this.executeRun(
           sql`DELETE FROM packet_log WHERE id IN (SELECT id FROM packet_log ORDER BY timestamp ASC LIMIT ${deleteCount})`
         );
         logger.debug(`[MiscRepository] Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
@@ -993,8 +983,7 @@ export class MiscRepository extends BaseRepository {
         `;
       }
 
-      const results = await this.db.execute(joinQuery);
-      const rows = this.extractRows(results);
+      const rows = await this.executeQuery(joinQuery);
       return (rows as any[]).map((row: any) => this.normalizePacketLogRow(row));
     } catch (error) {
       logger.error('[MiscRepository] Failed to get packet logs:', error);
@@ -1026,8 +1015,7 @@ export class MiscRepository extends BaseRepository {
         `;
       }
 
-      const results = await this.db.execute(joinQuery);
-      const rows = this.extractRows(results);
+      const rows = await this.executeQuery(joinQuery);
       if (!rows || rows.length === 0) return null;
       return this.normalizePacketLogRow(rows[0]);
     } catch (error) {
@@ -1044,10 +1032,9 @@ export class MiscRepository extends BaseRepository {
     const whereClause = this.combineConditions(conditions);
 
     try {
-      const results = await this.db.execute(
+      const rows = await this.executeQuery(
         sql`SELECT COUNT(*) as count FROM packet_log WHERE ${whereClause}`
       );
-      const rows = this.extractRows(results);
       return Number(rows[0]?.count ?? 0);
     } catch (error) {
       logger.error('[MiscRepository] Failed to get packet log count:', error);
@@ -1060,7 +1047,7 @@ export class MiscRepository extends BaseRepository {
    */
   async clearPacketLogs(): Promise<number> {
     try {
-      const results = await this.db.execute(sql`DELETE FROM packet_log`);
+      const results = await this.executeRun(sql`DELETE FROM packet_log`);
       let deletedCount: number;
       if (this.isMySQL()) {
         deletedCount = (results as any)[0]?.affectedRows ?? 0;
@@ -1084,7 +1071,7 @@ export class MiscRepository extends BaseRepository {
     const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
 
     try {
-      const results = await this.db.execute(
+      const results = await this.executeRun(
         sql`DELETE FROM packet_log WHERE timestamp < ${cutoffTimestamp}`
       );
       let deleted: number;
@@ -1117,14 +1104,12 @@ export class MiscRepository extends BaseRepository {
       : 'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ';
 
     try {
-      const distinctResults = await this.db.execute(sql.raw(distinctQuery));
-      const distinctRows = this.extractRows(distinctResults);
+      const distinctRows = await this.executeQuery(sql.raw(distinctQuery));
       const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
 
       const results: DbDistinctRelayNode[] = [];
       for (const rv of relayValues) {
-        const matchResults = await this.db.execute(sql.raw(`${matchQuery}${rv}`));
-        const matchRows = this.extractRows(matchResults);
+        const matchRows = await this.executeQuery(sql.raw(`${matchQuery}${rv}`));
         results.push({
           relay_node: rv,
           matching_nodes: (matchRows as any[]).map((r: any) => ({
@@ -1152,7 +1137,7 @@ export class MiscRepository extends BaseRepository {
   ): Promise<void> {
     if (this.isSQLite()) {
       // SQLite uses 0 for false
-      await this.db.execute(sql`
+      await this.executeRun(sql`
         UPDATE packet_log
         SET decrypted_by = ${decryptedBy},
             decrypted_channel_id = ${decryptedChannelId},
@@ -1162,7 +1147,7 @@ export class MiscRepository extends BaseRepository {
         WHERE id = ${id}
       `);
     } else {
-      await this.db.execute(sql`
+      await this.executeRun(sql`
         UPDATE packet_log
         SET decrypted_by = ${decryptedBy},
             decrypted_channel_id = ${decryptedChannelId},
@@ -1210,8 +1195,7 @@ export class MiscRepository extends BaseRepository {
         `;
       }
 
-      const results = await this.db.execute(query);
-      const rows = this.extractRows(results);
+      const rows = await this.executeQuery(query);
       return (rows as any[]).map((row: any) => ({
         from_node: Number(row.from_node),
         from_node_id: row.from_node_id,
@@ -1237,7 +1221,7 @@ export class MiscRepository extends BaseRepository {
       if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
       const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
 
-      const results = await this.db.execute(sql`
+      const rows = await this.executeQuery(sql`
         SELECT portnum, COUNT(*) as count
         FROM packet_log
         WHERE ${whereClause}
@@ -1245,7 +1229,6 @@ export class MiscRepository extends BaseRepository {
         ORDER BY count DESC
       `);
 
-      const rows = this.extractRows(results);
       return (rows as any[]).map((row: any) => ({
         portnum: Number(row.portnum),
         portnum_name: getPortNumName(Number(row.portnum)),

@@ -58,6 +58,63 @@ describe('User Management Routes', () => {
     (DatabaseService as any).auditLog = () => {};
     (DatabaseService as any).drizzleDbType = 'sqlite';
 
+    // Add auth repository mock that delegates to real models
+    (DatabaseService as any).auth = {
+      getAllUsers: async () => {
+        return userModel.findAll();
+      },
+      createUser: async (input: any) => {
+        // Insert directly via SQL since UserModel.create() hashes password again
+        const stmt = db.prepare(`
+          INSERT INTO users (username, email, display_name, auth_provider, is_admin, is_active, password_hash, password_locked, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const result = stmt.run(
+          input.username,
+          input.email || null,
+          input.displayName || null,
+          input.authMethod || input.authProvider || 'local',
+          input.isAdmin ? 1 : 0,
+          input.isActive !== undefined ? (input.isActive ? 1 : 0) : 1,
+          input.passwordHash || null,
+          input.passwordLocked ? 1 : 0,
+          input.createdAt || Date.now()
+        );
+        return Number(result.lastInsertRowid);
+      },
+      updateUser: async (id: number, updates: any) => {
+        // UserModel.update() doesn't handle isAdmin, so handle it directly via SQL
+        if (updates.isAdmin !== undefined) {
+          db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(updates.isAdmin ? 1 : 0, id);
+        }
+        // Delegate remaining fields to userModel
+        const { isAdmin, ...rest } = updates;
+        if (Object.keys(rest).length > 0) {
+          userModel.update(id, rest);
+        }
+      },
+      deleteUser: async (id: number) => {
+        userModel.delete(id);
+        return true;
+      },
+      deletePermissionsForUser: async (userId: number) => {
+        permissionModel.revokeAll(userId);
+        return 0;
+      },
+      createPermission: async (input: any) => {
+        const perm = permissionModel.grant({
+          userId: input.userId,
+          resource: input.resource,
+          canViewOnMap: input.canViewOnMap ?? false,
+          canRead: input.canRead,
+          canWrite: input.canWrite,
+          grantedBy: input.grantedBy,
+          grantedAt: input.grantedAt
+        });
+        return perm.id;
+      }
+    };
+
     // Add async method mocks that delegate to sync methods
     (DatabaseService as any).findUserByIdAsync = async (id: number) => {
       return userModel.findById(id);
@@ -76,6 +133,9 @@ describe('User Management Routes', () => {
     };
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
+    };
+    (DatabaseService as any).clearUserMfaAsync = async (userId: number) => {
+      return userModel.update(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null } as any);
     };
 
     app.use('/api/auth', authRoutes);

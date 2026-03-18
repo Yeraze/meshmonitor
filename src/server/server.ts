@@ -5499,7 +5499,7 @@ apiRouter.post('/purge/traceroutes', requireAdmin(), (req, res) => {
     databaseService.auditLog(
       req.user!.id,
       'traceroutes_purged',
-      'traceroutes',
+      'traceroute',
       'All traceroutes and route segments purged',
       req.ip || null
     );
