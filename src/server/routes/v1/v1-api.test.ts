@@ -201,6 +201,10 @@ vi.mock('../../../services/database.js', () => {
       getAllNodesAsync: vi.fn(async () => testNodes),
       nodes: {
         getAllNodes: vi.fn(async () => testNodes),
+        // getNode (async) used by checkNodeChannelAccess via nodeEnhancer
+        getNode: vi.fn(async (_nodeNum: number) => {
+          return { positionOverrideIsPrivate: false };
+        }),
       },
       // Telemetry repository (direct access)
       telemetry: {
@@ -220,8 +224,7 @@ vi.mock('../../../services/database.js', () => {
         purgeNodeTelemetry: vi.fn(async () => 0),
         purgePositionHistory: vi.fn(async () => 0),
       },
-      // Position history methods
-      // getNode takes a decimal nodeNum; position history route converts hex nodeId to decimal
+      // getNode (sync) used by positionHistory route directly
       getNode: vi.fn((_nodeNum: number) => {
         return { positionOverrideIsPrivate: false };
       }),
@@ -1245,9 +1248,10 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return 403 for private-position node without nodes_private:read', async () => {
     const databaseService = await import('../../../services/database.js');
-    // getNode is called twice: once by checkNodeChannelAccess, once by the privacy check
+    // getNode is called by checkNodeChannelAccess (async, via nodes repo) and by privacy check (sync, direct)
+    vi.mocked(databaseService.default.nodes.getNode)
+      .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
     vi.mocked(databaseService.default.getNode)
-      .mockReturnValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any)
       .mockReturnValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
     vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValue({
       nodes: { read: true },

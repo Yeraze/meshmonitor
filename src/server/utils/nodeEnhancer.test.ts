@@ -15,18 +15,20 @@ vi.mock('../auth/authMiddleware.js', () => ({
 // Mock the database service for filterNodesByChannelPermission
 vi.mock('../../services/database.js', () => ({
   default: {
-    getNode: vi.fn((nodeNum: number) => {
-      // Node 0x00000001 (1) -> channel 0
-      if (nodeNum === 1) return { channel: 0 };
-      // Node 0x00000002 (2) -> channel 1
-      if (nodeNum === 2) return { channel: 1 };
-      // Node 0x00000003 (3) -> channel 3 (no permission for user 1)
-      if (nodeNum === 3) return { channel: 3 };
-      // Node 0x00000004 (4) -> no channel property (defaults to 0)
-      if (nodeNum === 4) return {};
-      // Unknown node
-      return null;
-    }),
+    nodes: {
+      getNode: vi.fn(async (nodeNum: number) => {
+        // Node 0x00000001 (1) -> channel 0
+        if (nodeNum === 1) return { channel: 0 };
+        // Node 0x00000002 (2) -> channel 1
+        if (nodeNum === 2) return { channel: 1 };
+        // Node 0x00000003 (3) -> channel 3 (no permission for user 1)
+        if (nodeNum === 3) return { channel: 3 };
+        // Node 0x00000004 (4) -> no channel property (defaults to 0)
+        if (nodeNum === 4) return {};
+        // Unknown node
+        return null;
+      }),
+    },
     getUserPermissionSetAsync: vi.fn(async (userId: number) => {
       // User 1: has access to channels 0 and 1
       if (userId === 1) {
