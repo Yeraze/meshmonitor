@@ -816,23 +816,25 @@ class DatabaseService {
   private initialize(): void {
     if (this.isInitialized) return;
 
-    this.createTables();
-    this.migrateSchema();
-    this.createIndexes();
-    this.runDataMigrations();
-
-    // Pre-3.7 detection: if settings table exists but v3.7 marker is absent, database is too old
+    // Pre-3.7 detection: check BEFORE createTables() so we can distinguish
+    // an existing pre-v3.7 database from a fresh install.
+    // If settings table already exists at this point, it's from a previous installation.
     const settingsExists = this.db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
     ).all();
     if (settingsExists.length > 0) {
-      const v37Key = this.getSetting('migration_077_ignored_nodes_nodenum_bigint');
+      const v37Key = this.db.prepare("SELECT value FROM settings WHERE key = 'migration_077_ignored_nodes_nodenum_bigint'").get();
       if (!v37Key) {
         logger.error('This version requires MeshMonitor v3.7 or later.');
         logger.error('Please upgrade to v3.7 first, then upgrade to this version.');
         throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
       }
     }
+
+    this.createTables();
+    this.migrateSchema();
+    this.createIndexes();
+    this.runDataMigrations();
 
     // Run all registered SQLite migrations via the migration registry
     for (const migration of registry.getAll()) {
