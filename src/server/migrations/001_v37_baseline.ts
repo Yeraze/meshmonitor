@@ -798,16 +798,21 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "firmwareVersion" TEXT,
     channel INTEGER,
     "isFavorite" BOOLEAN DEFAULT false,
+    "favoriteLocked" BOOLEAN DEFAULT false,
     "isIgnored" BOOLEAN DEFAULT false,
     mobile INTEGER DEFAULT 0,
     "rebootCount" INTEGER,
     "publicKey" TEXT,
+    "lastMeshReceivedKey" TEXT,
     "hasPKC" BOOLEAN,
     "lastPKIPacket" BIGINT,
     "keyIsLowEntropy" BOOLEAN,
     "duplicateKeyDetected" BOOLEAN,
     "keyMismatchDetected" BOOLEAN,
     "keySecurityIssueDetails" TEXT,
+    "isExcessivePackets" BOOLEAN DEFAULT false,
+    "packetRatePerHour" INTEGER,
+    "packetRateLastChecked" BIGINT,
     "welcomedAt" BIGINT,
     "positionChannel" INTEGER,
     "positionPrecisionBits" INTEGER,
@@ -1214,6 +1219,90 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     created_at BIGINT
   );
 
+  CREATE TABLE IF NOT EXISTS embed_profiles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    channels TEXT NOT NULL DEFAULT '[]',
+    tileset TEXT NOT NULL DEFAULT 'osm',
+    "defaultLat" REAL NOT NULL DEFAULT 0,
+    "defaultLng" REAL NOT NULL DEFAULT 0,
+    "defaultZoom" INTEGER NOT NULL DEFAULT 10,
+    "showTooltips" BOOLEAN NOT NULL DEFAULT true,
+    "showPopups" BOOLEAN NOT NULL DEFAULT true,
+    "showLegend" BOOLEAN NOT NULL DEFAULT true,
+    "showPaths" BOOLEAN NOT NULL DEFAULT false,
+    "showNeighborInfo" BOOLEAN NOT NULL DEFAULT false,
+    "showMqttNodes" BOOLEAN NOT NULL DEFAULT true,
+    "pollIntervalSeconds" INTEGER NOT NULL DEFAULT 30,
+    "allowedOrigins" TEXT NOT NULL DEFAULT '[]',
+    "createdAt" BIGINT NOT NULL,
+    "updatedAt" BIGINT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS ignored_nodes (
+    "nodeNum" BIGINT PRIMARY KEY,
+    "nodeId" TEXT NOT NULL,
+    "longName" TEXT,
+    "shortName" TEXT,
+    "ignoredAt" BIGINT NOT NULL,
+    "ignoredBy" TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS meshcore_nodes (
+    "publicKey" TEXT PRIMARY KEY,
+    name TEXT,
+    "advType" INTEGER,
+    "txPower" INTEGER,
+    "maxTxPower" INTEGER,
+    "radioFreq" REAL,
+    "radioBw" REAL,
+    "radioSf" INTEGER,
+    "radioCr" INTEGER,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    altitude DOUBLE PRECISION,
+    "batteryMv" INTEGER,
+    "uptimeSecs" BIGINT,
+    rssi INTEGER,
+    snr REAL,
+    "lastHeard" BIGINT,
+    "hasAdminAccess" BOOLEAN DEFAULT false,
+    "lastAdminCheck" BIGINT,
+    "isLocalNode" BOOLEAN DEFAULT false,
+    "createdAt" BIGINT NOT NULL,
+    "updatedAt" BIGINT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS meshcore_messages (
+    id TEXT PRIMARY KEY,
+    "fromPublicKey" TEXT NOT NULL,
+    "toPublicKey" TEXT,
+    text TEXT NOT NULL,
+    timestamp BIGINT NOT NULL,
+    rssi INTEGER,
+    snr INTEGER,
+    "messageType" TEXT DEFAULT 'text',
+    delivered BOOLEAN DEFAULT false,
+    "deliveredAt" BIGINT,
+    "createdAt" BIGINT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS news_cache (
+    id SERIAL PRIMARY KEY,
+    "feedData" TEXT NOT NULL,
+    "fetchedAt" BIGINT NOT NULL,
+    "sourceUrl" TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS user_news_status (
+    id SERIAL PRIMARY KEY,
+    "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "lastSeenNewsId" TEXT,
+    "dismissedNewsIds" TEXT,
+    "updatedAt" BIGINT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_auto_traceroute_timestamp ON auto_traceroute_log(timestamp DESC);
   CREATE INDEX IF NOT EXISTS idx_auto_key_repair_log_timestamp ON auto_key_repair_log(timestamp DESC);
   CREATE INDEX IF NOT EXISTS idx_channel_database_enabled ON channel_database("isEnabled");
@@ -1273,16 +1362,21 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       firmwareVersion VARCHAR(255),
       channel INT,
       isFavorite BOOLEAN DEFAULT false,
+      favoriteLocked BOOLEAN DEFAULT false,
       isIgnored BOOLEAN DEFAULT false,
       mobile INT DEFAULT 0,
       rebootCount INT,
       publicKey TEXT,
+      lastMeshReceivedKey TEXT,
       hasPKC BOOLEAN,
       lastPKIPacket BIGINT,
       keyIsLowEntropy BOOLEAN,
       duplicateKeyDetected BOOLEAN,
       keyMismatchDetected BOOLEAN,
       keySecurityIssueDetails TEXT,
+      isExcessivePackets BOOLEAN DEFAULT false,
+      packetRatePerHour INT,
+      packetRateLastChecked BIGINT,
       welcomedAt BIGINT,
       positionChannel INT,
       positionPrecisionBits INT,
@@ -1721,6 +1815,91 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       details TEXT,
       created_at BIGINT,
       INDEX idx_auto_distance_delete_log_timestamp (timestamp DESC)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE TABLE IF NOT EXISTS embed_profiles (
+      id VARCHAR(36) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      channels TEXT NOT NULL,
+      tileset VARCHAR(255) NOT NULL DEFAULT 'osm',
+      defaultLat DOUBLE NOT NULL DEFAULT 0,
+      defaultLng DOUBLE NOT NULL DEFAULT 0,
+      defaultZoom INT NOT NULL DEFAULT 10,
+      showTooltips BOOLEAN NOT NULL DEFAULT true,
+      showPopups BOOLEAN NOT NULL DEFAULT true,
+      showLegend BOOLEAN NOT NULL DEFAULT true,
+      showPaths BOOLEAN NOT NULL DEFAULT false,
+      showNeighborInfo BOOLEAN NOT NULL DEFAULT false,
+      showMqttNodes BOOLEAN NOT NULL DEFAULT true,
+      pollIntervalSeconds INT NOT NULL DEFAULT 30,
+      allowedOrigins TEXT NOT NULL,
+      createdAt BIGINT NOT NULL,
+      updatedAt BIGINT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE TABLE IF NOT EXISTS ignored_nodes (
+      nodeNum BIGINT PRIMARY KEY,
+      nodeId VARCHAR(255) NOT NULL,
+      longName VARCHAR(255),
+      shortName VARCHAR(255),
+      ignoredAt BIGINT NOT NULL,
+      ignoredBy VARCHAR(255)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE TABLE IF NOT EXISTS meshcore_nodes (
+      publicKey VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(255),
+      advType INT,
+      txPower INT,
+      maxTxPower INT,
+      radioFreq DOUBLE,
+      radioBw DOUBLE,
+      radioSf INT,
+      radioCr INT,
+      latitude DOUBLE,
+      longitude DOUBLE,
+      altitude DOUBLE,
+      batteryMv INT,
+      uptimeSecs BIGINT,
+      rssi INT,
+      snr DOUBLE,
+      lastHeard BIGINT,
+      hasAdminAccess BOOLEAN DEFAULT false,
+      lastAdminCheck BIGINT,
+      isLocalNode BOOLEAN DEFAULT false,
+      createdAt BIGINT NOT NULL,
+      updatedAt BIGINT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE TABLE IF NOT EXISTS meshcore_messages (
+      id VARCHAR(64) PRIMARY KEY,
+      fromPublicKey VARCHAR(64) NOT NULL,
+      toPublicKey VARCHAR(64),
+      text TEXT NOT NULL,
+      timestamp BIGINT NOT NULL,
+      rssi INT,
+      snr INT,
+      messageType VARCHAR(32) DEFAULT 'text',
+      delivered BOOLEAN DEFAULT false,
+      deliveredAt BIGINT,
+      createdAt BIGINT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE TABLE IF NOT EXISTS news_cache (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      feedData TEXT NOT NULL,
+      fetchedAt BIGINT NOT NULL,
+      sourceUrl VARCHAR(512) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE TABLE IF NOT EXISTS user_news_status (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      lastSeenNewsId VARCHAR(128),
+      dismissedNewsIds TEXT,
+      updatedAt BIGINT NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   ];
 
