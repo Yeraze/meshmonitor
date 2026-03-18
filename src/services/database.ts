@@ -7914,7 +7914,14 @@ class DatabaseService {
       });
 
       // Grant all permissions for admin
-      const allResources = ['dashboard', 'nodes', 'messages', 'traceroutes', 'channels', 'configuration', 'info', 'notifications', 'audit', 'users', 'packets'];
+      // Resource names must match the CHECK constraint in the permissions table (set by migration 006)
+      const allResources = [
+        'dashboard', 'nodes', 'messages', 'settings', 'configuration', 'info',
+        'automation', 'connection', 'traceroute', 'audit', 'security', 'themes',
+        'channel_0', 'channel_1', 'channel_2', 'channel_3',
+        'channel_4', 'channel_5', 'channel_6', 'channel_7',
+        'nodes_private', 'meshcore', 'packetmonitor'
+      ];
       for (const resource of allResources) {
         await this.auth.createPermission({
           userId: adminId,
