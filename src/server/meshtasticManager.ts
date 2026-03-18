@@ -6933,7 +6933,9 @@ class MeshtasticManager {
           : 0;
 
       // Determine if this is a direct message (0 hops) or multi-hop
-      const isDirect = hopsTraveled === 0;
+      // MQTT-relayed packets are never "direct" even with 0 hops — they traversed
+      // the internet, not a direct RF link, so RF metrics (SNR/RSSI) are meaningless
+      const isDirect = hopsTraveled === 0 && message.viaMqtt !== true;
 
       // Check if this message type is enabled
       const typeEnabled = isDirect
