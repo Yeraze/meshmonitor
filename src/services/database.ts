@@ -34,8 +34,6 @@ import {
   EmbedProfileRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
-import { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } from '../db/schema/postgres-create.js';
-import { MYSQL_SCHEMA_SQL, MYSQL_TABLE_NAMES } from '../db/schema/mysql-create.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -822,6 +820,19 @@ class DatabaseService {
     this.migrateSchema();
     this.createIndexes();
     this.runDataMigrations();
+
+    // Pre-3.7 detection: if settings table exists but v3.7 marker is absent, database is too old
+    const settingsExists = this.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+    ).all();
+    if (settingsExists.length > 0) {
+      const v37Key = this.getSetting('migration_077_ignored_nodes_nodenum_bigint');
+      if (!v37Key) {
+        logger.error('This version requires MeshMonitor v3.7 or later.');
+        logger.error('Please upgrade to v3.7 first, then upgrade to this version.');
+        throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
+      }
+    }
 
     // Run all registered SQLite migrations via the migration registry
     for (const migration of registry.getAll()) {
@@ -9402,38 +9413,34 @@ class DatabaseService {
 
   /**
    * Create or update PostgreSQL schema
-   * Uses idempotent CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS
-   * This ensures new tables are created when upgrading existing databases
+   * Runs all migrations from the registry (001 baseline creates all tables).
    */
   private async createPostgresSchema(pool: PgPool): Promise<void> {
     logger.info('[PostgreSQL] Ensuring database schema is up to date...');
 
     const client = await pool.connect();
     try {
-      // Execute the canonical schema SQL - all statements are idempotent
-      // (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
-      await client.query(POSTGRES_SCHEMA_SQL);
+      // Pre-3.7 detection: if tables exist but ignored_nodes doesn't, database is too old
+      const tableCount = await client.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      `);
+      const ignoredNodesExists = await client.query(`
+        SELECT EXISTS (SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'ignored_nodes') as exists
+      `);
+      if (parseInt(tableCount.rows[0]?.count) > 0 && !ignoredNodesExists.rows[0]?.exists) {
+        throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
+      }
 
-      // Run all registered Postgres migrations via the migration registry
+      // Run ALL migrations from the registry — 001 baseline creates all tables
       for (const migration of registry.getAll()) {
         if (migration.postgres) {
           await migration.postgres(client);
         }
       }
 
-      // Verify all expected tables exist
-      const result = await client.query(`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public'
-      `);
-      const existingTables = new Set(result.rows.map(r => r.table_name));
-      const missingTables = POSTGRES_TABLE_NAMES.filter(t => !existingTables.has(t));
-
-      if (missingTables.length > 0) {
-        logger.warn(`[PostgreSQL] Missing tables after schema creation: ${missingTables.join(', ')}`);
-      } else {
-        logger.info(`[PostgreSQL] Schema verified: all ${POSTGRES_TABLE_NAMES.length} tables present`);
-      }
+      logger.info('[PostgreSQL] Schema initialization complete');
     } finally {
       client.release();
     }
@@ -9441,61 +9448,39 @@ class DatabaseService {
 
   /**
    * Create or update MySQL schema
-   * Uses idempotent CREATE TABLE IF NOT EXISTS
-   * This ensures new tables are created when upgrading existing databases
+   * Runs all migrations from the registry (001 baseline creates all tables).
    */
   private async createMySQLSchema(pool: MySQLPool): Promise<void> {
     logger.info('[MySQL] Ensuring database schema is up to date...');
 
     const connection = await pool.getConnection();
     try {
-      // Split the schema SQL by semicolons and execute each statement
-      // MySQL doesn't support multi-statement queries by default
-      const statements = MYSQL_SCHEMA_SQL
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-
-      let executed = 0;
-      for (const stmt of statements) {
-        try {
-          await connection.query(stmt);
-          executed++;
-        } catch (error: any) {
-          // Ignore "index already exists" errors for idempotent index creation
-          if (error.code === 'ER_DUP_KEYNAME') {
-            logger.debug(`[MySQL] Index already exists, skipping: ${stmt.substring(0, 50)}...`);
-          } else {
-            throw error;
-          }
-        }
-      }
-
-      logger.debug(`[MySQL] Executed ${executed} schema statements`);
-
-      // Run all registered MySQL migrations via the migration registry
-      for (const migration of registry.getAll()) {
-        if (migration.mysql) {
-          await migration.mysql(pool);
-        }
-      }
-
-      // Verify all expected tables exist
-      const [rows] = await connection.query(`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = DATABASE()
+      // Pre-3.7 detection: if tables exist but ignored_nodes doesn't, database is too old
+      const [tableCountRows] = await connection.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
       `);
-      const existingTables = new Set((rows as any[]).map(r => r.table_name || r.TABLE_NAME));
-      const missingTables = MYSQL_TABLE_NAMES.filter(t => !existingTables.has(t));
-
-      if (missingTables.length > 0) {
-        logger.warn(`[MySQL] Missing tables after schema creation: ${missingTables.join(', ')}`);
-      } else {
-        logger.info(`[MySQL] Schema verified: all ${MYSQL_TABLE_NAMES.length} tables present`);
+      const [ignoredNodesRows] = await connection.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'ignored_nodes'
+      `);
+      const tableCount = parseInt((tableCountRows as any[])[0]?.count);
+      const ignoredNodesExists = parseInt((ignoredNodesRows as any[])[0]?.count) > 0;
+      if (tableCount > 0 && !ignoredNodesExists) {
+        throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
       }
     } finally {
       connection.release();
     }
+
+    // Run ALL migrations from the registry — 001 baseline creates all tables
+    for (const migration of registry.getAll()) {
+      if (migration.mysql) {
+        await migration.mysql(pool);
+      }
+    }
+
+    logger.info('[MySQL] Schema initialization complete');
   }
 
   // ============ ASYNC AUTH METHODS FOR POSTGRESQL ============
