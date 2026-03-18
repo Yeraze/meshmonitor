@@ -58,6 +58,12 @@ describe('Message Deletion Routes', () => {
   beforeEach(() => {
     // Reset all mocks before each test
     vi.clearAllMocks();
+    // Mock auth-related async methods used by route handlers
+    (databaseService as any).getUserPermissionSetAsync = vi.fn().mockResolvedValue({
+      messages: { read: true, write: true, viewOnMap: false },
+      dashboard: { read: true, write: true, viewOnMap: false },
+    });
+    (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(true);
     // Set up traceroutes repo mock
     Object.defineProperty(databaseService, 'messages', {
       get: () => mockMessagesRepo,
