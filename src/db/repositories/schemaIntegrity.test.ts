@@ -403,9 +403,9 @@ describe('Schema integrity after all migrations', () => {
 
   describe('migration count sanity check', () => {
     it('registry has the expected number of migrations', () => {
-      // This ensures no migrations were accidentally removed from the registry
-      // Update this number when adding new migrations
-      expect(registry.count()).toBeGreaterThanOrEqual(86);
+      // After migration consolidation (v3.7 baseline), old 001-077 were replaced
+      // by a single baseline migration. Update this number when adding new migrations.
+      expect(registry.count()).toBeGreaterThanOrEqual(11);
     });
   });
 });

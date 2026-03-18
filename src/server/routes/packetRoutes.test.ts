@@ -10,21 +10,7 @@ import express, { Express } from 'express';
 import request from 'supertest';
 import { UserModel } from '../models/User.js';
 import { PermissionModel } from '../models/Permission.js';
-import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
-import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
-import { migration as connectionMigration } from '../migrations/003_add_connection_permission.js';
-import { migration as tracerouteMigration } from '../migrations/004_add_traceroute_permission.js';
-import { migration as auditMigration } from '../migrations/006_add_audit_permission.js';
-import { migration as packetLogMigration } from '../migrations/011_add_packet_log.js';
-import { migration as securityPermissionMigration } from '../migrations/016_add_security_permission.js';
-import { migration as themesMigration } from '../migrations/022_add_custom_themes.js';
-import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
-import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
-import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
-import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
-import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
-import { migration as meshcorePermissionMigration } from '../migrations/071_add_meshcore_permission.js';
-import { migration as packetmonitorPermissionMigration } from '../migrations/082_add_packetmonitor_permission.js';
+import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
 import packetRoutes from './packetRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -52,32 +38,8 @@ describe('Packet Routes', () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
 
-    // Create settings table (required by packet log migration)
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
-      )
-    `);
-
-    // Run migrations
-    authMigration.up(db);
-    channelsMigration.up(db);
-    connectionMigration.up(db);
-    tracerouteMigration.up(db);
-    auditMigration.up(db);
-    packetLogMigration.up(db);
-    securityPermissionMigration.up(db);
-    themesMigration.up(db);
-    passwordLockedMigration.up(db);
-    perChannelPermissionsMigration.up(db);
-    nodesPrivatePermissionMigration.up(db);
-    viewOnMapPermissionMigration.up(db);
-    mfaMigration.up(db);
-    meshcorePermissionMigration.up(db);
-    packetmonitorPermissionMigration.up(db);
+    // Run baseline migration (creates all tables including settings, packet_log, etc.)
+    baselineMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
