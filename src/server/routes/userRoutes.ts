@@ -19,22 +19,12 @@ router.use(requireAdmin());
 // List all users
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    let users: any[];
-    // For PostgreSQL/MySQL, use async repo
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        users = await databaseService.authRepo.getAllUsers();
-      } else {
-        users = [];
-      }
-    } else {
-      users = databaseService.userModel.findAll();
-    }
+    const users = await databaseService.auth.getAllUsers();
 
     // Remove sensitive fields and normalize field names (authMethod -> authProvider for frontend)
     const usersWithoutPasswords = users.map(({ passwordHash, authMethod, mfaSecret, mfaBackupCodes, ...user }) => ({
       ...user,
-      authProvider: authMethod || user.authProvider || 'local'
+      authProvider: authMethod || 'local'
     }));
 
     return res.json({ users: usersWithoutPasswords });
@@ -66,7 +56,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     return res.json({
       user: {
         ...userWithoutPassword,
-        authProvider: authMethod || user.authProvider || 'local'
+        authProvider: authMethod || 'local'
       }
     });
   } catch (error) {
@@ -121,26 +111,13 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const { email, displayName, isActive, passwordLocked } = req.body;
 
-    let user;
-    // For PostgreSQL/MySQL, use async repo
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        await databaseService.authRepo.updateUser(userId, {
-          email,
-          displayName,
-          isActive,
-          passwordLocked
-        });
-        user = await databaseService.findUserByIdAsync(userId);
-      }
-    } else {
-      user = databaseService.userModel.update(userId, {
-        email,
-        displayName,
-        isActive,
-        passwordLocked
-      });
-    }
+    await databaseService.auth.updateUser(userId, {
+      email,
+      displayName,
+      isActive,
+      passwordLocked
+    });
+    const user = await databaseService.findUserByIdAsync(userId);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -191,13 +168,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     // Deactivate user
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        await databaseService.authRepo.updateUser(userId, { isActive: false });
-      }
-    } else {
-      databaseService.userModel.delete(userId);
-    }
+    await databaseService.auth.updateUser(userId, { isActive: false });
 
     // Audit log
     databaseService.auditLog(
@@ -249,12 +220,7 @@ router.delete('/:id/permanent', async (req: Request, res: Response) => {
 
     // Check if this is the last admin
     if (user.isAdmin) {
-      let allUsers: any[];
-      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-        allUsers = databaseService.authRepo ? await databaseService.authRepo.getAllUsers() : [];
-      } else {
-        allUsers = databaseService.userModel.findAll();
-      }
+      const allUsers = await databaseService.auth.getAllUsers();
       const adminCount = allUsers.filter(u => u.isAdmin && u.isActive && u.id !== userId).length;
       if (adminCount === 0) {
         return res.status(400).json({
@@ -264,13 +230,7 @@ router.delete('/:id/permanent', async (req: Request, res: Response) => {
     }
 
     // Permanently delete user (cascades to permissions, preferences, subscriptions, etc.)
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        await databaseService.authRepo.deleteUser(userId);
-      }
-    } else {
-      databaseService.userModel.hardDelete(userId);
-    }
+    await databaseService.auth.deleteUser(userId);
 
     // Audit log
     databaseService.auditLog(
@@ -315,15 +275,8 @@ router.put('/:id/admin', async (req: Request, res: Response) => {
       });
     }
 
-    let user;
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        await databaseService.authRepo.updateUser(userId, { isAdmin });
-        user = await databaseService.findUserByIdAsync(userId);
-      }
-    } else {
-      user = databaseService.userModel.updateAdminStatus(userId, isAdmin);
-    }
+    await databaseService.auth.updateUser(userId, { isAdmin });
+    const user = await databaseService.findUserByIdAsync(userId);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -445,29 +398,18 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       }
     }
 
-    // Update permissions
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        // Delete existing permissions and create new ones
-        await databaseService.authRepo.deletePermissionsForUser(userId);
-        for (const [resource, perms] of Object.entries(permissions)) {
-          await databaseService.authRepo.createPermission({
-            userId,
-            resource,
-            canViewOnMap: perms.viewOnMap ?? false,
-            canRead: perms.read,
-            canWrite: perms.write,
-            grantedBy: req.user!.id,
-            grantedAt: Date.now()
-          });
-        }
-      }
-    } else {
-      databaseService.permissionModel.updateUserPermissions(
+    // Update permissions - delete existing and create new ones
+    await databaseService.auth.deletePermissionsForUser(userId);
+    for (const [resource, perms] of Object.entries(permissions)) {
+      await databaseService.auth.createPermission({
         userId,
-        permissions,
-        req.user!.id
-      );
+        resource,
+        canViewOnMap: perms.viewOnMap ?? false,
+        canRead: perms.read,
+        canWrite: perms.write,
+        grantedBy: req.user!.id,
+        grantedAt: Date.now()
+      });
     }
 
     // Audit log

@@ -62,69 +62,48 @@ export async function createLocalUser(
       throw new Error('Username already exists');
     }
 
-    let user: User;
+    // Create user via AuthRepository
+    const bcrypt = await import('bcrypt');
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        const bcrypt = await import('bcrypt');
-        const passwordHash = await bcrypt.hash(password, 10);
+    const userId = await databaseService.auth.createUser({
+      username,
+      email: email || null,
+      displayName: displayName || null,
+      authMethod: 'local',
+      isAdmin,
+      isActive: true,
+      passwordHash,
+      passwordLocked: false,
+      createdAt: Date.now()
+    });
+    const user = await databaseService.findUserByIdAsync(userId) as User;
 
-        const userId = await databaseService.authRepo.createUser({
-          username,
-          email: email || null,
-          displayName: displayName || null,
-          authMethod: 'local',
-          isAdmin,
-          isActive: true,
-          passwordHash,
-          passwordLocked: false,
-          createdAt: Date.now()
-        });
-        user = await databaseService.findUserByIdAsync(userId) as User;
-
-        // Grant default permissions
-        const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
-        for (const resource of defaultResources) {
-          await databaseService.authRepo.createPermission({
-            userId,
-            resource,
-            canRead: true,
-            canWrite: isAdmin,
-            grantedBy: createdBy || null,
-            grantedAt: Date.now()
-          });
-        }
-        // Admin gets additional permissions
-        if (isAdmin) {
-          const adminResources = ['configuration', 'automation', 'connection', 'audit', 'security', 'themes', 'nodes_private', 'meshcore', 'packetmonitor'];
-          for (const resource of adminResources) {
-            await databaseService.authRepo.createPermission({
-              userId,
-              resource,
-              canRead: true,
-              canWrite: true,
-              grantedBy: createdBy || null,
-              grantedAt: Date.now()
-            });
-          }
-        }
-      } else {
-        throw new Error('Database not ready');
-      }
-    } else {
-      user = await databaseService.userModel.create({
-        username,
-        password,
-        email,
-        displayName,
-        authProvider: 'local',
-        isAdmin,
-        createdBy
+    // Grant default permissions
+    const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
+    for (const resource of defaultResources) {
+      await databaseService.auth.createPermission({
+        userId,
+        resource,
+        canRead: true,
+        canWrite: isAdmin,
+        grantedBy: createdBy || null,
+        grantedAt: Date.now()
       });
-
-      // Grant default permissions
-      databaseService.permissionModel.grantDefaultPermissions(user.id, isAdmin, createdBy);
+    }
+    // Admin gets additional permissions
+    if (isAdmin) {
+      const adminResources = ['configuration', 'automation', 'connection', 'audit', 'security', 'themes', 'nodes_private', 'meshcore', 'packetmonitor'];
+      for (const resource of adminResources) {
+        await databaseService.auth.createPermission({
+          userId,
+          resource,
+          canRead: true,
+          canWrite: true,
+          grantedBy: createdBy || null,
+          grantedAt: Date.now()
+        });
+      }
     }
 
     logger.debug(`✅ Created new local user: ${username} (admin: ${isAdmin})`);
@@ -169,10 +148,8 @@ export async function changePassword(
       throw new Error('User has no password set');
     }
 
-    const isValid = await databaseService.userModel.verifyPassword(
-      currentPassword,
-      user.passwordHash
-    );
+    const bcryptLib = await import('bcrypt');
+    const isValid = await bcryptLib.compare(currentPassword, user.passwordHash);
 
     if (!isValid) {
       throw new Error('Current password is incorrect');
