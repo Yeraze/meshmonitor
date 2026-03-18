@@ -57,27 +57,24 @@ export const migration = {
       }
     }
 
-    // 4. Rename auth_provider to authMethod in users
-    // SQLite 3.25+ supports RENAME COLUMN (better-sqlite3 uses 3.40+)
+    // 4. Add username to audit_log (Drizzle schema expects it)
     try {
-      // Check if auth_provider column exists
-      const columns = db.pragma('table_info(users)') as Array<{ name: string }>;
-      const hasAuthProvider = columns.some(c => c.name === 'auth_provider');
-      const hasAuthMethod = columns.some(c => c.name === 'authMethod');
-
-      if (hasAuthProvider && !hasAuthMethod) {
-        db.exec('ALTER TABLE users RENAME COLUMN auth_provider TO authMethod');
-        logger.debug('Renamed auth_provider to authMethod in users');
-      } else if (hasAuthMethod) {
-        logger.debug('users.authMethod already exists, skipping rename');
-      } else {
-        logger.debug('users.auth_provider not found, skipping rename');
-      }
+      db.exec('ALTER TABLE audit_log ADD COLUMN username TEXT');
+      logger.debug('Added username column to audit_log');
     } catch (e: any) {
-      logger.warn('Could not rename auth_provider to authMethod:', e.message);
+      if (e.message?.includes('duplicate column')) {
+        logger.debug('audit_log.username already exists, skipping');
+      } else {
+        logger.warn('Could not add username to audit_log:', e.message);
+      }
     }
 
-    // 5. Add notify_on_channel_message to user_notification_preferences
+    // 5. auth_provider column: NO rename needed
+    // The Drizzle schema maps field `authMethod` → column `auth_provider` (line 18 of auth.ts).
+    // SQLite keeps snake_case columns; Drizzle handles the JS↔DB name mapping.
+    logger.debug('users.auth_provider: no rename needed (Drizzle maps authMethod → auth_provider)');
+
+    // 6. Add notify_on_channel_message to user_notification_preferences
     try {
       db.exec('ALTER TABLE user_notification_preferences ADD COLUMN notify_on_channel_message INTEGER NOT NULL DEFAULT 1');
       logger.debug('Added notify_on_channel_message to user_notification_preferences');

@@ -669,11 +669,8 @@ class DatabaseService {
       this.nodesRepo = new NodesRepository(drizzleDb, this.drizzleDbType);
       this.messagesRepo = new MessagesRepository(drizzleDb, this.drizzleDbType);
       this.telemetryRepo = new TelemetryRepository(drizzleDb, this.drizzleDbType);
-      // Auth repo only for PostgreSQL/MySQL - SQLite uses existing sync models (UserModel, etc.)
-      // because SQLite migrations created tables with different schema than Drizzle expects
-      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-        this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
-      }
+      // Auth repo for all backends - Migration 012 aligned SQLite schema with Drizzle definitions
+      this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
       this.traceroutesRepo = new TraceroutesRepository(drizzleDb, this.drizzleDbType);
       this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
@@ -7888,114 +7885,69 @@ class DatabaseService {
       const password = 'changeme';
       const adminUsername = getEnvironmentConfig().adminUsername;
 
-      if (this.authRepo) {
-        // PostgreSQL/MySQL: use Drizzle repository
-        const allUsers = await this.authRepo.getAllUsers();
-        const hasAdmin = allUsers.some(u => u.isAdmin);
-        if (hasAdmin) {
-          logger.debug('✅ Admin user already exists');
-          return;
-        }
-
-        logger.debug('📝 No admin user found, creating default admin...');
-        const bcrypt = await import('bcrypt');
-        const passwordHash = await bcrypt.hash(password, 10);
-        const now = Date.now();
-
-        const adminId = await this.authRepo.createUser({
-          username: adminUsername,
-          passwordHash,
-          email: null,
-          displayName: 'Administrator',
-          authMethod: 'local',
-          oidcSubject: null,
-          isAdmin: true,
-          isActive: true,
-          passwordLocked: false,
-          createdAt: now,
-          updatedAt: now,
-          lastLoginAt: null
-        });
-
-        // Grant all permissions for admin
-        const allResources = ['dashboard', 'nodes', 'messages', 'traceroutes', 'channels', 'configuration', 'info', 'notifications', 'audit', 'users', 'packets'];
-        for (const resource of allResources) {
-          await this.authRepo.createPermission({
-            userId: adminId,
-            resource,
-            canRead: true,
-            canWrite: true,
-            canDelete: true
-          });
-        }
-
-        // Log the password
-        logger.warn('');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('🔐 FIRST RUN: Admin user created');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn(`   Username: ${adminUsername}`);
-        logger.warn(`   Password: changeme`);
-        logger.warn('');
-        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('');
-
-        // Log to audit log (fire-and-forget)
-        this.auditLogAsync(
-          adminId,
-          'first_run_admin_created',
-          'users',
-          JSON.stringify({ username: adminUsername }),
-          'system'
-        ).catch(err => logger.error('Failed to write audit log:', err));
-
-        // Save to settings
-        await this.settings.setSetting('setup_complete', 'true');
-      } else {
-        // SQLite: use sync models
-        if (this.userModel.hasAdminUser()) {
-          logger.debug('✅ Admin user already exists');
-          return;
-        }
-
-        logger.debug('📝 No admin user found, creating default admin...');
-
-        const admin = await this.userModel.create({
-          username: adminUsername,
-          password: password,
-          authProvider: 'local',
-          isAdmin: true,
-          displayName: 'Administrator'
-        });
-
-        // Grant all permissions
-        this.permissionModel.grantDefaultPermissions(admin.id, true);
-
-        // Log the password
-        logger.warn('');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('🔐 FIRST RUN: Admin user created');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn(`   Username: ${adminUsername}`);
-        logger.warn(`   Password: changeme`);
-        logger.warn('');
-        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('');
-
-        // Log to audit log
-        this.auditLog(
-          admin.id,
-          'first_run_admin_created',
-          'users',
-          JSON.stringify({ username: adminUsername }),
-          null
-        );
-
-        // Save to settings
-        this.setSetting('setup_complete', 'true');
+      // Use AuthRepository for all database backends
+      const allUsers = await this.auth.getAllUsers();
+      const hasAdmin = allUsers.some(u => u.isAdmin);
+      if (hasAdmin) {
+        logger.debug('✅ Admin user already exists');
+        return;
       }
+
+      logger.debug('📝 No admin user found, creating default admin...');
+      const bcrypt = await import('bcrypt');
+      const passwordHash = await bcrypt.hash(password, 10);
+      const now = Date.now();
+
+      const adminId = await this.auth.createUser({
+        username: adminUsername,
+        passwordHash,
+        email: null,
+        displayName: 'Administrator',
+        authMethod: 'local',
+        oidcSubject: null,
+        isAdmin: true,
+        isActive: true,
+        passwordLocked: false,
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: null
+      });
+
+      // Grant all permissions for admin
+      const allResources = ['dashboard', 'nodes', 'messages', 'traceroutes', 'channels', 'configuration', 'info', 'notifications', 'audit', 'users', 'packets'];
+      for (const resource of allResources) {
+        await this.auth.createPermission({
+          userId: adminId,
+          resource,
+          canRead: true,
+          canWrite: true,
+          canDelete: true
+        });
+      }
+
+      // Log the password
+      logger.warn('');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('🔐 FIRST RUN: Admin user created');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn(`   Username: ${adminUsername}`);
+      logger.warn(`   Password: changeme`);
+      logger.warn('');
+      logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('');
+
+      // Log to audit log (fire-and-forget)
+      this.auditLogAsync(
+        adminId,
+        'first_run_admin_created',
+        'users',
+        JSON.stringify({ username: adminUsername }),
+        'system'
+      ).catch(err => logger.error('Failed to write audit log:', err));
+
+      // Save to settings
+      await this.settings.setSetting('setup_complete', 'true');
     } catch (error) {
       logger.error('❌ Failed to create admin user:', error);
       throw error;
@@ -8017,96 +7969,53 @@ class DatabaseService {
         { resource: 'info' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false }
       ];
 
-      // Use appropriate method based on database type
-      if (this.authRepo) {
-        // PostgreSQL/MySQL: use Drizzle repository
-        const existingUser = await this.authRepo.getUserByUsername('anonymous');
-        if (existingUser) {
-          logger.debug('✅ Anonymous user already exists');
-          return;
-        }
-
-        logger.debug('📝 Creating anonymous user for unauthenticated access...');
-        const now = Date.now();
-        const anonymousId = await this.authRepo.createUser({
-          username: 'anonymous',
-          passwordHash,
-          email: null,
-          displayName: 'Anonymous User',
-          authMethod: 'local',
-          oidcSubject: null,
-          isAdmin: false,
-          isActive: true,
-          passwordLocked: false,
-          createdAt: now,
-          updatedAt: now,
-          lastLoginAt: null
-        });
-
-        // Grant default permissions
-        for (const perm of defaultAnonPermissions) {
-          await this.authRepo.createPermission({
-            userId: anonymousId,
-            resource: perm.resource,
-            canViewOnMap: perm.canViewOnMap,
-            canRead: perm.canRead,
-            canWrite: perm.canWrite,
-            canDelete: perm.canDelete
-          });
-        }
-
-        logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
-        logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
-
-        // Log to audit log (fire-and-forget for async)
-        this.auditLogAsync(
-          anonymousId,
-          'anonymous_user_created',
-          'users',
-          JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
-          'system'
-        ).catch(err => logger.error('Failed to write audit log:', err));
-      } else {
-        // SQLite: use sync models
-        const anonymousUser = this.userModel.findByUsername('anonymous');
-        if (anonymousUser) {
-          logger.debug('✅ Anonymous user already exists');
-          return;
-        }
-
-        logger.debug('📝 Creating anonymous user for unauthenticated access...');
-        const anonymous = await this.userModel.create({
-          username: 'anonymous',
-          password: randomPassword,  // Random password - effectively cannot login
-          authProvider: 'local',
-          isAdmin: false,
-          displayName: 'Anonymous User'
-        });
-
-        // Grant default permissions
-        for (const perm of defaultAnonPermissions) {
-          this.permissionModel.grant({
-            userId: anonymous.id,
-            resource: perm.resource,
-            canViewOnMap: perm.canViewOnMap,
-            canRead: perm.canRead,
-            canWrite: perm.canWrite,
-            grantedBy: anonymous.id
-          });
-        }
-
-        logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
-        logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
-
-        // Log to audit log
-        this.auditLog(
-          anonymous.id,
-          'anonymous_user_created',
-          'users',
-          JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
-          null
-        );
+      // Use AuthRepository for all database backends
+      const existingUser = await this.auth.getUserByUsername('anonymous');
+      if (existingUser) {
+        logger.debug('✅ Anonymous user already exists');
+        return;
       }
+
+      logger.debug('📝 Creating anonymous user for unauthenticated access...');
+      const now = Date.now();
+      const anonymousId = await this.auth.createUser({
+        username: 'anonymous',
+        passwordHash,
+        email: null,
+        displayName: 'Anonymous User',
+        authMethod: 'local',
+        oidcSubject: null,
+        isAdmin: false,
+        isActive: true,
+        passwordLocked: false,
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: null
+      });
+
+      // Grant default permissions
+      for (const perm of defaultAnonPermissions) {
+        await this.auth.createPermission({
+          userId: anonymousId,
+          resource: perm.resource,
+          canViewOnMap: perm.canViewOnMap,
+          canRead: perm.canRead,
+          canWrite: perm.canWrite,
+          canDelete: perm.canDelete
+        });
+      }
+
+      logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
+      logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
+
+      // Log to audit log (fire-and-forget)
+      this.auditLogAsync(
+        anonymousId,
+        'anonymous_user_created',
+        'users',
+        JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
+        'system'
+      ).catch(err => logger.error('Failed to write audit log:', err));
     } catch (error) {
       logger.error('❌ Failed to create anonymous user:', error);
       throw error;
@@ -8123,34 +8032,19 @@ class DatabaseService {
     valueBefore?: string | null,
     valueAfter?: string | null
   ): void {
-    // Route to async method for PostgreSQL/MySQL
-    if (this.authRepo) {
-      this.authRepo.createAuditLogEntry({
-        userId,
-        action,
-        resource,
-        details,
-        ipAddress,
-        userAgent: null,
-        timestamp: Date.now(),
-      }).catch(error => {
-        logger.error('Failed to write audit log (async):', error);
-      });
-      return;
-    }
-
-    // SQLite sync path
-    try {
-      const stmt = this.db.prepare(`
-        INSERT INTO audit_log (user_id, action, resource, details, ip_address, value_before, value_after, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      stmt.run(userId, action, resource, details, ipAddress, valueBefore || null, valueAfter || null, Date.now());
-    } catch (error) {
+    // Delegate to AuthRepository for all backends (fire-and-forget)
+    this.auth.createAuditLogEntry({
+      userId,
+      action,
+      resource,
+      details,
+      ipAddress,
+      userAgent: null,
+      timestamp: Date.now(),
+    }).catch(error => {
       logger.error('Failed to write audit log:', error);
       // Don't throw - audit log failures shouldn't break the application
-    }
+    });
   }
 
   getAuditLogs(options: {
@@ -9485,38 +9379,40 @@ class DatabaseService {
     logger.info('[MySQL] Schema initialization complete');
   }
 
-  // ============ ASYNC AUTH METHODS FOR POSTGRESQL ============
-  // These methods delegate to the authRepo for PostgreSQL/MySQL support
+  // ============ ASYNC AUTH METHODS ============
+  // These methods delegate to the AuthRepository for all database backends
+
+  /**
+   * Map a DbUser from the AuthRepository to the User type expected by auth middleware.
+   */
+  private mapDbUserToUser(dbUser: any): any {
+    return {
+      id: dbUser.id,
+      username: dbUser.username,
+      passwordHash: dbUser.passwordHash,
+      email: dbUser.email,
+      displayName: dbUser.displayName,
+      authProvider: dbUser.authMethod,
+      oidcSubject: dbUser.oidcSubject,
+      isAdmin: dbUser.isAdmin,
+      isActive: dbUser.isActive,
+      passwordLocked: dbUser.passwordLocked,
+      mfaEnabled: dbUser.mfaEnabled ?? false,
+      mfaSecret: dbUser.mfaSecret ?? null,
+      mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
+      createdAt: dbUser.createdAt,
+      lastLoginAt: dbUser.lastLoginAt,
+    };
+  }
 
   /**
    * Async method to find a user by username.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async findUserByUsernameAsync(username: string): Promise<any | null> {
-    if (this.authRepo) {
-      const dbUser = await this.authRepo.getUserByUsername(username);
-      if (!dbUser) return null;
-      // Map DbUser to User type expected by auth middleware
-      return {
-        id: dbUser.id,
-        username: dbUser.username,
-        passwordHash: dbUser.passwordHash,
-        email: dbUser.email,
-        displayName: dbUser.displayName,
-        authProvider: dbUser.authMethod,
-        oidcSubject: dbUser.oidcSubject,
-        isAdmin: dbUser.isAdmin,
-        isActive: dbUser.isActive,
-        passwordLocked: dbUser.passwordLocked,
-        mfaEnabled: dbUser.mfaEnabled ?? false,
-        mfaSecret: dbUser.mfaSecret ?? null,
-        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
-        createdAt: dbUser.createdAt,
-        lastLoginAt: dbUser.lastLoginAt,
-      };
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.userModel.findByUsername(username);
+    const dbUser = await this.auth.getUserByUsername(username);
+    if (!dbUser) return null;
+    return this.mapDbUserToUser(dbUser);
   }
 
   /**
@@ -9525,39 +9421,18 @@ class DatabaseService {
    * Returns the user if authentication succeeds, null otherwise.
    */
   async authenticateAsync(username: string, password: string): Promise<any | null> {
-    if (this.authRepo) {
-      const dbUser = await this.authRepo.getUserByUsername(username);
-      if (!dbUser || !dbUser.passwordHash) return null;
+    const dbUser = await this.auth.getUserByUsername(username);
+    if (!dbUser || !dbUser.passwordHash) return null;
 
-      // Verify password using bcrypt
-      const bcrypt = await import('bcrypt');
-      const isValid = await bcrypt.compare(password, dbUser.passwordHash);
-      if (!isValid) return null;
+    // Verify password using bcrypt
+    const bcrypt = await import('bcrypt');
+    const isValid = await bcrypt.compare(password, dbUser.passwordHash);
+    if (!isValid) return null;
 
-      // Update last login
-      await this.authRepo.updateUser(dbUser.id, { lastLoginAt: Date.now() });
+    // Update last login
+    await this.auth.updateUser(dbUser.id, { lastLoginAt: Date.now() });
 
-      // Map DbUser to User type
-      return {
-        id: dbUser.id,
-        username: dbUser.username,
-        passwordHash: dbUser.passwordHash,
-        email: dbUser.email,
-        displayName: dbUser.displayName,
-        authProvider: dbUser.authMethod,
-        oidcSubject: dbUser.oidcSubject,
-        isAdmin: dbUser.isAdmin,
-        isActive: dbUser.isActive,
-        passwordLocked: dbUser.passwordLocked,
-        mfaEnabled: dbUser.mfaEnabled ?? false,
-        mfaSecret: dbUser.mfaSecret ?? null,
-        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
-        createdAt: dbUser.createdAt,
-        lastLoginAt: Date.now(),
-      };
-    }
-    // Fallback to sync for SQLite
-    return this.userModel.authenticate(username, password);
+    return { ...this.mapDbUserToUser(dbUser), lastLoginAt: Date.now() };
   }
 
   /**
@@ -9566,29 +9441,9 @@ class DatabaseService {
    * Returns the user associated with the token if valid, null otherwise.
    */
   async validateApiTokenAsync(token: string): Promise<any | null> {
-    if (this.authRepo) {
-      const result = await this.authRepo.validateApiToken(token);
-      if (!result) return null;
-      // Map DbUser to User type
-      return {
-        id: result.id,
-        username: result.username,
-        passwordHash: result.passwordHash,
-        email: result.email,
-        displayName: result.displayName,
-        authProvider: result.authMethod,
-        oidcSubject: result.oidcSubject,
-        isAdmin: result.isAdmin,
-        isActive: result.isActive,
-        passwordLocked: result.passwordLocked,
-        createdAt: result.createdAt,
-        lastLoginAt: result.lastLoginAt,
-      };
-    }
-    // Fallback to sync for SQLite - apiTokenModel.validate returns userId
-    const userId = await this.apiTokenModel.validate(token);
-    if (!userId) return null;
-    return this.userModel.findById(userId);
+    const result = await this.auth.validateApiToken(token);
+    if (!result) return null;
+    return this.mapDbUserToUser(result);
   }
 
   /**
@@ -9596,30 +9451,9 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async findUserByIdAsync(id: number): Promise<any | null> {
-    if (this.authRepo) {
-      const dbUser = await this.authRepo.getUserById(id);
-      if (!dbUser) return null;
-      // Map DbUser to User type expected by auth middleware
-      return {
-        id: dbUser.id,
-        username: dbUser.username,
-        passwordHash: dbUser.passwordHash,
-        email: dbUser.email,
-        displayName: dbUser.displayName,
-        authProvider: dbUser.authMethod,
-        oidcSubject: dbUser.oidcSubject,
-        isAdmin: dbUser.isAdmin,
-        isActive: dbUser.isActive,
-        passwordLocked: dbUser.passwordLocked,
-        mfaEnabled: dbUser.mfaEnabled ?? false,
-        mfaSecret: dbUser.mfaSecret ?? null,
-        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
-        createdAt: dbUser.createdAt,
-        lastLoginAt: dbUser.lastLoginAt,
-      };
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.userModel.findById(id);
+    const dbUser = await this.auth.getUserById(id);
+    if (!dbUser) return null;
+    return this.mapDbUserToUser(dbUser);
   }
 
   /**
@@ -9627,41 +9461,32 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async checkPermissionAsync(userId: number, resource: string, action: string): Promise<boolean> {
-    if (this.authRepo) {
-      const permissions = await this.authRepo.getPermissionsForUser(userId);
-      for (const perm of permissions) {
-        if (perm.resource === resource) {
-          if (action === 'viewOnMap') return perm.canViewOnMap;
-          if (action === 'read') return perm.canRead;
-          if (action === 'write') return perm.canWrite;
-        }
+    const permissions = await this.auth.getPermissionsForUser(userId);
+    for (const perm of permissions) {
+      if (perm.resource === resource) {
+        if (action === 'viewOnMap') return perm.canViewOnMap;
+        if (action === 'read') return perm.canRead;
+        if (action === 'write') return perm.canWrite;
       }
-      return false;
     }
-    // Fallback to sync for SQLite if repo not ready
-    return this.permissionModel.check(userId, resource as any, action as any);
+    return false;
   }
 
   /**
    * Async method to get user permission set.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   * Returns permissions in the same format as PermissionModel.getUserPermissionSet()
    */
   async getUserPermissionSetAsync(userId: number): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
-    if (this.authRepo) {
-      const permissions = await this.authRepo.getPermissionsForUser(userId);
-      const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
-      for (const perm of permissions) {
-        permissionSet[perm.resource] = {
-          viewOnMap: perm.canViewOnMap ?? false,
-          read: perm.canRead,
-          write: perm.canWrite,
-        };
-      }
-      return permissionSet;
+    const permissions = await this.auth.getPermissionsForUser(userId);
+    const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
+    for (const perm of permissions) {
+      permissionSet[perm.resource] = {
+        viewOnMap: perm.canViewOnMap ?? false,
+        read: perm.canRead,
+        write: perm.canWrite,
+      };
     }
-    // Fallback to sync for SQLite if repo not ready
-    return this.permissionModel.getUserPermissionSet(userId);
+    return permissionSet;
   }
 
   /**
@@ -9675,24 +9500,19 @@ class DatabaseService {
     details: string | null,
     ipAddress: string
   ): Promise<void> {
-    if (this.authRepo) {
-      try {
-        await this.authRepo.createAuditLogEntry({
-          userId,
-          action,
-          resource,
-          details,
-          ipAddress,
-          userAgent: null,
-          timestamp: Date.now(),
-        });
-      } catch (error) {
-        logger.error('[auditLogAsync] Failed to write audit log:', error);
-      }
-      return;
+    try {
+      await this.auth.createAuditLogEntry({
+        userId,
+        action,
+        resource,
+        details,
+        ipAddress,
+        userAgent: null,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      logger.error('[auditLogAsync] Failed to write audit log:', error);
     }
-    // Fallback to sync for SQLite
-    this.auditLog(userId, action, resource, details, ipAddress);
   }
 
   // ============ ASYNC MESSAGE METHODS ============
@@ -9749,16 +9569,9 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async updatePasswordAsync(userId: number, newPassword: string): Promise<void> {
-    // Import bcrypt dynamically to avoid circular dependencies
     const bcrypt = await import('bcrypt');
     const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { passwordHash });
-      return;
-    }
-    // Fallback to sync for SQLite
-    await this.userModel.updatePassword(userId, newPassword);
+    await this.auth.updateUser(userId, { passwordHash });
   }
 
   // ============ ASYNC MFA METHODS ============
@@ -9767,48 +9580,28 @@ class DatabaseService {
    * Update MFA secret and backup codes for a user.
    */
   async updateUserMfaSecretAsync(userId: number, secret: string, backupCodes: string): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
+    await this.auth.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
   }
 
   /**
    * Clear MFA data for a user (disable MFA).
    */
   async clearUserMfaAsync(userId: number): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
+    await this.auth.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
   }
 
   /**
    * Enable MFA for a user (set mfaEnabled to true).
    */
   async enableUserMfaAsync(userId: number): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaEnabled: true });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaEnabled: true });
+    await this.auth.updateUser(userId, { mfaEnabled: true });
   }
 
   /**
    * Update backup codes for a user (after one is consumed).
    */
   async consumeBackupCodeAsync(userId: number, remainingCodes: string): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaBackupCodes: remainingCodes });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaBackupCodes: remainingCodes });
+    await this.auth.updateUser(userId, { mfaBackupCodes: remainingCodes });
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============
