@@ -125,7 +125,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
 
     // Enforce maximum limit to prevent unbounded queries
     // Use the configured max count from settings (defaults to 1000)
-    const MAX_LIMIT = packetLogService.getMaxCount();
+    const MAX_LIMIT = await packetLogService.getMaxCount();
     if (limit > MAX_LIMIT) {
       limit = MAX_LIMIT;
     }
@@ -177,8 +177,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       total,
       offset,
       limit,
-      maxCount: packetLogService.getMaxCount(),
-      maxAgeHours: packetLogService.getMaxAgeHours()
+      maxCount: await packetLogService.getMaxCount(),
+      maxAgeHours: await packetLogService.getMaxAgeHours()
     });
   } catch (error) {
     logger.error('❌ Error fetching packet logs:', error);
@@ -200,9 +200,9 @@ router.get('/stats', requirePacketPermissions, async (_req, res) => {
       total,
       encrypted,
       decoded,
-      maxCount: packetLogService.getMaxCount(),
-      maxAgeHours: packetLogService.getMaxAgeHours(),
-      enabled: packetLogService.isEnabled()
+      maxCount: await packetLogService.getMaxCount(),
+      maxAgeHours: await packetLogService.getMaxAgeHours(),
+      enabled: await packetLogService.isEnabled()
     });
   } catch (error) {
     logger.error('❌ Error fetching packet stats:', error);
@@ -218,7 +218,7 @@ router.get('/stats', requirePacketPermissions, async (_req, res) => {
  */
 router.get('/stats/distribution', requirePacketPermissions, async (req, res) => {
   try {
-    const enabled = packetLogService.isEnabled();
+    const enabled = await packetLogService.isEnabled();
 
     // If not enabled, return empty data
     if (!enabled) {
@@ -288,7 +288,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     const canReadMessages = (req as any).canReadMessages as boolean;
 
     // Fetch all matching packets (up to configured max)
-    const maxCount = packetLogService.getMaxCount();
+    const maxCount = await packetLogService.getMaxCount();
     const rawPackets = await packetLogService.getPacketsAsync({
       offset: 0,
       limit: maxCount,
