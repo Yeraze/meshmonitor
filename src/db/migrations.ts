@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 11 migrations in sequential order for use by the migration runner.
+ * Registers all 12 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -23,6 +23,7 @@ import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } 
 import { migration as fixCustomThemesColumnsMigration, runMigration085Postgres, runMigration085Mysql } from '../server/migrations/009_fix_custom_themes_columns.js';
 import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } from '../server/migrations/010_add_auto_distance_delete_log.js';
 import { migration as fixMessageNodeNumBigintMigration, runMigration087Postgres, runMigration087Mysql } from '../server/migrations/011_fix_message_nodenum_bigint.js';
+import { migration as authAlignMigration, runMigration012Postgres, runMigration012Mysql } from '../server/migrations/012_align_sqlite_auth_schema.js';
 
 // ============================================================================
 // Registry
@@ -139,4 +140,17 @@ registry.register({
   sqlite: (db) => fixMessageNodeNumBigintMigration.up(db),
   postgres: (client) => runMigration087Postgres(client),
   mysql: (pool) => runMigration087Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 012: Align auth schema across SQLite/PostgreSQL/MySQL
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 12,
+  name: 'align_sqlite_auth_schema',
+  settingsKey: 'migration_012_align_sqlite_auth_schema',
+  sqlite: (db) => authAlignMigration.up(db),
+  postgres: (client) => runMigration012Postgres(client),
+  mysql: (pool) => runMigration012Mysql(pool),
 });

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 11 migrations registered', () => {
-    expect(registry.count()).toBe(11);
+  it('has all 12 migrations registered', () => {
+    expect(registry.count()).toBe(12);
   });
 
   it('first migration is v37 baseline', () => {
@@ -12,14 +12,14 @@ describe('migrations registry', () => {
     expect(all[0].name).toContain('v37_baseline');
   });
 
-  it('last migration is the message nodenum BIGINT fix', () => {
+  it('last migration is the auth schema alignment', () => {
     const all = registry.getAll();
     const last = all[all.length - 1];
-    expect(last.number).toBe(11);
-    expect(last.name).toContain('message_nodenum_bigint');
+    expect(last.number).toBe(12);
+    expect(last.name).toContain('auth');
   });
 
-  it('migrations are sequentially numbered from 1 to 11', () => {
+  it('migrations are sequentially numbered from 1 to 12', () => {
     const all = registry.getAll();
     for (let i = 0; i < all.length; i++) {
       expect(all[i].number).toBe(i + 1);
@@ -46,7 +46,7 @@ describe('migrations registry', () => {
     }
   });
 
-  it('migrations 002-011 all have settingsKey', () => {
+  it('migrations 002-012 all have settingsKey', () => {
     const all = registry.getAll();
     for (let i = 1; i < all.length; i++) {
       expect(all[i].settingsKey, `Migration ${all[i].number} should have settingsKey`).toBeTruthy();
