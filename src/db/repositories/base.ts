@@ -118,6 +118,34 @@ export abstract class BaseRepository {
   }
 
   /**
+   * Execute a raw SQL query that returns rows (SELECT) across all dialects.
+   * SQLite's Drizzle driver doesn't have .execute() — uses .all() instead.
+   */
+  protected async executeQuery(query: any): Promise<any[]> {
+    if (this.isSQLite()) {
+      return this.db.all(query);
+    }
+    const result = await this.db.execute(query);
+    // MySQL returns [rows, fields]; PostgreSQL returns { rows }
+    if (this.isMySQL()) {
+      return (result as any)[0];
+    }
+    return result.rows ?? result;
+  }
+
+  /**
+   * Execute a raw SQL mutation (INSERT/UPDATE/DELETE) across all dialects.
+   * SQLite's Drizzle driver doesn't have .execute() — uses .run() instead.
+   * Returns the raw driver result for callers that need affected-row counts.
+   */
+  protected async executeRun(query: any): Promise<any> {
+    if (this.isSQLite()) {
+      return this.db.run(query);
+    }
+    return this.db.execute(query);
+  }
+
+  /**
    * Get current timestamp in milliseconds
    */
   protected now(): number {

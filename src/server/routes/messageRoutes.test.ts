@@ -433,7 +433,7 @@ describe('Message Deletion Routes', () => {
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
         'node_traceroutes_purged',
-        'traceroutes',
+        'traceroute',
         expect.stringContaining('20'),
         expect.any(String)
       );

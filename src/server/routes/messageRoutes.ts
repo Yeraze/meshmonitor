@@ -436,7 +436,7 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, async (req, r
       await databaseService.auditLogAsync(
         user.id,
         'node_traceroutes_purged',
-        'traceroutes',
+        'traceroute',
         `Purged ${deletedCount} traceroutes for node ${nodeNum}`,
         req.ip || ''
       );
