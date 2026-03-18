@@ -84,7 +84,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     // Check privacy for position history
     // nodeId is hex with '!' prefix (e.g., '!df6ab854'); getNode() expects the decimal nodeNum
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = databaseService.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum);
 
     if (node?.positionOverrideIsPrivate === true) {
       if (!await hasNodesPrivateReadPermission(userId, isAdmin)) {

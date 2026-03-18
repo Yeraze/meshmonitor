@@ -1248,11 +1248,10 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return 403 for private-position node without nodes_private:read', async () => {
     const databaseService = await import('../../../services/database.js');
-    // getNode is called by checkNodeChannelAccess (async, via nodes repo) and by privacy check (sync, direct)
+    // getNode is called by checkNodeChannelAccess (async, via nodes repo) and by privacy check (also async, via nodes repo)
     vi.mocked(databaseService.default.nodes.getNode)
+      .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any)
       .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
-    vi.mocked(databaseService.default.getNode)
-      .mockReturnValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
     vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValue({
       nodes: { read: true },
       nodes_private: { read: false },
