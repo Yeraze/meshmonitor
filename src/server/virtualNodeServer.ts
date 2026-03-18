@@ -664,8 +664,8 @@ export class VirtualNodeServer extends EventEmitter {
           longName: node.longName || 'Unknown',
           shortName: node.shortName || '????',
           hwModel: node.hwModel || 0,
-          role: node.role,
-          publicKey: node.publicKey,
+          role: node.role ?? undefined,
+          publicKey: node.publicKey ?? undefined,
         },
         position: (node.latitude && node.longitude) ? {
           latitude: node.latitude,
@@ -673,16 +673,16 @@ export class VirtualNodeServer extends EventEmitter {
           altitude: node.altitude || 0,
           time: node.lastHeard || Math.floor(Date.now() / 1000),
         } : undefined,
-        deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
-                       node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
-          batteryLevel: node.batteryLevel,
-          voltage: node.voltage,
-          channelUtilization: node.channelUtilization,
-          airUtilTx: node.airUtilTx,
+        deviceMetrics: (node.batteryLevel != null || node.voltage != null ||
+                       node.channelUtilization != null || node.airUtilTx != null) ? {
+          batteryLevel: node.batteryLevel ?? undefined,
+          voltage: node.voltage ?? undefined,
+          channelUtilization: node.channelUtilization ?? undefined,
+          airUtilTx: node.airUtilTx ?? undefined,
         } : undefined,
-        snr: node.snr,
-        lastHeard: node.lastHeard,
-        hopsAway: node.hopsAway,
+        snr: node.snr ?? undefined,
+        lastHeard: node.lastHeard ?? undefined,
+        hopsAway: node.hopsAway ?? undefined,
         viaMqtt: node.viaMqtt ? true : false,
         isFavorite: node.isFavorite ? true : false,
       });
