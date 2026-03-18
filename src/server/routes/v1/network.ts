@@ -14,11 +14,11 @@ const router = express.Router();
  * GET /api/v1/network
  * Get network-wide statistics and summary information
  */
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
-    const allNodes = databaseService.getAllNodes();
-    const activeNodes = databaseService.getActiveNodes(7);
-    const traceroutes = databaseService.getAllTraceroutes();
+    const allNodes = await databaseService.nodes.getAllNodes();
+    const activeNodes = await databaseService.nodes.getActiveNodes(7);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes();
 
     const stats = {
       totalNodes: allNodes.length,
@@ -70,10 +70,10 @@ router.get('/direct-neighbors', async (req: Request, res: Response) => {
  * GET /api/v1/network/topology
  * Get network topology data (nodes and their connections)
  */
-router.get('/topology', (_req: Request, res: Response) => {
+router.get('/topology', async (_req: Request, res: Response) => {
   try {
-    const nodes = databaseService.getAllNodes();
-    const traceroutes = databaseService.getAllTraceroutes();
+    const nodes = await databaseService.nodes.getAllNodes();
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes();
 
     const topology = {
       nodes: nodes.map(n => ({
