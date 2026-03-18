@@ -26,7 +26,7 @@ describe('buildActiveSchema', () => {
     const schema = buildActiveSchema('sqlite');
     // Count should match total number of table groups across all schema files
     const keys = Object.keys(schema);
-    expect(keys.length).toBeGreaterThanOrEqual(33); // 33+ table groups
+    expect(keys.length).toBeGreaterThanOrEqual(38); // 38+ table groups
   });
 
   it('returns frozen objects', () => {
@@ -50,6 +50,11 @@ describe('buildActiveSchema', () => {
     expect(schema).toHaveProperty('solarEstimates');
     expect(schema).toHaveProperty('autoTracerouteNodes');
     expect(schema).toHaveProperty('autoTimeSyncNodes');
+    expect(schema).toHaveProperty('autoTracerouteLog');
+    expect(schema).toHaveProperty('autoKeyRepairState');
+    expect(schema).toHaveProperty('autoKeyRepairLog');
+    expect(schema).toHaveProperty('autoDistanceDeleteLog');
+    expect(schema).toHaveProperty('geofenceCooldowns');
     expect(schema).toHaveProperty('newsCache');
     expect(schema).toHaveProperty('userNewsStatus');
   });

@@ -782,20 +782,18 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
 }
 
 async function createPostgresSchemaFromApp(pool: Pool): Promise<void> {
-  console.log('📋 Creating PostgreSQL schema from application definitions...');
+  console.log('📋 Creating PostgreSQL schema via migration registry...');
 
-  // Dynamically import to avoid circular dependencies at module load time
-  const { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } = await import('../db/schema/postgres-create.js');
-
+  const { registry } = await import('../db/migrations.js');
   const client = await pool.connect();
 
   try {
-    await client.query(POSTGRES_SCHEMA_SQL);
-
-    for (const tableName of POSTGRES_TABLE_NAMES) {
-      console.log(`  ✅ Created table: ${tableName}`);
+    for (const migration of registry.getAll()) {
+      if (migration.postgres) {
+        await migration.postgres(client);
+        console.log(`  ✅ Migration ${String(migration.number).padStart(3, '0')}: ${migration.name}`);
+      }
     }
-
     console.log('✅ PostgreSQL schema created');
   } finally {
     client.release();
@@ -803,28 +801,17 @@ async function createPostgresSchemaFromApp(pool: Pool): Promise<void> {
 }
 
 async function createMySQLSchemaFromApp(pool: mysql.Pool): Promise<void> {
-  console.log('📋 Creating MySQL schema from application definitions...');
+  console.log('📋 Creating MySQL schema via migration registry...');
 
-  const { MYSQL_SCHEMA_SQL, MYSQL_TABLE_NAMES } = await import('../db/schema/mysql-create.js');
+  const { registry } = await import('../db/migrations.js');
 
-  const connection = await pool.getConnection();
-  try {
-    // Split by semicolon and execute each statement
-    const statements = MYSQL_SCHEMA_SQL.split(';').filter((s: string) => s.trim());
-    for (const stmt of statements) {
-      try {
-        await connection.execute(stmt);
-      } catch {
-        // Table may already exist, skip
-      }
+  for (const migration of registry.getAll()) {
+    if (migration.mysql) {
+      await migration.mysql(pool);
+      console.log(`  ✅ Migration ${String(migration.number).padStart(3, '0')}: ${migration.name}`);
     }
-    for (const tableName of MYSQL_TABLE_NAMES) {
-      console.log(`  ✅ Created table: ${tableName}`);
-    }
-    console.log('✅ MySQL schema created');
-  } finally {
-    connection.release();
   }
+  console.log('✅ MySQL schema created');
 }
 
 /**

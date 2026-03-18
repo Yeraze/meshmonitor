@@ -65,6 +65,11 @@ import {
   solarEstimatesSqlite, solarEstimatesPostgres, solarEstimatesMysql,
   autoTracerouteNodesSqlite, autoTracerouteNodesPostgres, autoTracerouteNodesMysql,
   autoTimeSyncNodesSqlite, autoTimeSyncNodesPostgres, autoTimeSyncNodesMysql,
+  autoTracerouteLogSqlite, autoTracerouteLogPostgres, autoTracerouteLogMysql,
+  autoKeyRepairStateSqlite, autoKeyRepairStatePostgres, autoKeyRepairStateMysql,
+  autoKeyRepairLogSqlite, autoKeyRepairLogPostgres, autoKeyRepairLogMysql,
+  autoDistanceDeleteLogSqlite, autoDistanceDeleteLogPostgres, autoDistanceDeleteLogMysql,
+  geofenceCooldownsSqlite, geofenceCooldownsPostgres, geofenceCooldownsMysql,
   newsCacheSqlite, newsCachePostgres, newsCacheMysql,
   userNewsStatusSqlite, userNewsStatusPostgres, userNewsStatusMysql,
 } from './schema/misc.js';
@@ -135,6 +140,11 @@ export interface ActiveSchema {
   solarEstimates: any;
   autoTracerouteNodes: any;
   autoTimeSyncNodes: any;
+  autoTracerouteLog: any;
+  autoKeyRepairState: any;
+  autoKeyRepairLog: any;
+  autoDistanceDeleteLog: any;
+  geofenceCooldowns: any;
   newsCache: any;
   userNewsStatus: any;
 
@@ -186,6 +196,11 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     solarEstimates: solarEstimatesSqlite,
     autoTracerouteNodes: autoTracerouteNodesSqlite,
     autoTimeSyncNodes: autoTimeSyncNodesSqlite,
+    autoTracerouteLog: autoTracerouteLogSqlite,
+    autoKeyRepairState: autoKeyRepairStateSqlite,
+    autoKeyRepairLog: autoKeyRepairLogSqlite,
+    autoDistanceDeleteLog: autoDistanceDeleteLogSqlite,
+    geofenceCooldowns: geofenceCooldownsSqlite,
     newsCache: newsCacheSqlite,
     userNewsStatus: userNewsStatusSqlite,
     channelDatabase: channelDatabaseSqlite,
@@ -221,6 +236,11 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     solarEstimates: solarEstimatesPostgres,
     autoTracerouteNodes: autoTracerouteNodesPostgres,
     autoTimeSyncNodes: autoTimeSyncNodesPostgres,
+    autoTracerouteLog: autoTracerouteLogPostgres,
+    autoKeyRepairState: autoKeyRepairStatePostgres,
+    autoKeyRepairLog: autoKeyRepairLogPostgres,
+    autoDistanceDeleteLog: autoDistanceDeleteLogPostgres,
+    geofenceCooldowns: geofenceCooldownsPostgres,
     newsCache: newsCachePostgres,
     userNewsStatus: userNewsStatusPostgres,
     channelDatabase: channelDatabasePostgres,
@@ -256,6 +276,11 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     solarEstimates: solarEstimatesMysql,
     autoTracerouteNodes: autoTracerouteNodesMysql,
     autoTimeSyncNodes: autoTimeSyncNodesMysql,
+    autoTracerouteLog: autoTracerouteLogMysql,
+    autoKeyRepairState: autoKeyRepairStateMysql,
+    autoKeyRepairLog: autoKeyRepairLogMysql,
+    autoDistanceDeleteLog: autoDistanceDeleteLogMysql,
+    geofenceCooldowns: geofenceCooldownsMysql,
     newsCache: newsCacheMysql,
     userNewsStatus: userNewsStatusMysql,
     channelDatabase: channelDatabaseMysql,

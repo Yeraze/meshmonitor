@@ -2,24 +2,24 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 87 migrations registered', () => {
-    expect(registry.count()).toBe(87);
+  it('has all 12 migrations registered', () => {
+    expect(registry.count()).toBe(12);
   });
 
-  it('first migration is auth tables', () => {
+  it('first migration is v37 baseline', () => {
     const all = registry.getAll();
     expect(all[0].number).toBe(1);
-    expect(all[0].name).toContain('auth');
+    expect(all[0].name).toContain('v37_baseline');
   });
 
-  it('last migration is the message nodenum BIGINT fix', () => {
+  it('last migration is the auth schema alignment', () => {
     const all = registry.getAll();
     const last = all[all.length - 1];
-    expect(last.number).toBe(87);
-    expect(last.name).toContain('message_nodenum_bigint');
+    expect(last.number).toBe(12);
+    expect(last.name).toContain('auth');
   });
 
-  it('migrations are sequentially numbered from 1 to 87', () => {
+  it('migrations are sequentially numbered from 1 to 12', () => {
     const all = registry.getAll();
     for (let i = 0; i < all.length; i++) {
       expect(all[i].number).toBe(i + 1);
@@ -33,44 +33,32 @@ describe('migrations registry', () => {
     }
   });
 
-  it('migration 001 is selfIdempotent (uses CREATE TABLE IF NOT EXISTS)', () => {
+  it('migration 001 is selfIdempotent', () => {
     const all = registry.getAll();
     expect(all[0].selfIdempotent).toBe(true);
     expect(all[0].settingsKey).toBeFalsy();
   });
 
-  it('old-style migrations (2-46) all have settingsKey', () => {
+  it('only migration 001 is selfIdempotent', () => {
     const all = registry.getAll();
-    // All old-style migrations (002-046) use settingsKey guards since none are truly
-    // idempotent — they use ALTER TABLE ADD COLUMN which SQLite doesn't support with
-    // IF NOT EXISTS, or INSERT without required NOT NULL columns.
-    for (let i = 1; i < 46; i++) {
-      const m = all[i];
-      expect(m.settingsKey, `Migration ${m.number} should have settingsKey`).toBeTruthy();
-      expect(m.selfIdempotent, `Migration ${m.number} should NOT be selfIdempotent`).toBeFalsy();
+    for (let i = 1; i < all.length; i++) {
+      expect(all[i].selfIdempotent, `Migration ${all[i].number} should NOT be selfIdempotent`).toBeFalsy();
     }
   });
 
-  it('new-style migrations (47+) have settingsKey', () => {
+  it('migrations 002-012 all have settingsKey', () => {
     const all = registry.getAll();
-    for (let i = 46; i < all.length; i++) {
+    for (let i = 1; i < all.length; i++) {
       expect(all[i].settingsKey, `Migration ${all[i].number} should have settingsKey`).toBeTruthy();
     }
   });
 
-  it('all old-style migrations have sqlite function', () => {
+  it('all migrations have sqlite, postgres, and mysql functions', () => {
     const all = registry.getAll();
-    for (let i = 0; i < 46; i++) {
-      expect(all[i].sqlite, `Migration ${all[i].number} should have sqlite function`).toBeTruthy();
-    }
-  });
-
-  it('migrations with postgres/mysql functions start at 47', () => {
-    const all = registry.getAll();
-    // Old-style should NOT have postgres/mysql
-    for (let i = 0; i < 46; i++) {
-      expect(all[i].postgres, `Migration ${all[i].number} should not have postgres`).toBeFalsy();
-      expect(all[i].mysql, `Migration ${all[i].number} should not have mysql`).toBeFalsy();
+    for (const m of all) {
+      expect(m.sqlite, `Migration ${m.number} should have sqlite function`).toBeTruthy();
+      expect(m.postgres, `Migration ${m.number} should have postgres function`).toBeTruthy();
+      expect(m.mysql, `Migration ${m.number} should have mysql function`).toBeTruthy();
     }
   });
 });
