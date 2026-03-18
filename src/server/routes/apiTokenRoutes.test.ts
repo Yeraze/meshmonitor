@@ -7,13 +7,10 @@ import databaseService from '../../services/database.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    apiTokenModel: {
-      getUserToken: vi.fn(),
-      create: vi.fn(),
-      revoke: vi.fn()
-    },
-    userModel: {
-      findById: vi.fn()
+    auth: {
+      getUserActiveApiToken: vi.fn(),
+      generateAndCreateApiToken: vi.fn(),
+      revokeApiToken: vi.fn()
     },
     auditLog: vi.fn(),
     // Async methods required by authMiddleware
@@ -26,13 +23,10 @@ vi.mock('../../services/database.js', () => ({
 }));
 
 const mockDatabase = databaseService as unknown as {
-  apiTokenModel: {
-    getUserToken: ReturnType<typeof vi.fn>;
-    create: ReturnType<typeof vi.fn>;
-    revoke: ReturnType<typeof vi.fn>;
-  };
-  userModel: {
-    findById: ReturnType<typeof vi.fn>;
+  auth: {
+    getUserActiveApiToken: ReturnType<typeof vi.fn>;
+    generateAndCreateApiToken: ReturnType<typeof vi.fn>;
+    revokeApiToken: ReturnType<typeof vi.fn>;
   };
   auditLog: ReturnType<typeof vi.fn>;
   // Async methods
@@ -78,8 +72,7 @@ const createApp = (options: { authenticated?: boolean } = {}): Express => {
 describe('API Token Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDatabase.userModel.findById.mockReturnValue(defaultUser);
-    mockDatabase.apiTokenModel.getUserToken.mockReturnValue(null);
+    mockDatabase.auth.getUserActiveApiToken.mockResolvedValue(null);
     // Configure async mocks for authMiddleware
     mockDatabase.findUserByIdAsync.mockResolvedValue(defaultUser);
     mockDatabase.findUserByUsernameAsync.mockResolvedValue(null);
@@ -110,7 +103,7 @@ describe('API Token Routes', () => {
         hasToken: false,
         token: null
       });
-      expect(mockDatabase.apiTokenModel.getUserToken).toHaveBeenCalledWith(defaultUser.id);
+      expect(mockDatabase.auth.getUserActiveApiToken).toHaveBeenCalledWith(defaultUser.id);
     });
 
     it('returns token metadata when token exists', async () => {
@@ -121,7 +114,7 @@ describe('API Token Routes', () => {
         lastUsedAt: 1700000100000,
         isActive: true
       };
-      mockDatabase.apiTokenModel.getUserToken.mockReturnValue(tokenInfo);
+      mockDatabase.auth.getUserActiveApiToken.mockResolvedValue(tokenInfo);
 
       const app = createApp();
       const response = await request(app).get('/api/token');
@@ -140,9 +133,7 @@ describe('API Token Routes', () => {
     });
 
     it('returns 500 when database lookup fails', async () => {
-      mockDatabase.apiTokenModel.getUserToken.mockImplementation(() => {
-        throw new Error('db down');
-      });
+      mockDatabase.auth.getUserActiveApiToken.mockRejectedValue(new Error('db down'));
 
       const app = createApp();
       const response = await request(app).get('/api/token');
@@ -163,7 +154,7 @@ describe('API Token Routes', () => {
         createdAt: 1700000200000,
         isActive: true
       };
-      mockDatabase.apiTokenModel.create.mockResolvedValue({
+      mockDatabase.auth.generateAndCreateApiToken.mockResolvedValue({
         token: 'mm_v1_xyz_secret',
         tokenInfo
       });
@@ -172,10 +163,10 @@ describe('API Token Routes', () => {
       const response = await request(app).post('/api/token/generate');
 
       expect(response.status).toBe(200);
-      expect(mockDatabase.apiTokenModel.create).toHaveBeenCalledWith({
-        userId: defaultUser.id,
-        createdBy: defaultUser.id
-      });
+      expect(mockDatabase.auth.generateAndCreateApiToken).toHaveBeenCalledWith(
+        defaultUser.id,
+        defaultUser.id
+      );
       expect(response.body).toMatchObject({
         message: expect.stringContaining('generated successfully'),
         token: 'mm_v1_xyz_secret',
@@ -191,7 +182,7 @@ describe('API Token Routes', () => {
     });
 
     it('returns 500 when token generation fails', async () => {
-      mockDatabase.apiTokenModel.create.mockRejectedValue(new Error('db failure'));
+      mockDatabase.auth.generateAndCreateApiToken.mockRejectedValue(new Error('db failure'));
 
       const app = createApp();
       const response = await request(app).post('/api/token/generate');
@@ -206,7 +197,7 @@ describe('API Token Routes', () => {
 
   describe('DELETE /api/token', () => {
     it('returns 404 when user has no active token', async () => {
-      mockDatabase.apiTokenModel.getUserToken.mockReturnValue(null);
+      mockDatabase.auth.getUserActiveApiToken.mockResolvedValue(null);
 
       const app = createApp();
       const response = await request(app).delete('/api/token');
@@ -226,8 +217,8 @@ describe('API Token Routes', () => {
         lastUsedAt: null,
         isActive: true
       };
-      mockDatabase.apiTokenModel.getUserToken.mockReturnValue(existingToken);
-      mockDatabase.apiTokenModel.revoke.mockReturnValue(false);
+      mockDatabase.auth.getUserActiveApiToken.mockResolvedValue(existingToken);
+      mockDatabase.auth.revokeApiToken.mockResolvedValue(false);
 
       const app = createApp();
       const response = await request(app).delete('/api/token');
@@ -247,8 +238,8 @@ describe('API Token Routes', () => {
         lastUsedAt: 1700000300000,
         isActive: true
       };
-      mockDatabase.apiTokenModel.getUserToken.mockReturnValue(existingToken);
-      mockDatabase.apiTokenModel.revoke.mockReturnValue(true);
+      mockDatabase.auth.getUserActiveApiToken.mockResolvedValue(existingToken);
+      mockDatabase.auth.revokeApiToken.mockResolvedValue(true);
 
       const app = createApp();
       const response = await request(app).delete('/api/token');
@@ -257,7 +248,7 @@ describe('API Token Routes', () => {
       expect(response.body).toEqual({
         message: 'API token revoked successfully'
       });
-      expect(mockDatabase.apiTokenModel.revoke).toHaveBeenCalledWith(existingToken.id, defaultUser.id);
+      expect(mockDatabase.auth.revokeApiToken).toHaveBeenCalledWith(existingToken.id, defaultUser.id);
       expect(mockDatabase.auditLog).toHaveBeenCalledWith(
         defaultUser.id,
         'api_token_revoked',
@@ -275,10 +266,8 @@ describe('API Token Routes', () => {
         lastUsedAt: null,
         isActive: true
       };
-      mockDatabase.apiTokenModel.getUserToken.mockReturnValue(existingToken);
-      mockDatabase.apiTokenModel.revoke.mockImplementation(() => {
-        throw new Error('db failure');
-      });
+      mockDatabase.auth.getUserActiveApiToken.mockResolvedValue(existingToken);
+      mockDatabase.auth.revokeApiToken.mockRejectedValue(new Error('db failure'));
 
       const app = createApp();
       const response = await request(app).delete('/api/token');
