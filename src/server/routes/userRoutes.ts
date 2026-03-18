@@ -150,7 +150,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     databaseService.auditLog(
       req.user!.id,
       'user_updated',
-      'users',
+      'security',
       JSON.stringify({ userId, updates: { email, displayName, isActive, passwordLocked } }),
       req.ip || null
     );

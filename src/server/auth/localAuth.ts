@@ -84,7 +84,7 @@ export async function createLocalUser(
         user = await databaseService.findUserByIdAsync(userId) as User;
 
         // Grant default permissions
-        const defaultResources = ['nodes', 'messages', 'telemetry', 'traceroutes', 'channels', 'map', 'settings'];
+        const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
         for (const resource of defaultResources) {
           await databaseService.authRepo.createPermission({
             userId,
@@ -97,7 +97,7 @@ export async function createLocalUser(
         }
         // Admin gets additional permissions
         if (isAdmin) {
-          const adminResources = ['users', 'permissions', 'audit', 'security', 'connection', 'backup'];
+          const adminResources = ['configuration', 'automation', 'connection', 'audit', 'security', 'themes', 'nodes_private', 'meshcore', 'packetmonitor'];
           for (const resource of adminResources) {
             await databaseService.authRepo.createPermission({
               userId,

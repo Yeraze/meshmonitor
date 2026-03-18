@@ -542,7 +542,7 @@ describe('Packet Routes', () => {
       expect(DatabaseService.auditLog).toHaveBeenCalledWith(
         adminUser.id,
         'packets_cleared',
-        'packets',
+        'packetmonitor',
         expect.stringContaining('Cleared 2 packet log entries'),
         expect.anything() // IP address
       );

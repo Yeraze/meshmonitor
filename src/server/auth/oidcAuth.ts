@@ -261,7 +261,7 @@ export async function handleOIDCCallback(
             user = await databaseService.findUserByIdAsync(userId) as User;
 
             // Grant default permissions
-            const defaultResources = ['nodes', 'messages', 'telemetry', 'traceroutes', 'channels', 'map', 'settings'];
+            const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
             for (const resource of defaultResources) {
               await databaseService.authRepo.createPermission({
                 userId,

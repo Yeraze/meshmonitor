@@ -388,7 +388,7 @@ router.delete('/', requirePacketPermissions, async (req, res) => {
     databaseService.auditLog(
       user.id,
       'packets_cleared',
-      'packets',
+      'packetmonitor',
       `Cleared ${deletedCount} packet log entries`,
       req.ip || null
     );
