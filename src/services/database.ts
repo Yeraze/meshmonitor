@@ -8033,6 +8033,9 @@ class DatabaseService {
     valueAfter?: string | null
   ): void {
     // Delegate to AuthRepository for all backends (fire-and-forget)
+    // Note: valueBefore/valueAfter not yet in Drizzle schema — tracked as future enhancement
+    void valueBefore;
+    void valueAfter;
     this.auth.createAuditLogEntry({
       userId,
       action,
