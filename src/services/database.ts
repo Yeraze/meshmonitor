@@ -947,7 +947,12 @@ class DatabaseService {
   }
 
   private createTables(): void {
-    logger.debug('Creating database tables...');
+    logger.debug('Creating database tables (v3.7 complete schema)...');
+
+    // ============================================================
+    // CORE TABLES (matches 001_v37_baseline.ts exactly)
+    // ============================================================
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS nodes (
         nodeNum INTEGER PRIMARY KEY,
@@ -957,6 +962,8 @@ class DatabaseService {
         hwModel INTEGER,
         role INTEGER,
         hopsAway INTEGER,
+        lastMessageHops INTEGER,
+        viaMqtt INTEGER,
         macaddr TEXT,
         latitude REAL,
         longitude REAL,
@@ -968,9 +975,43 @@ class DatabaseService {
         lastHeard INTEGER,
         snr REAL,
         rssi INTEGER,
+        lastTracerouteRequest INTEGER,
         firmwareVersion TEXT,
         channel INTEGER,
-        isFavorite BOOLEAN DEFAULT 0,
+        isFavorite INTEGER DEFAULT 0,
+        favoriteLocked INTEGER DEFAULT 0,
+        isIgnored INTEGER DEFAULT 0,
+        mobile INTEGER DEFAULT 0,
+        rebootCount INTEGER,
+        publicKey TEXT,
+        lastMeshReceivedKey TEXT,
+        hasPKC INTEGER,
+        lastPKIPacket INTEGER,
+        keyIsLowEntropy INTEGER,
+        duplicateKeyDetected INTEGER,
+        keyMismatchDetected INTEGER,
+        keySecurityIssueDetails TEXT,
+        isExcessivePackets INTEGER DEFAULT 0,
+        packetRatePerHour INTEGER,
+        packetRateLastChecked INTEGER,
+        isTimeOffsetIssue INTEGER DEFAULT 0,
+        timeOffsetSeconds INTEGER,
+        welcomedAt INTEGER,
+        positionChannel INTEGER,
+        positionPrecisionBits INTEGER,
+        positionGpsAccuracy REAL,
+        positionHdop REAL,
+        positionTimestamp INTEGER,
+        positionOverrideEnabled INTEGER DEFAULT 0,
+        latitudeOverride REAL,
+        longitudeOverride REAL,
+        altitudeOverride REAL,
+        positionOverrideIsPrivate INTEGER DEFAULT 0,
+        hasRemoteAdmin INTEGER DEFAULT 0,
+        lastRemoteAdminCheck INTEGER,
+        remoteAdminMetadata TEXT,
+        lastTimeSync INTEGER,
+        autoTracerouteEnabled INTEGER DEFAULT 1,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -986,24 +1027,36 @@ class DatabaseService {
         text TEXT NOT NULL,
         channel INTEGER NOT NULL DEFAULT 0,
         portnum INTEGER,
+        requestId INTEGER,
         timestamp INTEGER NOT NULL,
         rxTime INTEGER,
         hopStart INTEGER,
         hopLimit INTEGER,
+        relayNode INTEGER,
         replyId INTEGER,
+        emoji INTEGER,
+        viaMqtt INTEGER,
+        rxSnr REAL,
+        rxRssi REAL,
+        ackFailed INTEGER,
+        routingErrorReceived INTEGER,
+        deliveryState TEXT,
+        wantAck INTEGER,
+        ackFromNode INTEGER,
         createdAt INTEGER NOT NULL,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        decrypted_by TEXT
       );
     `);
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS channels (
         id INTEGER PRIMARY KEY,
-        name TEXT,
+        name TEXT NOT NULL,
         psk TEXT,
-        uplinkEnabled BOOLEAN DEFAULT 1,
-        downlinkEnabled BOOLEAN DEFAULT 1,
+        role INTEGER,
+        uplinkEnabled INTEGER NOT NULL DEFAULT 1,
+        downlinkEnabled INTEGER NOT NULL DEFAULT 1,
+        positionPrecision INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -1020,9 +1073,25 @@ class DatabaseService {
         unit TEXT,
         createdAt INTEGER NOT NULL,
         packetTimestamp INTEGER,
-        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+        packetId INTEGER,
+        channel INTEGER,
+        precisionBits INTEGER,
+        gpsAccuracy REAL
       );
     `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // ROUTING TABLES
+    // ============================================================
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS traceroutes (
@@ -1035,17 +1104,10 @@ class DatabaseService {
         routeBack TEXT,
         snrTowards TEXT,
         snrBack TEXT,
+        routePositions TEXT,
         timestamp INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        createdAt INTEGER NOT NULL
       );
-    `);
-
-    // Create index for efficient traceroute queries
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_traceroutes_nodes
-      ON traceroutes(fromNodeNum, toNodeNum, timestamp DESC);
     `);
 
     this.db.exec(`
@@ -1056,11 +1118,13 @@ class DatabaseService {
         fromNodeId TEXT NOT NULL,
         toNodeId TEXT NOT NULL,
         distanceKm REAL NOT NULL,
-        isRecordHolder BOOLEAN DEFAULT 0,
+        isRecordHolder INTEGER DEFAULT 0,
+        fromLatitude REAL,
+        fromLongitude REAL,
+        toLatitude REAL,
+        toLongitude REAL,
         timestamp INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        createdAt INTEGER NOT NULL
       );
     `);
 
@@ -1072,18 +1136,211 @@ class DatabaseService {
         snr REAL,
         lastRxTime INTEGER,
         timestamp INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL,
-        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (neighborNodeNum) REFERENCES nodes(nodeNum)
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // AUTH TABLES (snake_case column names for SQLite)
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT,
+        email TEXT,
+        display_name TEXT,
+        auth_provider TEXT NOT NULL DEFAULT 'local',
+        oidc_subject TEXT,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        password_locked INTEGER DEFAULT 0,
+        mfa_enabled INTEGER NOT NULL DEFAULT 0,
+        mfa_secret TEXT,
+        mfa_backup_codes TEXT,
+        created_at INTEGER NOT NULL,
+        last_login_at INTEGER,
+        created_by INTEGER
       );
     `);
 
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
+      CREATE TABLE IF NOT EXISTS permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        resource TEXT NOT NULL,
+        can_view_on_map INTEGER NOT NULL DEFAULT 0,
+        can_read INTEGER NOT NULL DEFAULT 0,
+        can_write INTEGER NOT NULL DEFAULT 0,
+        granted_at INTEGER NOT NULL,
+        granted_by INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, resource)
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        sid TEXT PRIMARY KEY,
+        sess TEXT NOT NULL,
+        expire INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        action TEXT NOT NULL,
+        resource TEXT,
+        details TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        value_before TEXT,
+        value_after TEXT,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        prefix TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        expires_at INTEGER,
+        created_by INTEGER,
+        revoked_at INTEGER,
+        revoked_by INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ============================================================
+    // NOTIFICATION TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS read_messages (
+        message_id TEXT NOT NULL PRIMARY KEY,
+        user_id INTEGER,
+        read_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        endpoint TEXT NOT NULL,
+        p256dh_key TEXT NOT NULL,
+        auth_key TEXT NOT NULL,
+        user_agent TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_notification_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        enable_web_push INTEGER DEFAULT 1,
+        enable_direct_messages INTEGER DEFAULT 1,
+        notify_on_emoji INTEGER DEFAULT 0,
+        notify_on_new_node INTEGER DEFAULT 1,
+        notify_on_traceroute INTEGER DEFAULT 1,
+        notify_on_inactive_node INTEGER DEFAULT 0,
+        notify_on_server_events INTEGER DEFAULT 0,
+        prefix_with_node_name INTEGER DEFAULT 0,
+        enable_apprise INTEGER DEFAULT 1,
+        apprise_urls TEXT,
+        enabled_channels TEXT,
+        monitored_nodes TEXT,
+        whitelist TEXT,
+        blacklist TEXT,
+        notify_on_mqtt INTEGER DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ============================================================
+    // PACKET LOG
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS packet_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        packet_id INTEGER,
+        timestamp INTEGER NOT NULL,
+        from_node INTEGER NOT NULL,
+        from_node_id TEXT,
+        to_node INTEGER,
+        to_node_id TEXT,
+        channel INTEGER,
+        portnum INTEGER NOT NULL,
+        portnum_name TEXT,
+        encrypted INTEGER NOT NULL,
+        snr REAL,
+        rssi REAL,
+        hop_limit INTEGER,
+        hop_start INTEGER,
+        relay_node INTEGER,
+        payload_size INTEGER,
+        want_ack INTEGER,
+        priority INTEGER,
+        payload_preview TEXT,
+        metadata TEXT,
+        direction TEXT,
+        created_at INTEGER,
+        decrypted_by TEXT,
+        decrypted_channel_id INTEGER,
+        transport_mechanism INTEGER
+      );
+    `);
+
+    // ============================================================
+    // BACKUP & UPGRADE TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS backup_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeId TEXT,
+        nodeNum INTEGER,
+        filename TEXT NOT NULL,
+        filePath TEXT NOT NULL,
+        fileSize INTEGER,
+        backupType TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS system_backup_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        backupPath TEXT NOT NULL,
+        backupType TEXT NOT NULL,
+        schemaVersion INTEGER,
+        appVersion TEXT,
+        totalSize INTEGER,
+        tableCount INTEGER,
+        rowCount INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL
       );
     `);
 
@@ -1098,11 +1355,288 @@ class DatabaseService {
         currentStep TEXT,
         logs TEXT,
         backupPath TEXT,
-        startedAt INTEGER NOT NULL,
+        startedAt INTEGER,
         completedAt INTEGER,
         initiatedBy TEXT,
         errorMessage TEXT,
-        rollbackAvailable INTEGER DEFAULT 1
+        rollbackAvailable INTEGER
+      );
+    `);
+
+    // ============================================================
+    // UI TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_themes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        definition TEXT NOT NULL,
+        is_builtin INTEGER DEFAULT 0,
+        created_by INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_map_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        centerLat REAL,
+        centerLng REAL,
+        zoom REAL,
+        selectedLayer TEXT,
+        showAccuracyRegions INTEGER DEFAULT 0,
+        showEstimatedPositions INTEGER DEFAULT 1,
+        showMeshCoreNodes INTEGER DEFAULT 0,
+        sortBy TEXT DEFAULT 'name',
+        sortDirection TEXT DEFAULT 'asc',
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS embed_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        channels TEXT NOT NULL DEFAULT '[]',
+        tileset TEXT NOT NULL DEFAULT 'osm',
+        defaultLat REAL NOT NULL DEFAULT 0,
+        defaultLng REAL NOT NULL DEFAULT 0,
+        defaultZoom INTEGER NOT NULL DEFAULT 10,
+        showTooltips INTEGER NOT NULL DEFAULT 1,
+        showPopups INTEGER NOT NULL DEFAULT 1,
+        showLegend INTEGER NOT NULL DEFAULT 1,
+        showPaths INTEGER NOT NULL DEFAULT 0,
+        showNeighborInfo INTEGER NOT NULL DEFAULT 0,
+        showMqttNodes INTEGER NOT NULL DEFAULT 1,
+        pollIntervalSeconds INTEGER NOT NULL DEFAULT 30,
+        allowedOrigins TEXT NOT NULL DEFAULT '[]',
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // SOLAR ESTIMATES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS solar_estimates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL UNIQUE,
+        watt_hours REAL NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        created_at INTEGER
+      );
+    `);
+
+    // ============================================================
+    // AUTOMATION TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_traceroute_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL UNIQUE,
+        enabled INTEGER DEFAULT 1,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_time_sync_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL UNIQUE,
+        enabled INTEGER DEFAULT 1,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_traceroute_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        to_node_num INTEGER NOT NULL,
+        to_node_name TEXT,
+        success INTEGER,
+        created_at INTEGER
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_key_repair_state (
+        nodeNum INTEGER PRIMARY KEY,
+        attemptCount INTEGER DEFAULT 0,
+        lastAttemptTime INTEGER,
+        exhausted INTEGER DEFAULT 0,
+        startedAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_key_repair_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        nodeName TEXT,
+        action TEXT NOT NULL,
+        success INTEGER,
+        created_at INTEGER
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_distance_delete_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        nodes_deleted INTEGER NOT NULL,
+        threshold_km REAL NOT NULL,
+        details TEXT,
+        created_at INTEGER
+      );
+    `);
+
+    // ============================================================
+    // CHANNEL DATABASE
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_database (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        psk TEXT NOT NULL,
+        psk_length INTEGER NOT NULL,
+        description TEXT,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        enforce_name_validation INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        decrypted_packet_count INTEGER NOT NULL DEFAULT 0,
+        last_decrypted_at INTEGER,
+        created_by INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_database_permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        channel_database_id INTEGER NOT NULL,
+        can_view_on_map INTEGER NOT NULL DEFAULT 0,
+        can_read INTEGER NOT NULL DEFAULT 0,
+        granted_by INTEGER,
+        granted_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (channel_database_id) REFERENCES channel_database(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    // ============================================================
+    // IGNORED NODES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ignored_nodes (
+        nodeNum INTEGER PRIMARY KEY,
+        nodeId TEXT NOT NULL,
+        longName TEXT,
+        shortName TEXT,
+        ignoredAt INTEGER NOT NULL,
+        ignoredBy TEXT
+      );
+    `);
+
+    // ============================================================
+    // GEOFENCE COOLDOWNS
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS geofence_cooldowns (
+        triggerId TEXT NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        firedAt INTEGER NOT NULL,
+        PRIMARY KEY (triggerId, nodeNum)
+      );
+    `);
+
+    // ============================================================
+    // MESHCORE TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS meshcore_nodes (
+        publicKey TEXT PRIMARY KEY,
+        name TEXT,
+        advType INTEGER,
+        txPower INTEGER,
+        maxTxPower INTEGER,
+        radioFreq REAL,
+        radioBw REAL,
+        radioSf INTEGER,
+        radioCr INTEGER,
+        latitude REAL,
+        longitude REAL,
+        altitude REAL,
+        batteryMv INTEGER,
+        uptimeSecs INTEGER,
+        rssi INTEGER,
+        snr REAL,
+        lastHeard INTEGER,
+        hasAdminAccess INTEGER DEFAULT 0,
+        lastAdminCheck INTEGER,
+        isLocalNode INTEGER DEFAULT 0,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS meshcore_messages (
+        id TEXT PRIMARY KEY,
+        fromPublicKey TEXT NOT NULL,
+        toPublicKey TEXT,
+        text TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        rssi INTEGER,
+        snr INTEGER,
+        messageType TEXT DEFAULT 'text',
+        delivered INTEGER DEFAULT 0,
+        deliveredAt INTEGER,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // NEWS TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS news_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        feedData TEXT NOT NULL,
+        fetchedAt INTEGER NOT NULL,
+        sourceUrl TEXT NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_news_status (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        lastSeenNewsId TEXT,
+        dismissedNewsIds TEXT,
+        updatedAt INTEGER NOT NULL,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
 
@@ -1112,281 +1646,20 @@ class DatabaseService {
       ON upgrade_history(startedAt DESC);
     `);
 
-    // Channel 0 (Primary) will be created automatically when device config syncs
-    // It should have an empty name as per Meshtastic protocol
+    // Create index for efficient traceroute queries
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_traceroutes_nodes
+      ON traceroutes(fromNodeNum, toNodeNum, timestamp DESC);
+    `);
 
     logger.debug('Database tables created successfully');
   }
 
   private migrateSchema(): void {
-    logger.debug('Running database migrations...');
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN hopStart INTEGER;
-      `);
-      logger.debug('✅ Added hopStart column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hopStart column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN hopLimit INTEGER;
-      `);
-      logger.debug('✅ Added hopLimit column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hopLimit column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN replyId INTEGER;
-      `);
-      logger.debug('✅ Added replyId column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ replyId column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN role INTEGER;
-      `);
-      logger.debug('✅ Added role column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ role column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN hopsAway INTEGER;
-      `);
-      logger.debug('✅ Added hopsAway column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hopsAway column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN lastTracerouteRequest INTEGER;
-      `);
-      logger.debug('✅ Added lastTracerouteRequest column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ lastTracerouteRequest column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN firmwareVersion TEXT;
-      `);
-      logger.debug('✅ Added firmwareVersion column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ firmwareVersion column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN emoji INTEGER;
-      `);
-      logger.debug('✅ Added emoji column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ emoji column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN isFavorite BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added isFavorite column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ isFavorite column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN rebootCount INTEGER;
-      `);
-      logger.debug('✅ Added rebootCount column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ rebootCount column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN publicKey TEXT;
-      `);
-      logger.debug('✅ Added publicKey column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ publicKey column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN hasPKC BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added hasPKC column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hasPKC column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN lastPKIPacket INTEGER;
-      `);
-      logger.debug('✅ Added lastPKIPacket column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ lastPKIPacket column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN viaMqtt BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added viaMqtt column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ viaMqtt column already exists or other error:', error.message);
-      }
-    }
-
-    // Add viaMqtt column to messages table for MQTT message filtering
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN viaMqtt BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added viaMqtt column to messages table');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ viaMqtt column on messages already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE telemetry ADD COLUMN packetTimestamp INTEGER;
-      `);
-      logger.debug('✅ Added packetTimestamp column to telemetry table');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ packetTimestamp column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN keyIsLowEntropy BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added keyIsLowEntropy column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ keyIsLowEntropy column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN duplicateKeyDetected BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added duplicateKeyDetected column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ duplicateKeyDetected column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN keyMismatchDetected BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added keyMismatchDetected column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ keyMismatchDetected column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN keySecurityIssueDetails TEXT;
-      `);
-      logger.debug('✅ Added keySecurityIssueDetails column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ keySecurityIssueDetails column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN welcomedAt INTEGER;
-      `);
-      logger.debug('✅ Added welcomedAt column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ welcomedAt column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN rxSnr REAL;
-      `);
-      logger.debug('✅ Added rxSnr column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ rxSnr column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN rxRssi INTEGER;
-      `);
-      logger.debug('✅ Added rxRssi column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ rxRssi column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN lastMessageHops INTEGER;
-      `);
-      logger.debug('✅ Added lastMessageHops column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ lastMessageHops column already exists or other error:', error.message);
-      }
-    }
-
-    logger.debug('Database migrations completed');
+    // Legacy ALTER TABLE migrations are no longer needed.
+    // All columns are now created in createTables() with the full v3.7 schema.
+    // This method is kept as a no-op for compatibility — will be removed in Chunk 5.
+    logger.debug('migrateSchema: skipped (full schema created in createTables)');
   }
 
   private createIndexes(): void {
@@ -9137,20 +9410,12 @@ class DatabaseService {
 
     const client = await pool.connect();
     try {
-      // Run migration 056 FIRST to fix backup_history table schema
-      // This must run before POSTGRES_SCHEMA_SQL which creates indexes on columns that may not exist
-      const migration056 = registry.getAll().find(m => m.number === 56);
-      if (migration056?.postgres) {
-        await migration056.postgres(client);
-      }
-
       // Execute the canonical schema SQL - all statements are idempotent
       // (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
       await client.query(POSTGRES_SCHEMA_SQL);
 
-      // Run all registered Postgres migrations (047+) via the migration registry
-      for (const migration of registry.getFrom(47)) {
-        if (migration.number === 56) continue; // Already ran above
+      // Run all registered Postgres migrations via the migration registry
+      for (const migration of registry.getAll()) {
         if (migration.postgres) {
           await migration.postgres(client);
         }
@@ -9182,13 +9447,6 @@ class DatabaseService {
   private async createMySQLSchema(pool: MySQLPool): Promise<void> {
     logger.info('[MySQL] Ensuring database schema is up to date...');
 
-    // Run migration 056 FIRST to fix backup_history table schema
-    // This must run before MYSQL_SCHEMA_SQL which creates indexes on columns that may not exist
-    const migration056 = registry.getAll().find(m => m.number === 56);
-    if (migration056?.mysql) {
-      await migration056.mysql(pool);
-    }
-
     const connection = await pool.getConnection();
     try {
       // Split the schema SQL by semicolons and execute each statement
@@ -9215,9 +9473,8 @@ class DatabaseService {
 
       logger.debug(`[MySQL] Executed ${executed} schema statements`);
 
-      // Run all registered MySQL migrations (047+) via the migration registry
-      for (const migration of registry.getFrom(47)) {
-        if (migration.number === 56) continue; // Already ran above
+      // Run all registered MySQL migrations via the migration registry
+      for (const migration of registry.getAll()) {
         if (migration.mysql) {
           await migration.mysql(pool);
         }

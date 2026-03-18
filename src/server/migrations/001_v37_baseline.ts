@@ -257,7 +257,8 @@ export const migration = {
         mfa_secret TEXT,
         mfa_backup_codes TEXT,
         created_at INTEGER NOT NULL,
-        last_login_at INTEGER
+        last_login_at INTEGER,
+        created_by INTEGER
       )
     `);
 
@@ -271,7 +272,8 @@ export const migration = {
         can_write INTEGER NOT NULL DEFAULT 0,
         granted_at INTEGER NOT NULL,
         granted_by INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, resource)
       )
     `);
 
@@ -293,6 +295,8 @@ export const migration = {
         details TEXT,
         ip_address TEXT,
         user_agent TEXT,
+        value_before TEXT,
+        value_after TEXT,
         timestamp INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       )

@@ -5,9 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { UserModel } from './User.js';
-import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
-import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
-import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
+import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
 
 describe('UserModel', () => {
   let db: Database.Database;
@@ -18,10 +16,8 @@ describe('UserModel', () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
 
-    // Run migrations
-    authMigration.up(db);
-    passwordLockedMigration.up(db);
-    mfaMigration.up(db);
+    // Run baseline migration (creates all tables)
+    baselineMigration.up(db);
 
     // Create model instance
     userModel = new UserModel(db);
