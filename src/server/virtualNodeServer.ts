@@ -170,18 +170,16 @@ export class VirtualNodeServer extends EventEmitter {
     this.clients.set(clientId, client);
     logger.info(`📱 Virtual node client connected: ${clientId} (${this.clients.size} total)`);
 
-    // Audit log the connection
-    try {
-      databaseService.auditLog(
-        null, // system event
-        'virtual_node_connect',
-        'virtual_node',
-        JSON.stringify({ clientId, ip: socket.remoteAddress || 'unknown' }),
-        socket.remoteAddress || null
-      );
-    } catch (error) {
+    // Audit log the connection (fire-and-forget async)
+    databaseService.auditLogAsync(
+      null, // system event
+      'virtual_node_connect',
+      'virtual_node',
+      JSON.stringify({ clientId, ip: socket.remoteAddress || 'unknown' }),
+      socket.remoteAddress || null
+    ).catch(error => {
       logger.error('Failed to audit log virtual node connection:', error);
-    }
+    });
 
     socket.on('data', (data: Buffer) => this.handleClientData(clientId, data));
     socket.on('close', () => this.handleClientDisconnect(clientId));
@@ -205,18 +203,16 @@ export class VirtualNodeServer extends EventEmitter {
       this.clients.delete(clientId);
       logger.info(`📱 Virtual node client disconnected: ${clientId} (${this.clients.size} remaining)`);
 
-      // Audit log the disconnection
-      try {
-        databaseService.auditLog(
-          null, // system event
-          'virtual_node_disconnect',
-          'virtual_node',
-          JSON.stringify({ clientId, ip: client.socket.remoteAddress || 'unknown' }),
-          client.socket.remoteAddress || null
-        );
-      } catch (error) {
+      // Audit log the disconnection (fire-and-forget async)
+      databaseService.auditLogAsync(
+        null, // system event
+        'virtual_node_disconnect',
+        'virtual_node',
+        JSON.stringify({ clientId, ip: client.socket.remoteAddress || 'unknown' }),
+        client.socket.remoteAddress || null
+      ).catch(error => {
         logger.error('Failed to audit log virtual node disconnection:', error);
-      }
+      });
 
       this.emit('client-disconnected', clientId);
     }

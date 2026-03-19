@@ -4647,9 +4647,9 @@ apiRouter.post('/system/backup/settings', requirePermission('configuration', 'wr
 // ==========================================
 
 // Get database maintenance status
-apiRouter.get('/maintenance/status', requirePermission('configuration', 'read'), (_req, res) => {
+apiRouter.get('/maintenance/status', requirePermission('configuration', 'read'), async (_req, res) => {
   try {
-    const status = databaseMaintenanceService.getStatus();
+    const status = await databaseMaintenanceService.getStatus();
     res.json(status);
   } catch (error) {
     logger.error('❌ Error getting maintenance status:', error);

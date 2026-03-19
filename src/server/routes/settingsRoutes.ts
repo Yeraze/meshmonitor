@@ -139,9 +139,9 @@ export function setSettingsCallbacks(cb: SettingsCallbacks): void {
 const router = Router();
 
 // GET /settings — read all settings (public)
-router.get('/', optionalAuth(), (_req: Request, res: Response) => {
+router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
   try {
-    const settings = databaseService.getAllSettings();
+    const settings = await databaseService.settings.getAllSettings();
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching settings:', error);
@@ -150,12 +150,12 @@ router.get('/', optionalAuth(), (_req: Request, res: Response) => {
 });
 
 // POST /settings — save settings
-router.post('/', requirePermission('settings', 'write'), (req: Request, res: Response) => {
+router.post('/', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   try {
     const settings = req.body;
 
     // Get current settings for before/after comparison
-    const currentSettings = databaseService.getAllSettings();
+    const currentSettings = await databaseService.settings.getAllSettings();
 
     // Validate settings
     const filteredSettings: Record<string, string> = {};
@@ -514,7 +514,7 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
     }
 
     // Save to database
-    databaseService.setSettings(filteredSettings);
+    await databaseService.settings.setSettings(filteredSettings);
 
     // ─── Side effects ───────────────────────────────────────────────────
     if ('customTilesets' in filteredSettings) {
@@ -569,29 +569,34 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
     ];
     const keyRepairSettingsChanged = keyRepairSettings.some((key) => key in filteredSettings);
     if (keyRepairSettingsChanged) {
+      const dbEnabled = await databaseService.settings.getSetting('autoKeyManagementEnabled');
+      const dbInterval = await databaseService.settings.getSetting('autoKeyManagementIntervalMinutes');
+      const dbMaxExchanges = await databaseService.settings.getSetting('autoKeyManagementMaxExchanges');
+      const dbAutoPurge = await databaseService.settings.getSetting('autoKeyManagementAutoPurge');
+      const dbImmediatePurge = await databaseService.settings.getSetting('autoKeyManagementImmediatePurge');
       callbacks.setKeyRepairSettings?.({
         enabled:
           filteredSettings.autoKeyManagementEnabled === 'true' ||
           (filteredSettings.autoKeyManagementEnabled === undefined &&
-            databaseService.getSetting('autoKeyManagementEnabled') === 'true'),
+            dbEnabled === 'true'),
         intervalMinutes: parseInt(
           filteredSettings.autoKeyManagementIntervalMinutes ||
-            databaseService.getSetting('autoKeyManagementIntervalMinutes') ||
+            dbInterval ||
             '5'
         ),
         maxExchanges: parseInt(
           filteredSettings.autoKeyManagementMaxExchanges ||
-            databaseService.getSetting('autoKeyManagementMaxExchanges') ||
+            dbMaxExchanges ||
             '3'
         ),
         autoPurge:
           filteredSettings.autoKeyManagementAutoPurge === 'true' ||
           (filteredSettings.autoKeyManagementAutoPurge === undefined &&
-            databaseService.getSetting('autoKeyManagementAutoPurge') === 'true'),
+            dbAutoPurge === 'true'),
         immediatePurge:
           filteredSettings.autoKeyManagementImmediatePurge === 'true' ||
           (filteredSettings.autoKeyManagementImmediatePurge === undefined &&
-            databaseService.getSetting('autoKeyManagementImmediatePurge') === 'true'),
+            dbImmediatePurge === 'true'),
       });
       logger.info('✅ Auto key repair settings updated');
     }
@@ -603,21 +608,24 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
     ];
     const inactiveNodeSettingsChanged = inactiveNodeSettings.some((key) => key in filteredSettings);
     if (inactiveNodeSettingsChanged) {
+      const dbThreshold = await databaseService.settings.getSetting('inactiveNodeThresholdHours');
+      const dbCheckInterval = await databaseService.settings.getSetting('inactiveNodeCheckIntervalMinutes');
+      const dbCooldown = await databaseService.settings.getSetting('inactiveNodeCooldownHours');
       const threshold = parseInt(
         filteredSettings.inactiveNodeThresholdHours ||
-          databaseService.getSetting('inactiveNodeThresholdHours') ||
+          dbThreshold ||
           '24',
         10
       );
       const checkInterval = parseInt(
         filteredSettings.inactiveNodeCheckIntervalMinutes ||
-          databaseService.getSetting('inactiveNodeCheckIntervalMinutes') ||
+          dbCheckInterval ||
           '60',
         10
       );
       const cooldown = parseInt(
         filteredSettings.inactiveNodeCooldownHours ||
-          databaseService.getSetting('inactiveNodeCooldownHours') ||
+          dbCooldown ||
           '24',
         10
       );
@@ -659,15 +667,17 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
     ];
     const distanceDeleteSettingsChanged = distanceDeleteSettings.some((key) => key in filteredSettings);
     if (distanceDeleteSettingsChanged) {
+      const dbDistEnabled = await databaseService.settings.getSetting('autoDeleteByDistanceEnabled');
       const enabled =
         filteredSettings.autoDeleteByDistanceEnabled === 'true' ||
         (filteredSettings.autoDeleteByDistanceEnabled === undefined &&
-          databaseService.getSetting('autoDeleteByDistanceEnabled') === 'true');
+          dbDistEnabled === 'true');
 
       if (enabled) {
+        const dbDistInterval = await databaseService.settings.getSetting('autoDeleteByDistanceIntervalHours');
         const intervalHours = parseInt(
           filteredSettings.autoDeleteByDistanceIntervalHours ||
-            databaseService.getSetting('autoDeleteByDistanceIntervalHours') ||
+            dbDistInterval ||
             '24',
           10
         );
@@ -691,7 +701,7 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
     });
 
     if (Object.keys(changedSettings).length > 0) {
-      databaseService.auditLog(
+      databaseService.auditLogAsync(
         req.user!.id,
         'settings_updated',
         'settings',
@@ -710,14 +720,14 @@ router.post('/', requirePermission('settings', 'write'), (req: Request, res: Res
 });
 
 // DELETE /settings — reset to defaults
-router.delete('/', requirePermission('settings', 'write'), (req: Request, res: Response) => {
+router.delete('/', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   try {
-    const currentSettings = databaseService.getAllSettings();
+    const currentSettings = await databaseService.settings.getAllSettings();
 
-    databaseService.deleteAllSettings();
+    await databaseService.settings.deleteAllSettings();
     callbacks.setTracerouteInterval?.(0);
 
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'settings_reset',
       'settings',

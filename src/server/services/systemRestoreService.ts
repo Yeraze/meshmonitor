@@ -174,7 +174,7 @@ class SystemRestoreService {
       // We could add an explicit flag if needed in the future
 
       // Audit log (after schema migration is complete)
-      databaseService.auditLog(
+      await databaseService.auditLogAsync(
         null, // System action during restore
         'system_restore_completed',
         'system_backup',
@@ -217,7 +217,7 @@ class SystemRestoreService {
 
       // Audit log failure
       try {
-        databaseService.auditLog(
+        await databaseService.auditLogAsync(
           null, // System action during restore
           'system_restore_failed',
           'system_backup',

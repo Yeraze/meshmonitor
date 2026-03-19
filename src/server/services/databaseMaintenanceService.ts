@@ -107,13 +107,13 @@ class DatabaseMaintenanceService {
    */
   private async checkAndRunMaintenance(): Promise<void> {
     // Check if maintenance is enabled
-    const enabled = databaseService.getSetting('maintenanceEnabled');
+    const enabled = await databaseService.settings.getSetting('maintenanceEnabled');
     if (enabled !== 'true') {
       return;
     }
 
     // Get the configured maintenance time (HH:MM format, default 04:00)
-    const maintenanceTime = databaseService.getSetting('maintenanceTime') || '04:00';
+    const maintenanceTime = await databaseService.settings.getSetting('maintenanceTime') || '04:00';
     const [targetHour, targetMinute] = maintenanceTime.split(':').map(Number);
 
     // Get current time
@@ -128,7 +128,7 @@ class DatabaseMaintenanceService {
 
     // Check if we already ran maintenance today
     const lastRunKey = 'maintenance_lastRun';
-    const lastRun = databaseService.getSetting(lastRunKey);
+    const lastRun = await databaseService.settings.getSetting(lastRunKey);
     const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
 
     if (lastRun && lastRun.startsWith(today)) {
@@ -185,10 +185,10 @@ class DatabaseMaintenanceService {
 
     try {
       // Get retention settings (defaults: 30 days)
-      const messageRetention = parseInt(databaseService.getSetting('messageRetentionDays') || '30', 10);
-      const tracerouteRetention = parseInt(databaseService.getSetting('tracerouteRetentionDays') || '30', 10);
-      const routeSegmentRetention = parseInt(databaseService.getSetting('routeSegmentRetentionDays') || '30', 10);
-      const neighborInfoRetention = parseInt(databaseService.getSetting('neighborInfoRetentionDays') || '30', 10);
+      const messageRetention = parseInt(await databaseService.settings.getSetting('messageRetentionDays') || '30', 10);
+      const tracerouteRetention = parseInt(await databaseService.settings.getSetting('tracerouteRetentionDays') || '30', 10);
+      const routeSegmentRetention = parseInt(await databaseService.settings.getSetting('routeSegmentRetentionDays') || '30', 10);
+      const neighborInfoRetention = parseInt(await databaseService.settings.getSetting('neighborInfoRetentionDays') || '30', 10);
 
       logger.info(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d`);
 
@@ -225,7 +225,7 @@ class DatabaseMaintenanceService {
       stats.duration = Date.now() - startTime;
 
       // Update last run time in database
-      databaseService.setSetting('maintenance_lastRun', new Date().toISOString());
+      await databaseService.settings.setSetting('maintenance_lastRun', new Date().toISOString());
 
       // Update in-memory state
       this.lastRunTime = Date.now();
@@ -251,9 +251,9 @@ class DatabaseMaintenanceService {
   /**
    * Get the current status of the maintenance service
    */
-  getStatus(): MaintenanceStatus {
-    const enabled = databaseService.getSetting('maintenanceEnabled') === 'true';
-    const maintenanceTime = databaseService.getSetting('maintenanceTime') || '04:00';
+  async getStatus(): Promise<MaintenanceStatus> {
+    const enabled = await databaseService.settings.getSetting('maintenanceEnabled') === 'true';
+    const maintenanceTime = await databaseService.settings.getSetting('maintenanceTime') || '04:00';
 
     // Calculate next scheduled run
     let nextScheduledRun: string | null = null;
@@ -280,10 +280,10 @@ class DatabaseMaintenanceService {
       nextScheduledRun,
       databaseType: databaseService.drizzleDbType,
       settings: {
-        messageRetentionDays: parseInt(databaseService.getSetting('messageRetentionDays') || '30', 10),
-        tracerouteRetentionDays: parseInt(databaseService.getSetting('tracerouteRetentionDays') || '30', 10),
-        routeSegmentRetentionDays: parseInt(databaseService.getSetting('routeSegmentRetentionDays') || '30', 10),
-        neighborInfoRetentionDays: parseInt(databaseService.getSetting('neighborInfoRetentionDays') || '30', 10)
+        messageRetentionDays: parseInt(await databaseService.settings.getSetting('messageRetentionDays') || '30', 10),
+        tracerouteRetentionDays: parseInt(await databaseService.settings.getSetting('tracerouteRetentionDays') || '30', 10),
+        routeSegmentRetentionDays: parseInt(await databaseService.settings.getSetting('routeSegmentRetentionDays') || '30', 10),
+        neighborInfoRetentionDays: parseInt(await databaseService.settings.getSetting('neighborInfoRetentionDays') || '30', 10)
       }
     };
   }
