@@ -365,7 +365,7 @@ systemRestoreService.markRestoreStarted();
         }
 
         // Audit log to mark restore completion point (after migrations)
-        databaseService.auditLog(
+        databaseService.auditLogAsync(
           null, // System action during bootstrap
           'system_restore_bootstrap_complete',
           'system_backup',
@@ -404,7 +404,7 @@ setTimeout(async () => {
     await databaseService.waitForReady();
 
     // Load saved traceroute interval from database before connecting
-    const savedInterval = databaseService.getSetting('tracerouteIntervalMinutes');
+    const savedInterval = await databaseService.settings.getSetting('tracerouteIntervalMinutes');
     if (savedInterval !== null) {
       const intervalMinutes = parseInt(savedInterval);
       if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
@@ -416,11 +416,11 @@ setTimeout(async () => {
     }
 
     // Load auto key repair settings
-    const keyRepairEnabled = databaseService.getSetting('autoKeyManagementEnabled');
-    const keyRepairInterval = databaseService.getSetting('autoKeyManagementIntervalMinutes');
-    const keyRepairMaxExchanges = databaseService.getSetting('autoKeyManagementMaxExchanges');
-    const keyRepairAutoPurge = databaseService.getSetting('autoKeyManagementAutoPurge');
-    const keyRepairImmediatePurge = databaseService.getSetting('autoKeyManagementImmediatePurge');
+    const keyRepairEnabled = await databaseService.settings.getSetting('autoKeyManagementEnabled');
+    const keyRepairInterval = await databaseService.settings.getSetting('autoKeyManagementIntervalMinutes');
+    const keyRepairMaxExchanges = await databaseService.settings.getSetting('autoKeyManagementMaxExchanges');
+    const keyRepairAutoPurge = await databaseService.settings.getSetting('autoKeyManagementAutoPurge');
+    const keyRepairImmediatePurge = await databaseService.settings.getSetting('autoKeyManagementImmediatePurge');
 
     meshtasticManager.setKeyRepairSettings({
       enabled: keyRepairEnabled === 'true',
@@ -432,7 +432,7 @@ setTimeout(async () => {
     logger.debug('✅ Loaded auto key repair settings');
 
     // Load remote admin scanner interval
-    const remoteAdminScannerInterval = databaseService.getSetting('remoteAdminScannerIntervalMinutes');
+    const remoteAdminScannerInterval = await databaseService.settings.getSetting('remoteAdminScannerIntervalMinutes');
     if (remoteAdminScannerInterval !== null) {
       const intervalMinutes = parseInt(remoteAdminScannerInterval);
       if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
@@ -444,7 +444,7 @@ setTimeout(async () => {
     }
 
     // Load LocalStats collection interval
-    const localStatsInterval = databaseService.getSetting('localStatsIntervalMinutes');
+    const localStatsInterval = await databaseService.settings.getSetting('localStatsIntervalMinutes');
     if (localStatsInterval !== null) {
       const intervalMinutes = parseInt(localStatsInterval);
       if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
@@ -489,12 +489,12 @@ setTimeout(async () => {
     logger.debug('Database maintenance service initialized');
 
     // Start inactive node notification service with validation
-    const inactiveThresholdHoursRaw = parseInt(databaseService.getSetting('inactiveNodeThresholdHours') || '24', 10);
+    const inactiveThresholdHoursRaw = parseInt(await databaseService.settings.getSetting('inactiveNodeThresholdHours') || '24', 10);
     const inactiveCheckIntervalMinutesRaw = parseInt(
-      databaseService.getSetting('inactiveNodeCheckIntervalMinutes') || '60',
+      await databaseService.settings.getSetting('inactiveNodeCheckIntervalMinutes') || '60',
       10
     );
-    const inactiveCooldownHoursRaw = parseInt(databaseService.getSetting('inactiveNodeCooldownHours') || '24', 10);
+    const inactiveCooldownHoursRaw = parseInt(await databaseService.settings.getSetting('inactiveNodeCooldownHours') || '24', 10);
 
     // Validate and use defaults if invalid values are found in database
     const inactiveThresholdHours =
@@ -527,9 +527,9 @@ setTimeout(async () => {
     logger.info('✅ Inactive node notification service started');
 
     // Start auto-delete-by-distance service if enabled
-    const autoDeleteByDistanceEnabled = databaseService.getSetting('autoDeleteByDistanceEnabled');
+    const autoDeleteByDistanceEnabled = await databaseService.settings.getSetting('autoDeleteByDistanceEnabled');
     if (autoDeleteByDistanceEnabled === 'true') {
-      const intervalHours = parseInt(databaseService.getSetting('autoDeleteByDistanceIntervalHours') || '24', 10);
+      const intervalHours = parseInt(await databaseService.settings.getSetting('autoDeleteByDistanceIntervalHours') || '24', 10);
       autoDeleteByDistanceService.start(intervalHours);
     }
 
@@ -545,10 +545,10 @@ setTimeout(async () => {
 // Schedule hourly telemetry purge to keep database performant
 // Keep telemetry for 7 days (168 hours) by default
 const TELEMETRY_RETENTION_HOURS = 168; // 7 days
-setInterval(() => {
+setInterval(async () => {
   try {
     // Get favorite telemetry storage days from settings (defaults to 7 if not set)
-    const favoriteDaysStr = databaseService.getSetting('favoriteTelemetryStorageDays');
+    const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
     const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
     const purgedCount = databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS, favoriteDays);
     if (purgedCount > 0) {
@@ -560,10 +560,10 @@ setInterval(() => {
 }, 60 * 60 * 1000); // Run every hour
 
 // Run initial purge on startup
-setTimeout(() => {
+setTimeout(async () => {
   try {
     // Get favorite telemetry storage days from settings (defaults to 7 if not set)
-    const favoriteDaysStr = databaseService.getSetting('favoriteTelemetryStorageDays');
+    const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
     const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
     databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS, favoriteDays);
   } catch (error) {
@@ -590,7 +590,7 @@ async function checkForAutoUpgrade(): Promise<void> {
   }
 
   // Skip if autoUpgradeImmediate is not enabled
-  const autoUpgradeImmediate = databaseService.getSetting('autoUpgradeImmediate') === 'true';
+  const autoUpgradeImmediate = await databaseService.settings.getSetting('autoUpgradeImmediate') === 'true';
   if (!autoUpgradeImmediate) {
     return;
   }
@@ -647,7 +647,7 @@ async function checkForAutoUpgrade(): Promise<void> {
 
     if (upgradeResult.success) {
       logger.info(`✅ Scheduled auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-      databaseService.auditLog(
+      databaseService.auditLogAsync(
         null,
         'auto_upgrade_triggered',
         'system',
@@ -1054,11 +1054,11 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 
     // If manually unfavoriting, remove from auto-favorite tracking list
     if (!isFavorite) {
-      const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
       const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
       if (autoFavoriteNodes.includes(nodeNum)) {
         const updated = autoFavoriteNodes.filter(n => n !== nodeNum);
-        databaseService.setSetting('autoFavoriteNodes', JSON.stringify(updated));
+        await databaseService.settings.setSetting('autoFavoriteNodes', JSON.stringify(updated));
       }
     }
 
@@ -1199,18 +1199,18 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    databaseService.setNodeFavoriteLocked(nodeNum, locked);
+    await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked);
 
     // If unlocking, also add to auto-favorite tracking list if node is currently favorited
     // so that automation can manage it going forward
     if (!locked) {
       const node = await databaseService.nodes.getNode(nodeNum);
       if (node?.isFavorite) {
-        const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+        const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
         const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
         if (!autoFavoriteNodes.includes(nodeNum)) {
           autoFavoriteNodes.push(nodeNum);
-          databaseService.setSetting('autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
+          await databaseService.settings.setSetting('autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
         }
       }
     }
@@ -1236,13 +1236,13 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 // Get auto-favorite status (local role, firmware, managed nodes)
 apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (_req, res) => {
   try {
-    const localNodeNum = databaseService.getSetting('localNodeNum');
+    const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
     const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : meshtasticManager.getLocalNodeInfo()?.nodeNum;
     const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt) : null;
     const firmwareVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion || null;
     const supportsFavorites = meshtasticManager.supportsFavorites();
 
-    const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
+    const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
     const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
 
     // Get node details for each auto-favorited node
@@ -2200,9 +2200,9 @@ apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
 });
 
 // Debug endpoint to see all channels
-apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, res) => {
+apiRouter.get('/channels/debug', requirePermission('messages', 'read'), async (_req, res) => {
   try {
-    const allChannels = databaseService.getAllChannels();
+    const allChannels = await databaseService.channels.getAllChannels();
     logger.debug('🔍 DEBUG: All channels in database:', allChannels);
     res.json(allChannels);
   } catch (error) {
@@ -2212,9 +2212,9 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, r
 });
 
 // Get all channels (unfiltered, for export/config purposes)
-apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), (_req, res) => {
+apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (_req, res) => {
   try {
-    const allChannels = databaseService.getAllChannels();
+    const allChannels = await databaseService.channels.getAllChannels();
     logger.debug(`📡 Serving all ${allChannels.length} channels (unfiltered)`);
     res.json(allChannels);
   } catch (error) {
@@ -2223,9 +2223,9 @@ apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), (_req, re
   }
 });
 
-apiRouter.get('/channels', requirePermission('channel_0', 'read'), (_req, res) => {
+apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (_req, res) => {
   try {
-    const allChannels = databaseService.getAllChannels();
+    const allChannels = await databaseService.channels.getAllChannels();
 
     // Channel 0 will be created automatically when device config syncs
     // It should have an empty name as per Meshtastic protocol
@@ -2280,14 +2280,14 @@ apiRouter.get('/channels', requirePermission('channel_0', 'read'), (_req, res) =
 });
 
 // Export a specific channel configuration
-apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (req, res) => {
+apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
-    const channel = databaseService.getChannelById(channelId);
+    const channel = await databaseService.channels.getChannelById(channelId);
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
@@ -2374,7 +2374,7 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
     }
 
     // Get existing channel
-    const existingChannel = databaseService.getChannelById(channelId);
+    const existingChannel = await databaseService.channels.getChannelById(channelId);
     if (!existingChannel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
@@ -2394,7 +2394,7 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
     };
 
     // Update channel in database
-    databaseService.upsertChannel(updatedChannelData);
+    await databaseService.channels.upsertChannel(updatedChannelData);
 
     // Send channel configuration to Meshtastic device
     try {
@@ -2412,7 +2412,7 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
       // Continue even if device update fails - database is updated
     }
 
-    const updatedChannel = databaseService.getChannelById(channelId);
+    const updatedChannel = await databaseService.channels.getChannelById(channelId);
     logger.info(`✅ Updated channel ${channelId}: ${name}`);
     res.json({ success: true, channel: updatedChannel });
   } catch (error) {
@@ -2493,7 +2493,7 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
     };
 
     // Import channel to the specified slot in database
-    databaseService.upsertChannel(importedChannelData);
+    await databaseService.channels.upsertChannel(importedChannelData);
 
     // Send channel configuration to Meshtastic device
     try {
@@ -2511,7 +2511,7 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
       // Continue even if device update fails - database is updated
     }
 
-    const importedChannel = databaseService.getChannelById(slotId);
+    const importedChannel = await databaseService.channels.getChannelById(slotId);
     logger.info(`✅ Imported channel to slot ${slotId}: ${name}`);
     res.json({ success: true, channel: importedChannel });
   } catch (error) {
@@ -2555,8 +2555,10 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
     const channelUrlService = (await import('./services/channelUrlService.js')).default;
 
     // Get selected channels from database
-    const channels = channelIds
-      .map((id: number) => databaseService.getChannelById(id))
+    const channelResults = await Promise.all(
+      channelIds.map((id: number) => databaseService.channels.getChannelById(id))
+    );
+    const channels = channelResults
       .filter((ch): ch is NonNullable<typeof ch> => ch !== null)
       .map(ch => {
         logger.info(`📡 Channel ${ch.id} from DB - name: "${ch.name}" (length: ${ch.name.length})`);
@@ -2747,9 +2749,9 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
 
 apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (_req, res) => {
   try {
-    const messageCount = databaseService.getMessageCount();
+    const messageCount = await databaseService.messages.getMessageCount();
     const nodeCount = await databaseService.nodes.getNodeCount();
-    const channelCount = databaseService.getChannelCount();
+    const channelCount = await databaseService.channels.getChannelCount();
     const messagesByDay = await databaseService.getMessagesByDayAsync(7);
 
     res.json({
@@ -2964,7 +2966,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
       logger.info(
         `📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId}, broadcast: ${isBroadcast})`
       );
-      databaseService.insertMessage({
+      await databaseService.messages.insertMessage({
         id: messageId,
         fromNodeNum: localNodeInfo.nodeNum,
         toNodeNum: destinationNum,
@@ -3029,7 +3031,7 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
       logger.info(
         `📇 Inserting nodeinfo request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`
       );
-      databaseService.insertMessage({
+      await databaseService.messages.insertMessage({
         id: messageId,
         fromNodeNum: localNodeInfo.nodeNum,
         toNodeNum: destinationNum,
@@ -3161,7 +3163,7 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
 });
 
 // Get recent traceroutes (last 24 hours)
-apiRouter.get('/traceroutes/recent', (req, res) => {
+apiRouter.get('/traceroutes/recent', async (req, res) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
@@ -3174,15 +3176,15 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
       limit = parseInt(req.query.limit as string);
     } else {
       // Calculate dynamic default based on traceroute settings
-      const tracerouteIntervalMinutes = parseInt(databaseService.getSetting('tracerouteIntervalMinutes') || '5');
-      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
+      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
       limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       // Ensure a reasonable minimum
       limit = Math.max(limit, 100);
     }
 
-    const allTraceroutes = databaseService.getAllTraceroutes(limit);
+    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit);
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
@@ -3345,7 +3347,7 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, 
     const neighborInfo = databaseService.getLatestNeighborInfoPerNode();
 
     // Get max node age setting (default 24 hours)
-    const maxNodeAgeStr = databaseService.getSetting('maxNodeAge');
+    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
     const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
     const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
 
@@ -3713,7 +3715,7 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
     const nodesWithPKC: string[] = [];
 
     // Get the local node ID to ensure it's always marked as secure
-    const localNodeNumStr = databaseService.getSetting('localNodeNum');
+    const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
     let localNodeId: string | null = null;
     if (localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);
@@ -3895,7 +3897,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 5. Channels (filtered based on per-channel read permissions)
     try {
-      const allChannels = databaseService.getAllChannels();
+      const allChannels = await databaseService.channels.getAllChannels();
 
       // Filter channels async
       const filteredChannels: typeof allChannels = [];
@@ -3998,7 +4000,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 7. Config (always available with optionalAuth)
     try {
-      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
 
       let deviceMetadata = undefined;
       let localNodeInfo = undefined;
@@ -4066,13 +4068,13 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
       // Calculate dynamic default limit based on settings
-      const tracerouteIntervalMinutes = parseInt(databaseService.getSetting('tracerouteIntervalMinutes') || '5');
-      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
+      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
 
-      const allTraceroutes = databaseService.getAllTraceroutes(limit);
+      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit);
       const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
       // Add hopCount for each traceroute
@@ -4114,7 +4116,7 @@ apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'
     await meshtasticManager.userDisconnect();
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'connection_disconnected',
       'connection',
@@ -4135,7 +4137,7 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
     const success = await meshtasticManager.userReconnect();
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'connection_reconnected',
       'connection',
@@ -4154,12 +4156,12 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 });
 
 // Get detailed connection info (authenticated users only)
-apiRouter.get('/connection/info', requireAuth(), (_req, res) => {
+apiRouter.get('/connection/info', requireAuth(), async (_req, res) => {
   try {
     const status = meshtasticManager.getConnectionStatus();
     const env = getEnvironmentConfig();
-    const ipOverride = databaseService.getSetting('meshtasticNodeIpOverride');
-    const portOverride = databaseService.getSetting('meshtasticTcpPortOverride');
+    const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
+    const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
 
     res.json({
       ...status,
@@ -4199,7 +4201,7 @@ apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
     await meshtasticManager.setNodeIpOverride(nodeIp);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'connection_address_changed',
       'connection',
@@ -4222,7 +4224,7 @@ apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
 apiRouter.get('/config', optionalAuth(), async (req, res) => {
   try {
     // Get the local node number from settings to include rebootCount
-    const localNodeNumStr = databaseService.getSetting('localNodeNum');
+    const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
 
     let deviceMetadata = undefined;
     let localNodeInfo = undefined;
@@ -4330,9 +4332,9 @@ apiRouter.get('/device/backup', requirePermission('configuration', 'read'), asyn
 // Get backup settings
 apiRouter.get('/backup/settings', requirePermission('configuration', 'read'), async (_req, res) => {
   try {
-    const enabled = databaseService.getSetting('backup_enabled') === 'true';
-    const maxBackups = parseInt(databaseService.getSetting('backup_maxBackups') || '7', 10);
-    const backupTime = databaseService.getSetting('backup_time') || '02:00';
+    const enabled = await databaseService.settings.getSetting('backup_enabled') === 'true';
+    const maxBackups = parseInt(await databaseService.settings.getSetting('backup_maxBackups') || '7', 10);
+    const backupTime = await databaseService.settings.getSetting('backup_time') || '02:00';
 
     res.json({
       enabled,
@@ -4367,9 +4369,9 @@ apiRouter.post('/backup/settings', requirePermission('configuration', 'write'), 
     }
 
     // Save settings
-    databaseService.setSetting('backup_enabled', enabled.toString());
-    databaseService.setSetting('backup_maxBackups', maxBackups.toString());
-    databaseService.setSetting('backup_time', backupTime);
+    await databaseService.settings.setSetting('backup_enabled', enabled.toString());
+    await databaseService.settings.setSetting('backup_maxBackups', maxBackups.toString());
+    await databaseService.settings.setSetting('backup_time', backupTime);
 
     logger.info(`⚙️  Backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
 
@@ -4457,7 +4459,7 @@ apiRouter.post('/system/backup', requirePermission('configuration', 'write'), as
     const dirname = await systemBackupService.createBackup('manual');
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'system_backup_created',
       'system_backup',
@@ -4529,7 +4531,7 @@ apiRouter.get('/system/backup/download/:dirname', requirePermission('configurati
     });
 
     // Audit log before streaming
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'system_backup_downloaded',
       'system_backup',
@@ -4564,7 +4566,7 @@ apiRouter.delete('/system/backup/delete/:dirname', requirePermission('configurat
     await systemBackupService.deleteBackup(dirname);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'system_backup_deleted',
       'system_backup',
@@ -4587,9 +4589,9 @@ apiRouter.delete('/system/backup/delete/:dirname', requirePermission('configurat
 // Get system backup settings
 apiRouter.get('/system/backup/settings', requirePermission('configuration', 'read'), async (_req, res) => {
   try {
-    const enabled = databaseService.getSetting('system_backup_enabled') === 'true';
-    const maxBackups = parseInt(databaseService.getSetting('system_backup_maxBackups') || '7', 10);
-    const backupTime = databaseService.getSetting('system_backup_time') || '03:00';
+    const enabled = await databaseService.settings.getSetting('system_backup_enabled') === 'true';
+    const maxBackups = parseInt(await databaseService.settings.getSetting('system_backup_maxBackups') || '7', 10);
+    const backupTime = await databaseService.settings.getSetting('system_backup_time') || '03:00';
 
     res.json({
       enabled,
@@ -4624,9 +4626,9 @@ apiRouter.post('/system/backup/settings', requirePermission('configuration', 'wr
     }
 
     // Save settings
-    databaseService.setSetting('system_backup_enabled', enabled.toString());
-    databaseService.setSetting('system_backup_maxBackups', maxBackups.toString());
-    databaseService.setSetting('system_backup_time', backupTime);
+    await databaseService.settings.setSetting('system_backup_enabled', enabled.toString());
+    await databaseService.settings.setSetting('system_backup_maxBackups', maxBackups.toString());
+    await databaseService.settings.setSetting('system_backup_time', backupTime);
 
     logger.info(`⚙️  System backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
 
@@ -4703,7 +4705,7 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_re
     await meshtasticManager.refreshNodeDatabase();
 
     const nodeCount = await databaseService.nodes.getNodeCount();
-    const channelCount = databaseService.getChannelCount();
+    const channelCount = await databaseService.channels.getChannelCount();
 
     logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
 
@@ -4730,7 +4732,7 @@ apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), asyn
     // Trigger full node database refresh (includes channels)
     await meshtasticManager.refreshNodeDatabase();
 
-    const channelCount = databaseService.getChannelCount();
+    const channelCount = await databaseService.channels.getChannelCount();
 
     logger.debug(`✅ Channel refresh complete: ${channelCount} channels`);
 
@@ -5003,13 +5005,13 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
 });
 
 // Get auto-ping settings and active sessions
-apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), (_req, res) => {
+apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), async (_req, res) => {
   try {
     const settings = {
-      autoPingEnabled: databaseService.getSetting('autoPingEnabled') === 'true',
-      autoPingIntervalSeconds: parseInt(databaseService.getSetting('autoPingIntervalSeconds') || '30', 10),
-      autoPingMaxPings: parseInt(databaseService.getSetting('autoPingMaxPings') || '20', 10),
-      autoPingTimeoutSeconds: parseInt(databaseService.getSetting('autoPingTimeoutSeconds') || '60', 10),
+      autoPingEnabled: await databaseService.settings.getSetting('autoPingEnabled') === 'true',
+      autoPingIntervalSeconds: parseInt(await databaseService.settings.getSetting('autoPingIntervalSeconds') || '30', 10),
+      autoPingMaxPings: parseInt(await databaseService.settings.getSetting('autoPingMaxPings') || '20', 10),
+      autoPingTimeoutSeconds: parseInt(await databaseService.settings.getSetting('autoPingTimeoutSeconds') || '60', 10),
     };
     const sessions = meshtasticManager.getAutoPingSessions();
     res.json({ settings, sessions });
@@ -5020,40 +5022,40 @@ apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), (_re
 });
 
 // Update auto-ping settings
-apiRouter.post('/settings/auto-ping', requirePermission('settings', 'write'), (req, res) => {
+apiRouter.post('/settings/auto-ping', requirePermission('settings', 'write'), async (req, res) => {
   try {
     const { autoPingEnabled, autoPingIntervalSeconds, autoPingMaxPings, autoPingTimeoutSeconds } = req.body;
 
     if (autoPingEnabled !== undefined) {
-      databaseService.setSetting('autoPingEnabled', String(autoPingEnabled));
+      await databaseService.settings.setSetting('autoPingEnabled', String(autoPingEnabled));
     }
     if (autoPingIntervalSeconds !== undefined) {
       const val = parseInt(String(autoPingIntervalSeconds), 10);
       if (isNaN(val) || val < 10) {
         return res.status(400).json({ error: 'Interval must be at least 10 seconds.' });
       }
-      databaseService.setSetting('autoPingIntervalSeconds', String(val));
+      await databaseService.settings.setSetting('autoPingIntervalSeconds', String(val));
     }
     if (autoPingMaxPings !== undefined) {
       const val = parseInt(String(autoPingMaxPings), 10);
       if (isNaN(val) || val < 1 || val > 100) {
         return res.status(400).json({ error: 'Max pings must be between 1 and 100.' });
       }
-      databaseService.setSetting('autoPingMaxPings', String(val));
+      await databaseService.settings.setSetting('autoPingMaxPings', String(val));
     }
     if (autoPingTimeoutSeconds !== undefined) {
       const val = parseInt(String(autoPingTimeoutSeconds), 10);
       if (isNaN(val) || val < 10) {
         return res.status(400).json({ error: 'Timeout must be at least 10 seconds.' });
       }
-      databaseService.setSetting('autoPingTimeoutSeconds', String(val));
+      await databaseService.settings.setSetting('autoPingTimeoutSeconds', String(val));
     }
 
     const settings = {
-      autoPingEnabled: databaseService.getSetting('autoPingEnabled') === 'true',
-      autoPingIntervalSeconds: parseInt(databaseService.getSetting('autoPingIntervalSeconds') || '30', 10),
-      autoPingMaxPings: parseInt(databaseService.getSetting('autoPingMaxPings') || '20', 10),
-      autoPingTimeoutSeconds: parseInt(databaseService.getSetting('autoPingTimeoutSeconds') || '60', 10),
+      autoPingEnabled: await databaseService.settings.getSetting('autoPingEnabled') === 'true',
+      autoPingIntervalSeconds: parseInt(await databaseService.settings.getSetting('autoPingIntervalSeconds') || '30', 10),
+      autoPingMaxPings: parseInt(await databaseService.settings.getSetting('autoPingMaxPings') || '20', 10),
+      autoPingTimeoutSeconds: parseInt(await databaseService.settings.getSetting('autoPingTimeoutSeconds') || '60', 10),
     };
 
     res.json({ success: true, settings });
@@ -5123,7 +5125,7 @@ apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'wri
     logger.info(`👋 Manually marked ${count} nodes as welcomed via API`);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'mark_all_welcomed',
       'nodes',
@@ -5271,7 +5273,7 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), async (req, res)
     const theme = await databaseService.misc.createCustomTheme(name, slug, JSON.stringify(definition), req.user!.id);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'theme_created',
       'themes',
@@ -5335,7 +5337,7 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), async (req,
     await databaseService.misc.updateCustomTheme(slug, repoUpdates);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'theme_updated',
       'themes',
@@ -5371,7 +5373,7 @@ apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (r
     await databaseService.misc.deleteCustomTheme(slug);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'theme_deleted',
       'themes',
@@ -5393,7 +5395,7 @@ apiRouter.post('/announce/send', requirePermission('automation', 'write'), async
   try {
     await meshtasticManager.sendAutoAnnouncement();
     // Update last announcement time
-    databaseService.setSetting('lastAnnouncementTime', Date.now().toString());
+    await databaseService.settings.setSetting('lastAnnouncementTime', Date.now().toString());
     res.json({ success: true, message: 'Announcement sent successfully' });
   } catch (error) {
     logger.error('Error sending announcement:', error);
@@ -5401,9 +5403,9 @@ apiRouter.post('/announce/send', requirePermission('automation', 'write'), async
   }
 });
 
-apiRouter.get('/announce/last', requirePermission('automation', 'read'), (_req, res) => {
+apiRouter.get('/announce/last', requirePermission('automation', 'read'), async (_req, res) => {
   try {
-    const lastAnnouncementTime = databaseService.getSetting('lastAnnouncementTime');
+    const lastAnnouncementTime = await databaseService.settings.getSetting('lastAnnouncementTime');
     res.json({ lastAnnouncementTime: lastAnnouncementTime ? parseInt(lastAnnouncementTime) : null });
   } catch (error) {
     logger.error('Error fetching last announcement time:', error);
@@ -5435,7 +5437,7 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
     await meshtasticManager.refreshNodeDatabase();
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'nodes_purged',
       'nodes',
@@ -5455,7 +5457,7 @@ apiRouter.post('/purge/telemetry', requireAdmin(), (req, res) => {
     databaseService.purgeAllTelemetry();
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'telemetry_purged',
       'telemetry',
@@ -5470,13 +5472,13 @@ apiRouter.post('/purge/telemetry', requireAdmin(), (req, res) => {
   }
 });
 
-apiRouter.post('/purge/messages', requireAdmin(), (req, res) => {
+apiRouter.post('/purge/messages', requireAdmin(), async (req, res) => {
   try {
-    const messageCount = databaseService.getMessageCount();
+    const messageCount = await databaseService.messages.getMessageCount();
     databaseService.purgeAllMessages();
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'messages_purged',
       'messages',
@@ -5496,7 +5498,7 @@ apiRouter.post('/purge/traceroutes', requireAdmin(), (req, res) => {
     databaseService.purgeAllTraceroutes();
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'traceroutes_purged',
       'traceroute',
@@ -6313,7 +6315,7 @@ apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
 
     if (isLocalNode) {
       // For local node, get from database
-      const channel = databaseService.getChannelById(channelIndex);
+      const channel = await databaseService.channels.getChannelById(channelIndex);
       if (channel) {
         return res.json({ channel: {
           name: channel.name || '',
@@ -6591,7 +6593,7 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
     const channels = [];
     for (const channelId of channelIds) {
       if (isLocalNode) {
-        const channel = databaseService.getChannelById(channelId);
+        const channel = await databaseService.channels.getChannelById(channelId);
         if (channel) {
           channels.push({
             psk: channel.psk ? channel.psk : 'none',
@@ -7229,8 +7231,8 @@ apiRouter.get('/status', optionalAuth(), async (_req, res) => {
     },
     statistics: {
       nodes: await databaseService.nodes.getNodeCount(),
-      messages: databaseService.getMessageCount(),
-      channels: databaseService.getChannelCount(),
+      messages: await databaseService.messages.getMessageCount(),
+      channels: await databaseService.channels.getChannelCount(),
     },
     uptime: process.uptime(),
   });
@@ -7367,7 +7369,7 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
     // Check if auto-upgrade immediate is enabled and trigger upgrade automatically
     let autoUpgradeTriggered = false;
     if (updateAvailable && upgradeService.isEnabled()) {
-      const autoUpgradeImmediate = databaseService.getSetting('autoUpgradeImmediate') === 'true';
+      const autoUpgradeImmediate = await databaseService.settings.getSetting('autoUpgradeImmediate') === 'true';
       if (autoUpgradeImmediate) {
         // Check if an upgrade is already in progress before triggering
         try {
@@ -7384,7 +7386,7 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
             if (upgradeResult.success) {
               autoUpgradeTriggered = true;
               logger.info(`✅ Auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-              databaseService.auditLog(
+              databaseService.auditLogAsync(
                 null,
                 'auto_upgrade_triggered',
                 'system',
@@ -7728,8 +7730,8 @@ apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
     const isAvailable = appriseNotificationService.isAvailable();
     res.json({
       available: isAvailable,
-      enabled: databaseService.getSetting('apprise_enabled') === 'true',
-      url: databaseService.getSetting('apprise_url') || 'http://localhost:8000',
+      enabled: await databaseService.settings.getSetting('apprise_enabled') === 'true',
+      url: await databaseService.settings.getSetting('apprise_url') || 'http://localhost:8000',
     });
   } catch (error: any) {
     logger.error('Error getting Apprise status:', error);
@@ -8049,7 +8051,7 @@ apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
 });
 
 // Enable/disable Apprise system-wide (admin only)
-apiRouter.put('/apprise/enabled', requireAdmin(), (req, res) => {
+apiRouter.put('/apprise/enabled', requireAdmin(), async (req, res) => {
   try {
     const { enabled } = req.body;
 
@@ -8057,7 +8059,7 @@ apiRouter.put('/apprise/enabled', requireAdmin(), (req, res) => {
       return res.status(400).json({ error: 'Enabled must be a boolean' });
     }
 
-    databaseService.setSetting('apprise_enabled', enabled ? 'true' : 'false');
+    await databaseService.settings.setSetting('apprise_enabled', enabled ? 'true' : 'false');
     logger.info(`✅ Apprise ${enabled ? 'enabled' : 'disabled'} system-wide`);
     res.json({ success: true, enabled });
   } catch (error: any) {
@@ -8891,11 +8893,11 @@ export function invalidateHtmlCache(): void {
   cachedRewrittenEmbedHtml = null;
 }
 
-function getAnalyticsScript(): string {
+async function getAnalyticsScript(): Promise<string> {
   try {
-    const provider = (databaseService.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
+    const provider = (await databaseService.settings.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
     if (provider === 'none') return '';
-    const configStr = databaseService.getSetting('analyticsConfig') || '{}';
+    const configStr = await databaseService.settings.getSetting('analyticsConfig') || '{}';
     const config = JSON.parse(configStr);
     return generateAnalyticsScript(provider, config);
   } catch {
@@ -8945,14 +8947,14 @@ if (BASE_URL) {
   });
 
   // Serve embed page (before SPA fallback)
-  app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
+  app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {
     if (!cachedRewrittenEmbedHtml) {
       const embedHtmlPath = path.join(buildPath, 'embed.html');
       if (!fs.existsSync(embedHtmlPath)) {
         return res.status(404).send('Embed page not found');
       }
       cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
-      const embedAnalyticsScript = getAnalyticsScript();
+      const embedAnalyticsScript = await getAnalyticsScript();
       cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
     }
     res.setHeader('Content-Type', 'text/html');
@@ -8960,18 +8962,18 @@ if (BASE_URL) {
   });
 
   // Catch all handler for SPA routing - but exclude /api
-  app.get(`${BASE_URL}`, (_req: express.Request, res: express.Response) => {
+  app.get(`${BASE_URL}`, async (_req: express.Request, res: express.Response) => {
     // Use cached HTML if available, otherwise read and cache
     if (!cachedRewrittenHtml) {
       const htmlPath = path.join(buildPath, 'index.html');
       cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      const analyticsScript = getAnalyticsScript();
+      const analyticsScript = await getAnalyticsScript();
       cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
     }
     res.type('html').send(cachedRewrittenHtml);
   });
   // Use a route pattern that Express 5 can handle
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Skip if this is not under our BASE_URL
     if (!req.path.startsWith(BASE_URL)) {
       return next();
@@ -8988,7 +8990,7 @@ if (BASE_URL) {
     if (!cachedRewrittenHtml) {
       const htmlPath = path.join(buildPath, 'index.html');
       cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      const analyticsScript = getAnalyticsScript();
+      const analyticsScript = await getAnalyticsScript();
       cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
     }
     res.type('html').send(cachedRewrittenHtml);
@@ -9094,9 +9096,9 @@ process.on('SIGTERM', () => {
 });
 
 // Data migration: Set channel field to 'dm' for existing auto-responder triggers without channel
-function migrateAutoResponderTriggers() {
+async function migrateAutoResponderTriggers() {
   try {
-    const triggersStr = databaseService.getSetting('autoResponderTriggers');
+    const triggersStr = await databaseService.settings.getSetting('autoResponderTriggers');
     if (!triggersStr) {
       return; // No triggers to migrate
     }
@@ -9116,7 +9118,7 @@ function migrateAutoResponderTriggers() {
     });
 
     if (migrationCount > 0) {
-      databaseService.setSetting('autoResponderTriggers', JSON.stringify(migratedTriggers));
+      await databaseService.settings.setSetting('autoResponderTriggers', JSON.stringify(migratedTriggers));
       logger.info(`✅ Migrated ${migrationCount} auto-responder trigger(s) to default channel 'dm'`);
     }
   } catch (error) {
