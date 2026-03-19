@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
     let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
 
     // Enforce maximum limit to prevent unbounded queries
-    const MAX_LIMIT = packetLogService.getMaxCount();
+    const MAX_LIMIT = await packetLogService.getMaxCount();
     if (limit > MAX_LIMIT) {
       limit = MAX_LIMIT;
     }

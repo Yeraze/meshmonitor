@@ -106,7 +106,7 @@ function normalizeIgnoredNodeIds(rawValue: string): string {
 // depend on meshtasticManager / inactiveNodeNotificationService / etc.
 
 export interface SettingsCallbacks {
-  refreshTileHostnameCache?: () => void;
+  refreshTileHostnameCache?: () => void | Promise<void>;
   setTracerouteInterval?: (interval: number) => void;
   setRemoteAdminScannerInterval?: (interval: number) => void;
   setLocalStatsInterval?: (interval: number) => void;

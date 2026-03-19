@@ -6961,6 +6961,15 @@ class DatabaseService {
   }
 
   // Settings methods
+  async getSettingAsync(key: string): Promise<string | null> {
+    // For PostgreSQL/MySQL, use the async repository
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.settingsRepo) {
+      return this.settingsRepo.getSetting(key);
+    }
+    // For SQLite (and test environments), use the sync method which uses raw better-sqlite3
+    return this.getSetting(key);
+  }
+
   getSetting(key: string): string | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {

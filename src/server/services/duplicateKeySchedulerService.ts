@@ -80,7 +80,7 @@ class DuplicateKeySchedulerService {
       logger.info('🔐 Running scheduled duplicate key scan...');
 
       // Get all nodes with public keys
-      const nodesWithKeys = databaseService.getNodesWithPublicKeys();
+      const nodesWithKeys = await databaseService.nodes.getNodesWithPublicKeys();
 
       if (nodesWithKeys.length === 0) {
         logger.info('ℹ️  No nodes with public keys found, skipping scan');
@@ -95,25 +95,25 @@ class DuplicateKeySchedulerService {
       for (const nodeData of nodesWithKeys) {
         if (!nodeData.publicKey) continue;
 
-        const node = databaseService.getNode(nodeData.nodeNum);
+        const node = await databaseService.nodes.getNode(nodeData.nodeNum);
         if (!node) continue;
 
         const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
 
         if (isLowEntropy && !node.keyIsLowEntropy) {
           // Flag this node as having low-entropy key
-          databaseService.updateNodeLowEntropyFlag(nodeData.nodeNum, true, 'Known low-entropy key detected');
+          await databaseService.nodes.updateNodeLowEntropyFlag(nodeData.nodeNum, true, 'Known low-entropy key detected');
           lowEntropyCount++;
           logger.warn(`🔐 Low-entropy key detected on node ${nodeData.nodeNum}`);
         } else if (!isLowEntropy && node.keyIsLowEntropy) {
           // Clear the flag if it was previously set but key is not low-entropy
-          databaseService.updateNodeLowEntropyFlag(nodeData.nodeNum, false, undefined);
+          await databaseService.nodes.updateNodeLowEntropyFlag(nodeData.nodeNum, false, undefined);
         }
       }
 
       // CRITICAL: Also check nodes that previously had security flags but no longer have keys
       // This ensures flags are cleared when nodes go offline or clear their keys
-      const allNodes = databaseService.getAllNodes();
+      const allNodes = await databaseService.nodes.getAllNodes();
       for (const node of allNodes) {
         // Skip nodes we already processed above (nodes with keys)
         const hasKey = nodesWithKeys.some(n => n.nodeNum === node.nodeNum);
@@ -122,7 +122,7 @@ class DuplicateKeySchedulerService {
         // If this node has no key but has the low-entropy flag set, clear it
         if (node.keyIsLowEntropy) {
           logger.info(`🔐 Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
-          databaseService.updateNodeLowEntropyFlag(node.nodeNum, false, undefined);
+          await databaseService.nodes.updateNodeLowEntropyFlag(node.nodeNum, false, undefined);
         }
       }
 
@@ -137,11 +137,11 @@ class DuplicateKeySchedulerService {
         logger.info(`✅ Duplicate key scan complete: No duplicates found among ${nodesWithKeys.length} nodes`);
 
         // Clear any previously set duplicate flags
-        const allNodes = databaseService.getAllNodes();
+        const allNodes = await databaseService.nodes.getAllNodes();
         for (const node of allNodes) {
           if (node.duplicateKeyDetected) {
             const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
-            databaseService.updateNodeSecurityFlags(node.nodeNum, false, details);
+            await databaseService.nodes.updateNodeSecurityFlags(node.nodeNum, false, details);
           }
         }
 
@@ -170,7 +170,7 @@ class DuplicateKeySchedulerService {
           // This node was previously flagged but no longer has duplicates
           // This includes nodes that no longer have public keys
           const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
-          databaseService.updateNodeSecurityFlags(node.nodeNum, false, details);
+          await databaseService.nodes.updateNodeSecurityFlags(node.nodeNum, false, details);
           clearedCount++;
           logger.debug(`🔐 Cleared duplicate flag from node ${node.nodeNum} (no longer has duplicates)`);
         }
@@ -184,7 +184,7 @@ class DuplicateKeySchedulerService {
       let updateCount = 0;
       for (const [keyHash, nodeNums] of duplicates) {
         for (const nodeNum of nodeNums) {
-          const node = databaseService.getNode(nodeNum);
+          const node = await databaseService.nodes.getNode(nodeNum);
           if (!node) continue;
 
           const otherNodes = nodeNums.filter(n => n !== nodeNum);
@@ -192,7 +192,7 @@ class DuplicateKeySchedulerService {
             ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
             : `Key shared with nodes: ${otherNodes.join(', ')}`;
 
-          databaseService.updateNodeSecurityFlags(nodeNum, true, details);
+          await databaseService.nodes.updateNodeSecurityFlags(nodeNum, true, details);
 
           updateCount++;
         }
@@ -226,7 +226,7 @@ class DuplicateKeySchedulerService {
 
       // Get the local node number to exclude from spam detection
       // (local node has high packet counts due to admin/config traffic)
-      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
       const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
       // Get packet counts per node for the last hour
@@ -238,11 +238,13 @@ class DuplicateKeySchedulerService {
       }
 
       // Get all nodes to track which ones we need to clear flags from
-      const allNodes = databaseService.getAllNodes();
+      const allNodes = await databaseService.nodes.getAllNodes();
       const nodesWithCurrentPackets = new Set(packetCounts.map(p => p.nodeNum));
 
       let flaggedCount = 0;
       let clearedCount = 0;
+
+      const now = Math.floor(Date.now() / 1000);
 
       // Check each node with packet activity
       for (const { nodeNum, packetCount } of packetCounts) {
@@ -251,7 +253,7 @@ class DuplicateKeySchedulerService {
           continue;
         }
 
-        const node = databaseService.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum);
         if (!node) continue;
 
         const isExcessive = packetCount > EXCESSIVE_PACKETS_THRESHOLD;
@@ -259,20 +261,20 @@ class DuplicateKeySchedulerService {
 
         if (isExcessive && !wasExcessive) {
           // Newly flagged as excessive
-          databaseService.updateNodeSpamFlags(nodeNum, true, packetCount);
+          await databaseService.updateNodeSpamFlagsAsync(nodeNum, true, packetCount, now);
           flaggedCount++;
           logger.warn(`🚨 Excessive packets detected: Node ${nodeNum} (${node.shortName || 'Unknown'}) sent ${packetCount} packets in the last hour (threshold: ${EXCESSIVE_PACKETS_THRESHOLD})`);
         } else if (!isExcessive && wasExcessive) {
           // Was excessive but now below threshold
-          databaseService.updateNodeSpamFlags(nodeNum, false, packetCount);
+          await databaseService.updateNodeSpamFlagsAsync(nodeNum, false, packetCount, now);
           clearedCount++;
           logger.info(`✅ Spam flag cleared: Node ${nodeNum} (${node.shortName || 'Unknown'}) now at ${packetCount} packets/hour`);
         } else if (isExcessive) {
           // Still excessive, update the rate
-          databaseService.updateNodeSpamFlags(nodeNum, true, packetCount);
+          await databaseService.updateNodeSpamFlagsAsync(nodeNum, true, packetCount, now);
         } else {
           // Not excessive, update the rate
-          databaseService.updateNodeSpamFlags(nodeNum, false, packetCount);
+          await databaseService.updateNodeSpamFlagsAsync(nodeNum, false, packetCount, now);
         }
       }
 
@@ -284,11 +286,11 @@ class DuplicateKeySchedulerService {
         if ((node as any).isExcessivePackets) {
           if (isLocalNode) {
             // Clear spam flag from local node - it's excluded from detection
-            databaseService.updateNodeSpamFlags(node.nodeNum, false, 0);
+            await databaseService.updateNodeSpamFlagsAsync(node.nodeNum, false, 0, now);
             clearedCount++;
             logger.info(`✅ Spam flag cleared: Local node ${node.nodeNum} (${node.shortName || 'Unknown'}) - excluded from spam detection`);
           } else if (!nodesWithCurrentPackets.has(node.nodeNum)) {
-            databaseService.updateNodeSpamFlags(node.nodeNum, false, 0);
+            await databaseService.updateNodeSpamFlagsAsync(node.nodeNum, false, 0, now);
             clearedCount++;
             logger.info(`✅ Spam flag cleared: Node ${node.nodeNum} (${node.shortName || 'Unknown'}) - no packets in last hour`);
           }
@@ -320,14 +322,14 @@ class DuplicateKeySchedulerService {
       logger.info('🔐 Running time offset detection...');
 
       const latestTimestamps = await databaseService.getLatestPacketTimestampsPerNodeAsync();
-      const allNodes = databaseService.getAllNodes();
+      const allNodes = await databaseService.nodes.getAllNodes();
       const nodesWithTimestamps = new Set(latestTimestamps.map(t => t.nodeNum));
 
       let flaggedCount = 0;
       let clearedCount = 0;
 
       for (const { nodeNum, timestamp, packetTimestamp } of latestTimestamps) {
-        const node = databaseService.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum);
         if (!node) continue;
 
         // Both timestamp and packetTimestamp are in milliseconds
@@ -337,24 +339,24 @@ class DuplicateKeySchedulerService {
         const wasOffsetIssue = (node as any).isTimeOffsetIssue;
 
         if (isOffsetExcessive && !wasOffsetIssue) {
-          databaseService.updateNodeTimeOffsetFlags(nodeNum, true, offsetSeconds);
+          await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, true, offsetSeconds);
           flaggedCount++;
           logger.warn(`🕐 Time offset detected: Node ${nodeNum} (${node.shortName || 'Unknown'}) offset ${offsetSeconds}s (threshold: ${TIME_OFFSET_THRESHOLD_MINUTES}min)`);
         } else if (!isOffsetExcessive && wasOffsetIssue) {
-          databaseService.updateNodeTimeOffsetFlags(nodeNum, false, offsetSeconds);
+          await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, offsetSeconds);
           clearedCount++;
           logger.info(`✅ Time offset cleared: Node ${nodeNum} (${node.shortName || 'Unknown'}) now at ${offsetSeconds}s`);
         } else if (isOffsetExcessive) {
-          databaseService.updateNodeTimeOffsetFlags(nodeNum, true, offsetSeconds);
+          await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, true, offsetSeconds);
         } else {
-          databaseService.updateNodeTimeOffsetFlags(nodeNum, false, offsetSeconds);
+          await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, offsetSeconds);
         }
       }
 
       // Clear flags from nodes with no recent timestamp data
       for (const node of allNodes) {
         if ((node as any).isTimeOffsetIssue && !nodesWithTimestamps.has(node.nodeNum)) {
-          databaseService.updateNodeTimeOffsetFlags(node.nodeNum, false, null);
+          await databaseService.updateNodeTimeOffsetFlagsAsync(node.nodeNum, false, null);
           clearedCount++;
           logger.info(`✅ Time offset cleared: Node ${node.nodeNum} (${node.shortName || 'Unknown'}) - no timestamp data`);
         }

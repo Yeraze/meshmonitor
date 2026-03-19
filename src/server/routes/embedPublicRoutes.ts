@@ -46,7 +46,7 @@ router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res:
 // GET /:profileId/nodes — return nodes filtered by the profile's channel list
 // The profile ID acts as the auth token — no session/login required.
 // Only returns the minimal fields needed for map display (no sensitive data).
-router.get('/:profileId/nodes', createEmbedCspMiddleware(), (req: Request, res: Response) => {
+router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request, res: Response) => {
   const profile = (req as any).embedProfile;
 
   if (!profile) {
@@ -54,7 +54,7 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), (req: Request, res: 
   }
 
   try {
-    const allNodes = databaseService.getActiveNodes(7);
+    const allNodes = await databaseService.nodes.getActiveNodes(7);
 
     // Filter by the profile's configured channels
     const profileChannels = new Set(profile.channels as number[]);
@@ -105,7 +105,7 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), (req: Request, res: 
 });
 
 // GET /:profileId/neighborinfo — return neighbor info with positions for drawing connection lines
-router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), (req: Request, res: Response) => {
+router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: Request, res: Response) => {
   const profile = (req as any).embedProfile;
 
   if (!profile) {
@@ -113,7 +113,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), (req: Request
   }
 
   try {
-    const allNodes = databaseService.getActiveNodes(7);
+    const allNodes = await databaseService.nodes.getActiveNodes(7);
     const profileChannels = new Set(profile.channels as number[]);
 
     // Build a lookup of nodes that pass the embed's filters
@@ -133,7 +133,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), (req: Request
       });
     }
 
-    const rawNeighbors = databaseService.getAllNeighborInfo();
+    const rawNeighbors = await databaseService.neighbors.getAllNeighborInfo();
 
     // Enrich with positions — only include pairs where both nodes are in the filtered set
     const segments = rawNeighbors
@@ -162,7 +162,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), (req: Request
 });
 
 // GET /:profileId/traceroutes — return pre-computed traceroute path segments with positions
-router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), (req: Request, res: Response) => {
+router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Request, res: Response) => {
   const profile = (req as any).embedProfile;
 
   if (!profile) {
@@ -170,7 +170,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), (req: Request,
   }
 
   try {
-    const allNodes = databaseService.getActiveNodes(7);
+    const allNodes = await databaseService.nodes.getActiveNodes(7);
     const profileChannels = new Set(profile.channels as number[]);
 
     // Build position lookup for visible nodes
@@ -191,7 +191,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), (req: Request,
     }
 
     // Get recent traceroutes and decompose into point-to-point segments
-    const traceroutes = databaseService.getAllTraceroutes(100);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100);
     // Traceroute timestamps can be in ms or seconds — normalize to ms
     const cutoffMs = Date.now() - (24 * 60 * 60 * 1000); // last 24h
 

@@ -57,6 +57,10 @@ describe('Packet Routes', () => {
       return result?.value;
     };
 
+    (DatabaseService as any).getSettingAsync = async (key: string) => {
+      return (DatabaseService as any).getSetting(key);
+    };
+
     (DatabaseService as any).setSetting = (key: string, value: string) => {
       const now = Date.now();
       db.prepare(`
