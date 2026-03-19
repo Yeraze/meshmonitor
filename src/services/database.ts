@@ -2350,7 +2350,7 @@ class DatabaseService {
    */
   async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
     if (this.drizzleDbType !== 'sqlite') {
-      const nodes = await this.nodesRepo.getNodesWithKeySecurityIssues();
+      const nodes = await this.nodes.getNodesWithKeySecurityIssues();
       return nodes as unknown as DbNode[];
     }
     // SQLite fallback using raw SQL on main connection
