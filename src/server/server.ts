@@ -550,7 +550,7 @@ setInterval(async () => {
     // Get favorite telemetry storage days from settings (defaults to 7 if not set)
     const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
     const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
-    const purgedCount = databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS, favoriteDays);
+    const purgedCount = await databaseService.purgeOldTelemetryAsync(TELEMETRY_RETENTION_HOURS, favoriteDays);
     if (purgedCount > 0) {
       logger.debug(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
     }
@@ -565,7 +565,7 @@ setTimeout(async () => {
     // Get favorite telemetry storage days from settings (defaults to 7 if not set)
     const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
     const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
-    databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS, favoriteDays);
+    await databaseService.purgeOldTelemetryAsync(TELEMETRY_RETENTION_HOURS, favoriteDays);
   } catch (error) {
     logger.error('Error during initial telemetry purge:', error);
   }
@@ -3470,12 +3470,8 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     let telemetry: any[];
     // For PostgreSQL/MySQL, use async repo directly
     if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.telemetryRepo) {
-        const limit = Math.min(hoursParam * 60, 5000);
-        telemetry = await databaseService.telemetryRepo.getTelemetryByNode(nodeId, limit, cutoffTime);
-      } else {
-        telemetry = [];
-      }
+      const limit = Math.min(hoursParam * 60, 5000);
+      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime);
     } else {
       // Use averaged query for graph data to reduce data points
       // Dynamic bucketing automatically adjusts interval based on time range:
@@ -3543,31 +3539,29 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
         rates[type] = [];
       }
 
-      if (databaseService.telemetryRepo) {
-        // Fetch telemetry for each packet type and calculate rates
-        for (const type of packetTypes) {
-          const telemetry = await databaseService.telemetryRepo.getTelemetryByNode(
-            nodeId, 5000, cutoffTime, undefined, 0, type
-          );
+      // Fetch telemetry for each packet type and calculate rates
+      for (const type of packetTypes) {
+        const telemetry = await databaseService.telemetry.getTelemetryByNode(
+          nodeId, 5000, cutoffTime, undefined, 0, type
+        );
 
-          // Sort by timestamp ascending for rate calculation
-          telemetry.sort((a, b) => a.timestamp - b.timestamp);
+        // Sort by timestamp ascending for rate calculation
+        telemetry.sort((a, b) => a.timestamp - b.timestamp);
 
-          // Calculate rates from consecutive samples
-          for (let i = 1; i < telemetry.length; i++) {
-            const prev = telemetry[i - 1];
-            const curr = telemetry[i];
-            const timeDiffMs = curr.timestamp - prev.timestamp;
-            const valueDiff = curr.value - prev.value;
+        // Calculate rates from consecutive samples
+        for (let i = 1; i < telemetry.length; i++) {
+          const prev = telemetry[i - 1];
+          const curr = telemetry[i];
+          const timeDiffMs = curr.timestamp - prev.timestamp;
+          const valueDiff = curr.value - prev.value;
 
-            if (timeDiffMs > 0 && valueDiff >= 0) {
-              const timeDiffMinutes = timeDiffMs / 60000;
-              const ratePerMinute = valueDiff / timeDiffMinutes;
-              rates[type].push({
-                timestamp: curr.timestamp,
-                ratePerMinute: Math.round(ratePerMinute * 100) / 100,
-              });
-            }
+          if (timeDiffMs > 0 && valueDiff >= 0) {
+            const timeDiffMinutes = timeDiffMs / 60000;
+            const ratePerMinute = valueDiff / timeDiffMinutes;
+            rates[type].push({
+              timestamp: curr.timestamp,
+              ratePerMinute: Math.round(ratePerMinute * 100) / 100,
+            });
           }
         }
       }
@@ -3688,7 +3682,7 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
     const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
     // Efficient bulk query: get all telemetry types for all nodes at once
-    const nodeTelemetryTypes = databaseService.getAllNodesTelemetryTypes();
+    const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync();
 
     nodes.forEach(node => {
       const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -3959,7 +3953,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
         const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
-        const nodeTelemetryTypes = databaseService.getAllNodesTelemetryTypes();
+        const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync();
 
         dbNodes.forEach(node => {
           const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -5432,7 +5426,7 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
 apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
   try {
     const nodeCount = await databaseService.nodes.getNodeCount();
-    databaseService.purgeAllNodes();
+    await databaseService.purgeAllNodesAsync();
     // Trigger a node refresh after purging
     await meshtasticManager.refreshNodeDatabase();
 
@@ -5452,9 +5446,9 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
   }
 });
 
-apiRouter.post('/purge/telemetry', requireAdmin(), (req, res) => {
+apiRouter.post('/purge/telemetry', requireAdmin(), async (req, res) => {
   try {
-    databaseService.purgeAllTelemetry();
+    await databaseService.purgeAllTelemetryAsync();
 
     // Audit log
     databaseService.auditLogAsync(
@@ -7139,7 +7133,7 @@ apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write
 
     // Also purge the local database
     logger.info('🗑️ Purging local node database');
-    databaseService.purgeAllNodes();
+    await databaseService.purgeAllNodesAsync();
     logger.info('✅ Local node database purged successfully');
 
     res.json({
