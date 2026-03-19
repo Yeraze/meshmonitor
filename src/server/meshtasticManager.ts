@@ -397,7 +397,7 @@ class MeshtasticManager {
       logger.info('📍 Recalculating estimated positions from historical traceroutes...');
 
       // Get all traceroutes with route data
-      const traceroutes = databaseService.getAllTraceroutesForRecalculation();
+      const traceroutes = await databaseService.getAllTraceroutesForRecalculationAsync();
       logger.info(`Found ${traceroutes.length} traceroutes to process for position estimation`);
 
       let processedCount = 0;
@@ -670,7 +670,7 @@ class MeshtasticManager {
         await this.startRemoteAdminScanner();
 
         // Start automatic time sync scheduler
-        this.startTimeSyncScheduler();
+        await this.startTimeSyncScheduler();
 
         // Start automatic LocalStats collection
         this.startLocalStatsScheduler();
@@ -1093,14 +1093,16 @@ class MeshtasticManager {
     }
 
     if (this.isConnected) {
-      this.startTimeSyncScheduler();
+      this.startTimeSyncScheduler().catch(err => {
+        logger.error('Error starting time sync scheduler:', err);
+      });
     }
   }
 
   /**
    * Start the automatic time sync scheduler
    */
-  private startTimeSyncScheduler(): void {
+  private async startTimeSyncScheduler(): Promise<void> {
     if (this.timeSyncInterval) {
       clearInterval(this.timeSyncInterval);
       this.timeSyncInterval = null;
@@ -1108,13 +1110,13 @@ class MeshtasticManager {
 
     // Load settings from database if not already set
     if (this.timeSyncIntervalMinutes === 0) {
-      if (databaseService.isAutoTimeSyncEnabled()) {
-        this.timeSyncIntervalMinutes = databaseService.getAutoTimeSyncIntervalMinutes();
+      if (await databaseService.isAutoTimeSyncEnabledAsync()) {
+        this.timeSyncIntervalMinutes = await databaseService.getAutoTimeSyncIntervalMinutesAsync();
       }
     }
 
     // If interval is 0 or time sync is disabled, scheduler is disabled
-    if (this.timeSyncIntervalMinutes === 0 || !databaseService.isAutoTimeSyncEnabled()) {
+    if (this.timeSyncIntervalMinutes === 0 || !await databaseService.isAutoTimeSyncEnabledAsync()) {
       logger.info('🕐 Time sync scheduler is disabled');
       return;
     }
@@ -1295,7 +1297,7 @@ class MeshtasticManager {
         }
 
         // Skip ghost-suppressed nodes (recently merged/deleted after reboot)
-        if (databaseService.isNodeSuppressed(node.nodeNum)) {
+        if (await databaseService.isNodeSuppressedAsync(node.nodeNum)) {
           logger.debug(`🔐 Key repair: skipping ghost-suppressed node ${node.nodeNum}`);
           continue;
         }
@@ -2958,7 +2960,7 @@ class MeshtasticManager {
           logger.info(`🗑️ Deleted old ghost node ${previousNodeId} (${prevNum})`);
 
           // Suppress ghost resurrection — incoming mesh traffic may still reference the old nodeNum
-          databaseService.suppressGhostNode(prevNum);
+          await databaseService.suppressGhostNodeAsync(prevNum);
 
           // Update settings to new nodeNum/nodeId — localDeviceId stays the same
           await databaseService.settings.setSetting('localNodeNum', nodeNum.toString());
@@ -3785,7 +3787,7 @@ class MeshtasticManager {
       else if (normalizedPortNum === PortNum.TRACEROUTE_APP) {
         const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
         const toNum = meshPacket.to ? Number(meshPacket.to) : 0;
-        databaseService.recordTracerouteRequest(fromNum, toNum);
+        await databaseService.recordTracerouteRequestAsync(fromNum, toNum);
       }
     }
   }
@@ -5154,7 +5156,7 @@ class MeshtasticManager {
             await databaseService.traceroutes.insertRouteSegment(segment);
 
             // Check if this is a new record holder
-            databaseService.updateRecordHolderSegment(segment);
+            await databaseService.updateRecordHolderSegmentAsync(segment);
 
             logger.debug(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
           }
@@ -6336,7 +6338,7 @@ class MeshtasticManager {
         }
       }
 
-      databaseService.recordTracerouteRequest(this.localNodeInfo.nodeNum, destination);
+      await databaseService.recordTracerouteRequestAsync(this.localNodeInfo.nodeNum, destination);
       logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing traceroute to packet monitor

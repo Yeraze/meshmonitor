@@ -193,35 +193,35 @@ class DatabaseMaintenanceService {
       logger.info(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d`);
 
       // Get database size before cleanup
-      stats.sizeBefore = databaseService.getDatabaseSize();
+      stats.sizeBefore = await databaseService.getDatabaseSizeAsync();
       logger.info(`📊 Database size before: ${formatBytes(stats.sizeBefore)}`);
 
       // Run cleanups
-      stats.messagesDeleted = databaseService.cleanupOldMessages(messageRetention);
+      stats.messagesDeleted = await databaseService.cleanupOldMessagesAsync(messageRetention);
       if (stats.messagesDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.messagesDeleted} old messages`);
       }
 
-      stats.traceroutesDeleted = databaseService.cleanupOldTraceroutes(tracerouteRetention);
+      stats.traceroutesDeleted = await databaseService.cleanupOldTraceroutesAsync(tracerouteRetention);
       if (stats.traceroutesDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.traceroutesDeleted} old traceroutes`);
       }
 
-      stats.routeSegmentsDeleted = databaseService.cleanupOldRouteSegments(routeSegmentRetention);
+      stats.routeSegmentsDeleted = await databaseService.cleanupOldRouteSegmentsAsync(routeSegmentRetention);
       if (stats.routeSegmentsDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.routeSegmentsDeleted} old route segments`);
       }
 
-      stats.neighborInfoDeleted = databaseService.cleanupOldNeighborInfo(neighborInfoRetention);
+      stats.neighborInfoDeleted = await databaseService.cleanupOldNeighborInfoAsync(neighborInfoRetention);
       if (stats.neighborInfoDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.neighborInfoDeleted} old neighbor info records`);
       }
 
       // Run VACUUM to reclaim space
-      databaseService.vacuum();
+      await databaseService.vacuumAsync();
 
       // Get database size after cleanup
-      stats.sizeAfter = databaseService.getDatabaseSize();
+      stats.sizeAfter = await databaseService.getDatabaseSizeAsync();
       stats.duration = Date.now() - startTime;
 
       // Update last run time in database
@@ -299,7 +299,7 @@ class DatabaseMaintenanceService {
    * Get the current database size in bytes - async version for PostgreSQL/MySQL
    */
   async getDatabaseSizeAsync(): Promise<number> {
-    return databaseService.getDatabaseSize();
+    return databaseService.getDatabaseSizeAsync();
   }
 
   /**

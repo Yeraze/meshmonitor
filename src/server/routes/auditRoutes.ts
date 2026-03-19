@@ -121,7 +121,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Cleanup old audit logs (admin only)
-router.post('/cleanup', requirePermission('audit', 'write'), (req: Request, res: Response) => {
+router.post('/cleanup', requirePermission('audit', 'write'), async (req: Request, res: Response) => {
   try {
     // Require admin for cleanup operations
     if (!req.user?.isAdmin) {
@@ -145,7 +145,7 @@ router.post('/cleanup', requirePermission('audit', 'write'), (req: Request, res:
       });
     }
 
-    const deletedCount = databaseService.cleanupAuditLogs(days);
+    const deletedCount = await databaseService.cleanupAuditLogsAsync(days);
 
     // Log the cleanup action
     databaseService.auditLogAsync(
