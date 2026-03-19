@@ -36,10 +36,10 @@ describe('PacketLogService', () => {
   });
 
   describe('Packet Logging', () => {
-    it('should log a basic packet', () => {
+    it('should log a basic packet', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 12345,
         timestamp: Math.floor(Date.now() / 1000),
         from_node: 123456789,
@@ -54,16 +54,16 @@ describe('PacketLogService', () => {
         metadata: JSON.stringify({ test: true })
       });
 
-      const packets = packetLogService.getPackets({ limit: 10 });
+      const packets = await packetLogService.getPackets({ limit: 10 });
       expect(packets.length).toBe(1);
       expect(packets[0].portnum).toBe(1);
       expect(packets[0].portnum_name).toBe('TEXT_MESSAGE_APP');
     });
 
-    it('should log encrypted packet', () => {
+    it('should log encrypted packet', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 12346,
         timestamp: Math.floor(Date.now() / 1000),
         from_node: 123456789,
@@ -75,16 +75,16 @@ describe('PacketLogService', () => {
         metadata: '{}'
       });
 
-      const packets = packetLogService.getPackets({ encrypted: true });
+      const packets = await packetLogService.getPackets({ encrypted: true });
       expect(packets.length).toBe(1);
       expect(packets[0].encrypted).toBe(1); // SQLite stores booleans as integers
       expect(packets[0].payload_preview).toContain('ENCRYPTED');
     });
 
-    it('should not log when disabled', () => {
+    it('should not log when disabled', async () => {
       databaseService.setSetting('packet_log_enabled', '0');
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 12347,
         timestamp: Math.floor(Date.now() / 1000),
         from_node: 123456789,
@@ -94,14 +94,14 @@ describe('PacketLogService', () => {
         metadata: '{}'
       });
 
-      const packets = packetLogService.getPackets({ limit: 10 });
+      const packets = await packetLogService.getPackets({ limit: 10 });
       expect(packets.length).toBe(0);
     });
 
-    it('should handle packets with all optional fields', () => {
+    it('should handle packets with all optional fields', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 12348,
         timestamp: Math.floor(Date.now() / 1000),
         from_node: 123456789,
@@ -123,7 +123,7 @@ describe('PacketLogService', () => {
         metadata: JSON.stringify({ deviceMetrics: { batteryLevel: 95 } })
       });
 
-      const packets = packetLogService.getPackets({ limit: 10 });
+      const packets = await packetLogService.getPackets({ limit: 10 });
       expect(packets.length).toBe(1);
       expect(packets[0].snr).toBe(8.5);
       expect(packets[0].rssi).toBe(-45);
@@ -132,13 +132,13 @@ describe('PacketLogService', () => {
   });
 
   describe('Packet Filtering', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       // Add test data
       const baseTime = Math.floor(Date.now() / 1000);
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 1,
         timestamp: baseTime - 100,
         from_node: 111,
@@ -149,7 +149,7 @@ describe('PacketLogService', () => {
         metadata: '{}'
       });
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 2,
         timestamp: baseTime - 50,
         from_node: 222,
@@ -161,7 +161,7 @@ describe('PacketLogService', () => {
         metadata: '{}'
       });
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 3,
         timestamp: baseTime,
         from_node: 111,
@@ -173,48 +173,48 @@ describe('PacketLogService', () => {
       });
     });
 
-    it('should filter by portnum', () => {
-      const packets = packetLogService.getPackets({ portnum: 1 });
+    it('should filter by portnum', async () => {
+      const packets = await packetLogService.getPackets({ portnum: 1 });
       expect(packets.length).toBe(1);
       expect(packets[0].portnum).toBe(1);
     });
 
-    it('should filter by from_node', () => {
-      const packets = packetLogService.getPackets({ from_node: 111 });
+    it('should filter by from_node', async () => {
+      const packets = await packetLogService.getPackets({ from_node: 111 });
       expect(packets.length).toBe(2);
       packets.forEach(p => expect(p.from_node).toBe(111));
     });
 
-    it('should filter by to_node', () => {
-      const packets = packetLogService.getPackets({ to_node: 333 });
+    it('should filter by to_node', async () => {
+      const packets = await packetLogService.getPackets({ to_node: 333 });
       expect(packets.length).toBe(1);
       expect(packets[0].to_node).toBe(333);
     });
 
-    it('should filter by channel', () => {
-      const packets = packetLogService.getPackets({ channel: 0 });
+    it('should filter by channel', async () => {
+      const packets = await packetLogService.getPackets({ channel: 0 });
       expect(packets.length).toBe(2);
       packets.forEach(p => expect(p.channel).toBe(0));
     });
 
-    it('should filter by encrypted status', () => {
-      const encryptedPackets = packetLogService.getPackets({ encrypted: true });
+    it('should filter by encrypted status', async () => {
+      const encryptedPackets = await packetLogService.getPackets({ encrypted: true });
       expect(encryptedPackets.length).toBe(1);
       expect(encryptedPackets[0].encrypted).toBe(1); // SQLite stores booleans as integers
 
-      const decryptedPackets = packetLogService.getPackets({ encrypted: false });
+      const decryptedPackets = await packetLogService.getPackets({ encrypted: false });
       expect(decryptedPackets.length).toBe(2);
       decryptedPackets.forEach(p => expect(p.encrypted).toBe(0)); // SQLite stores booleans as integers
     });
 
-    it('should filter by since timestamp', () => {
+    it('should filter by since timestamp', async () => {
       const baseTime = Math.floor(Date.now() / 1000);
-      const packets = packetLogService.getPackets({ since: baseTime - 60 });
+      const packets = await packetLogService.getPackets({ since: baseTime - 60 });
       expect(packets.length).toBe(2); // Should only get packets from last 60s
     });
 
-    it('should support multiple filters combined', () => {
-      const packets = packetLogService.getPackets({
+    it('should support multiple filters combined', async () => {
+      const packets = await packetLogService.getPackets({
         from_node: 111,
         channel: 0,
         encrypted: false
@@ -227,23 +227,23 @@ describe('PacketLogService', () => {
       });
     });
 
-    it('should respect offset and limit', () => {
-      const page1 = packetLogService.getPackets({ offset: 0, limit: 2 });
+    it('should respect offset and limit', async () => {
+      const page1 = await packetLogService.getPackets({ offset: 0, limit: 2 });
       expect(page1.length).toBe(2);
 
-      const page2 = packetLogService.getPackets({ offset: 2, limit: 2 });
+      const page2 = await packetLogService.getPackets({ offset: 2, limit: 2 });
       expect(page2.length).toBe(1);
     });
   });
 
   describe('Packet Count', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       // Add test data
       const baseTime = Math.floor(Date.now() / 1000);
       for (let i = 0; i < 5; i++) {
-        packetLogService.logPacket({
+        await packetLogService.logPacket({
           packet_id: i,
           timestamp: baseTime - i,
           from_node: 111,
@@ -255,25 +255,25 @@ describe('PacketLogService', () => {
       }
     });
 
-    it('should count all packets', () => {
-      const count = packetLogService.getPacketCount();
+    it('should count all packets', async () => {
+      const count = await packetLogService.getPacketCount();
       expect(count).toBe(5);
     });
 
-    it('should count packets matching filter', () => {
-      const encryptedCount = packetLogService.getPacketCount({ encrypted: true });
+    it('should count packets matching filter', async () => {
+      const encryptedCount = await packetLogService.getPacketCount({ encrypted: true });
       expect(encryptedCount).toBe(3);
 
-      const portnumCount = packetLogService.getPacketCount({ portnum: 1 });
+      const portnumCount = await packetLogService.getPacketCount({ portnum: 1 });
       expect(portnumCount).toBe(3);
     });
   });
 
   describe('Packet Retrieval', () => {
-    it('should get packet by ID', () => {
+    it('should get packet by ID', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 99999,
         timestamp: Math.floor(Date.now() / 1000),
         from_node: 111,
@@ -283,28 +283,28 @@ describe('PacketLogService', () => {
         metadata: '{}'
       });
 
-      const packets = packetLogService.getPackets({ limit: 10 });
+      const packets = await packetLogService.getPackets({ limit: 10 });
       expect(packets.length).toBeGreaterThan(0);
       const id = packets[0]!.id!; // Non-null assertions for both array element and id property
 
-      const packet = packetLogService.getPacketById(id);
+      const packet = await packetLogService.getPacketById(id);
       expect(packet).toBeDefined();
       expect(packet?.packet_id).toBe(99999);
     });
 
-    it('should return null for non-existent packet ID', () => {
-      const packet = packetLogService.getPacketById(999999);
+    it('should return null for non-existent packet ID', async () => {
+      const packet = await packetLogService.getPacketById(999999);
       expect(packet).toBeNull();
     });
   });
 
   describe('Packet Cleanup', () => {
-    it('should clear all packets', () => {
+    it('should clear all packets', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       // Add packets
       for (let i = 0; i < 10; i++) {
-        packetLogService.logPacket({
+        await packetLogService.logPacket({
           packet_id: i,
           timestamp: Math.floor(Date.now() / 1000),
           from_node: 111,
@@ -315,21 +315,21 @@ describe('PacketLogService', () => {
         });
       }
 
-      expect(packetLogService.getPacketCount()).toBe(10);
+      expect(await packetLogService.getPacketCount()).toBe(10);
 
       const deletedCount = packetLogService.clearPackets();
       expect(deletedCount).toBe(10);
-      expect(packetLogService.getPacketCount()).toBe(0);
+      expect(await packetLogService.getPacketCount()).toBe(0);
     });
 
-    it('should cleanup old packets automatically', () => {
+    it('should cleanup old packets automatically', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       const oldTime = Math.floor(Date.now() / 1000) - (25 * 60 * 60); // 25 hours ago
       const newTime = Math.floor(Date.now() / 1000);
 
       // Add old packet
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 1,
         timestamp: oldTime,
         from_node: 111,
@@ -340,7 +340,7 @@ describe('PacketLogService', () => {
       });
 
       // Add new packet
-      packetLogService.logPacket({
+      await packetLogService.logPacket({
         packet_id: 2,
         timestamp: newTime,
         from_node: 111,
@@ -355,7 +355,7 @@ describe('PacketLogService', () => {
       expect(deletedCount).toBeGreaterThanOrEqual(0);
 
       // Verify old packets are gone but new ones remain
-      const remainingPackets = packetLogService.getPackets({ limit: 100 });
+      const remainingPackets = await packetLogService.getPackets({ limit: 100 });
       expect(remainingPackets.every(p => p.packet_id !== 1)).toBe(true);
     });
   });
