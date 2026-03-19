@@ -80,11 +80,22 @@ vi.mock('../../../services/database.js', () => ({
       if (key === 'localNodeNum') return '2715451348';
       return null;
     }),
+    settings: {
+      getSetting: vi.fn(async (key: string) => {
+        if (key === 'localNodeNum') return '2715451348';
+        return null;
+      }),
+    },
     // Messages methods
     searchMessagesAsync: vi.fn().mockResolvedValue({ messages: searchResults, total: 2 }),
     getMessagesByChannel: vi.fn().mockReturnValue([]),
     getMessages: vi.fn().mockReturnValue([]),
     getMessagesAfterTimestamp: vi.fn().mockReturnValue([]),
+    messages: {
+      getMessages: vi.fn().mockResolvedValue([]),
+      getMessagesByChannel: vi.fn().mockResolvedValue([]),
+      getMessagesAfterTimestamp: vi.fn().mockResolvedValue([]),
+    },
     drizzleDbType: 'sqlite'
   }
 }));

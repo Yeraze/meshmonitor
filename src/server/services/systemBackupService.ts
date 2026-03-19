@@ -506,7 +506,7 @@ class SystemBackupService {
    */
   async purgeOldBackups(): Promise<void> {
     try {
-      const maxBackups = databaseService.getSetting('system_backup_maxBackups');
+      const maxBackups = await databaseService.settings.getSetting('system_backup_maxBackups');
       if (!maxBackups) {
         return; // No limit set
       }

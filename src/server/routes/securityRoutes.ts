@@ -148,7 +148,7 @@ router.post('/scanner/scan', requirePermission('security', 'write'), async (req:
     }
 
     // Log the manual scan trigger
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'security_scan_triggered',
       'security',
@@ -180,7 +180,7 @@ router.get('/export', async (req: Request, res: Response) => {
     const timestamp = new Date().toISOString();
 
     // Log the export action
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'security_export',
       'security',
@@ -282,7 +282,7 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
     await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null);
 
     // Log the action
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'security_issues_cleared',
       'security',

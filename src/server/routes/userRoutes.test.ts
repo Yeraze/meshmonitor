@@ -55,7 +55,8 @@ describe('User Management Routes', () => {
     // Mock database service
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
-    (DatabaseService as any).auditLog = () => {};
+    (DatabaseService as any).auditLog = () => {};  // still used by localAuth.ts
+    (DatabaseService as any).auditLogAsync = () => {};
     (DatabaseService as any).drizzleDbType = 'sqlite';
 
     // Add auth repository mock that delegates to real models

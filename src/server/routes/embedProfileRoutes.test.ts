@@ -19,7 +19,7 @@ vi.mock('../../services/database.js', () => ({
       updateAsync: vi.fn(),
       deleteAsync: vi.fn(),
     },
-    auditLog: vi.fn(),
+    auditLogAsync: vi.fn(),
   }
 }));
 
@@ -35,7 +35,7 @@ const mockDb = databaseService as unknown as {
     updateAsync: ReturnType<typeof vi.fn>;
     deleteAsync: ReturnType<typeof vi.fn>;
   };
-  auditLog: ReturnType<typeof vi.fn>;
+  auditLogAsync: ReturnType<typeof vi.fn>;
 };
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
@@ -171,7 +171,7 @@ describe('Embed Profile Admin Routes', () => {
           allowedOrigins: [],
         })
       );
-      expect(mockDb.auditLog).toHaveBeenCalled();
+      expect(mockDb.auditLogAsync).toHaveBeenCalled();
     });
 
     it('rejects missing name with 400', async () => {
@@ -284,7 +284,7 @@ describe('Embed Profile Admin Routes', () => {
         'test-uuid-1234',
         { name: 'Updated Name' }
       );
-      expect(mockDb.auditLog).toHaveBeenCalled();
+      expect(mockDb.auditLogAsync).toHaveBeenCalled();
     });
 
     it('returns 404 for nonexistent profile', async () => {
@@ -322,7 +322,7 @@ describe('Embed Profile Admin Routes', () => {
 
       expect(response.status).toBe(204);
       expect(mockDb.embedProfiles.deleteAsync).toHaveBeenCalledWith('test-uuid-1234');
-      expect(mockDb.auditLog).toHaveBeenCalled();
+      expect(mockDb.auditLogAsync).toHaveBeenCalled();
     });
 
     it('returns 404 for nonexistent profile', async () => {

@@ -109,7 +109,7 @@ export async function createLocalUser(
     logger.debug(`✅ Created new local user: ${username} (admin: ${isAdmin})`);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       createdBy || null,
       'user_created',
       'users',
@@ -166,7 +166,7 @@ export async function changePassword(
     logger.debug(`✅ Password changed for user: ${user.username}`);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       userId,
       'password_changed',
       'users',
@@ -210,7 +210,7 @@ export async function resetUserPassword(
     logger.debug(`✅ Password reset for user: ${user.username}`);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       adminUserId,
       'password_reset',
       'users',
@@ -259,7 +259,7 @@ export async function setUserPassword(
     logger.debug(`✅ Password set for user: ${user.username}`);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       adminUserId,
       'password_set',
       'users',
