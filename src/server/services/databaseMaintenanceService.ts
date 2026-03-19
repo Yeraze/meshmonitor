@@ -2,7 +2,7 @@
  * Database Maintenance Service
  *
  * Automatically cleans up old data from the database to prevent unbounded growth.
- * Runs at a configurable time (default 04:00) and deletes:
+ * Runs at a configurable time (default 04:00 local time) and deletes:
  * - Messages older than messageRetentionDays (default 30)
  * - Traceroutes older than tracerouteRetentionDays (default 30)
  * - Route segments older than routeSegmentRetentionDays (default 30)
@@ -42,15 +42,28 @@ export interface MaintenanceStatus {
   };
 }
 
+/** Minimum allowed retention days to prevent accidental data wipe */
+const MIN_RETENTION_DAYS = 1;
+
 /**
  * Format bytes to human-readable string
  */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+export function formatBytes(bytes: number): string {
+  if (bytes <= 0) return bytes === 0 ? '0 B' : `${bytes} B`;
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+/**
+ * Get local date string in YYYY-MM-DD format (consistent with local time scheduling)
+ */
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 class DatabaseMaintenanceService {
@@ -103,7 +116,20 @@ class DatabaseMaintenanceService {
   }
 
   /**
-   * Check if it's time to run maintenance and execute if needed
+   * Get a retention setting from the database, with default and minimum enforcement
+   */
+  private async getRetentionDays(key: string, defaultDays: number = 30): Promise<number> {
+    const value = parseInt(await databaseService.settings.getSetting(key) || String(defaultDays), 10);
+    if (isNaN(value) || value < MIN_RETENTION_DAYS) {
+      logger.warn(`⚠️ Retention setting "${key}" is ${value}, clamping to minimum ${MIN_RETENTION_DAYS} day(s)`);
+      return MIN_RETENTION_DAYS;
+    }
+    return value;
+  }
+
+  /**
+   * Check if it's time to run maintenance and execute if needed.
+   * Uses a ±1 minute window to handle setInterval drift.
    */
   private async checkAndRunMaintenance(): Promise<void> {
     // Check if maintenance is enabled
@@ -116,20 +142,26 @@ class DatabaseMaintenanceService {
     const maintenanceTime = await databaseService.settings.getSetting('maintenanceTime') || '04:00';
     const [targetHour, targetMinute] = maintenanceTime.split(':').map(Number);
 
-    // Get current time
+    // Get current time (all local time for consistency)
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
 
-    // Check if we're within the maintenance time window (exact minute match)
-    if (currentHour !== targetHour || currentMinute !== targetMinute) {
+    // Convert to minutes-since-midnight for easier comparison with ±1 minute window
+    const targetMinutes = targetHour * 60 + targetMinute;
+    const currentMinutes = currentHour * 60 + currentMinute;
+    const diff = Math.abs(currentMinutes - targetMinutes);
+
+    // Allow ±1 minute window to handle setInterval drift
+    if (diff > 1 && diff < 1439) {
+      // diff < 1439 handles midnight wraparound (e.g., target=23:59, current=00:00 → diff=1)
       return; // Not time yet
     }
 
-    // Check if we already ran maintenance today
+    // Check if we already ran maintenance today (use local date, consistent with local time trigger)
     const lastRunKey = 'maintenance_lastRun';
     const lastRun = await databaseService.settings.getSetting(lastRunKey);
-    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = getLocalDateString(now);
 
     if (lastRun && lastRun.startsWith(today)) {
       return; // Already ran maintenance today
@@ -145,12 +177,11 @@ class DatabaseMaintenanceService {
   }
 
   /**
-   * Run database maintenance (can be called manually or by scheduler)
-   * Uses a lock to prevent race conditions from concurrent calls
+   * Run database maintenance (can be called manually or by scheduler).
+   * Uses a promise lock to prevent concurrent runs — the check-and-set is
+   * atomic because it executes synchronously within a single event loop turn.
    */
   async runMaintenance(): Promise<MaintenanceStats> {
-    // If maintenance is already running, throw an error
-    // The lock ensures atomic check-and-set
     if (this.maintenanceLock) {
       throw new Error('Maintenance already in progress');
     }
@@ -184,11 +215,14 @@ class DatabaseMaintenanceService {
     };
 
     try {
-      // Get retention settings (defaults: 30 days)
-      const messageRetention = parseInt(await databaseService.settings.getSetting('messageRetentionDays') || '30', 10);
-      const tracerouteRetention = parseInt(await databaseService.settings.getSetting('tracerouteRetentionDays') || '30', 10);
-      const routeSegmentRetention = parseInt(await databaseService.settings.getSetting('routeSegmentRetentionDays') || '30', 10);
-      const neighborInfoRetention = parseInt(await databaseService.settings.getSetting('neighborInfoRetentionDays') || '30', 10);
+      // Get retention settings (defaults: 30 days, minimum: 1 day)
+      const [messageRetention, tracerouteRetention, routeSegmentRetention, neighborInfoRetention] =
+        await Promise.all([
+          this.getRetentionDays('messageRetentionDays'),
+          this.getRetentionDays('tracerouteRetentionDays'),
+          this.getRetentionDays('routeSegmentRetentionDays'),
+          this.getRetentionDays('neighborInfoRetentionDays'),
+        ]);
 
       logger.info(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d`);
 
@@ -224,9 +258,6 @@ class DatabaseMaintenanceService {
       stats.sizeAfter = await databaseService.getDatabaseSizeAsync();
       stats.duration = Date.now() - startTime;
 
-      // Update last run time in database
-      await databaseService.settings.setSetting('maintenance_lastRun', new Date().toISOString());
-
       // Update in-memory state
       this.lastRunTime = Date.now();
       this.lastRunStats = stats;
@@ -237,7 +268,7 @@ class DatabaseMaintenanceService {
 
       logger.info(`✅ Database maintenance complete in ${(stats.duration / 1000).toFixed(1)}s: ` +
         `deleted ${totalDeleted} records, size: ${formatBytes(stats.sizeBefore)} → ${formatBytes(stats.sizeAfter)} ` +
-        `(saved ${formatBytes(spaceSaved)})`);
+        `(${spaceSaved >= 0 ? 'saved' : 'grew by'} ${formatBytes(Math.abs(spaceSaved))})`);
 
       return stats;
     } catch (error) {
@@ -245,6 +276,16 @@ class DatabaseMaintenanceService {
       throw error;
     } finally {
       this.isMaintenanceInProgress = false;
+      // Always record that maintenance was attempted today (even on failure)
+      // to prevent retry storms on persistent errors
+      try {
+        await databaseService.settings.setSetting(
+          'maintenance_lastRun',
+          `${getLocalDateString(new Date())}T${new Date().toISOString().split('T')[1]}`
+        );
+      } catch (settingError) {
+        logger.error('❌ Failed to record maintenance_lastRun:', settingError);
+      }
     }
   }
 
@@ -252,14 +293,25 @@ class DatabaseMaintenanceService {
    * Get the current status of the maintenance service
    */
   async getStatus(): Promise<MaintenanceStatus> {
-    const enabled = await databaseService.settings.getSetting('maintenanceEnabled') === 'true';
-    const maintenanceTime = await databaseService.settings.getSetting('maintenanceTime') || '04:00';
+    // Fetch all settings in parallel to reduce DB round-trips
+    const [enabledStr, maintenanceTime, messageRet, tracerouteRet, routeSegmentRet, neighborInfoRet] =
+      await Promise.all([
+        databaseService.settings.getSetting('maintenanceEnabled'),
+        databaseService.settings.getSetting('maintenanceTime'),
+        this.getRetentionDays('messageRetentionDays'),
+        this.getRetentionDays('tracerouteRetentionDays'),
+        this.getRetentionDays('routeSegmentRetentionDays'),
+        this.getRetentionDays('neighborInfoRetentionDays'),
+      ]);
+
+    const enabled = enabledStr === 'true';
+    const time = maintenanceTime || '04:00';
 
     // Calculate next scheduled run
     let nextScheduledRun: string | null = null;
     if (this.isRunning && enabled) {
       const now = new Date();
-      const [targetHour, targetMinute] = maintenanceTime.split(':').map(Number);
+      const [targetHour, targetMinute] = time.split(':').map(Number);
       const next = new Date(now);
       next.setHours(targetHour, targetMinute, 0, 0);
 
@@ -274,25 +326,18 @@ class DatabaseMaintenanceService {
       running: this.isRunning,
       maintenanceInProgress: this.isMaintenanceInProgress,
       enabled,
-      maintenanceTime,
+      maintenanceTime: time,
       lastRunTime: this.lastRunTime,
       lastRunStats: this.lastRunStats,
       nextScheduledRun,
       databaseType: databaseService.drizzleDbType,
       settings: {
-        messageRetentionDays: parseInt(await databaseService.settings.getSetting('messageRetentionDays') || '30', 10),
-        tracerouteRetentionDays: parseInt(await databaseService.settings.getSetting('tracerouteRetentionDays') || '30', 10),
-        routeSegmentRetentionDays: parseInt(await databaseService.settings.getSetting('routeSegmentRetentionDays') || '30', 10),
-        neighborInfoRetentionDays: parseInt(await databaseService.settings.getSetting('neighborInfoRetentionDays') || '30', 10)
+        messageRetentionDays: messageRet,
+        tracerouteRetentionDays: tracerouteRet,
+        routeSegmentRetentionDays: routeSegmentRet,
+        neighborInfoRetentionDays: neighborInfoRet
       }
     };
-  }
-
-  /**
-   * Get the current database size in bytes
-   */
-  getDatabaseSize(): number {
-    return databaseService.getDatabaseSize();
   }
 
   /**
