@@ -1703,13 +1703,13 @@ class ProtobufService {
         isLicensed: isLicensed
       };
 
-      // CRITICAL: Include the node's current ID to prevent firmware from generating a new one.
-      // Without this, some firmware versions regenerate the node identity on setOwner. (Issue #2316)
+      // Note: firmware's handleSetOwner ignores the incoming id field and regenerates it
+      // from nodeDB->getNodeNum(). Including it anyway for completeness/forward-compatibility.
       if (nodeId) {
         userData.id = nodeId;
       }
 
-      // Include public key to preserve the node's PKI identity
+      // Include public key so firmware preserves it in the owner User struct
       if (publicKey && publicKey.length > 0) {
         userData.publicKey = publicKey;
       }
