@@ -822,7 +822,7 @@ setSettingsCallbacks({
   restartAnnounceScheduler: () => meshtasticManager.restartAnnounceScheduler(),
   restartTimerScheduler: () => meshtasticManager.restartTimerScheduler(),
   restartGeofenceEngine: () => meshtasticManager.restartGeofenceEngine(),
-  handleAutoWelcomeEnabled: () => databaseService.handleAutoWelcomeEnabled(),
+  handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   restartAutoDeleteByDistanceService: (intervalHours: number) =>
     autoDeleteByDistanceService.start(intervalHours),
@@ -1313,7 +1313,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update ignored status in database
-    databaseService.setNodeIgnored(nodeNum, isIgnored);
+    await databaseService.setNodeIgnoredAsync(nodeNum, isIgnored);
 
     // Broadcast updated NodeInfo to virtual node clients
     const virtualNodeServer = (global as any).virtualNodeServer;
@@ -1463,7 +1463,7 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
 
     // Also un-ignore the node record if it still exists
     try {
-      databaseService.setNodeIgnored(nodeNum, false);
+      await databaseService.setNodeIgnoredAsync(nodeNum, false);
     } catch {
       // Node may not exist in nodes table - that's OK
     }
@@ -1505,7 +1505,7 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
     }
 
     const nodeNum = parseInt(nodeNumStr, 16);
-    const override = databaseService.getNodePositionOverride(nodeNum);
+    const override = await databaseService.getNodePositionOverrideAsync(nodeNum);
 
     if (!override) {
       const errorResponse: ApiErrorResponse = {
@@ -1541,7 +1541,7 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
 });
 
 // Set node position override
-apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), (req, res) => {
+apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const { enabled, latitude, longitude, altitude, isPrivate } = req.body;
@@ -1618,7 +1618,7 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Set position override in database
-    databaseService.setNodePositionOverride(
+    await databaseService.setNodePositionOverrideAsync(
       nodeNum,
       enabled,
       enabled ? latitude : undefined,
@@ -1648,7 +1648,7 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
 });
 
 // Delete node position override
-apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), (req, res) => {
+apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -1669,7 +1669,7 @@ apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Clear position override in database
-    databaseService.clearNodePositionOverride(nodeNum);
+    await databaseService.clearNodePositionOverrideAsync(nodeNum);
 
     res.json({
       success: true,
@@ -1872,7 +1872,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
 apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), async (_req, res) => {
   try {
     const { detectDuplicateKeys } = await import('../services/lowEntropyKeyService.js');
-    const nodesWithKeys = databaseService.getNodesWithPublicKeys();
+    const nodesWithKeys = await databaseService.getNodesWithPublicKeysAsync();
     const duplicates = detectDuplicateKeys(nodesWithKeys);
 
     // Clear existing duplicate flags first
@@ -2025,7 +2025,7 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => 
     }
 
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = databaseService.getMessagesByChannel(messageChannel, limit + 1, offset);
+    const dbMessages = await databaseService.getMessagesByChannelAsync(messageChannel, limit + 1, offset);
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -2096,17 +2096,17 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
       }
-      markedCount = databaseService.markAllDMMessagesAsRead(localNodeInfo.nodeId, userId);
+      markedCount = await databaseService.markAllDMMessagesAsReadAsync(localNodeInfo.nodeId, userId);
     } else if (channelId !== undefined) {
       // Mark all messages in a channel as read (specific channel permission already checked above)
-      markedCount = databaseService.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
+      markedCount = await databaseService.markChannelMessagesAsReadAsync(channelId, userId, beforeTimestamp);
     } else if (nodeId) {
       // Mark all DMs with a node as read (permission already checked above)
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
       }
-      markedCount = databaseService.markDMMessagesAsRead(localNodeInfo.nodeId, nodeId, userId, beforeTimestamp);
+      markedCount = await databaseService.markDMMessagesAsReadAsync(localNodeInfo.nodeId, nodeId, userId, beforeTimestamp);
     } else {
       return res.status(400).json({ error: 'Must provide messageIds, channelId, nodeId, or allDMs' });
     }
@@ -2766,9 +2766,9 @@ apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (_req, res
   }
 });
 
-apiRouter.post('/export', requireAdmin(), (_req, res) => {
+apiRouter.post('/export', requireAdmin(), async (_req, res) => {
   try {
-    const data = databaseService.exportData();
+    const data = await databaseService.exportDataAsync();
     res.json(data);
   } catch (error) {
     logger.error('Error exporting data:', error);
@@ -2776,10 +2776,10 @@ apiRouter.post('/export', requireAdmin(), (_req, res) => {
   }
 });
 
-apiRouter.post('/import', requireAdmin(), (req, res) => {
+apiRouter.post('/import', requireAdmin(), async (req, res) => {
   try {
     const data = req.body;
-    databaseService.importData(data);
+    await databaseService.importDataAsync(data);
     res.json({ success: true });
   } catch (error) {
     logger.error('Error importing data:', error);
@@ -2787,10 +2787,10 @@ apiRouter.post('/import', requireAdmin(), (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/messages', requireAdmin(), (req, res) => {
+apiRouter.post('/cleanup/messages', requireAdmin(), async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
-    const deletedCount = databaseService.cleanupOldMessages(days);
+    const deletedCount = await databaseService.cleanupOldMessagesAsync(days);
     res.json({ deletedCount });
   } catch (error) {
     logger.error('Error cleaning up messages:', error);
@@ -2798,10 +2798,10 @@ apiRouter.post('/cleanup/messages', requireAdmin(), (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/nodes', requireAdmin(), (req, res) => {
+apiRouter.post('/cleanup/nodes', requireAdmin(), async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
-    const deletedCount = databaseService.cleanupInactiveNodes(days);
+    const deletedCount = await databaseService.cleanupInactiveNodesAsync(days);
     res.json({ deletedCount });
   } catch (error) {
     logger.error('Error cleaning up nodes:', error);
@@ -2809,9 +2809,9 @@ apiRouter.post('/cleanup/nodes', requireAdmin(), (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/channels', requireAdmin(), (_req, res) => {
+apiRouter.post('/cleanup/channels', requireAdmin(), async (_req, res) => {
   try {
-    const deletedCount = databaseService.cleanupInvalidChannels();
+    const deletedCount = await databaseService.cleanupInvalidChannelsAsync();
     res.json({ deletedCount });
   } catch (error) {
     logger.error('Error cleaning up channels:', error);
@@ -3316,9 +3316,9 @@ apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read')
 });
 
 // Clear record holder route segment
-apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), (_req, res) => {
+apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), async (_req, res) => {
   try {
-    databaseService.clearRecordHolderSegment();
+    await databaseService.clearRecordHolderSegmentAsync();
     res.json({ success: true, message: 'Record holder cleared' });
   } catch (error) {
     logger.error('Error clearing record holder:', error);
@@ -3397,7 +3397,7 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, 
 apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum);
-    const neighborInfo = databaseService.getNeighborsForNode(nodeNum);
+    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum);
 
     // Enrich with node names
     const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {
@@ -3482,7 +3482,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
       // - 0-24h: 3-minute intervals (high detail)
       // - 1-7d: 30-minute intervals (medium detail)
       // - 7d+: 2-hour intervals (low detail, full coverage)
-      telemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, undefined, hoursParam);
+      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam);
     }
 
     // Filter out location telemetry if private and unauthorized
@@ -4987,7 +4987,7 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
       meshtasticManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
     } else if (enabled !== undefined) {
       // If only enabled/disabled changed, use existing interval
-      const currentInterval = databaseService.getAutoTimeSyncIntervalMinutes();
+      const currentInterval = await databaseService.getAutoTimeSyncIntervalMinutesAsync();
       meshtasticManager.setTimeSyncInterval(enabled ? currentInterval : 0);
     }
 
@@ -5119,9 +5119,9 @@ apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings'
 // Note: GET/POST/DELETE /settings routes are in routes/settingsRoutes.ts
 
 // Mark all nodes as welcomed (for auto-welcome feature)
-apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'write'), (req, res) => {
+apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'write'), async (req, res) => {
   try {
-    const count = databaseService.markAllNodesAsWelcomed();
+    const count = await databaseService.markAllNodesAsWelcomedAsync();
     logger.info(`👋 Manually marked ${count} nodes as welcomed via API`);
 
     // Audit log
@@ -6532,9 +6532,9 @@ apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
 });
 
 // Admin suppressed ghosts endpoint - list currently suppressed ghost nodes
-apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), (_req, res) => {
+apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), async (_req, res) => {
   try {
-    const suppressed = databaseService.getSuppressedGhostNodes();
+    const suppressed = await databaseService.getSuppressedGhostNodesAsync();
     res.json({ success: true, suppressedNodes: suppressed });
   } catch (error: any) {
     logger.error('Error getting suppressed ghosts:', error);
@@ -6543,13 +6543,13 @@ apiRouter.get('/admin/suppressed-ghosts', requireAdmin(), (_req, res) => {
 });
 
 // Admin unsuppress ghost endpoint - manually unsuppress a ghost node
-apiRouter.delete('/admin/suppressed-ghosts/:nodeNum', requireAdmin(), (req, res) => {
+apiRouter.delete('/admin/suppressed-ghosts/:nodeNum', requireAdmin(), async (req, res) => {
   try {
     const nodeNum = Number(req.params.nodeNum);
     if (isNaN(nodeNum)) {
       return res.status(400).json({ error: 'Invalid nodeNum' });
     }
-    databaseService.unsuppressGhostNode(nodeNum);
+    await databaseService.unsuppressGhostNodeAsync(nodeNum);
     res.json({ success: true, message: `Unsuppressed node !${nodeNum.toString(16).padStart(8, '0')}` });
   } catch (error: any) {
     logger.error('Error unsuppressing ghost:', error);

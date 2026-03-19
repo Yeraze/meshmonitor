@@ -34,6 +34,7 @@ vi.mock('../services/database.js', () => ({
     getNodesNeedingKeyRepairAsync: mockGetNodesNeedingKeyRepairAsync,
     getKeyRepairLogAsync: mockGetKeyRepairLogAsync,
     isNodeSuppressed: mockIsNodeSuppressed,
+    isNodeSuppressedAsync: vi.fn().mockImplementation((...args: any[]) => Promise.resolve(mockIsNodeSuppressed(...args))),
     logKeyRepairAttempt: mockLogKeyRepairAttempt,
     logKeyRepairAttemptAsync: mockLogKeyRepairAttempt,
     clearKeyRepairStateAsync: vi.fn().mockResolvedValue(undefined),
