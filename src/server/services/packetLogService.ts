@@ -142,24 +142,24 @@ class PacketLogService {
   /**
    * Check if packet logging is enabled
    */
-  isEnabled(): boolean {
-    const enabled = databaseService.getSetting('packet_log_enabled');
+  async isEnabled(): Promise<boolean> {
+    const enabled = await databaseService.getSettingAsync('packet_log_enabled');
     return enabled === '1';
   }
 
   /**
    * Get max packet count setting
    */
-  getMaxCount(): number {
-    const maxCountStr = databaseService.getSetting('packet_log_max_count');
+  async getMaxCount(): Promise<number> {
+    const maxCountStr = await databaseService.getSettingAsync('packet_log_max_count');
     return maxCountStr ? parseInt(maxCountStr, 10) : 1000;
   }
 
   /**
    * Get max age in hours setting
    */
-  getMaxAgeHours(): number {
-    const maxAgeStr = databaseService.getSetting('packet_log_max_age_hours');
+  async getMaxAgeHours(): Promise<number> {
+    const maxAgeStr = await databaseService.getSettingAsync('packet_log_max_age_hours');
     return maxAgeStr ? parseInt(maxAgeStr, 10) : 24;
   }
 

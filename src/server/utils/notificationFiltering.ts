@@ -371,7 +371,7 @@ export async function getUserNotificationPreferencesAsync(userId: number): Promi
     }
 
     // Fall back to old settings table for backward compatibility
-    const prefsJson = await databaseService.settings.getSetting(`push_prefs_${userId}`);
+    const prefsJson = await databaseService.getSettingAsync(`push_prefs_${userId}`);
     if (prefsJson) {
       const oldPrefs = JSON.parse(prefsJson);
       return {

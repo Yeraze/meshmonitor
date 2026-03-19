@@ -199,7 +199,7 @@ class DeviceBackupService {
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       const deviceConfig = meshtasticManager.getActualDeviceConfig();
       const moduleConfig = meshtasticManager.getActualModuleConfig();
-      const channels = databaseService.getAllChannels();
+      const channels = await databaseService.channels.getAllChannels();
 
       // Build backup object in the same structure as Meshtastic CLI
       // Field order matters for official format compatibility
@@ -218,7 +218,7 @@ class DeviceBackupService {
 
       // Also check if it's stored as a database setting
       if (!cannedMessages) {
-        const settingValue = databaseService.getSetting('canned_messages');
+        const settingValue = await databaseService.settings.getSetting('canned_messages');
         if (settingValue) {
           cannedMessages = settingValue;
           logger.debug('Found canned messages in database settings:', cannedMessages);
@@ -309,7 +309,7 @@ class DeviceBackupService {
       });
 
       if (localNodeInfo?.nodeNum) {
-        const localNode = databaseService.getNode(localNodeInfo.nodeNum);
+        const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
         logger.debug('Database lookup result:', {
           foundNode: !!localNode,
           hasLatitude: !!localNode?.latitude,

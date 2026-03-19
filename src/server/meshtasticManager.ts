@@ -798,14 +798,14 @@ class MeshtasticManager {
    * @param payloadPreview Human-readable preview of what was sent
    * @param metadata Additional metadata object
    */
-  private logOutgoingPacket(
+  private async logOutgoingPacket(
     portnum: number,
     destination: number,
     channel: number,
     payloadPreview: string,
     metadata: Record<string, unknown> = {}
-  ): void {
-    if (!packetLogService.isEnabled()) return;
+  ): Promise<void> {
+    if (!await packetLogService.isEnabled()) return;
 
     const localNodeNum = this.localNodeInfo?.nodeNum;
     if (!localNodeNum) return;
@@ -3503,7 +3503,7 @@ class MeshtasticManager {
 
     // Log packet to packet log (if enabled)
     try {
-      if (packetLogService.isEnabled()) {
+      if (await packetLogService.isEnabled()) {
         const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
         const toNum = meshPacket.to ? Number(meshPacket.to) : null;
         const fromNodeId = fromNum ? `!${fromNum.toString(16).padStart(8, '0')}` : null;
@@ -6214,7 +6214,7 @@ class MeshtasticManager {
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
       // Log outgoing message to packet monitor
-      this.logOutgoingPacket(
+      await this.logOutgoingPacket(
         1, // TEXT_MESSAGE_APP
         destination || 0xffffffff,
         channel,
@@ -6337,7 +6337,7 @@ class MeshtasticManager {
       logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing traceroute to packet monitor
-      this.logOutgoingPacket(
+      await this.logOutgoingPacket(
         70, // TRACEROUTE_APP
         destination,
         channel,
@@ -6409,7 +6409,7 @@ class MeshtasticManager {
       logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing position exchange to packet monitor
-      this.logOutgoingPacket(
+      await this.logOutgoingPacket(
         3, // POSITION_APP
         destination,
         channel,
@@ -6478,7 +6478,7 @@ class MeshtasticManager {
       logger.info(`📤 NodeInfo exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing NodeInfo exchange to packet monitor
-      this.logOutgoingPacket(
+      await this.logOutgoingPacket(
         4, // NODEINFO_APP
         destination,
         channel,
@@ -6531,7 +6531,7 @@ class MeshtasticManager {
       logger.info(`📤 NeighborInfo request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing NeighborInfo request to packet monitor
-      this.logOutgoingPacket(
+      await this.logOutgoingPacket(
         71, // NEIGHBORINFO_APP
         destination,
         channel,
@@ -6589,7 +6589,7 @@ class MeshtasticManager {
       logger.info(`📤 Telemetry request (${typeLabel}) sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing Telemetry request to packet monitor
-      this.logOutgoingPacket(
+      await this.logOutgoingPacket(
         67, // TELEMETRY_APP
         destination,
         channel,
@@ -10305,7 +10305,7 @@ class MeshtasticManager {
       // Log outgoing admin command to packet monitor (ONLY for remote admin)
       // Skip logging for local admin (destination == localNodeNum)
       if (destinationNodeNum !== localNodeNum) {
-        this.logOutgoingPacket(
+        await this.logOutgoingPacket(
           6, // ADMIN_APP
           destinationNodeNum,
           0, // Admin uses channel 0

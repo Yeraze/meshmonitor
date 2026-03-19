@@ -22,16 +22,16 @@ describe('PacketLogService', () => {
   });
 
   describe('Service Configuration', () => {
-    it('should be disabled by default', () => {
-      expect(packetLogService.isEnabled()).toBe(false);
+    it('should be disabled by default', async () => {
+      expect(await packetLogService.isEnabled()).toBe(false);
     });
 
-    it('should return correct max count', () => {
-      expect(packetLogService.getMaxCount()).toBeGreaterThan(0);
+    it('should return correct max count', async () => {
+      expect(await packetLogService.getMaxCount()).toBeGreaterThan(0);
     });
 
-    it('should return correct max age hours', () => {
-      expect(packetLogService.getMaxAgeHours()).toBeGreaterThan(0);
+    it('should return correct max age hours', async () => {
+      expect(await packetLogService.getMaxAgeHours()).toBeGreaterThan(0);
     });
   });
 
@@ -361,23 +361,23 @@ describe('PacketLogService', () => {
   });
 
   describe('Service State Management', () => {
-    it('should toggle enabled state', () => {
-      expect(packetLogService.isEnabled()).toBe(false);
+    it('should toggle enabled state', async () => {
+      expect(await packetLogService.isEnabled()).toBe(false);
 
       databaseService.setSetting('packet_log_enabled', '1');
-      expect(packetLogService.isEnabled()).toBe(true);
+      expect(await packetLogService.isEnabled()).toBe(true);
 
       databaseService.setSetting('packet_log_enabled', '0');
-      expect(packetLogService.isEnabled()).toBe(false);
+      expect(await packetLogService.isEnabled()).toBe(false);
     });
 
-    it('should maintain state across multiple calls', () => {
+    it('should maintain state across multiple calls', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
-      expect(packetLogService.isEnabled()).toBe(true);
+      expect(await packetLogService.isEnabled()).toBe(true);
 
       // Multiple enable calls should not change state
       databaseService.setSetting('packet_log_enabled', '1');
-      expect(packetLogService.isEnabled()).toBe(true);
+      expect(await packetLogService.isEnabled()).toBe(true);
     });
   });
 });
