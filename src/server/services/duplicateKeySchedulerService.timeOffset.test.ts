@@ -54,7 +54,11 @@ describe('Time Offset Detection', () => {
     (databaseService.nodes.updateNodeSecurityFlags as any).mockResolvedValue(undefined);
     (databaseService.nodes.updateNodeLowEntropyFlag as any).mockResolvedValue(undefined);
     (databaseService.settings.getSetting as any).mockResolvedValue(null);
-    // Default: return a dummy node for the public key check, return empty for allNodes
+    // Default: getAllNodes returns the dummy node used by the public key check
+    (databaseService.nodes.getAllNodes as any).mockResolvedValue([
+      { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false }
+    ]);
+    // getNode is still used in some paths as fallback
     (databaseService.nodes.getNode as any).mockResolvedValue({
       nodeNum: 1,
       shortName: 'Dummy',
@@ -62,7 +66,6 @@ describe('Time Offset Detection', () => {
       duplicateKeyDetected: false,
       isTimeOffsetIssue: false
     });
-    (databaseService.nodes.getAllNodes as any).mockResolvedValue([]);
     // Reset the scanning flag on the singleton (it's private, but we need to clear it between tests)
     (duplicateKeySchedulerService as any).isScanning = false;
   });
@@ -74,11 +77,11 @@ describe('Time Offset Detection', () => {
     (databaseService.getLatestPacketTimestampsPerNodeAsync as any).mockResolvedValue([
       { nodeNum: 100, timestamp: now, packetTimestamp: now - thirtyOneMinutesMs }
     ]);
-    // getNode is called for multiple purposes; use mockImplementation to handle by nodeNum
-    (databaseService.nodes.getNode as any).mockImplementation((nodeNum: number) => {
-      if (nodeNum === 100) return Promise.resolve({ nodeNum: 100, shortName: 'Test', isTimeOffsetIssue: false, keyIsLowEntropy: false, duplicateKeyDetected: false });
-      return Promise.resolve({ nodeNum, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false });
-    });
+    // getAllNodes must include node 100 for the nodeMap lookup in time offset detection
+    (databaseService.nodes.getAllNodes as any).mockResolvedValue([
+      { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false },
+      { nodeNum: 100, shortName: 'Test', isTimeOffsetIssue: false, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
+    ]);
 
     await duplicateKeySchedulerService.runScan();
 
@@ -100,10 +103,12 @@ describe('Time Offset Detection', () => {
     (databaseService.getLatestPacketTimestampsPerNodeAsync as any).mockResolvedValue([
       { nodeNum: 200, timestamp: now, packetTimestamp: now - tenMinutesMs }
     ]);
-    (databaseService.nodes.getNode as any).mockImplementation((nodeNum: number) => {
-      if (nodeNum === 200) return Promise.resolve({ nodeNum: 200, shortName: 'Test2', isTimeOffsetIssue: false, keyIsLowEntropy: false, duplicateKeyDetected: false });
-      return Promise.resolve({ nodeNum, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false });
-    });
+    // getAllNodes must include node 200 for the nodeMap lookup
+    // Node 200 starts with isTimeOffsetIssue: true so state change triggers a write
+    (databaseService.nodes.getAllNodes as any).mockResolvedValue([
+      { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false },
+      { nodeNum: 200, shortName: 'Test2', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
+    ]);
 
     await duplicateKeySchedulerService.runScan();
 
@@ -115,7 +120,8 @@ describe('Time Offset Detection', () => {
   it('should clear flags from nodes with no timestamp data', async () => {
     (databaseService.getLatestPacketTimestampsPerNodeAsync as any).mockResolvedValue([]);
     (databaseService.nodes.getAllNodes as any).mockResolvedValue([
-      { nodeNum: 300, shortName: 'Old', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false }
+      { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false },
+      { nodeNum: 300, shortName: 'Old', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
     ]);
 
     await duplicateKeySchedulerService.runScan();
@@ -132,10 +138,11 @@ describe('Time Offset Detection', () => {
     (databaseService.getLatestPacketTimestampsPerNodeAsync as any).mockResolvedValue([
       { nodeNum: 400, timestamp: now, packetTimestamp: now - fiveMinutesMs }
     ]);
-    (databaseService.nodes.getNode as any).mockImplementation((nodeNum: number) => {
-      if (nodeNum === 400) return Promise.resolve({ nodeNum: 400, shortName: 'Recovered', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false });
-      return Promise.resolve({ nodeNum, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false });
-    });
+    // getAllNodes must include node 400 with isTimeOffsetIssue: true (was flagged, now clearing)
+    (databaseService.nodes.getAllNodes as any).mockResolvedValue([
+      { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false },
+      { nodeNum: 400, shortName: 'Recovered', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
+    ]);
 
     await duplicateKeySchedulerService.runScan();
 
