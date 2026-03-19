@@ -243,7 +243,7 @@ class BackupFileService {
    */
   async purgeOldBackups(): Promise<void> {
     try {
-      const maxBackups = databaseService.getSetting('backup_maxBackups');
+      const maxBackups = await databaseService.settings.getSetting('backup_maxBackups');
       if (!maxBackups) {
         return; // No limit set
       }
