@@ -135,6 +135,13 @@ vi.mock('../../../services/database.js', () => {
         if (key === 'localNodeId') return '!a1b2c3d4';
         return null;
       }),
+      settings: {
+        getSetting: vi.fn(async (key: string) => {
+          if (key === 'localNodeNum') return '2715451348';
+          if (key === 'localNodeId') return '!a1b2c3d4';
+          return null;
+        }),
+      },
       // Nodes methods
       getAllNodes: vi.fn(() => testNodes),
       getActiveNodes: vi.fn(() => testNodes.slice(0, 2)),
@@ -172,6 +179,11 @@ vi.mock('../../../services/database.js', () => {
       getMessages: vi.fn(() => testMessages),
       getMessagesByChannel: vi.fn(() => testMessages),
       getMessagesAfterTimestamp: vi.fn(() => testMessages),
+      messages: {
+        getMessages: vi.fn(async () => testMessages),
+        getMessagesByChannel: vi.fn(async () => testMessages),
+        getMessagesAfterTimestamp: vi.fn(async () => testMessages),
+      },
       // Telemetry methods (sync - legacy)
       getTelemetryByNode: vi.fn(() => testTelemetry),
       getTelemetryCountByNode: vi.fn(() => testTelemetry.length),
