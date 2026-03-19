@@ -12,6 +12,71 @@ vi.mock('../services/database.js', () => ({
     upsertNode: vi.fn(),
     setSetting: vi.fn(),
     markNodeAsWelcomedIfNotAlready: vi.fn(),
+    settings: {
+      getSetting: vi.fn(),
+      setSetting: vi.fn(),
+    },
+    nodes: {
+      getNode: vi.fn(),
+      getAllNodes: vi.fn().mockResolvedValue([]),
+      getActiveNodes: vi.fn().mockResolvedValue([]),
+      upsertNode: vi.fn().mockResolvedValue(undefined),
+      markNodeAsWelcomedIfNotAlready: vi.fn().mockResolvedValue(false),
+      getNodeCount: vi.fn().mockResolvedValue(0),
+      setNodeFavorite: vi.fn().mockResolvedValue(undefined),
+      updateNodeMessageHops: vi.fn().mockResolvedValue(undefined),
+    },
+    channels: {
+      getChannelById: vi.fn().mockResolvedValue(null),
+      getAllChannels: vi.fn().mockResolvedValue([]),
+      upsertChannel: vi.fn().mockResolvedValue(undefined),
+      getChannelCount: vi.fn().mockResolvedValue(0),
+    },
+    telemetry: {
+      insertTelemetry: vi.fn().mockResolvedValue(undefined),
+      getLatestTelemetryForType: vi.fn().mockResolvedValue(null),
+    },
+    messages: {
+      insertMessage: vi.fn().mockResolvedValue(true),
+      getMessages: vi.fn().mockResolvedValue([]),
+      updateMessageTimestamps: vi.fn().mockResolvedValue(true),
+      updateMessageDeliveryState: vi.fn().mockResolvedValue(true),
+    },
+    traceroutes: {
+      insertTraceroute: vi.fn().mockResolvedValue(undefined),
+      insertRouteSegment: vi.fn().mockResolvedValue(undefined),
+    },
+    neighbors: {
+      upsertNeighborInfo: vi.fn().mockResolvedValue(undefined),
+      deleteNeighborInfoForNode: vi.fn().mockResolvedValue(0),
+    },
+    getAllTraceroutesForRecalculation: vi.fn().mockReturnValue([]),
+    updateRecordHolderSegment: vi.fn(),
+    recordTracerouteRequest: vi.fn(),
+    suppressGhostNode: vi.fn(),
+    isNodeSuppressed: vi.fn().mockReturnValue(false),
+    isAutoTimeSyncEnabled: vi.fn().mockReturnValue(false),
+    getAutoTimeSyncIntervalMinutes: vi.fn().mockReturnValue(0),
+    logKeyRepairAttemptAsync: vi.fn().mockResolvedValue(0),
+    clearKeyRepairStateAsync: vi.fn().mockResolvedValue(undefined),
+    deleteNodeAsync: vi.fn().mockResolvedValue({}),
+    getNodeNeedingTracerouteAsync: vi.fn().mockResolvedValue(null),
+    logAutoTracerouteAttemptAsync: vi.fn().mockResolvedValue(0),
+    getNodeNeedingTimeSyncAsync: vi.fn().mockResolvedValue(null),
+    getNodeNeedingRemoteAdminCheckAsync: vi.fn().mockResolvedValue(null),
+    updateNodeRemoteAdminStatusAsync: vi.fn().mockResolvedValue(undefined),
+    getNodesNeedingKeyRepairAsync: vi.fn().mockResolvedValue([]),
+    getKeyRepairLogAsync: vi.fn().mockResolvedValue([]),
+    setKeyRepairStateAsync: vi.fn().mockResolvedValue(undefined),
+    insertTelemetryAsync: vi.fn().mockResolvedValue(undefined),
+    getLatestTelemetryForTypeAsync: vi.fn().mockResolvedValue(null),
+    getMessageByRequestIdAsync: vi.fn().mockResolvedValue(null),
+    updateNodeMobilityAsync: vi.fn().mockResolvedValue(0),
+    getRecentEstimatedPositionsAsync: vi.fn().mockResolvedValue([]),
+    updateAutoTracerouteResultByNodeAsync: vi.fn().mockResolvedValue(undefined),
+    getAllGeofenceCooldownsAsync: vi.fn().mockResolvedValue([]),
+    setGeofenceCooldownAsync: vi.fn().mockResolvedValue(undefined),
+    markMessageAsReadAsync: vi.fn().mockResolvedValue(true),
   },
 }));
 
@@ -66,7 +131,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
   describe('checkAutoWelcome', () => {
     it('should not send welcome when auto-welcome is disabled', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'false';
         return null;
       });
@@ -77,7 +142,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should skip welcoming local node', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         return null;
@@ -89,12 +154,12 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should skip node if not found in database', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         return null;
       });
-      vi.mocked(databaseService.getNode).mockReturnValue(null);
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue(null);
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
@@ -104,13 +169,13 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should skip node that has already been welcomed', async () => {
       const previouslyWelcomedTime = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days ago
 
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -128,14 +193,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should skip node with default name when waitForName is enabled', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeWaitForName') return 'true';
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Node !000f423f',
@@ -151,14 +216,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should skip node with default short name when waitForName is enabled', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeWaitForName') return 'true';
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -174,7 +239,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should send welcome message to new node with proper name', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome {LONG_NAME} ({SHORT_NAME})!';
@@ -182,7 +247,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -197,14 +262,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       // Welcome now goes through message queue
       expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
       // markNodeAsWelcomedIfNotAlready is called immediately after enqueue (not in callback)
-      expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
+      expect(databaseService.nodes.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
       // maxAttemptsOverride=1 to prevent DM retries on missing remote ACK
       const enqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
       expect(enqueueCall[6]).toBe(1);
     });
 
     it('should send welcome as DM when target is dm', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
@@ -212,7 +277,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -237,7 +302,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should send welcome to channel when target is channel number', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
@@ -245,7 +310,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -270,14 +335,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should use default welcome message when not configured', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeTarget') return 'dm';
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -302,7 +367,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should handle errors gracefully without crashing', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         throw new Error('Database error');
@@ -313,7 +378,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should prevent duplicate welcomes when called in parallel (race condition protection)', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
@@ -321,7 +386,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -331,7 +396,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         updatedAt: Date.now(),
       });
 
-      vi.mocked(databaseService.markNodeAsWelcomedIfNotAlready).mockReturnValue(true);
+      vi.mocked(databaseService.nodes.markNodeAsWelcomedIfNotAlready).mockResolvedValue(true);
 
       // Call checkAutoWelcome twice in parallel (simulating race condition)
       const promise1 = (manager as any).checkAutoWelcome(999999, '!000f423f');
@@ -344,7 +409,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should handle atomic database operation correctly when node already marked by another process', async () => {
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
@@ -352,7 +417,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         return null;
       });
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -363,13 +428,13 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       });
 
       // Simulate that another process already marked the node
-      vi.mocked(databaseService.markNodeAsWelcomedIfNotAlready).mockReturnValue(false);
+      vi.mocked(databaseService.nodes.markNodeAsWelcomedIfNotAlready).mockResolvedValue(false);
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
       // Should enqueue the message and call markNodeAsWelcomedIfNotAlready immediately after
       expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
-      expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
+      expect(databaseService.nodes.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
     });
   });
 
@@ -386,12 +451,12 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         updatedAt: Date.now(),
       };
 
-      vi.mocked(databaseService.getNode).mockReturnValue(mockNode);
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue(mockNode);
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'maxNodeAgeHours') return '24';
         return null;
       });
-      vi.mocked(databaseService.getActiveNodes).mockReturnValue([
+      vi.mocked(databaseService.nodes.getActiveNodes).mockResolvedValue([
         mockNode,
         { ...mockNode, nodeNum: 888888, hopsAway: 0 },
         { ...mockNode, nodeNum: 777777, hopsAway: 1 },
@@ -410,7 +475,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should handle missing node gracefully with fallbacks', async () => {
-      vi.mocked(databaseService.getNode).mockReturnValue(null);
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue(null);
 
       const template = 'Welcome {LONG_NAME} ({SHORT_NAME})!';
 
@@ -422,7 +487,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should format duration correctly', async () => {
       const twoDaysAgo = Date.now() - (2 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000); // 2 days, 5 hours ago
 
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -441,7 +506,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
     it('should handle node without createdAt for duration', async () => {
       const now = Date.now();
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -459,7 +524,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should replace FEATURES token with enabled automation features', async () => {
-      vi.mocked(databaseService.getNode).mockReturnValue({
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
@@ -469,7 +534,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         updatedAt: Date.now(),
       });
 
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'tracerouteIntervalMinutes') return '5';
         if (key === 'autoAckEnabled') return 'true';
         if (key === 'autoAnnounceEnabled') return 'true';
