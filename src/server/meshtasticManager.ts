@@ -10380,11 +10380,19 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending device config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_device_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending device config:', error);
       throw error;
@@ -10394,18 +10402,30 @@ class MeshtasticManager {
   /**
    * Set LoRa configuration (preset, region, etc.)
    */
-  async setLoRaConfig(config: any): Promise<void> {
+  async setLoRaConfig(config: any, skipTransaction?: boolean): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
 
     try {
       logger.debug('⚙️ Sending LoRa config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction unless already inside one (Issue #2316)
+      if (!skipTransaction) {
+        await this.beginEditSettings();
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
       const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_lora_config admin message');
+
+      if (!skipTransaction) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await this.commitEditSettings();
+      }
     } catch (error) {
       logger.error('❌ Error sending LoRa config:', error);
       throw error;
@@ -10422,11 +10442,19 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending network config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetNetworkConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_network_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending network config:', error);
       throw error;
@@ -10445,7 +10473,7 @@ class MeshtasticManager {
     uplinkEnabled?: boolean;
     downlinkEnabled?: boolean;
     positionPrecision?: number;
-  }): Promise<void> {
+  }, skipTransaction?: boolean): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10456,11 +10484,23 @@ class MeshtasticManager {
 
     try {
       logger.debug(`⚙️ Sending channel ${channelIndex} config:`, JSON.stringify(config));
+
+      // Wrap in begin/commit transaction unless already inside one (Issue #2316)
+      if (!skipTransaction) {
+        await this.beginEditSettings();
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
       const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug(`⚙️ Sent set_channel admin message for channel ${channelIndex}`);
+
+      if (!skipTransaction) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await this.commitEditSettings();
+      }
     } catch (error) {
       logger.error(`❌ Error sending channel ${channelIndex} config:`, error);
       throw error;
@@ -10478,6 +10518,10 @@ class MeshtasticManager {
     try {
       // Extract position data if provided
       const { latitude, longitude, altitude, ...positionConfig } = config;
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag.
       // set_fixed_position automatically sets fixedPosition=true on the device.
@@ -10519,6 +10563,9 @@ class MeshtasticManager {
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_position_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending position config:', error);
       throw error;
@@ -10535,11 +10582,19 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending MQTT config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
+      logger.debug('⚙️ Sent set_mqtt_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending MQTT config:', error);
       throw error;
@@ -10556,11 +10611,19 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
+      logger.debug('⚙️ Sent set_neighborinfo_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending NeighborInfo config:', error);
       throw error;
@@ -10577,11 +10640,19 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending power config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('power', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_power_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending power config:', error);
       throw error;
@@ -10598,11 +10669,19 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending display config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('display', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_display_config admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending display config:', error);
       throw error;
@@ -10619,6 +10698,11 @@ class MeshtasticManager {
 
     try {
       logger.debug('⚙️ Sending telemetry config:', JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric('telemetry', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
@@ -10631,6 +10715,9 @@ class MeshtasticManager {
       }
       this.actualModuleConfig.telemetry = { ...this.actualModuleConfig.telemetry, ...config };
       logger.debug('⚙️ Updated actualModuleConfig.telemetry cache');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error sending telemetry config:', error);
       throw error;
@@ -10649,11 +10736,19 @@ class MeshtasticManager {
 
     try {
       logger.debug(`⚙️ Sending ${moduleType} config:`, JSON.stringify(config));
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots (Issue #2316)
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric(moduleType, config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
       logger.debug(`⚙️ Sent set_${moduleType}_config admin message`);
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error(`❌ Error sending ${moduleType} config:`, error);
       throw error;
@@ -10670,11 +10765,29 @@ class MeshtasticManager {
 
     try {
       logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}, isLicensed: ${isLicensed}`);
-      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, isUnmessagable, new Uint8Array(), isLicensed);
+
+      // Get the node's current ID and public key to preserve identity (Issue #2316)
+      const nodeId = this.localNodeInfo?.nodeId;
+      const security = this.actualDeviceConfig?.security;
+      const publicKey = security?.publicKey && security.publicKey.length > 0
+        ? new Uint8Array(security.publicKey) : undefined;
+
+      if (!nodeId) {
+        logger.warn('⚠️ No nodeId available - setOwner may cause firmware to regenerate node identity');
+      }
+
+      // Wrap in begin/commit transaction to prevent intermediate saves/reboots
+      await this.beginEditSettings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, isUnmessagable, new Uint8Array(), isLicensed, nodeId, publicKey);
       const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_owner admin message (direct, no transaction)');
+      logger.debug('⚙️ Sent set_owner admin message');
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await this.commitEditSettings();
     } catch (error) {
       logger.error('❌ Error setting node owner:', error);
       throw error;

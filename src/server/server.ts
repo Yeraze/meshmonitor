@@ -2677,7 +2677,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
             uplinkEnabled: channel.uplinkEnabled,
             downlinkEnabled: channel.downlinkEnabled,
             positionPrecision: channel.positionPrecision,
-          });
+          }, true); // skipTransaction: already inside begin/commit
 
           // Allow device time to process channel config before sending the next message
           await new Promise((resolve) => setTimeout(resolve, 300));
@@ -2706,7 +2706,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
         };
 
         logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
-        await meshtasticManager.setLoRaConfig(loraConfigToImport);
+        await meshtasticManager.setLoRaConfig(loraConfigToImport, true); // skipTransaction: already inside begin/commit
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -6759,7 +6759,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
               uplinkEnabled: channel.uplinkEnabled,
               downlinkEnabled: channel.downlinkEnabled,
               positionPrecision: channel.positionPrecision,
-            });
+            }, true); // skipTransaction: already inside begin/commit
             importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
           } catch (error) {
             logger.error(`❌ Failed to import channel ${i}:`, error);
@@ -6774,7 +6774,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
             ...decoded.loraConfig,
             txEnabled: true,
           };
-          await meshtasticManager.setLoRaConfig(loraConfigToImport);
+          await meshtasticManager.setLoRaConfig(loraConfigToImport, true); // skipTransaction: already inside begin/commit
           loraImported = true;
           requiresReboot = true;
         } catch (error) {
@@ -6897,7 +6897,9 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           params.shortName,
           params.isUnmessagable,
           sessionPasskey || undefined,
-          params.isLicensed
+          params.isLicensed,
+          params.nodeId,       // Preserve node identity (Issue #2316)
+          params.publicKey ? new Uint8Array(Buffer.from(params.publicKey, 'base64')) : undefined
         );
         break;
       case 'setChannel':

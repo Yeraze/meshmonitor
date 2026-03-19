@@ -1687,7 +1687,7 @@ class ProtobufService {
    * @param isUnmessagable Optional flag to prevent others from sending direct messages
    * @param sessionPasskey Optional session passkey for authentication
    */
-  createSetOwnerMessage(longName: string, shortName: string, isUnmessagable?: boolean, sessionPasskey?: Uint8Array, isLicensed?: boolean): Uint8Array {
+  createSetOwnerMessage(longName: string, shortName: string, isUnmessagable?: boolean, sessionPasskey?: Uint8Array, isLicensed?: boolean, nodeId?: string, publicKey?: Uint8Array): Uint8Array {
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -1696,12 +1696,25 @@ class ProtobufService {
         throw new Error('Required proto types not found');
       }
 
-      const userMsg = User.create({
+      const userData: any = {
         longName: longName,
         shortName: shortName,
         isUnmessagable: isUnmessagable,
         isLicensed: isLicensed
-      });
+      };
+
+      // CRITICAL: Include the node's current ID to prevent firmware from generating a new one.
+      // Without this, some firmware versions regenerate the node identity on setOwner. (Issue #2316)
+      if (nodeId) {
+        userData.id = nodeId;
+      }
+
+      // Include public key to preserve the node's PKI identity
+      if (publicKey && publicKey.length > 0) {
+        userData.publicKey = publicKey;
+      }
+
+      const userMsg = User.create(userData);
 
       const adminMsgData: any = {
         setOwner: userMsg
