@@ -10059,18 +10059,7 @@ class DatabaseService {
     this.recordTracerouteRequest(fromNodeNum, toNodeNum);
   }
 
-  async getAllTraceroutesForRecalculationAsync(): Promise<Array<{
-    id: number;
-    fromNodeNum: number;
-    toNodeNum: number;
-    fromNodeId: string;
-    toNodeId: string;
-    route: string | null;
-    routeBack: string | null;
-    snrTowards: string | null;
-    snrBack: string | null;
-    timestamp: number;
-  }>> {
+  async getAllTraceroutesForRecalculationAsync(): Promise<any[]> {
     return this.getAllTraceroutesForRecalculation();
   }
 

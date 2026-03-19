@@ -822,7 +822,7 @@ setSettingsCallbacks({
   restartAnnounceScheduler: () => meshtasticManager.restartAnnounceScheduler(),
   restartTimerScheduler: () => meshtasticManager.restartTimerScheduler(),
   restartGeofenceEngine: () => meshtasticManager.restartGeofenceEngine(),
-  handleAutoWelcomeEnabled: () => databaseService.handleAutoWelcomeEnabledAsync(),
+  handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   restartAutoDeleteByDistanceService: (intervalHours: number) =>
     autoDeleteByDistanceService.start(intervalHours),
