@@ -836,7 +836,7 @@ setSettingsCallbacks({
  */
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
-    const allNodes = meshtasticManager.getAllNodes();
+    const allNodes = await meshtasticManager.getAllNodes();
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions
@@ -1941,7 +1941,7 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
     }
 
     const limit = parseInt(req.query.limit as string) || 100;
-    let messages = meshtasticManager.getRecentMessages(limit);
+    let messages = await meshtasticManager.getRecentMessages(limit);
 
     // Filter messages based on permissions
     // If user only has channels permission, exclude direct messages (channel -1)
@@ -2150,7 +2150,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get DM unread counts if user has messages permission (batch query)
     if (hasMessagesRead && localNodeInfo) {
       const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId);
-      const allNodes = meshtasticManager.getAllNodes();
+      const allNodes = await meshtasticManager.getAllNodes();
       const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
       const directMessages: { [nodeId: string]: number } = {};
@@ -3743,9 +3743,9 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
 });
 
 // Connection status endpoint
-apiRouter.get('/connection', optionalAuth(), (req, res) => {
+apiRouter.get('/connection', optionalAuth(), async (req, res) => {
   try {
-    const status = meshtasticManager.getConnectionStatus();
+    const status = await meshtasticManager.getConnectionStatus();
     // Hide nodeIp from anonymous users
     if (!req.session.userId) {
       const { nodeIp, ...statusWithoutNodeIp } = status;
@@ -3813,7 +3813,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 1. Connection status (always available)
     try {
-      const connectionStatus = meshtasticManager.getConnectionStatus();
+      const connectionStatus = await meshtasticManager.getConnectionStatus();
       // Hide nodeIp from anonymous users
       if (!req.session.userId) {
         const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
@@ -3838,7 +3838,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // 3. Messages (requires any channel permission OR messages permission)
     try {
       if (hasChannelsRead || hasMessagesRead) {
-        let messages = meshtasticManager.getRecentMessages(100);
+        let messages = await meshtasticManager.getRecentMessages(100);
 
         // Filter messages based on permissions
         if (hasChannelsRead && !hasMessagesRead) {
@@ -4158,7 +4158,7 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 // Get detailed connection info (authenticated users only)
 apiRouter.get('/connection/info', requireAuth(), async (_req, res) => {
   try {
-    const status = meshtasticManager.getConnectionStatus();
+    const status = await meshtasticManager.getConnectionStatus();
     const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
@@ -5013,7 +5013,7 @@ apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), asyn
       autoPingMaxPings: parseInt(await databaseService.settings.getSetting('autoPingMaxPings') || '20', 10),
       autoPingTimeoutSeconds: parseInt(await databaseService.settings.getSetting('autoPingTimeoutSeconds') || '60', 10),
     };
-    const sessions = meshtasticManager.getAutoPingSessions();
+    const sessions = await meshtasticManager.getAutoPingSessions();
     res.json({ settings, sessions });
   } catch (error) {
     logger.error('Error fetching auto-ping settings:', error);
@@ -7210,7 +7210,7 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
 
 // Detailed status endpoint - provides system statistics and connection status
 apiRouter.get('/status', optionalAuth(), async (_req, res) => {
-  const connectionStatus = meshtasticManager.getConnectionStatus();
+  const connectionStatus = await meshtasticManager.getConnectionStatus();
   const localNode = meshtasticManager.getLocalNodeInfo();
 
   res.json({
