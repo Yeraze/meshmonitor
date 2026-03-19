@@ -52,7 +52,7 @@ You need to configure **one** of the following authentication methods:
 You can customize the review prompt in the workflow file:
 
 ```yaml
-prompt: |
+direct_prompt: |
   Please review this pull request and provide feedback on:
   - Code quality and best practices
   - Potential bugs or issues
