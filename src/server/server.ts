@@ -852,7 +852,7 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
 apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
-    const allDbNodes = databaseService.getActiveNodes(days);
+    const allDbNodes = await databaseService.nodes.getActiveNodes(days);
 
     // Filter nodes based on channel read permissions
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user);
@@ -906,7 +906,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
 
     // Check privacy for position history
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = databaseService.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum);
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
     if (isPrivate && !canViewPrivate) {
@@ -1050,7 +1050,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update favorite status in database — manual action always locks
-    databaseService.setNodeFavorite(nodeNum, isFavorite, true);
+    await databaseService.nodes.setNodeFavorite(nodeNum, isFavorite, true);
 
     // If manually unfavoriting, remove from auto-favorite tracking list
     if (!isFavorite) {
@@ -1067,7 +1067,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     if (virtualNodeServer) {
       try {
         // Fetch the updated node from database
-        const node = databaseService.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum);
         if (node) {
           // Create NodeInfo message with updated favorite status
           const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
@@ -1077,8 +1077,8 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
               longName: node.longName || 'Unknown',
               shortName: node.shortName || '????',
               hwModel: node.hwModel || 0,
-              role: node.role,
-              publicKey: node.publicKey,
+              role: node.role ?? undefined,
+              publicKey: node.publicKey ?? undefined,
             },
             position:
               node.latitude && node.longitude
@@ -1090,20 +1090,20 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
                   }
                 : undefined,
             deviceMetrics:
-              node.batteryLevel !== undefined ||
-              node.voltage !== undefined ||
-              node.channelUtilization !== undefined ||
-              node.airUtilTx !== undefined
+              node.batteryLevel != null ||
+              node.voltage != null ||
+              node.channelUtilization != null ||
+              node.airUtilTx != null
                 ? {
-                    batteryLevel: node.batteryLevel,
-                    voltage: node.voltage,
-                    channelUtilization: node.channelUtilization,
-                    airUtilTx: node.airUtilTx,
+                    batteryLevel: node.batteryLevel ?? undefined,
+                    voltage: node.voltage ?? undefined,
+                    channelUtilization: node.channelUtilization ?? undefined,
+                    airUtilTx: node.airUtilTx ?? undefined,
                   }
                 : undefined,
-            snr: node.snr,
-            lastHeard: node.lastHeard,
-            hopsAway: node.hopsAway,
+            snr: node.snr ?? undefined,
+            lastHeard: node.lastHeard ?? undefined,
+            hopsAway: node.hopsAway ?? undefined,
             isFavorite: isFavorite,
           });
 
@@ -1169,7 +1169,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 });
 
 // Toggle favorite lock status (lock/unlock a node from auto-favorite automation)
-apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write'), (req, res) => {
+apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const { locked } = req.body;
@@ -1204,7 +1204,7 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
     // If unlocking, also add to auto-favorite tracking list if node is currently favorited
     // so that automation can manage it going forward
     if (!locked) {
-      const node = databaseService.getNode(nodeNum);
+      const node = await databaseService.nodes.getNode(nodeNum);
       if (node?.isFavorite) {
         const autoFavoriteNodesJson = databaseService.getSetting('autoFavoriteNodes') || '[]';
         const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
@@ -1234,11 +1234,11 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 });
 
 // Get auto-favorite status (local role, firmware, managed nodes)
-apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), (_req, res) => {
+apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (_req, res) => {
   try {
     const localNodeNum = databaseService.getSetting('localNodeNum');
     const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : meshtasticManager.getLocalNodeInfo()?.nodeNum;
-    const localNode = localNodeNumInt ? databaseService.getNode(localNodeNumInt) : null;
+    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt) : null;
     const firmwareVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion || null;
     const supportsFavorites = meshtasticManager.supportsFavorites();
 
@@ -1246,9 +1246,9 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), (_req
     const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
 
     // Get node details for each auto-favorited node
-    const autoFavoriteNodes = autoFavoriteNodeNums
-      .map(nodeNum => {
-        const node = databaseService.getNode(nodeNum);
+    const autoFavoriteNodes = (await Promise.all(autoFavoriteNodeNums
+      .map(async nodeNum => {
+        const node = await databaseService.nodes.getNode(nodeNum);
         if (!node) return null;
         return {
           nodeNum: node.nodeNum,
@@ -1260,7 +1260,7 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), (_req
           lastHeard: node.lastHeard,
           favoriteLocked: Boolean(node.favoriteLocked),
         };
-      })
+      })))
       .filter(Boolean);
 
     res.json({
@@ -1320,7 +1320,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     if (virtualNodeServer) {
       try {
         // Fetch the updated node from database
-        const node = databaseService.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum);
         if (node) {
           // Create NodeInfo message with updated ignored status
           const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
@@ -1330,8 +1330,8 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
               longName: node.longName || 'Unknown',
               shortName: node.shortName || '????',
               hwModel: node.hwModel || 0,
-              role: node.role,
-              publicKey: node.publicKey,
+              role: node.role ?? undefined,
+              publicKey: node.publicKey ?? undefined,
             },
             position:
               node.latitude && node.longitude
@@ -1343,20 +1343,20 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
                   }
                 : undefined,
             deviceMetrics:
-              node.batteryLevel !== undefined ||
-              node.voltage !== undefined ||
-              node.channelUtilization !== undefined ||
-              node.airUtilTx !== undefined
+              node.batteryLevel != null ||
+              node.voltage != null ||
+              node.channelUtilization != null ||
+              node.airUtilTx != null
                 ? {
-                    batteryLevel: node.batteryLevel,
-                    voltage: node.voltage,
-                    channelUtilization: node.channelUtilization,
-                    airUtilTx: node.airUtilTx,
+                    batteryLevel: node.batteryLevel ?? undefined,
+                    voltage: node.voltage ?? undefined,
+                    channelUtilization: node.channelUtilization ?? undefined,
+                    airUtilTx: node.airUtilTx ?? undefined,
                   }
                 : undefined,
-            snr: node.snr,
-            lastHeard: node.lastHeard,
-            hopsAway: node.hopsAway,
+            snr: node.snr ?? undefined,
+            lastHeard: node.lastHeard ?? undefined,
+            hopsAway: node.hopsAway ?? undefined,
             isIgnored: isIgnored,
           });
 
@@ -1745,7 +1745,7 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
     }
 
     // Check if the node exists
-    const node = databaseService.getNode(parsedNodeNum);
+    const node = await databaseService.nodes.getNode(parsedNodeNum);
     if (!node) {
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
@@ -1816,7 +1816,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Verify the node actually has a security issue
-    const node = databaseService.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum);
     if (!node) {
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
@@ -1876,10 +1876,10 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
     const duplicates = detectDuplicateKeys(nodesWithKeys);
 
     // Clear existing duplicate flags first
-    const allNodes = databaseService.getAllNodes();
+    const allNodes = await databaseService.nodes.getAllNodes();
     for (const node of allNodes) {
       if (node.duplicateKeyDetected) {
-        databaseService.upsertNode({
+        await databaseService.nodes.upsertNode({
           nodeNum: node.nodeNum,
           nodeId: node.nodeId,
           duplicateKeyDetected: false,
@@ -1891,7 +1891,7 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
     // Update database with new duplicate flags
     for (const [keyHash, nodeNums] of duplicates) {
       for (const nodeNum of nodeNums) {
-        const node = databaseService.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum);
         if (!node) continue;
 
         const otherNodes = nodeNums.filter(n => n !== nodeNum);
@@ -1899,7 +1899,7 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
           ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
           : `Key shared with nodes: ${otherNodes.join(', ')}`;
 
-        databaseService.upsertNode({
+        await databaseService.nodes.upsertNode({
           nodeNum,
           nodeId: node.nodeId,
           duplicateKeyDetected: true,
@@ -2748,7 +2748,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
 apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (_req, res) => {
   try {
     const messageCount = databaseService.getMessageCount();
-    const nodeCount = databaseService.getNodeCount();
+    const nodeCount = await databaseService.nodes.getNodeCount();
     const channelCount = databaseService.getChannelCount();
     const messagesByDay = await databaseService.getMessagesByDayAsync(7);
 
@@ -2849,7 +2849,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     // For DMs, use the channel we last heard the target node on (from NodeInfo)
     // This ensures we send on a channel the target node has configured
     if (destinationNum) {
-      const targetNode = databaseService.getNode(destinationNum);
+      const targetNode = await databaseService.nodes.getNode(destinationNum);
       if (targetNode && targetNode.channel !== undefined && targetNode.channel !== null) {
         meshChannel = targetNode.channel;
         logger.info(`📨 DM to ${destination} - Using target node's channel: ${meshChannel}`);
@@ -2910,7 +2910,7 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
     // Look up the node to get its channel
-    const node = databaseService.getNode(destinationNum);
+    const node = await databaseService.nodes.getNode(destinationNum);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     await meshtasticManager.sendTraceroute(destinationNum, channel);
@@ -2935,7 +2935,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
     // Look up the node to get its channel
-    const node = databaseService.getNode(destinationNum);
+    const node = await databaseService.nodes.getNode(destinationNum);
     // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
     const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
       ? req.body.channel
@@ -3005,7 +3005,7 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
     // Look up the node to get its channel
-    const node = databaseService.getNode(destinationNum);
+    const node = await databaseService.nodes.getNode(destinationNum);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     const { packetId, requestId } = await meshtasticManager.sendNodeInfoRequest(destinationNum, channel);
@@ -3074,7 +3074,7 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
 
     // Eligibility check: only allow requests to local node or 0-hop nodes
     const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum;
-    const node = databaseService.getNode(destinationNum);
+    const node = await databaseService.nodes.getNode(destinationNum);
     const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
     const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
 
@@ -3136,7 +3136,7 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
     // Look up the node to get its channel
-    const node = databaseService.getNode(destinationNum);
+    const node = await databaseService.nodes.getNode(destinationNum);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     const { packetId, requestId } = await meshtasticManager.sendTelemetryRequest(
@@ -3271,8 +3271,8 @@ apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'
     }
 
     // Enrich with node names
-    const fromNode = databaseService.getNode(segment.fromNodeNum);
-    const toNode = databaseService.getNode(segment.toNodeNum);
+    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum);
+    const toNode = await databaseService.nodes.getNode(segment.toNodeNum);
 
     const enrichedSegment = {
       ...segment,
@@ -3297,8 +3297,8 @@ apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read')
     }
 
     // Enrich with node names
-    const fromNode = databaseService.getNode(segment.fromNodeNum);
-    const toNode = databaseService.getNode(segment.toNodeNum);
+    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum);
+    const toNode = await databaseService.nodes.getNode(segment.toNodeNum);
 
     const enrichedSegment = {
       ...segment,
@@ -3325,7 +3325,7 @@ apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'wri
 });
 
 // Helper to get effective position (respecting overrides)
-const getEffectivePosition = (node: ReturnType<typeof databaseService.getNode>) => {
+const getEffectivePosition = (node: Awaited<ReturnType<typeof databaseService.nodes.getNode>>) => {
   if (!node) return { latitude: undefined, longitude: undefined };
 
   // Check for position override first
@@ -3340,7 +3340,7 @@ const getEffectivePosition = (node: ReturnType<typeof databaseService.getNode>) 
 };
 
 // Get all neighbor info (latest per node pair)
-apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) => {
+apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, res) => {
   try {
     const neighborInfo = databaseService.getLatestNeighborInfoPerNode();
 
@@ -3353,10 +3353,10 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
     const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 
     // Enrich with node names, bidirectionality, and filter by node age
-    const enrichedNeighborInfo = neighborInfo
-      .map(ni => {
-        const node = databaseService.getNode(ni.nodeNum);
-        const neighbor = databaseService.getNode(ni.neighborNodeNum);
+    const enrichedNeighborInfo = (await Promise.all(neighborInfo
+      .map(async ni => {
+        const node = await databaseService.nodes.getNode(ni.nodeNum);
+        const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
         const nodePos = getEffectivePosition(node);
         const neighborPos = getEffectivePosition(neighbor);
 
@@ -3374,7 +3374,7 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
           node,
           neighbor,
         };
-      })
+      })))
       .filter(ni => {
         // Filter out connections where either node is too old or missing lastHeard
         if (!ni.node?.lastHeard || !ni.neighbor?.lastHeard) {
@@ -3392,14 +3392,14 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
 });
 
 // Get neighbor info for a specific node
-apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req, res) => {
+apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum);
     const neighborInfo = databaseService.getNeighborsForNode(nodeNum);
 
     // Enrich with node names
-    const enrichedNeighborInfo = neighborInfo.map(ni => {
-      const neighbor = databaseService.getNode(ni.neighborNodeNum);
+    const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {
+      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
       const neighborPos = getEffectivePosition(neighbor);
 
       return {
@@ -3409,7 +3409,7 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
         neighborLatitude: neighborPos.latitude,
         neighborLongitude: neighborPos.longitude,
       };
-    });
+    }));
 
     res.json(enrichedNeighborInfo);
   } catch (error) {
@@ -3461,7 +3461,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
 
     // Check if node has private position override
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = databaseService.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum);
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
@@ -3674,7 +3674,7 @@ apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePerm
 // Check which nodes have telemetry data
 apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const allNodes = databaseService.getAllNodes();
+    const allNodes = await databaseService.nodes.getAllNodes();
     // Filter nodes based on channel read permissions
     const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
 
@@ -3947,7 +3947,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       if (hasInfoRead) {
         // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
-        const allDbNodes = databaseService.getAllNodes();
+        const allDbNodes = await databaseService.nodes.getAllNodes();
         const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user);
 
         const nodesWithTelemetry: string[] = [];
@@ -4004,7 +4004,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       let localNodeInfo = undefined;
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
-        const currentNode = databaseService.getNode(localNodeNum);
+        const currentNode = await databaseService.nodes.getNode(localNodeNum);
 
         if (currentNode) {
           deviceMetadata = {
@@ -4228,7 +4228,7 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
     let localNodeInfo = undefined;
     if (localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);
-      const currentNode = databaseService.getNode(localNodeNum);
+      const currentNode = await databaseService.nodes.getNode(localNodeNum);
 
       if (currentNode) {
         deviceMetadata = {
@@ -4702,7 +4702,7 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_re
     // Trigger full node database refresh
     await meshtasticManager.refreshNodeDatabase();
 
-    const nodeCount = databaseService.getNodeCount();
+    const nodeCount = await databaseService.nodes.getNodeCount();
     const channelCount = databaseService.getChannelCount();
 
     logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
@@ -5429,7 +5429,7 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
 // Danger zone endpoints
 apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
   try {
-    const nodeCount = databaseService.getNodeCount();
+    const nodeCount = await databaseService.nodes.getNodeCount();
     databaseService.purgeAllNodes();
     // Trigger a node refresh after purging
     await meshtasticManager.refreshNodeDatabase();
@@ -5885,7 +5885,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               };
               // If fixedPosition is enabled, get the coordinates from the node's stored position
               if (finalConfig.deviceConfig.position.fixedPosition && localNodeNum) {
-                const nodeData = databaseService.getNode(localNodeNum);
+                const nodeData = await databaseService.nodes.getNode(localNodeNum);
                 if (nodeData?.latitude && nodeData?.longitude) {
                   config.fixedLatitude = nodeData.latitude;
                   config.fixedLongitude = nodeData.longitude;
@@ -6113,7 +6113,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
             };
             // If fixedPosition is enabled, get the coordinates from the node's stored position
             if (remoteConfig.fixedPosition) {
-              const nodeData = databaseService.getNode(destinationNodeNum);
+              const nodeData = await databaseService.nodes.getNode(destinationNodeNum);
               if (nodeData?.latitude && nodeData?.longitude) {
                 config.fixedLatitude = nodeData.latitude;
                 config.fixedLongitude = nodeData.longitude;
@@ -6405,7 +6405,7 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
         // Get the public key from database if available (stored from security config)
         let publicKeyBase64: string | undefined;
         if (localNodeInfo.nodeNum) {
-          const nodeData = databaseService.getNode(localNodeInfo.nodeNum);
+          const nodeData = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
           publicKeyBase64 = nodeData?.publicKey || undefined;
         }
         return res.json({ owner: {
@@ -6452,7 +6452,7 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       if (localNodeInfo) {
         // Get node data from database for additional info
-        const nodeData = localNodeInfo.nodeNum ? databaseService.getNode(localNodeInfo.nodeNum) : null;
+        const nodeData = localNodeInfo.nodeNum ? await databaseService.nodes.getNode(localNodeInfo.nodeNum) : null;
         return res.json({
           deviceMetadata: {
             firmwareVersion: localNodeInfo.firmwareVersion || 'Unknown',
@@ -6942,7 +6942,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           // before any stale position broadcast arrives from the device firmware.
           if (isLocalNode && localNodeNum) {
             const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-            databaseService.upsertNode({
+            await databaseService.nodes.upsertNode({
               nodeNum: localNodeNum,
               nodeId: localNodeId,
               latitude,
@@ -7091,7 +7091,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     // so it's correct before any stale position broadcast arrives from the device firmware.
     if (command === 'setFixedPosition' && isLocalNode && localNodeNum) {
       const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-      databaseService.upsertNode({
+      await databaseService.nodes.upsertNode({
         nodeNum: localNodeNum,
         nodeId: localNodeId,
         latitude: params.latitude,
@@ -7207,7 +7207,7 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
 });
 
 // Detailed status endpoint - provides system statistics and connection status
-apiRouter.get('/status', optionalAuth(), (_req, res) => {
+apiRouter.get('/status', optionalAuth(), async (_req, res) => {
   const connectionStatus = meshtasticManager.getConnectionStatus();
   const localNode = meshtasticManager.getLocalNodeInfo();
 
@@ -7228,7 +7228,7 @@ apiRouter.get('/status', optionalAuth(), (_req, res) => {
         : null,
     },
     statistics: {
-      nodes: databaseService.getNodeCount(),
+      nodes: await databaseService.nodes.getNodeCount(),
       messages: databaseService.getMessageCount(),
       channels: databaseService.getChannelCount(),
     },
