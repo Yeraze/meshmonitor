@@ -109,13 +109,13 @@ jobs:
 
       - name: Triage with Claude
         if: steps.check-permissions.outputs.has_write_access == 'true'
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          claude_args: --model claude-sonnet-4-20250514
 
-          direct_prompt: |
+          prompt: |
             🤖 **Automated Issue Triage**
 
             A new issue has been submitted. Your job is to provide an initial response following these STRICT guidelines:
@@ -264,13 +264,13 @@ jobs:
           fetch-depth: 1
 
       - name: Triage with Claude
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          claude_args: --model claude-sonnet-4-20250514
 
-          direct_prompt: |
+          prompt: |
             🤖 **Automated Issue Triage** (Manual Trigger)
 
             A maintainer has requested AI triage for this issue. Your job is to provide an initial response following these STRICT guidelines:
@@ -480,13 +480,13 @@ jobs:
 
       - name: Follow-up Analysis with Claude
         if: steps.check-permissions.outputs.has_write_access == 'true' && steps.check-bug.outputs.should_analyze == 'true'
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          claude_args: --model claude-sonnet-4-20250514
 
-          direct_prompt: |
+          prompt: |
             🤖 **Automated Follow-up Analysis**
 
             The user has responded to a bug report with additional information. Your job is to analyze their response and determine next steps.
