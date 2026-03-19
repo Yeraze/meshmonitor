@@ -47,8 +47,8 @@ describe('Packet Routes', () => {
     // Mock database service
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
-    // Create a spy for auditLog that we can verify in tests
-    (DatabaseService as any).auditLog = vi.fn();
+    // Create a spy for auditLogAsync that we can verify in tests
+    (DatabaseService as any).auditLogAsync = vi.fn();
 
     // Mock database methods for packet logging
     (DatabaseService as any).getSetting = (key: string) => {
@@ -542,8 +542,8 @@ describe('Packet Routes', () => {
       expect(response.body.deletedCount).toBe(2);
 
       // Verify audit log was called
-      expect(DatabaseService.auditLog).toHaveBeenCalledTimes(1);
-      expect(DatabaseService.auditLog).toHaveBeenCalledWith(
+      expect(DatabaseService.auditLogAsync).toHaveBeenCalledTimes(1);
+      expect(DatabaseService.auditLogAsync).toHaveBeenCalledWith(
         adminUser.id,
         'packets_cleared',
         'packetmonitor',
