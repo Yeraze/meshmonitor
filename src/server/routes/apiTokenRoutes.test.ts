@@ -12,7 +12,7 @@ vi.mock('../../services/database.js', () => ({
       generateAndCreateApiToken: vi.fn(),
       revokeApiToken: vi.fn()
     },
-    auditLog: vi.fn(),
+    auditLogAsync: vi.fn(),
     // Async methods required by authMiddleware
     drizzleDbType: 'sqlite',
     findUserByIdAsync: vi.fn(),
@@ -28,7 +28,7 @@ const mockDatabase = databaseService as unknown as {
     generateAndCreateApiToken: ReturnType<typeof vi.fn>;
     revokeApiToken: ReturnType<typeof vi.fn>;
   };
-  auditLog: ReturnType<typeof vi.fn>;
+  auditLogAsync: ReturnType<typeof vi.fn>;
   // Async methods
   findUserByIdAsync: ReturnType<typeof vi.fn>;
   findUserByUsernameAsync: ReturnType<typeof vi.fn>;
@@ -172,7 +172,7 @@ describe('API Token Routes', () => {
         token: 'mm_v1_xyz_secret',
         tokenInfo
       });
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'api_token_generated',
         'api_token',
@@ -249,7 +249,7 @@ describe('API Token Routes', () => {
         message: 'API token revoked successfully'
       });
       expect(mockDatabase.auth.revokeApiToken).toHaveBeenCalledWith(existingToken.id, defaultUser.id);
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'api_token_revoked',
         'api_token',

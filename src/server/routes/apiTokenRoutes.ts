@@ -72,7 +72,7 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     tokenInfo = result.tokenInfo;
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       userId,
       'api_token_generated',
       'api_token',
@@ -127,7 +127,7 @@ router.delete('/', requireAuth(), async (req: Request, res: Response) => {
     }
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       userId,
       'api_token_revoked',
       'api_token',
