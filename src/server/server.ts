@@ -1779,9 +1779,9 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
 });
 
 // Get nodes with key security issues (low-entropy or duplicate keys)
-apiRouter.get('/nodes/security-issues', optionalAuth(), (_req, res) => {
+apiRouter.get('/nodes/security-issues', optionalAuth(), async (_req, res) => {
   try {
-    const nodes = databaseService.getNodesWithKeySecurityIssues();
+    const nodes = await databaseService.getNodesWithKeySecurityIssuesAsync();
     res.json(nodes);
   } catch (error) {
     logger.error('Error getting nodes with security issues:', error);
@@ -3653,13 +3653,13 @@ apiRouter.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req, res)
 });
 
 // Delete telemetry data for a specific node and type
-apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), (req, res) => {
+apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), async (req, res) => {
   try {
     const { nodeId, telemetryType } = req.params;
 
     logger.info(`Purging telemetry data for node ${nodeId}, type ${telemetryType}`);
 
-    const deleted = databaseService.deleteTelemetryByNodeAndType(nodeId, telemetryType);
+    const deleted = await databaseService.telemetry.deleteTelemetryByNodeAndType(nodeId, telemetryType);
 
     if (deleted) {
       logger.info(`Successfully purged ${telemetryType} telemetry for node ${nodeId}`);
@@ -5475,7 +5475,7 @@ apiRouter.post('/purge/telemetry', requireAdmin(), (req, res) => {
 apiRouter.post('/purge/messages', requireAdmin(), async (req, res) => {
   try {
     const messageCount = await databaseService.messages.getMessageCount();
-    databaseService.purgeAllMessages();
+    await databaseService.messages.deleteAllMessages();
 
     // Audit log
     databaseService.auditLogAsync(
@@ -5493,9 +5493,10 @@ apiRouter.post('/purge/messages', requireAdmin(), async (req, res) => {
   }
 });
 
-apiRouter.post('/purge/traceroutes', requireAdmin(), (req, res) => {
+apiRouter.post('/purge/traceroutes', requireAdmin(), async (req, res) => {
   try {
-    databaseService.purgeAllTraceroutes();
+    await databaseService.traceroutes.deleteAllTraceroutes();
+    await databaseService.traceroutes.deleteAllRouteSegments();
 
     // Audit log
     databaseService.auditLogAsync(

@@ -41,9 +41,9 @@ class PacketLogService {
   /**
    * Log a mesh packet
    */
-  logPacket(packet: Omit<DbPacketLog, 'id' | 'created_at'>): number {
+  async logPacket(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
     try {
-      return databaseService.insertPacketLog(packet);
+      return await databaseService.insertPacketLogAsync(packet);
     } catch (error) {
       logger.error('❌ Failed to log packet:', error);
       return 0;
@@ -53,7 +53,7 @@ class PacketLogService {
   /**
    * Get packet logs with optional filters
    */
-  getPackets(options: {
+  async getPackets(options: {
     offset?: number;
     limit?: number;
     portnum?: number;
@@ -63,8 +63,8 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
-  }): DbPacketLog[] {
-    return databaseService.getPacketLogs(options);
+  }): Promise<DbPacketLog[]> {
+    return databaseService.getPacketLogsAsync(options);
   }
 
   /**
@@ -87,8 +87,8 @@ class PacketLogService {
   /**
    * Get single packet by ID
    */
-  getPacketById(id: number): DbPacketLog | null {
-    return databaseService.getPacketLogById(id);
+  async getPacketById(id: number): Promise<DbPacketLog | null> {
+    return databaseService.getPacketLogByIdAsync(id);
   }
 
   async getPacketByIdAsync(id: number): Promise<DbPacketLog | null> {
@@ -98,7 +98,7 @@ class PacketLogService {
   /**
    * Get total packet count with optional filters
    */
-  getPacketCount(options?: {
+  async getPacketCount(options?: {
     portnum?: number;
     from_node?: number;
     to_node?: number;
@@ -106,8 +106,8 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
-  }): number {
-    return databaseService.getPacketLogCount(options || {});
+  }): Promise<number> {
+    return databaseService.getPacketLogCountAsync(options || {});
   }
 
   /**
