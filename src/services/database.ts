@@ -2344,18 +2344,16 @@ class DatabaseService {
   /**
    * Get nodes with key security issues (low-entropy or duplicate keys)
    */
-  getNodesWithKeySecurityIssues(): DbNode[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug('getNodesWithKeySecurityIssues() called before cache initialized');
-        return [];
-      }
-      return Array.from(this.nodesCache.values())
-        .filter(node => node.keyIsLowEntropy || node.duplicateKeyDetected)
-        .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
+  /**
+   * Get nodes with key security issues (low-entropy or duplicate keys) - async version
+   * Works with PostgreSQL, MySQL, and SQLite through the repository pattern
+   */
+  async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
+    if (this.drizzleDbType !== 'sqlite') {
+      const nodes = await this.nodesRepo.getNodesWithKeySecurityIssues();
+      return nodes as unknown as DbNode[];
     }
-
+    // SQLite fallback using raw SQL on main connection
     const stmt = this.db.prepare(`
       SELECT * FROM nodes
       WHERE keyIsLowEntropy = 1 OR duplicateKeyDetected = 1
@@ -2363,25 +2361,6 @@ class DatabaseService {
     `);
     const nodes = stmt.all() as DbNode[];
     return nodes.map(node => this.normalizeBigInts(node));
-  }
-
-  /**
-   * Get nodes with key security issues (low-entropy or duplicate keys) - async version
-   * Works with PostgreSQL, MySQL, and SQLite through the repository pattern
-   */
-  async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      try {
-        const nodes = await this.nodesRepo.getNodesWithKeySecurityIssues();
-        return nodes as unknown as DbNode[];
-      } catch (error) {
-        // Drizzle schema may reference columns not yet added by migrations (e.g. lastMeshReceivedKey).
-        // Fall back to sync raw SQL path which uses SELECT * and tolerates missing columns.
-        logger.warn('Drizzle query failed for getNodesWithKeySecurityIssues, falling back to raw SQL:', error);
-      }
-    }
-    // Fallback to sync method for SQLite without repo
-    return this.getNodesWithKeySecurityIssues();
   }
 
   /**
@@ -3638,22 +3617,7 @@ class DatabaseService {
     };
   }
 
-  deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): boolean {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.telemetryRepo) {
-        this.telemetryRepo.deleteTelemetryByNodeAndType(nodeId, telemetryType).catch(err => {
-          logger.debug('Failed to delete telemetry by node and type:', err);
-        });
-      }
-      return true;
-    }
 
-    // Delete telemetry data for a specific node and type
-    const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeId = ? AND telemetryType = ?');
-    const result = stmt.run(nodeId, telemetryType);
-    return Number(result.changes) > 0;
-  }
 
   // Helper function to convert BigInt values to numbers
   private normalizeBigInts(obj: any): any {
@@ -6913,52 +6877,6 @@ class DatabaseService {
     return totalDeleted;
   }
 
-  purgeAllMessages(): void {
-    logger.debug('⚠️ PURGING all messages from database');
-
-    // For PostgreSQL/MySQL, use async repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.deleteAllMessages().then(() => {
-          // Clear messages cache after purge
-          this._messagesCache = [];
-          logger.debug('✅ Successfully purged all messages');
-        }).catch(err => {
-          logger.error('Failed to purge all messages:', err);
-        });
-      } else {
-        logger.warn('Cannot purge messages: messages repository not initialized');
-      }
-      return;
-    }
-
-    this.db.exec('DELETE FROM messages');
-  }
-
-  purgeAllTraceroutes(): void {
-    logger.debug('⚠️ PURGING all traceroutes and route segments from database');
-
-    // For PostgreSQL/MySQL, use async repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        Promise.all([
-          this.traceroutesRepo.deleteAllTraceroutes(),
-          this.traceroutesRepo.deleteAllRouteSegments(),
-        ]).then(() => {
-          logger.debug('✅ Successfully purged all traceroutes and route segments');
-        }).catch(err => {
-          logger.error('Failed to purge all traceroutes:', err);
-        });
-      } else {
-        logger.warn('Cannot purge traceroutes: traceroutes repository not initialized');
-      }
-      return;
-    }
-
-    this.db.exec('DELETE FROM traceroutes');
-    this.db.exec('DELETE FROM route_segments');
-    logger.debug('✅ Successfully purged all traceroutes and route segments');
-  }
 
   // Settings methods
   async getSettingAsync(key: string): Promise<string | null> {
@@ -9120,16 +9038,17 @@ class DatabaseService {
   // Packet Log operations — delegated to MiscRepository (this.misc)
   // Sync methods retain SQLite fallbacks for test compatibility and pre-init callers.
 
-  insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): number {
-    const enabled = this.getSetting('packet_log_enabled');
+  async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
+    const enabled = await this.getSettingAsync('packet_log_enabled');
     if (enabled !== '1') return 0;
 
-    // For non-SQLite, fire-and-forget via repository
-    if (this.drizzleDbType !== 'sqlite' && this.miscRepo) {
-      this.miscRepo.insertPacketLog(packet).catch(error => {
-        logger.error('[DatabaseService] Failed to insert packet log:', error);
-      });
-      return 0;
+    // For non-SQLite, use async repository
+    if (this.drizzleDbType !== 'sqlite') {
+      const id = await this.misc.insertPacketLog(packet);
+      const maxCountStr = await this.getSettingAsync('packet_log_max_count');
+      const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
+      await this.misc.enforcePacketLogMaxCount(maxCount);
+      return id;
     }
 
     // SQLite: use synchronous raw SQL for immediate consistency
@@ -9165,18 +9084,13 @@ class DatabaseService {
     return Number(result.lastInsertRowid);
   }
 
-  async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
-    const enabled = await this.settings.getSetting('packet_log_enabled');
-    if (enabled !== '1') return 0;
-    return this.misc.insertPacketLog(packet);
-  }
-
-  getPacketLogs(options: {
+  async getPacketLogsAsync(options: {
     offset?: number; limit?: number; portnum?: number; from_node?: number;
     to_node?: number; channel?: number; encrypted?: boolean; since?: number;
     relay_node?: number | 'unknown';
-  }): DbPacketLog[] {
-    // SQLite fallback for sync callers
+  }): Promise<DbPacketLog[]> {
+    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogs(options);
+    // SQLite fallback using raw SQL on main connection
     const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
     let query = `
       SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
@@ -9200,16 +9114,9 @@ class DatabaseService {
     return stmt.all(...params) as DbPacketLog[];
   }
 
-  async getPacketLogsAsync(options: {
-    offset?: number; limit?: number; portnum?: number; from_node?: number;
-    to_node?: number; channel?: number; encrypted?: boolean; since?: number;
-    relay_node?: number | 'unknown';
-  }): Promise<DbPacketLog[]> {
-    if (this.miscRepo) return this.miscRepo.getPacketLogs(options);
-    return this.getPacketLogs(options);
-  }
-
-  getPacketLogById(id: number): DbPacketLog | null {
+  async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
+    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogById(id);
+    // SQLite fallback
     const stmt = this.db.prepare(`
       SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
       FROM packet_log pl
@@ -9221,15 +9128,12 @@ class DatabaseService {
     return result || null;
   }
 
-  async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
-    if (this.miscRepo) return this.miscRepo.getPacketLogById(id);
-    return this.getPacketLogById(id);
-  }
-
-  getPacketLogCount(options: {
+  async getPacketLogCountAsync(options: {
     portnum?: number; from_node?: number; to_node?: number; channel?: number;
     encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
-  } = {}): number {
+  } = {}): Promise<number> {
+    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogCount(options);
+    // SQLite fallback
     const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
     const params: any[] = [];
@@ -9244,14 +9148,6 @@ class DatabaseService {
     const stmt = this.db.prepare(query);
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
-  }
-
-  async getPacketLogCountAsync(options: {
-    portnum?: number; from_node?: number; to_node?: number; channel?: number;
-    encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
-  } = {}): Promise<number> {
-    if (this.miscRepo) return this.miscRepo.getPacketLogCount(options);
-    return this.getPacketLogCount(options);
   }
 
   clearPacketLogs(): number {
