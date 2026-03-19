@@ -6,6 +6,10 @@
 - Only the backend talks to the Node. the Frontend never talks directly to the node.
 
 
+## Code Modification Rules
+
+- After bulk find-and-replace or sed operations, always verify that modified functions have correct async/await signatures before running tests. Check that route handlers and callbacks are marked async if await was added inside them.
+
 ## Multi-Database Architecture (SQLite/PostgreSQL/MySQL)
 
 MeshMonitor supports three database backends. When working with database code:
@@ -61,6 +65,7 @@ When tests mock DatabaseService, they must provide async method mocks for authMi
 - Use shared constants from `src/server/constants/meshtastic.ts` for PortNum, RoutingError, and helper functions - never use magic numbers for protocol values
 - When updating the version, make sure you get all five files: package.json, package-lock.json (regenerate via `npm install --package-lock-only --legacy-peer-deps`), helm/meshmonitor/Chart.yaml, desktop/src-tauri/tauri.conf.json, and desktop/package.json
 - Prior to creating a PR, make sure to run the tests/system-tests.sh to ensure success and post the output report
+- After creating or updating a PR, use the `/ci-monitor` skill to monitor CI status and auto-fix any failures
 - When testing, our webserver has BASE_URL configured for /meshmonitor
   Completely shut down the container and tileserver before running system tests
 
@@ -82,6 +87,15 @@ When adding a new user-configurable setting:
 - **MUST** add the key to `src/server/constants/settings.ts` `VALID_SETTINGS_KEYS` — without this, the setting silently fails to save
 - In `SettingsTab.tsx`, the `handleSave` `useCallback` has a large dependency array — new `localFoo` state AND the context `setFoo` setter must be added to it, or the save callback uses stale values
 - See `src/contexts/SettingsContext.tsx` for the full state/setter/localStorage/server-load pattern
+
+## Database
+
+- This project has three database backends: SQLite, PostgreSQL, and MySQL. When modifying migrations or schema, always update ALL three backend baseline migrations consistently. Check column names, table names, and constraints match across all backends.
+
+## Testing
+
+- When migrating test mocks from sync to async patterns, use `mockResolvedValue` instead of `mockReturnValue` for any mocked function that is now async/returns a Promise.
+- All tests must pass (0 failures) before creating a PR. Run the full test suite, not just targeted tests, before committing migration or refactor work.
 
 ## Key Repair / NodeInfo Exchange Routing
 
