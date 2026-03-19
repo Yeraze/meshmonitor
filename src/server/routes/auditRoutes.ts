@@ -104,9 +104,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Audit log entry not found' });
     }
 
-    // Use getAuditLogs with no filters but get all to find specific ID
+    // Use getAuditLogsAsync with no filters but get all to find specific ID
     // This is inefficient but works for now
-    const result = databaseService.getAuditLogs({ limit: 10000 });
+    const result = await databaseService.getAuditLogsAsync({ limit: 10000 });
     const log = result.logs.find((l: any) => l.id === id);
 
     if (!log) {
@@ -148,7 +148,7 @@ router.post('/cleanup', requirePermission('audit', 'write'), (req: Request, res:
     const deletedCount = databaseService.cleanupAuditLogs(days);
 
     // Log the cleanup action
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'audit_cleanup',
       'audit',

@@ -81,7 +81,7 @@ describe('Audit Log Routes', () => {
     (DatabaseService as any).permissionModel = permissionModel;
 
     // Mock audit log methods
-    (DatabaseService as any).auditLog = (
+    (DatabaseService as any).auditLogAsync = (
       userId: number | null,
       action: string,
       resource: string | null,
@@ -281,10 +281,10 @@ describe('Audit Log Routes', () => {
     permissionModel.grantDefaultPermissions(user.id, false);
 
     // Create some test audit log entries
-    DatabaseService.auditLog(adminUserId, 'login_success', 'auth', 'Admin logged in', '192.168.1.1');
-    DatabaseService.auditLog(adminUserId, 'settings_updated', 'settings', 'Changed theme', '192.168.1.1');
-    DatabaseService.auditLog(regularUserId, 'login_success', 'auth', 'User logged in', '192.168.1.2');
-    DatabaseService.auditLog(adminUserId, 'api_token_used', 'auth', 'API token access', '192.168.1.3');
+    DatabaseService.auditLogAsync(adminUserId, 'login_success', 'auth', 'Admin logged in', '192.168.1.1');
+    DatabaseService.auditLogAsync(adminUserId, 'settings_updated', 'settings', 'Changed theme', '192.168.1.1');
+    DatabaseService.auditLogAsync(regularUserId, 'login_success', 'auth', 'User logged in', '192.168.1.2');
+    DatabaseService.auditLogAsync(adminUserId, 'api_token_used', 'auth', 'API token access', '192.168.1.3');
   });
 
   describe('GET /api/audit', () => {
