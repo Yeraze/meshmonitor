@@ -216,6 +216,10 @@ describe('Audit Log Routes', () => {
       return result.changes;
     };
 
+    (DatabaseService as any).cleanupAuditLogsAsync = async (days: number) => {
+      return (DatabaseService as any).cleanupAuditLogs(days);
+    };
+
     // Add async method mocks for authMiddleware compatibility
     (DatabaseService as any).drizzleDbType = 'sqlite';
     (DatabaseService as any).findUserByIdAsync = async (id: number) => {

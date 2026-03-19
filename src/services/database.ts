@@ -9951,6 +9951,169 @@ class DatabaseService {
       throw error;
     }
   }
+  // ============================================================
+  // Async wrappers for sync methods (Phase 4 migration)
+  // These allow callers to use await consistently.
+  // For SQLite, they delegate to the sync method.
+  // For PG/MySQL, the sync methods already fire-and-forget async internally.
+  // ============================================================
+
+  // Group 1: Cleanup/Maintenance
+  async cleanupOldMessagesAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldMessages(days);
+  }
+
+  async cleanupOldTraceroutesAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldTraceroutes(days);
+  }
+
+  async cleanupOldRouteSegmentsAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldRouteSegments(days);
+  }
+
+  async cleanupOldNeighborInfoAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldNeighborInfo(days);
+  }
+
+  async cleanupInactiveNodesAsync(days: number = 30): Promise<number> {
+    return this.cleanupInactiveNodes(days);
+  }
+
+  async cleanupInvalidChannelsAsync(): Promise<number> {
+    return this.cleanupInvalidChannels();
+  }
+
+  async cleanupAuditLogsAsync(days: number): Promise<number> {
+    return this.cleanupAuditLogs(days);
+  }
+
+  async vacuumAsync(): Promise<void> {
+    return this.vacuum();
+  }
+
+  async getDatabaseSizeAsync(): Promise<number> {
+    return this.getDatabaseSize();
+  }
+
+  // Group 2: Messages
+  async getMessagesByChannelAsync(channel: number, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+    return this.getMessagesByChannel(channel, limit, offset);
+  }
+
+  async markAllDMMessagesAsReadAsync(localNodeId: string, userId: number | null): Promise<number> {
+    return this.markAllDMMessagesAsRead(localNodeId, userId);
+  }
+
+  async markChannelMessagesAsReadAsync(channelId: number, userId: number | null, beforeTimestamp?: number): Promise<number> {
+    return this.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
+  }
+
+  async markDMMessagesAsReadAsync(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): Promise<number> {
+    return this.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp);
+  }
+
+  // Group 3: Nodes
+  async getNodesWithPublicKeysAsync(): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
+    return this.getNodesWithPublicKeys();
+  }
+
+  async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean): Promise<void> {
+    this.setNodeIgnored(nodeNum, isIgnored);
+  }
+
+  async getNodePositionOverrideAsync(nodeNum: number): Promise<{
+    enabled: boolean;
+    latitude?: number;
+    longitude?: number;
+    altitude?: number;
+    isPrivate?: boolean;
+  } | null> {
+    return this.getNodePositionOverride(nodeNum);
+  }
+
+  async setNodePositionOverrideAsync(
+    nodeNum: number,
+    enabled: boolean,
+    latitude?: number,
+    longitude?: number,
+    altitude?: number,
+    isPrivate: boolean = false
+  ): Promise<void> {
+    this.setNodePositionOverride(nodeNum, enabled, latitude, longitude, altitude, isPrivate);
+  }
+
+  async clearNodePositionOverrideAsync(nodeNum: number): Promise<void> {
+    this.clearNodePositionOverride(nodeNum);
+  }
+
+  async handleAutoWelcomeEnabledAsync(): Promise<number> {
+    return this.handleAutoWelcomeEnabled();
+  }
+
+  async markAllNodesAsWelcomedAsync(): Promise<number> {
+    return this.markAllNodesAsWelcomed();
+  }
+
+  // Group 4: Traceroutes
+  async recordTracerouteRequestAsync(fromNodeNum: number, toNodeNum: number): Promise<void> {
+    this.recordTracerouteRequest(fromNodeNum, toNodeNum);
+  }
+
+  async getAllTraceroutesForRecalculationAsync(): Promise<any[]> {
+    return this.getAllTraceroutesForRecalculation();
+  }
+
+  async clearRecordHolderSegmentAsync(): Promise<void> {
+    this.clearRecordHolderSegment();
+  }
+
+  async updateRecordHolderSegmentAsync(segment: DbRouteSegment): Promise<void> {
+    this.updateRecordHolderSegment(segment);
+  }
+
+  // Group 5: Neighbors/Telemetry
+  async getNeighborsForNodeAsync(nodeNum: number): Promise<DbNeighborInfo[]> {
+    return this.getNeighborsForNode(nodeNum);
+  }
+
+  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): Promise<DbTelemetry[]> {
+    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours);
+  }
+
+  // Group 6: Ghost Nodes (in-memory, but async-compatible wrappers)
+  async getSuppressedGhostNodesAsync(): Promise<Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }>> {
+    return this.getSuppressedGhostNodes();
+  }
+
+  async suppressGhostNodeAsync(nodeNum: number, durationMs: number = 30 * 60 * 1000): Promise<void> {
+    this.suppressGhostNode(nodeNum, durationMs);
+  }
+
+  async unsuppressGhostNodeAsync(nodeNum: number): Promise<void> {
+    this.unsuppressGhostNode(nodeNum);
+  }
+
+  async isNodeSuppressedAsync(nodeNum: number | undefined | null): Promise<boolean> {
+    return this.isNodeSuppressed(nodeNum);
+  }
+
+  // Group 7: Settings/Config
+  async isAutoTimeSyncEnabledAsync(): Promise<boolean> {
+    return this.isAutoTimeSyncEnabled();
+  }
+
+  async getAutoTimeSyncIntervalMinutesAsync(): Promise<number> {
+    return this.getAutoTimeSyncIntervalMinutes();
+  }
+
+  // Group 8: Export/Import
+  async exportDataAsync(): Promise<{ nodes: DbNode[]; messages: DbMessage[] }> {
+    return this.exportData();
+  }
+
+  async importDataAsync(data: { nodes: DbNode[]; messages: DbMessage[] }): Promise<void> {
+    this.importData(data);
+  }
 }
 
 // Export the class for testing purposes (allows creating isolated test instances)
