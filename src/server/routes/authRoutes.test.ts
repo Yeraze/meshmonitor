@@ -55,7 +55,8 @@ describe('Authentication Routes', () => {
     // Mock database service
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
-    (DatabaseService as any).auditLog = () => {};
+    (DatabaseService as any).auditLog = () => {};  // still used by localAuth.ts
+    (DatabaseService as any).auditLogAsync = () => {};
     (DatabaseService as any).findUserByIdAsync = async (id: number) => userModel.findById(id);
     (DatabaseService as any).findUserByUsernameAsync = async (username: string) => userModel.findByUsername(username);
     (DatabaseService as any).authenticateAsync = async (username: string, password: string) => userModel.authenticate(username, password);
