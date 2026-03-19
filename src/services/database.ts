@@ -6714,6 +6714,44 @@ class DatabaseService {
     return map;
   }
 
+  // Get all nodes with their telemetry types (async version)
+  async getAllNodesTelemetryTypesAsync(): Promise<Map<string, string[]>> {
+    const now = Date.now();
+
+    // Return cached result if still valid
+    if (
+      this.telemetryTypesCache !== null &&
+      now - this.telemetryTypesCacheTime < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS
+    ) {
+      return this.telemetryTypesCache;
+    }
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const map = await this.telemetry.getAllNodesTelemetryTypes();
+      this.telemetryTypesCache = map;
+      this.telemetryTypesCacheTime = Date.now();
+      return map;
+    }
+
+    // SQLite: query the database and update cache
+    const stmt = this.db.prepare(`
+      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
+      FROM telemetry
+      GROUP BY nodeId
+    `);
+    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
+    const map = new Map<string, string[]>();
+    results.forEach(r => {
+      map.set(r.nodeId, r.types ? r.types.split(',') : []);
+    });
+
+    this.telemetryTypesCache = map;
+    this.telemetryTypesCacheTime = now;
+
+    return map;
+  }
+
   // Invalidate the telemetry types cache (call when new telemetry is inserted)
   invalidateTelemetryTypesCache(): void {
     this.telemetryTypesCacheTime = 0;
@@ -6863,6 +6901,113 @@ class DatabaseService {
     totalDeleted += Number(nonFavoritesResult.changes);
 
     // Then, delete favorited telemetry older than favoriteCutoffTime
+    const deleteFavoritesStmt = this.db.prepare(
+      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
+    );
+    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
+    totalDeleted += Number(favoritesResult.changes);
+
+    logger.debug(
+      `🧹 Purged ${totalDeleted} old telemetry records ` +
+      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+    );
+    return totalDeleted;
+  }
+
+  /**
+   * Purge all telemetry data (async version)
+   */
+  async purgeAllTelemetryAsync(): Promise<void> {
+    logger.debug('⚠️ PURGING all telemetry from database');
+
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      await this.telemetry.deleteAllTelemetry();
+      logger.debug('✅ Successfully purged all telemetry');
+      return;
+    }
+
+    this.db.exec('DELETE FROM telemetry');
+    logger.debug('✅ Successfully purged all telemetry');
+  }
+
+  /**
+   * Purge old telemetry data (async version)
+   */
+  async purgeOldTelemetryAsync(hoursToKeep: number, favoriteDaysToKeep?: number): Promise<number> {
+    const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+
+    // PostgreSQL/MySQL: Use async telemetry repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!favoriteDaysToKeep) {
+        const count = await this.telemetry.deleteOldTelemetry(regularCutoffTime);
+        logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
+        return count;
+      }
+
+      // Get favorites and use favorites-aware deletion
+      const favoritesStr = await this.getSettingAsync('telemetryFavorites');
+      let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
+      if (favoritesStr) {
+        try {
+          favorites = JSON.parse(favoritesStr);
+        } catch (error) {
+          logger.error('Failed to parse telemetryFavorites from settings:', error);
+        }
+      }
+
+      const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+      const { nonFavoritesDeleted, favoritesDeleted } = await this.telemetry.deleteOldTelemetryWithFavorites(
+        regularCutoffTime,
+        favoriteCutoffTime,
+        favorites
+      );
+      const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
+      logger.debug(
+        `🧹 Purged ${totalDeleted} old telemetry records ` +
+        `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+        `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
+      );
+      return totalDeleted;
+    }
+
+    // SQLite: synchronous path
+    if (!favoriteDaysToKeep) {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+      const result = stmt.run(regularCutoffTime);
+      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      return Number(result.changes);
+    }
+
+    const favoritesStr = this.getSetting('telemetryFavorites');
+    let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
+    if (favoritesStr) {
+      try {
+        favorites = JSON.parse(favoritesStr);
+      } catch (error) {
+        logger.error('Failed to parse telemetryFavorites from settings:', error);
+      }
+    }
+
+    if (favorites.length === 0) {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+      const result = stmt.run(regularCutoffTime);
+      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      return Number(result.changes);
+    }
+
+    const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+    let totalDeleted = 0;
+
+    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
+    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
+
+    const deleteNonFavoritesStmt = this.db.prepare(
+      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    );
+    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
+    totalDeleted += Number(nonFavoritesResult.changes);
+
     const deleteFavoritesStmt = this.db.prepare(
       `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
     );
