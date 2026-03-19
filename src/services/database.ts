@@ -9517,8 +9517,13 @@ class DatabaseService {
     action: string,
     resource: string | null,
     details: string | null,
-    ipAddress: string
+    ipAddress: string | null,
+    valueBefore?: string | null,
+    valueAfter?: string | null
   ): Promise<void> {
+    // Note: valueBefore/valueAfter not yet in Drizzle schema — tracked as future enhancement
+    void valueBefore;
+    void valueAfter;
     try {
       await this.auth.createAuditLogEntry({
         userId,
