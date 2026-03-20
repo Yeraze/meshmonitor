@@ -389,6 +389,7 @@ class MeshtasticManager {
    */
   private async checkAndRecalculatePositions(): Promise<void> {
     try {
+      await databaseService.waitForReady();
       const recalculateFlag = await databaseService.settings.getSetting('recalculate_estimated_positions');
       if (recalculateFlag !== 'pending') {
         return;
@@ -5282,8 +5283,8 @@ class MeshtasticManager {
               logger.info(`🔐 PKI key error for node ${toNodeId} — node not in radio's database (expected after factory reset/purge)`);
             } else {
               const errorDescription = errorReason === RoutingError.PKI_FAILED
-                ? 'PKI encryption failed on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
-                : 'Remote node missing public key on request - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+                ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
+                : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
 
               logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
 
@@ -5339,8 +5340,8 @@ class MeshtasticManager {
             logger.info(`🔐 PKI key error for node ${targetNodeId} — node not in radio's database (expected after factory reset/purge)`);
           } else {
             const errorDescription = errorReason === RoutingError.PKI_FAILED
-              ? 'PKI encryption failed - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.'
-              : 'Remote node missing public key - possible key mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
+              ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
+              : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
 
             logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
 

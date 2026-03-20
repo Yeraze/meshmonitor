@@ -35,6 +35,7 @@ function extractHostFromUrl(url: string): string | null {
  */
 export async function loadCustomTilesetHostnames(): Promise<string[]> {
   try {
+    await databaseService.waitForReady();
     const customTilesetsJson = await databaseService.settings.getSetting('customTilesets');
     if (!customTilesetsJson) {
       return [];
