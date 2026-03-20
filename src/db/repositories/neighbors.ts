@@ -27,9 +27,11 @@ export class NeighborsRepository extends BaseRepository {
   }
 
   /**
-   * Insert or update neighbor info
+   * Insert a neighbor info record.
+   * Callers must delete old records for the node first to avoid duplicates
+   * (there is no unique constraint on nodeNum + neighborNodeNum).
    */
-  async upsertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+  async insertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
     const { neighborInfo } = this.tables;
     const values = {
       nodeNum: neighborData.nodeNum,
@@ -41,6 +43,33 @@ export class NeighborsRepository extends BaseRepository {
     };
 
     await this.db.insert(neighborInfo).values(values);
+  }
+
+  /**
+   * Insert multiple neighbor info records in a single query.
+   * Callers must delete old records for the node first.
+   */
+  async insertNeighborInfoBatch(records: DbNeighborInfo[]): Promise<void> {
+    if (records.length === 0) return;
+    const { neighborInfo } = this.tables;
+    const values = records.map(r => ({
+      nodeNum: r.nodeNum,
+      neighborNodeNum: r.neighborNodeNum,
+      snr: r.snr ?? null,
+      lastRxTime: r.lastRxTime ?? null,
+      timestamp: r.timestamp,
+      createdAt: r.createdAt,
+    }));
+
+    await this.db.insert(neighborInfo).values(values);
+  }
+
+  /**
+   * Backwards-compatible alias for insertNeighborInfo
+   * @deprecated Use insertNeighborInfo instead
+   */
+  async upsertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+    return this.insertNeighborInfo(neighborData);
   }
 
   /**
@@ -73,14 +102,9 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Delete neighbor info for a node
    */
-  async deleteNeighborInfoForNode(nodeNum: number): Promise<number> {
+  async deleteNeighborInfoForNode(nodeNum: number): Promise<void> {
     const { neighborInfo } = this.tables;
-    const [{ deletedCount }] = await this.db
-      .select({ deletedCount: count() })
-      .from(neighborInfo)
-      .where(eq(neighborInfo.nodeNum, nodeNum));
     await this.db.delete(neighborInfo).where(eq(neighborInfo.nodeNum, nodeNum));
-    return deletedCount;
   }
 
   /**
@@ -93,14 +117,23 @@ export class NeighborsRepository extends BaseRepository {
   }
 
   /**
+   * Get neighbor count for a specific node
+   */
+  async getNeighborCountForNode(nodeNum: number): Promise<number> {
+    const { neighborInfo } = this.tables;
+    const result = await this.db
+      .select({ count: count() })
+      .from(neighborInfo)
+      .where(eq(neighborInfo.nodeNum, nodeNum));
+    return Number(result[0].count);
+  }
+
+  /**
    * Delete all neighbor info
    */
-  async deleteAllNeighborInfo(): Promise<number> {
+  async deleteAllNeighborInfo(): Promise<void> {
     const { neighborInfo } = this.tables;
-    const result = await this.db.select({ count: count() }).from(neighborInfo);
-    const deleteCount = Number(result[0].count);
     await this.db.delete(neighborInfo);
-    return deleteCount;
   }
 
   /**
