@@ -9093,6 +9093,7 @@ process.on('SIGTERM', () => {
 // Data migration: Set channel field to 'dm' for existing auto-responder triggers without channel
 async function migrateAutoResponderTriggers() {
   try {
+    await databaseService.waitForReady();
     const triggersStr = await databaseService.settings.getSetting('autoResponderTriggers');
     if (!triggersStr) {
       return; // No triggers to migrate

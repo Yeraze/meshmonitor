@@ -389,6 +389,7 @@ class MeshtasticManager {
    */
   private async checkAndRecalculatePositions(): Promise<void> {
     try {
+      await databaseService.waitForReady();
       const recalculateFlag = await databaseService.settings.getSetting('recalculate_estimated_positions');
       if (recalculateFlag !== 'pending') {
         return;
