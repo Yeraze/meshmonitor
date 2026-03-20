@@ -76,6 +76,15 @@ export interface DbNode {
   longitudeOverride?: number | null;
   altitudeOverride?: number | null;
   positionOverrideIsPrivate?: boolean | null;
+  // Spam detection
+  isExcessivePackets?: boolean | null;
+  packetRatePerHour?: number | null;
+  packetRateLastChecked?: number | null;
+  // Time offset detection
+  isTimeOffsetIssue?: boolean | null;
+  timeOffsetSeconds?: number | null;
+  // Time sync
+  lastTimeSync?: number | null;
   // Remote admin discovery
   hasRemoteAdmin?: boolean | null;
   lastRemoteAdminCheck?: number | null;
