@@ -105,6 +105,10 @@ export async function runMigration012Postgres(client: import('pg').PoolClient): 
     await client.query('ALTER TABLE permissions ADD COLUMN IF NOT EXISTS "grantedBy" INTEGER');
     logger.debug('Ensured grantedAt/grantedBy exist on permissions');
 
+    // 1b. Add canViewOnMap to channel_database_permissions
+    await client.query('ALTER TABLE channel_database_permissions ADD COLUMN IF NOT EXISTS "canViewOnMap" BOOLEAN NOT NULL DEFAULT false');
+    logger.debug('Ensured canViewOnMap exists on channel_database_permissions');
+
     // 2. Fix neighbor_info.snr type (REAL -> DOUBLE PRECISION)
     const snrCheck = await client.query(`
       SELECT data_type FROM information_schema.columns
@@ -165,6 +169,18 @@ export async function runMigration012Mysql(pool: import('mysql2/promise').Pool):
       logger.debug('Added grantedBy to permissions');
     } else {
       logger.debug('permissions.grantedBy already exists, skipping');
+    }
+
+    // 1b. Add canViewOnMap to channel_database_permissions
+    const [canViewRows] = await pool.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channel_database_permissions' AND COLUMN_NAME = 'canViewOnMap'
+    `);
+    if (!Array.isArray(canViewRows) || canViewRows.length === 0) {
+      await pool.query('ALTER TABLE channel_database_permissions ADD COLUMN canViewOnMap BOOLEAN NOT NULL DEFAULT false');
+      logger.debug('Added canViewOnMap to channel_database_permissions');
+    } else {
+      logger.debug('channel_database_permissions.canViewOnMap already exists, skipping');
     }
 
     // 2. Fix neighbor_info.snr type (FLOAT -> DOUBLE)
