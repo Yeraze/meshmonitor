@@ -150,6 +150,40 @@ const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode; enable
 );
 
 /**
+ * Controller that applies the configured default map center once server settings load.
+ * Only acts when there was no saved localStorage position at mount time (new session / anonymous).
+ * The configured default takes priority over auto-calculated node positions.
+ */
+const DefaultCenterController: React.FC<{
+  lat: number | null;
+  lon: number | null;
+  zoom: number | null;
+}> = ({ lat, lon, zoom }) => {
+  const map = useMap();
+  const applied = useRef(false);
+  // Capture whether localStorage had a saved map position at mount time.
+  // MapPositionHandler updates mapCenter immediately on mount, so we can't
+  // rely on the current mapCenter value — check localStorage directly.
+  const hadSavedPosition = useRef(localStorage.getItem('mapCenter') !== null);
+
+  useEffect(() => {
+    console.log('[DefaultCenterController] effect fired', {
+      applied: applied.current,
+      hadSaved: hadSavedPosition.current,
+      lat, lon, zoom,
+    });
+    if (applied.current || hadSavedPosition.current) return;
+    if (lat !== null && lon !== null && zoom !== null) {
+      console.log('[DefaultCenterController] applying configured default', lat, lon, zoom);
+      applied.current = true;
+      map.setView([lat, lon], zoom, { animate: false });
+    }
+  }, [map, lat, lon, zoom]);
+
+  return null;
+};
+
+/**
  * Controller component that zooms the map to fit the traceroute bounds
  * Must be placed inside MapContainer to access the map instance
  */
@@ -295,6 +329,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeHopsCalculation,
     neighborInfoMinZoom,
     overlayColors,
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
   } = useSettings();
 
   const { hasPermission, authStatus } = useAuth();
@@ -1055,40 +1092,55 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
-  const getMapCenter = (): [number, number] => {
-    // Use saved map center from previous session if available
+  const getMapCenter = (): { center: [number, number]; zoom: number } => {
+    // 1. Saved localStorage position (logged-in user's last session)
     if (mapCenter) {
-      return mapCenter;
+      return { center: mapCenter, zoom: mapZoom };
     }
 
-    // If no nodes with positions, use default location
-    if (nodesWithPosition.length === 0) {
-      return [25.7617, -80.1918]; // Default to Miami area
+    // 2. Configured default center (from server settings)
+    if (
+      defaultMapCenterLat !== null &&
+      defaultMapCenterLon !== null &&
+      defaultMapCenterZoom !== null
+    ) {
+      return {
+        center: [defaultMapCenterLat, defaultMapCenterLon],
+        zoom: defaultMapCenterZoom,
+      };
     }
 
-    // Prioritize the locally connected node's position for first-time visitors
-    // Uses effective position to respect position overrides (Issue #1526)
-    if (currentNodeId) {
-      const localNode = nodesWithPosition.find(node => node.user?.id === currentNodeId);
-      if (localNode) {
-        const effectivePos = getEffectivePosition(localNode);
-        if (effectivePos.latitude != null && effectivePos.longitude != null) {
-          return [effectivePos.latitude, effectivePos.longitude];
+    // 3. Calculated from visible nodes
+    if (nodesWithPosition.length > 0) {
+      // Prioritize the locally connected node's position for first-time visitors
+      // Uses effective position to respect position overrides (Issue #1526)
+      if (currentNodeId) {
+        const localNode = nodesWithPosition.find(node => node.user?.id === currentNodeId);
+        if (localNode) {
+          const effectivePos = getEffectivePosition(localNode);
+          if (effectivePos.latitude != null && effectivePos.longitude != null) {
+            return { center: [effectivePos.latitude, effectivePos.longitude], zoom: mapZoom };
+          }
         }
       }
+
+      // Fall back to average position of all nodes (using effective positions)
+      const avgLat = nodesWithPosition.reduce((sum, node) => {
+        const pos = getEffectivePosition(node);
+        return sum + (pos.latitude ?? 0);
+      }, 0) / nodesWithPosition.length;
+      const avgLng = nodesWithPosition.reduce((sum, node) => {
+        const pos = getEffectivePosition(node);
+        return sum + (pos.longitude ?? 0);
+      }, 0) / nodesWithPosition.length;
+      return { center: [avgLat, avgLng], zoom: mapZoom };
     }
 
-    // Fall back to average position of all nodes (using effective positions)
-    const avgLat = nodesWithPosition.reduce((sum, node) => {
-      const pos = getEffectivePosition(node);
-      return sum + (pos.latitude ?? 0);
-    }, 0) / nodesWithPosition.length;
-    const avgLng = nodesWithPosition.reduce((sum, node) => {
-      const pos = getEffectivePosition(node);
-      return sum + (pos.longitude ?? 0);
-    }, 0) / nodesWithPosition.length;
-    return [avgLat, avgLng];
+    // 4. World view (absolute last resort)
+    return { center: [20, 0], zoom: 2 };
   };
+
+  const mapDefaults = getMapCenter();
 
   return (
     <div className="nodes-split-view nodes-anchored-view">
@@ -1708,8 +1760,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             </div>
         )}
             <MapContainer
-              center={getMapCenter()}
-              zoom={mapZoom}
+              center={mapDefaults.center}
+              zoom={mapDefaults.zoom}
               style={{ height: '100%', width: '100%' }}
             >
               <MapCenterController
@@ -1732,6 +1784,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
+              <DefaultCenterController
+                lat={defaultMapCenterLat}
+                lon={defaultMapCenterLon}
+                zoom={defaultMapCenterZoom}
+              />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend
