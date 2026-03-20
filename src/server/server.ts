@@ -7084,6 +7084,17 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     // Send the admin command
     await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
 
+    // For setSecurityConfig on the local node, update the cached config immediately
+    // so the frontend reads back the correct values before the next config sync
+    if (command === 'setSecurityConfig' && isLocalNode && params.config) {
+      meshtasticManager.updateCachedDeviceConfig('security', {
+        isManaged: params.config.isManaged,
+        serialEnabled: params.config.serialEnabled,
+        debugLogApiEnabled: params.config.debugLogApiEnabled,
+        adminChannelEnabled: params.config.adminChannelEnabled
+      });
+    }
+
     // For setFixedPosition on the local node, immediately update the database
     // so it's correct before any stale position broadcast arrives from the device firmware.
     if (command === 'setFixedPosition' && isLocalNode && localNodeNum) {
