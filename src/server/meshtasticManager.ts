@@ -3107,6 +3107,21 @@ class MeshtasticManager {
   }
 
   /**
+   * Update cached device config section after a successful admin command
+   * This keeps the cache in sync until the device sends updated config on reconnect
+   */
+  updateCachedDeviceConfig(section: string, values: Record<string, any>): void {
+    if (!this.actualDeviceConfig) {
+      this.actualDeviceConfig = {};
+    }
+    this.actualDeviceConfig[section] = {
+      ...this.actualDeviceConfig[section],
+      ...values
+    };
+    logger.info(`📊 Updated cached device config section '${section}':`, Object.keys(values));
+  }
+
+  /**
    * Get the actual module configuration received from the node
    * Used for backup/export functionality
    */
@@ -3199,6 +3214,25 @@ class MeshtasticManager {
       };
 
       logger.info(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
+    }
+
+    // Apply Proto3 defaults to security config if it exists
+    if (deviceConfig.security) {
+      const securityConfigWithDefaults = {
+        ...deviceConfig.security,
+        // IMPORTANT: Proto3 omits boolean false values from JSON serialization
+        isManaged: deviceConfig.security.isManaged !== undefined ? deviceConfig.security.isManaged : false,
+        serialEnabled: deviceConfig.security.serialEnabled !== undefined ? deviceConfig.security.serialEnabled : false,
+        debugLogApiEnabled: deviceConfig.security.debugLogApiEnabled !== undefined ? deviceConfig.security.debugLogApiEnabled : false,
+        adminChannelEnabled: deviceConfig.security.adminChannelEnabled !== undefined ? deviceConfig.security.adminChannelEnabled : false
+      };
+
+      deviceConfig = {
+        ...deviceConfig,
+        security: securityConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning security config with isManaged=${securityConfigWithDefaults.isManaged}, serialEnabled=${securityConfigWithDefaults.serialEnabled}, debugLogApiEnabled=${securityConfigWithDefaults.debugLogApiEnabled}, adminChannelEnabled=${securityConfigWithDefaults.adminChannelEnabled}`);
     }
 
     // Apply Proto3 defaults to module config if it exists
@@ -4225,6 +4259,10 @@ class MeshtasticManager {
         logger.debug(`👤 Skipping NodeInfo processing for local node ${nodeId} (echo of own broadcast)`);
         return;
       }
+
+      // Track that this node is in the radio's database - receiving NodeInfo over the mesh
+      // means the radio has the node's identity (and typically its public key for DMs)
+      this.deviceNodeNums.add(fromNum);
 
       const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
       // Channel is now updated centrally in the packet processing pipeline (processPacket),
