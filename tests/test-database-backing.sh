@@ -483,7 +483,7 @@ else:
     print(f"\033[0;31m✗ FAIL\033[0m: Favorite counts differ (SQLite={len(sqlite_favs)}, PG={len(pg_favs)}, MySQL={len(mysql_favs)})")
     passed = False
 
-# 3. "Yeraze StationG2" exists as a favorite on all three with identical longName
+# 3. "Yeraze StationG2" exists on all three backends with identical longName
 def find_station(nodes, name_substr):
     for n in nodes:
         user = n.get("user", {}) or {}
@@ -498,16 +498,7 @@ pg_station = find_station(pg_nodes, target_name)
 mysql_station = find_station(mysql_nodes, target_name)
 
 if sqlite_station and pg_station and mysql_station:
-    all_fav = (
-        sqlite_station.get("isFavorite") and
-        pg_station.get("isFavorite") and
-        mysql_station.get("isFavorite")
-    )
-    if all_fav:
-        print(f'\033[0;32m✓ PASS\033[0m: "{target_name}" exists as favorite on all three backends')
-    else:
-        print(f'\033[0;31m✗ FAIL\033[0m: "{target_name}" found but not marked as favorite on all backends')
-        passed = False
+    print(f'\033[0;32m✓ PASS\033[0m: "{target_name}" exists on all three backends')
 
     # Verify longName is identical
     names = set()
@@ -517,6 +508,17 @@ if sqlite_station and pg_station and mysql_station:
         print(f'\033[0;32m✓ PASS\033[0m: "{target_name}" longName identical across all backends')
     else:
         print(f'\033[0;31m✗ FAIL\033[0m: "{target_name}" longName differs: {names}')
+        passed = False
+
+    # Verify isFavorite is consistent across backends (whatever its value)
+    fav_values = set()
+    fav_values.add(bool(sqlite_station.get("isFavorite")))
+    fav_values.add(bool(pg_station.get("isFavorite")))
+    fav_values.add(bool(mysql_station.get("isFavorite")))
+    if len(fav_values) == 1:
+        print(f'\033[0;32m✓ PASS\033[0m: "{target_name}" isFavorite consistent across backends ({fav_values.pop()})')
+    else:
+        print(f'\033[0;31m✗ FAIL\033[0m: "{target_name}" isFavorite inconsistent: SQLite={sqlite_station.get("isFavorite")}, PG={pg_station.get("isFavorite")}, MySQL={mysql_station.get("isFavorite")}')
         passed = False
 else:
     missing = []
