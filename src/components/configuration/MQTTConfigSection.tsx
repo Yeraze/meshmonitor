@@ -279,7 +279,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                 <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', fontStyle: 'italic' }}>
                   {t('mqtt_config.proxy_to_client_meshmonitor_note')}{' '}
                   <a
-                    href="https://meshmonitor.org/configuration/mqtt-proxy"
+                    href="https://meshmonitor.org/add-ons/mqtt-proxy.html#mqtt-client-proxy"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: '#89b4fa' }}
