@@ -21,6 +21,12 @@ Three new keys in `VALID_SETTINGS_KEYS`:
 
 Server-persisted via the existing `/api/settings` endpoint. Available to anonymous users.
 
+**Partial settings guard:** The configured default is only used when all three values are non-null. If any value is missing (e.g., failed save, manual DB edit), fall through to the next fallback step.
+
+**Validation:** Lat must be -90 to 90, lon must be -180 to 180, zoom must be 1-18. Invalid values are treated as unset.
+
+**Permissions:** This is an instance-wide setting — only admin users can configure it.
+
 ### Settings UI
 
 A "Default Map Center" section in SettingsTab, near existing map settings:
@@ -51,13 +57,15 @@ Updated `getMapCenter()` in `NodesTab.tsx`:
 
 The configured default zoom is only applied when the configured default center is used (step 2). Other fallback paths keep their existing zoom behavior.
 
+**Return type change:** `getMapCenter()` currently returns `[number, number]`. It must be updated to return `{ center: [number, number], zoom: number }` so the configured zoom can be applied. The MapContainer and any callers must be updated to destructure accordingly.
+
 ## Files Modified
 
 | File | Change |
 |------|--------|
 | `src/server/constants/settings.ts` | Add three keys to `VALID_SETTINGS_KEYS` |
-| `src/contexts/SettingsContext.tsx` | Add state + setters for three new settings |
-| `src/components/SettingsTab.tsx` | Add minimap section, wire local state + dependency arrays |
+| `src/contexts/SettingsContext.tsx` | Add state + setters + `loadServerSettings` hydration for three new settings |
+| `src/components/SettingsTab.tsx` | Add minimap section, wire `localDefaultMapCenterLat/Lon/Zoom` local state + `setDefaultMapCenterLat/Lon/Zoom` setters to `handleSave` and `resetChanges` dependency arrays |
 | `src/components/configuration/DefaultMapCenterPicker.tsx` | New component |
 | `src/components/NodesTab.tsx` | Update `getMapCenter()` fallback chain |
 
