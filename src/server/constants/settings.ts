@@ -119,6 +119,9 @@ export const VALID_SETTINGS_KEYS = [
   'analyticsProvider',
   'analyticsConfig',
   'neighborInfoMinZoom',
+  'defaultMapCenterLat',
+  'defaultMapCenterLon',
+  'defaultMapCenterZoom',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

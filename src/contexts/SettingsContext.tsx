@@ -62,6 +62,9 @@ interface SettingsContextType {
   overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
   neighborInfoMinZoom: number;
+  defaultMapCenterLat: number | null;
+  defaultMapCenterLon: number | null;
+  defaultMapCenterZoom: number | null;
   theme: Theme;
   language: string;
   customThemes: CustomTheme[];
@@ -99,6 +102,9 @@ interface SettingsContextType {
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
   setNeighborInfoMinZoom: (zoom: number) => void;
+  setDefaultMapCenterLat: (lat: number | null) => void;
+  setDefaultMapCenterLon: (lon: number | null) => void;
+  setDefaultMapCenterZoom: (zoom: number | null) => void;
   setTheme: (theme: Theme) => void;
   setLanguage: (language: string) => void;
   loadCustomThemes: () => Promise<void>;
@@ -226,6 +232,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [neighborInfoMinZoom, setNeighborInfoMinZoomState] = useState<number>(() => {
     const saved = localStorage.getItem('neighborInfoMinZoom');
     return saved ? parseInt(saved, 10) : 12;
+  });
+
+  const [defaultMapCenterLat, setDefaultMapCenterLatState] = useState<number | null>(() => {
+    const saved = localStorage.getItem('defaultMapCenterLat');
+    return saved ? parseFloat(saved) : null;
+  });
+  const [defaultMapCenterLon, setDefaultMapCenterLonState] = useState<number | null>(() => {
+    const saved = localStorage.getItem('defaultMapCenterLon');
+    return saved ? parseFloat(saved) : null;
+  });
+  const [defaultMapCenterZoom, setDefaultMapCenterZoomState] = useState<number | null>(() => {
+    const saved = localStorage.getItem('defaultMapCenterZoom');
+    return saved ? parseInt(saved, 10) : null;
   });
 
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -437,6 +456,31 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setNeighborInfoMinZoom = (zoom: number) => {
     setNeighborInfoMinZoomState(zoom);
     localStorage.setItem('neighborInfoMinZoom', String(zoom));
+  };
+
+  const setDefaultMapCenterLat = (lat: number | null) => {
+    setDefaultMapCenterLatState(lat);
+    if (lat !== null) {
+      localStorage.setItem('defaultMapCenterLat', String(lat));
+    } else {
+      localStorage.removeItem('defaultMapCenterLat');
+    }
+  };
+  const setDefaultMapCenterLon = (lon: number | null) => {
+    setDefaultMapCenterLonState(lon);
+    if (lon !== null) {
+      localStorage.setItem('defaultMapCenterLon', String(lon));
+    } else {
+      localStorage.removeItem('defaultMapCenterLon');
+    }
+  };
+  const setDefaultMapCenterZoom = (zoom: number | null) => {
+    setDefaultMapCenterZoomState(zoom);
+    if (zoom !== null) {
+      localStorage.setItem('defaultMapCenterZoom', String(zoom));
+    } else {
+      localStorage.removeItem('defaultMapCenterZoom');
+    }
   };
 
   /**
@@ -882,6 +926,37 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.defaultMapCenterLat !== undefined) {
+            const lat = parseFloat(settings.defaultMapCenterLat);
+            if (!isNaN(lat) && lat >= -90 && lat <= 90) {
+              setDefaultMapCenterLatState(lat);
+              localStorage.setItem('defaultMapCenterLat', String(lat));
+            } else {
+              setDefaultMapCenterLatState(null);
+              localStorage.removeItem('defaultMapCenterLat');
+            }
+          }
+          if (settings.defaultMapCenterLon !== undefined) {
+            const lon = parseFloat(settings.defaultMapCenterLon);
+            if (!isNaN(lon) && lon >= -180 && lon <= 180) {
+              setDefaultMapCenterLonState(lon);
+              localStorage.setItem('defaultMapCenterLon', String(lon));
+            } else {
+              setDefaultMapCenterLonState(null);
+              localStorage.removeItem('defaultMapCenterLon');
+            }
+          }
+          if (settings.defaultMapCenterZoom !== undefined) {
+            const zoom = parseInt(settings.defaultMapCenterZoom, 10);
+            if (!isNaN(zoom) && zoom >= 1 && zoom <= 18) {
+              setDefaultMapCenterZoomState(zoom);
+              localStorage.setItem('defaultMapCenterZoom', String(zoom));
+            } else {
+              setDefaultMapCenterZoomState(null);
+              localStorage.removeItem('defaultMapCenterZoom');
+            }
+          }
+
           if (settings.theme) {
             // Accept any theme (built-in or custom)
             setThemeState(settings.theme as Theme);
@@ -1073,6 +1148,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayColors,
     mapPinStyle,
     neighborInfoMinZoom,
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
     theme,
     language,
     customThemes,
@@ -1110,6 +1188,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapPinStyle,
     setNeighborInfoMinZoom,
+    setDefaultMapCenterLat,
+    setDefaultMapCenterLon,
+    setDefaultMapCenterZoom,
     setTheme,
     setLanguage,
     loadCustomThemes,
