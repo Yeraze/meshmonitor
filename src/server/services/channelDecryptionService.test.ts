@@ -410,8 +410,8 @@ describe('ChannelDecryptionService', () => {
         { id: 1, name: 'Test Channel', psk: testPskBase64, pskLength: 32 }
       ]);
 
-      // Return invalid portnum
-      mockDataType.decode.mockReturnValue({ portnum: 500, payload: Buffer.from('test') });
+      // Return invalid portnum (above Meshtastic MAX of 511)
+      mockDataType.decode.mockReturnValue({ portnum: 512, payload: Buffer.from('test') });
 
       const result = await channelDecryptionService.tryDecrypt(
         new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),

@@ -13,7 +13,7 @@ import { createDecipheriv } from 'crypto';
 import { getProtobufRoot } from '../protobufLoader.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { CHANNEL_CACHE_TTL_MS, expandShorthandPsk } from '../constants/meshtastic.js';
+import { CHANNEL_CACHE_TTL_MS, expandShorthandPsk, PortNum } from '../constants/meshtastic.js';
 
 export interface DecryptionResult {
   success: boolean;
@@ -28,7 +28,6 @@ interface CachedChannel {
   id: number;
   name: string;
   psk: Buffer;
-  pskLength: number;
   enforceNameValidation: boolean;
   expectedChannelHash?: number;
   sortOrder: number;
@@ -62,9 +61,11 @@ function computeChannelHash(name: string, psk: Buffer): number {
 
 class ChannelDecryptionService {
   private channelCache: Map<number, CachedChannel> = new Map();
+  private sortedChannels: Array<[number, CachedChannel]> = [];
   private enabled: boolean = true;
   private maxDecryptionAttempts: number = 20;
   private lastCacheRefresh: number = 0;
+  private refreshPromise: Promise<void> | null = null;
   private readonly CACHE_TTL_MS = CHANNEL_CACHE_TTL_MS;
 
   constructor() {
@@ -136,8 +137,6 @@ class ChannelDecryptionService {
             continue;
           }
 
-          const pskLength = pskBuffer.length;
-
           // Compute expected channel hash if name validation is enabled
           const enforceNameValidation = channel.enforceNameValidation ?? false;
           const expectedChannelHash = enforceNameValidation
@@ -148,7 +147,6 @@ class ChannelDecryptionService {
             id: channel.id,
             name: channel.name,
             psk: pskBuffer,
-            pskLength,
             enforceNameValidation,
             expectedChannelHash,
             sortOrder: channel.sortOrder ?? 0,
@@ -158,6 +156,10 @@ class ChannelDecryptionService {
         }
       }
 
+      // Pre-sort channels by sortOrder so tryDecrypt() doesn't sort on every packet
+      this.sortedChannels = Array.from(this.channelCache.entries())
+        .sort(([, a], [, b]) => a.sortOrder - b.sortOrder);
+
       this.lastCacheRefresh = Date.now();
       logger.debug(`Channel decryption cache refreshed: ${this.channelCache.size} channels loaded`);
     } catch (err) {
@@ -166,11 +168,18 @@ class ChannelDecryptionService {
   }
 
   /**
-   * Ensure cache is fresh (lazy refresh)
+   * Ensure cache is fresh (lazy refresh).
+   * Deduplicates concurrent refresh calls — if a refresh is already in-flight,
+   * subsequent callers await the same promise instead of triggering another DB load.
    */
   private async ensureCacheFresh(): Promise<void> {
     if (Date.now() - this.lastCacheRefresh > this.CACHE_TTL_MS) {
-      await this.refreshChannelCache();
+      if (!this.refreshPromise) {
+        this.refreshPromise = this.refreshChannelCache().finally(() => {
+          this.refreshPromise = null;
+        });
+      }
+      await this.refreshPromise;
     }
   }
 
@@ -214,11 +223,10 @@ class ChannelDecryptionService {
   private tryDecryptWithKey(
     encryptedPayload: Uint8Array,
     nonce: Buffer,
-    psk: Buffer,
-    pskLength: number
+    psk: Buffer
   ): Buffer | null {
     try {
-      const algorithm = pskLength === 16 ? 'aes-128-ctr' : 'aes-256-ctr';
+      const algorithm = psk.length === 16 ? 'aes-128-ctr' : 'aes-256-ctr';
       const decipher = createDecipheriv(algorithm, psk, nonce);
       const decrypted = Buffer.concat([decipher.update(encryptedPayload), decipher.final()]);
       return decrypted;
@@ -232,7 +240,7 @@ class ChannelDecryptionService {
    * Check if decrypted data looks like valid protobuf
    *
    * A valid Meshtastic Data protobuf should:
-   * 1. Have a reasonable portnum (field 1, varint)
+   * 1. Have a reasonable portnum (field 1, varint) within the Meshtastic range (0-511)
    * 2. Not have obviously wrong values
    */
   private isValidProtobuf(data: Buffer): { valid: boolean; portnum?: number; payload?: Uint8Array } {
@@ -247,16 +255,11 @@ class ChannelDecryptionService {
       const DataType = root.lookupType('meshtastic.Data');
       const decoded = DataType.decode(data) as any;
 
-      // Check if portnum is in valid range (0-256 for Meshtastic)
+      // Check if portnum is in valid Meshtastic range (0-511, where MAX=511)
       const portnum = decoded.portnum ?? 0;
-      if (portnum < 0 || portnum > 256) {
+      if (portnum < 0 || portnum > PortNum.MAX) {
         return { valid: false };
       }
-
-      // Additional sanity checks:
-      // - Portnum 0 is UNKNOWN_APP and valid
-      // - Most common portnums are < 100
-      // - Payload should exist for most message types
 
       return {
         valid: true,
@@ -267,6 +270,34 @@ class ChannelDecryptionService {
       // Parse failure means invalid protobuf
       return { valid: false };
     }
+  }
+
+  /**
+   * Attempt decryption with a single channel and validate the result.
+   * Shared helper used by both tryDecrypt() and tryDecryptWithChannel().
+   */
+  private attemptDecryptSingleChannel(
+    encryptedPayload: Uint8Array,
+    nonce: Buffer,
+    channel: CachedChannel
+  ): DecryptionResult {
+    const decrypted = this.tryDecryptWithKey(encryptedPayload, nonce, channel.psk);
+    if (!decrypted) {
+      return { success: false, error: 'Decryption failed' };
+    }
+
+    const validation = this.isValidProtobuf(decrypted);
+    if (!validation.valid) {
+      return { success: false, error: 'Decrypted data is not valid protobuf' };
+    }
+
+    return {
+      success: true,
+      channelDatabaseId: channel.id,
+      channelName: channel.name,
+      portnum: validation.portnum,
+      payload: validation.payload,
+    };
   }
 
   /**
@@ -302,13 +333,9 @@ class ChannelDecryptionService {
     // Build the nonce once (same for all attempts)
     const nonce = this.buildNonce(packetId, fromNode);
 
-    // Try each channel in sortOrder, up to maxDecryptionAttempts
-    // Sort by sortOrder to ensure proper decryption priority
-    const sortedChannels = Array.from(this.channelCache.entries())
-      .sort(([, a], [, b]) => a.sortOrder - b.sortOrder);
-
+    // Use pre-sorted channels (sorted during cache refresh, not per-packet)
     let attempts = 0;
-    for (const [id, channel] of sortedChannels) {
+    for (const [, channel] of this.sortedChannels) {
       // If channel has name validation enabled and packet has a channel hash,
       // skip this channel if the hash doesn't match (don't count as an attempt)
       if (
@@ -321,42 +348,32 @@ class ChannelDecryptionService {
       }
 
       if (attempts >= this.maxDecryptionAttempts) {
-        logger.debug(
-          `Decryption attempt limit reached (${this.maxDecryptionAttempts}) for packet ${packetId}`
+        logger.warn(
+          `Decryption attempt limit reached (${this.maxDecryptionAttempts}) for packet ${packetId} — ` +
+          `${this.channelCache.size - attempts} channels were not tried. ` +
+          `Consider increasing maxDecryptionAttempts or enabling name validation on channels.`
         );
         break;
       }
       attempts++;
 
-      const decrypted = this.tryDecryptWithKey(encryptedPayload, nonce, channel.psk, channel.pskLength);
-      if (!decrypted) {
-        continue;
-      }
-
-      // Validate the decrypted data looks like valid protobuf
-      const validation = this.isValidProtobuf(decrypted);
-      if (!validation.valid) {
+      const result = this.attemptDecryptSingleChannel(encryptedPayload, nonce, channel);
+      if (!result.success) {
         continue;
       }
 
       // Success! Update the channel's decrypted count
       try {
-        await databaseService.channelDatabase.incrementDecryptedCountAsync(id);
+        await databaseService.channelDatabase.incrementDecryptedCountAsync(channel.id);
       } catch (err) {
-        logger.warn(`Failed to update decrypted count for channel ${id}:`, err);
+        logger.warn(`Failed to update decrypted count for channel ${channel.id}:`, err);
       }
 
       logger.debug(
-        `Server-side decryption successful: packet ${packetId} decrypted with channel "${channel.name}" (portnum=${validation.portnum})`
+        `Server-side decryption successful: packet ${packetId} decrypted with channel "${channel.name}" (portnum=${result.portnum})`
       );
 
-      return {
-        success: true,
-        channelDatabaseId: id,
-        channelName: channel.name,
-        portnum: validation.portnum,
-        payload: validation.payload,
-      };
+      return result;
     }
 
     return {
@@ -375,6 +392,10 @@ class ChannelDecryptionService {
     fromNode: number,
     channelDatabaseId: number
   ): Promise<DecryptionResult> {
+    if (!this.enabled) {
+      return { success: false, error: 'Server-side decryption is disabled' };
+    }
+
     // Ensure cache is fresh
     await this.ensureCacheFresh();
 
@@ -384,24 +405,7 @@ class ChannelDecryptionService {
     }
 
     const nonce = this.buildNonce(packetId, fromNode);
-    const decrypted = this.tryDecryptWithKey(encryptedPayload, nonce, channel.psk, channel.pskLength);
-
-    if (!decrypted) {
-      return { success: false, error: 'Decryption failed' };
-    }
-
-    const validation = this.isValidProtobuf(decrypted);
-    if (!validation.valid) {
-      return { success: false, error: 'Decrypted data is not valid protobuf' };
-    }
-
-    return {
-      success: true,
-      channelDatabaseId,
-      channelName: channel.name,
-      portnum: validation.portnum,
-      payload: validation.payload,
-    };
+    return this.attemptDecryptSingleChannel(encryptedPayload, nonce, channel);
   }
 
   /**
@@ -419,7 +423,7 @@ class ChannelDecryptionService {
     await this.ensureCacheFresh();
     const channel = this.channelCache.get(id);
     if (!channel) return null;
-    return { name: channel.name, pskLength: channel.pskLength };
+    return { name: channel.name, pskLength: channel.psk.length };
   }
 }
 

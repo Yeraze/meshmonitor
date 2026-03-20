@@ -4,7 +4,7 @@
  * Handles all channel database operations for server-side decryption.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbChannelDatabase, DbChannelDatabasePermission } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -178,16 +178,14 @@ export class ChannelDatabaseRepository extends BaseRepository {
   async incrementDecryptedCountAsync(id: number): Promise<void> {
     const now = this.now();
     const { channelDatabase } = this.tables;
-    const current = await this.getByIdAsync(id);
-    if (current) {
-      await this.db
-        .update(channelDatabase)
-        .set({
-          decryptedPacketCount: current.decryptedPacketCount + 1,
-          lastDecryptedAt: now,
-        })
-        .where(eq(channelDatabase.id, id));
-    }
+    // Atomic increment — avoids read-then-write race on concurrent decryptions
+    await this.db
+      .update(channelDatabase)
+      .set({
+        decryptedPacketCount: sql`${channelDatabase.decryptedPacketCount} + 1`,
+        lastDecryptedAt: now,
+      } as any)
+      .where(eq(channelDatabase.id, id));
   }
 
   /**
