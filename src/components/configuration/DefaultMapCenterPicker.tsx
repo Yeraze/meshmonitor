@@ -92,16 +92,16 @@ export const DefaultMapCenterPicker: React.FC<DefaultMapCenterPickerProps> = ({
                     )}
                 </MapContainer>
             </div>
-            <div className="mt-2 d-flex align-items-center gap-2">
-                <button className="btn btn-primary btn-sm" onClick={handleSave}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button className="save-button" onClick={handleSave} style={{ minWidth: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
                     Save as Default
                 </button>
                 {isConfigured && (
-                    <button className="btn btn-outline-secondary btn-sm" onClick={onClear}>
+                    <button className="reset-button" onClick={onClear} style={{ minWidth: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
                         Clear
                     </button>
                 )}
-                <span className="text-muted small ms-2">
+                <span className="setting-description" style={{ marginLeft: '0.5rem' }}>
                     {isConfigured
                         ? `Default: ${lat!.toFixed(4)}, ${lon!.toFixed(4)} (zoom ${zoom})`
                         : 'No default center configured'}

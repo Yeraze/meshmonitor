@@ -150,6 +150,40 @@ const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode; enable
 );
 
 /**
+ * Controller that applies the configured default map center once server settings load.
+ * Only acts when there was no saved localStorage position at mount time (new session / anonymous).
+ * The configured default takes priority over auto-calculated node positions.
+ */
+const DefaultCenterController: React.FC<{
+  lat: number | null;
+  lon: number | null;
+  zoom: number | null;
+}> = ({ lat, lon, zoom }) => {
+  const map = useMap();
+  const applied = useRef(false);
+  // Capture whether localStorage had a saved map position at mount time.
+  // MapPositionHandler updates mapCenter immediately on mount, so we can't
+  // rely on the current mapCenter value — check localStorage directly.
+  const hadSavedPosition = useRef(localStorage.getItem('mapCenter') !== null);
+
+  useEffect(() => {
+    console.log('[DefaultCenterController] effect fired', {
+      applied: applied.current,
+      hadSaved: hadSavedPosition.current,
+      lat, lon, zoom,
+    });
+    if (applied.current || hadSavedPosition.current) return;
+    if (lat !== null && lon !== null && zoom !== null) {
+      console.log('[DefaultCenterController] applying configured default', lat, lon, zoom);
+      applied.current = true;
+      map.setView([lat, lon], zoom, { animate: false });
+    }
+  }, [map, lat, lon, zoom]);
+
+  return null;
+};
+
+/**
  * Controller component that zooms the map to fit the traceroute bounds
  * Must be placed inside MapContainer to access the map instance
  */
@@ -1750,6 +1784,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
+              <DefaultCenterController
+                lat={defaultMapCenterLat}
+                lon={defaultMapCenterLon}
+                zoom={defaultMapCenterZoom}
+              />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend
