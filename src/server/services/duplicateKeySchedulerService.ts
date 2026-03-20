@@ -92,10 +92,14 @@ class DuplicateKeySchedulerService {
 
       if (nodesWithKeys.length === 0) {
         logger.info('ℹ️  No nodes with public keys found, skipping scan');
+        // Fetch all nodes once for the sub-scans
+        const earlyAllNodes = await databaseService.nodes.getAllNodes();
+        const earlyNodeMap = new Map<number, DbNode>(earlyAllNodes.map(n => [n.nodeNum, n]));
+
         // Still run spam and time offset detection, and update lastScanTime via finally path
         await Promise.all([
-          this.runSpamDetection(),
-          this.runTimeOffsetDetection()
+          this.runSpamDetection(earlyNodeMap),
+          this.runTimeOffsetDetection(earlyNodeMap)
         ]);
         this.lastScanTime = Math.floor(Date.now() / 1000);
         return;
@@ -207,9 +211,10 @@ class DuplicateKeySchedulerService {
       }
 
       // Run spam detection and time offset detection in parallel (they are independent)
+      // Pass the nodeMap so sub-scans reuse the same data instead of fetching again
       await Promise.all([
-        this.runSpamDetection(),
-        this.runTimeOffsetDetection()
+        this.runSpamDetection(nodeMap),
+        this.runTimeOffsetDetection(nodeMap)
       ]);
 
       // Update last scan time (Unix timestamp in seconds)
@@ -231,7 +236,7 @@ class DuplicateKeySchedulerService {
    * Run spam detection (excessive packet rate check)
    * Sub-scan errors are intentionally caught here so other scans still run.
    */
-  private async runSpamDetection(): Promise<void> {
+  private async runSpamDetection(sharedNodeMap: Map<number, DbNode>): Promise<void> {
     try {
       logger.info('🔐 Running spam detection (excessive packet rate check)...');
 
@@ -248,10 +253,10 @@ class DuplicateKeySchedulerService {
         return;
       }
 
-      // Get all nodes to track which ones we need to clear flags from
-      const allNodes = await databaseService.nodes.getAllNodes();
+      // Reuse the shared node map from the parent scan to avoid redundant getAllNodes() calls
+      const allNodes = Array.from(sharedNodeMap.values());
       const nodesWithCurrentPackets = new Set(packetCounts.map(p => p.nodeNum));
-      const nodeMap = new Map<number, DbNode>(allNodes.map(n => [n.nodeNum, n]));
+      const nodeMap = sharedNodeMap;
 
       let flaggedCount = 0;
       let clearedCount = 0;
@@ -326,14 +331,15 @@ class DuplicateKeySchedulerService {
    * from the most recent telemetry record.
    * Sub-scan errors are intentionally caught here so other scans still run.
    */
-  private async runTimeOffsetDetection(): Promise<void> {
+  private async runTimeOffsetDetection(sharedNodeMap: Map<number, DbNode>): Promise<void> {
     try {
       logger.info('🔐 Running time offset detection...');
 
       const latestTimestamps = await databaseService.getLatestPacketTimestampsPerNodeAsync();
-      const allNodes = await databaseService.nodes.getAllNodes();
+      // Reuse the shared node map from the parent scan to avoid redundant getAllNodes() calls
+      const allNodes = Array.from(sharedNodeMap.values());
       const nodesWithTimestamps = new Set(latestTimestamps.map(t => t.nodeNum));
-      const nodeMap = new Map<number, DbNode>(allNodes.map(n => [n.nodeNum, n]));
+      const nodeMap = sharedNodeMap;
 
       let flaggedCount = 0;
       let clearedCount = 0;

@@ -58,7 +58,8 @@ describe('Time Offset Detection', () => {
     (databaseService.nodes.getAllNodes as any).mockResolvedValue([
       { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false }
     ]);
-    // getNode is still used in some paths as fallback
+    // getNode no longer used (nodeMap from getAllNodes is passed to sub-scans)
+    // but keep the mock available for safety
     (databaseService.nodes.getNode as any).mockResolvedValue({
       nodeNum: 1,
       shortName: 'Dummy',
