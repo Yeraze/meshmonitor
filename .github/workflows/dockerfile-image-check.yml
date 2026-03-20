@@ -70,17 +70,32 @@ jobs:
                 CHECKED=$((CHECKED + 1))
                 echo -n "  $image [$platform] ... "
 
-                if docker buildx imagetools inspect "$image" 2>&1 | grep -q "$platform"; then
+                # Parse platform into OS/arch/variant for robust matching
+                PLAT_OS=$(echo "$platform" | cut -d/ -f1)
+                PLAT_ARCH=$(echo "$platform" | cut -d/ -f2)
+                PLAT_VARIANT=$(echo "$platform" | cut -d/ -f3)
+
+                # Use manifest inspect JSON for reliable platform detection
+                FOUND=false
+                MANIFEST=$(docker manifest inspect "$image" 2>/dev/null || echo "")
+                if [ -n "$MANIFEST" ]; then
+                  if [ -n "$PLAT_VARIANT" ]; then
+                    if echo "$MANIFEST" | jq -e ".manifests[] | select(.platform.os == \"$PLAT_OS\" and .platform.architecture == \"$PLAT_ARCH\" and .platform.variant == \"$PLAT_VARIANT\")" > /dev/null 2>&1; then
+                      FOUND=true
+                    fi
+                  else
+                    if echo "$MANIFEST" | jq -e ".manifests[] | select(.platform.os == \"$PLAT_OS\" and .platform.architecture == \"$PLAT_ARCH\")" > /dev/null 2>&1; then
+                      FOUND=true
+                    fi
+                  fi
+                fi
+
+                if $FOUND; then
                   echo "✓ exists"
                 else
-                  # Double-check with manifest inspect
-                  if docker manifest inspect "$image" 2>&1 | grep -q "$(echo $platform | sed 's|/|-|g; s|linux-||')"; then
-                    echo "✓ exists"
-                  else
-                    echo "✗ NOT FOUND"
-                    echo "::error file=$dockerfile::Base image $image does not have a manifest for platform $platform"
-                    FAILED=$((FAILED + 1))
-                  fi
+                  echo "✗ NOT FOUND"
+                  echo "::error file=$dockerfile::Base image $image does not have a manifest for platform $platform"
+                  FAILED=$((FAILED + 1))
                 fi
               done
             done
