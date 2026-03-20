@@ -820,7 +820,11 @@ class DatabaseService {
       "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
     ).all();
     if (settingsExists.length > 0) {
-      const v37Key = this.db.prepare("SELECT value FROM settings WHERE key = 'migration_077_ignored_nodes_nodenum_bigint'").get();
+      // Check for v3.7+ markers: either the old migration_077 key (pre-clean-break)
+      // or the new migration_078 key (post-clean-break baseline)
+      const v37Key = this.db.prepare(
+        "SELECT value FROM settings WHERE key IN ('migration_077_ignored_nodes_nodenum_bigint', 'migration_078_create_embed_profiles')"
+      ).get();
       if (!v37Key) {
         logger.error('This version requires MeshMonitor v3.7 or later.');
         logger.error('Please upgrade to v3.7 first, then upgrade to this version.');
