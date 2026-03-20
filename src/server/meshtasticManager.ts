@@ -5611,45 +5611,66 @@ class MeshtasticManager {
       }
 
       const senderHopsAway = senderNode?.hopsAway || 0;
-      const timestamp = Date.now();
+      const nowSeconds = Math.floor(Date.now() / 1000);
 
       // Process each neighbor in the list
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
         logger.info(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
 
-        // Clear old neighbor info for this node before saving new data
-        // This ensures stale neighbors are removed when they drop from the mesh
-        await databaseService.neighbors.deleteNeighborInfoForNode(fromNum);
-
+        // Validate and collect neighbor node numbers upfront
+        const validNeighbors: Array<{ nodeNum: number; snr: number | null; lastRxTime: number | null }> = [];
         for (const neighbor of neighborInfo.neighbors) {
           const neighborNodeNum = Number(neighbor.nodeId);
-          const neighborNodeId = `!${neighborNodeNum.toString(16).padStart(8, '0')}`;
+          if (isNaN(neighborNodeNum) || neighborNodeNum <= 0) {
+            logger.warn(`⚠️ Skipping invalid neighbor nodeId from ${fromNodeId}: ${neighbor.nodeId}`);
+            continue;
+          }
+          validNeighbors.push({
+            nodeNum: neighborNodeNum,
+            snr: neighbor.snr != null ? Number(neighbor.snr) : null,
+            lastRxTime: neighbor.lastRxTime != null ? Number(neighbor.lastRxTime) : null,
+          });
+        }
 
-          // Check if neighbor node exists, if not create it with hopsAway = sender's hopsAway + 1
-          let neighborNode = await databaseService.nodes.getNode(neighborNodeNum);
-          if (!neighborNode) {
+        if (validNeighbors.length === 0) return;
+
+        // Batch-fetch all neighbor nodes in a single query to avoid N+1
+        const neighborNums = validNeighbors.map(n => n.nodeNum);
+        const existingNodes = await databaseService.nodes.getNodesByNums(neighborNums);
+
+        // Create placeholder nodes for any neighbors not yet in the database
+        for (const vn of validNeighbors) {
+          if (!existingNodes.has(vn.nodeNum)) {
+            const neighborNodeId = `!${vn.nodeNum.toString(16).padStart(8, '0')}`;
             await databaseService.nodes.upsertNode({
-              nodeNum: neighborNodeNum,
+              nodeNum: vn.nodeNum,
               nodeId: neighborNodeId,
               longName: `Node ${neighborNodeId}`,
               shortName: neighborNodeId.slice(-4),
               hopsAway: senderHopsAway + 1,
-              lastHeard: Date.now() / 1000
+              lastHeard: nowSeconds
             });
             logger.info(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
           }
+        }
 
-          // Save the neighbor relationship
-          await databaseService.neighbors.upsertNeighborInfo({
-            nodeNum: fromNum,
-            neighborNodeNum: neighborNodeNum,
-            snr: neighbor.snr ? Number(neighbor.snr) : null,
-            lastRxTime: neighbor.lastRxTime ? Number(neighbor.lastRxTime) : null,
-            timestamp: timestamp,
-            createdAt: Date.now()
-          });
+        // Delete old neighbors then batch-insert new ones
+        await databaseService.neighbors.deleteNeighborInfoForNode(fromNum);
 
-          logger.info(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
+        const records = validNeighbors.map(vn => ({
+          nodeNum: fromNum,
+          neighborNodeNum: vn.nodeNum,
+          snr: vn.snr,
+          lastRxTime: vn.lastRxTime,
+          timestamp: nowSeconds,
+          createdAt: nowSeconds,
+        }));
+
+        await databaseService.neighbors.insertNeighborInfoBatch(records);
+
+        for (const vn of validNeighbors) {
+          const neighborNodeId = `!${vn.nodeNum.toString(16).padStart(8, '0')}`;
+          logger.debug(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${vn.snr ?? 'N/A'}`);
         }
       }
     } catch (error) {

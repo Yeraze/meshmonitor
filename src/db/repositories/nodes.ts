@@ -43,6 +43,25 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Get multiple nodes by nodeNum in a single query
+   */
+  async getNodesByNums(nodeNums: number[]): Promise<Map<number, DbNode>> {
+    if (nodeNums.length === 0) return new Map();
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(nodes)
+      .where(inArray(nodes.nodeNum, nodeNums));
+
+    const map = new Map<number, DbNode>();
+    for (const row of result) {
+      const node = this.normalizeBigInts(row) as DbNode;
+      map.set(node.nodeNum, node);
+    }
+    return map;
+  }
+
+  /**
    * Get a node by nodeId
    */
   async getNodeByNodeId(nodeId: string): Promise<DbNode | null> {

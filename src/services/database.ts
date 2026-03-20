@@ -7572,10 +7572,11 @@ class DatabaseService {
     this._neighborsByNodeCache.delete(nodeNum);
     this._neighborsCache = this._neighborsCache.filter(n => n.nodeNum !== nodeNum);
 
-    // Delete from database
-    const deleted = await this.neighbors.deleteNeighborInfoForNode(nodeNum);
-    logger.info(`Deleted ${deleted} neighbor records for node ${nodeNum}`);
-    return deleted;
+    // Count then delete from database
+    const count = await this.neighbors.getNeighborCountForNode(nodeNum);
+    await this.neighbors.deleteNeighborInfoForNode(nodeNum);
+    logger.info(`Deleted ${count} neighbor records for node ${nodeNum}`);
+    return count;
   }
 
   // Favorite operations
