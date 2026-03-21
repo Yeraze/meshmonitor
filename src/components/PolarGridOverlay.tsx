@@ -75,7 +75,7 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
           radius={ring.radiusMeters}
           pathOptions={{
             color: colors.polarGrid.rings,
-            weight: 1,
+            weight: 2,
             fill: false,
             interactive: false,
           }}
@@ -90,8 +90,8 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
             color: sector.isCardinal
               ? colors.polarGrid.cardinalSectors
               : colors.polarGrid.sectors,
-            weight: 1,
-            dashArray: sector.isCardinal ? undefined : '4 4',
+            weight: 2,
+            dashArray: sector.isCardinal ? undefined : '6 6',
             interactive: false,
           }}
         />
@@ -104,7 +104,7 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
           interactive={false}
           icon={L.divIcon({
             className: 'polar-grid-label',
-            html: `<span style="color:${colors.polarGrid.labels};font-size:11px;font-family:monospace;white-space:nowrap;text-shadow:0 0 3px rgba(0,0,0,0.7)">${item.label}</span>`,
+            html: `<span style="color:${colors.polarGrid.labels};font-size:13px;font-weight:bold;font-family:monospace;white-space:nowrap;text-shadow:0 0 4px rgba(0,0,0,0.8)">${item.label}</span>`,
             iconSize: [0, 0],
             iconAnchor: [-4, 6],
           })}
@@ -118,7 +118,7 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
           interactive={false}
           icon={L.divIcon({
             className: 'polar-grid-label',
-            html: `<span style="color:${colors.polarGrid.labels};font-size:10px;font-family:monospace;white-space:nowrap;text-shadow:0 0 3px rgba(0,0,0,0.7)">${item.label}</span>`,
+            html: `<span style="color:${colors.polarGrid.labels};font-size:12px;font-weight:bold;font-family:monospace;white-space:nowrap;text-shadow:0 0 4px rgba(0,0,0,0.8)">${item.label}</span>`,
             iconSize: [0, 0],
             iconAnchor: [8, 8],
           })}
