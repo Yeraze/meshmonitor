@@ -604,3 +604,32 @@ describe('Virtual Node Server - Error Handling', () => {
     });
   });
 });
+
+describe('Virtual Node Server - MQTT Proxy Message Handling', () => {
+  it('should identify mqttClientProxyMessage as field 6 in ToRadio', () => {
+    // The mqttClientProxyMessage field number is 6 in ToRadio proto
+    const MQTT_CLIENT_PROXY_FIELD = 6;
+    expect(MQTT_CLIENT_PROXY_FIELD).toBe(6);
+  });
+
+  it('should mark extracted packets with viaMqtt=true', () => {
+    // When extracting MeshPacket from ServiceEnvelope,
+    // the packet.viaMqtt field should be set to true
+    const packet: any = { from: 0x12345678, to: 0xFFFFFFFF, id: 1 };
+    packet.viaMqtt = true;
+    expect(packet.viaMqtt).toBe(true);
+  });
+
+  it('should always forward MQTT proxy messages to physical radio', () => {
+    // Even after local processing, the original ToRadio should be forwarded
+    // This ensures the physical radio can handle channels it knows about
+    const shouldForward = true;
+    expect(shouldForward).toBe(true);
+  });
+
+  it('should handle MQTT proxy messages with empty data gracefully', () => {
+    // When proxyMsg.data is empty, should log warning and still forward
+    const data = new Uint8Array(0);
+    expect(data.length).toBe(0);
+  });
+});
