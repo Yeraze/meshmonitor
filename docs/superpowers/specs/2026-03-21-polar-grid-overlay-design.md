@@ -26,26 +26,45 @@ Add a switchable polar coordinates grid overlay to the Leaflet map, centered on 
 New `showPolarGrid` boolean following the existing overlay toggle pattern:
 
 - State + setter pair: `showPolarGrid` / `setShowPolarGrid`
-- Persisted via `savePreferenceToServer({ showPolarGrid: value })`
-- Loaded from server preferences on init
+- Persisted via the map-preferences route: `savePreferenceToServer({ showPolarGrid: value })` (same as `showPaths`, `showAccuracyRegions`, etc. — NOT the settings API, so no `VALID_SETTINGS_KEYS` entry needed)
+- Loaded from server map preferences on init
 - Default: `false`
 
 Checkbox in the map overlay controls panel alongside existing toggles. **Disabled with tooltip** ("Requires own node position") when own node has no position. Becomes enabled reactively when position is available.
 
+All user-visible strings (tooltip, checkbox label) use `useTranslation` / i18n translation keys per existing codebase convention.
+
 ### 2. Color Configuration — overlayColors.ts
 
-New `polarGrid` entry in both light and dark schemes:
+New `polarGrid` property added to the `OverlayColors` interface and both color scheme objects:
 
 ```typescript
+// Add to OverlayColors interface
+polarGrid: {
+  rings: string;
+  sectors: string;
+  cardinalSectors: string;
+  labels: string;
+};
+
+// Dark scheme values
 polarGrid: {
   rings: 'rgba(0, 200, 255, 0.3)',
   sectors: 'rgba(0, 200, 255, 0.2)',
   cardinalSectors: 'rgba(0, 200, 255, 0.3)',
   labels: 'rgba(0, 200, 255, 0.7)',
 }
+
+// Light scheme values
+polarGrid: {
+  rings: 'rgba(0, 80, 120, 0.3)',
+  sectors: 'rgba(0, 80, 120, 0.2)',
+  cardinalSectors: 'rgba(0, 80, 120, 0.3)',
+  labels: 'rgba(0, 80, 120, 0.7)',
+}
 ```
 
-Light scheme uses darker tones (e.g., `rgba(0, 80, 120, ...)`) tuned to match existing overlay color style.
+The overlay colors test file must also be updated to include the new property.
 
 ### 3. Auto-Scale Ring Logic
 
@@ -70,7 +89,7 @@ Example at zoom 13, metric:
 
 ### 4. PolarGridOverlay Component
 
-New file: `src/components/map/PolarGridOverlay.tsx`
+New file: `src/components/PolarGridOverlay.tsx` (flat in `src/components/` per existing convention)
 
 **Context/props consumed:**
 - Own node position: DataContext `currentNodeId` → node lookup → `{ lat, lng }`
@@ -114,8 +133,8 @@ New file: `src/components/map/PolarGridOverlay.tsx`
 | File | Change |
 |------|--------|
 | `src/contexts/MapContext.tsx` | Add `showPolarGrid` state, setter, persistence |
-| `src/config/overlayColors.ts` | Add `polarGrid` color entries for light/dark |
-| `src/components/map/PolarGridOverlay.tsx` | **New** — overlay component |
+| `src/config/overlayColors.ts` | Add `polarGrid` to `OverlayColors` interface + both scheme objects |
+| `src/components/PolarGridOverlay.tsx` | **New** — overlay component |
 | `src/components/NodesTab.tsx` | Render `PolarGridOverlay`, add checkbox toggle |
 
 ## Testing
