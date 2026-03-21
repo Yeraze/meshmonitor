@@ -28,7 +28,7 @@ const ZOOM_INTERVALS: Record<number, number> = {
   18: 50,      // 50m
 };
 
-const RING_COUNT = 7;
+const RING_COUNT = 11;
 const METERS_PER_KM = 1000;
 const METERS_PER_MILE = 1609.344;
 const FEET_PER_MILE = 5280;

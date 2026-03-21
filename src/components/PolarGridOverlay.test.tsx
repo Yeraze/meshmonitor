@@ -58,11 +58,11 @@ describe('PolarGridOverlay', () => {
     vi.clearAllMocks();
   });
 
-  it('renders 7 circles for range rings', () => {
+  it('renders 11 circles for range rings', () => {
     render(<PolarGridOverlay center={CENTER} />);
     const circles = screen.getAllByTestId('circle');
     expect(circles.length).toBeGreaterThanOrEqual(4);
-    expect(circles.length).toBeLessThanOrEqual(8);
+    expect(circles.length).toBeLessThanOrEqual(12);
   });
 
   it('renders exactly 12 polylines for sector lines', () => {
