@@ -4179,5 +4179,18 @@
   "direct_links.neighbor_connection": "Neighbor Connection",
   "direct_links.bidirectional": "Bidirectional",
   "direct_links.distance": "Distance",
-  "direct_links.last_seen": "Last seen"
+  "direct_links.last_seen": "Last seen",
+  "map": {
+    "showRouteSegments": "Show Route Segments",
+    "showNeighborInfo": "Show Neighbor Info",
+    "showTraceroute": "Show Traceroute",
+    "showMqtt": "Show MQTT",
+    "showMeshCore": "Show MeshCore",
+    "showPositionHistory": "Show Position History",
+    "showAnimations": "Show Animations",
+    "showEstimatedPositions": "Show Estimated Positions",
+    "showAccuracyRegions": "Show Accuracy Regions",
+    "showPolarGrid": "Show Polar Grid",
+    "polarGridDisabledTooltip": "Requires own node position"
+  }
 }

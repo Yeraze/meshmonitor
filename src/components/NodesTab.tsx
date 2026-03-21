@@ -23,6 +23,7 @@ import { useResizable } from '../hooks/useResizable';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
+import PolarGridOverlay from './PolarGridOverlay.js';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
@@ -260,6 +261,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowEstimatedPositions,
     showAccuracyRegions,
     setShowAccuracyRegions,
+    showPolarGrid,
+    setShowPolarGrid,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -278,6 +281,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { currentNodeId } = useDeviceConfig();
   const { nodes } = useNodes();
+
+  // Compute own node position for polar grid overlay (needs to be at component scope)
+  const ownHomeNode = nodes.find(n => n.user?.id === currentNodeId);
+  const ownNodePosition = ownHomeNode?.position?.latitude && ownHomeNode?.position?.longitude
+    ? { lat: ownHomeNode.position.latitude, lng: ownHomeNode.position.longitude }
+    : null;
 
   // Debounce ref for hover mouseout to prevent flicker from tooltip interaction
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1626,7 +1635,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showPaths}
                       onChange={(e) => setShowPaths(e.target.checked)}
                     />
-                    <span>Show Route Segments</span>
+                    <span>{t('map.showRouteSegments')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1634,7 +1643,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showNeighborInfo}
                       onChange={(e) => setShowNeighborInfo(e.target.checked)}
                     />
-                    <span>Show Neighbor Info</span>
+                    <span>{t('map.showNeighborInfo')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1642,7 +1651,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showRoute}
                       onChange={(e) => setShowRoute(e.target.checked)}
                     />
-                    <span>Show Traceroute</span>
+                    <span>{t('map.showTraceroute')}</span>
                   </label>
                   {tracerouteNodeNums && (
                     <button
@@ -1659,7 +1668,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showMqttNodes}
                       onChange={(e) => setShowMqttNodes(e.target.checked)}
                     />
-                    <span>Show MQTT</span>
+                    <span>{t('map.showMqtt')}</span>
                   </label>
                   {authStatus?.meshcoreEnabled && (
                   <label className="map-control-item">
@@ -1668,7 +1677,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showMeshCoreNodes}
                       onChange={(e) => setShowMeshCoreNodes(e.target.checked)}
                     />
-                    <span>Show MeshCore</span>
+                    <span>{t('map.showMeshCore')}</span>
                   </label>
                   )}
                   <label className="map-control-item">
@@ -1677,7 +1686,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showMotion}
                       onChange={(e) => setShowMotion(e.target.checked)}
                     />
-                    <span>Show Position History</span>
+                    <span>{t('map.showPositionHistory')}</span>
                   </label>
                   {showMotion && positionHistory.length > 1 && (() => {
                     // Calculate max hours from oldest position in history
@@ -1726,7 +1735,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showAnimations}
                       onChange={(e) => setShowAnimations(e.target.checked)}
                     />
-                    <span>Show Animations</span>
+                    <span>{t('map.showAnimations')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1734,7 +1743,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showEstimatedPositions}
                       onChange={(e) => setShowEstimatedPositions(e.target.checked)}
                     />
-                    <span>Show Estimated Positions</span>
+                    <span>{t('map.showEstimatedPositions')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1742,7 +1751,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showAccuracyRegions}
                       onChange={(e) => setShowAccuracyRegions(e.target.checked)}
                     />
-                    <span>Show Accuracy Regions</span>
+                    <span>{t('map.showAccuracyRegions')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showPolarGrid}
+                      onChange={(e) => setShowPolarGrid(e.target.checked)}
+                      disabled={!ownNodePosition}
+                    />
+                    <span title={!ownNodePosition ? t('map.polarGridDisabledTooltip') : undefined}>
+                      {t('map.showPolarGrid')}
+                    </span>
                   </label>
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
@@ -2077,6 +2097,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                   );
                 })}
+
+              {showPolarGrid && ownNodePosition && (
+                <PolarGridOverlay center={ownNodePosition} />
+              )}
 
               {/* Draw traceroute paths (independent layer) */}
               <TraceroutePathsLayer paths={traceroutePathsElements} enabled={showPaths} />

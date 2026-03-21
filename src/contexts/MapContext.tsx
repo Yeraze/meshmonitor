@@ -55,6 +55,8 @@ interface MapContextType {
   setShowEstimatedPositions: (show: boolean) => void;
   showAccuracyRegions: boolean;
   setShowAccuracyRegions: (show: boolean) => void;
+  showPolarGrid: boolean;
+  setShowPolarGrid: (show: boolean) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -100,6 +102,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     return saved !== null ? saved === 'true' : true; // Default to true
   });
   const [showAccuracyRegions, setShowAccuracyRegionsState] = useState<boolean>(false);
+  const [showPolarGrid, setShowPolarGridState] = useState<boolean>(false);
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -174,6 +177,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowAccuracyRegions = React.useCallback((value: boolean) => {
     setShowAccuracyRegionsState(value);
     savePreferenceToServer({ showAccuracyRegions: value });
+  }, []);
+
+  const setShowPolarGrid = React.useCallback((value: boolean) => {
+    setShowPolarGridState(value);
+    savePreferenceToServer({ showPolarGrid: value });
   }, []);
 
   // Helper function to save preference to server
@@ -271,6 +279,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             } else if (preferences.showAccuracyCircles !== undefined) {
               setShowAccuracyRegionsState(preferences.showAccuracyCircles);
             }
+            if (preferences.showPolarGrid !== undefined) {
+              setShowPolarGridState(preferences.showPolarGrid);
+            }
             if (preferences.positionHistoryHours !== undefined) {
               setPositionHistoryHoursState(preferences.positionHistoryHours);
             }
@@ -337,6 +348,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowEstimatedPositions,
         showAccuracyRegions,
         setShowAccuracyRegions,
+        showPolarGrid,
+        setShowPolarGrid,
         animatedNodes,
         triggerNodeAnimation,
         mapCenterTarget,
