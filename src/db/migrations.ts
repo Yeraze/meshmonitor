@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 12 migrations in sequential order for use by the migration runner.
+ * Registers all 13 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -24,6 +24,7 @@ import { migration as fixCustomThemesColumnsMigration, runMigration085Postgres, 
 import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } from '../server/migrations/010_add_auto_distance_delete_log.js';
 import { migration as fixMessageNodeNumBigintMigration, runMigration087Postgres, runMigration087Mysql } from '../server/migrations/011_fix_message_nodenum_bigint.js';
 import { migration as authAlignMigration, runMigration012Postgres, runMigration012Mysql } from '../server/migrations/012_align_sqlite_auth_schema.js';
+import { migration as auditLogColumnsMigration, runMigration013Postgres, runMigration013Mysql } from '../server/migrations/013_add_audit_log_missing_columns.js';
 
 // ============================================================================
 // Registry
@@ -153,4 +154,18 @@ registry.register({
   sqlite: (db) => authAlignMigration.up(db),
   postgres: (client) => runMigration012Postgres(client),
   mysql: (pool) => runMigration012Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 013: Add missing ip_address/user_agent columns to audit_log
+// Pre-3.7 SQLite databases may lack these columns.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 13,
+  name: 'add_audit_log_missing_columns',
+  settingsKey: 'migration_013_add_audit_log_missing_columns',
+  sqlite: (db) => auditLogColumnsMigration.up(db),
+  postgres: (client) => runMigration013Postgres(client),
+  mysql: (pool) => runMigration013Mysql(pool),
 });
