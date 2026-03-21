@@ -7857,7 +7857,9 @@ class MeshtasticManager {
               const { promisify } = await import('util');
               const execFileAsync = promisify(execFile);
 
-              const scriptEnv = await this.createScriptEnvVariables(message, matchedPattern, extractedParams, trigger, packetId);
+              const scriptEnv = await this.createScriptEnvVariables(message, matchedPattern, extractedParams, trigger, packetId, {
+                nodeId, hopsTraveled, isDirectMessage
+              });
 
               // Expand tokens in script args if provided
               let scriptArgsList: string[] = [];
@@ -8050,7 +8052,14 @@ class MeshtasticManager {
    * - MSG_*: All message fields (e.g., MSG_rxSnr, MSG_rxRssi, MSG_hopStart, MSG_hopLimit, MSG_viaMqtt, etc.)
    * - PARAM_*: Extracted parameters from trigger pattern
    */
-  private async createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: AutoResponderTrigger, packetId?: number) {
+  private async createScriptEnvVariables(
+    message: TextMessage,
+    matchedPattern: string,
+    extractedParams: Record<string, string>,
+    trigger: AutoResponderTrigger,
+    packetId?: number,
+    context?: { nodeId: string; hopsTraveled: number; isDirectMessage: boolean }
+  ) {
     const config = await this.getScriptConnectionConfig();
     const scriptEnv: Record<string, string> = {
       ...process.env as Record<string, string>,
@@ -8063,15 +8072,32 @@ class MeshtasticManager {
       MESHTASTIC_PORT: String(config.tcpPort),
     };
 
+    // Add token-matching environment variables (Issue #2314)
+    // These match the {TOKEN} names from the auto responder documentation
+    if (context) {
+      scriptEnv.NODE_ID = context.nodeId;
+      scriptEnv.HOPS = String(context.hopsTraveled);
+      scriptEnv.IS_DIRECT = String(context.isDirectMessage);
+    }
+    if (message.rxSnr !== undefined) scriptEnv.SNR = String(message.rxSnr);
+    if (message.rxRssi !== undefined) scriptEnv.RSSI = String(message.rxRssi);
+    scriptEnv.CHANNEL = String(message.channel);
+    scriptEnv.VIA_MQTT = String(message.viaMqtt);
+
     // Add sender node information environment variables
     const fromNode = await databaseService.nodes.getNode(message.fromNodeNum);
     if (fromNode) {
       // Add node names (Issue #1099)
       if (fromNode.shortName) {
         scriptEnv.FROM_SHORT_NAME = fromNode.shortName;
+        scriptEnv.SHORT_NAME = fromNode.shortName;
       }
       if (fromNode.longName) {
         scriptEnv.FROM_LONG_NAME = fromNode.longName;
+        scriptEnv.LONG_NAME = fromNode.longName;
+      }
+      if (fromNode.firmwareVersion) {
+        scriptEnv.VERSION = fromNode.firmwareVersion;
       }
       // Add location (FROM_LAT, FROM_LON)
       if (fromNode.latitude != null && fromNode.longitude != null) {
@@ -8079,6 +8105,12 @@ class MeshtasticManager {
         scriptEnv.FROM_LON = String(fromNode.longitude);
       }
     }
+
+    // Add NODECOUNT - active nodes based on maxNodeAgeHours setting
+    const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
+    const maxNodeAgeDays = maxNodeAgeHours / 24;
+    const activeNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+    scriptEnv.NODECOUNT = String(activeNodes.length);
 
     // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
     const localNodeInfo = this.getLocalNodeInfo();
