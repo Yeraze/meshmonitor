@@ -660,6 +660,79 @@ async updateNodeAsync(nodeNum: number, data: Partial<DbNode>): Promise<void> {
 - Validate data integrity with row counts
 - Provide verbose logging for troubleshooting
 
+### Migration Registry System
+
+**Problem**: The old migration system required adding migration calls in 3 separate places in `database.ts` (SQLite init, Postgres init, MySQL init), which was error-prone and hard to maintain.
+
+**Solution**: Centralized `MigrationRegistry` in `src/db/migrations.ts`. Each migration is registered once with functions for all three backends.
+
+**Architecture**:
+```
+src/db/
+  migrations.ts          # Registry barrel - imports and registers all migrations
+  migrationRegistry.ts   # MigrationRegistry class (runner logic)
+src/server/migrations/
+  001_v37_baseline.ts    # v3.7 baseline (selfIdempotent)
+  002_*.ts - 013_*.ts    # Incremental migrations
+```
+
+**Pattern for new migrations** (e.g., migration 014):
+```typescript
+// src/server/migrations/014_description.ts
+import type { Database } from 'better-sqlite3';
+import { logger } from '../../utils/logger.js';
+
+// SQLite
+export const migration = {
+  up: (db: Database): void => {
+    try {
+      db.exec('ALTER TABLE foo ADD COLUMN bar TEXT');
+    } catch (e: any) {
+      if (e.message?.includes('duplicate column')) {
+        logger.debug('foo.bar already exists, skipping');
+      } else { throw e; }
+    }
+  },
+  down: (_db: Database): void => {}
+};
+
+// PostgreSQL
+export async function runMigration014Postgres(client: import('pg').PoolClient): Promise<void> {
+  await client.query('ALTER TABLE foo ADD COLUMN IF NOT EXISTS bar TEXT');
+}
+
+// MySQL
+export async function runMigration014Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  const [rows] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'foo' AND COLUMN_NAME = 'bar'
+  `);
+  if (!Array.isArray(rows) || rows.length === 0) {
+    await pool.query('ALTER TABLE foo ADD COLUMN bar TEXT');
+  }
+}
+```
+
+Then register in `src/db/migrations.ts`:
+```typescript
+import { migration as descriptionMigration, runMigration014Postgres, runMigration014Mysql } from '../server/migrations/014_description.js';
+
+registry.register({
+  number: 14,
+  name: 'description',
+  settingsKey: 'migration_014_description',
+  sqlite: (db) => descriptionMigration.up(db),
+  postgres: (client) => runMigration014Postgres(client),
+  mysql: (pool) => runMigration014Mysql(pool),
+});
+```
+
+**Key Rules**:
+- Migration 001 is `selfIdempotent` (detects existing v3.7+ databases). All others use `settingsKey` for tracking.
+- Migrations MUST be idempotent: SQLite uses try/catch (`duplicate column`), PostgreSQL uses `IF NOT EXISTS`, MySQL uses `information_schema` checks.
+- Column naming: SQLite uses `snake_case`, PostgreSQL/MySQL use `camelCase` (quoted `"camelCase"` in raw PG SQL).
+- Update `src/db/migrations.test.ts` when adding migrations (count, last migration assertions).
+
 ### Test Mocking for Multi-Database
 
 **Problem**: Tests that mock DatabaseService fail when auth middleware calls async methods.

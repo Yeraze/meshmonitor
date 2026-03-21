@@ -90,7 +90,25 @@ When adding a new user-configurable setting:
 
 ## Database
 
-- This project has three database backends: SQLite, PostgreSQL, and MySQL. When modifying migrations or schema, always update ALL three backend baseline migrations consistently. Check column names, table names, and constraints match across all backends.
+- This project has three database backends: SQLite, PostgreSQL, and MySQL.
+- Schema definitions live in `src/db/schema/` — one file per domain, with separate table definitions per backend (SQLite/PostgreSQL/MySQL).
+- When modifying schema, ensure column names and types are consistent across all three backend definitions.
+
+### Migration Registry System
+
+Migrations use a centralized registry in `src/db/migrations.ts`. Each migration is registered with functions for all three backends.
+
+**Adding a new migration:**
+1. Create `src/server/migrations/NNN_description.ts` with:
+   - `export const migration = { up: (db: Database) => {...} }` for SQLite
+   - `export async function runMigrationNNNPostgres(client)` for PostgreSQL
+   - `export async function runMigrationNNNMysql(pool)` for MySQL
+2. Register it in `src/db/migrations.ts` with `registry.register({ number, name, settingsKey, sqlite, postgres, mysql })`
+3. Update `src/db/migrations.test.ts` (count, last migration name)
+4. Make migrations **idempotent** — use try/catch for SQLite (`duplicate column`), `IF NOT EXISTS` for PostgreSQL, `information_schema` checks for MySQL
+5. **Column naming**: SQLite uses `snake_case`, PostgreSQL/MySQL use `camelCase` (quoted in PG raw SQL)
+
+**Current migration count:** 13 (latest: `013_add_audit_log_missing_columns`)
 
 ## Testing
 
