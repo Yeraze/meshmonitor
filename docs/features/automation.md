@@ -890,9 +890,22 @@ Scripts must:
 All scripts receive these environment variables:
 - `MESSAGE`: Full message text received
 - `FROM_NODE`: Sender's node number
+- `NODE_ID`: Sender's node ID (hex format, e.g., `!a2e4ff4c`)
+- `LONG_NAME` / `SHORT_NAME`: Sender's node names
+- `HOPS`: Number of hops the message traveled
+- `SNR` / `RSSI`: Signal quality of received packet
+- `CHANNEL`: Channel number the message was received on
+- `VERSION`: Sender's firmware version
+- `NODECOUNT`: Number of active nodes on the mesh
+- `VIA_MQTT`: Whether message arrived via MQTT bridge
+- `IS_DIRECT`: Whether the message is a direct message
+- `MESHTASTIC_IP` / `MESHTASTIC_PORT`: Connected node address
 - `PACKET_ID`: Message packet ID
 - `TRIGGER`: The trigger pattern that matched
 - `PARAM_*`: Extracted parameters (e.g., `PARAM_location`, `PARAM_name`)
+- `MSG_*`: All message fields as individual variables
+
+See the [Auto Responder Scripting Guide](/developers/auto-responder-scripting#environment-variables) for the complete list.
 
 **JSON Output Format**:
 
