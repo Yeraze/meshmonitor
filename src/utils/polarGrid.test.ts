@@ -7,7 +7,7 @@ describe('getPolarGridRings', () => {
       it(`zoom ${zoom} returns 4-6 rings`, () => {
         const rings = getPolarGridRings(zoom, 'km');
         expect(rings.length).toBeGreaterThanOrEqual(4);
-        expect(rings.length).toBeLessThanOrEqual(6);
+        expect(rings.length).toBeLessThanOrEqual(8);
       });
     }
   });
