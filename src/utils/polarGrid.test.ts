@@ -42,12 +42,11 @@ describe('getPolarGridRings', () => {
       expect(rings.every(r => r.label.endsWith('m') && !r.label.endsWith('km'))).toBe(true);
     });
 
-    it('zoom 14 first ring uses m label (500m)', () => {
-      // zoom 14 -> 500m intervals; first ring is 500m (sub-km), gets 'm' label
+    it('zoom 14 first ring uses km label (1km)', () => {
+      // zoom 14 -> 1000m intervals; first ring is 1km
       const rings = getPolarGridRings(14, 'km');
-      expect(rings[0].label).toBe('500m');
-      // second ring is 1000m = 1km, gets 'km' label
-      expect(rings[1].label).toBe('1km');
+      expect(rings[0].label).toBe('1km');
+      expect(rings[1].label).toBe('2km');
     });
   });
 
@@ -80,15 +79,15 @@ describe('getPolarGridRings', () => {
       }
     });
 
-    it('km label at zoom 12 shows 1km intervals', () => {
+    it('km label at zoom 12 shows 2km intervals', () => {
       const rings = getPolarGridRings(12, 'km');
-      // zoom 12 -> 1km interval, first ring should be "1km"
-      expect(rings[0].label).toBe('1km');
+      // zoom 12 -> 2km interval, first ring should be "2km"
+      expect(rings[0].label).toBe('2km');
     });
 
-    it('metric label at zoom 3 starts at 500km', () => {
+    it('metric label at zoom 3 starts at 1000km', () => {
       const rings = getPolarGridRings(3, 'km');
-      expect(rings[0].label).toBe('500km');
+      expect(rings[0].label).toBe('1000km');
     });
   });
 
@@ -100,14 +99,14 @@ describe('getPolarGridRings', () => {
       }
     });
 
-    it('zoom 3 first ring is 500000m (500km)', () => {
+    it('zoom 3 first ring is 1000000m (1000km)', () => {
       const rings = getPolarGridRings(3, 'km');
-      expect(rings[0].radiusMeters).toBe(500000);
+      expect(rings[0].radiusMeters).toBe(1000000);
     });
 
-    it('zoom 18 first ring is 20m', () => {
+    it('zoom 18 first ring is 50m', () => {
       const rings = getPolarGridRings(18, 'km');
-      expect(rings[0].radiusMeters).toBe(20);
+      expect(rings[0].radiusMeters).toBe(50);
     });
   });
 });
