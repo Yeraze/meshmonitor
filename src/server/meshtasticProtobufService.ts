@@ -1480,6 +1480,42 @@ export class MeshtasticProtobufService {
     }
   }
 
+  /**
+   * Decode a ServiceEnvelope from raw bytes (typically from mqttClientProxyMessage.data).
+   * Returns the decoded envelope with its MeshPacket, or null if decoding fails or packet is missing.
+   */
+  decodeServiceEnvelope(data: Uint8Array): { packet: any; channelId?: string; gatewayId?: string } | null {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    if (!data || data.length === 0) {
+      logger.warn('⚠️ Empty data passed to decodeServiceEnvelope');
+      return null;
+    }
+
+    try {
+      const ServiceEnvelope = root.lookupType('meshtastic.ServiceEnvelope');
+      const decoded = ServiceEnvelope.decode(data) as any;
+
+      if (!decoded.packet) {
+        logger.warn('⚠️ ServiceEnvelope has no packet field');
+        return null;
+      }
+
+      return {
+        packet: decoded.packet,
+        channelId: decoded.channelId || undefined,
+        gatewayId: decoded.gatewayId || undefined,
+      };
+    } catch (error) {
+      logger.warn('⚠️ Failed to decode ServiceEnvelope:', error);
+      return null;
+    }
+  }
+
 }
 
 // Export singleton instance
