@@ -5314,48 +5314,45 @@ class DatabaseService {
     }
   }
 
-  recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): void {
+  async recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): Promise<void> {
     const now = Date.now();
 
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Fire async operations
-      (async () => {
-        try {
-          // Update the nodes table with last request time
-          if (this.nodesRepo) {
-            await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
-          }
-
-          // Insert a pending traceroute record
-          if (this.traceroutesRepo) {
-            const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
-            const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
-
-            await this.traceroutesRepo.insertTraceroute({
-              fromNodeNum,
-              toNodeNum,
-              fromNodeId,
-              toNodeId,
-              route: null,  // null for pending (findPendingTraceroute checks for isNull)
-              routeBack: null,
-              snrTowards: null,
-              snrBack: null,
-              timestamp: now,
-              createdAt: now,
-            });
-
-            // Cleanup old traceroutes
-            await this.traceroutesRepo.cleanupOldTraceroutesForPair(
-              fromNodeNum,
-              toNodeNum,
-              TRACEROUTE_HISTORY_LIMIT
-            );
-          }
-        } catch (error) {
-          logger.error('[DatabaseService] Failed to record traceroute request:', error);
+      try {
+        // Update the nodes table with last request time
+        if (this.nodesRepo) {
+          await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
         }
-      })();
+
+        // Insert a pending traceroute record
+        if (this.traceroutesRepo) {
+          const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
+          const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
+
+          await this.traceroutesRepo.insertTraceroute({
+            fromNodeNum,
+            toNodeNum,
+            fromNodeId,
+            toNodeId,
+            route: null,  // null for pending (findPendingTraceroute checks for isNull)
+            routeBack: null,
+            snrTowards: null,
+            snrBack: null,
+            timestamp: now,
+            createdAt: now,
+          });
+
+          // Cleanup old traceroutes
+          await this.traceroutesRepo.cleanupOldTraceroutesForPair(
+            fromNodeNum,
+            toNodeNum,
+            TRACEROUTE_HISTORY_LIMIT
+          );
+        }
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to record traceroute request:', error);
+      }
       return;
     }
 
@@ -10206,7 +10203,7 @@ class DatabaseService {
 
   // Group 4: Traceroutes
   async recordTracerouteRequestAsync(fromNodeNum: number, toNodeNum: number): Promise<void> {
-    this.recordTracerouteRequest(fromNodeNum, toNodeNum);
+    await this.recordTracerouteRequest(fromNodeNum, toNodeNum);
   }
 
   async getAllTraceroutesForRecalculationAsync(): Promise<any[]> {
