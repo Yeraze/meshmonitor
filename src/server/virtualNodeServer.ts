@@ -527,6 +527,44 @@ export class VirtualNodeServer extends EventEmitter {
         if (queueStatusResponse) {
           await this.sendToClient(clientId, queueStatusResponse);
         }
+      } else if (toRadio.mqttClientProxyMessage) {
+        // MQTT Proxy message: decode ServiceEnvelope locally for Server Channel Database decryption
+        // Then forward to physical radio as normal
+        const proxyMsg = toRadio.mqttClientProxyMessage;
+        const proxyData = proxyMsg.data;
+
+        if (proxyData && proxyData.length > 0) {
+          try {
+            const envelope = meshtasticProtobufService.decodeServiceEnvelope(
+              proxyData instanceof Uint8Array ? proxyData : new Uint8Array(proxyData)
+            );
+
+            if (envelope && envelope.packet) {
+              // Mark as MQTT-sourced for UI display
+              envelope.packet.viaMqtt = true;
+
+              // Wrap in FromRadio using existing helper and process locally
+              const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(envelope.packet);
+              if (fromRadioMessage) {
+                logger.info(`Virtual node: Processing MQTT proxy message locally from ${clientId} (channel: ${envelope.channelId || 'unknown'}, gateway: ${envelope.gatewayId || 'unknown'})`);
+                await this.config.meshtasticManager.processIncomingData(fromRadioMessage, {
+                  skipVirtualNodeBroadcast: true,
+                });
+              }
+            } else {
+              logger.warn(`Virtual node: MQTT proxy message from ${clientId} has no decodable packet, forwarding to radio only`);
+            }
+          } catch (error) {
+            logger.error(`Virtual node: Failed to process MQTT proxy message locally from ${clientId}:`, error);
+            // Continue - still forward to physical node
+          }
+        } else {
+          logger.warn(`Virtual node: MQTT proxy message from ${clientId} has no data payload`);
+        }
+
+        // Always forward to physical radio regardless of local processing result
+        logger.info(`Virtual node: Forwarding MQTT proxy message from ${clientId} to physical node`);
+        this.queueMessage(clientId, payload);
       } else if (toRadio.disconnect) {
         // Handle disconnect request locally - don't forward to physical node
         logger.info(`Virtual node: Client ${clientId} requested disconnect`);
