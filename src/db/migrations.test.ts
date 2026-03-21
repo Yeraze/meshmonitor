@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 12 migrations registered', () => {
-    expect(registry.count()).toBe(12);
+  it('has all 13 migrations registered', () => {
+    expect(registry.count()).toBe(13);
   });
 
   it('first migration is v37 baseline', () => {
@@ -12,11 +12,11 @@ describe('migrations registry', () => {
     expect(all[0].name).toContain('v37_baseline');
   });
 
-  it('last migration is the auth schema alignment', () => {
+  it('last migration is the audit_log missing columns fix', () => {
     const all = registry.getAll();
     const last = all[all.length - 1];
-    expect(last.number).toBe(12);
-    expect(last.name).toContain('auth');
+    expect(last.number).toBe(13);
+    expect(last.name).toContain('audit_log');
   });
 
   it('migrations are sequentially numbered from 1 to 12', () => {
@@ -46,7 +46,7 @@ describe('migrations registry', () => {
     }
   });
 
-  it('migrations 002-012 all have settingsKey', () => {
+  it('migrations 002-013 all have settingsKey', () => {
     const all = registry.getAll();
     for (let i = 1; i < all.length; i++) {
       expect(all[i].settingsKey, `Migration ${all[i].number} should have settingsKey`).toBeTruthy();
