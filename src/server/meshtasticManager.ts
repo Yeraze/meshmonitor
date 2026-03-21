@@ -4358,33 +4358,38 @@ class MeshtasticManager {
           }
         }
 
-        // Existing block — only runs for PKI-error-based mismatches, NOT our proactive detection
+        // Clear mismatch flag when keys now match (post-purge resolution)
+        // or when a new key arrives (PKI-error-based resolution)
         if (!newMismatchDetected) {
           if (existingNode && existingNode.keyMismatchDetected) {
             const oldKey = existingNode.publicKey;
             const newKey = nodeData.publicKey;
 
             if (oldKey !== newKey) {
-              // Key has changed - the mismatch is fixed!
+              // Key has changed - the mismatch is fixed via new key
               logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - received new key`);
-              nodeData.keyMismatchDetected = false;
-              nodeData.lastMeshReceivedKey = undefined;
-              // Don't clear keySecurityIssueDetails if there's a low-entropy issue
-              if (!isLowEntropy) {
-                nodeData.keySecurityIssueDetails = undefined;
-              }
-
-              // Clear the repair state and log success
-              databaseService.clearKeyRepairStateAsync(fromNum);
-              const nodeName = user.longName || user.shortName || nodeId;
-              databaseService.logKeyRepairAttemptAsync(fromNum, nodeName, 'fixed', true);
-
-              // Emit update to UI
-              dataEventEmitter.emitNodeUpdate(fromNum, {
-                keyMismatchDetected: false,
-                keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
-              });
+            } else {
+              // Keys now match - the mismatch was fixed (e.g., device re-synced after purge)
+              logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - keys now match`);
             }
+
+            nodeData.keyMismatchDetected = false;
+            nodeData.lastMeshReceivedKey = undefined;
+            // Don't clear keySecurityIssueDetails if there's a low-entropy issue
+            if (!isLowEntropy) {
+              nodeData.keySecurityIssueDetails = undefined;
+            }
+
+            // Clear the repair state and log success
+            databaseService.clearKeyRepairStateAsync(fromNum);
+            const nodeName = user.longName || user.shortName || nodeId;
+            databaseService.logKeyRepairAttemptAsync(fromNum, nodeName, 'fixed', true);
+
+            // Emit update to UI
+            dataEventEmitter.emitNodeUpdate(fromNum, {
+              keyMismatchDetected: false,
+              keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
+            });
           }
         }
       }
