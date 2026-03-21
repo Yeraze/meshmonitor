@@ -2,7 +2,6 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Circle, Polyline, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSettings } from '../contexts/SettingsContext.js';
-import { getOverlayColors, getSchemeForTileset } from '../config/overlayColors.js';
 import { getPolarGridRings, getSectorEndpoint } from '../utils/polarGrid.js';
 
 interface PolarGridOverlayProps {
@@ -15,7 +14,7 @@ const DEGREE_LABELS = ['0', '30', '60', '90', '120', '150', '180', '210', '240',
 
 export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) => {
   const map = useMap();
-  const { distanceUnit, selectedTileset, customOverlayScheme } = useSettings();
+  const { distanceUnit, overlayColors } = useSettings();
   const [zoom, setZoom] = useState(map.getZoom());
 
   useEffect(() => {
@@ -24,8 +23,7 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
     return () => { map.off('zoomend', onZoomEnd); };
   }, [map]);
 
-  const scheme = getSchemeForTileset(selectedTileset || 'osm', customOverlayScheme);
-  const colors = getOverlayColors(scheme);
+  const colors = overlayColors;
   const centerLatLng: [number, number] = [center.lat, center.lng];
 
   const rings = useMemo(
