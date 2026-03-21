@@ -695,9 +695,22 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         // Populate Security config
         if (config.deviceConfig?.security) {
           const sec = config.deviceConfig.security;
-          // Admin keys come as base64 strings
+          // Admin keys may come as base64 strings, Buffer-like objects, or byte arrays
+          // from the raw config endpoint — coerce all to strings for the UI
           if (sec.adminKey && Array.isArray(sec.adminKey)) {
-            setSecurityAdminKeys(sec.adminKey.length > 0 ? sec.adminKey : ['']);
+            const keys = sec.adminKey.map((key: any) => {
+              if (typeof key === 'string') return key;
+              // Handle JSON-serialized Buffer: { type: 'Buffer', data: [...] }
+              if (key && typeof key === 'object' && key.type === 'Buffer' && Array.isArray(key.data)) {
+                return btoa(String.fromCharCode(...key.data));
+              }
+              // Handle plain byte arrays
+              if (Array.isArray(key)) {
+                return btoa(String.fromCharCode(...key));
+              }
+              return String(key);
+            });
+            setSecurityAdminKeys(keys.length > 0 ? keys : ['']);
           }
           setSecurityIsManaged(sec.isManaged || false);
           setSecuritySerialEnabled(sec.serialEnabled !== false); // Default to true
