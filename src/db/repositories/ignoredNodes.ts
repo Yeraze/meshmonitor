@@ -46,22 +46,12 @@ export class IgnoredNodesRepository extends BaseRepository {
       ignoredBy: ignoredBy ?? null,
     };
 
-    if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .insert(ignoredNodes)
-        .values({ nodeNum, ...setData })
-        .onDuplicateKeyUpdate({ set: setData });
-    } else {
-      // SQLite and PostgreSQL both use onConflictDoUpdate
-      await (this.db as any)
-        .insert(ignoredNodes)
-        .values({ nodeNum, ...setData })
-        .onConflictDoUpdate({
-          target: ignoredNodes.nodeNum,
-          set: setData,
-        });
-    }
+    await this.upsert(
+      ignoredNodes,
+      { nodeNum, ...setData },
+      ignoredNodes.nodeNum,
+      setData,
+    );
 
     logger.debug(`Added node ${nodeNum} (${nodeId}) to persistent ignore list`);
   }
