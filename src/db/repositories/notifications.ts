@@ -377,20 +377,20 @@ export class NotificationsRepository extends BaseRepository {
         let result;
         if (beforeTimestamp !== undefined) {
           result = await db.execute(sql`
-            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
             SELECT id, ${effectiveUserId}, ${now} FROM messages
             WHERE channel = ${channelId}
               AND portnum = 1
               AND timestamp <= ${beforeTimestamp}
-            ON CONFLICT ("messageId", "userId") DO NOTHING
+            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
           `);
         } else {
           result = await db.execute(sql`
-            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
             SELECT id, ${effectiveUserId}, ${now} FROM messages
             WHERE channel = ${channelId}
               AND portnum = 1
-            ON CONFLICT ("messageId", "userId") DO NOTHING
+            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
           `);
         }
         return Number(result.rowCount ?? 0);
@@ -495,24 +495,24 @@ export class NotificationsRepository extends BaseRepository {
         let result;
         if (beforeTimestamp !== undefined) {
           result = await db.execute(sql`
-            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
             SELECT id, ${effectiveUserId}, ${now} FROM messages
-            WHERE (("fromNodeId" = ${localNodeId} AND "toNodeId" = ${remoteNodeId})
-                OR ("fromNodeId" = ${remoteNodeId} AND "toNodeId" = ${localNodeId}))
+            WHERE ((${this.col('fromNodeId')} = ${localNodeId} AND ${this.col('toNodeId')} = ${remoteNodeId})
+                OR (${this.col('fromNodeId')} = ${remoteNodeId} AND ${this.col('toNodeId')} = ${localNodeId}))
               AND portnum = 1
               AND channel = -1
               AND timestamp <= ${beforeTimestamp}
-            ON CONFLICT ("messageId", "userId") DO NOTHING
+            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
           `);
         } else {
           result = await db.execute(sql`
-            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
             SELECT id, ${effectiveUserId}, ${now} FROM messages
-            WHERE (("fromNodeId" = ${localNodeId} AND "toNodeId" = ${remoteNodeId})
-                OR ("fromNodeId" = ${remoteNodeId} AND "toNodeId" = ${localNodeId}))
+            WHERE ((${this.col('fromNodeId')} = ${localNodeId} AND ${this.col('toNodeId')} = ${remoteNodeId})
+                OR (${this.col('fromNodeId')} = ${remoteNodeId} AND ${this.col('toNodeId')} = ${localNodeId}))
               AND portnum = 1
               AND channel = -1
-            ON CONFLICT ("messageId", "userId") DO NOTHING
+            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
           `);
         }
         return Number(result.rowCount ?? 0);
@@ -597,12 +597,12 @@ export class NotificationsRepository extends BaseRepository {
       } else if (this.isPostgres()) {
         const db = this.getPostgresDb();
         const result = await db.execute(sql`
-          INSERT INTO read_messages ("messageId", "userId", "readAt")
+          INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
           SELECT id, ${effectiveUserId}, ${now} FROM messages
-          WHERE ("fromNodeId" = ${localNodeId} OR "toNodeId" = ${localNodeId})
+          WHERE (${this.col('fromNodeId')} = ${localNodeId} OR ${this.col('toNodeId')} = ${localNodeId})
             AND portnum = 1
             AND channel = -1
-          ON CONFLICT ("messageId", "userId") DO NOTHING
+          ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
         `);
         return Number(result.rowCount ?? 0);
       } else {
@@ -654,9 +654,9 @@ export class NotificationsRepository extends BaseRepository {
         const db = this.getPostgresDb();
         for (const messageId of messageIds) {
           await db.execute(sql`
-            INSERT INTO read_messages ("messageId", "userId", "readAt")
+            INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
             VALUES (${messageId}, ${effectiveUserId}, ${now})
-            ON CONFLICT ("messageId", "userId") DO NOTHING
+            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
           `);
         }
       } else {
