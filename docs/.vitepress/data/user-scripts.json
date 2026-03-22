@@ -597,5 +597,49 @@
       "Persistent state file for cross-run tracking",
       "Configurable per-node monitoring via MM_NODE_IDS"
     ]
+  },
+  {
+    "name": "Mesh DM BBS",
+    "filename": "bbs.py",
+    "icon": "📡",
+    "description": "Lightweight Meshtastic DM bulletin board system for low-bandwidth LoRa networks. Supports multiple boards with optional password protection, paginated reading, post management, and admin override. Stores state in JSON files.",
+    "language": "Python",
+    "tags": ["BBS", "Bulletin Board", "Messaging", "Community", "DM"],
+    "githubPath": "TechTucson/MeshMonitor-BBS-AND-MAIL/bbs.py",
+    "exampleTrigger": "bbs help, bbs boards, bbs read <board>, bbs post <board> <subject> | <message>",
+    "requirements": [
+      "Python 3 (included in MeshMonitor)",
+      "/data/bbs/ directory (created automatically)"
+    ],
+    "author": "TechTucson",
+    "features": [
+      "Multiple boards with optional password protection",
+      "Post, read, and delete messages",
+      "Paginated output for long listings",
+      "Admin override password for moderation",
+      "Persistent JSON storage in /data/bbs/"
+    ]
+  },
+  {
+    "name": "Mesh Mail Bot",
+    "filename": "mail.py",
+    "icon": "✉️",
+    "description": "Private DM-only mail system for Meshtastic nodes. Send, check, read, and delete mail between node IDs. Features receiver-only access controls and admin purge capability. Stores mail in JSON files.",
+    "language": "Python",
+    "tags": ["Mail", "Messaging", "DM", "Private", "Communication"],
+    "githubPath": "TechTucson/MeshMonitor-BBS-AND-MAIL/mail.py",
+    "exampleTrigger": "mail help, mail send <!node_id> <subject> | <message>, mail check, mail read <id>",
+    "requirements": [
+      "Python 3 (included in MeshMonitor)",
+      "/data/mail/ directory (created automatically)"
+    ],
+    "author": "TechTucson",
+    "features": [
+      "Send private mail between node IDs",
+      "Inbox check and read with pagination",
+      "Receiver-only access controls",
+      "Admin purge with override password",
+      "Persistent JSON storage in /data/mail/"
+    ]
   }
 ]
