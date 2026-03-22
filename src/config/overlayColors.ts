@@ -28,9 +28,9 @@ export interface OverlayColors {
 }
 
 export const darkOverlayColors: OverlayColors = {
-  tracerouteForward: '#74c7ec', // Catppuccin Mocha sapphire — unified traceroute color
-  tracerouteReturn: '#74c7ec', // Same as forward; direction shown by arrows
-  mqttSegment: '#94e2d5',
+  tracerouteForward: '#f5c2e7', // Catppuccin Mocha pink — distinct from hop gradient and MQTT
+  tracerouteReturn: '#f5c2e7', // Same as forward; direction shown by arrows
+  mqttSegment: '#b4befe',      // Catppuccin Mocha lavender — distinct from traceroute pink
   neighborLine: '#fab387', // Catppuccin Mocha peach — distinct from hop gradient
   positionHistoryOld: { r: 0, g: 191, b: 255 },
   positionHistoryNew: { r: 255, g: 69, b: 0 },
@@ -55,9 +55,9 @@ export const darkOverlayColors: OverlayColors = {
 };
 
 export const lightOverlayColors: OverlayColors = {
-  tracerouteForward: '#209fb5', // Catppuccin Latte sapphire — unified traceroute color
-  tracerouteReturn: '#209fb5', // Same as forward; direction shown by arrows
-  mqttSegment: '#179299',
+  tracerouteForward: '#ea76cb', // Catppuccin Latte pink — distinct from hop gradient and MQTT
+  tracerouteReturn: '#ea76cb', // Same as forward; direction shown by arrows
+  mqttSegment: '#7287fd',      // Catppuccin Latte lavender — distinct from traceroute pink
   neighborLine: '#fe640b', // Catppuccin Latte peach — distinct from hop gradient
   positionHistoryOld: { r: 0, g: 103, b: 165 },
   positionHistoryNew: { r: 196, g: 32, b: 10 },
