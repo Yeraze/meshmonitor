@@ -5344,26 +5344,20 @@ class MeshtasticManager {
 
           // PKI errors from our local node (couldn't encrypt to target)
           if (isPkiError(errorReason) && fromNodeId === localNodeId) {
-            // PKI_UNKNOWN_PUBKEY when node isn't in the radio's DB is expected after
-            // factory reset or purge — don't flag it as a security issue
-            if ((errorReason === RoutingError.PKI_UNKNOWN_PUBKEY || errorReason === RoutingError.PKI_SEND_FAIL_PUBLIC_KEY) && !this.isNodeInDeviceDb(toNum)) {
-              logger.info(`🔐 PKI key error for node ${toNodeId} — node not in radio's database (expected after factory reset/purge)`);
-            } else {
-              const errorDescription = errorReason === RoutingError.PKI_FAILED
-                ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
-                : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
+            const errorDescription = errorReason === RoutingError.PKI_FAILED
+              ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
+              : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
 
-              logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
+            logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
 
-              await databaseService.nodes.upsertNode({
-                nodeNum: toNum,
-                nodeId: toNodeId,
-                keyMismatchDetected: true,
-                keySecurityIssueDetails: errorDescription
-              });
-              dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
-              this.handlePkiError(toNum);
-            }
+            await databaseService.nodes.upsertNode({
+              nodeNum: toNum,
+              nodeId: toNodeId,
+              keyMismatchDetected: true,
+              keySecurityIssueDetails: errorDescription
+            });
+            dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            this.handlePkiError(toNum);
           }
 
           // NO_CHANNEL from the target node (it couldn't decrypt our request)
@@ -5397,35 +5391,24 @@ class MeshtasticManager {
       // Detect PKI/encryption errors and flag the target node
       // Only flag if the error is from our local radio (we couldn't encrypt to target)
       if (isPkiError(errorReason) && fromNodeId === localNodeId) {
-        // PKI_FAILED or PKI_UNKNOWN_PUBKEY - indicates key mismatch
         if (originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
 
-          // PKI_UNKNOWN_PUBKEY when node isn't in the radio's DB is expected after
-          // factory reset or purge — don't flag it as a security issue
-          if ((errorReason === RoutingError.PKI_UNKNOWN_PUBKEY || errorReason === RoutingError.PKI_SEND_FAIL_PUBLIC_KEY) && !this.isNodeInDeviceDb(targetNodeNum)) {
-            logger.info(`🔐 PKI key error for node ${targetNodeId} — node not in radio's database (expected after factory reset/purge)`);
-          } else {
-            const errorDescription = errorReason === RoutingError.PKI_FAILED
-              ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
-              : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
+          const errorDescription = errorReason === RoutingError.PKI_FAILED
+            ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
+            : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
 
-            logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
+          logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
 
-            // Flag the node with the key security issue
-            await databaseService.nodes.upsertNode({
-              nodeNum: targetNodeNum,
-              nodeId: targetNodeId,
-              keyMismatchDetected: true,
-              keySecurityIssueDetails: errorDescription
-            });
+          await databaseService.nodes.upsertNode({
+            nodeNum: targetNodeNum,
+            nodeId: targetNodeId,
+            keyMismatchDetected: true,
+            keySecurityIssueDetails: errorDescription
+          });
 
-            // Emit event to notify UI of the key issue
-            dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
-
-            // Penalize Link Quality for PKI error (-5)
-            this.handlePkiError(targetNodeNum);
-          }
+          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+          this.handlePkiError(targetNodeNum);
         }
       }
 
