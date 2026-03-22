@@ -2794,6 +2794,16 @@ class DatabaseService {
       `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
       return;
     }
+
+    // SQLite: synchronous update
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET isTimeOffsetIssue = ?,
+          timeOffsetSeconds = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, now, nodeNum);
   }
 
   /**
