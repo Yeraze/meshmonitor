@@ -2705,6 +2705,17 @@ class DatabaseService {
       `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
       return;
     }
+
+    // SQLite: synchronous update
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET isExcessivePackets = ?,
+          packetRatePerHour = ?,
+          packetRateLastChecked = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, lastChecked, now, nodeNum);
   }
 
   /**
