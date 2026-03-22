@@ -3658,7 +3658,7 @@ class MeshtasticManager {
 
         packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
-          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) : Math.floor(Date.now() / 1000),
+          timestamp: Math.floor(Date.now() / 1000), // Use server time for consistent ordering (rxTime preserved in metadata.rx_time)
           from_node: fromNum,
           from_node_id: fromNodeId ?? undefined,
           to_node: toNum ?? undefined,
