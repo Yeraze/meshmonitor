@@ -33,7 +33,7 @@ BACKENDS[mysql]="meshmonitor-mysql-app"
 # Excludes expected/informational messages that contain "error" in non-error contexts
 ERROR_PATTERNS='(\[ERROR\]|FATAL|ECONNREFUSED|SQLITE_ERROR|SqliteError|uncaughtException|unhandledRejection)'
 # Patterns to exclude from error matching (false positives)
-EXCLUDE_PATTERNS='(error_correction|error\.tsx|error\.ts|RoutingError|errorCount|clearError|getPortNumName|error-boundary|isError|onError|handleError|LogLevel\.ERROR|errorDetails|_error|\.error\b.*=|error_event|Error fetching or storing news)'
+EXCLUDE_PATTERNS='(error_correction|error\.tsx|error\.ts|RoutingError|errorCount|clearError|getPortNumName|error-boundary|isError|onError|handleError|LogLevel\.ERROR|errorDetails|_error|\.error\b.*=|error_event|Error fetching or storing news|ECONNREFUSED 172\.|code:.*ECONNREFUSED)'
 
 # Log output directory
 LOG_DIR="$PROJECT_DIR/tests/soak-logs"

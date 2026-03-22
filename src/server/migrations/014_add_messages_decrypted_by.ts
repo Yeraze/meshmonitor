@@ -1,11 +1,11 @@
 /**
- * Migration 014: Add missing decrypted_by column to messages table for PostgreSQL/MySQL
+ * Migration 014: Fix missing columns in PG/MySQL baselines
  *
- * The Drizzle schema defines decryptedBy on messages for all backends, and the
- * SQLite baseline includes it, but the PostgreSQL and MySQL baselines omit it.
- * This causes DrizzleQueryError on any SELECT from the messages table.
+ * 1. messages.decrypted_by — PG/MySQL baselines omitted this column that the Drizzle schema expects.
+ * 2. channel_database.enforceNameValidation — PG/MySQL baselines omitted this column.
+ * 3. channel_database.sortOrder — PG/MySQL baselines omitted this column.
  *
- * SQLite already has the column, so the SQLite migration is a safe no-op.
+ * SQLite already has all columns, so the SQLite migration is a safe no-op.
  */
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
@@ -43,6 +43,12 @@ export async function runMigration014Postgres(client: import('pg').PoolClient): 
   try {
     await client.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS decrypted_by TEXT');
     logger.debug('Ensured decrypted_by exists on messages');
+
+    await client.query('ALTER TABLE channel_database ADD COLUMN IF NOT EXISTS "enforceNameValidation" BOOLEAN NOT NULL DEFAULT false');
+    logger.debug('Ensured enforceNameValidation exists on channel_database');
+
+    await client.query('ALTER TABLE channel_database ADD COLUMN IF NOT EXISTS "sortOrder" INTEGER NOT NULL DEFAULT 0');
+    logger.debug('Ensured sortOrder exists on channel_database');
   } catch (error: any) {
     logger.error('Migration 014 (PostgreSQL) failed:', error.message);
     throw error;
@@ -57,15 +63,40 @@ export async function runMigration014Mysql(pool: import('mysql2/promise').Pool):
   logger.info('Running migration 014 (MySQL): Adding decrypted_by to messages...');
 
   try {
-    const [rows] = await pool.query(`
+    // 1. messages.decrypted_by
+    const [msgRows] = await pool.query(`
       SELECT COLUMN_NAME FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND COLUMN_NAME = 'decrypted_by'
     `);
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (!Array.isArray(msgRows) || msgRows.length === 0) {
       await pool.query('ALTER TABLE messages ADD COLUMN decrypted_by VARCHAR(16)');
       logger.debug('Added decrypted_by to messages');
     } else {
       logger.debug('messages.decrypted_by already exists, skipping');
+    }
+
+    // 2. channel_database.enforceNameValidation
+    const [envRows] = await pool.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channel_database' AND COLUMN_NAME = 'enforceNameValidation'
+    `);
+    if (!Array.isArray(envRows) || envRows.length === 0) {
+      await pool.query('ALTER TABLE channel_database ADD COLUMN enforceNameValidation BOOLEAN NOT NULL DEFAULT false');
+      logger.debug('Added enforceNameValidation to channel_database');
+    } else {
+      logger.debug('channel_database.enforceNameValidation already exists, skipping');
+    }
+
+    // 3. channel_database.sortOrder
+    const [soRows] = await pool.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channel_database' AND COLUMN_NAME = 'sortOrder'
+    `);
+    if (!Array.isArray(soRows) || soRows.length === 0) {
+      await pool.query('ALTER TABLE channel_database ADD COLUMN sortOrder INT NOT NULL DEFAULT 0');
+      logger.debug('Added sortOrder to channel_database');
+    } else {
+      logger.debug('channel_database.sortOrder already exists, skipping');
     }
   } catch (error: any) {
     logger.error('Migration 014 (MySQL) failed:', error.message);
