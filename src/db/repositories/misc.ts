@@ -961,27 +961,17 @@ export class MiscRepository extends BaseRepository {
     const whereClause = this.combineConditions(conditions);
 
     try {
-      // Use raw SQL for the JOIN query
-      let joinQuery;
-      if (this.isPostgres()) {
-        joinQuery = sql`
-          SELECT pl.*, from_nodes."longName" as "from_node_longName", to_nodes."longName" as "to_node_longName"
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
-          WHERE ${whereClause}
-          ORDER BY pl.timestamp DESC, pl.created_at DESC LIMIT ${limit} OFFSET ${offset}
-        `;
-      } else {
-        joinQuery = sql`
-          SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-          WHERE ${whereClause}
-          ORDER BY pl.timestamp DESC, pl.created_at DESC LIMIT ${limit} OFFSET ${offset}
-        `;
-      }
+      const longName = this.col('longName');
+      const nodeNum = this.col('nodeNum');
+
+      const joinQuery = sql`
+        SELECT pl.*, from_nodes.${longName} as from_node_longName, to_nodes.${longName} as to_node_longName
+        FROM packet_log pl
+        LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.${nodeNum}
+        LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.${nodeNum}
+        WHERE ${whereClause}
+        ORDER BY pl.timestamp DESC, pl.created_at DESC LIMIT ${limit} OFFSET ${offset}
+      `;
 
       const rows = await this.executeQuery(joinQuery);
       return (rows as any[]).map((row: any) => this.normalizePacketLogRow(row));
@@ -996,24 +986,16 @@ export class MiscRepository extends BaseRepository {
    */
   async getPacketLogById(id: number): Promise<DbPacketLog | null> {
     try {
-      let joinQuery;
-      if (this.isPostgres()) {
-        joinQuery = sql`
-          SELECT pl.*, from_nodes."longName" as "from_node_longName", to_nodes."longName" as "to_node_longName"
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
-          WHERE pl.id = ${id}
-        `;
-      } else {
-        joinQuery = sql`
-          SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-          WHERE pl.id = ${id}
-        `;
-      }
+      const longName = this.col('longName');
+      const nodeNum = this.col('nodeNum');
+
+      const joinQuery = sql`
+        SELECT pl.*, from_nodes.${longName} as from_node_longName, to_nodes.${longName} as to_node_longName
+        FROM packet_log pl
+        LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.${nodeNum}
+        LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.${nodeNum}
+        WHERE pl.id = ${id}
+      `;
 
       const rows = await this.executeQuery(joinQuery);
       if (!rows || rows.length === 0) return null;
@@ -1099,9 +1081,9 @@ export class MiscRepository extends BaseRepository {
    */
   async getDistinctRelayNodes(): Promise<DbDistinctRelayNode[]> {
     const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL';
-    const matchQuery = this.isPostgres()
-      ? 'SELECT "longName", "shortName" FROM nodes WHERE ("nodeNum" & 255) = '
-      : 'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ';
+    const longName = this.col('longName');
+    const shortName = this.col('shortName');
+    const nodeNum = this.col('nodeNum');
 
     try {
       const distinctRows = await this.executeQuery(sql.raw(distinctQuery));
@@ -1109,7 +1091,9 @@ export class MiscRepository extends BaseRepository {
 
       const results: DbDistinctRelayNode[] = [];
       for (const rv of relayValues) {
-        const matchRows = await this.executeQuery(sql.raw(`${matchQuery}${rv}`));
+        const matchRows = await this.executeQuery(
+          sql`SELECT ${longName}, ${shortName} FROM nodes WHERE (${nodeNum} & 255) = ${rv}`
+        );
         results.push({
           relay_node: rv,
           matching_nodes: (matchRows as any[]).map((r: any) => ({
@@ -1172,28 +1156,18 @@ export class MiscRepository extends BaseRepository {
       if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
       const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
 
-      let query;
-      if (this.isPostgres()) {
-        query = sql`
-          SELECT pl.from_node, pl.from_node_id, n."longName" as "from_node_longName", COUNT(*)::int as count
-          FROM packet_log pl
-          LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
-          WHERE ${whereClause}
-          GROUP BY pl.from_node, pl.from_node_id, n."longName"
-          ORDER BY count DESC
-          LIMIT ${limit}
-        `;
-      } else {
-        query = sql`
-          SELECT pl.from_node, pl.from_node_id, n.longName as from_node_longName, COUNT(*) as count
-          FROM packet_log pl
-          LEFT JOIN nodes n ON pl.from_node = n.nodeNum
-          WHERE ${whereClause}
-          GROUP BY pl.from_node, pl.from_node_id, n.longName
-          ORDER BY count DESC
-          LIMIT ${limit}
-        `;
-      }
+      const longName = this.col('longName');
+      const nodeNum = this.col('nodeNum');
+
+      const query = sql`
+        SELECT pl.from_node, pl.from_node_id, n.${longName} as from_node_longName, COUNT(*) as count
+        FROM packet_log pl
+        LEFT JOIN nodes n ON pl.from_node = n.${nodeNum}
+        WHERE ${whereClause}
+        GROUP BY pl.from_node, pl.from_node_id, n.${longName}
+        ORDER BY count DESC
+        LIMIT ${limit}
+      `;
 
       const rows = await this.executeQuery(query);
       return (rows as any[]).map((row: any) => ({

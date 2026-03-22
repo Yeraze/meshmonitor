@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 13 migrations in sequential order for use by the migration runner.
+ * Registers all 14 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -25,6 +25,7 @@ import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } 
 import { migration as fixMessageNodeNumBigintMigration, runMigration087Postgres, runMigration087Mysql } from '../server/migrations/011_fix_message_nodenum_bigint.js';
 import { migration as authAlignMigration, runMigration012Postgres, runMigration012Mysql } from '../server/migrations/012_align_sqlite_auth_schema.js';
 import { migration as auditLogColumnsMigration, runMigration013Postgres, runMigration013Mysql } from '../server/migrations/013_add_audit_log_missing_columns.js';
+import { migration as messagesDecryptedByMigration, runMigration014Postgres, runMigration014Mysql } from '../server/migrations/014_add_messages_decrypted_by.js';
 
 // ============================================================================
 // Registry
@@ -168,4 +169,18 @@ registry.register({
   sqlite: (db) => auditLogColumnsMigration.up(db),
   postgres: (client) => runMigration013Postgres(client),
   mysql: (pool) => runMigration013Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 014: Add missing decrypted_by column to messages table
+// PG/MySQL baselines omitted this column that the Drizzle schema expects.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 14,
+  name: 'add_messages_decrypted_by',
+  settingsKey: 'migration_014_add_messages_decrypted_by',
+  sqlite: (db) => messagesDecryptedByMigration.up(db),
+  postgres: (client) => runMigration014Postgres(client),
+  mysql: (pool) => runMigration014Mysql(pool),
 });
