@@ -37,9 +37,10 @@
 }
 
 .nodes-anchored-sidebar.collapsed {
-  width: 48px !important;
-  min-width: 48px;
-  max-width: 48px;
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  overflow: visible;
 }
 
 /* Resize handle on right edge of sidebar */
@@ -122,6 +123,14 @@
   border-bottom: none;
   box-shadow: none;
   backdrop-filter: none;
+  transition: width 0.3s ease;
+}
+
+.messages-sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  overflow: visible;
 }
 
 .messages-split-view {
@@ -554,16 +563,20 @@
 }
 
 .nodes-sidebar.collapsed .sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 0;
   border-bottom: none;
+  background: transparent;
+  z-index: 1000;
+  width: auto;
+  min-height: auto;
 }
 
 .nodes-sidebar.collapsed .collapse-nodes-btn {
   position: static;
-  margin: auto;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .nodes-sidebar.collapsed .sidebar-header h3 {
@@ -1250,14 +1263,15 @@
     height: 100%;
   }
 
-  /* When collapsed on mobile, show as small strip */
+  /* When collapsed on mobile, reclaim all space */
   .nodes-anchored-sidebar.collapsed {
     position: static;
-    width: 40px;
-    min-width: 40px;
-    max-width: 40px;
+    width: 0 !important;
+    min-width: 0;
+    max-width: 0;
     max-height: 100%;
     padding: 0;
+    overflow: visible;
   }
 
   .nodes-sidebar.collapsed .sidebar-header {
