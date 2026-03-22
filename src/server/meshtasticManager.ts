@@ -3960,6 +3960,26 @@ class MeshtasticManager {
             logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
           }
 
+          // Dual-channel insertion: if server-decrypted and the packet has a radio channel,
+          // also insert a copy in the radio channel so both views show the message (#2375)
+          if (!isDirectMessage && context?.decryptedBy === 'server' && meshPacket.channel !== undefined) {
+            const radioChannelIndex = meshPacket.channel;
+            const radioChannel = await databaseService.channels.getChannelById(radioChannelIndex);
+            if (radioChannel) {
+              const radioCopy: TextMessage = {
+                ...message,
+                id: `${message.id}_radio`,
+                channel: radioChannelIndex,
+                decryptedBy: 'server',
+              };
+              const radioInserted = await databaseService.messages.insertMessage(radioCopy);
+              if (radioInserted) {
+                dataEventEmitter.emitNewMessage(radioCopy as any);
+                logger.debug(`💾 Also saved to radio channel ${radioChannelIndex} ("${radioChannel.name}")`);
+              }
+            }
+          }
+
           // Send push notification for new message
           await this.sendMessagePushNotification(message, messageText, isDirectMessage);
 
