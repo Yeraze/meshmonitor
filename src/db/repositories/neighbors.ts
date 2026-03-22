@@ -4,7 +4,7 @@
  * Handles neighbor info database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
+import { eq, desc, and, gte, lt, sql, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
@@ -134,6 +134,23 @@ export class NeighborsRepository extends BaseRepository {
   async deleteAllNeighborInfo(): Promise<void> {
     const { neighborInfo } = this.tables;
     await this.db.delete(neighborInfo);
+  }
+
+  /**
+   * Delete neighbor info records older than the specified number of days
+   */
+  async cleanupOldNeighborInfo(days: number = 30): Promise<number> {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const { neighborInfo } = this.tables;
+    const toDelete = await this.db
+      .select({ count: count() })
+      .from(neighborInfo)
+      .where(lt(neighborInfo.timestamp, cutoff));
+    const total = Number(toDelete[0].count);
+    if (total > 0) {
+      await this.db.delete(neighborInfo).where(lt(neighborInfo.timestamp, cutoff));
+    }
+    return total;
   }
 
   /**

@@ -91,9 +91,9 @@ export interface DbPermission {
   canViewOnMap: boolean;
   canRead: boolean;
   canWrite: boolean;
-  canDelete?: boolean; // PostgreSQL only
-  grantedAt?: number; // SQLite only
-  grantedBy?: number | null; // SQLite only
+  canDelete?: boolean; // PostgreSQL/MySQL only
+  grantedAt?: number;
+  grantedBy?: number | null;
 }
 
 /**
@@ -105,9 +105,9 @@ export interface CreatePermissionInput {
   canViewOnMap?: boolean;
   canRead?: boolean;
   canWrite?: boolean;
-  canDelete?: boolean; // PostgreSQL only
-  grantedAt?: number; // SQLite only
-  grantedBy?: number | null; // SQLite only
+  canDelete?: boolean; // PostgreSQL/MySQL only
+  grantedAt?: number;
+  grantedBy?: number | null;
 }
 
 /**
@@ -309,31 +309,28 @@ export class AuthRepository extends BaseRepository {
 
   /**
    * Create permission.
-   * Keeps branching: different columns per dialect (SQLite has grantedAt/grantedBy, others have canDelete).
+   * Keeps branching: SQLite doesn't have canDelete, PG/MySQL do.
+   * All backends now support grantedAt/grantedBy.
    */
   async createPermission(permission: CreatePermissionInput): Promise<number> {
     const { permissions } = this.tables;
+    const permissionWithGrantedAt = {
+      ...permission,
+      grantedAt: permission.grantedAt ?? Date.now(),
+    };
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      // SQLite requires grantedAt, doesn't have canDelete
-      const { canDelete, ...rest } = permission;
-      const sqlitePermission = {
-        ...rest,
-        grantedAt: permission.grantedAt ?? Date.now(),
-      };
-      const result = await db.insert(permissions).values(sqlitePermission);
+      // SQLite doesn't have canDelete
+      const { canDelete, ...rest } = permissionWithGrantedAt;
+      const result = await db.insert(permissions).values(rest);
       return Number(result.lastInsertRowid);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      // MySQL doesn't have grantedAt/grantedBy but has canDelete
-      const { grantedAt, grantedBy, ...mysqlPermission } = permission;
-      const result = await db.insert(permissions).values(mysqlPermission);
+      const result = await db.insert(permissions).values(permissionWithGrantedAt);
       return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
-      // PostgreSQL doesn't have grantedAt/grantedBy
-      const { grantedAt, grantedBy, ...postgresPermission } = permission;
-      const result = await db.insert(permissions).values(postgresPermission).returning({ id: permissionsPostgres.id });
+      const result = await db.insert(permissions).values(permissionWithGrantedAt).returning({ id: permissionsPostgres.id });
       return result[0].id;
     }
   }
