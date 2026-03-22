@@ -662,25 +662,30 @@ export class NodesRepository extends BaseRepository {
     } else {
       // PostgreSQL
       const db = this.getPostgresDb();
+      const nodeNum = this.col('nodeNum');
+      const lastHeard = this.col('lastHeard');
+      const fromNodeNum = this.col('fromNodeNum');
+      const toNodeNum = this.col('toNodeNum');
+      const lastTracerouteRequest = this.col('lastTracerouteRequest');
       const results = await db.execute(sql`
         SELECT n.*
         FROM nodes n
-        WHERE n."nodeNum" != ${localNodeNum}
-          AND n."lastHeard" > ${activeNodeCutoffSeconds}
+        WHERE n.${nodeNum} != ${localNodeNum}
+          AND n.${lastHeard} > ${activeNodeCutoffSeconds}
           AND (
             (
               (SELECT COUNT(*) FROM traceroutes t
-               WHERE t."fromNodeNum" = ${localNodeNum} AND t."toNodeNum" = n."nodeNum") = 0
-              AND (n."lastTracerouteRequest" IS NULL OR n."lastTracerouteRequest" < ${threeHoursAgoMs})
+               WHERE t.${fromNodeNum} = ${localNodeNum} AND t.${toNodeNum} = n.${nodeNum}) = 0
+              AND (n.${lastTracerouteRequest} IS NULL OR n.${lastTracerouteRequest} < ${threeHoursAgoMs})
             )
             OR
             (
               (SELECT COUNT(*) FROM traceroutes t
-               WHERE t."fromNodeNum" = ${localNodeNum} AND t."toNodeNum" = n."nodeNum") > 0
-              AND (n."lastTracerouteRequest" IS NULL OR n."lastTracerouteRequest" < ${expirationMsAgo})
+               WHERE t.${fromNodeNum} = ${localNodeNum} AND t.${toNodeNum} = n.${nodeNum}) > 0
+              AND (n.${lastTracerouteRequest} IS NULL OR n.${lastTracerouteRequest} < ${expirationMsAgo})
             )
           )
-        ORDER BY n."lastHeard" DESC
+        ORDER BY n.${lastHeard} DESC
       `);
       // PostgreSQL returns { rows: [...] }
       const rows = (results as unknown as { rows: unknown[] }).rows as DbNode[];
