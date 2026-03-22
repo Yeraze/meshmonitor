@@ -959,7 +959,9 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "canViewOnMap" BOOLEAN NOT NULL DEFAULT false,
     "canRead" BOOLEAN NOT NULL DEFAULT false,
     "canWrite" BOOLEAN NOT NULL DEFAULT false,
-    "canDelete" BOOLEAN NOT NULL DEFAULT false
+    "canDelete" BOOLEAN NOT NULL DEFAULT false,
+    "grantedAt" BIGINT,
+    "grantedBy" INTEGER REFERENCES users(id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -977,6 +979,8 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     details TEXT,
     "ipAddress" TEXT,
     "userAgent" TEXT,
+    "valueBefore" TEXT,
+    "valueAfter" TEXT,
     timestamp BIGINT NOT NULL
   );
 
@@ -1494,7 +1498,10 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       canRead BOOLEAN NOT NULL DEFAULT false,
       canWrite BOOLEAN NOT NULL DEFAULT false,
       canDelete BOOLEAN NOT NULL DEFAULT false,
-      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+      grantedAt BIGINT,
+      grantedBy INT,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (grantedBy) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
     `CREATE TABLE IF NOT EXISTS sessions (
@@ -1553,6 +1560,8 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       details TEXT,
       ipAddress VARCHAR(255),
       userAgent TEXT,
+      valueBefore TEXT,
+      valueAfter TEXT,
       timestamp BIGINT NOT NULL,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL,
       INDEX idx_audit_log_timestamp (timestamp)

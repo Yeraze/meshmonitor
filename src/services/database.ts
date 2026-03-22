@@ -7369,6 +7369,16 @@ class DatabaseService {
   }
 
   cleanupOldRouteSegments(days: number = 30): number {
+    // For PostgreSQL/MySQL, fire-and-forget async cleanup
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        this.traceroutesRepo.cleanupOldRouteSegments(days).catch(err => {
+          logger.debug('Failed to cleanup old route segments:', err);
+        });
+      }
+      return 0;
+    }
+
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare(`
       DELETE FROM route_segments
@@ -7382,6 +7392,16 @@ class DatabaseService {
    * Delete traceroutes older than the specified number of days
    */
   cleanupOldTraceroutes(days: number = 30): number {
+    // For PostgreSQL/MySQL, fire-and-forget async cleanup
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        this.traceroutesRepo.cleanupOldTraceroutes(days * 24).catch(err => {
+          logger.debug('Failed to cleanup old traceroutes:', err);
+        });
+      }
+      return 0;
+    }
+
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM traceroutes WHERE timestamp < ?');
     const result = stmt.run(cutoff);
@@ -7392,6 +7412,16 @@ class DatabaseService {
    * Delete neighbor info records older than the specified number of days
    */
   cleanupOldNeighborInfo(days: number = 30): number {
+    // For PostgreSQL/MySQL, fire-and-forget async cleanup
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.neighborsRepo) {
+        this.neighborsRepo.cleanupOldNeighborInfo(days).catch(err => {
+          logger.debug('Failed to cleanup old neighbor info:', err);
+        });
+      }
+      return 0;
+    }
+
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM neighbor_info WHERE timestamp < ?');
     const result = stmt.run(cutoff);
@@ -7403,6 +7433,23 @@ class DatabaseService {
    * This can take a while on large databases and temporarily doubles disk usage
    */
   vacuum(): void {
+    // For PostgreSQL/MySQL, use native vacuum/optimize
+    if (this.drizzleDbType === 'postgres') {
+      logger.info('🧹 Running VACUUM on PostgreSQL database...');
+      this.postgresPool!.query('VACUUM').then(() => {
+        logger.info('✅ PostgreSQL VACUUM complete');
+      }).catch(err => {
+        logger.error('Failed to VACUUM PostgreSQL:', err);
+      });
+      return;
+    }
+    if (this.drizzleDbType === 'mysql') {
+      logger.info('🧹 Running OPTIMIZE TABLE on MySQL database...');
+      // MySQL OPTIMIZE TABLE requires table names; skip for now as it's not critical
+      logger.info('✅ MySQL OPTIMIZE TABLE skipped (not critical)');
+      return;
+    }
+
     logger.info('🧹 Running VACUUM on database...');
     this.db.exec('VACUUM');
     logger.info('✅ VACUUM complete');
@@ -7412,6 +7459,17 @@ class DatabaseService {
    * Get the current database file size in bytes
    */
   getDatabaseSize(): number {
+    // For PostgreSQL, use pg_database_size()
+    if (this.drizzleDbType === 'postgres') {
+      // Return 0 from sync context; use getDatabaseSizeAsync for accurate results
+      return 0;
+    }
+    // For MySQL, use information_schema
+    if (this.drizzleDbType === 'mysql') {
+      // Return 0 from sync context; use getDatabaseSizeAsync for accurate results
+      return 0;
+    }
+
     const stmt = this.db.prepare('SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()');
     const result = stmt.get() as { size: number } | undefined;
     return result?.size ?? 0;
@@ -8469,8 +8527,8 @@ class DatabaseService {
           [cutoff]
         );
         const userStats = await client.query(
-          `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
-           WHERE al.timestamp >= $1 GROUP BY al.user_id, u.username ORDER BY count DESC LIMIT 10`,
+          `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al."userId" = u.id
+           WHERE al.timestamp >= $1 GROUP BY al."userId", u.username ORDER BY count DESC LIMIT 10`,
           [cutoff]
         );
         const dailyStats = await client.query(
@@ -8497,8 +8555,8 @@ class DatabaseService {
         [cutoff]
       );
       const [userRows] = await pool.query(
-        `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
-         WHERE al.timestamp >= ? GROUP BY al.user_id ORDER BY count DESC LIMIT 10`,
+        `SELECT u.username, COUNT(*) as count FROM audit_log al LEFT JOIN users u ON al.userId = u.id
+         WHERE al.timestamp >= ? GROUP BY al.userId ORDER BY count DESC LIMIT 10`,
         [cutoff]
       );
       const [dailyRows] = await pool.query(
@@ -8521,6 +8579,16 @@ class DatabaseService {
 
   // Cleanup old audit logs
   cleanupAuditLogs(days: number): number {
+    // For PostgreSQL/MySQL, fire-and-forget async cleanup
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.authRepo) {
+        this.authRepo.cleanupOldAuditLogs(days).catch(err => {
+          logger.debug('Failed to cleanup old audit logs:', err);
+        });
+      }
+      return 0;
+    }
+
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM audit_log WHERE timestamp < ?');
     const result = stmt.run(cutoff);
@@ -10132,14 +10200,23 @@ class DatabaseService {
   }
 
   async cleanupOldTraceroutesAsync(days: number = 30): Promise<number> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
+      return this.traceroutesRepo.cleanupOldTraceroutes(days * 24);
+    }
     return this.cleanupOldTraceroutes(days);
   }
 
   async cleanupOldRouteSegmentsAsync(days: number = 30): Promise<number> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
+      return this.traceroutesRepo.cleanupOldRouteSegments(days);
+    }
     return this.cleanupOldRouteSegments(days);
   }
 
   async cleanupOldNeighborInfoAsync(days: number = 30): Promise<number> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.neighborsRepo) {
+      return this.neighborsRepo.cleanupOldNeighborInfo(days);
+    }
     return this.cleanupOldNeighborInfo(days);
   }
 
@@ -10152,14 +10229,35 @@ class DatabaseService {
   }
 
   async cleanupAuditLogsAsync(days: number): Promise<number> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.authRepo) {
+      return this.authRepo.cleanupOldAuditLogs(days);
+    }
     return this.cleanupAuditLogs(days);
   }
 
   async vacuumAsync(): Promise<void> {
+    if (this.drizzleDbType === 'postgres') {
+      await this.postgresPool!.query('VACUUM');
+      return;
+    }
+    if (this.drizzleDbType === 'mysql') {
+      // MySQL auto-manages space; OPTIMIZE TABLE requires table names
+      return;
+    }
     return this.vacuum();
   }
 
   async getDatabaseSizeAsync(): Promise<number> {
+    if (this.drizzleDbType === 'postgres') {
+      const result = await this.postgresPool!.query('SELECT pg_database_size(current_database()) as size');
+      return Number(result.rows[0]?.size ?? 0);
+    }
+    if (this.drizzleDbType === 'mysql') {
+      const [rows] = await this.mysqlPool!.query(
+        `SELECT SUM(data_length + index_length) as size FROM information_schema.tables WHERE table_schema = DATABASE()`
+      );
+      return Number((rows as any[])[0]?.size ?? 0);
+    }
     return this.getDatabaseSize();
   }
 

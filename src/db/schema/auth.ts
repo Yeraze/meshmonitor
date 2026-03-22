@@ -69,6 +69,8 @@ export const permissionsPostgres = pgTable('permissions', {
   canRead: pgBoolean('canRead').notNull().default(false),
   canWrite: pgBoolean('canWrite').notNull().default(false),
   canDelete: pgBoolean('canDelete').notNull().default(false),
+  grantedAt: pgBigint('grantedAt', { mode: 'number' }),
+  grantedBy: pgInteger('grantedBy').references(() => usersPostgres.id, { onDelete: 'set null' }),
 });
 
 // ============ SESSIONS ============
@@ -172,6 +174,8 @@ export const permissionsMysql = mysqlTable('permissions', {
   canRead: myBoolean('canRead').notNull().default(false),
   canWrite: myBoolean('canWrite').notNull().default(false),
   canDelete: myBoolean('canDelete').notNull().default(false),
+  grantedAt: myBigint('grantedAt', { mode: 'number' }),
+  grantedBy: myInt('grantedBy').references(() => usersMysql.id, { onDelete: 'set null' }),
 });
 
 export const sessionsMysql = mysqlTable('sessions', {

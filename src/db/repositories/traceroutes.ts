@@ -317,6 +317,24 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
+   * Delete old route segments that are not record holders
+   */
+  async cleanupOldRouteSegments(days: number = 30): Promise<number> {
+    const cutoff = this.now() - (days * 24 * 60 * 60 * 1000);
+    const { routeSegments } = this.tables;
+    const toDelete = await this.db
+      .select({ count: count() })
+      .from(routeSegments)
+      .where(and(lt(routeSegments.timestamp, cutoff), eq(routeSegments.isRecordHolder, false)));
+    const total = Number(toDelete[0].count);
+    if (total > 0) {
+      await this.db.delete(routeSegments)
+        .where(and(lt(routeSegments.timestamp, cutoff), eq(routeSegments.isRecordHolder, false)));
+    }
+    return total;
+  }
+
+  /**
    * Delete all route segments
    */
   async deleteAllRouteSegments(): Promise<number> {
