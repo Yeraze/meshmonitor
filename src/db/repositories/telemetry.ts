@@ -238,10 +238,10 @@ export class TelemetryRepository extends BaseRepository {
     } else {
       const db = this.getPostgresDb();
       const rows = await db.execute(
-        sql`SELECT DISTINCT ON ("nodeId") "nodeId", value
+        sql`SELECT DISTINCT ON (${this.col('nodeId')}) ${this.col('nodeId')}, value
             FROM telemetry
-            WHERE "telemetryType" = ${telemetryType}
-            ORDER BY "nodeId", timestamp DESC`
+            WHERE ${this.col('telemetryType')} = ${telemetryType}
+            ORDER BY ${this.col('nodeId')}, timestamp DESC`
       );
       for (const row of rows.rows) {
         result.set(row.nodeId as string, Number(row.value));
