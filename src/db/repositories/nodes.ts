@@ -257,18 +257,7 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       };
 
-      if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        await db.insert(nodes).values(newNode).onDuplicateKeyUpdate({
-          set: upsertSet,
-        });
-      } else {
-        // SQLite and PostgreSQL both use onConflictDoUpdate
-        await (this.db as any).insert(nodes).values(newNode).onConflictDoUpdate({
-          target: nodes.nodeNum,
-          set: upsertSet,
-        });
-      }
+      await this.upsert(nodes, newNode, nodes.nodeNum, upsertSet);
     }
   }
 

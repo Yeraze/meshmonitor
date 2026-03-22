@@ -683,28 +683,10 @@ export class AuthRepository extends BaseRepository {
 
   /**
    * Set session (upsert).
-   * Keeps branching: MySQL uses onDuplicateKeyUpdate vs onConflictDoUpdate.
    */
   async setSession(sid: string, sess: string, expire: number): Promise<void> {
     const { sessions } = this.tables;
-    if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .insert(sessions)
-        .values({ sid, sess, expire })
-        .onDuplicateKeyUpdate({
-          set: { sess, expire },
-        });
-    } else {
-      // SQLite and PostgreSQL both use onConflictDoUpdate
-      await (this.db as any)
-        .insert(sessions)
-        .values({ sid, sess, expire })
-        .onConflictDoUpdate({
-          target: sessions.sid,
-          set: { sess, expire },
-        });
-    }
+    await this.upsert(sessions, { sid, sess, expire }, sessions.sid, { sess, expire });
   }
 
   /**

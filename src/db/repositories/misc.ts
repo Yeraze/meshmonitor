@@ -110,22 +110,7 @@ export class MiscRepository extends BaseRepository {
       fetched_at: estimate.fetched_at,
     };
 
-    if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .insert(solarEstimates)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: setData });
-    } else {
-      // SQLite and PostgreSQL both use onConflictDoUpdate
-      await (this.db as any)
-        .insert(solarEstimates)
-        .values(values)
-        .onConflictDoUpdate({
-          target: solarEstimates.timestamp,
-          set: setData,
-        });
-    }
+    await this.upsert(solarEstimates, values, solarEstimates.timestamp, setData);
   }
 
   /**
@@ -198,22 +183,7 @@ export class MiscRepository extends BaseRepository {
     const now = this.now();
     const { autoTracerouteNodes } = this.tables;
 
-    if (this.isMySQL()) {
-      // MySQL doesn't have onConflictDoNothing, use try/catch
-      try {
-        await this.db
-          .insert(autoTracerouteNodes)
-          .values({ nodeNum, createdAt: now });
-      } catch {
-        // Ignore duplicate key errors
-      }
-    } else {
-      // SQLite and PostgreSQL support onConflictDoNothing
-      await (this.db as any)
-        .insert(autoTracerouteNodes)
-        .values({ nodeNum, createdAt: now })
-        .onConflictDoNothing();
-    }
+    await this.insertIgnore(autoTracerouteNodes, { nodeNum, createdAt: now });
   }
 
   /**
@@ -584,22 +554,7 @@ export class MiscRepository extends BaseRepository {
     const now = this.now();
     const { autoTimeSyncNodes } = this.tables;
 
-    if (this.isMySQL()) {
-      // MySQL doesn't have onConflictDoNothing, use try/catch
-      try {
-        await this.db
-          .insert(autoTimeSyncNodes)
-          .values({ nodeNum, createdAt: now });
-      } catch {
-        // Ignore duplicate key errors
-      }
-    } else {
-      // SQLite and PostgreSQL support onConflictDoNothing
-      await (this.db as any)
-        .insert(autoTimeSyncNodes)
-        .values({ nodeNum, createdAt: now })
-        .onConflictDoNothing();
-    }
+    await this.insertIgnore(autoTimeSyncNodes, { nodeNum, createdAt: now });
   }
 
   /**

@@ -51,24 +51,12 @@ export class SettingsRepository extends BaseRepository {
     const now = this.now();
     const { settings } = this.tables;
 
-    if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .insert(settings)
-        .values({ key, value, createdAt: now, updatedAt: now })
-        .onDuplicateKeyUpdate({
-          set: { value, updatedAt: now },
-        });
-    } else {
-      // SQLite and PostgreSQL both use onConflictDoUpdate
-      await (this.db as any)
-        .insert(settings)
-        .values({ key, value, createdAt: now, updatedAt: now })
-        .onConflictDoUpdate({
-          target: settings.key,
-          set: { value, updatedAt: now },
-        });
-    }
+    await this.upsert(
+      settings,
+      { key, value, createdAt: now, updatedAt: now },
+      settings.key,
+      { value, updatedAt: now },
+    );
   }
 
   /**
@@ -84,27 +72,13 @@ export class SettingsRepository extends BaseRepository {
 
     const { settings: settingsTable } = this.tables;
 
-    if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      for (const [key, value] of entries) {
-        await db
-          .insert(settingsTable)
-          .values({ key, value, createdAt: now, updatedAt: now })
-          .onDuplicateKeyUpdate({
-            set: { value, updatedAt: now },
-          });
-      }
-    } else {
-      // SQLite and PostgreSQL both use onConflictDoUpdate
-      for (const [key, value] of entries) {
-        await (this.db as any)
-          .insert(settingsTable)
-          .values({ key, value, createdAt: now, updatedAt: now })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value, updatedAt: now },
-          });
-      }
+    for (const [key, value] of entries) {
+      await this.upsert(
+        settingsTable,
+        { key, value, createdAt: now, updatedAt: now },
+        settingsTable.key,
+        { value, updatedAt: now },
+      );
     }
   }
 

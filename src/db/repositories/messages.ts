@@ -51,20 +51,7 @@ export class MessagesRepository extends BaseRepository {
       decryptedBy: messageData.decryptedBy ?? null,
     };
 
-    let result: any;
-    if (this.isMySQL()) {
-      // MySQL uses onDuplicateKeyUpdate as equivalent of onConflictDoNothing
-      result = await this.getMysqlDb()
-        .insert(messages)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: { id: messageData.id } });
-    } else {
-      // SQLite and PostgreSQL both support onConflictDoNothing
-      result = await this.db
-        .insert(messages)
-        .values(values)
-        .onConflictDoNothing();
-    }
+    const result = await this.insertIgnore(messages, values);
     return this.getAffectedRows(result) > 0;
   }
 
