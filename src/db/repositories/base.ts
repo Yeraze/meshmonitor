@@ -156,6 +156,22 @@ export abstract class BaseRepository {
   }
 
   /**
+   * Extract affected row count from a mutation result.
+   * Normalizes across SQLite (.changes), PostgreSQL (.rowCount), and MySQL ([0].affectedRows).
+   */
+  protected getAffectedRows(result: any): number {
+    if (this.isSQLite()) {
+      return Number(result?.changes ?? 0);
+    }
+    if (this.isMySQL()) {
+      // MySQL execute() returns [ResultSetHeader, FieldPacket[]]
+      return Number((result as any)?.[0]?.affectedRows ?? 0);
+    }
+    // PostgreSQL
+    return Number((result as any)?.rowCount ?? 0);
+  }
+
+  /**
    * Get current timestamp in milliseconds
    */
   protected now(): number {

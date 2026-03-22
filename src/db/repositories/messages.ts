@@ -51,31 +51,21 @@ export class MessagesRepository extends BaseRepository {
       decryptedBy: messageData.decryptedBy ?? null,
     };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
+    let result: any;
+    if (this.isMySQL()) {
+      // MySQL uses onDuplicateKeyUpdate as equivalent of onConflictDoNothing
+      result = await this.getMysqlDb()
         .insert(messages)
         .values(values)
-        .onConflictDoNothing();
-      // SQLite Drizzle returns { changes: number } - 0 means conflict (no insert)
-      return (result as any).changes > 0;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .insert(messages)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: { id: messageData.id } }); // MySQL equivalent of onConflictDoNothing
-      // MySQL returns affectedRows: 1 for insert, 0 for duplicate with same values
-      return (result as any)[0]?.affectedRows > 0;
+        .onDuplicateKeyUpdate({ set: { id: messageData.id } });
     } else {
-      const db = this.getPostgresDb();
-      const result = await db
+      // SQLite and PostgreSQL both support onConflictDoNothing
+      result = await this.db
         .insert(messages)
         .values(values)
         .onConflictDoNothing();
-      // PostgreSQL returns rowCount: 0 on conflict
-      return (result as any).rowCount > 0;
     }
+    return this.getAffectedRows(result) > 0;
   }
 
   /**

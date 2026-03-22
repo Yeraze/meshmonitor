@@ -1030,14 +1030,7 @@ export class MiscRepository extends BaseRepository {
   async clearPacketLogs(): Promise<number> {
     try {
       const results = await this.executeRun(sql`DELETE FROM packet_log`);
-      let deletedCount: number;
-      if (this.isMySQL()) {
-        deletedCount = (results as any)[0]?.affectedRows ?? 0;
-      } else if (this.isPostgres()) {
-        deletedCount = (results as any).rowCount ?? 0;
-      } else {
-        deletedCount = (results as any).changes ?? (results as any).rowsAffected ?? 0;
-      }
+      const deletedCount = this.getAffectedRows(results);
       logger.debug(`[MiscRepository] Cleared ${deletedCount} packet log entries`);
       return deletedCount;
     } catch (error) {
@@ -1056,14 +1049,7 @@ export class MiscRepository extends BaseRepository {
       const results = await this.executeRun(
         sql`DELETE FROM packet_log WHERE timestamp < ${cutoffTimestamp}`
       );
-      let deleted: number;
-      if (this.isMySQL()) {
-        deleted = (results as any)[0]?.affectedRows ?? 0;
-      } else if (this.isPostgres()) {
-        deleted = (results as any).rowCount ?? 0;
-      } else {
-        deleted = (results as any).changes ?? (results as any).rowsAffected ?? 0;
-      }
+      const deleted = this.getAffectedRows(results);
       if (deleted > 0) {
         logger.debug(`[MiscRepository] Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
       }
