@@ -88,7 +88,7 @@ router.post('/trigger', async (req: Request, res: Response) => {
 
     if (result.success) {
       // Log upgrade trigger to audit log
-      databaseService.auditLog(
+      databaseService.auditLogAsync(
         typeof userId === 'number' ? userId : null,
         'upgrade_triggered',
         'system',
@@ -204,7 +204,7 @@ router.post('/cancel/:upgradeId', async (req: Request, res: Response) => {
         ? `${upgradeStatus.fromVersion} → ${upgradeStatus.toVersion}`
         : 'unknown version';
 
-      databaseService.auditLog(
+      databaseService.auditLogAsync(
         req.user?.id || null,
         'upgrade_cancelled',
         'system',

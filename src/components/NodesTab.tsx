@@ -23,6 +23,7 @@ import { useResizable } from '../hooks/useResizable';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
+import PolarGridOverlay from './PolarGridOverlay.js';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
@@ -150,6 +151,40 @@ const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode; enable
 );
 
 /**
+ * Controller that applies the configured default map center once server settings load.
+ * Only acts when there was no saved localStorage position at mount time (new session / anonymous).
+ * The configured default takes priority over auto-calculated node positions.
+ */
+const DefaultCenterController: React.FC<{
+  lat: number | null;
+  lon: number | null;
+  zoom: number | null;
+}> = ({ lat, lon, zoom }) => {
+  const map = useMap();
+  const applied = useRef(false);
+  // Capture whether localStorage had a saved map position at mount time.
+  // MapPositionHandler updates mapCenter immediately on mount, so we can't
+  // rely on the current mapCenter value — check localStorage directly.
+  const hadSavedPosition = useRef(localStorage.getItem('mapCenter') !== null);
+
+  useEffect(() => {
+    console.log('[DefaultCenterController] effect fired', {
+      applied: applied.current,
+      hadSaved: hadSavedPosition.current,
+      lat, lon, zoom,
+    });
+    if (applied.current || hadSavedPosition.current) return;
+    if (lat !== null && lon !== null && zoom !== null) {
+      console.log('[DefaultCenterController] applying configured default', lat, lon, zoom);
+      applied.current = true;
+      map.setView([lat, lon], zoom, { animate: false });
+    }
+  }, [map, lat, lon, zoom]);
+
+  return null;
+};
+
+/**
  * Controller component that zooms the map to fit the traceroute bounds
  * Must be placed inside MapContainer to access the map instance
  */
@@ -226,6 +261,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowEstimatedPositions,
     showAccuracyRegions,
     setShowAccuracyRegions,
+    showPolarGrid,
+    setShowPolarGrid,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -244,6 +281,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { currentNodeId } = useDeviceConfig();
   const { nodes } = useNodes();
+
+  // Compute own node position for polar grid overlay (needs to be at component scope)
+  const ownHomeNode = nodes.find(n => n.user?.id === currentNodeId);
+  const ownNodePosition = ownHomeNode?.position?.latitude && ownHomeNode?.position?.longitude
+    ? { lat: ownHomeNode.position.latitude, lng: ownHomeNode.position.longitude }
+    : null;
 
   // Debounce ref for hover mouseout to prevent flicker from tooltip interaction
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -295,6 +338,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeHopsCalculation,
     neighborInfoMinZoom,
     overlayColors,
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
   } = useSettings();
 
   const { hasPermission, authStatus } = useAuth();
@@ -1055,40 +1101,55 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
-  const getMapCenter = (): [number, number] => {
-    // Use saved map center from previous session if available
+  const getMapCenter = (): { center: [number, number]; zoom: number } => {
+    // 1. Saved localStorage position (logged-in user's last session)
     if (mapCenter) {
-      return mapCenter;
+      return { center: mapCenter, zoom: mapZoom };
     }
 
-    // If no nodes with positions, use default location
-    if (nodesWithPosition.length === 0) {
-      return [25.7617, -80.1918]; // Default to Miami area
+    // 2. Configured default center (from server settings)
+    if (
+      defaultMapCenterLat !== null &&
+      defaultMapCenterLon !== null &&
+      defaultMapCenterZoom !== null
+    ) {
+      return {
+        center: [defaultMapCenterLat, defaultMapCenterLon],
+        zoom: defaultMapCenterZoom,
+      };
     }
 
-    // Prioritize the locally connected node's position for first-time visitors
-    // Uses effective position to respect position overrides (Issue #1526)
-    if (currentNodeId) {
-      const localNode = nodesWithPosition.find(node => node.user?.id === currentNodeId);
-      if (localNode) {
-        const effectivePos = getEffectivePosition(localNode);
-        if (effectivePos.latitude != null && effectivePos.longitude != null) {
-          return [effectivePos.latitude, effectivePos.longitude];
+    // 3. Calculated from visible nodes
+    if (nodesWithPosition.length > 0) {
+      // Prioritize the locally connected node's position for first-time visitors
+      // Uses effective position to respect position overrides (Issue #1526)
+      if (currentNodeId) {
+        const localNode = nodesWithPosition.find(node => node.user?.id === currentNodeId);
+        if (localNode) {
+          const effectivePos = getEffectivePosition(localNode);
+          if (effectivePos.latitude != null && effectivePos.longitude != null) {
+            return { center: [effectivePos.latitude, effectivePos.longitude], zoom: mapZoom };
+          }
         }
       }
+
+      // Fall back to average position of all nodes (using effective positions)
+      const avgLat = nodesWithPosition.reduce((sum, node) => {
+        const pos = getEffectivePosition(node);
+        return sum + (pos.latitude ?? 0);
+      }, 0) / nodesWithPosition.length;
+      const avgLng = nodesWithPosition.reduce((sum, node) => {
+        const pos = getEffectivePosition(node);
+        return sum + (pos.longitude ?? 0);
+      }, 0) / nodesWithPosition.length;
+      return { center: [avgLat, avgLng], zoom: mapZoom };
     }
 
-    // Fall back to average position of all nodes (using effective positions)
-    const avgLat = nodesWithPosition.reduce((sum, node) => {
-      const pos = getEffectivePosition(node);
-      return sum + (pos.latitude ?? 0);
-    }, 0) / nodesWithPosition.length;
-    const avgLng = nodesWithPosition.reduce((sum, node) => {
-      const pos = getEffectivePosition(node);
-      return sum + (pos.longitude ?? 0);
-    }, 0) / nodesWithPosition.length;
-    return [avgLat, avgLng];
+    // 4. World view (absolute last resort)
+    return { center: [20, 0], zoom: 2 };
   };
+
+  const mapDefaults = getMapCenter();
 
   return (
     <div className="nodes-split-view nodes-anchored-view">
@@ -1574,7 +1635,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showPaths}
                       onChange={(e) => setShowPaths(e.target.checked)}
                     />
-                    <span>Show Route Segments</span>
+                    <span>{t('map.showRouteSegments')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1582,7 +1643,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showNeighborInfo}
                       onChange={(e) => setShowNeighborInfo(e.target.checked)}
                     />
-                    <span>Show Neighbor Info</span>
+                    <span>{t('map.showNeighborInfo')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1590,7 +1651,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showRoute}
                       onChange={(e) => setShowRoute(e.target.checked)}
                     />
-                    <span>Show Traceroute</span>
+                    <span>{t('map.showTraceroute')}</span>
                   </label>
                   {tracerouteNodeNums && (
                     <button
@@ -1607,7 +1668,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showMqttNodes}
                       onChange={(e) => setShowMqttNodes(e.target.checked)}
                     />
-                    <span>Show MQTT</span>
+                    <span>{t('map.showMqtt')}</span>
                   </label>
                   {authStatus?.meshcoreEnabled && (
                   <label className="map-control-item">
@@ -1616,7 +1677,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showMeshCoreNodes}
                       onChange={(e) => setShowMeshCoreNodes(e.target.checked)}
                     />
-                    <span>Show MeshCore</span>
+                    <span>{t('map.showMeshCore')}</span>
                   </label>
                   )}
                   <label className="map-control-item">
@@ -1625,7 +1686,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showMotion}
                       onChange={(e) => setShowMotion(e.target.checked)}
                     />
-                    <span>Show Position History</span>
+                    <span>{t('map.showPositionHistory')}</span>
                   </label>
                   {showMotion && positionHistory.length > 1 && (() => {
                     // Calculate max hours from oldest position in history
@@ -1674,7 +1735,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showAnimations}
                       onChange={(e) => setShowAnimations(e.target.checked)}
                     />
-                    <span>Show Animations</span>
+                    <span>{t('map.showAnimations')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1682,7 +1743,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showEstimatedPositions}
                       onChange={(e) => setShowEstimatedPositions(e.target.checked)}
                     />
-                    <span>Show Estimated Positions</span>
+                    <span>{t('map.showEstimatedPositions')}</span>
                   </label>
                   <label className="map-control-item">
                     <input
@@ -1690,7 +1751,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       checked={showAccuracyRegions}
                       onChange={(e) => setShowAccuracyRegions(e.target.checked)}
                     />
-                    <span>Show Accuracy Regions</span>
+                    <span>{t('map.showAccuracyRegions')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showPolarGrid}
+                      onChange={(e) => setShowPolarGrid(e.target.checked)}
+                      disabled={!ownNodePosition}
+                    />
+                    <span title={!ownNodePosition ? t('map.polarGridDisabledTooltip') : undefined}>
+                      {t('map.showPolarGrid')}
+                    </span>
                   </label>
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
@@ -1708,8 +1780,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             </div>
         )}
             <MapContainer
-              center={getMapCenter()}
-              zoom={mapZoom}
+              center={mapDefaults.center}
+              zoom={mapDefaults.zoom}
               style={{ height: '100%', width: '100%' }}
             >
               <MapCenterController
@@ -1732,6 +1804,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
+              <DefaultCenterController
+                lat={defaultMapCenterLat}
+                lon={defaultMapCenterLon}
+                zoom={defaultMapCenterZoom}
+              />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend
@@ -2020,6 +2097,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                   );
                 })}
+
+              {showPolarGrid && ownNodePosition && (
+                <PolarGridOverlay center={ownNodePosition} />
+              )}
 
               {/* Draw traceroute paths (independent layer) */}
               <TraceroutePathsLayer paths={traceroutePathsElements} enabled={showPaths} />

@@ -194,7 +194,7 @@ export class MeshtasticProtobufService {
   /**
    * Create a NodeInfo request ToRadio using proper protobuf encoding
    * This sends a User message with wantResponse=true to request the destination node's user info
-   * Similar to "Exchange User Info" feature in mobile apps - triggers key exchange
+   * Similar to "Exchange Node Info" feature in mobile apps - triggers key exchange
    */
   createNodeInfoRequestMessage(
     destination: number,
@@ -1477,6 +1477,42 @@ export class MeshtasticProtobufService {
     } catch (error) {
       logger.error('❌ Failed to strip PKI encryption:', error);
       return toRadioBytes; // Return original on error
+    }
+  }
+
+  /**
+   * Decode a ServiceEnvelope from raw bytes (typically from mqttClientProxyMessage.data).
+   * Returns the decoded envelope with its MeshPacket, or null if decoding fails or packet is missing.
+   */
+  decodeServiceEnvelope(data: Uint8Array): { packet: any; channelId?: string; gatewayId?: string } | null {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    if (!data || data.length === 0) {
+      logger.warn('⚠️ Empty data passed to decodeServiceEnvelope');
+      return null;
+    }
+
+    try {
+      const ServiceEnvelope = root.lookupType('meshtastic.ServiceEnvelope');
+      const decoded = ServiceEnvelope.decode(data) as any;
+
+      if (!decoded.packet) {
+        logger.warn('⚠️ ServiceEnvelope has no packet field');
+        return null;
+      }
+
+      return {
+        packet: decoded.packet,
+        channelId: decoded.channelId || undefined,
+        gatewayId: decoded.gatewayId || undefined,
+      };
+    } catch (error) {
+      logger.warn('⚠️ Failed to decode ServiceEnvelope:', error);
+      return null;
     }
   }
 

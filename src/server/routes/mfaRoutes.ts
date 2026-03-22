@@ -61,7 +61,7 @@ router.post('/setup', requireAuth(), authLimiter, async (req: Request, res: Resp
     );
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       user.id,
       'mfa_setup_initiated',
       'auth',
@@ -106,7 +106,7 @@ router.post('/verify-setup', requireAuth(), authLimiter, async (req: Request, re
     // Verify the token
     const isValid = mfaService.verifyToken(freshUser.mfaSecret, token);
     if (!isValid) {
-      databaseService.auditLog(
+      databaseService.auditLogAsync(
         user.id,
         'mfa_setup_verify_failed',
         'auth',
@@ -120,7 +120,7 @@ router.post('/verify-setup', requireAuth(), authLimiter, async (req: Request, re
     await databaseService.enableUserMfaAsync(user.id);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       user.id,
       'mfa_enabled',
       'auth',
@@ -167,7 +167,7 @@ router.post('/disable', requireAuth(), authLimiter, async (req: Request, res: Re
         verified = true;
         // Update remaining backup codes
         await databaseService.consumeBackupCodeAsync(user.id, JSON.stringify(remaining));
-        databaseService.auditLog(
+        databaseService.auditLogAsync(
           user.id,
           'mfa_backup_code_used',
           'auth',
@@ -180,7 +180,7 @@ router.post('/disable', requireAuth(), authLimiter, async (req: Request, res: Re
     }
 
     if (!verified) {
-      databaseService.auditLog(
+      databaseService.auditLogAsync(
         user.id,
         'mfa_disable_failed',
         'auth',
@@ -194,7 +194,7 @@ router.post('/disable', requireAuth(), authLimiter, async (req: Request, res: Re
     await databaseService.clearUserMfaAsync(user.id);
 
     // Audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       user.id,
       'mfa_disabled',
       'auth',

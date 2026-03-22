@@ -64,7 +64,7 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    const channels = await databaseService.getAllChannelDatabaseEntriesAsync();
+    const channels = await databaseService.channelDatabase.getAllAsync();
 
     res.json({
       success: true,
@@ -144,7 +144,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const channel = await databaseService.getChannelDatabaseByIdAsync(id);
+    const channel = await databaseService.channelDatabase.getByIdAsync(id);
 
     if (!channel) {
       return res.status(404).json({
@@ -252,7 +252,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const newChannelId = await databaseService.createChannelDatabaseEntryAsync({
+    const newChannelId = await databaseService.channelDatabase.createAsync({
       name,
       psk: finalPsk,
       pskLength: finalPskLength,
@@ -262,7 +262,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
 
     // Get the created entry
-    const newChannel = await databaseService.getChannelDatabaseByIdAsync(newChannelId);
+    const newChannel = await databaseService.channelDatabase.getByIdAsync(newChannelId);
 
     // Invalidate the decryption cache so the new channel is available
     channelDecryptionService.invalidateCache();
@@ -349,7 +349,7 @@ router.put('/reorder', async (req: Request, res: Response) => {
       });
     }
 
-    await databaseService.reorderChannelDatabaseEntriesAsync(updates);
+    await databaseService.channelDatabase.reorderAsync(updates);
 
     // Invalidate the decryption cache
     channelDecryptionService.invalidateCache();
@@ -398,7 +398,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Check if entry exists
-    const existing = await databaseService.getChannelDatabaseByIdAsync(id);
+    const existing = await databaseService.channelDatabase.getByIdAsync(id);
     if (!existing) {
       return res.status(404).json({
         success: false,
@@ -497,7 +497,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    await databaseService.updateChannelDatabaseEntryAsync(id, updates);
+    await databaseService.channelDatabase.updateAsync(id, updates);
 
     // Invalidate the decryption cache
     channelDecryptionService.invalidateCache();
@@ -510,7 +510,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Get updated entry
-    const updatedChannel = await databaseService.getChannelDatabaseByIdAsync(id);
+    const updatedChannel = await databaseService.channelDatabase.getByIdAsync(id);
 
     logger.info(`Channel database entry ${id} updated by user ${user?.username ?? 'unknown'}`);
 
@@ -557,7 +557,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     // Check if entry exists
-    const existing = await databaseService.getChannelDatabaseByIdAsync(id);
+    const existing = await databaseService.channelDatabase.getByIdAsync(id);
     if (!existing) {
       return res.status(404).json({
         success: false,
@@ -566,7 +566,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    await databaseService.deleteChannelDatabaseEntryAsync(id);
+    await databaseService.channelDatabase.deleteAsync(id);
 
     // Invalidate the decryption cache
     channelDecryptionService.invalidateCache();
@@ -615,7 +615,7 @@ router.post('/:id/retroactive-decrypt', async (req: Request, res: Response) => {
     }
 
     // Check if entry exists
-    const existing = await databaseService.getChannelDatabaseByIdAsync(id);
+    const existing = await databaseService.channelDatabase.getByIdAsync(id);
     if (!existing) {
       return res.status(404).json({
         success: false,

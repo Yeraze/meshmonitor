@@ -9,12 +9,6 @@
  */
 import { eq, desc, sql, and, or, lte } from 'drizzle-orm';
 import {
-  pushSubscriptionsSqlite,
-  pushSubscriptionsPostgres,
-  pushSubscriptionsMysql,
-  userNotificationPreferencesSqlite,
-  userNotificationPreferencesPostgres,
-  userNotificationPreferencesMysql,
   readMessagesSqlite,
 } from '../schema/notifications.js';
 import {
@@ -74,30 +68,14 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getAllSubscriptions(): Promise<DbPushSubscription[]> {
     try {
-      if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        const rows = await db
-          .select()
-          .from(pushSubscriptionsSqlite)
-          .orderBy(desc(pushSubscriptionsSqlite.createdAt));
-        return rows.map(row => this.mapSubscriptionRow(row));
-      } else if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        const rows = await db
-          .select()
-          .from(pushSubscriptionsMysql)
-          .orderBy(desc(pushSubscriptionsMysql.createdAt));
-        return rows.map(row => this.mapSubscriptionRow(row));
-      } else {
-        const db = this.getPostgresDb();
-        const rows = await db
-          .select()
-          .from(pushSubscriptionsPostgres)
-          .orderBy(desc(pushSubscriptionsPostgres.createdAt));
-        return rows.map(row => this.mapSubscriptionRow(row));
-      }
+      const { pushSubscriptions } = this.tables;
+      const rows = await this.db
+        .select()
+        .from(pushSubscriptions)
+        .orderBy(desc(pushSubscriptions.createdAt));
+      return rows.map((row: any) => this.mapSubscriptionRow(row));
     } catch (error) {
-      logger.error('❌ Failed to get all subscriptions:', error);
+      logger.error('Failed to get all subscriptions:', error);
       return [];
     }
   }
@@ -107,131 +85,64 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getUserSubscriptions(userId: number | null | undefined): Promise<DbPushSubscription[]> {
     try {
-      if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        const rows = userId
-          ? await db
-              .select()
-              .from(pushSubscriptionsSqlite)
-              .where(eq(pushSubscriptionsSqlite.userId, userId))
-              .orderBy(desc(pushSubscriptionsSqlite.createdAt))
-          : await db
-              .select()
-              .from(pushSubscriptionsSqlite)
-              .orderBy(desc(pushSubscriptionsSqlite.createdAt));
-        return rows.map(row => this.mapSubscriptionRow(row));
-      } else if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        const rows = userId
-          ? await db
-              .select()
-              .from(pushSubscriptionsMysql)
-              .where(eq(pushSubscriptionsMysql.userId, userId))
-              .orderBy(desc(pushSubscriptionsMysql.createdAt))
-          : await db
-              .select()
-              .from(pushSubscriptionsMysql)
-              .orderBy(desc(pushSubscriptionsMysql.createdAt));
-        return rows.map(row => this.mapSubscriptionRow(row));
-      } else {
-        const db = this.getPostgresDb();
-        const rows = userId
-          ? await db
-              .select()
-              .from(pushSubscriptionsPostgres)
-              .where(eq(pushSubscriptionsPostgres.userId, userId))
-              .orderBy(desc(pushSubscriptionsPostgres.createdAt))
-          : await db
-              .select()
-              .from(pushSubscriptionsPostgres)
-              .orderBy(desc(pushSubscriptionsPostgres.createdAt));
-        return rows.map(row => this.mapSubscriptionRow(row));
-      }
+      const { pushSubscriptions } = this.tables;
+      const rows = userId
+        ? await this.db
+            .select()
+            .from(pushSubscriptions)
+            .where(eq(pushSubscriptions.userId, userId))
+            .orderBy(desc(pushSubscriptions.createdAt))
+        : await this.db
+            .select()
+            .from(pushSubscriptions)
+            .orderBy(desc(pushSubscriptions.createdAt));
+      return rows.map((row: any) => this.mapSubscriptionRow(row));
     } catch (error) {
-      logger.error('❌ Failed to get user subscriptions:', error);
+      logger.error('Failed to get user subscriptions:', error);
       return [];
     }
   }
 
   /**
-   * Save a push subscription (insert or update by endpoint)
+   * Save a push subscription (insert or update by endpoint).
+   * Keeps branching: MySQL uses onDuplicateKeyUpdate vs onConflictDoUpdate.
    */
   async saveSubscription(input: PushSubscriptionInput): Promise<void> {
     const now = this.now();
+    const { pushSubscriptions } = this.tables;
+    const values = {
+      userId: input.userId ?? null,
+      endpoint: input.endpoint,
+      p256dhKey: input.p256dhKey,
+      authKey: input.authKey,
+      userAgent: input.userAgent ?? null,
+      createdAt: now,
+      updatedAt: now,
+      lastUsedAt: now,
+    };
+    const setData = {
+      userId: input.userId ?? null,
+      p256dhKey: input.p256dhKey,
+      authKey: input.authKey,
+      userAgent: input.userAgent ?? null,
+      updatedAt: now,
+      lastUsedAt: now,
+    };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .insert(pushSubscriptionsSqlite)
-        .values({
-          userId: input.userId ?? null,
-          endpoint: input.endpoint,
-          p256dhKey: input.p256dhKey,
-          authKey: input.authKey,
-          userAgent: input.userAgent ?? null,
-          createdAt: now,
-          updatedAt: now,
-          lastUsedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: pushSubscriptionsSqlite.endpoint,
-          set: {
-            userId: input.userId ?? null,
-            p256dhKey: input.p256dhKey,
-            authKey: input.authKey,
-            userAgent: input.userAgent ?? null,
-            updatedAt: now,
-            lastUsedAt: now,
-          },
-        });
-    } else if (this.isMySQL()) {
+    if (this.isMySQL()) {
       const db = this.getMysqlDb();
       await db
-        .insert(pushSubscriptionsMysql)
-        .values({
-          userId: input.userId ?? null,
-          endpoint: input.endpoint,
-          p256dhKey: input.p256dhKey,
-          authKey: input.authKey,
-          userAgent: input.userAgent ?? null,
-          createdAt: now,
-          updatedAt: now,
-          lastUsedAt: now,
-        })
-        .onDuplicateKeyUpdate({
-          set: {
-            userId: input.userId ?? null,
-            p256dhKey: input.p256dhKey,
-            authKey: input.authKey,
-            userAgent: input.userAgent ?? null,
-            updatedAt: now,
-            lastUsedAt: now,
-          },
-        });
+        .insert(pushSubscriptions)
+        .values(values)
+        .onDuplicateKeyUpdate({ set: setData });
     } else {
-      const db = this.getPostgresDb();
-      await db
-        .insert(pushSubscriptionsPostgres)
-        .values({
-          userId: input.userId ?? null,
-          endpoint: input.endpoint,
-          p256dhKey: input.p256dhKey,
-          authKey: input.authKey,
-          userAgent: input.userAgent ?? null,
-          createdAt: now,
-          updatedAt: now,
-          lastUsedAt: now,
-        })
+      // SQLite and PostgreSQL both use onConflictDoUpdate
+      await (this.db as any)
+        .insert(pushSubscriptions)
+        .values(values)
         .onConflictDoUpdate({
-          target: pushSubscriptionsPostgres.endpoint,
-          set: {
-            userId: input.userId ?? null,
-            p256dhKey: input.p256dhKey,
-            authKey: input.authKey,
-            userAgent: input.userAgent ?? null,
-            updatedAt: now,
-            lastUsedAt: now,
-          },
+          target: pushSubscriptions.endpoint,
+          set: setData,
         });
     }
   }
@@ -240,22 +151,10 @@ export class NotificationsRepository extends BaseRepository {
    * Remove a push subscription by endpoint
    */
   async removeSubscription(endpoint: string): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .delete(pushSubscriptionsSqlite)
-        .where(eq(pushSubscriptionsSqlite.endpoint, endpoint));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .delete(pushSubscriptionsMysql)
-        .where(eq(pushSubscriptionsMysql.endpoint, endpoint));
-    } else {
-      const db = this.getPostgresDb();
-      await db
-        .delete(pushSubscriptionsPostgres)
-        .where(eq(pushSubscriptionsPostgres.endpoint, endpoint));
-    }
+    const { pushSubscriptions } = this.tables;
+    await this.db
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint));
   }
 
   /**
@@ -263,26 +162,11 @@ export class NotificationsRepository extends BaseRepository {
    */
   async updateSubscriptionLastUsed(endpoint: string): Promise<void> {
     const now = this.now();
-
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db
-        .update(pushSubscriptionsSqlite)
-        .set({ lastUsedAt: now })
-        .where(eq(pushSubscriptionsSqlite.endpoint, endpoint));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .update(pushSubscriptionsMysql)
-        .set({ lastUsedAt: now })
-        .where(eq(pushSubscriptionsMysql.endpoint, endpoint));
-    } else {
-      const db = this.getPostgresDb();
-      await db
-        .update(pushSubscriptionsPostgres)
-        .set({ lastUsedAt: now })
-        .where(eq(pushSubscriptionsPostgres.endpoint, endpoint));
-    }
+    const { pushSubscriptions } = this.tables;
+    await this.db
+      .update(pushSubscriptions)
+      .set({ lastUsedAt: now })
+      .where(eq(pushSubscriptions.endpoint, endpoint));
   }
 
   // ============ USER NOTIFICATION PREFERENCES ============
@@ -292,211 +176,104 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getUserPreferences(userId: number): Promise<NotificationPreferences | null> {
     if (!Number.isInteger(userId) || userId <= 0) {
-      logger.error(`❌ Invalid userId: ${userId}`);
+      logger.error(`Invalid userId: ${userId}`);
       return null;
     }
 
     try {
-      if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        const rows = await db
-          .select()
-          .from(userNotificationPreferencesSqlite)
-          .where(eq(userNotificationPreferencesSqlite.userId, userId))
-          .limit(1);
+      const { userNotificationPreferences } = this.tables;
+      const rows = await this.db
+        .select()
+        .from(userNotificationPreferences)
+        .where(eq(userNotificationPreferences.userId, userId))
+        .limit(1);
 
-        if (rows.length === 0) {
-          return null;
-        }
-
-        return this.mapPreferencesRow(rows[0]);
-      } else if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        const rows = await db
-          .select()
-          .from(userNotificationPreferencesMysql)
-          .where(eq(userNotificationPreferencesMysql.userId, userId))
-          .limit(1);
-
-        if (rows.length === 0) {
-          return null;
-        }
-
-        return this.mapPreferencesRow(rows[0]);
-      } else {
-        const db = this.getPostgresDb();
-        const rows = await db
-          .select()
-          .from(userNotificationPreferencesPostgres)
-          .where(eq(userNotificationPreferencesPostgres.userId, userId))
-          .limit(1);
-
-        if (rows.length === 0) {
-          return null;
-        }
-
-        return this.mapPreferencesRow(rows[0]);
+      if (rows.length === 0) {
+        return null;
       }
+
+      return this.mapPreferencesRow(rows[0]);
     } catch (error) {
-      logger.error(`❌ Failed to get preferences for user ${userId}:`, error);
+      logger.error(`Failed to get preferences for user ${userId}:`, error);
       return null;
     }
   }
 
   /**
-   * Save notification preferences for a user (insert or update)
+   * Save notification preferences for a user (insert or update).
+   * Keeps branching: MySQL uses onDuplicateKeyUpdate, SQLite lacks notifyOnChannelMessage column.
    */
   async saveUserPreferences(userId: number, prefs: NotificationPreferences): Promise<boolean> {
     if (!Number.isInteger(userId) || userId <= 0) {
-      logger.error(`❌ Invalid userId: ${userId}`);
+      logger.error(`Invalid userId: ${userId}`);
       return false;
     }
 
     const now = this.now();
+    const { userNotificationPreferences } = this.tables;
+
+    const setData = {
+      notifyOnMessage: prefs.enableWebPush,
+      notifyOnDirectMessage: prefs.enableDirectMessages,
+      notifyOnEmoji: prefs.notifyOnEmoji,
+      notifyOnNewNode: prefs.notifyOnNewNode,
+      notifyOnTraceroute: prefs.notifyOnTraceroute,
+      notifyOnInactiveNode: prefs.notifyOnInactiveNode,
+      notifyOnServerEvents: prefs.notifyOnServerEvents,
+      prefixWithNodeName: prefs.prefixWithNodeName,
+      appriseEnabled: prefs.enableApprise,
+      appriseUrls: JSON.stringify(prefs.appriseUrls),
+      enabledChannels: JSON.stringify(prefs.enabledChannels),
+      monitoredNodes: JSON.stringify(prefs.monitoredNodes),
+      whitelist: JSON.stringify(prefs.whitelist),
+      blacklist: JSON.stringify(prefs.blacklist),
+      notifyOnMqtt: prefs.notifyOnMqtt,
+      updatedAt: now,
+    };
 
     try {
       if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        await db
-          .insert(userNotificationPreferencesSqlite)
+        // SQLite doesn't have notifyOnChannelMessage column
+        await (this.db as any)
+          .insert(userNotificationPreferences)
           .values({
             userId,
-            notifyOnMessage: prefs.enableWebPush,
-            notifyOnDirectMessage: prefs.enableDirectMessages,
-            notifyOnEmoji: prefs.notifyOnEmoji,
-            notifyOnNewNode: prefs.notifyOnNewNode,
-            notifyOnTraceroute: prefs.notifyOnTraceroute,
-            notifyOnInactiveNode: prefs.notifyOnInactiveNode,
-            notifyOnServerEvents: prefs.notifyOnServerEvents,
-            prefixWithNodeName: prefs.prefixWithNodeName,
-            appriseEnabled: prefs.enableApprise,
-            appriseUrls: JSON.stringify(prefs.appriseUrls),
-            enabledChannels: JSON.stringify(prefs.enabledChannels),
-            monitoredNodes: JSON.stringify(prefs.monitoredNodes),
-            whitelist: JSON.stringify(prefs.whitelist),
-            blacklist: JSON.stringify(prefs.blacklist),
-            notifyOnMqtt: prefs.notifyOnMqtt,
+            ...setData,
             createdAt: now,
-            updatedAt: now,
           })
           .onConflictDoUpdate({
-            target: userNotificationPreferencesSqlite.userId,
-            set: {
-              notifyOnMessage: prefs.enableWebPush,
-              notifyOnDirectMessage: prefs.enableDirectMessages,
-              notifyOnEmoji: prefs.notifyOnEmoji,
-              notifyOnNewNode: prefs.notifyOnNewNode,
-              notifyOnTraceroute: prefs.notifyOnTraceroute,
-              notifyOnInactiveNode: prefs.notifyOnInactiveNode,
-              notifyOnServerEvents: prefs.notifyOnServerEvents,
-              prefixWithNodeName: prefs.prefixWithNodeName,
-              appriseEnabled: prefs.enableApprise,
-              appriseUrls: JSON.stringify(prefs.appriseUrls),
-              enabledChannels: JSON.stringify(prefs.enabledChannels),
-              monitoredNodes: JSON.stringify(prefs.monitoredNodes),
-              whitelist: JSON.stringify(prefs.whitelist),
-              blacklist: JSON.stringify(prefs.blacklist),
-              notifyOnMqtt: prefs.notifyOnMqtt,
-              updatedAt: now,
-            },
+            target: userNotificationPreferences.userId,
+            set: setData,
           });
-        return true;
       } else if (this.isMySQL()) {
         const db = this.getMysqlDb();
         await db
-          .insert(userNotificationPreferencesMysql)
+          .insert(userNotificationPreferences)
           .values({
             userId,
-            notifyOnMessage: prefs.enableWebPush,
-            notifyOnDirectMessage: prefs.enableDirectMessages,
             notifyOnChannelMessage: false,
-            notifyOnEmoji: prefs.notifyOnEmoji,
-            notifyOnNewNode: prefs.notifyOnNewNode,
-            notifyOnTraceroute: prefs.notifyOnTraceroute,
-            notifyOnInactiveNode: prefs.notifyOnInactiveNode,
-            notifyOnServerEvents: prefs.notifyOnServerEvents,
-            prefixWithNodeName: prefs.prefixWithNodeName,
-            appriseEnabled: prefs.enableApprise,
-            appriseUrls: JSON.stringify(prefs.appriseUrls),
-            enabledChannels: JSON.stringify(prefs.enabledChannels),
-            monitoredNodes: JSON.stringify(prefs.monitoredNodes),
-            whitelist: JSON.stringify(prefs.whitelist),
-            blacklist: JSON.stringify(prefs.blacklist),
-            notifyOnMqtt: prefs.notifyOnMqtt,
+            ...setData,
             createdAt: now,
-            updatedAt: now,
           })
-          .onDuplicateKeyUpdate({
-            set: {
-              notifyOnMessage: prefs.enableWebPush,
-              notifyOnDirectMessage: prefs.enableDirectMessages,
-              notifyOnEmoji: prefs.notifyOnEmoji,
-              notifyOnNewNode: prefs.notifyOnNewNode,
-              notifyOnTraceroute: prefs.notifyOnTraceroute,
-              notifyOnInactiveNode: prefs.notifyOnInactiveNode,
-              notifyOnServerEvents: prefs.notifyOnServerEvents,
-              prefixWithNodeName: prefs.prefixWithNodeName,
-              appriseEnabled: prefs.enableApprise,
-              appriseUrls: JSON.stringify(prefs.appriseUrls),
-              enabledChannels: JSON.stringify(prefs.enabledChannels),
-              monitoredNodes: JSON.stringify(prefs.monitoredNodes),
-              whitelist: JSON.stringify(prefs.whitelist),
-              blacklist: JSON.stringify(prefs.blacklist),
-              notifyOnMqtt: prefs.notifyOnMqtt,
-              updatedAt: now,
-            },
-          });
-        return true;
+          .onDuplicateKeyUpdate({ set: setData });
       } else {
-        const db = this.getPostgresDb();
-        await db
-          .insert(userNotificationPreferencesPostgres)
+        // PostgreSQL
+        await (this.db as any)
+          .insert(userNotificationPreferences)
           .values({
             userId,
-            notifyOnMessage: prefs.enableWebPush,
-            notifyOnDirectMessage: prefs.enableDirectMessages,
             notifyOnChannelMessage: false,
-            notifyOnEmoji: prefs.notifyOnEmoji,
-            notifyOnNewNode: prefs.notifyOnNewNode,
-            notifyOnTraceroute: prefs.notifyOnTraceroute,
-            notifyOnInactiveNode: prefs.notifyOnInactiveNode,
-            notifyOnServerEvents: prefs.notifyOnServerEvents,
-            prefixWithNodeName: prefs.prefixWithNodeName,
-            appriseEnabled: prefs.enableApprise,
-            appriseUrls: JSON.stringify(prefs.appriseUrls),
-            enabledChannels: JSON.stringify(prefs.enabledChannels),
-            monitoredNodes: JSON.stringify(prefs.monitoredNodes),
-            whitelist: JSON.stringify(prefs.whitelist),
-            blacklist: JSON.stringify(prefs.blacklist),
-            notifyOnMqtt: prefs.notifyOnMqtt,
+            ...setData,
             createdAt: now,
-            updatedAt: now,
           })
           .onConflictDoUpdate({
-            target: userNotificationPreferencesPostgres.userId,
-            set: {
-              notifyOnMessage: prefs.enableWebPush,
-              notifyOnDirectMessage: prefs.enableDirectMessages,
-              notifyOnEmoji: prefs.notifyOnEmoji,
-              notifyOnNewNode: prefs.notifyOnNewNode,
-              notifyOnTraceroute: prefs.notifyOnTraceroute,
-              notifyOnInactiveNode: prefs.notifyOnInactiveNode,
-              notifyOnServerEvents: prefs.notifyOnServerEvents,
-              prefixWithNodeName: prefs.prefixWithNodeName,
-              appriseEnabled: prefs.enableApprise,
-              appriseUrls: JSON.stringify(prefs.appriseUrls),
-              enabledChannels: JSON.stringify(prefs.enabledChannels),
-              monitoredNodes: JSON.stringify(prefs.monitoredNodes),
-              whitelist: JSON.stringify(prefs.whitelist),
-              blacklist: JSON.stringify(prefs.blacklist),
-              notifyOnMqtt: prefs.notifyOnMqtt,
-              updatedAt: now,
-            },
+            target: userNotificationPreferences.userId,
+            set: setData,
           });
-        return true;
       }
+      return true;
     } catch (error) {
-      logger.error(`❌ Failed to save preferences for user ${userId}:`, error);
+      logger.error(`Failed to save preferences for user ${userId}:`, error);
       return false;
     }
   }
@@ -506,43 +283,17 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getUsersWithServiceEnabled(service: 'web_push' | 'apprise'): Promise<number[]> {
     try {
-      if (this.isSQLite()) {
-        const db = this.getSqliteDb();
-        const column = service === 'web_push'
-          ? userNotificationPreferencesSqlite.notifyOnMessage
-          : userNotificationPreferencesSqlite.appriseEnabled;
+      const { userNotificationPreferences } = this.tables;
+      const column = service === 'web_push'
+        ? userNotificationPreferences.notifyOnMessage
+        : userNotificationPreferences.appriseEnabled;
 
-        const rows = await db
-          .select({ userId: userNotificationPreferencesSqlite.userId })
-          .from(userNotificationPreferencesSqlite)
-          .where(eq(column, true));
+      const rows = await this.db
+        .select({ userId: userNotificationPreferences.userId })
+        .from(userNotificationPreferences)
+        .where(eq(column, true));
 
-        return rows.map(row => row.userId);
-      } else if (this.isMySQL()) {
-        const db = this.getMysqlDb();
-        const column = service === 'web_push'
-          ? userNotificationPreferencesMysql.notifyOnMessage
-          : userNotificationPreferencesMysql.appriseEnabled;
-
-        const rows = await db
-          .select({ userId: userNotificationPreferencesMysql.userId })
-          .from(userNotificationPreferencesMysql)
-          .where(eq(column, true));
-
-        return rows.map(row => row.userId);
-      } else {
-        const db = this.getPostgresDb();
-        const column = service === 'web_push'
-          ? userNotificationPreferencesPostgres.notifyOnMessage
-          : userNotificationPreferencesPostgres.appriseEnabled;
-
-        const rows = await db
-          .select({ userId: userNotificationPreferencesPostgres.userId })
-          .from(userNotificationPreferencesPostgres)
-          .where(eq(column, true));
-
-        return rows.map(row => row.userId);
-      }
+      return rows.map((row: any) => row.userId);
     } catch (error) {
       logger.debug('No user_notification_preferences table yet, returning empty array');
       return [];
@@ -556,11 +307,31 @@ export class NotificationsRepository extends BaseRepository {
     return this.getUsersWithServiceEnabled('apprise');
   }
 
+  /**
+   * Get users who have inactive node notifications enabled and at least one notification channel active
+   */
+  async getUsersWithInactiveNodeNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null }>> {
+    try {
+      const { userNotificationPreferences: t } = this.tables;
+      const rows = await this.db
+        .select({ userId: t.userId, monitoredNodes: t.monitoredNodes })
+        .from(t)
+        .where(and(
+          eq(t.notifyOnInactiveNode, true),
+          or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
+        ));
+      return rows;
+    } catch (error) {
+      logger.debug('Failed to query users with inactive node notifications:', error);
+      return [];
+    }
+  }
+
   // ============ READ MESSAGE TRACKING ============
 
   /**
-   * Mark channel messages as read for a user
-   * Uses INSERT...SELECT to efficiently mark all messages in a channel as read
+   * Mark channel messages as read for a user.
+   * Keeps branching: raw SQL with INSERT...SELECT, different conflict handling per dialect.
    */
   async markChannelMessagesAsRead(
     channelId: number,
@@ -662,13 +433,14 @@ export class NotificationsRepository extends BaseRepository {
         }
       }
     } catch (error) {
-      logger.error(`❌ Failed to mark channel ${channelId} messages as read:`, error);
+      logger.error(`Failed to mark channel ${channelId} messages as read:`, error);
       return 0;
     }
   }
 
   /**
-   * Mark DM messages as read between two nodes for a user
+   * Mark DM messages as read between two nodes for a user.
+   * Keeps branching: raw SQL with INSERT...SELECT, different conflict handling per dialect.
    */
   async markDMMessagesAsRead(
     localNodeId: string,
@@ -786,13 +558,14 @@ export class NotificationsRepository extends BaseRepository {
         }
       }
     } catch (error) {
-      logger.error(`❌ Failed to mark DM messages as read:`, error);
+      logger.error(`Failed to mark DM messages as read:`, error);
       return 0;
     }
   }
 
   /**
-   * Mark all DM messages as read for the local node
+   * Mark all DM messages as read for the local node.
+   * Keeps branching: raw SQL with INSERT...SELECT, different conflict handling per dialect.
    */
   async markAllDMMessagesAsRead(
     localNodeId: string,
@@ -860,13 +633,14 @@ export class NotificationsRepository extends BaseRepository {
         return Number((result as any).affectedRows ?? 0);
       }
     } catch (error) {
-      logger.error(`❌ Failed to mark all DM messages as read:`, error);
+      logger.error(`Failed to mark all DM messages as read:`, error);
       return 0;
     }
   }
 
   /**
-   * Mark specific messages as read by their IDs
+   * Mark specific messages as read by their IDs.
+   * Keeps branching: raw SQL with different conflict handling per dialect.
    */
   async markMessagesAsReadByIds(
     messageIds: string[],
@@ -911,7 +685,7 @@ export class NotificationsRepository extends BaseRepository {
         }
       }
     } catch (error) {
-      logger.error(`❌ Failed to mark messages as read by IDs:`, error);
+      logger.error(`Failed to mark messages as read by IDs:`, error);
     }
   }
 

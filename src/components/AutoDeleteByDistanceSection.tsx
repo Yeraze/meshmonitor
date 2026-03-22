@@ -203,133 +203,198 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   const unitLabel = isMiles ? 'mi' : 'km';
 
   return (
-    <div className="settings-section">
-      <h3>{t('automation.distance_delete.title')}</h3>
-      <p className="text-muted">{t('automation.distance_delete.description')}</p>
-      <p className="text-muted small">{t('automation.distance_delete.protected_note')}</p>
-
-      {/* Enable toggle */}
-      <div className="form-group">
-        <label className="toggle-label">
+    <>
+      <div className="automation-section-header" style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '1.5rem',
+        padding: '1rem 1.25rem',
+        background: 'var(--ctp-surface1)',
+        border: '1px solid var(--ctp-surface2)',
+        borderRadius: '8px'
+      }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <input
             type="checkbox"
             checked={localEnabled}
             onChange={(e) => setLocalEnabled(e.target.checked)}
+            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
-          {t('automation.distance_delete.enabled')}
-        </label>
-      </div>
-
-      {/* Home coordinate */}
-      <div className="form-group">
-        <label>{t('automation.distance_delete.home_coordinate')}</label>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="number"
-            step="any"
-            placeholder={t('automation.distance_delete.latitude')}
-            value={localHomeLat}
-            onChange={(e) => setLocalHomeLat(e.target.value)}
-            style={{ width: '140px' }}
-          />
-          <input
-            type="number"
-            step="any"
-            placeholder={t('automation.distance_delete.longitude')}
-            value={localHomeLon}
-            onChange={(e) => setLocalHomeLon(e.target.value)}
-            style={{ width: '140px' }}
-          />
-          <button
-            type="button"
-            className="btn btn-sm btn-secondary"
-            onClick={handleUseNodePosition}
-            disabled={localNodeLat == null || localNodeLon == null}
+          {t('automation.distance_delete.title')}
+          <a
+            href="https://meshmonitor.org/features/automation#auto-delete-by-distance"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '1.2rem',
+              color: '#89b4fa',
+              textDecoration: 'none',
+              marginLeft: '0.5rem'
+            }}
+            title={t('automation.view_docs')}
           >
-            {t('automation.distance_delete.use_node_position')}
+            ?
+          </a>
+        </h2>
+        <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={handleRunNow}
+            disabled={!localEnabled || isRunning || homeLat == null || homeLon == null}
+            className="btn-primary"
+            style={{
+              padding: '0.5rem 1.5rem',
+              fontSize: '14px',
+              opacity: (localEnabled && !isRunning && homeLat != null) ? 1 : 0.5,
+              cursor: (localEnabled && !isRunning && homeLat != null) ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {isRunning
+              ? t('automation.distance_delete.running')
+              : t('automation.distance_delete.run_now')}
           </button>
         </div>
       </div>
 
-      {/* Distance threshold */}
-      <div className="form-group">
-        <label>{t('automation.distance_delete.threshold')} ({unitLabel})</label>
-        <input
-          type="number"
-          min="1"
-          step="1"
-          value={Math.round(displayThreshold)}
-          onChange={(e) => {
-            const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val > 0) {
-              setLocalThresholdKm(Math.round(fromDisplayUnit(val) * 10) / 10);
-            }
-          }}
-          style={{ width: '120px' }}
-        />
-      </div>
+      <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
+        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
+          {t('automation.distance_delete.description')}
+        </p>
+        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem', fontSize: '12px' }}>
+          {t('automation.distance_delete.protected_note')}
+        </p>
 
-      {/* Interval */}
-      <div className="form-group">
-        <label>{t('automation.distance_delete.interval')}</label>
-        <select
-          value={localIntervalHours}
-          onChange={(e) => setLocalIntervalHours(parseInt(e.target.value, 10))}
-        >
-          {[6, 12, 24, 48].map((h) => (
-            <option key={h} value={h}>
-              {t('automation.distance_delete.interval_hours', { count: h })}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Run Now */}
-      <div className="form-group">
-        <button
-          type="button"
-          className="btn btn-warning"
-          onClick={handleRunNow}
-          disabled={isRunning || homeLat == null || homeLon == null}
-        >
-          {isRunning
-            ? t('automation.distance_delete.running')
-            : t('automation.distance_delete.run_now')}
-        </button>
-        {homeLat == null && (
-          <span className="text-muted small" style={{ marginLeft: '8px' }}>
-            {t('automation.distance_delete.no_home_coordinate')}
-          </span>
-        )}
-      </div>
-
-      {/* Activity Log */}
-      <h4>{t('automation.distance_delete.activity_log')}</h4>
-      {logEntries.length === 0 ? (
-        <p className="text-muted">{t('automation.distance_delete.no_log_entries')}</p>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>{t('automation.distance_delete.timestamp', 'Time')}</th>
-                <th>{t('automation.distance_delete.nodes_deleted')}</th>
-                <th>{t('automation.distance_delete.threshold_used')} ({unitLabel})</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logEntries.map((entry) => (
-                <tr key={entry.id}>
-                  <td>{new Date(entry.timestamp).toLocaleString()}</td>
-                  <td>{entry.nodes_deleted}</td>
-                  <td>{Math.round(toDisplayUnit(entry.threshold_km))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Home coordinate */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.distance_delete.home_coordinate')}
+          </label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="number"
+              step="any"
+              placeholder={t('automation.distance_delete.latitude')}
+              value={localHomeLat}
+              onChange={(e) => setLocalHomeLat(e.target.value)}
+              disabled={!localEnabled}
+              className="setting-input"
+              style={{ width: '140px' }}
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder={t('automation.distance_delete.longitude')}
+              value={localHomeLon}
+              onChange={(e) => setLocalHomeLon(e.target.value)}
+              disabled={!localEnabled}
+              className="setting-input"
+              style={{ width: '140px' }}
+            />
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={handleUseNodePosition}
+              disabled={!localEnabled || localNodeLat == null || localNodeLon == null}
+            >
+              {t('automation.distance_delete.use_node_position')}
+            </button>
+          </div>
         </div>
-      )}
-    </div>
+
+        {/* Distance threshold */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.distance_delete.threshold')} ({unitLabel})
+          </label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={Math.round(displayThreshold)}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val) && val > 0) {
+                setLocalThresholdKm(Math.round(fromDisplayUnit(val) * 10) / 10);
+              }
+            }}
+            disabled={!localEnabled}
+            className="setting-input"
+            style={{ width: '120px' }}
+          />
+        </div>
+
+        {/* Interval */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.distance_delete.interval')}
+          </label>
+          <select
+            value={localIntervalHours}
+            onChange={(e) => setLocalIntervalHours(parseInt(e.target.value, 10))}
+            disabled={!localEnabled}
+            className="setting-input"
+          >
+            {[6, 12, 24, 48].map((h) => (
+              <option key={h} value={h}>
+                {t('automation.distance_delete.interval_hours', { count: h })}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {homeLat == null && (
+          <p style={{ marginTop: '1rem', marginLeft: '1.75rem', color: 'var(--ctp-yellow)', fontSize: '12px' }}>
+            {t('automation.distance_delete.no_home_coordinate')}
+          </p>
+        )}
+
+        {/* Activity Log */}
+        <div style={{ marginTop: '2rem', marginLeft: '1.75rem' }}>
+          <h3 style={{ marginBottom: '0.75rem' }}>
+            {t('automation.distance_delete.activity_log')}
+          </h3>
+          {logEntries.length === 0 ? (
+            <p className="text-muted">{t('automation.distance_delete.no_log_entries')}</p>
+          ) : (
+            <div style={{
+              border: '1px solid var(--ctp-surface2)',
+              borderRadius: '6px',
+              overflow: 'hidden',
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--ctp-surface0)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                      {t('automation.distance_delete.timestamp', 'Time')}
+                    </th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                      {t('automation.distance_delete.nodes_deleted')}
+                    </th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                      {t('automation.distance_delete.threshold_used')} ({unitLabel})
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logEntries.map((entry) => (
+                    <tr key={entry.id} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
+                      <td style={{ padding: '0.5rem' }}>
+                        {new Date(Number(entry.timestamp)).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        {entry.nodes_deleted}
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        {Math.round(toDisplayUnit(entry.threshold_km))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 };
 

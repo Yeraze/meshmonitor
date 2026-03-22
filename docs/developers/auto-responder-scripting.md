@@ -366,15 +366,30 @@ All scripts receive these environment variables:
 |----------|-------------|---------|
 | `MESSAGE` | Full message text received | `"weather miami"` |
 | `FROM_NODE` | Sender's node number | `"123456789"` |
-| `FROM_SHORT_NAME` | Sender's short name (if known) | `"JOHN"` |
-| `FROM_LONG_NAME` | Sender's long name (if known) | `"John Doe"` |
+| `NODE_ID` | Sender's node ID (hex format) | `"!a2e4ff4c"` |
+| `SHORT_NAME` | Sender's short name (if known) | `"JOHN"` |
+| `LONG_NAME` | Sender's long name (if known) | `"John Doe"` |
+| `FROM_SHORT_NAME` | Sender's short name (alias for `SHORT_NAME`) | `"JOHN"` |
+| `FROM_LONG_NAME` | Sender's long name (alias for `LONG_NAME`) | `"John Doe"` |
 | `FROM_LAT` | Sender's latitude (if known) | `"25.7617"` |
 | `FROM_LON` | Sender's longitude (if known) | `"-80.1918"` |
 | `MM_LAT` | MeshMonitor node's latitude (if known) | `"25.7617"` |
 | `MM_LON` | MeshMonitor node's longitude (if known) | `"-80.1918"` |
+| `HOPS` | Number of hops the message traveled | `"2"` |
+| `SNR` | Signal-to-noise ratio of received packet | `"6.25"` |
+| `RSSI` | Received signal strength indicator | `"-98"` |
+| `CHANNEL` | Channel number the message was received on | `"0"` |
+| `VERSION` | Sender's firmware version (if known) | `"2.5.6.a1b2c3d"` |
+| `NODECOUNT` | Number of active nodes on the mesh | `"42"` |
+| `VIA_MQTT` | Whether message arrived via MQTT bridge | `"true"` |
+| `IS_DIRECT` | Whether the message is a direct message | `"true"` |
 | `PACKET_ID` | Message packet ID | `"987654321"` |
+| `MESHTASTIC_IP` | IP address of the connected Meshtastic node | `"192.168.1.100"` |
+| `MESHTASTIC_PORT` | TCP port of the connected Meshtastic node | `"4403"` |
 | `TRIGGER` | Trigger pattern that matched | `"weather {location}"` |
+| `MATCHED_PATTERN` | The specific pattern that matched | `"weather {location}"` |
 | `PARAM_*` | Extracted parameters | `PARAM_location="miami"` |
+| `MSG_*` | All message fields as individual variables | `MSG_text="weather miami"` |
 | `TZ` | Server timezone (IANA timezone name) | `"America/New_York"` |
 
 ### Location Environment Variables

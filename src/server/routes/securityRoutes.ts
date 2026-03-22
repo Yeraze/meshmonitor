@@ -148,7 +148,7 @@ router.post('/scanner/scan', requirePermission('security', 'write'), async (req:
     }
 
     // Log the manual scan trigger
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'security_scan_triggered',
       'security',
@@ -180,7 +180,7 @@ router.get('/export', async (req: Request, res: Response) => {
     const timestamp = new Date().toISOString();
 
     // Log the export action
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'security_export',
       'security',
@@ -261,7 +261,7 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
       return res.status(400).json({ error: 'Invalid node number' });
     }
 
-    const node = databaseService.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum);
     if (!node) {
       return res.status(404).json({ error: 'Node not found' });
     }
@@ -269,7 +269,7 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
     const nodeName = node.shortName || node.longName || `Node ${nodeNum}`;
 
     // Clear all security flags
-    databaseService.upsertNode({
+    await databaseService.nodes.upsertNode({
       nodeNum,
       nodeId: node.nodeId,
       keyIsLowEntropy: false,
@@ -279,10 +279,10 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
     });
 
     // Clear time offset flags
-    databaseService.updateNodeTimeOffsetFlags(nodeNum, false, null);
+    await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null);
 
     // Log the action
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       req.user!.id,
       'security_issues_cleared',
       'security',

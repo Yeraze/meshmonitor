@@ -149,35 +149,18 @@ export async function handleOIDCCallback(
     // Create username from claims
     const username = preferredUsername || email?.split('@')[0] || sub.substring(0, 20);
 
-    // Check if user exists by OIDC subject - use async method for PostgreSQL
+    // Check if user exists by OIDC subject
     let user: User | null = null;
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      if (databaseService.authRepo) {
-        user = await databaseService.authRepo.getUserByOidcSubject(sub) as User | null;
-      }
-    } else {
-      user = databaseService.userModel.findByOIDCSubject(sub);
-    }
+    user = await databaseService.auth.getUserByOidcSubject(sub) as User | null;
 
     if (user) {
       // Update existing user
-      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-        if (databaseService.authRepo) {
-          await databaseService.authRepo.updateUser(user.id, {
-            email: email || user.email || undefined,
-            displayName: name || user.displayName || undefined,
-            lastLoginAt: Date.now()
-          });
-          user = await databaseService.findUserByIdAsync(user.id) as User;
-        }
-      } else {
-        user = databaseService.userModel.update(user.id, {
-          email: email || user.email || undefined,
-          displayName: name || user.displayName || undefined
-        })!;
-        // Update last login
-        databaseService.userModel.updateLastLogin(user.id);
-      }
+      await databaseService.auth.updateUser(user.id, {
+        email: email || user.email || undefined,
+        displayName: name || user.displayName || undefined,
+        lastLoginAt: Date.now()
+      });
+      user = await databaseService.findUserByIdAsync(user.id) as User;
 
       logger.debug(`✅ OIDC user logged in: ${user.username}`);
     } else {
@@ -190,49 +173,29 @@ export async function handleOIDCCallback(
 
       // Check if a native-login user exists with the same username or email
       let existingUser: User | null = null;
-      if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-        existingUser = await databaseService.findUserByUsernameAsync(username) as User | null;
-        // If no match by username, try matching by email (if provided)
-        if (!existingUser && email && databaseService.authRepo) {
-          // Try to find by email - get all users and filter
-          const allUsers = await databaseService.authRepo.getAllUsers();
-          const foundUser = allUsers.find(u => u.email === email);
-          existingUser = foundUser ? foundUser as unknown as User : null;
-        }
-      } else {
-        existingUser = databaseService.userModel.findByUsername(username);
-        // If no match by username, try matching by email (if provided)
-        if (!existingUser && email) {
-          existingUser = databaseService.userModel.findByEmail(email);
-        }
+      existingUser = await databaseService.findUserByUsernameAsync(username) as User | null;
+      // If no match by username, try matching by email (if provided)
+      if (!existingUser && email) {
+        const allUsers = await databaseService.auth.getAllUsers();
+        const foundUser = allUsers.find(u => u.email === email);
+        existingUser = foundUser ? foundUser as unknown as User : null;
       }
 
       if (existingUser && existingUser.authProvider === 'local') {
         // Migrate existing native-login user to OIDC
         logger.info(`🔄 Migrating existing native-login user '${existingUser.username}' to OIDC`);
 
-        if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-          if (databaseService.authRepo) {
-            await databaseService.authRepo.updateUser(existingUser.id, {
-              authMethod: 'oidc',
-              oidcSubject: sub,
-              email: email || existingUser.email,
-              displayName: name || existingUser.displayName,
-              passwordHash: null // Clear password for OIDC users
-            });
-            user = await databaseService.findUserByIdAsync(existingUser.id) as User;
-          }
-        } else {
-          user = databaseService.userModel.migrateToOIDC(
-            existingUser.id,
-            sub,
-            email,
-            name
-          )!;
-        }
+        await databaseService.auth.updateUser(existingUser.id, {
+          authMethod: 'oidc',
+          oidcSubject: sub,
+          email: email || existingUser.email,
+          displayName: name || existingUser.displayName,
+          passwordHash: null // Clear password for OIDC users
+        });
+        user = await databaseService.findUserByIdAsync(existingUser.id) as User;
 
         // Audit log
-        databaseService.auditLog(
+        databaseService.auditLogAsync(
           user!.id,
           'user_migrated_to_oidc',
           'users',
@@ -243,54 +206,38 @@ export async function handleOIDCCallback(
         logger.debug(`✅ User migrated to OIDC: ${user!.username}`);
       } else {
         // Create new user
-        if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-          if (databaseService.authRepo) {
-            const userId = await databaseService.authRepo.createUser({
-              username,
-              email: email || null,
-              displayName: name || null,
-              authMethod: 'oidc',
-              oidcSubject: sub,
-              isAdmin: false,
-              isActive: true,
-              passwordHash: null,
-              passwordLocked: false,
-              createdAt: Date.now(),
-              lastLoginAt: Date.now()
-            });
-            user = await databaseService.findUserByIdAsync(userId) as User;
+        const userId = await databaseService.auth.createUser({
+          username,
+          email: email || null,
+          displayName: name || null,
+          authMethod: 'oidc',
+          oidcSubject: sub,
+          isAdmin: false,
+          isActive: true,
+          passwordHash: null,
+          passwordLocked: false,
+          createdAt: Date.now(),
+          lastLoginAt: Date.now()
+        });
+        user = await databaseService.findUserByIdAsync(userId) as User;
 
-            // Grant default permissions
-            const defaultResources = ['nodes', 'messages', 'telemetry', 'traceroutes', 'channels', 'map', 'settings'];
-            for (const resource of defaultResources) {
-              await databaseService.authRepo.createPermission({
-                userId,
-                resource,
-                canRead: true,
-                canWrite: false,
-                grantedBy: null,
-                grantedAt: Date.now()
-              });
-            }
-          }
-        } else {
-          user = await databaseService.userModel.create({
-            username,
-            email,
-            displayName: name,
-            authProvider: 'oidc',
-            oidcSubject: sub,
-            isAdmin: false
+        // Grant default permissions
+        const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
+        for (const resource of defaultResources) {
+          await databaseService.auth.createPermission({
+            userId,
+            resource,
+            canRead: true,
+            canWrite: false,
+            grantedBy: null,
+            grantedAt: Date.now()
           });
-
-          // Grant default permissions
-          databaseService.permissionModel.grantDefaultPermissions(user.id, false);
         }
 
         logger.debug(`✅ OIDC user auto-created: ${user!.username}`);
 
         // Audit log
-        databaseService.auditLog(
+        databaseService.auditLogAsync(
           user!.id,
           'oidc_user_created',
           'users',

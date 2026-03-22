@@ -19,6 +19,12 @@ export interface OverlayColors {
     poor: string;    // SNR < 0dB
     noData: string;  // No SNR data
   };
+  polarGrid: {
+    rings: string;
+    sectors: string;
+    cardinalSectors: string;
+    labels: string;
+  };
 }
 
 export const darkOverlayColors: OverlayColors = {
@@ -40,6 +46,12 @@ export const darkOverlayColors: OverlayColors = {
     poor: '#f38ba8',    // Catppuccin Mocha red (--ctp-red)
     noData: '#6c7086',  // Catppuccin Mocha overlay0 (--ctp-overlay0)
   },
+  polarGrid: {
+    rings: 'rgba(0, 200, 255, 0.3)',
+    sectors: 'rgba(0, 200, 255, 0.15)',
+    cardinalSectors: 'rgba(0, 200, 255, 0.3)',
+    labels: 'rgba(0, 200, 255, 0.7)',
+  },
 };
 
 export const lightOverlayColors: OverlayColors = {
@@ -60,6 +72,12 @@ export const lightOverlayColors: OverlayColors = {
     medium: '#df8e1d',  // Catppuccin Latte yellow (--ctp-yellow)
     poor: '#d20f39',    // Catppuccin Latte red (--ctp-red)
     noData: '#9ca0b0',  // Catppuccin Latte overlay0 (--ctp-overlay0)
+  },
+  polarGrid: {
+    rings: 'rgba(0, 80, 130, 0.3)',
+    sectors: 'rgba(0, 80, 130, 0.15)',
+    cardinalSectors: 'rgba(0, 80, 130, 0.3)',
+    labels: 'rgba(0, 80, 130, 0.7)',
   },
 };
 

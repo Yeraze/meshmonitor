@@ -31,7 +31,7 @@ function getAllowedChannels(permissions: PermissionSet): Set<number> {
  * - TEXT_MESSAGE_APP DMs (to_node != broadcast) require messages:read permission
  * - Decrypted packets require read permission on the packet's channel
  */
-function filterPacketsByPermissions<T extends { encrypted: boolean; channel?: number; portnum?: number; to_node?: number }>(
+function filterPacketsByPermissions<T extends { encrypted: boolean; channel?: number | null; portnum?: number | null; to_node?: number | null }>(
   packets: T[],
   allowedChannels: Set<number>,
   isAdmin: boolean,
@@ -98,7 +98,7 @@ const requirePacketPermissions: RequestHandler = async (req, res, next) => {
 
     // Also check channel database permissions for virtual channels
     if (userId !== null) {
-      const channelDbPerms = await databaseService.getChannelDatabasePermissionsForUserAsync(userId);
+      const channelDbPerms = await databaseService.channelDatabase.getPermissionsForUserAsync(userId);
       const allowedDbChannels = channelDbPerms
         .filter((p: { canRead: boolean }) => p.canRead)
         .map((p: { channelDatabaseId: number }) => p.channelDatabaseId);
@@ -125,7 +125,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
 
     // Enforce maximum limit to prevent unbounded queries
     // Use the configured max count from settings (defaults to 1000)
-    const MAX_LIMIT = packetLogService.getMaxCount();
+    const MAX_LIMIT = await packetLogService.getMaxCount();
     if (limit > MAX_LIMIT) {
       limit = MAX_LIMIT;
     }
@@ -177,8 +177,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       total,
       offset,
       limit,
-      maxCount: packetLogService.getMaxCount(),
-      maxAgeHours: packetLogService.getMaxAgeHours()
+      maxCount: await packetLogService.getMaxCount(),
+      maxAgeHours: await packetLogService.getMaxAgeHours()
     });
   } catch (error) {
     logger.error('❌ Error fetching packet logs:', error);
@@ -200,9 +200,9 @@ router.get('/stats', requirePacketPermissions, async (_req, res) => {
       total,
       encrypted,
       decoded,
-      maxCount: packetLogService.getMaxCount(),
-      maxAgeHours: packetLogService.getMaxAgeHours(),
-      enabled: packetLogService.isEnabled()
+      maxCount: await packetLogService.getMaxCount(),
+      maxAgeHours: await packetLogService.getMaxAgeHours(),
+      enabled: await packetLogService.isEnabled()
     });
   } catch (error) {
     logger.error('❌ Error fetching packet stats:', error);
@@ -218,7 +218,7 @@ router.get('/stats', requirePacketPermissions, async (_req, res) => {
  */
 router.get('/stats/distribution', requirePacketPermissions, async (req, res) => {
   try {
-    const enabled = packetLogService.isEnabled();
+    const enabled = await packetLogService.isEnabled();
 
     // If not enabled, return empty data
     if (!enabled) {
@@ -288,7 +288,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     const canReadMessages = (req as any).canReadMessages as boolean;
 
     // Fetch all matching packets (up to configured max)
-    const maxCount = packetLogService.getMaxCount();
+    const maxCount = await packetLogService.getMaxCount();
     const rawPackets = await packetLogService.getPacketsAsync({
       offset: 0,
       limit: maxCount,
@@ -385,10 +385,10 @@ router.delete('/', requirePacketPermissions, async (req, res) => {
     logger.info(`🧹 Admin ${user.username} cleared ${deletedCount} packet logs`);
 
     // Log to audit log
-    databaseService.auditLog(
+    databaseService.auditLogAsync(
       user.id,
       'packets_cleared',
-      'packets',
+      'packetmonitor',
       `Cleared ${deletedCount} packet log entries`,
       req.ip || null
     );

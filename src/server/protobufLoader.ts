@@ -46,6 +46,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     await root.load(paxcountProtoPath);
     logger.debug('✅ Loaded paxcount.proto for Paxcount support');
 
+    // Load mqtt.proto for ServiceEnvelope support (MQTT proxy message decoding)
+    const mqttProtoPath = path.join(protoRoot, 'meshtastic/mqtt.proto');
+    await root.load(mqttProtoPath);
+    logger.debug('✅ Loaded mqtt.proto for ServiceEnvelope support');
+
     logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {

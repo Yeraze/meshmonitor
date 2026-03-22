@@ -5,8 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
-import { neighborInfoSqlite, neighborInfoPostgres, neighborInfoMysql } from '../schema/neighbors.js';
-import { packetLogSqlite, packetLogPostgres, packetLogMysql } from '../schema/packets.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
@@ -29,9 +27,12 @@ export class NeighborsRepository extends BaseRepository {
   }
 
   /**
-   * Insert or update neighbor info
+   * Insert a neighbor info record.
+   * Callers must delete old records for the node first to avoid duplicates
+   * (there is no unique constraint on nodeNum + neighborNodeNum).
    */
-  async upsertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+  async insertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+    const { neighborInfo } = this.tables;
     const values = {
       nodeNum: neighborData.nodeNum,
       neighborNodeNum: neighborData.neighborNodeNum,
@@ -41,156 +42,98 @@ export class NeighborsRepository extends BaseRepository {
       createdAt: neighborData.createdAt,
     };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.insert(neighborInfoSqlite).values(values);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.insert(neighborInfoMysql).values(values);
-    } else {
-      const db = this.getPostgresDb();
-      await db.insert(neighborInfoPostgres).values(values);
-    }
+    await this.db.insert(neighborInfo).values(values);
+  }
+
+  /**
+   * Insert multiple neighbor info records in a single query.
+   * Callers must delete old records for the node first.
+   */
+  async insertNeighborInfoBatch(records: DbNeighborInfo[]): Promise<void> {
+    if (records.length === 0) return;
+    const { neighborInfo } = this.tables;
+    const values = records.map(r => ({
+      nodeNum: r.nodeNum,
+      neighborNodeNum: r.neighborNodeNum,
+      snr: r.snr ?? null,
+      lastRxTime: r.lastRxTime ?? null,
+      timestamp: r.timestamp,
+      createdAt: r.createdAt,
+    }));
+
+    await this.db.insert(neighborInfo).values(values);
+  }
+
+  /**
+   * Backwards-compatible alias for insertNeighborInfo
+   * @deprecated Use insertNeighborInfo instead
+   */
+  async upsertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+    return this.insertNeighborInfo(neighborData);
   }
 
   /**
    * Get neighbors for a node
    */
   async getNeighborsForNode(nodeNum: number): Promise<DbNeighborInfo[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(neighborInfoSqlite)
-        .where(eq(neighborInfoSqlite.nodeNum, nodeNum))
-        .orderBy(desc(neighborInfoSqlite.timestamp));
+    const { neighborInfo } = this.tables;
+    const result = await this.db
+      .select()
+      .from(neighborInfo)
+      .where(eq(neighborInfo.nodeNum, nodeNum))
+      .orderBy(desc(neighborInfo.timestamp));
 
-      return result.map(n => this.normalizeBigInts(n) as DbNeighborInfo);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(neighborInfoMysql)
-        .where(eq(neighborInfoMysql.nodeNum, nodeNum))
-        .orderBy(desc(neighborInfoMysql.timestamp));
-
-      return result as DbNeighborInfo[];
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(neighborInfoPostgres)
-        .where(eq(neighborInfoPostgres.nodeNum, nodeNum))
-        .orderBy(desc(neighborInfoPostgres.timestamp));
-
-      return result as DbNeighborInfo[];
-    }
+    return this.normalizeBigInts(result) as DbNeighborInfo[];
   }
 
   /**
    * Get all neighbor info
    */
   async getAllNeighborInfo(): Promise<DbNeighborInfo[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .select()
-        .from(neighborInfoSqlite)
-        .orderBy(desc(neighborInfoSqlite.timestamp));
+    const { neighborInfo } = this.tables;
+    const result = await this.db
+      .select()
+      .from(neighborInfo)
+      .orderBy(desc(neighborInfo.timestamp));
 
-      return result.map(n => this.normalizeBigInts(n) as DbNeighborInfo);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .select()
-        .from(neighborInfoMysql)
-        .orderBy(desc(neighborInfoMysql.timestamp));
-
-      return result as DbNeighborInfo[];
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .select()
-        .from(neighborInfoPostgres)
-        .orderBy(desc(neighborInfoPostgres.timestamp));
-
-      return result as DbNeighborInfo[];
-    }
+    return this.normalizeBigInts(result) as DbNeighborInfo[];
   }
 
   /**
    * Delete neighbor info for a node
    */
-  async deleteNeighborInfoForNode(nodeNum: number): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const [{ deletedCount }] = await db
-        .select({ deletedCount: count() })
-        .from(neighborInfoSqlite)
-        .where(eq(neighborInfoSqlite.nodeNum, nodeNum));
-      await db.delete(neighborInfoSqlite).where(eq(neighborInfoSqlite.nodeNum, nodeNum));
-      return deletedCount;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const [{ deletedCount }] = await db
-        .select({ deletedCount: count() })
-        .from(neighborInfoMysql)
-        .where(eq(neighborInfoMysql.nodeNum, nodeNum));
-      await db.delete(neighborInfoMysql).where(eq(neighborInfoMysql.nodeNum, nodeNum));
-      return deletedCount;
-    } else {
-      const db = this.getPostgresDb();
-      const [{ deletedCount }] = await db
-        .select({ deletedCount: count() })
-        .from(neighborInfoPostgres)
-        .where(eq(neighborInfoPostgres.nodeNum, nodeNum));
-      await db.delete(neighborInfoPostgres).where(eq(neighborInfoPostgres.nodeNum, nodeNum));
-      return deletedCount;
-    }
+  async deleteNeighborInfoForNode(nodeNum: number): Promise<void> {
+    const { neighborInfo } = this.tables;
+    await this.db.delete(neighborInfo).where(eq(neighborInfo.nodeNum, nodeNum));
   }
 
   /**
    * Get neighbor count
    */
   async getNeighborCount(): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db.select({ count: count() }).from(neighborInfoSqlite);
-      return Number(result[0].count);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db.select({ count: count() }).from(neighborInfoMysql);
-      return Number(result[0].count);
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db.select({ count: count() }).from(neighborInfoPostgres);
-      return Number(result[0].count);
-    }
+    const { neighborInfo } = this.tables;
+    const result = await this.db.select({ count: count() }).from(neighborInfo);
+    return Number(result[0].count);
+  }
+
+  /**
+   * Get neighbor count for a specific node
+   */
+  async getNeighborCountForNode(nodeNum: number): Promise<number> {
+    const { neighborInfo } = this.tables;
+    const result = await this.db
+      .select({ count: count() })
+      .from(neighborInfo)
+      .where(eq(neighborInfo.nodeNum, nodeNum));
+    return Number(result[0].count);
   }
 
   /**
    * Delete all neighbor info
    */
-  async deleteAllNeighborInfo(): Promise<number> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db.select({ count: count() }).from(neighborInfoSqlite);
-      const deleteCount = Number(result[0].count);
-      await db.delete(neighborInfoSqlite);
-      return deleteCount;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db.select({ count: count() }).from(neighborInfoMysql);
-      const deleteCount = Number(result[0].count);
-      await db.delete(neighborInfoMysql);
-      return deleteCount;
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db.select({ count: count() }).from(neighborInfoPostgres);
-      const deleteCount = Number(result[0].count);
-      await db.delete(neighborInfoPostgres);
-      return deleteCount;
-    }
+  async deleteAllNeighborInfo(): Promise<void> {
+    const { neighborInfo } = this.tables;
+    await this.db.delete(neighborInfo);
   }
 
   /**
@@ -204,96 +147,36 @@ export class NeighborsRepository extends BaseRepository {
    */
   async getDirectNeighborRssiAsync(hoursBack: number = 24): Promise<Map<number, DirectNeighborStats>> {
     const cutoffTime = Math.floor(Date.now() / 1000) - (hoursBack * 60 * 60);
-    const result = new Map<number, DirectNeighborStats>();
+    const resultMap = new Map<number, DirectNeighborStats>();
+    const { packetLog } = this.tables;
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      // Query for zero-hop packets (hop_start == hop_limit means 0 hops)
-      // Only include packets with valid RSSI
-      const rows = await db
-        .select({
-          nodeNum: packetLogSqlite.from_node,
-          avgRssi: sql<number>`AVG(${packetLogSqlite.rssi})`,
-          packetCount: sql<number>`COUNT(*)`,
-          lastHeard: sql<number>`MAX(${packetLogSqlite.timestamp})`,
-        })
-        .from(packetLogSqlite)
-        .where(
-          and(
-            gte(packetLogSqlite.timestamp, cutoffTime),
-            sql`${packetLogSqlite.hop_start} = ${packetLogSqlite.hop_limit}`,
-            sql`${packetLogSqlite.rssi} IS NOT NULL`,
-            sql`${packetLogSqlite.direction} = 'rx'`
-          )
+    const rows = await this.db
+      .select({
+        nodeNum: packetLog.from_node,
+        avgRssi: sql<number>`AVG(${packetLog.rssi})`,
+        packetCount: sql<number>`COUNT(*)`,
+        lastHeard: sql<number>`MAX(${packetLog.timestamp})`,
+      })
+      .from(packetLog)
+      .where(
+        and(
+          gte(packetLog.timestamp, cutoffTime),
+          sql`${packetLog.hop_start} = ${packetLog.hop_limit}`,
+          sql`${packetLog.rssi} IS NOT NULL`,
+          sql`${packetLog.direction} = 'rx'`
         )
-        .groupBy(packetLogSqlite.from_node);
+      )
+      .groupBy(packetLog.from_node);
 
-      for (const row of rows) {
-        result.set(Number(row.nodeNum), {
-          nodeNum: Number(row.nodeNum),
-          avgRssi: row.avgRssi,
-          packetCount: row.packetCount,
-          lastHeard: row.lastHeard,
-        });
-      }
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const rows = await db
-        .select({
-          nodeNum: packetLogMysql.from_node,
-          avgRssi: sql<number>`AVG(${packetLogMysql.rssi})`,
-          packetCount: sql<number>`COUNT(*)`,
-          lastHeard: sql<number>`MAX(${packetLogMysql.timestamp})`,
-        })
-        .from(packetLogMysql)
-        .where(
-          and(
-            gte(packetLogMysql.timestamp, cutoffTime),
-            sql`${packetLogMysql.hop_start} = ${packetLogMysql.hop_limit}`,
-            sql`${packetLogMysql.rssi} IS NOT NULL`,
-            sql`${packetLogMysql.direction} = 'rx'`
-          )
-        )
-        .groupBy(packetLogMysql.from_node);
-
-      for (const row of rows) {
-        result.set(Number(row.nodeNum), {
-          nodeNum: Number(row.nodeNum),
-          avgRssi: row.avgRssi,
-          packetCount: row.packetCount,
-          lastHeard: row.lastHeard,
-        });
-      }
-    } else {
-      const db = this.getPostgresDb();
-      const rows = await db
-        .select({
-          nodeNum: packetLogPostgres.from_node,
-          avgRssi: sql<number>`AVG(${packetLogPostgres.rssi})`,
-          packetCount: sql<number>`COUNT(*)`,
-          lastHeard: sql<number>`MAX(${packetLogPostgres.timestamp})`,
-        })
-        .from(packetLogPostgres)
-        .where(
-          and(
-            gte(packetLogPostgres.timestamp, cutoffTime),
-            sql`${packetLogPostgres.hop_start} = ${packetLogPostgres.hop_limit}`,
-            sql`${packetLogPostgres.rssi} IS NOT NULL`,
-            sql`${packetLogPostgres.direction} = 'rx'`
-          )
-        )
-        .groupBy(packetLogPostgres.from_node);
-
-      for (const row of rows) {
-        result.set(Number(row.nodeNum), {
-          nodeNum: Number(row.nodeNum),
-          avgRssi: row.avgRssi,
-          packetCount: row.packetCount,
-          lastHeard: row.lastHeard,
-        });
-      }
+    for (const row of rows) {
+      resultMap.set(Number(row.nodeNum), {
+        nodeNum: Number(row.nodeNum),
+        avgRssi: row.avgRssi,
+        packetCount: row.packetCount,
+        lastHeard: row.lastHeard,
+      });
     }
 
-    return result;
+    return resultMap;
   }
 }

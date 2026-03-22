@@ -11,20 +11,7 @@ import session from 'express-session';
 import request from 'supertest';
 import { UserModel } from '../models/User.js';
 import { PermissionModel } from '../models/Permission.js';
-import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
-import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
-import { migration as connectionMigration } from '../migrations/003_add_connection_permission.js';
-import { migration as tracerouteMigration } from '../migrations/004_add_traceroute_permission.js';
-import { migration as auditPermissionMigration } from '../migrations/006_add_audit_permission.js';
-import { migration as securityPermissionMigration } from '../migrations/016_add_security_permission.js';
-import { migration as themesMigration } from '../migrations/022_add_custom_themes.js';
-import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
-import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
-import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
-import { migration as viewOnMapPermissionMigration } from '../migrations/053_add_view_on_map_permission.js';
-import { migration as mfaMigration } from '../migrations/068_add_mfa_columns.js';
-import { migration as meshcorePermissionMigration } from '../migrations/071_add_meshcore_permission.js';
-import { migration as packetmonitorPermissionMigration } from '../migrations/082_add_packetmonitor_permission.js';
+import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
 import userRoutes from './userRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -59,20 +46,8 @@ describe('User Management Routes', () => {
     // Setup in-memory database
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
-    authMigration.up(db);
-    channelsMigration.up(db);
-    connectionMigration.up(db);
-    tracerouteMigration.up(db);
-    auditPermissionMigration.up(db);
-    securityPermissionMigration.up(db);
-    themesMigration.up(db);
-    passwordLockedMigration.up(db);
-    perChannelPermissionsMigration.up(db);
-    nodesPrivatePermissionMigration.up(db);
-    viewOnMapPermissionMigration.up(db);
-    mfaMigration.up(db);
-    meshcorePermissionMigration.up(db);
-    packetmonitorPermissionMigration.up(db);
+    // Run baseline migration (creates all tables)
+    baselineMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
@@ -80,8 +55,66 @@ describe('User Management Routes', () => {
     // Mock database service
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
-    (DatabaseService as any).auditLog = () => {};
+    (DatabaseService as any).auditLog = () => {};  // still used by localAuth.ts
+    (DatabaseService as any).auditLogAsync = () => {};
     (DatabaseService as any).drizzleDbType = 'sqlite';
+
+    // Add auth repository mock that delegates to real models
+    (DatabaseService as any).auth = {
+      getAllUsers: async () => {
+        return userModel.findAll();
+      },
+      createUser: async (input: any) => {
+        // Insert directly via SQL since UserModel.create() hashes password again
+        const stmt = db.prepare(`
+          INSERT INTO users (username, email, display_name, auth_provider, is_admin, is_active, password_hash, password_locked, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const result = stmt.run(
+          input.username,
+          input.email || null,
+          input.displayName || null,
+          input.authMethod || input.authProvider || 'local',
+          input.isAdmin ? 1 : 0,
+          input.isActive !== undefined ? (input.isActive ? 1 : 0) : 1,
+          input.passwordHash || null,
+          input.passwordLocked ? 1 : 0,
+          input.createdAt || Date.now()
+        );
+        return Number(result.lastInsertRowid);
+      },
+      updateUser: async (id: number, updates: any) => {
+        // UserModel.update() doesn't handle isAdmin, so handle it directly via SQL
+        if (updates.isAdmin !== undefined) {
+          db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(updates.isAdmin ? 1 : 0, id);
+        }
+        // Delegate remaining fields to userModel
+        const { isAdmin, ...rest } = updates;
+        if (Object.keys(rest).length > 0) {
+          userModel.update(id, rest);
+        }
+      },
+      deleteUser: async (id: number) => {
+        userModel.delete(id);
+        return true;
+      },
+      deletePermissionsForUser: async (userId: number) => {
+        permissionModel.revokeAll(userId);
+        return 0;
+      },
+      createPermission: async (input: any) => {
+        const perm = permissionModel.grant({
+          userId: input.userId,
+          resource: input.resource,
+          canViewOnMap: input.canViewOnMap ?? false,
+          canRead: input.canRead,
+          canWrite: input.canWrite,
+          grantedBy: input.grantedBy,
+          grantedAt: input.grantedAt
+        });
+        return perm.id;
+      }
+    };
 
     // Add async method mocks that delegate to sync methods
     (DatabaseService as any).findUserByIdAsync = async (id: number) => {
@@ -101,6 +134,9 @@ describe('User Management Routes', () => {
     };
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
+    };
+    (DatabaseService as any).clearUserMfaAsync = async (userId: number) => {
+      return userModel.update(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null } as any);
     };
 
     app.use('/api/auth', authRoutes);

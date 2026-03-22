@@ -5,7 +5,6 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq } from 'drizzle-orm';
-import { ignoredNodesSqlite, ignoredNodesPostgres, ignoredNodesMysql } from '../schema/ignoredNodes.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -38,72 +37,29 @@ export class IgnoredNodesRepository extends BaseRepository {
     ignoredBy?: string | null,
   ): Promise<void> {
     const now = Date.now();
+    const { ignoredNodes } = this.tables;
+    const setData = {
+      nodeId,
+      longName: longName ?? null,
+      shortName: shortName ?? null,
+      ignoredAt: now,
+      ignoredBy: ignoredBy ?? null,
+    };
 
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      // SQLite upsert via INSERT OR REPLACE
-      await db
-        .insert(ignoredNodesSqlite)
-        .values({
-          nodeNum,
-          nodeId,
-          longName: longName ?? null,
-          shortName: shortName ?? null,
-          ignoredAt: now,
-          ignoredBy: ignoredBy ?? null,
-        })
-        .onConflictDoUpdate({
-          target: ignoredNodesSqlite.nodeNum,
-          set: {
-            nodeId,
-            longName: longName ?? null,
-            shortName: shortName ?? null,
-            ignoredAt: now,
-            ignoredBy: ignoredBy ?? null,
-          },
-        });
-    } else if (this.isMySQL()) {
+    if (this.isMySQL()) {
       const db = this.getMysqlDb();
       await db
-        .insert(ignoredNodesMysql)
-        .values({
-          nodeNum,
-          nodeId,
-          longName: longName ?? null,
-          shortName: shortName ?? null,
-          ignoredAt: now,
-          ignoredBy: ignoredBy ?? null,
-        })
-        .onDuplicateKeyUpdate({
-          set: {
-            nodeId,
-            longName: longName ?? null,
-            shortName: shortName ?? null,
-            ignoredAt: now,
-            ignoredBy: ignoredBy ?? null,
-          },
-        });
+        .insert(ignoredNodes)
+        .values({ nodeNum, ...setData })
+        .onDuplicateKeyUpdate({ set: setData });
     } else {
-      const db = this.getPostgresDb();
-      await db
-        .insert(ignoredNodesPostgres)
-        .values({
-          nodeNum,
-          nodeId,
-          longName: longName ?? null,
-          shortName: shortName ?? null,
-          ignoredAt: now,
-          ignoredBy: ignoredBy ?? null,
-        })
+      // SQLite and PostgreSQL both use onConflictDoUpdate
+      await (this.db as any)
+        .insert(ignoredNodes)
+        .values({ nodeNum, ...setData })
         .onConflictDoUpdate({
-          target: ignoredNodesPostgres.nodeNum,
-          set: {
-            nodeId,
-            longName: longName ?? null,
-            shortName: shortName ?? null,
-            ignoredAt: now,
-            ignoredBy: ignoredBy ?? null,
-          },
+          target: ignoredNodes.nodeNum,
+          set: setData,
         });
     }
 
@@ -114,17 +70,8 @@ export class IgnoredNodesRepository extends BaseRepository {
    * Remove a node from the persistent ignore list
    */
   async removeIgnoredNodeAsync(nodeNum: number): Promise<void> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      await db.delete(ignoredNodesSqlite).where(eq(ignoredNodesSqlite.nodeNum, nodeNum));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db.delete(ignoredNodesMysql).where(eq(ignoredNodesMysql.nodeNum, nodeNum));
-    } else {
-      const db = this.getPostgresDb();
-      await db.delete(ignoredNodesPostgres).where(eq(ignoredNodesPostgres.nodeNum, nodeNum));
-    }
-
+    const { ignoredNodes } = this.tables;
+    await this.db.delete(ignoredNodes).where(eq(ignoredNodes.nodeNum, nodeNum));
     logger.debug(`Removed node ${nodeNum} from persistent ignore list`);
   }
 
@@ -132,46 +79,20 @@ export class IgnoredNodesRepository extends BaseRepository {
    * Get all persistently ignored nodes
    */
   async getIgnoredNodesAsync(): Promise<IgnoredNodeRecord[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const rows = await db.select().from(ignoredNodesSqlite);
-      return rows.map(r => this.normalizeBigInts(r) as IgnoredNodeRecord);
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const rows = await db.select().from(ignoredNodesMysql);
-      return rows.map(r => this.normalizeBigInts(r) as IgnoredNodeRecord);
-    } else {
-      const db = this.getPostgresDb();
-      const rows = await db.select().from(ignoredNodesPostgres);
-      return rows.map(r => this.normalizeBigInts(r) as IgnoredNodeRecord);
-    }
+    const { ignoredNodes } = this.tables;
+    const rows = await this.db.select().from(ignoredNodes);
+    return this.normalizeBigInts(rows) as IgnoredNodeRecord[];
   }
 
   /**
    * Check if a node is in the persistent ignore list
    */
   async isNodeIgnoredAsync(nodeNum: number): Promise<boolean> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const rows = await db
-        .select({ nodeNum: ignoredNodesSqlite.nodeNum })
-        .from(ignoredNodesSqlite)
-        .where(eq(ignoredNodesSqlite.nodeNum, nodeNum));
-      return rows.length > 0;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const rows = await db
-        .select({ nodeNum: ignoredNodesMysql.nodeNum })
-        .from(ignoredNodesMysql)
-        .where(eq(ignoredNodesMysql.nodeNum, nodeNum));
-      return rows.length > 0;
-    } else {
-      const db = this.getPostgresDb();
-      const rows = await db
-        .select({ nodeNum: ignoredNodesPostgres.nodeNum })
-        .from(ignoredNodesPostgres)
-        .where(eq(ignoredNodesPostgres.nodeNum, nodeNum));
-      return rows.length > 0;
-    }
+    const { ignoredNodes } = this.tables;
+    const rows = await this.db
+      .select({ nodeNum: ignoredNodes.nodeNum })
+      .from(ignoredNodes)
+      .where(eq(ignoredNodes.nodeNum, nodeNum));
+    return rows.length > 0;
   }
 }

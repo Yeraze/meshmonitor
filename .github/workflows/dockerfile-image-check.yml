@@ -1,0 +1,114 @@
+name: Dockerfile Image Verification
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile*'
+      - '.github/workflows/dockerfile-image-check.yml'
+
+jobs:
+  verify-images:
+    name: Verify Base Images Exist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Extract and verify base images
+        run: |
+          set -euo pipefail
+
+          # Target platforms for each Dockerfile
+          declare -A DOCKERFILE_PLATFORMS=(
+            ["Dockerfile"]="linux/amd64 linux/arm64"
+            ["Dockerfile.armv7"]="linux/arm/v7"
+            ["Dockerfile.proxy"]="linux/amd64 linux/arm64"
+          )
+
+          FAILED=0
+          CHECKED=0
+
+          for dockerfile in Dockerfile Dockerfile.armv7 Dockerfile.proxy; do
+            if [ ! -f "$dockerfile" ]; then
+              echo "⊘ $dockerfile not found, skipping"
+              continue
+            fi
+
+            echo "=========================================="
+            echo "Checking $dockerfile"
+            echo "=========================================="
+
+            # Extract all FROM lines (base images), resolving ARGs where possible
+            IMAGES=$(grep -E '^FROM ' "$dockerfile" | sed 's/FROM //; s/ [Aa][Ss] .*//' | sort -u)
+            PLATFORMS="${DOCKERFILE_PLATFORMS[$dockerfile]}"
+
+            for image in $IMAGES; do
+              # Skip build stage references (lowercase, no colon typically)
+              if echo "$image" | grep -qE '^\$\{'; then
+                # Try to resolve ARG default
+                ARG_NAME=$(echo "$image" | sed 's/\${//; s/}//')
+                RESOLVED=$(grep -E "^ARG $ARG_NAME=" "$dockerfile" | head -1 | sed "s/ARG $ARG_NAME=//")
+                if [ -n "$RESOLVED" ]; then
+                  image="$RESOLVED"
+                  echo "  Resolved \${$ARG_NAME} → $image"
+                else
+                  echo "  ⚠ Cannot resolve $image, skipping"
+                  continue
+                fi
+              fi
+
+              # Skip references to earlier build stages
+              if grep -qE "^FROM .* [Aa][Ss] $image" "$dockerfile" 2>/dev/null; then
+                continue
+              fi
+
+              for platform in $PLATFORMS; do
+                CHECKED=$((CHECKED + 1))
+                echo -n "  $image [$platform] ... "
+
+                # Parse platform into OS/arch/variant for robust matching
+                PLAT_OS=$(echo "$platform" | cut -d/ -f1)
+                PLAT_ARCH=$(echo "$platform" | cut -d/ -f2)
+                PLAT_VARIANT=$(echo "$platform" | cut -d/ -f3)
+
+                # Use manifest inspect JSON for reliable platform detection
+                FOUND=false
+                MANIFEST=$(docker manifest inspect "$image" 2>/dev/null || echo "")
+                if [ -n "$MANIFEST" ]; then
+                  if [ -n "$PLAT_VARIANT" ]; then
+                    if echo "$MANIFEST" | jq -e ".manifests[] | select(.platform.os == \"$PLAT_OS\" and .platform.architecture == \"$PLAT_ARCH\" and .platform.variant == \"$PLAT_VARIANT\")" > /dev/null 2>&1; then
+                      FOUND=true
+                    fi
+                  else
+                    if echo "$MANIFEST" | jq -e ".manifests[] | select(.platform.os == \"$PLAT_OS\" and .platform.architecture == \"$PLAT_ARCH\")" > /dev/null 2>&1; then
+                      FOUND=true
+                    fi
+                  fi
+                fi
+
+                if $FOUND; then
+                  echo "✓ exists"
+                else
+                  echo "✗ NOT FOUND"
+                  echo "::error file=$dockerfile::Base image $image does not have a manifest for platform $platform"
+                  FAILED=$((FAILED + 1))
+                fi
+              done
+            done
+            echo ""
+          done
+
+          echo "=========================================="
+          echo "Results: $CHECKED images checked, $FAILED failures"
+          echo "=========================================="
+
+          if [ $FAILED -gt 0 ]; then
+            echo "::error::$FAILED base image(s) missing platform support. Update Dockerfiles to use images that support all target architectures."
+            exit 1
+          fi
+
+          echo "✓ All base images verified for all target platforms"

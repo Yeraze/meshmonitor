@@ -95,12 +95,12 @@ router.get('/', async (req: Request, res: Response) => {
     let messages;
 
     if (channelNum !== undefined) {
-      messages = databaseService.getMessagesByChannel(channelNum, maxLimit);
+      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit);
     } else if (sinceTimestamp) {
-      messages = databaseService.getMessagesAfterTimestamp(sinceTimestamp);
+      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp);
       messages = messages.slice(0, maxLimit);
     } else {
-      messages = databaseService.getMessages(maxLimit);
+      messages = await databaseService.messages.getMessages(maxLimit);
     }
 
     // Filter messages by accessible channels (unless admin)
@@ -265,7 +265,7 @@ router.get('/:messageId', async (req: Request, res: Response) => {
     const isAdmin = user?.isAdmin ?? false;
 
     const { messageId } = req.params;
-    const allMessages = databaseService.getMessages(10000); // Get recent messages
+    const allMessages = await databaseService.messages.getMessages(10000); // Get recent messages
     const message = allMessages.find(m => m.id === messageId);
 
     if (!message) {
@@ -499,7 +499,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       );
 
       // Get local node info to construct messageId
-      const localNodeNum = databaseService.getSetting('localNodeNum');
+      const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
       const messageId = localNodeNum ? `${localNodeNum}_${requestId}` : requestId.toString();
 
       logger.info(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);

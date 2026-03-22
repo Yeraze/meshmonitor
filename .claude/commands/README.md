@@ -45,6 +45,28 @@ Creates a new git worktree for parallel development, sets up dependencies, and o
 
 ---
 
+### /create-pr
+**Create or update a pull request with full validation**
+
+Runs the complete PR workflow: unit tests, TypeScript check, documentation review, detailed PR creation, and CI feedback monitoring.
+
+**Usage:**
+```bash
+/create-pr                           # Create new PR for current branch
+/create-pr Fixes the Invalid Date bug on PostgreSQL
+/create-pr 2297                      # Update existing PR #2297
+```
+
+**What it does:**
+1. Runs unit tests and TypeScript check
+2. Reviews internal and website documentation for accuracy
+3. Creates branch and pushes if needed
+4. Creates PR with detailed description (intent, changes, issues, testing steps)
+5. Waits 5 minutes for CI, then reviews feedback
+6. Fixes urgent findings automatically, prompts for non-urgent ones
+
+---
+
 ### /worktree-cleanup
 **Clean up merged worktrees and branches**
 

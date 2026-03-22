@@ -282,9 +282,9 @@ export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string =>
  * This matches the DbNode interface from database.ts for type safety.
  */
 interface DbNodeLike {
-  nodeId?: string;
-  longName?: string;
-  shortName?: string;
+  nodeId?: string | null;
+  longName?: string | null;
+  shortName?: string | null;
   hwModel?: number | null;
 }
 

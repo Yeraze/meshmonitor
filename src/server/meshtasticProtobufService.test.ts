@@ -372,4 +372,66 @@ describe('MeshtasticProtobufService', () => {
       expect(decoded.nodeInfo.deviceMetrics).toBeDefined();
     });
   });
+
+  describe('decodeServiceEnvelope', () => {
+    it('decodes a valid ServiceEnvelope with packet', () => {
+      if (!protobufInitialized) return;
+
+      const root = getProtobufRoot();
+      const ServiceEnvelope = root!.lookupType('meshtastic.ServiceEnvelope');
+      const MeshPacket = root!.lookupType('meshtastic.MeshPacket');
+
+      const packet = MeshPacket.create({
+        from: 0x12345678,
+        to: 0xFFFFFFFF,
+        id: 42,
+        encrypted: new Uint8Array([1, 2, 3]),
+      });
+
+      const envelope = ServiceEnvelope.create({
+        packet: packet,
+        channelId: 'LongFast',
+        gatewayId: '!aabbccdd',
+      });
+
+      const encoded = ServiceEnvelope.encode(envelope).finish();
+      const result = service.decodeServiceEnvelope(new Uint8Array(encoded));
+
+      expect(result).not.toBeNull();
+      expect(result!.packet).toBeDefined();
+      expect(result!.packet.from).toBe(0x12345678);
+      expect(result!.packet.id).toBe(42);
+      expect(result!.channelId).toBe('LongFast');
+      expect(result!.gatewayId).toBe('!aabbccdd');
+    });
+
+    it('returns null for invalid data', () => {
+      if (!protobufInitialized) return;
+
+      const result = service.decodeServiceEnvelope(new Uint8Array([0xFF, 0xFF, 0xFF]));
+      // protobuf may decode garbage without throwing — check result is valid or null
+      expect(result === null || result.packet === undefined || result.packet === null).toBeTruthy();
+    });
+
+    it('returns null for envelope without packet', () => {
+      if (!protobufInitialized) return;
+
+      const root = getProtobufRoot();
+      const ServiceEnvelope = root!.lookupType('meshtastic.ServiceEnvelope');
+      const envelope = ServiceEnvelope.create({
+        channelId: 'LongFast',
+        gatewayId: '!aabbccdd',
+      });
+      const encoded = ServiceEnvelope.encode(envelope).finish();
+      const result = service.decodeServiceEnvelope(new Uint8Array(encoded));
+      expect(result).toBeNull();
+    });
+
+    it('returns null for empty data', () => {
+      if (!protobufInitialized) return;
+
+      const result = service.decodeServiceEnvelope(new Uint8Array(0));
+      expect(result).toBeNull();
+    });
+  });
 });

@@ -170,18 +170,16 @@ export class VirtualNodeServer extends EventEmitter {
     this.clients.set(clientId, client);
     logger.info(`📱 Virtual node client connected: ${clientId} (${this.clients.size} total)`);
 
-    // Audit log the connection
-    try {
-      databaseService.auditLog(
-        null, // system event
-        'virtual_node_connect',
-        'virtual_node',
-        JSON.stringify({ clientId, ip: socket.remoteAddress || 'unknown' }),
-        socket.remoteAddress || null
-      );
-    } catch (error) {
+    // Audit log the connection (fire-and-forget async)
+    databaseService.auditLogAsync(
+      null, // system event
+      'virtual_node_connect',
+      'virtual_node',
+      JSON.stringify({ clientId, ip: socket.remoteAddress || 'unknown' }),
+      socket.remoteAddress || null
+    ).catch(error => {
       logger.error('Failed to audit log virtual node connection:', error);
-    }
+    });
 
     socket.on('data', (data: Buffer) => this.handleClientData(clientId, data));
     socket.on('close', () => this.handleClientDisconnect(clientId));
@@ -205,18 +203,16 @@ export class VirtualNodeServer extends EventEmitter {
       this.clients.delete(clientId);
       logger.info(`📱 Virtual node client disconnected: ${clientId} (${this.clients.size} remaining)`);
 
-      // Audit log the disconnection
-      try {
-        databaseService.auditLog(
-          null, // system event
-          'virtual_node_disconnect',
-          'virtual_node',
-          JSON.stringify({ clientId, ip: client.socket.remoteAddress || 'unknown' }),
-          client.socket.remoteAddress || null
-        );
-      } catch (error) {
+      // Audit log the disconnection (fire-and-forget async)
+      databaseService.auditLogAsync(
+        null, // system event
+        'virtual_node_disconnect',
+        'virtual_node',
+        JSON.stringify({ clientId, ip: client.socket.remoteAddress || 'unknown' }),
+        client.socket.remoteAddress || null
+      ).catch(error => {
         logger.error('Failed to audit log virtual node disconnection:', error);
-      }
+      });
 
       this.emit('client-disconnected', clientId);
     }
@@ -396,7 +392,7 @@ export class VirtualNodeServer extends EventEmitter {
                     logger.info(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
                     // Update database
-                    databaseService.setNodeFavorite(targetNodeNum, true);
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is now favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -408,7 +404,7 @@ export class VirtualNodeServer extends EventEmitter {
                     logger.info(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
                     // Update database
-                    databaseService.setNodeFavorite(targetNodeNum, false);
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is no longer favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -531,6 +527,44 @@ export class VirtualNodeServer extends EventEmitter {
         if (queueStatusResponse) {
           await this.sendToClient(clientId, queueStatusResponse);
         }
+      } else if (toRadio.mqttClientProxyMessage) {
+        // MQTT Proxy message: decode ServiceEnvelope locally for Server Channel Database decryption
+        // Then forward to physical radio as normal
+        const proxyMsg = toRadio.mqttClientProxyMessage;
+        const proxyData = proxyMsg.data;
+
+        if (proxyData && proxyData.length > 0) {
+          try {
+            const envelope = meshtasticProtobufService.decodeServiceEnvelope(
+              proxyData instanceof Uint8Array ? proxyData : new Uint8Array(proxyData)
+            );
+
+            if (envelope && envelope.packet) {
+              // Mark as MQTT-sourced for UI display
+              envelope.packet.viaMqtt = true;
+
+              // Wrap in FromRadio using existing helper and process locally
+              const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(envelope.packet);
+              if (fromRadioMessage) {
+                logger.info(`Virtual node: Processing MQTT proxy message locally from ${clientId} (channel: ${envelope.channelId || 'unknown'}, gateway: ${envelope.gatewayId || 'unknown'})`);
+                await this.config.meshtasticManager.processIncomingData(fromRadioMessage, {
+                  skipVirtualNodeBroadcast: true,
+                });
+              }
+            } else {
+              logger.warn(`Virtual node: MQTT proxy message from ${clientId} has no decodable packet, forwarding to radio only`);
+            }
+          } catch (error) {
+            logger.error(`Virtual node: Failed to process MQTT proxy message locally from ${clientId}:`, error);
+            // Continue - still forward to physical node
+          }
+        } else {
+          logger.warn(`Virtual node: MQTT proxy message from ${clientId} has no data payload`);
+        }
+
+        // Always forward to physical radio regardless of local processing result
+        logger.info(`Virtual node: Forwarding MQTT proxy message from ${clientId} to physical node`);
+        this.queueMessage(clientId, payload);
       } else if (toRadio.disconnect) {
         // Handle disconnect request locally - don't forward to physical node
         logger.info(`Virtual node: Client ${clientId} requested disconnect`);
@@ -613,7 +647,7 @@ export class VirtualNodeServer extends EventEmitter {
    * (including disabled ones with role=0) are sent to match real firmware behavior.
    */
   private async sendChannelsFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
-    const dbChannels = await databaseService.getAllChannelsAsync();
+    const dbChannels = await databaseService.channels.getAllChannels();
     let sent = 0;
     for (const ch of dbChannels) {
       const client = this.clients.get(clientId);
@@ -646,9 +680,9 @@ export class VirtualNodeServer extends EventEmitter {
    * Send NodeInfo entries from the database to a client.
    */
   private async sendNodeInfosFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
-    const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+    const maxNodeAgeHours = parseInt(await databaseService.getSettingAsync('maxNodeAgeHours') || '24');
     const maxNodeAgeDays = maxNodeAgeHours / 24;
-    const allNodes = databaseService.getActiveNodes(maxNodeAgeDays);
+    const allNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
     let sent = 0;
 
     for (const node of allNodes) {
@@ -664,8 +698,8 @@ export class VirtualNodeServer extends EventEmitter {
           longName: node.longName || 'Unknown',
           shortName: node.shortName || '????',
           hwModel: node.hwModel || 0,
-          role: node.role,
-          publicKey: node.publicKey,
+          role: node.role ?? undefined,
+          publicKey: node.publicKey ?? undefined,
         },
         position: (node.latitude && node.longitude) ? {
           latitude: node.latitude,
@@ -673,16 +707,16 @@ export class VirtualNodeServer extends EventEmitter {
           altitude: node.altitude || 0,
           time: node.lastHeard || Math.floor(Date.now() / 1000),
         } : undefined,
-        deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
-                       node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
-          batteryLevel: node.batteryLevel,
-          voltage: node.voltage,
-          channelUtilization: node.channelUtilization,
-          airUtilTx: node.airUtilTx,
+        deviceMetrics: (node.batteryLevel != null || node.voltage != null ||
+                       node.channelUtilization != null || node.airUtilTx != null) ? {
+          batteryLevel: node.batteryLevel ?? undefined,
+          voltage: node.voltage ?? undefined,
+          channelUtilization: node.channelUtilization ?? undefined,
+          airUtilTx: node.airUtilTx ?? undefined,
         } : undefined,
-        snr: node.snr,
-        lastHeard: node.lastHeard,
-        hopsAway: node.hopsAway,
+        snr: node.snr ?? undefined,
+        lastHeard: node.lastHeard ?? undefined,
+        hopsAway: node.hopsAway ?? undefined,
         viaMqtt: node.viaMqtt ? true : false,
         isFavorite: node.isFavorite ? true : false,
       });
@@ -764,7 +798,7 @@ export class VirtualNodeServer extends EventEmitter {
       // --- STEP 1: MyNodeInfo (rebuilt from DB) ---
       const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        const localNode = databaseService.getNode(localNodeInfo.nodeNum);
+        const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
 
         let firmwareVersion = (localNodeInfo as any).firmwareVersion;
         if (!firmwareVersion && localNode?.firmwareVersion) {

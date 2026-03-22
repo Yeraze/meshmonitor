@@ -135,6 +135,13 @@ vi.mock('../../../services/database.js', () => {
         if (key === 'localNodeId') return '!a1b2c3d4';
         return null;
       }),
+      settings: {
+        getSetting: vi.fn(async (key: string) => {
+          if (key === 'localNodeNum') return '2715451348';
+          if (key === 'localNodeId') return '!a1b2c3d4';
+          return null;
+        }),
+      },
       // Nodes methods
       getAllNodes: vi.fn(() => testNodes),
       getActiveNodes: vi.fn(() => testNodes.slice(0, 2)),
@@ -157,10 +164,26 @@ vi.mock('../../../services/database.js', () => {
         if (id === 1) return { id: 1, name: 'Secondary', role: 2 };
         return null;
       }),
+      channels: {
+        getAllChannels: vi.fn(async () => [
+          { id: 0, name: 'Primary', role: 1 },
+          { id: 1, name: 'Secondary', role: 2 }
+        ]),
+        getChannelById: vi.fn(async (id: number) => {
+          if (id === 0) return { id: 0, name: 'Primary', role: 1 };
+          if (id === 1) return { id: 1, name: 'Secondary', role: 2 };
+          return null;
+        }),
+      },
       // Messages methods
       getMessages: vi.fn(() => testMessages),
       getMessagesByChannel: vi.fn(() => testMessages),
       getMessagesAfterTimestamp: vi.fn(() => testMessages),
+      messages: {
+        getMessages: vi.fn(async () => testMessages),
+        getMessagesByChannel: vi.fn(async () => testMessages),
+        getMessagesAfterTimestamp: vi.fn(async () => testMessages),
+      },
       // Telemetry methods (sync - legacy)
       getTelemetryByNode: vi.fn(() => testTelemetry),
       getTelemetryCountByNode: vi.fn(() => testTelemetry.length),
@@ -181,15 +204,39 @@ vi.mock('../../../services/database.js', () => {
         }
         return map;
       }),
-      // Telemetry methods (async)
+      // Telemetry methods (async) - deprecated wrappers kept for backward compat
       getTelemetryByNodeAsync: vi.fn(async () => testTelemetry),
       getTelemetryCountByNodeAsync: vi.fn(async () => testTelemetry.length),
       getTelemetryByTypeAsync: vi.fn(async () => testTelemetry),
       getTelemetryCountAsync: vi.fn(async () => testTelemetry.length),
       // Nodes async method
       getAllNodesAsync: vi.fn(async () => testNodes),
-      // Position history methods
-      // getNode takes a decimal nodeNum; position history route converts hex nodeId to decimal
+      nodes: {
+        getAllNodes: vi.fn(async () => testNodes),
+        // getNode (async) used by checkNodeChannelAccess via nodeEnhancer
+        getNode: vi.fn(async (_nodeNum: number) => {
+          return { positionOverrideIsPrivate: false };
+        }),
+      },
+      // Telemetry repository (direct access)
+      telemetry: {
+        getTelemetryByNode: vi.fn(async () => testTelemetry),
+        getTelemetryCountByNode: vi.fn(async () => testTelemetry.length),
+        getTelemetryByType: vi.fn(async () => testTelemetry),
+        getTelemetryCount: vi.fn(async () => testTelemetry.length),
+        getLatestTelemetryValueForAllNodes: vi.fn(async (type: string) => {
+          const map = new Map<string, number>();
+          if (type === 'uptimeSeconds') {
+            map.set('!abc12345', 86400);
+            map.set('!def67890', 86400);
+          }
+          return map;
+        }),
+        getPositionTelemetryByNode: vi.fn(async () => testPositionTelemetry),
+        purgeNodeTelemetry: vi.fn(async () => 0),
+        purgePositionHistory: vi.fn(async () => 0),
+      },
+      // getNode (sync) used by positionHistory route directly
       getNode: vi.fn((_nodeNum: number) => {
         return { positionOverrideIsPrivate: false };
       }),
@@ -1213,10 +1260,10 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return 403 for private-position node without nodes_private:read', async () => {
     const databaseService = await import('../../../services/database.js');
-    // getNode is called twice: once by checkNodeChannelAccess, once by the privacy check
-    vi.mocked(databaseService.default.getNode)
-      .mockReturnValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any)
-      .mockReturnValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
+    // getNode is called by checkNodeChannelAccess (async, via nodes repo) and by privacy check (also async, via nodes repo)
+    vi.mocked(databaseService.default.nodes.getNode)
+      .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any)
+      .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
     vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValue({
       nodes: { read: true },
       nodes_private: { read: false },
@@ -1339,14 +1386,14 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should pass since parameter to database query', async () => {
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockClear();
+    vi.mocked(databaseService.default.telemetry.getPositionTelemetryByNode).mockClear();
 
     await request(app)
       .get('/api/v1/nodes/2882400001/position-history?since=1500')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
-    expect(databaseService.default.getPositionTelemetryByNodeAsync).toHaveBeenCalledWith(
+    expect(databaseService.default.telemetry.getPositionTelemetryByNode).toHaveBeenCalledWith(
       '2882400001',
       5000, // 1000 * 5 internal limit
       1500  // since parameter
@@ -1355,7 +1402,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return empty array for node with no position history', async () => {
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.getPositionTelemetryByNodeAsync).mockResolvedValueOnce([]);
+    vi.mocked(databaseService.default.telemetry.getPositionTelemetryByNode).mockResolvedValueOnce([]);
 
     const response = await request(app)
       .get('/api/v1/nodes/2882400001/position-history')

@@ -55,7 +55,7 @@ router.get('/', async (req: Request, res: Response) => {
     const isAdmin = user?.isAdmin ?? false;
 
     // Get all channels
-    const allChannels = await databaseService.getAllChannelsAsync();
+    const allChannels = await databaseService.channels.getAllChannels();
 
     // If admin, return all channels
     if (isAdmin) {
@@ -131,7 +131,7 @@ router.get('/:channelId', async (req: Request, res: Response) => {
       }
     }
 
-    const channel = await databaseService.getChannelByIdAsync(channelId);
+    const channel = await databaseService.channels.getChannelById(channelId);
 
     if (!channel) {
       return res.status(404).json({

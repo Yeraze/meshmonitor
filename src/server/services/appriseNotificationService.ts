@@ -32,15 +32,15 @@ class AppriseNotificationService {
       await databaseService.waitForReady();
 
       // Default to internal Apprise API (bundled in container)
-      const appriseUrl = await databaseService.getSettingAsync('apprise_url') || 'http://localhost:8000';
-      const enabledSetting = await databaseService.getSettingAsync('apprise_enabled');
+      const appriseUrl = await databaseService.settings.getSetting('apprise_url') || 'http://localhost:8000';
+      const enabledSetting = await databaseService.settings.getSetting('apprise_enabled');
 
       // Default to enabled if not explicitly set (backward compatibility)
       const enabled = enabledSetting !== 'false';
 
       // If not set, initialize it to 'true'
       if (enabledSetting === null || enabledSetting === undefined) {
-        await databaseService.setSettingAsync('apprise_enabled', 'true');
+        await databaseService.settings.setSetting('apprise_enabled', 'true');
       }
 
       this.config = {
@@ -358,7 +358,7 @@ class AppriseNotificationService {
       localNodeName = localNodeInfo.longName;
     } else {
       // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = await databaseService.getSettingAsync('localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
         const localNode = await databaseService.nodesRepo?.getNode(localNodeNum);

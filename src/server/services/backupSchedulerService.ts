@@ -89,13 +89,13 @@ class BackupSchedulerService {
 
     try {
       // Check if automated device backups are enabled
-      const enabled = databaseService.getSetting('backup_enabled');
+      const enabled = await databaseService.settings.getSetting('backup_enabled');
       if (enabled !== 'true') {
         return; // Automated device backups are disabled
       }
 
       // Get the configured backup time (HH:MM format)
-      const backupTime = databaseService.getSetting('backup_time') || '02:00';
+      const backupTime = await databaseService.settings.getSetting('backup_time') || '02:00';
       const [targetHour, targetMinute] = backupTime.split(':').map(Number);
 
       // Get current time
@@ -110,7 +110,7 @@ class BackupSchedulerService {
 
       // Check if we already ran a device backup today
       const lastBackupKey = 'backup_lastAutomaticBackup';
-      const lastBackup = databaseService.getSetting(lastBackupKey);
+      const lastBackup = await databaseService.settings.getSetting(lastBackupKey);
       const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
 
       if (lastBackup && lastBackup.startsWith(today)) {
@@ -125,7 +125,7 @@ class BackupSchedulerService {
       await this.runAutomatedDeviceBackup();
 
       // Update last device backup timestamp
-      databaseService.setSetting(lastBackupKey, now.toISOString());
+      await databaseService.settings.setSetting(lastBackupKey, now.toISOString());
     } catch (error) {
       logger.error('❌ Error in device backup scheduler check:', error);
     } finally {
@@ -145,13 +145,13 @@ class BackupSchedulerService {
 
     try {
       // Check if automated system backups are enabled
-      const enabled = databaseService.getSetting('system_backup_enabled');
+      const enabled = await databaseService.settings.getSetting('system_backup_enabled');
       if (enabled !== 'true') {
         return; // Automated system backups are disabled
       }
 
       // Get the configured backup time (HH:MM format)
-      const backupTime = databaseService.getSetting('system_backup_time') || '03:00';
+      const backupTime = await databaseService.settings.getSetting('system_backup_time') || '03:00';
       const [targetHour, targetMinute] = backupTime.split(':').map(Number);
 
       // Get current time
@@ -166,7 +166,7 @@ class BackupSchedulerService {
 
       // Check if we already ran a system backup today
       const lastBackupKey = 'system_backup_lastAutomaticBackup';
-      const lastBackup = databaseService.getSetting(lastBackupKey);
+      const lastBackup = await databaseService.settings.getSetting(lastBackupKey);
       const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
 
       if (lastBackup && lastBackup.startsWith(today)) {
@@ -181,7 +181,7 @@ class BackupSchedulerService {
       await this.runAutomatedSystemBackup();
 
       // Update last system backup timestamp
-      databaseService.setSetting(lastBackupKey, now.toISOString());
+      await databaseService.settings.setSetting(lastBackupKey, now.toISOString());
     } catch (error) {
       logger.error('❌ Error in system backup scheduler check:', error);
     } finally {
@@ -275,7 +275,7 @@ class BackupSchedulerService {
   /**
    * Get scheduler status
    */
-  getStatus(): {
+  async getStatus(): Promise<{
     running: boolean;
     device: {
       nextCheck: string | null;
@@ -287,10 +287,10 @@ class BackupSchedulerService {
       enabled: boolean;
       backupTime: string;
     };
-  } {
+  }> {
     // Device backup settings
-    const deviceEnabled = databaseService.getSetting('backup_enabled') === 'true';
-    const deviceBackupTime = databaseService.getSetting('backup_time') || '02:00';
+    const deviceEnabled = await databaseService.settings.getSetting('backup_enabled') === 'true';
+    const deviceBackupTime = await databaseService.settings.getSetting('backup_time') || '02:00';
 
     let deviceNextCheck: string | null = null;
     if (this.isRunning && deviceEnabled) {
@@ -309,8 +309,8 @@ class BackupSchedulerService {
     }
 
     // System backup settings
-    const systemEnabled = databaseService.getSetting('system_backup_enabled') === 'true';
-    const systemBackupTime = databaseService.getSetting('system_backup_time') || '03:00';
+    const systemEnabled = await databaseService.settings.getSetting('system_backup_enabled') === 'true';
+    const systemBackupTime = await databaseService.settings.getSetting('system_backup_time') || '03:00';
 
     let systemNextCheck: string | null = null;
     if (this.isRunning && systemEnabled) {

@@ -120,7 +120,7 @@ class BackupFileService {
     try {
       if (usesAsyncRepository()) {
         // PostgreSQL/MySQL: use async repository methods
-        const rows = await databaseService.getBackupHistoryListAsync();
+        const rows = await databaseService.misc.getBackupHistoryList();
         return rows.map(row => ({
           filename: row.filename,
           timestamp: new Date(row.timestamp).toISOString(),
@@ -162,7 +162,7 @@ class BackupFileService {
 
       if (usesAsyncRepository()) {
         // PostgreSQL/MySQL: use async repository methods
-        const row = await databaseService.getBackupByFilenameAsync(filename);
+        const row = await databaseService.misc.getBackupByFilename(filename);
         if (!row) {
           throw new Error('Backup not found');
         }
@@ -197,7 +197,7 @@ class BackupFileService {
     try {
       if (usesAsyncRepository()) {
         // PostgreSQL/MySQL: use async repository methods
-        const row = await databaseService.getBackupByFilenameAsync(filename);
+        const row = await databaseService.misc.getBackupByFilename(filename);
         if (!row) {
           throw new Error('Backup not found');
         }
@@ -209,7 +209,7 @@ class BackupFileService {
         }
 
         // Delete from database
-        await databaseService.deleteBackupHistoryAsync(filename);
+        await databaseService.misc.deleteBackupHistory(filename);
       } else {
         // SQLite: use sync db.prepare() method
         const db = databaseService.db;
@@ -243,7 +243,7 @@ class BackupFileService {
    */
   async purgeOldBackups(): Promise<void> {
     try {
-      const maxBackups = databaseService.getSetting('backup_maxBackups');
+      const maxBackups = await databaseService.settings.getSetting('backup_maxBackups');
       if (!maxBackups) {
         return; // No limit set
       }
@@ -255,7 +255,7 @@ class BackupFileService {
 
       if (usesAsyncRepository()) {
         // PostgreSQL/MySQL: use async repository methods
-        const totalBackups = await databaseService.countBackupsAsync();
+        const totalBackups = await databaseService.misc.countBackups();
 
         if (totalBackups <= limit) {
           return; // Under the limit
@@ -263,7 +263,7 @@ class BackupFileService {
 
         // Get oldest backups to delete
         const toDelete = totalBackups - limit;
-        const oldBackups = await databaseService.getOldestBackupsAsync(toDelete);
+        const oldBackups = await databaseService.misc.getOldestBackups(toDelete);
 
         logger.info(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
 
@@ -274,7 +274,7 @@ class BackupFileService {
           }
 
           // Delete from database
-          await databaseService.deleteBackupHistoryAsync(backup.filename);
+          await databaseService.misc.deleteBackupHistory(backup.filename);
 
           logger.debug(`  🗑️  Purged: ${backup.filename}`);
         }

@@ -84,7 +84,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     // Check privacy for position history
     // nodeId is hex with '!' prefix (e.g., '!df6ab854'); getNode() expects the decimal nodeNum
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = databaseService.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum);
 
     if (node?.positionOverrideIsPrivate === true) {
       if (!await hasNodesPrivateReadPermission(userId, isAdmin)) {
@@ -104,7 +104,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     // `total` reflects all matching positions, not just the current page.
     const TELEMETRY_TYPES_PER_POSITION = 5;
     const internalLimit = (offsetNum + maxLimit) * TELEMETRY_TYPES_PER_POSITION;
-    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(
+    const positionTelemetry = await databaseService.telemetry.getPositionTelemetryByNode(
       nodeId,
       internalLimit,
       sinceTimestamp
@@ -141,8 +141,8 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
         pos.groundTrack = t.value;
       }
 
-      if (t.packetId !== undefined && pos.packetId === undefined) {
-        pos.packetId = t.packetId;
+      if (t.packetId != null && pos.packetId === undefined) {
+        pos.packetId = t.packetId ?? undefined;
       }
     });
 

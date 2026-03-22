@@ -7,7 +7,7 @@ import databaseService from '../../services/database.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    auditLog: vi.fn(),
+    auditLogAsync: vi.fn(),
     drizzleDbType: 'sqlite',
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
@@ -35,7 +35,7 @@ import { mfaService } from '../services/mfa.js';
 const mockMfaService = mfaService as unknown as { [K in keyof typeof mfaService]: ReturnType<typeof vi.fn> };
 
 const mockDatabase = databaseService as unknown as {
-  auditLog: ReturnType<typeof vi.fn>;
+  auditLogAsync: ReturnType<typeof vi.fn>;
   findUserByIdAsync: ReturnType<typeof vi.fn>;
   findUserByUsernameAsync: ReturnType<typeof vi.fn>;
   checkPermissionAsync: ReturnType<typeof vi.fn>;
@@ -183,7 +183,7 @@ describe('MFA Routes', () => {
         secret,
         JSON.stringify(hashedBackupCodes)
       );
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_setup_initiated',
         'auth',
@@ -252,7 +252,7 @@ describe('MFA Routes', () => {
       expect(response.status).toBe(400);
       expect(response.body).toEqual({ error: 'Invalid verification code. Please try again.' });
       expect(mockMfaService.verifyToken).toHaveBeenCalledWith('JBSWY3DPEHPK3PXP', '000000');
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_setup_verify_failed',
         'auth',
@@ -276,7 +276,7 @@ describe('MFA Routes', () => {
       expect(response.body).toEqual({ success: true });
       expect(mockMfaService.verifyToken).toHaveBeenCalledWith('JBSWY3DPEHPK3PXP', '123456');
       expect(mockDatabase.enableUserMfaAsync).toHaveBeenCalledWith(defaultUser.id);
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_enabled',
         'auth',
@@ -338,7 +338,7 @@ describe('MFA Routes', () => {
       expect(response.status).toBe(401);
       expect(response.body).toEqual({ error: 'Invalid code' });
       expect(mockMfaService.verifyToken).toHaveBeenCalledWith(mfaEnabledUser.mfaSecret, '000000');
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_disable_failed',
         'auth',
@@ -378,7 +378,7 @@ describe('MFA Routes', () => {
       expect(response.body).toEqual({ success: true });
       expect(mockMfaService.verifyToken).toHaveBeenCalledWith(mfaEnabledUser.mfaSecret, '123456');
       expect(mockDatabase.clearUserMfaAsync).toHaveBeenCalledWith(defaultUser.id);
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_disabled',
         'auth',
@@ -409,7 +409,7 @@ describe('MFA Routes', () => {
         defaultUser.id,
         JSON.stringify(remainingCodes)
       );
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_backup_code_used',
         'auth',
@@ -417,7 +417,7 @@ describe('MFA Routes', () => {
         expect.any(String)
       );
       expect(mockDatabase.clearUserMfaAsync).toHaveBeenCalledWith(defaultUser.id);
-      expect(mockDatabase.auditLog).toHaveBeenCalledWith(
+      expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
         defaultUser.id,
         'mfa_disabled',
         'auth',

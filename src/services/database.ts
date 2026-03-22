@@ -1,97 +1,14 @@
 import BetterSqlite3Database from 'better-sqlite3';
-import { sql } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
-import { getPortNumName } from '../server/constants/meshtastic.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
 import { APITokenModel } from '../server/models/APIToken.js';
-import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
-import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
-import { migration as connectionMigration } from '../server/migrations/003_add_connection_permission.js';
-import { migration as tracerouteMigration } from '../server/migrations/004_add_traceroute_permission.js';
-import { migration as auditLogMigration } from '../server/migrations/005_enhance_audit_log.js';
-import { migration as auditPermissionMigration } from '../server/migrations/006_add_audit_permission.js';
-import { migration as readMessagesMigration } from '../server/migrations/007_add_read_messages.js';
-import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
-import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
-import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
-import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
-import { migration as inactiveNodeNotificationMigration } from '../server/migrations/032_add_notify_on_inactive_node.js';
-import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
-import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
-import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
-import { migration as autoTracerouteFilterMigration } from '../server/migrations/015_add_auto_traceroute_filter.js';
-import { migration as securityPermissionMigration } from '../server/migrations/016_add_security_permission.js';
-import { migration as channelColumnMigration } from '../server/migrations/017_add_channel_to_nodes.js';
-import { migration as mobileMigration } from '../server/migrations/018_add_mobile_to_nodes.js';
-import { migration as solarEstimatesMigration } from '../server/migrations/019_add_solar_estimates.js';
-import { migration as positionPrecisionMigration } from '../server/migrations/020_add_position_precision_tracking.js';
-import { migration as systemBackupTableMigration } from '../server/migrations/021_add_system_backup_table.js';
-import { migration as customThemesMigration } from '../server/migrations/022_add_custom_themes.js';
-import { migration as passwordLockedMigration } from '../server/migrations/023_add_password_locked_flag.js';
-import { migration as perChannelPermissionsMigration } from '../server/migrations/024_add_per_channel_permissions.js';
-import { migration as apiTokensMigration } from '../server/migrations/025_add_api_tokens.js';
-import { migration as cascadeForeignKeysMigration } from '../server/migrations/028_add_cascade_to_foreign_keys.js';
-import { migration as userMapPreferencesMigration } from '../server/migrations/030_add_user_map_preferences.js';
-import { migration as isIgnoredMigration } from '../server/migrations/033_add_is_ignored_to_nodes.js';
-import { migration as notifyOnServerEventsMigration } from '../server/migrations/034_add_notify_on_server_events.js';
-import { migration as prefixWithNodeNameMigration } from '../server/migrations/035_add_prefix_with_node_name.js';
-import { migration as perUserAppriseUrlsMigration } from '../server/migrations/036_add_per_user_apprise_urls.js';
-import { migration as notifyOnMqttMigration } from '../server/migrations/037_add_notify_on_mqtt.js';
-import { migration as recalculateEstimatedPositionsMigration } from '../server/migrations/038_recalculate_estimated_positions.js';
-import { migration as recalculateEstimatedPositionsFixMigration } from '../server/migrations/039_recalculate_estimated_positions_fix.js';
-import { migration as positionOverrideMigration } from '../server/migrations/040_add_position_override_to_nodes.js';
-import { migration as autoTracerouteLogMigration } from '../server/migrations/041_add_auto_traceroute_log.js';
-import { migration as relayNodePacketLogMigration } from '../server/migrations/042_add_relay_node_to_packet_log.js';
-import { migration as positionOverridePrivacyMigration } from '../server/migrations/043_add_position_override_privacy.js';
-import { migration as nodesPrivatePermissionMigration } from '../server/migrations/044_add_nodes_private_permission.js';
-import { migration as packetDirectionMigration } from '../server/migrations/045_add_packet_direction.js';
-import { migration as autoKeyRepairMigration } from '../server/migrations/046_add_auto_key_repair.js';
-import { migration as positionOverrideBooleanMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_fix_position_override_boolean_types.js';
-import { migration as autoTracerouteColumnMigration } from '../server/migrations/048_fix_auto_traceroute_column_name.js';
-import { migration as notificationChannelSettingsMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_add_notification_channel_settings.js';
-import { migration as channelDatabaseMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_add_channel_database.js';
-import { migration as decryptedByMessagesMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_add_decrypted_by_to_messages.js';
-import { migration as upgradeHistorySchemaMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_fix_upgrade_history_schema.js';
-import { migration as viewOnMapPermissionMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_add_view_on_map_permission.js';
-import { migration as newsTablesMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_news_tables.js';
-import { migration as remoteAdminColumnsMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_add_remote_admin_columns.js';
-import { migration as backupHistoryColumnsMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_fix_backup_history_columns.js';
-import { migration as packetViaMqttMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_packet_via_mqtt.js';
-import { migration as transportMechanismMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_convert_via_mqtt_to_transport_mechanism.js';
-import { migration as channelDbViewOnMapMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_add_channel_database_view_on_map.js';
-import { migration as autoTracerouteEnabledMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_add_auto_traceroute_enabled_column.js';
-import { migration as spamDetectionMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_add_spam_detection_columns.js';
-import { migration as positionDoublePrecisionMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_upgrade_position_precision.js';
-import { migration as positionHistoryHoursMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_add_position_history_hours.js';
-import { migration as enforceNameValidationMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_enforce_name_validation.js';
-import { migration as sortOrderMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_sortorder_to_channel_database.js';
-import { migration as ignoredNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_ignored_nodes_table.js';
-import { migration as autoTimeSyncMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_auto_time_sync.js';
-import { migration as mfaColumnsMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_add_mfa_columns.js';
-import { migration as traceroutePositionsMigration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_add_traceroute_positions.js';
-import { migration as meshcoreTablesMigration, runMigration070Postgres as runMigration070MeshcorePostgres, runMigration070Mysql as runMigration070MeshcoreMysql } from '../server/migrations/070_add_meshcore_tables.js';
-import { migration as meshcorePermissionMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_add_meshcore_permission.js';
-import { migration as dmUnreadIndexMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_add_messages_dm_unread_index.js';
-import { migration as packetIdMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_add_packet_id_to_telemetry.js';
-import { migration as showMeshCoreNodesMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_meshcore_nodes_preference.js';
-import { migration as telemetryPacketIdBigintMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_upgrade_telemetry_packetid_bigint.js';
-import { migration as accuracyEstimatedPrefsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_accuracy_and_estimated_position_prefs.js';
-import { migration as ignoredNodesNodeNumBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_upgrade_ignored_nodes_nodenum_bigint.js';
-import { migration as createEmbedProfilesMigration, runMigration078Postgres, runMigration078Mysql } from '../server/migrations/078_create_embed_profiles.js';
-import { migration as createGeofenceCooldownsMigration, runMigration079Postgres, runMigration079Mysql } from '../server/migrations/079_create_geofence_cooldowns.js';
-import { migration as addFavoriteLockedMigration, runMigration080Postgres, runMigration080Mysql } from '../server/migrations/080_add_favorite_locked.js';
-import { migration as addTimeOffsetColumnsMigration, runMigration081Postgres, runMigration081Mysql } from '../server/migrations/081_add_time_offset_columns.js';
-import { migration as addPacketmonitorPermissionMigration, runMigration082Postgres, runMigration082Mysql } from '../server/migrations/082_add_packetmonitor_permission.js';
-import { runMigration083Sqlite, runMigration083Postgres, runMigration083Mysql } from '../server/migrations/083_add_missing_map_preference_columns.js';
-import { runMigration084Sqlite, runMigration084Postgres, runMigration084Mysql } from '../server/migrations/084_add_key_mismatch_columns.js';
-import { runMigration085Postgres, runMigration085Mysql } from '../server/migrations/085_fix_custom_themes_columns.js';
-import { runMigration086Sqlite, runMigration086Postgres, runMigration086Mysql } from '../server/migrations/086_add_auto_distance_delete_log.js';
+import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Drizzle ORM imports for dual-database support
@@ -116,11 +33,7 @@ import {
   IgnoredNodesRepository,
   EmbedProfileRepository,
 } from '../db/repositories/index.js';
-import type { EmbedProfile, EmbedProfileInput } from '../db/repositories/index.js';
-import type { DatabaseType } from '../db/types.js';
-import { packetLogPostgres, packetLogMysql, packetLogSqlite } from '../db/schema/packets.js';
-import { POSTGRES_SCHEMA_SQL, POSTGRES_TABLE_NAMES } from '../db/schema/postgres-create.js';
-import { MYSQL_SCHEMA_SQL, MYSQL_TABLE_NAMES } from '../db/schema/mysql-create.js';
+import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -290,54 +203,9 @@ export interface DbPushSubscription {
   lastUsedAt?: number;
 }
 
-export interface DbPacketLog {
-  id?: number;
-  packet_id?: number;
-  timestamp: number;
-  from_node: number;
-  from_node_id?: string;
-  from_node_longName?: string;
-  to_node?: number;
-  to_node_id?: string;
-  to_node_longName?: string;
-  channel?: number;
-  portnum: number;
-  portnum_name?: string;
-  encrypted: boolean;
-  snr?: number;
-  rssi?: number;
-  hop_limit?: number;
-  hop_start?: number;
-  relay_node?: number;
-  payload_size?: number;
-  want_ack?: boolean;
-  priority?: number;
-  payload_preview?: string;
-  metadata?: string;
-  direction?: 'rx' | 'tx';
-  created_at?: number;
-  decrypted_by?: 'node' | 'server' | null;
-  decrypted_channel_id?: number | null;
-  transport_mechanism?: number;
-}
-
-export interface DbPacketCountByNode {
-  from_node: number;
-  from_node_id: string | null;
-  from_node_longName: string | null;
-  count: number;
-}
-
-export interface DbDistinctRelayNode {
-  relay_node: number;
-  matching_nodes: Array<{ longName: string | null; shortName: string | null }>;
-}
-
-export interface DbPacketCountByPortnum {
-  portnum: number;
-  portnum_name: string;
-  count: number;
-}
+// Re-export DbPacketLog from canonical db/types location
+export type DbPacketLog = DbTypesPacketLog;
+export type { DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode };
 
 export interface DbCustomTheme {
   id?: number;
@@ -513,6 +381,75 @@ class DatabaseService {
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
 
+  /**
+   * Typed repository accessors — throw if database not initialized.
+   * Prefer these over the nullable public fields.
+   */
+  get nodes(): NodesRepository {
+    if (!this.nodesRepo) throw new Error('Database not initialized');
+    return this.nodesRepo;
+  }
+
+  get messages(): MessagesRepository {
+    if (!this.messagesRepo) throw new Error('Database not initialized');
+    return this.messagesRepo;
+  }
+
+  get channels(): ChannelsRepository {
+    if (!this.channelsRepo) throw new Error('Database not initialized');
+    return this.channelsRepo;
+  }
+
+  get settings(): SettingsRepository {
+    if (!this.settingsRepo) throw new Error('Database not initialized');
+    return this.settingsRepo;
+  }
+
+  get telemetry(): TelemetryRepository {
+    if (!this.telemetryRepo) throw new Error('Database not initialized');
+    return this.telemetryRepo;
+  }
+
+  get traceroutes(): TraceroutesRepository {
+    if (!this.traceroutesRepo) throw new Error('Database not initialized');
+    return this.traceroutesRepo;
+  }
+
+  get neighbors(): NeighborsRepository {
+    if (!this.neighborsRepo) throw new Error('Database not initialized');
+    return this.neighborsRepo;
+  }
+
+  get auth(): AuthRepository {
+    if (!this.authRepo) throw new Error('Database not initialized');
+    return this.authRepo;
+  }
+
+  get notifications(): NotificationsRepository {
+    if (!this.notificationsRepo) throw new Error('Database not initialized');
+    return this.notificationsRepo;
+  }
+
+  get misc(): MiscRepository {
+    if (!this.miscRepo) throw new Error('Database not initialized');
+    return this.miscRepo;
+  }
+
+  get channelDatabase(): ChannelDatabaseRepository {
+    if (!this.channelDatabaseRepo) throw new Error('Database not initialized');
+    return this.channelDatabaseRepo;
+  }
+
+  get ignoredNodes(): IgnoredNodesRepository {
+    if (!this.ignoredNodesRepo) throw new Error('Database not initialized');
+    return this.ignoredNodesRepo;
+  }
+
+  get embedProfiles(): EmbedProfileRepository {
+    if (!this.embedProfileRepo) throw new Error('Database not initialized');
+    return this.embedProfileRepo;
+  }
+
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
 
@@ -621,42 +558,7 @@ class DatabaseService {
     }
 
     // Now attempt to open the database with better error handling
-    try {
-      this.db = new BetterSqlite3Database(dbPath);
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('foreign_keys = ON');
-      this.db.pragma('busy_timeout = 5000'); // 5 second timeout for locked database
-    } catch (error: unknown) {
-      const err = error as Error & { code?: string };
-      logger.error('❌ DATABASE OPEN ERROR ❌');
-      logger.error('═══════════════════════════════════════════════════════════');
-      logger.error(`Failed to open SQLite database at: ${dbPath}`);
-      logger.error('');
-
-      if (err.code === 'SQLITE_CANTOPEN') {
-        logger.error('SQLITE_CANTOPEN - Unable to open database file.');
-        logger.error('');
-        logger.error('Common causes:');
-        logger.error('  1. Directory permissions - the database directory is not writable');
-        logger.error('  2. Missing volume mount - check your docker-compose.yml');
-        logger.error('  3. Disk space - ensure the filesystem is not full');
-        logger.error('  4. File locked by another process');
-        logger.error('');
-        logger.error('Troubleshooting steps:');
-        logger.error('  1. Check directory permissions:');
-        logger.error(`     ls -la ${dbDir}`);
-        logger.error('  2. Check disk space:');
-        logger.error('     df -h');
-        logger.error('  3. Verify Docker volume mount (if using Docker):');
-        logger.error('     docker compose config | grep volumes -A 5');
-      } else {
-        logger.error(`Error: ${err.message}`);
-        logger.error(`Error code: ${err.code || 'unknown'}`);
-      }
-
-      logger.error('═══════════════════════════════════════════════════════════');
-      throw new Error(`Database initialization failed: ${err.message}`);
-    }
+    this.db = this.openSqliteDatabase(dbPath, dbDir);
 
     // Initialize models
     this.userModel = new UserModel(this.db);
@@ -767,11 +669,8 @@ class DatabaseService {
       this.nodesRepo = new NodesRepository(drizzleDb, this.drizzleDbType);
       this.messagesRepo = new MessagesRepository(drizzleDb, this.drizzleDbType);
       this.telemetryRepo = new TelemetryRepository(drizzleDb, this.drizzleDbType);
-      // Auth repo only for PostgreSQL/MySQL - SQLite uses existing sync models (UserModel, etc.)
-      // because SQLite migrations created tables with different schema than Drizzle expects
-      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-        this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
-      }
+      // Auth repo for all backends - Migration 012 aligned SQLite schema with Drizzle definitions
+      this.authRepo = new AuthRepository(drizzleDb, this.drizzleDbType);
       this.traceroutesRepo = new TraceroutesRepository(drizzleDb, this.drizzleDbType);
       this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
@@ -914,91 +813,58 @@ class DatabaseService {
   private initialize(): void {
     if (this.isInitialized) return;
 
+    // Pre-3.7 detection: check BEFORE createTables() so we can distinguish
+    // an existing pre-v3.7 database from a fresh install.
+    // If settings table already exists at this point, it's from a previous installation.
+    const settingsExists = this.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+    ).all();
+    if (settingsExists.length > 0) {
+      // Check for v3.7+ markers: either the old migration_077 key (pre-clean-break)
+      // or the new migration_078 key (post-clean-break baseline)
+      const v37Key = this.db.prepare(
+        "SELECT value FROM settings WHERE key IN ('migration_077_ignored_nodes_nodenum_bigint', 'migration_078_create_embed_profiles')"
+      ).get();
+      if (!v37Key) {
+        logger.error('This version requires MeshMonitor v3.7 or later.');
+        logger.error('Please upgrade to v3.7 first, then upgrade to this version.');
+        throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
+      }
+    }
+
     this.createTables();
     this.migrateSchema();
     this.createIndexes();
     this.runDataMigrations();
-    this.runAuthMigration();
-    this.runChannelsMigration();
-    this.runConnectionMigration();
-    this.runTracerouteMigration();
-    this.runAuditLogMigration();
-    this.runAuditPermissionMigration();
-    this.runReadMessagesMigration();
-    this.runPushSubscriptionsMigration();
-    this.runNotificationPreferencesMigration();
-    this.runNotifyOnEmojiMigration();
-    this.runPacketLogMigration();
-    this.runChannelRoleMigration();
-    this.runBackupTablesMigration();
-    this.runMessageDeliveryTrackingMigration();
-    this.runAutoTracerouteFilterMigration();
-    this.runSecurityPermissionMigration();
-    this.runChannelColumnMigration();
-    this.runMobileMigration();
-    this.runSolarEstimatesMigration();
-    this.runPositionPrecisionMigration();
-    this.runSystemBackupTableMigration();
-    this.runCustomThemesMigration();
-    this.runPasswordLockedMigration();
-    this.runPerChannelPermissionsMigration();
-    this.runAPITokensMigration();
-    this.runCascadeForeignKeysMigration();
-    // NOTE: Auto-welcome migration is now handled when the feature is first enabled
-    // See handleAutoWelcomeEnabled() which is called from the settings POST endpoint in server.ts
-    this.runUserMapPreferencesMigration();
-    this.runInactiveNodeNotificationMigration();
-    this.runIsIgnoredMigration();
-    this.runNotifyOnServerEventsMigration();
-    this.runPrefixWithNodeNameMigration();
-    this.runPerUserAppriseUrlsMigration();
-    this.runNotifyOnMqttMigration();
-    this.runRecalculateEstimatedPositionsMigration();
-    this.runRecalculateEstimatedPositionsFixMigration();
-    this.runPositionOverrideMigration();
-    this.runPositionOverridePrivacyMigration();
-    this.runNodesPrivatePermissionMigration();
-    this.runPacketDirectionMigration();
-    this.runAutoTracerouteLogMigration();
-    this.runRelayNodePacketLogMigration();
-    this.runAutoKeyRepairMigration();
-    this.runPositionOverrideBooleanMigration();
-    this.runAutoTracerouteColumnMigration();
-    this.runNotificationChannelSettingsMigration();
-    this.runChannelDatabaseMigration();
-    this.runDecryptedByMessagesMigration();
-    this.runUpgradeHistorySchemaMigration();
-    this.runViewOnMapPermissionMigration();
-    this.runNewsTablesMigration();
-    this.runRemoteAdminColumnsMigration();
-    this.runBackupHistoryColumnsMigration();
-    this.runPacketViaMqttMigration();
-    this.runTransportMechanismMigration();
-    this.runChannelDbViewOnMapMigration();
-    this.runAutoTracerouteEnabledMigration();
-    this.runSpamDetectionMigration();
-    this.runPositionDoublePrecisionMigration();
-    this.runPositionHistoryHoursMigration();
-    this.runEnforceNameValidationMigration();
-    this.runSortOrderMigration();
-    this.runIgnoredNodesTableMigration();
-    this.runAutoTimeSyncMigration();
-    this.runMfaColumnsMigration();
-    this.runTraceroutePositionsMigration();
-    this.runMeshcoreTablesMigration();
-    this.runMeshcorePermissionMigration();
-    this.runDmUnreadIndexMigration();
-    this.runPacketIdMigration();
-    this.runShowMeshCoreNodesMigration();
-    this.runTelemetryPacketIdBigintMigration();
-    this.runAccuracyEstimatedPrefsMigration();
-    this.runIgnoredNodesNodeNumBigintMigration();
-    this.runCreateEmbedProfilesMigration();
-    this.runCreateGeofenceCooldownsMigration();
-    this.runAddFavoriteLockedMigration();
-    this.runAddTimeOffsetColumnsMigration();
-    this.runAddPacketmonitorPermissionMigration();
-    this.runAutoDistanceDeleteLogMigration();
+
+    // Run all registered SQLite migrations via the migration registry
+    for (const migration of registry.getAll()) {
+      if (!migration.sqlite) continue;
+
+      try {
+        if (migration.selfIdempotent) {
+          // Old-style migrations (001-046) handle their own idempotency
+          migration.sqlite(this.db,
+            (key: string) => this.getSetting(key),
+            (key: string, value: string) => this.setSetting(key, value)
+          );
+        } else if (migration.settingsKey) {
+          // New-style migrations use settings key guard
+          if (this.getSetting(migration.settingsKey) !== 'completed') {
+            logger.debug(`Running migration ${String(migration.number).padStart(3, '0')}: ${migration.name}...`);
+            migration.sqlite(this.db,
+              (key: string) => this.getSetting(key),
+              (key: string, value: string) => this.setSetting(key, value)
+            );
+            this.setSetting(migration.settingsKey, 'completed');
+            logger.debug(`Migration ${String(migration.number).padStart(3, '0')} completed successfully`);
+          }
+        }
+      } catch (error) {
+        logger.error(`Error running migration ${String(migration.number).padStart(3, '0')} (${migration.name}):`, error);
+        throw error;
+      }
+    }
     this.ensureAutomationDefaults();
     this.warmupCaches();
     this.isInitialized = true;
@@ -1064,1597 +930,6 @@ class DatabaseService {
     }
   }
 
-  private runAuthMigration(): void {
-    logger.debug('Running authentication migration...');
-    try {
-      // Check if migration has already been run
-      const tableCheck = this.db.prepare(`
-        SELECT name FROM sqlite_master WHERE type='table' AND name='users'
-      `).get();
-
-      if (!tableCheck) {
-        logger.debug('Authentication tables not found, running migration...');
-        authMigration.up(this.db);
-        logger.debug('✅ Authentication migration completed successfully');
-      } else {
-        logger.debug('✅ Authentication tables already exist, skipping migration');
-      }
-    } catch (error) {
-      logger.error('❌ Failed to run authentication migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelsMigration(): void {
-    logger.debug('Running channels permission migration...');
-    try {
-      // Check if migration has already been run by checking if 'channels' is in the CHECK constraint
-      // We'll use a setting to track this migration
-      const migrationKey = 'migration_002_channels_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channels permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 002: Add channels permission resource...');
-      channelsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channels permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channels permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runConnectionMigration(): void {
-    logger.debug('Running connection permission migration...');
-    try {
-      const migrationKey = 'migration_003_connection_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Connection permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 003: Add connection permission resource...');
-      connectionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Connection permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run connection permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runTracerouteMigration(): void {
-    logger.debug('Running traceroute permission migration...');
-    try {
-      const migrationKey = 'migration_004_traceroute_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Traceroute permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 004: Add traceroute permission resource...');
-      tracerouteMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Traceroute permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run traceroute permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runAuditLogMigration(): void {
-    logger.debug('Running audit log enhancement migration...');
-    try {
-      const migrationKey = 'migration_005_enhance_audit_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Audit log enhancement migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 005: Enhance audit log table...');
-      auditLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Audit log enhancement migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run audit log enhancement migration:', error);
-      throw error;
-    }
-  }
-
-  private runAuditPermissionMigration(): void {
-    logger.debug('Running audit permission migration...');
-    try {
-      const migrationKey = 'migration_006_audit_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Audit permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 006: Add audit permission resource...');
-      auditPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Audit permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run audit permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runReadMessagesMigration(): void {
-    logger.debug('Running read messages migration...');
-    try {
-      const migrationKey = 'migration_007_read_messages';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Read messages migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 007: Add read_messages table...');
-      readMessagesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Read messages migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run read messages migration:', error);
-      throw error;
-    }
-  }
-
-  private runPushSubscriptionsMigration(): void {
-    logger.debug('Running push subscriptions migration...');
-    try {
-      const migrationKey = 'migration_008_push_subscriptions';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Push subscriptions migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 008: Add push_subscriptions table...');
-      pushSubscriptionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Push subscriptions migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run push subscriptions migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotificationPreferencesMigration(): void {
-    logger.debug('Running notification preferences migration...');
-    try {
-      const migrationKey = 'migration_009_notification_preferences';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Notification preferences migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 009: Add user_notification_preferences table...');
-      notificationPreferencesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notification preferences migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notification preferences migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotifyOnEmojiMigration(): void {
-    logger.debug('Running notify on emoji migration...');
-    try {
-      const migrationKey = 'migration_010_notify_on_emoji';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Notify on emoji migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 010: Add notify_on_emoji column...');
-      notifyOnEmojiMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notify on emoji migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notify on emoji migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketLogMigration(): void {
-    logger.debug('Running packet log migration...');
-    try {
-      const migrationKey = 'migration_011_packet_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Packet log migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 011: Add packet log table...');
-      packetLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Packet log migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run packet log migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelRoleMigration(): void {
-    try {
-      const migrationKey = 'migration_012_channel_role';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel role migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 012: Add channel role and position precision...');
-      channelRoleMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel role migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel role migration:', error);
-      throw error;
-    }
-  }
-
-  private runBackupTablesMigration(): void {
-    try {
-      const migrationKey = 'migration_013_add_backup_tables';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Backup tables migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 013: Add backup tables...');
-      backupTablesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Backup tables migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run backup tables migration:', error);
-      throw error;
-    }
-  }
-
-  private runMessageDeliveryTrackingMigration(): void {
-    try {
-      const migrationKey = 'migration_014_message_delivery_tracking';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Message delivery tracking migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 014: Add message delivery tracking fields...');
-      messageDeliveryTrackingMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Message delivery tracking migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run message delivery tracking migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteFilterMigration(): void {
-    try {
-      const migrationKey = 'migration_015_auto_traceroute_filter';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto-traceroute filter migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 015: Add auto-traceroute node filter...');
-      autoTracerouteFilterMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto-traceroute filter migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto-traceroute filter migration:', error);
-      throw error;
-    }
-  }
-
-  private runSecurityPermissionMigration(): void {
-    logger.debug('Running security permission migration...');
-    try {
-      const migrationKey = 'migration_016_security_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Security permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 016: Add security permission resource...');
-      securityPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Security permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run security permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelColumnMigration(): void {
-    logger.debug('Running channel column migration...');
-    try {
-      const migrationKey = 'migration_017_add_channel_to_nodes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 017: Add channel column to nodes table...');
-      channelColumnMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel column migration:', error);
-      throw error;
-    }
-  }
-
-  private runMobileMigration(): void {
-    logger.debug('Running mobile column migration...');
-    try {
-      const migrationKey = 'migration_018_add_mobile_to_nodes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Mobile column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 018: Add mobile column to nodes table...');
-      mobileMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Mobile column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run mobile column migration:', error);
-      throw error;
-    }
-  }
-
-  private runSolarEstimatesMigration(): void {
-    try {
-      const migrationKey = 'migration_019_solar_estimates';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Solar estimates migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 019: Add solar estimates table...');
-      solarEstimatesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Solar estimates migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run solar estimates migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionPrecisionMigration(): void {
-    try {
-      const migrationKey = 'migration_020_position_precision';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position precision migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 020: Add position precision tracking...');
-      positionPrecisionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position precision migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position precision migration:', error);
-      throw error;
-    }
-  }
-
-  private runSystemBackupTableMigration(): void {
-    try {
-      const migrationKey = 'migration_021_system_backup_table';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ System backup table migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 021: Add system_backup_history table...');
-      systemBackupTableMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ System backup table migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run system backup table migration:', error);
-      throw error;
-    }
-  }
-
-  private runCustomThemesMigration(): void {
-    try {
-      const migrationKey = 'migration_022_custom_themes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Custom themes migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 022: Add custom_themes table...');
-      customThemesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Custom themes migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run custom themes migration:', error);
-      throw error;
-    }
-  }
-
-  private runPasswordLockedMigration(): void {
-    try {
-      const migrationKey = 'migration_023_password_locked';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Password locked migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 023: Add password_locked flag to users table...');
-      passwordLockedMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Password locked migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run password locked migration:', error);
-      throw error;
-    }
-  }
-
-  private runPerChannelPermissionsMigration(): void {
-    try {
-      const migrationKey = 'migration_024_per_channel_permissions';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Per-channel permissions migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 024: Add per-channel permissions...');
-      perChannelPermissionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Per-channel permissions migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run per-channel permissions migration:', error);
-      throw error;
-    }
-  }
-
-  private runAPITokensMigration(): void {
-    const migrationKey = 'migration_025_api_tokens';
-
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ API tokens migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 025: Add API tokens table...');
-      apiTokensMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ API tokens migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run API tokens migration:', error);
-      throw error;
-    }
-  }
-
-  private runCascadeForeignKeysMigration(): void {
-    const migrationKey = 'migration_028_cascade_foreign_keys';
-
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ CASCADE foreign keys migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 028: Add CASCADE to foreign keys...');
-      cascadeForeignKeysMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ CASCADE foreign keys migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run CASCADE foreign keys migration:', error);
-      throw error;
-    }
-  }
-
-  private runUserMapPreferencesMigration(): void {
-    const migrationKey = 'migration_030_user_map_preferences';
-
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ User map preferences migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 030: Add user_map_preferences table...');
-      userMapPreferencesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ User map preferences migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run user map preferences migration:', error);
-      throw error;
-    }
-  }
-
-  private runIsIgnoredMigration(): void {
-    const migrationKey = 'migration_033_is_ignored';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ isIgnored migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 033: Add isIgnored column to nodes table...');
-      isIgnoredMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ isIgnored migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run isIgnored migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotifyOnServerEventsMigration(): void {
-    const migrationKey = 'migration_034_notify_on_server_events';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Notify on server events migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 034: Add notify_on_server_events column...');
-      notifyOnServerEventsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notify on server events migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notify on server events migration:', error);
-      throw error;
-    }
-  }
-
-  private runPrefixWithNodeNameMigration(): void {
-    const migrationKey = 'migration_035_prefix_with_node_name';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Prefix with node name migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 035: Add prefix_with_node_name column...');
-      prefixWithNodeNameMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Prefix with node name migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run prefix with node name migration:', error);
-      throw error;
-    }
-  }
-
-  private runPerUserAppriseUrlsMigration(): void {
-    const migrationKey = 'migration_036_per_user_apprise_urls';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Per-user Apprise URLs migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 036: Add per-user apprise_urls column...');
-      perUserAppriseUrlsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Per-user Apprise URLs migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run per-user Apprise URLs migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotifyOnMqttMigration(): void {
-    const migrationKey = 'migration_037_notify_on_mqtt';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Notify on MQTT migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 037: Add notify_on_mqtt column...');
-      notifyOnMqttMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notify on MQTT migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notify on MQTT migration:', error);
-      throw error;
-    }
-  }
-
-  private runRecalculateEstimatedPositionsMigration(): void {
-    const migrationKey = 'migration_038_recalculate_estimated_positions';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Recalculate estimated positions migration already completed');
-        return;
-      }
-
-      logger.info('Running migration 038: Recalculate estimated positions...');
-      recalculateEstimatedPositionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.info('✅ Recalculate estimated positions migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run recalculate estimated positions migration:', error);
-      throw error;
-    }
-  }
-
-  private runRecalculateEstimatedPositionsFixMigration(): void {
-    const migrationKey = 'migration_039_recalculate_estimated_positions_fix';
-    try {
-      const currentStatus = this.getSetting(migrationKey);
-      if (currentStatus === 'completed') {
-        logger.debug('✅ Recalculate estimated positions fix migration already completed');
-        return;
-      }
-
-      logger.info('Running migration 039: Recalculate estimated positions (fix route order)...');
-      recalculateEstimatedPositionsFixMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.info('✅ Recalculate estimated positions fix migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run recalculate estimated positions fix migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionOverrideMigration(): void {
-    try {
-      const migrationKey = 'migration_040_position_override';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position override migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 040: Add position override columns to nodes table...');
-      positionOverrideMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position override migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position override migration:', error);
-      throw error;
-    }
-  }
-   
-  private runPositionOverridePrivacyMigration(): void {
-    try {
-      const migrationKey = 'migration_043_position_override_privacy';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position override privacy migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 043: Add position privacy column to nodes table...');
-      positionOverridePrivacyMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position override privacy migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position override privacy migration:', error);
-      throw error;
-    }
-  }
-  
-  private runNodesPrivatePermissionMigration(): void {
-    try {
-      const migrationKey = 'migration_044_nodes_private_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Nodes private permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 044: Add nodes_private resource to permissions table...');
-      nodesPrivatePermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Nodes private permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run nodes private permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketDirectionMigration(): void {
-    try {
-      const migrationKey = 'migration_045_packet_direction';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Packet direction migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 045: Add direction field to packet_log table...');
-      packetDirectionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Packet direction migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run packet direction migration:', error);
-      throw error;
-    }
-  }
-
-  private runInactiveNodeNotificationMigration(): void {
-    logger.debug('Running inactive node notification migration...');
-    try {
-      const migrationKey = 'migration_032_inactive_node_notification';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Inactive node notification migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 032: Add notify_on_inactive_node and monitored_nodes columns...');
-      inactiveNodeNotificationMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Inactive node notification migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run inactive node notification migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteLogMigration(): void {
-    logger.debug('Running auto-traceroute log migration...');
-    try {
-      const migrationKey = 'migration_041_auto_traceroute_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto-traceroute log migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 041: Add auto_traceroute_log table...');
-      autoTracerouteLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto-traceroute log migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto-traceroute log migration:', error);
-      throw error;
-    }
-  }
-
-  private runRelayNodePacketLogMigration(): void {
-    logger.debug('Running relay_node packet_log migration...');
-    try {
-      const migrationKey = 'migration_042_relay_node_packet_log';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Relay node packet log migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 042: Add relay_node to packet_log table...');
-      relayNodePacketLogMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Relay node packet log migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run relay node packet log migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoKeyRepairMigration(): void {
-    logger.debug('Running auto key repair migration...');
-    try {
-      const migrationKey = 'migration_046_auto_key_repair';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto key repair migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 046: Add auto key repair tables...');
-      autoKeyRepairMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto key repair migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto key repair migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionOverrideBooleanMigration(): void {
-    logger.debug('Running position override boolean migration...');
-    try {
-      const migrationKey = 'migration_047_position_override_boolean';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position override boolean migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 047: Fix position override boolean types...');
-      positionOverrideBooleanMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position override boolean migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position override boolean migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteColumnMigration(): void {
-    logger.debug('Running auto traceroute column name migration...');
-    try {
-      const migrationKey = 'migration_048_auto_traceroute_column';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto traceroute column migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 048: Fix auto_traceroute_nodes column name...');
-      autoTracerouteColumnMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto traceroute column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto traceroute column migration:', error);
-      throw error;
-    }
-  }
-
-  private runNotificationChannelSettingsMigration(): void {
-    logger.debug('Running notification channel settings migration...');
-    try {
-      const migrationKey = 'migration_049_notification_channel_settings';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Notification channel settings migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 049: Add notification channel settings columns...');
-      notificationChannelSettingsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Notification channel settings migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run notification channel settings migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelDatabaseMigration(): void {
-    logger.debug('Running channel database migration...');
-    try {
-      const migrationKey = 'migration_050_channel_database';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel database migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 050: Add channel database tables...');
-      channelDatabaseMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel database migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel database migration:', error);
-      throw error;
-    }
-  }
-
-  private runDecryptedByMessagesMigration(): void {
-    logger.debug('Running decrypted_by messages migration...');
-    try {
-      const migrationKey = 'migration_051_decrypted_by_messages';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Decrypted_by messages migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 051: Add decrypted_by column to messages...');
-      decryptedByMessagesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Decrypted_by messages migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run decrypted_by messages migration:', error);
-      throw error;
-    }
-  }
-
-  private runUpgradeHistorySchemaMigration(): void {
-    try {
-      const migrationKey = 'migration_052_upgrade_history_schema';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Upgrade history schema migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 052: Fix upgrade_history schema...');
-      upgradeHistorySchemaMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Upgrade history schema migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run upgrade history schema migration:', error);
-      throw error;
-    }
-  }
-
-  private runViewOnMapPermissionMigration(): void {
-    try {
-      const migrationKey = 'migration_053_view_on_map_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ View on map permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 053: Add view on map permission column...');
-      viewOnMapPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ View on map permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run view on map permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runNewsTablesMigration(): void {
-    try {
-      const migrationKey = 'migration_054_news_tables';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ News tables migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 054: Add news tables...');
-      newsTablesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ News tables migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run news tables migration:', error);
-      throw error;
-    }
-  }
-
-  private runRemoteAdminColumnsMigration(): void {
-    try {
-      const migrationKey = 'migration_055_remote_admin_columns';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Remote admin columns migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 055: Add remote admin columns...');
-      remoteAdminColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Remote admin columns migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run remote admin columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runBackupHistoryColumnsMigration(): void {
-    try {
-      const migrationKey = 'migration_056_backup_history_columns';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Backup history columns migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 056: Fix backup_history column names...');
-      backupHistoryColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Backup history columns migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run backup history columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketViaMqttMigration(): void {
-    try {
-      const migrationKey = 'migration_057_packet_via_mqtt';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Packet via_mqtt migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 057: Add via_mqtt column to packet_log...');
-      packetViaMqttMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Packet via_mqtt migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run packet via_mqtt migration:', error);
-      throw error;
-    }
-  }
-
-  private runTransportMechanismMigration(): void {
-    try {
-      const migrationKey = 'migration_058_transport_mechanism';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Transport mechanism migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 058: Convert via_mqtt to transport_mechanism...');
-      transportMechanismMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Transport mechanism migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run transport mechanism migration:', error);
-      throw error;
-    }
-  }
-
-  private runChannelDbViewOnMapMigration(): void {
-    try {
-      const migrationKey = 'migration_059_channel_db_view_on_map';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Channel database view on map migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 059: Add can_view_on_map to channel_database_permissions...');
-      channelDbViewOnMapMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Channel database view on map migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run channel database view on map migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTracerouteEnabledMigration(): void {
-    try {
-      const migrationKey = 'migration_060_auto_traceroute_enabled';
-      // Always run the migration check - it's idempotent and verifies
-      // the column exists regardless of whether it was previously marked complete.
-      // This guards against edge cases where the setting was marked complete
-      // but the column is actually missing (e.g., restored backups).
-      autoTracerouteEnabledMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto traceroute enabled column migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto traceroute enabled column migration:', error);
-      throw error;
-    }
-  }
-
-  private runSpamDetectionMigration(): void {
-    try {
-      const migrationKey = 'migration_061_spam_detection';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Spam detection columns migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 061: Add spam detection columns to nodes...');
-      spamDetectionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Spam detection columns migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run spam detection columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionDoublePrecisionMigration(): void {
-    try {
-      const migrationKey = 'migration_062_position_double_precision';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position double precision migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 062: Position double precision (no-op for SQLite)...');
-      positionDoublePrecisionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position double precision migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position double precision migration:', error);
-      throw error;
-    }
-  }
-
-  private runPositionHistoryHoursMigration(): void {
-    try {
-      const migrationKey = 'migration_063_position_history_hours';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Position history hours migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 063: Add position_history_hours column...');
-      positionHistoryHoursMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Position history hours migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run position history hours migration:', error);
-      throw error;
-    }
-  }
-
-  private runEnforceNameValidationMigration(): void {
-    const migrationKey = 'migration_064_enforce_name_validation';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 064 (enforce_name_validation) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 064: Add enforce_name_validation column...');
-      enforceNameValidationMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Enforce name validation migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run enforce name validation migration:', error);
-      throw error;
-    }
-  }
-
-  private runSortOrderMigration(): void {
-    const migrationKey = 'migration_065_sortorder';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 065 (sortOrder) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 065: Add sort_order column...');
-      sortOrderMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Sort order migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run sort order migration:', error);
-      throw error;
-    }
-  }
-
-  private runIgnoredNodesTableMigration(): void {
-    const migrationKey = 'migration_066_ignored_nodes_table';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 066 (ignored_nodes table) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 066: Add ignored_nodes table...');
-      ignoredNodesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 066 (ignored_nodes table) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run ignored_nodes table migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoTimeSyncMigration(): void {
-    const migrationKey = 'migration_067_auto_time_sync';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 067 (auto time sync) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 067: Add auto time sync schema...');
-      autoTimeSyncMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 067 (auto time sync) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run auto time sync migration:', error);
-      throw error;
-    }
-  }
-
-  private runMfaColumnsMigration(): void {
-    const migrationKey = 'migration_068_mfa_columns';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 068 (MFA columns) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 068: Add MFA columns to users table...');
-      mfaColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 068 (MFA columns) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run MFA columns migration:', error);
-      throw error;
-    }
-  }
-
-  private runTraceroutePositionsMigration(): void {
-    const migrationKey = 'migration_069_traceroute_positions';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 069 (traceroute positions) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 069: Add position snapshot columns to traceroutes and route_segments...');
-      traceroutePositionsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Migration 069 (traceroute positions) completed successfully');
-    } catch (error) {
-      logger.error('Failed to run traceroute positions migration:', error);
-      throw error;
-    }
-  }
-
-  private runMeshcoreTablesMigration(): void {
-    const migrationKey = 'migration_070_meshcore_tables';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 070 (meshcore tables) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 070: Add MeshCore tables...');
-      meshcoreTablesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('MeshCore tables migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run MeshCore tables migration:', error);
-      throw error;
-    }
-  }
-
-  private runMeshcorePermissionMigration(): void {
-    const migrationKey = 'migration_071_meshcore_permission';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 071 (meshcore permission) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 071: Add meshcore permission resource...');
-      meshcorePermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('MeshCore permission migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run MeshCore permission migration:', error);
-      throw error;
-    }
-  }
-
-  private runDmUnreadIndexMigration(): void {
-    const migrationKey = 'migration_072_dm_unread_index';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 072 (DM unread index) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 072: Add DM unread index...');
-      dmUnreadIndexMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('DM unread index migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run DM unread index migration:', error);
-      throw error;
-    }
-  }
-
-  private runPacketIdMigration(): void {
-    const migrationKey = 'migration_073_packet_id_telemetry';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 073 (packetId telemetry) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 073: Add packetId to telemetry...');
-      packetIdMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('PacketId telemetry migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run packetId telemetry migration:', error);
-      throw error;
-    }
-  }
-
-  private runShowMeshCoreNodesMigration(): void {
-    const migrationKey = 'migration_074_show_meshcore_nodes';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 074 (show_meshcore_nodes) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 074: Add show_meshcore_nodes to user_map_preferences...');
-      showMeshCoreNodesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('show_meshcore_nodes migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run show_meshcore_nodes migration:', error);
-      throw error;
-    }
-  }
-
-  private runTelemetryPacketIdBigintMigration(): void {
-    const migrationKey = 'migration_075_telemetry_packetid_bigint';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 075 (telemetry_packetid_bigint) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 075: Upgrade telemetry packetId to BIGINT...');
-      telemetryPacketIdBigintMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('telemetry packetId bigint migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run telemetry packetId bigint migration:', error);
-      throw error;
-    }
-  }
-
-  private runAccuracyEstimatedPrefsMigration(): void {
-    const migrationKey = 'migration_076_accuracy_estimated_prefs';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 076 (accuracy_estimated_prefs) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 076: Add show_accuracy_regions and show_estimated_positions to user_map_preferences...');
-      accuracyEstimatedPrefsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('accuracy_estimated_prefs migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run accuracy_estimated_prefs migration:', error);
-      throw error;
-    }
-  }
-
-  private runIgnoredNodesNodeNumBigintMigration(): void {
-    const migrationKey = 'migration_077_ignored_nodes_nodenum_bigint';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 077 (ignored_nodes nodeNum bigint) already completed');
-        return;
-      }
-
-      logger.debug('Running migration 077: Upgrade ignored_nodes.nodeNum to BIGINT...');
-      ignoredNodesNodeNumBigintMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('ignored_nodes nodeNum bigint migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run ignored_nodes nodeNum bigint migration:', error);
-      throw error;
-    }
-  }
-
-  private runCreateEmbedProfilesMigration(): void {
-    const migrationKey = 'migration_078_create_embed_profiles';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 078 (create embed_profiles) already completed');
-        return;
-      }
-      logger.debug('Running migration 078: Create embed_profiles table...');
-      createEmbedProfilesMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Create embed_profiles migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run create embed_profiles migration:', error);
-      throw error;
-    }
-  }
-
-  private runCreateGeofenceCooldownsMigration(): void {
-    const migrationKey = 'migration_079_create_geofence_cooldowns';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 079 (create geofence_cooldowns) already completed');
-        return;
-      }
-      logger.debug('Running migration 079: Create geofence_cooldowns table...');
-      createGeofenceCooldownsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Create geofence_cooldowns migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run create geofence_cooldowns migration:', error);
-      throw error;
-    }
-  }
-
-  private runAddFavoriteLockedMigration(): void {
-    const migrationKey = 'migration_080_add_favorite_locked';
-    try {
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 080 (add favoriteLocked) already completed');
-        return;
-      }
-      logger.debug('Running migration 080: Add favoriteLocked column...');
-      addFavoriteLockedMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Add favoriteLocked migration completed successfully');
-    } catch (error) {
-      logger.error('Failed to run add favoriteLocked migration:', error);
-      throw error;
-    }
-  }
-
-  private runAddTimeOffsetColumnsMigration(): void {
-    // Run migration 081: Add time offset detection columns to nodes
-    try {
-      const migrationKey = 'migration_081_time_offset_columns';
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 081 (add time offset columns) already completed');
-        return;
-      }
-      logger.debug('Running migration 081: Add time offset detection columns...');
-      addTimeOffsetColumnsMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Add time offset columns migration completed successfully');
-    } catch (error) {
-      logger.error('Error running migration 081:', error);
-    }
-  }
-
-  private runAddPacketmonitorPermissionMigration(): void {
-    // Run migration 082: Add packetmonitor permission resource
-    try {
-      const migrationKey = 'migration_082_packetmonitor_permission';
-      const migrationStatus = this.getSetting(migrationKey);
-      if (migrationStatus === 'completed') {
-        logger.debug('Migration 082 (add packetmonitor permission) already completed');
-        return;
-      }
-      logger.debug('Running migration 082: Add packetmonitor permission...');
-      addPacketmonitorPermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('Add packetmonitor permission migration completed successfully');
-    } catch (error) {
-      logger.error('Error running migration 082:', error);
-    }
-
-    // Migration 083: Add missing map preference columns
-    const migrationKey083 = 'migration_083_map_preference_columns';
-    if (!this.getSetting(migrationKey083)) {
-      try {
-        logger.debug('Running migration 083: Add missing map preference columns...');
-        runMigration083Sqlite(this.db);
-        this.setSetting(migrationKey083, 'completed');
-        logger.debug('Migration 083 completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 083:', error);
-      }
-    }
-
-    // Migration 084: Add key mismatch columns
-    const migrationKey084 = 'migration_084_key_mismatch_columns';
-    if (!this.getSetting(migrationKey084)) {
-      try {
-        logger.debug('Running migration 084: Add key mismatch columns...');
-        runMigration084Sqlite(this.db);
-        this.setSetting(migrationKey084, 'completed');
-        logger.debug('Migration 084 completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 084:', error);
-      }
-    }
-
-  }
-
-  private runAutoDistanceDeleteLogMigration(): void {
-    // Migration 086: Add auto_distance_delete_log table
-    const migrationKey086 = 'migration_086_auto_distance_delete_log';
-    if (!this.getSetting(migrationKey086)) {
-      try {
-        logger.debug('Running migration 086: Add auto_distance_delete_log table...');
-        runMigration086Sqlite(this.db);
-        this.setSetting(migrationKey086, 'completed');
-        logger.debug('Migration 086 completed successfully');
-      } catch (error) {
-        logger.error('Error running migration 086:', error);
-      }
-    }
-  }
 
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
@@ -2686,7 +961,12 @@ class DatabaseService {
   }
 
   private createTables(): void {
-    logger.debug('Creating database tables...');
+    logger.debug('Creating database tables (v3.7 complete schema)...');
+
+    // ============================================================
+    // CORE TABLES (matches 001_v37_baseline.ts exactly)
+    // ============================================================
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS nodes (
         nodeNum INTEGER PRIMARY KEY,
@@ -2696,6 +976,8 @@ class DatabaseService {
         hwModel INTEGER,
         role INTEGER,
         hopsAway INTEGER,
+        lastMessageHops INTEGER,
+        viaMqtt INTEGER,
         macaddr TEXT,
         latitude REAL,
         longitude REAL,
@@ -2707,9 +989,43 @@ class DatabaseService {
         lastHeard INTEGER,
         snr REAL,
         rssi INTEGER,
+        lastTracerouteRequest INTEGER,
         firmwareVersion TEXT,
         channel INTEGER,
-        isFavorite BOOLEAN DEFAULT 0,
+        isFavorite INTEGER DEFAULT 0,
+        favoriteLocked INTEGER DEFAULT 0,
+        isIgnored INTEGER DEFAULT 0,
+        mobile INTEGER DEFAULT 0,
+        rebootCount INTEGER,
+        publicKey TEXT,
+        lastMeshReceivedKey TEXT,
+        hasPKC INTEGER,
+        lastPKIPacket INTEGER,
+        keyIsLowEntropy INTEGER,
+        duplicateKeyDetected INTEGER,
+        keyMismatchDetected INTEGER,
+        keySecurityIssueDetails TEXT,
+        isExcessivePackets INTEGER DEFAULT 0,
+        packetRatePerHour INTEGER,
+        packetRateLastChecked INTEGER,
+        isTimeOffsetIssue INTEGER DEFAULT 0,
+        timeOffsetSeconds INTEGER,
+        welcomedAt INTEGER,
+        positionChannel INTEGER,
+        positionPrecisionBits INTEGER,
+        positionGpsAccuracy REAL,
+        positionHdop REAL,
+        positionTimestamp INTEGER,
+        positionOverrideEnabled INTEGER DEFAULT 0,
+        latitudeOverride REAL,
+        longitudeOverride REAL,
+        altitudeOverride REAL,
+        positionOverrideIsPrivate INTEGER DEFAULT 0,
+        hasRemoteAdmin INTEGER DEFAULT 0,
+        lastRemoteAdminCheck INTEGER,
+        remoteAdminMetadata TEXT,
+        lastTimeSync INTEGER,
+        autoTracerouteEnabled INTEGER DEFAULT 1,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -2725,24 +1041,36 @@ class DatabaseService {
         text TEXT NOT NULL,
         channel INTEGER NOT NULL DEFAULT 0,
         portnum INTEGER,
+        requestId INTEGER,
         timestamp INTEGER NOT NULL,
         rxTime INTEGER,
         hopStart INTEGER,
         hopLimit INTEGER,
+        relayNode INTEGER,
         replyId INTEGER,
+        emoji INTEGER,
+        viaMqtt INTEGER,
+        rxSnr REAL,
+        rxRssi REAL,
+        ackFailed INTEGER,
+        routingErrorReceived INTEGER,
+        deliveryState TEXT,
+        wantAck INTEGER,
+        ackFromNode INTEGER,
         createdAt INTEGER NOT NULL,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        decrypted_by TEXT
       );
     `);
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS channels (
         id INTEGER PRIMARY KEY,
-        name TEXT,
+        name TEXT NOT NULL,
         psk TEXT,
-        uplinkEnabled BOOLEAN DEFAULT 1,
-        downlinkEnabled BOOLEAN DEFAULT 1,
+        role INTEGER,
+        uplinkEnabled INTEGER NOT NULL DEFAULT 1,
+        downlinkEnabled INTEGER NOT NULL DEFAULT 1,
+        positionPrecision INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -2759,9 +1087,25 @@ class DatabaseService {
         unit TEXT,
         createdAt INTEGER NOT NULL,
         packetTimestamp INTEGER,
-        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+        packetId INTEGER,
+        channel INTEGER,
+        precisionBits INTEGER,
+        gpsAccuracy REAL
       );
     `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // ROUTING TABLES
+    // ============================================================
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS traceroutes (
@@ -2774,17 +1118,10 @@ class DatabaseService {
         routeBack TEXT,
         snrTowards TEXT,
         snrBack TEXT,
+        routePositions TEXT,
         timestamp INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        createdAt INTEGER NOT NULL
       );
-    `);
-
-    // Create index for efficient traceroute queries
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_traceroutes_nodes
-      ON traceroutes(fromNodeNum, toNodeNum, timestamp DESC);
     `);
 
     this.db.exec(`
@@ -2795,11 +1132,13 @@ class DatabaseService {
         fromNodeId TEXT NOT NULL,
         toNodeId TEXT NOT NULL,
         distanceKm REAL NOT NULL,
-        isRecordHolder BOOLEAN DEFAULT 0,
+        isRecordHolder INTEGER DEFAULT 0,
+        fromLatitude REAL,
+        fromLongitude REAL,
+        toLatitude REAL,
+        toLongitude REAL,
         timestamp INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        createdAt INTEGER NOT NULL
       );
     `);
 
@@ -2811,18 +1150,211 @@ class DatabaseService {
         snr REAL,
         lastRxTime INTEGER,
         timestamp INTEGER NOT NULL,
-        createdAt INTEGER NOT NULL,
-        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum),
-        FOREIGN KEY (neighborNodeNum) REFERENCES nodes(nodeNum)
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // AUTH TABLES (snake_case column names for SQLite)
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT,
+        email TEXT,
+        display_name TEXT,
+        auth_provider TEXT NOT NULL DEFAULT 'local',
+        oidc_subject TEXT,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        password_locked INTEGER DEFAULT 0,
+        mfa_enabled INTEGER NOT NULL DEFAULT 0,
+        mfa_secret TEXT,
+        mfa_backup_codes TEXT,
+        created_at INTEGER NOT NULL,
+        last_login_at INTEGER,
+        created_by INTEGER
       );
     `);
 
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
+      CREATE TABLE IF NOT EXISTS permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        resource TEXT NOT NULL,
+        can_view_on_map INTEGER NOT NULL DEFAULT 0,
+        can_read INTEGER NOT NULL DEFAULT 0,
+        can_write INTEGER NOT NULL DEFAULT 0,
+        granted_at INTEGER NOT NULL,
+        granted_by INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, resource)
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        sid TEXT PRIMARY KEY,
+        sess TEXT NOT NULL,
+        expire INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        action TEXT NOT NULL,
+        resource TEXT,
+        details TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        value_before TEXT,
+        value_after TEXT,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        prefix TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        expires_at INTEGER,
+        created_by INTEGER,
+        revoked_at INTEGER,
+        revoked_by INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ============================================================
+    // NOTIFICATION TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS read_messages (
+        message_id TEXT NOT NULL PRIMARY KEY,
+        user_id INTEGER,
+        read_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        endpoint TEXT NOT NULL,
+        p256dh_key TEXT NOT NULL,
+        auth_key TEXT NOT NULL,
+        user_agent TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_notification_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        enable_web_push INTEGER DEFAULT 1,
+        enable_direct_messages INTEGER DEFAULT 1,
+        notify_on_emoji INTEGER DEFAULT 0,
+        notify_on_new_node INTEGER DEFAULT 1,
+        notify_on_traceroute INTEGER DEFAULT 1,
+        notify_on_inactive_node INTEGER DEFAULT 0,
+        notify_on_server_events INTEGER DEFAULT 0,
+        prefix_with_node_name INTEGER DEFAULT 0,
+        enable_apprise INTEGER DEFAULT 1,
+        apprise_urls TEXT,
+        enabled_channels TEXT,
+        monitored_nodes TEXT,
+        whitelist TEXT,
+        blacklist TEXT,
+        notify_on_mqtt INTEGER DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ============================================================
+    // PACKET LOG
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS packet_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        packet_id INTEGER,
+        timestamp INTEGER NOT NULL,
+        from_node INTEGER NOT NULL,
+        from_node_id TEXT,
+        to_node INTEGER,
+        to_node_id TEXT,
+        channel INTEGER,
+        portnum INTEGER NOT NULL,
+        portnum_name TEXT,
+        encrypted INTEGER NOT NULL,
+        snr REAL,
+        rssi REAL,
+        hop_limit INTEGER,
+        hop_start INTEGER,
+        relay_node INTEGER,
+        payload_size INTEGER,
+        want_ack INTEGER,
+        priority INTEGER,
+        payload_preview TEXT,
+        metadata TEXT,
+        direction TEXT,
+        created_at INTEGER,
+        decrypted_by TEXT,
+        decrypted_channel_id INTEGER,
+        transport_mechanism INTEGER
+      );
+    `);
+
+    // ============================================================
+    // BACKUP & UPGRADE TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS backup_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeId TEXT,
+        nodeNum INTEGER,
+        filename TEXT NOT NULL,
+        filePath TEXT NOT NULL,
+        fileSize INTEGER,
+        backupType TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS system_backup_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        backupPath TEXT NOT NULL,
+        backupType TEXT NOT NULL,
+        schemaVersion INTEGER,
+        appVersion TEXT,
+        totalSize INTEGER,
+        tableCount INTEGER,
+        rowCount INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL
       );
     `);
 
@@ -2837,11 +1369,288 @@ class DatabaseService {
         currentStep TEXT,
         logs TEXT,
         backupPath TEXT,
-        startedAt INTEGER NOT NULL,
+        startedAt INTEGER,
         completedAt INTEGER,
         initiatedBy TEXT,
         errorMessage TEXT,
-        rollbackAvailable INTEGER DEFAULT 1
+        rollbackAvailable INTEGER
+      );
+    `);
+
+    // ============================================================
+    // UI TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_themes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        definition TEXT NOT NULL,
+        is_builtin INTEGER DEFAULT 0,
+        created_by INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_map_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        centerLat REAL,
+        centerLng REAL,
+        zoom REAL,
+        selectedLayer TEXT,
+        showAccuracyRegions INTEGER DEFAULT 0,
+        showEstimatedPositions INTEGER DEFAULT 1,
+        showMeshCoreNodes INTEGER DEFAULT 0,
+        sortBy TEXT DEFAULT 'name',
+        sortDirection TEXT DEFAULT 'asc',
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS embed_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        channels TEXT NOT NULL DEFAULT '[]',
+        tileset TEXT NOT NULL DEFAULT 'osm',
+        defaultLat REAL NOT NULL DEFAULT 0,
+        defaultLng REAL NOT NULL DEFAULT 0,
+        defaultZoom INTEGER NOT NULL DEFAULT 10,
+        showTooltips INTEGER NOT NULL DEFAULT 1,
+        showPopups INTEGER NOT NULL DEFAULT 1,
+        showLegend INTEGER NOT NULL DEFAULT 1,
+        showPaths INTEGER NOT NULL DEFAULT 0,
+        showNeighborInfo INTEGER NOT NULL DEFAULT 0,
+        showMqttNodes INTEGER NOT NULL DEFAULT 1,
+        pollIntervalSeconds INTEGER NOT NULL DEFAULT 30,
+        allowedOrigins TEXT NOT NULL DEFAULT '[]',
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // SOLAR ESTIMATES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS solar_estimates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL UNIQUE,
+        watt_hours REAL NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        created_at INTEGER
+      );
+    `);
+
+    // ============================================================
+    // AUTOMATION TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_traceroute_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL UNIQUE,
+        enabled INTEGER DEFAULT 1,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_time_sync_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL UNIQUE,
+        enabled INTEGER DEFAULT 1,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_traceroute_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        to_node_num INTEGER NOT NULL,
+        to_node_name TEXT,
+        success INTEGER,
+        created_at INTEGER
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_key_repair_state (
+        nodeNum INTEGER PRIMARY KEY,
+        attemptCount INTEGER DEFAULT 0,
+        lastAttemptTime INTEGER,
+        exhausted INTEGER DEFAULT 0,
+        startedAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_key_repair_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        nodeName TEXT,
+        action TEXT NOT NULL,
+        success INTEGER,
+        created_at INTEGER
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS auto_distance_delete_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        nodes_deleted INTEGER NOT NULL,
+        threshold_km REAL NOT NULL,
+        details TEXT,
+        created_at INTEGER
+      );
+    `);
+
+    // ============================================================
+    // CHANNEL DATABASE
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_database (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        psk TEXT NOT NULL,
+        psk_length INTEGER NOT NULL,
+        description TEXT,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        enforce_name_validation INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        decrypted_packet_count INTEGER NOT NULL DEFAULT 0,
+        last_decrypted_at INTEGER,
+        created_by INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_database_permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        channel_database_id INTEGER NOT NULL,
+        can_view_on_map INTEGER NOT NULL DEFAULT 0,
+        can_read INTEGER NOT NULL DEFAULT 0,
+        granted_by INTEGER,
+        granted_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (channel_database_id) REFERENCES channel_database(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+
+    // ============================================================
+    // IGNORED NODES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ignored_nodes (
+        nodeNum INTEGER PRIMARY KEY,
+        nodeId TEXT NOT NULL,
+        longName TEXT,
+        shortName TEXT,
+        ignoredAt INTEGER NOT NULL,
+        ignoredBy TEXT
+      );
+    `);
+
+    // ============================================================
+    // GEOFENCE COOLDOWNS
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS geofence_cooldowns (
+        triggerId TEXT NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        firedAt INTEGER NOT NULL,
+        PRIMARY KEY (triggerId, nodeNum)
+      );
+    `);
+
+    // ============================================================
+    // MESHCORE TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS meshcore_nodes (
+        publicKey TEXT PRIMARY KEY,
+        name TEXT,
+        advType INTEGER,
+        txPower INTEGER,
+        maxTxPower INTEGER,
+        radioFreq REAL,
+        radioBw REAL,
+        radioSf INTEGER,
+        radioCr INTEGER,
+        latitude REAL,
+        longitude REAL,
+        altitude REAL,
+        batteryMv INTEGER,
+        uptimeSecs INTEGER,
+        rssi INTEGER,
+        snr REAL,
+        lastHeard INTEGER,
+        hasAdminAccess INTEGER DEFAULT 0,
+        lastAdminCheck INTEGER,
+        isLocalNode INTEGER DEFAULT 0,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS meshcore_messages (
+        id TEXT PRIMARY KEY,
+        fromPublicKey TEXT NOT NULL,
+        toPublicKey TEXT,
+        text TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        rssi INTEGER,
+        snr INTEGER,
+        messageType TEXT DEFAULT 'text',
+        delivered INTEGER DEFAULT 0,
+        deliveredAt INTEGER,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
+    // ============================================================
+    // NEWS TABLES
+    // ============================================================
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS news_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        feedData TEXT NOT NULL,
+        fetchedAt INTEGER NOT NULL,
+        sourceUrl TEXT NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_news_status (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        lastSeenNewsId TEXT,
+        dismissedNewsIds TEXT,
+        updatedAt INTEGER NOT NULL,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
 
@@ -2851,281 +1660,20 @@ class DatabaseService {
       ON upgrade_history(startedAt DESC);
     `);
 
-    // Channel 0 (Primary) will be created automatically when device config syncs
-    // It should have an empty name as per Meshtastic protocol
+    // Create index for efficient traceroute queries
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_traceroutes_nodes
+      ON traceroutes(fromNodeNum, toNodeNum, timestamp DESC);
+    `);
 
     logger.debug('Database tables created successfully');
   }
 
   private migrateSchema(): void {
-    logger.debug('Running database migrations...');
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN hopStart INTEGER;
-      `);
-      logger.debug('✅ Added hopStart column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hopStart column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN hopLimit INTEGER;
-      `);
-      logger.debug('✅ Added hopLimit column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hopLimit column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN replyId INTEGER;
-      `);
-      logger.debug('✅ Added replyId column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ replyId column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN role INTEGER;
-      `);
-      logger.debug('✅ Added role column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ role column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN hopsAway INTEGER;
-      `);
-      logger.debug('✅ Added hopsAway column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hopsAway column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN lastTracerouteRequest INTEGER;
-      `);
-      logger.debug('✅ Added lastTracerouteRequest column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ lastTracerouteRequest column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN firmwareVersion TEXT;
-      `);
-      logger.debug('✅ Added firmwareVersion column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ firmwareVersion column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN emoji INTEGER;
-      `);
-      logger.debug('✅ Added emoji column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ emoji column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN isFavorite BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added isFavorite column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ isFavorite column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN rebootCount INTEGER;
-      `);
-      logger.debug('✅ Added rebootCount column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ rebootCount column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN publicKey TEXT;
-      `);
-      logger.debug('✅ Added publicKey column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ publicKey column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN hasPKC BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added hasPKC column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ hasPKC column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN lastPKIPacket INTEGER;
-      `);
-      logger.debug('✅ Added lastPKIPacket column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ lastPKIPacket column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN viaMqtt BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added viaMqtt column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ viaMqtt column already exists or other error:', error.message);
-      }
-    }
-
-    // Add viaMqtt column to messages table for MQTT message filtering
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN viaMqtt BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added viaMqtt column to messages table');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ viaMqtt column on messages already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE telemetry ADD COLUMN packetTimestamp INTEGER;
-      `);
-      logger.debug('✅ Added packetTimestamp column to telemetry table');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ packetTimestamp column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN keyIsLowEntropy BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added keyIsLowEntropy column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ keyIsLowEntropy column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN duplicateKeyDetected BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added duplicateKeyDetected column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ duplicateKeyDetected column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN keyMismatchDetected BOOLEAN DEFAULT 0;
-      `);
-      logger.debug('✅ Added keyMismatchDetected column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ keyMismatchDetected column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN keySecurityIssueDetails TEXT;
-      `);
-      logger.debug('✅ Added keySecurityIssueDetails column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ keySecurityIssueDetails column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN welcomedAt INTEGER;
-      `);
-      logger.debug('✅ Added welcomedAt column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ welcomedAt column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN rxSnr REAL;
-      `);
-      logger.debug('✅ Added rxSnr column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ rxSnr column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE messages ADD COLUMN rxRssi INTEGER;
-      `);
-      logger.debug('✅ Added rxRssi column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ rxRssi column already exists or other error:', error.message);
-      }
-    }
-
-    try {
-      this.db.exec(`
-        ALTER TABLE nodes ADD COLUMN lastMessageHops INTEGER;
-      `);
-      logger.debug('✅ Added lastMessageHops column');
-    } catch (error: any) {
-      if (!error.message?.includes('duplicate column')) {
-        logger.debug('⚠️ lastMessageHops column already exists or other error:', error.message);
-      }
-    }
-
-    logger.debug('Database migrations completed');
+    // Legacy ALTER TABLE migrations are no longer needed.
+    // All columns are now created in createTables() with the full v3.7 schema.
+    // This method is kept as a no-op for compatibility — will be removed in Chunk 5.
+    logger.debug('migrateSchema: skipped (full schema created in createTables)');
   }
 
   private createIndexes(): void {
@@ -3411,7 +1959,7 @@ class DatabaseService {
         if (!existingNode && nodeData.nodeNum !== 4294967295) {
           // Check if this node was previously ignored
           if (this.ignoredNodesRepo) {
-            this.ignoredNodesRepo.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
+            this.ignoredNodes.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
               if (wasIgnored) {
                 logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum}`);
                 updatedNode.isIgnored = true;
@@ -3653,15 +2201,10 @@ class DatabaseService {
   }
 
   /**
-   * Async version of getAllNodes - works with all database backends
+   * @deprecated Use databaseService.nodes.getAllNodes() directly. Kept for internal/test compatibility.
    */
   async getAllNodesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Cast to local DbNode type (they have compatible structure)
-      return this.nodesRepo.getAllNodes() as unknown as DbNode[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllNodes();
+    return this.nodes.getAllNodes() as unknown as DbNode[];
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
@@ -3805,18 +2348,16 @@ class DatabaseService {
   /**
    * Get nodes with key security issues (low-entropy or duplicate keys)
    */
-  getNodesWithKeySecurityIssues(): DbNode[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug('getNodesWithKeySecurityIssues() called before cache initialized');
-        return [];
-      }
-      return Array.from(this.nodesCache.values())
-        .filter(node => node.keyIsLowEntropy || node.duplicateKeyDetected)
-        .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
+  /**
+   * Get nodes with key security issues (low-entropy or duplicate keys) - async version
+   * Works with PostgreSQL, MySQL, and SQLite through the repository pattern
+   */
+  async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
+    if (this.drizzleDbType !== 'sqlite') {
+      const nodes = await this.nodes.getNodesWithKeySecurityIssues();
+      return nodes as unknown as DbNode[];
     }
-
+    // SQLite fallback using raw SQL on main connection
     const stmt = this.db.prepare(`
       SELECT * FROM nodes
       WHERE keyIsLowEntropy = 1 OR duplicateKeyDetected = 1
@@ -3824,25 +2365,6 @@ class DatabaseService {
     `);
     const nodes = stmt.all() as DbNode[];
     return nodes.map(node => this.normalizeBigInts(node));
-  }
-
-  /**
-   * Get nodes with key security issues (low-entropy or duplicate keys) - async version
-   * Works with PostgreSQL, MySQL, and SQLite through the repository pattern
-   */
-  async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      try {
-        const nodes = await this.nodesRepo.getNodesWithKeySecurityIssues();
-        return nodes as unknown as DbNode[];
-      } catch (error) {
-        // Drizzle schema may reference columns not yet added by migrations (e.g. lastMeshReceivedKey).
-        // Fall back to sync raw SQL path which uses SELECT * and tolerates missing columns.
-        logger.warn('Drizzle query failed for getNodesWithKeySecurityIssues, falling back to raw SQL:', error);
-      }
-    }
-    // Fallback to sync method for SQLite without repo
-    return this.getNodesWithKeySecurityIssues();
   }
 
   /**
@@ -4210,10 +2732,7 @@ class DatabaseService {
    * Get all nodes with excessive packet rates (async)
    */
   async getNodesWithExcessivePacketsAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Use cache for now since we don't have a repo method yet
-      return this.getNodesWithExcessivePackets();
-    }
+    // Uses cache-based method (no dedicated repo method yet)
     return this.getNodesWithExcessivePackets();
   }
 
@@ -4302,10 +2821,7 @@ class DatabaseService {
    * Get all nodes with time offset issues (async)
    */
   async getNodesWithTimeOffsetIssuesAsync(): Promise<DbNode[]> {
-    if (this.nodesRepo) {
-      // Use cache for now since we don't have a repo method yet
-      return this.getNodesWithTimeOffsetIssues();
-    }
+    // Uses cache-based method (no dedicated repo method yet)
     return this.getNodesWithTimeOffsetIssues();
   }
 
@@ -4604,57 +3120,7 @@ class DatabaseService {
     return messages.map(message => this.normalizeBigInts(message));
   }
 
-  getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): DbMessage[] {
-    // For PostgreSQL/MySQL, messages are not cached - return empty for sync calls
-    // Messages are fetched via API endpoints which can be async
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-    const stmt = this.db.prepare(`
-      SELECT * FROM messages
-      WHERE portnum = 1
-        AND channel = -1
-        AND (
-          (fromNodeId = ? AND toNodeId = ?)
-          OR (fromNodeId = ? AND toNodeId = ?)
-        )
-      ORDER BY COALESCE(rxTime, timestamp) DESC
-      LIMIT ? OFFSET ?
-    `);
-    const messages = stmt.all(nodeId1, nodeId2, nodeId2, nodeId1, limit, offset) as DbMessage[];
-    return messages.map(message => this.normalizeBigInts(message));
-  }
-
-  async getDirectMessagesAsync(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `SELECT * FROM messages
-           WHERE portnum = 1 AND channel = -1
-             AND (("fromNodeId" = $1 AND "toNodeId" = $2) OR ("fromNodeId" = $2 AND "toNodeId" = $1))
-           ORDER BY COALESCE("rxTime", timestamp) DESC
-           LIMIT $3 OFFSET $4`,
-          [nodeId1, nodeId2, limit, offset]
-        );
-        return result.rows.map((row: any) => this.normalizeBigInts(row));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(
-        `SELECT * FROM messages
-         WHERE portnum = 1 AND channel = -1
-           AND ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
-         ORDER BY COALESCE(rxTime, timestamp) DESC
-         LIMIT ? OFFSET ?`,
-        [nodeId1, nodeId2, nodeId2, nodeId1, limit, offset]
-      );
-      return (rows as any[]).map((row: any) => this.normalizeBigInts(row));
-    }
-    return this.getDirectMessages(nodeId1, nodeId2, limit, offset);
-  }
+  // Direct messages methods moved to MessagesRepository (databaseService.messages.getDirectMessages)
 
   getMessagesAfterTimestamp(timestamp: number): DbMessage[] {
     // For PostgreSQL/MySQL, use cache
@@ -4683,14 +3149,11 @@ class DatabaseService {
     limit?: number;
     offset?: number;
   }): Promise<{ messages: DbMessage[]; total: number }> {
-    if (this.messagesRepo) {
-      const result = await this.messagesRepo.searchMessages(options);
-      return {
-        messages: result.messages.map(msg => this.convertRepoMessage(msg)),
-        total: result.total,
-      };
-    }
-    return { messages: [], total: 0 };
+    const result = await this.messages.searchMessages(options);
+    return {
+      messages: result.messages.map(msg => this.convertRepoMessage(msg)),
+      total: result.total,
+    };
   }
 
   // Statistics
@@ -4729,21 +3192,9 @@ class DatabaseService {
     return Number(result.count);
   }
 
+  /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
   async getTelemetryCountAsync(): Promise<number> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query('SELECT COUNT(*) as count FROM telemetry');
-        return Number(result.rows[0].count);
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query('SELECT COUNT(*) as count FROM telemetry');
-      return Number((rows as any[])[0].count);
-    }
-    return this.getTelemetryCount();
+    return this.telemetry.getTelemetryCount();
   }
 
   getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
@@ -4775,20 +3226,14 @@ class DatabaseService {
     return Number(result.count);
   }
 
-  /**
-   * Async version of getTelemetryCountByNode - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryCountByNode() instead */
   async getTelemetryCountByNodeAsync(
     nodeId: string,
     sinceTimestamp?: number,
     beforeTimestamp?: number,
     telemetryType?: string
   ): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
+    return this.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
   /**
@@ -4862,7 +3307,9 @@ class DatabaseService {
       // Get last 500 position telemetry records for this node
       // Using a larger limit ensures we capture movement over a longer time period
       // (50 was too small - nodes parked for a while would show only recent stationary positions)
-      const positionTelemetry = await this.getPositionTelemetryByNodeAsync(nodeId, 500);
+      const positionTelemetry = this.telemetryRepo
+        ? await this.telemetryRepo.getPositionTelemetryByNode(nodeId, 500)
+        : this.getPositionTelemetryByNode(nodeId, 500);
 
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
@@ -5174,22 +3621,7 @@ class DatabaseService {
     };
   }
 
-  deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): boolean {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.telemetryRepo) {
-        this.telemetryRepo.deleteTelemetryByNodeAndType(nodeId, telemetryType).catch(err => {
-          logger.debug('Failed to delete telemetry by node and type:', err);
-        });
-      }
-      return true;
-    }
 
-    // Delete telemetry data for a specific node and type
-    const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeId = ? AND telemetryType = ?');
-    const result = stmt.run(nodeId, telemetryType);
-    return Number(result.changes) > 0;
-  }
 
   // Helper function to convert BigInt values to numbers
   private normalizeBigInts(obj: any): any {
@@ -5212,6 +3644,78 @@ class DatabaseService {
     return obj;
   }
 
+  /**
+   * Attempt to open a SQLite database, with automatic recovery from stale WAL/SHM files.
+   *
+   * After a version upgrade (e.g. new Node.js or better-sqlite3), the shared memory
+   * file (.db-shm) left by the previous version may be incompatible, causing
+   * SQLITE_IOERR_SHMSIZE. This method detects that error, removes the stale .db-shm
+   * file, and retries the open — SQLite reconstructs what it needs from the WAL.
+   */
+  private openSqliteDatabase(dbPath: string, dbDir: string): BetterSqlite3Database.Database {
+    const attemptOpen = (): BetterSqlite3Database.Database => {
+      const db = new BetterSqlite3Database(dbPath);
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+      db.pragma('busy_timeout = 5000');
+      return db;
+    };
+
+    try {
+      return attemptOpen();
+    } catch (error: unknown) {
+      const err = error as Error & { code?: string };
+
+      // Stale SHM file from a previous version — remove it and retry
+      const shmPath = `${dbPath}-shm`;
+      const isShmError = err.code === 'SQLITE_IOERR_SHMSIZE' || err.code === 'SQLITE_IOERR_SHMMAP';
+      if (isShmError) {
+        logger.warn('⚠️  SQLite SHM file appears stale (common after upgrades)');
+        logger.warn(`   Removing ${shmPath} and retrying — data is safe in the WAL`);
+        fs.rmSync(shmPath, { force: true });
+        try {
+          return attemptOpen();
+        } catch (retryError: unknown) {
+          const retryErr = retryError as Error & { code?: string };
+          logger.error('❌ DATABASE OPEN ERROR ❌');
+          logger.error('═══════════════════════════════════════════════════════════');
+          logger.error(`Failed to open SQLite database at: ${dbPath}`);
+          logger.error(`Retry after SHM removal also failed: ${retryErr.message}`);
+          throw retryError;
+        }
+      }
+
+      // Other errors — log diagnostics
+      logger.error('❌ DATABASE OPEN ERROR ❌');
+      logger.error('═══════════════════════════════════════════════════════════');
+      logger.error(`Failed to open SQLite database at: ${dbPath}`);
+      logger.error('');
+
+      if (err.code === 'SQLITE_CANTOPEN') {
+        logger.error('SQLITE_CANTOPEN - Unable to open database file.');
+        logger.error('');
+        logger.error('Common causes:');
+        logger.error('  1. Directory permissions - the database directory is not writable');
+        logger.error('  2. Missing volume mount - check your docker-compose.yml');
+        logger.error('  3. Disk space - ensure the filesystem is not full');
+        logger.error('  4. File locked by another process');
+        logger.error('');
+        logger.error('Troubleshooting steps:');
+        logger.error('  1. Check directory permissions:');
+        logger.error(`     ls -la ${dbDir}`);
+        logger.error('  2. Check disk space:');
+        logger.error('     df -h');
+        logger.error('  3. Verify Docker volume mount (if using Docker):');
+        logger.error('     docker compose config | grep volumes -A 5');
+      } else {
+        logger.error(`Error: ${err.message}`);
+        logger.error(`Error code: ${err.code || 'unknown'}`);
+      }
+
+      throw error;
+    }
+  }
+
   close(): void {
     // For PostgreSQL/MySQL, we don't have a direct close method
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -5220,6 +3724,12 @@ class DatabaseService {
     }
 
     if (this.db) {
+      // Checkpoint WAL to prevent stale SHM files after container restarts/upgrades
+      try {
+        this.db.pragma('wal_checkpoint(TRUNCATE)');
+      } catch (error) {
+        logger.warn('WAL checkpoint failed during shutdown:', error);
+      }
       this.db.close();
     }
   }
@@ -5447,28 +3957,6 @@ class DatabaseService {
     return channels.map(channel => this.normalizeBigInts(channel));
   }
 
-  /**
-   * Async version of getAllChannels - works with all database backends
-   */
-  async getAllChannelsAsync(): Promise<DbChannel[]> {
-    if (this.channelsRepo) {
-      return this.channelsRepo.getAllChannels() as unknown as DbChannel[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllChannels();
-  }
-
-  /**
-   * Async version of getChannelById - works with all database backends
-   */
-  async getChannelByIdAsync(id: number): Promise<DbChannel | null> {
-    if (this.channelsRepo) {
-      return this.channelsRepo.getChannelById(id) as unknown as DbChannel | null;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getChannelById(id);
-  }
-
   getChannelCount(): number {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -5591,13 +4079,8 @@ class DatabaseService {
    * Async version of insertTelemetry - works with all database backends
    */
   async insertTelemetryAsync(telemetryData: DbTelemetry): Promise<void> {
-    if (this.telemetryRepo) {
-      await this.telemetryRepo.insertTelemetry(telemetryData);
-      this.invalidateTelemetryTypesCache();
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.insertTelemetry(telemetryData);
+    await this.telemetry.insertTelemetry(telemetryData);
+    this.invalidateTelemetryTypesCache();
   }
 
   getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
@@ -5633,9 +4116,7 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTelemetryByNode - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryByNode() instead */
   async getTelemetryByNodeAsync(
     nodeId: string,
     limit: number = 100,
@@ -5644,12 +4125,8 @@ class DatabaseService {
     offset: number = 0,
     telemetryType?: string
   ): Promise<DbTelemetry[]> {
-    if (this.telemetryRepo) {
-      // Cast to local DbTelemetry type (they have compatible structure)
-      return this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType);
+    // Cast to local DbTelemetry type (they have compatible structure)
+    return this.telemetry.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
   }
 
   /**
@@ -5688,14 +4165,10 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  // Async version of getPositionTelemetryByNode - works for all database backends
+  /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
   async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number): Promise<DbTelemetry[]> {
-    if (this.telemetryRepo) {
-      // Cast to local DbTelemetry type (they have compatible structure)
-      return this.telemetryRepo.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp) as unknown as Promise<DbTelemetry[]>;
-    }
-    // Fallback to sync method for SQLite when repo not available
-    return this.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp);
+    // Cast to local DbTelemetry type (they have compatible structure)
+    return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp) as unknown as Promise<DbTelemetry[]>;
   }
 
   /**
@@ -5826,10 +4299,7 @@ class DatabaseService {
    */
   async getRecentEstimatedPositionsAsync(nodeNum: number, limit: number = 10): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
     const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    return this.telemetryRepo.getRecentEstimatedPositions(nodeId, limit);
+    return this.telemetry.getRecentEstimatedPositions(nodeId, limit);
   }
 
   /**
@@ -5846,10 +4316,7 @@ class DatabaseService {
     sinceTimestamp: number,
     intervalMinutes: number = 15
   ): Promise<Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }>> {
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    return this.telemetryRepo.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes);
+    return this.telemetry.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes);
   }
 
   /**
@@ -5864,10 +4331,7 @@ class DatabaseService {
     nodeId: string,
     sinceTimestamp: number
   ): Promise<Array<{ timestamp: number; quality: number }>> {
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    return this.telemetryRepo.getLinkQualityHistory(nodeId, sinceTimestamp);
+    return this.telemetry.getLinkQualityHistory(nodeId, sinceTimestamp);
   }
 
   /**
@@ -6453,25 +4917,6 @@ class DatabaseService {
     return traceroutes.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTraceroutesByNodes for PostgreSQL/MySQL
-   */
-  async getTraceroutesByNodesAsync(fromNodeNum: number, toNodeNum: number, limit: number = 10): Promise<DbTraceroute[]> {
-    if (this.traceroutesRepo) {
-      const traceroutes = await this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
-      return traceroutes.map(t => ({
-        ...t,
-        route: t.route || '',
-        routeBack: t.routeBack || '',
-        snrTowards: t.snrTowards || '',
-        snrBack: t.snrBack || '',
-      })) as DbTraceroute[];
-    }
-
-    // Fallback to sync for SQLite
-    return this.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
-  }
-
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
     // For PostgreSQL/MySQL, use cached traceroutes or return empty
     // Traceroute data is primarily real-time from mesh traffic
@@ -6703,7 +5148,7 @@ class DatabaseService {
 
       if (filterEnabled) {
         // Get all filter settings (use async for specificNodes)
-        const specificNodes = await this.getAutoTracerouteNodesAsync();
+        const specificNodes = await this.misc.getAutoTracerouteNodes();
         const filterChannels = this.getTracerouteFilterChannels();
         const filterRoles = this.getTracerouteFilterRoles();
         const filterHwModels = this.getTracerouteFilterHwModels();
@@ -6869,48 +5314,45 @@ class DatabaseService {
     }
   }
 
-  recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): void {
+  async recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): Promise<void> {
     const now = Date.now();
 
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Fire async operations
-      (async () => {
-        try {
-          // Update the nodes table with last request time
-          if (this.nodesRepo) {
-            await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
-          }
-
-          // Insert a pending traceroute record
-          if (this.traceroutesRepo) {
-            const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
-            const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
-
-            await this.traceroutesRepo.insertTraceroute({
-              fromNodeNum,
-              toNodeNum,
-              fromNodeId,
-              toNodeId,
-              route: null,  // null for pending (findPendingTraceroute checks for isNull)
-              routeBack: null,
-              snrTowards: null,
-              snrBack: null,
-              timestamp: now,
-              createdAt: now,
-            });
-
-            // Cleanup old traceroutes
-            await this.traceroutesRepo.cleanupOldTraceroutesForPair(
-              fromNodeNum,
-              toNodeNum,
-              TRACEROUTE_HISTORY_LIMIT
-            );
-          }
-        } catch (error) {
-          logger.error('[DatabaseService] Failed to record traceroute request:', error);
+      try {
+        // Update the nodes table with last request time
+        if (this.nodesRepo) {
+          await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
         }
-      })();
+
+        // Insert a pending traceroute record
+        if (this.traceroutesRepo) {
+          const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
+          const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
+
+          await this.traceroutesRepo.insertTraceroute({
+            fromNodeNum,
+            toNodeNum,
+            fromNodeId,
+            toNodeId,
+            route: null,  // null for pending (findPendingTraceroute checks for isNull)
+            routeBack: null,
+            snrTowards: null,
+            snrBack: null,
+            timestamp: now,
+            createdAt: now,
+          });
+
+          // Cleanup old traceroutes
+          await this.traceroutesRepo.cleanupOldTraceroutesForPair(
+            fromNodeNum,
+            toNodeNum,
+            TRACEROUTE_HISTORY_LIMIT
+          );
+        }
+      } catch (error) {
+        logger.error('[DatabaseService] Failed to record traceroute request:', error);
+      }
       return;
     }
 
@@ -6971,14 +5413,6 @@ class DatabaseService {
     return nodes.map(n => Number(n.nodeNum));
   }
 
-  async getAutoTracerouteNodesAsync(): Promise<number[]> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getAutoTracerouteNodes();
-    }
-    // Fallback to sync method for SQLite
-    return this.getAutoTracerouteNodes();
-  }
-
   setAutoTracerouteNodes(nodeNums: number[]): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'setAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use setAutoTracerouteNodesAsync() instead.`);
@@ -7010,69 +5444,21 @@ class DatabaseService {
     logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
   }
 
-  async setAutoTracerouteNodesAsync(nodeNums: number[]): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.setAutoTracerouteNodes(nodeNums);
-      logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
-      return;
-    }
-    // Fallback to sync method for SQLite
-    this.setAutoTracerouteNodes(nodeNums);
-  }
-
   // Solar Estimates methods
   async upsertSolarEstimateAsync(timestamp: number, wattHours: number, fetchedAt: number): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.upsertSolarEstimate({
-        timestamp,
-        watt_hours: wattHours,
-        fetched_at: fetchedAt,
-      });
-      return;
-    }
-    // Fallback to sync SQLite method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'upsertSolarEstimate' called but using ${this.drizzleDbType} database. MiscRepository not initialized.`);
-    }
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO solar_estimates (timestamp, watt_hours, fetched_at)
-      VALUES (?, ?, ?)
-    `);
-    stmt.run(timestamp, wattHours, fetchedAt);
+    await this.misc.upsertSolarEstimate({
+      timestamp,
+      watt_hours: wattHours,
+      fetched_at: fetchedAt,
+    });
   }
 
   async getRecentSolarEstimatesAsync(limit: number = 100): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getRecentSolarEstimates(limit);
-    }
-    // Fallback to sync SQLite method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'getRecentSolarEstimates' called but using ${this.drizzleDbType} database. MiscRepository not initialized.`);
-    }
-    const stmt = this.db.prepare(`
-      SELECT timestamp, watt_hours, fetched_at
-      FROM solar_estimates
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    return stmt.all(limit) as Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
+    return this.misc.getRecentSolarEstimates(limit);
   }
 
   async getSolarEstimatesInRangeAsync(startTimestamp: number, endTimestamp: number): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getSolarEstimatesInRange(startTimestamp, endTimestamp);
-    }
-    // Fallback to sync SQLite method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'getSolarEstimatesInRange' called but using ${this.drizzleDbType} database. MiscRepository not initialized.`);
-    }
-    const stmt = this.db.prepare(`
-      SELECT timestamp, watt_hours, fetched_at
-      FROM solar_estimates
-      WHERE timestamp >= ? AND timestamp <= ?
-      ORDER BY timestamp ASC
-    `);
-    return stmt.all(startTimestamp, endTimestamp) as Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
+    return this.misc.getSolarEstimatesInRange(startTimestamp, endTimestamp);
   }
 
   isAutoTracerouteNodeFilterEnabled(): boolean {
@@ -7205,17 +5591,17 @@ class DatabaseService {
       return 24; // Default to 24 hours
     }
     const hours = parseInt(value, 10);
-    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
-    if (isNaN(hours) || hours < 1 || hours > 168) {
+    // Validate range (0-168 hours; 0 = always re-traceroute, up to 1 week)
+    if (isNaN(hours) || hours < 0 || hours > 168) {
       return 24;
     }
     return hours;
   }
 
   setTracerouteExpirationHours(hours: number): void {
-    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
-    if (hours < 1 || hours > 168) {
-      throw new Error('Traceroute expiration hours must be between 1 and 168 (1 week)');
+    // Validate range (0-168 hours; 0 = always re-traceroute, up to 1 week)
+    if (hours < 0 || hours > 168) {
+      throw new Error('Traceroute expiration hours must be between 0 and 168 (1 week)');
     }
     this.setSetting('tracerouteExpirationHours', hours.toString());
     logger.debug(`✅ Set traceroute expiration hours to: ${hours}`);
@@ -7329,7 +5715,7 @@ class DatabaseService {
     expirationHours: number;
     sortByHops: boolean;
   }> {
-    const nodeNums = await this.getAutoTracerouteNodesAsync();
+    const nodeNums = await this.misc.getAutoTracerouteNodes();
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
       nodeNums,
@@ -7363,7 +5749,7 @@ class DatabaseService {
     sortByHops?: boolean;
   }): Promise<void> {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
-    await this.setAutoTracerouteNodesAsync(settings.nodeNums);
+    await this.misc.setAutoTracerouteNodes(settings.nodeNums);
     this.setTracerouteFilterChannels(settings.filterChannels);
     this.setTracerouteFilterRoles(settings.filterRoles);
     this.setTracerouteFilterHwModels(settings.filterHwModels);
@@ -8167,78 +6553,7 @@ class DatabaseService {
     }));
   }
 
-  /**
-   * Get auto-delete-by-distance log entries
-   */
-  async getDistanceDeleteLogAsync(limit: number = 10): Promise<any[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.getPostgresPool()!.connect();
-      try {
-        const result = await client.query(
-          'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT $1',
-          [limit]
-        );
-        return result.rows.map((e: any) => ({
-          ...e,
-          details: e.details ? JSON.parse(e.details) : [],
-        }));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const [rows] = await this.getMySQLPool()!.query(
-        'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ?',
-        [limit]
-      );
-      return (rows as any[]).map((e: any) => ({
-        ...e,
-        details: e.details ? JSON.parse(e.details) : [],
-      }));
-    } else {
-      const entries = this.db.prepare(
-        'SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ?'
-      ).all(limit);
-      return (entries as any[]).map((e: any) => ({
-        ...e,
-        details: e.details ? JSON.parse(e.details) : [],
-      }));
-    }
-  }
-
-  /**
-   * Add an entry to the auto-delete-by-distance log
-   */
-  async addDistanceDeleteLogEntryAsync(entry: {
-    timestamp: number;
-    nodesDeleted: number;
-    thresholdKm: number;
-    details: string;
-  }): Promise<void> {
-    const now = Date.now();
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.getPostgresPool()!.connect();
-      try {
-        await client.query(
-          `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now]
-        );
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      await this.getMySQLPool()!.query(
-        `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now]
-      );
-    } else {
-      this.db.prepare(
-        `INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-         VALUES (?, ?, ?, ?, ?)`
-      ).run(entry.timestamp, entry.nodesDeleted, entry.thresholdKm, entry.details, now);
-    }
-  }
+  // Distance delete log methods moved to MiscRepository (databaseService.misc.getDistanceDeleteLog / addDistanceDeleteLogEntry)
 
   async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
     if (this.drizzleDbType === 'postgres') {
@@ -8272,16 +6587,10 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  /**
-   * Async version of getTelemetryByType - works with all database backends
-   */
+  /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
   async getTelemetryByTypeAsync(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
-    if (this.telemetryRepo) {
-      // Cast to local DbTelemetry type (they have compatible structure)
-      return this.telemetryRepo.getTelemetryByType(telemetryType, limit) as unknown as DbTelemetry[];
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getTelemetryByType(telemetryType, limit);
+    // Cast to local DbTelemetry type (they have compatible structure)
+    return this.telemetry.getTelemetryByType(telemetryType, limit) as unknown as DbTelemetry[];
   }
 
   getLatestTelemetryByNode(nodeId: string): DbTelemetry[] {
@@ -8324,47 +6633,28 @@ class DatabaseService {
    * Async version of getLatestTelemetryForType - works with all database backends
    */
   async getLatestTelemetryForTypeAsync(nodeId: string, telemetryType: string): Promise<DbTelemetry | null> {
-    if (this.telemetryRepo) {
-      const result = await this.telemetryRepo.getLatestTelemetryForType(nodeId, telemetryType);
-      if (!result) return null;
-      // Normalize the result to match DbTelemetry interface (convert null to undefined)
-      return {
-        id: result.id,
-        nodeId: result.nodeId,
-        nodeNum: result.nodeNum,
-        telemetryType: result.telemetryType,
-        timestamp: result.timestamp,
-        value: result.value,
-        unit: result.unit ?? undefined,
-        createdAt: result.createdAt,
-        packetTimestamp: result.packetTimestamp ?? undefined,
-        channel: result.channel ?? undefined,
-        precisionBits: result.precisionBits ?? undefined,
-        gpsAccuracy: result.gpsAccuracy ?? undefined,
-      };
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getLatestTelemetryForType(nodeId, telemetryType);
+    const result = await this.telemetry.getLatestTelemetryForType(nodeId, telemetryType);
+    if (!result) return null;
+    // Normalize the result to match DbTelemetry interface (convert null to undefined)
+    return {
+      id: result.id,
+      nodeId: result.nodeId,
+      nodeNum: result.nodeNum,
+      telemetryType: result.telemetryType,
+      timestamp: result.timestamp,
+      value: result.value,
+      unit: result.unit ?? undefined,
+      createdAt: result.createdAt,
+      packetTimestamp: result.packetTimestamp ?? undefined,
+      channel: result.channel ?? undefined,
+      precisionBits: result.precisionBits ?? undefined,
+      gpsAccuracy: result.gpsAccuracy ?? undefined,
+    };
   }
 
-  /**
-   * Get latest value for a telemetry type across all nodes in a single query.
-   * Returns a Map of nodeId -> value. Works with all database backends.
-   */
+  /** @deprecated Use databaseService.telemetry.getLatestTelemetryValueForAllNodes() instead */
   async getLatestTelemetryValueForAllNodesAsync(telemetryType: string): Promise<Map<string, number>> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.getLatestTelemetryValueForAllNodes(telemetryType);
-    }
-    // Fallback for SQLite without repo
-    const result = new Map<string, number>();
-    const nodes = this.getAllNodes();
-    for (const node of nodes) {
-      const telemetry = this.getLatestTelemetryForType(node.nodeId, telemetryType);
-      if (telemetry) {
-        result.set(node.nodeId, telemetry.value);
-      }
-    }
-    return result;
+    return this.telemetry.getLatestTelemetryValueForAllNodes(telemetryType);
   }
 
   // Get distinct telemetry types per node (efficient for checking capabilities)
@@ -8405,6 +6695,44 @@ class DatabaseService {
       }
       // Return existing cache or empty map
       return this.telemetryTypesCache || new Map();
+    }
+
+    // SQLite: query the database and update cache
+    const stmt = this.db.prepare(`
+      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
+      FROM telemetry
+      GROUP BY nodeId
+    `);
+    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
+    const map = new Map<string, string[]>();
+    results.forEach(r => {
+      map.set(r.nodeId, r.types ? r.types.split(',') : []);
+    });
+
+    this.telemetryTypesCache = map;
+    this.telemetryTypesCacheTime = now;
+
+    return map;
+  }
+
+  // Get all nodes with their telemetry types (async version)
+  async getAllNodesTelemetryTypesAsync(): Promise<Map<string, string[]>> {
+    const now = Date.now();
+
+    // Return cached result if still valid
+    if (
+      this.telemetryTypesCache !== null &&
+      now - this.telemetryTypesCacheTime < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS
+    ) {
+      return this.telemetryTypesCache;
+    }
+
+    // For PostgreSQL/MySQL, use async repository
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const map = await this.telemetry.getAllNodesTelemetryTypes();
+      this.telemetryTypesCache = map;
+      this.telemetryTypesCacheTime = Date.now();
+      return map;
     }
 
     // SQLite: query the database and update cache
@@ -8588,54 +6916,124 @@ class DatabaseService {
     return totalDeleted;
   }
 
-  purgeAllMessages(): void {
-    logger.debug('⚠️ PURGING all messages from database');
+  /**
+   * Purge all telemetry data (async version)
+   */
+  async purgeAllTelemetryAsync(): Promise<void> {
+    logger.debug('⚠️ PURGING all telemetry from database');
 
-    // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.deleteAllMessages().then(() => {
-          // Clear messages cache after purge
-          this._messagesCache = [];
-          logger.debug('✅ Successfully purged all messages');
-        }).catch(err => {
-          logger.error('Failed to purge all messages:', err);
-        });
-      } else {
-        logger.warn('Cannot purge messages: messages repository not initialized');
-      }
+      await this.telemetry.deleteAllTelemetry();
+      logger.debug('✅ Successfully purged all telemetry');
       return;
     }
 
-    this.db.exec('DELETE FROM messages');
+    this.db.exec('DELETE FROM telemetry');
+    logger.debug('✅ Successfully purged all telemetry');
   }
 
-  purgeAllTraceroutes(): void {
-    logger.debug('⚠️ PURGING all traceroutes and route segments from database');
+  /**
+   * Purge old telemetry data (async version)
+   */
+  async purgeOldTelemetryAsync(hoursToKeep: number, favoriteDaysToKeep?: number): Promise<number> {
+    const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
 
-    // For PostgreSQL/MySQL, use async repository
+    // PostgreSQL/MySQL: Use async telemetry repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        Promise.all([
-          this.traceroutesRepo.deleteAllTraceroutes(),
-          this.traceroutesRepo.deleteAllRouteSegments(),
-        ]).then(() => {
-          logger.debug('✅ Successfully purged all traceroutes and route segments');
-        }).catch(err => {
-          logger.error('Failed to purge all traceroutes:', err);
-        });
-      } else {
-        logger.warn('Cannot purge traceroutes: traceroutes repository not initialized');
+      if (!favoriteDaysToKeep) {
+        const count = await this.telemetry.deleteOldTelemetry(regularCutoffTime);
+        logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
+        return count;
       }
-      return;
+
+      // Get favorites and use favorites-aware deletion
+      const favoritesStr = await this.getSettingAsync('telemetryFavorites');
+      let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
+      if (favoritesStr) {
+        try {
+          favorites = JSON.parse(favoritesStr);
+        } catch (error) {
+          logger.error('Failed to parse telemetryFavorites from settings:', error);
+        }
+      }
+
+      const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+      const { nonFavoritesDeleted, favoritesDeleted } = await this.telemetry.deleteOldTelemetryWithFavorites(
+        regularCutoffTime,
+        favoriteCutoffTime,
+        favorites
+      );
+      const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
+      logger.debug(
+        `🧹 Purged ${totalDeleted} old telemetry records ` +
+        `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+        `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
+      );
+      return totalDeleted;
     }
 
-    this.db.exec('DELETE FROM traceroutes');
-    this.db.exec('DELETE FROM route_segments');
-    logger.debug('✅ Successfully purged all traceroutes and route segments');
+    // SQLite: synchronous path
+    if (!favoriteDaysToKeep) {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+      const result = stmt.run(regularCutoffTime);
+      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      return Number(result.changes);
+    }
+
+    const favoritesStr = this.getSetting('telemetryFavorites');
+    let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
+    if (favoritesStr) {
+      try {
+        favorites = JSON.parse(favoritesStr);
+      } catch (error) {
+        logger.error('Failed to parse telemetryFavorites from settings:', error);
+      }
+    }
+
+    if (favorites.length === 0) {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+      const result = stmt.run(regularCutoffTime);
+      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      return Number(result.changes);
+    }
+
+    const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+    let totalDeleted = 0;
+
+    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
+    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
+
+    const deleteNonFavoritesStmt = this.db.prepare(
+      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    );
+    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
+    totalDeleted += Number(nonFavoritesResult.changes);
+
+    const deleteFavoritesStmt = this.db.prepare(
+      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
+    );
+    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
+    totalDeleted += Number(favoritesResult.changes);
+
+    logger.debug(
+      `🧹 Purged ${totalDeleted} old telemetry records ` +
+      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+    );
+    return totalDeleted;
   }
+
 
   // Settings methods
+  async getSettingAsync(key: string): Promise<string | null> {
+    // For PostgreSQL/MySQL, use the async repository
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.settingsRepo) {
+      return this.settingsRepo.getSetting(key);
+    }
+    // For SQLite (and test environments), use the sync method which uses raw better-sqlite3
+    return this.getSetting(key);
+  }
+
   getSetting(key: string): string | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -8648,17 +7046,6 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
     const row = stmt.get(key) as { value: string } | undefined;
     return row ? row.value : null;
-  }
-
-  /**
-   * Async version of getSetting - works with all database backends
-   */
-  async getSettingAsync(key: string): Promise<string | null> {
-    if (this.settingsRepo) {
-      return this.settingsRepo.getSetting(key);
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getSetting(key);
   }
 
   getAllSettings(): Record<string, string> {
@@ -8683,26 +7070,17 @@ class DatabaseService {
     return settings;
   }
 
-  /**
-   * Async version of getAllSettings - works with all database backends
-   */
-  async getAllSettingsAsync(): Promise<Record<string, string>> {
-    if (this.settingsRepo) {
-      return this.settingsRepo.getAllSettings();
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.getAllSettings();
-  }
-
   setSetting(key: string, value: string): void {
     // For PostgreSQL/MySQL, use async repo and update cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Update cache immediately for sync access
       this.settingsCache.set(key, value);
-      // Fire and forget async version
-      this.setSettingAsync(key, value).catch(err => {
-        logger.error(`Failed to set setting ${key}:`, err);
-      });
+      // Fire and forget repo write
+      if (this.settingsRepo) {
+        this.settingsRepo.setSetting(key, value).catch(err => {
+          logger.error(`Failed to set setting ${key}:`, err);
+        });
+      }
       return;
     }
     const now = Date.now();
@@ -8716,23 +7094,6 @@ class DatabaseService {
     stmt.run(key, value, now, now);
   }
 
-  /**
-   * Async version of setSetting - works with all database backends
-   */
-  async setSettingAsync(key: string, value: string): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.setSetting(key, value);
-      return;
-    }
-    // For PostgreSQL/MySQL without repo, just update cache (don't recurse into setSetting)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.settingsCache.set(key, value);
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.setSetting(key, value);
-  }
-
   setSettings(settings: Record<string, string>): void {
     // For PostgreSQL/MySQL, use async repo and update cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -8740,9 +7101,11 @@ class DatabaseService {
       for (const [key, value] of Object.entries(settings)) {
         this.settingsCache.set(key, value);
       }
-      this.setSettingsAsync(settings).catch(err => {
-        logger.error('Failed to set settings:', err);
-      });
+      if (this.settingsRepo) {
+        this.settingsRepo.setSettings(settings).catch(err => {
+          logger.error('Failed to set settings:', err);
+        });
+      }
       return;
     }
     const now = Date.now();
@@ -8761,100 +7124,22 @@ class DatabaseService {
     })();
   }
 
-  /**
-   * Async version of setSettings - works with all database backends
-   */
-  async setSettingsAsync(settings: Record<string, string>): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.setSettings(settings);
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.setSettings(settings);
-  }
-
   deleteAllSettings(): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Clear cache immediately
       this.settingsCache.clear();
-      this.deleteAllSettingsAsync().catch(err => {
-        logger.error('Failed to delete all settings:', err);
-      });
+      if (this.settingsRepo) {
+        this.settingsRepo.deleteAllSettings().catch(err => {
+          logger.error('Failed to delete all settings:', err);
+        });
+      }
       return;
     }
     logger.debug('🔄 Resetting all settings to defaults');
     this.db.exec('DELETE FROM settings');
   }
 
-  /**
-   * Async version of deleteAllSettings - works with all database backends
-   */
-  async deleteAllSettingsAsync(): Promise<void> {
-    if (this.settingsRepo) {
-      await this.settingsRepo.deleteAllSettings();
-      return;
-    }
-    // Fallback to sync for SQLite if repo not ready
-    this.deleteAllSettings();
-  }
-
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
-
-  /**
-   * Async method to get user notification preferences.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async getUserNotificationPreferencesAsync(userId: number): Promise<{
-    enableWebPush: boolean;
-    enableApprise: boolean;
-    enabledChannels: number[];
-    enableDirectMessages: boolean;
-    notifyOnEmoji: boolean;
-    notifyOnMqtt: boolean;
-    notifyOnNewNode: boolean;
-    notifyOnTraceroute: boolean;
-    notifyOnInactiveNode: boolean;
-    notifyOnServerEvents: boolean;
-    prefixWithNodeName: boolean;
-    monitoredNodes: string[];
-    whitelist: string[];
-    blacklist: string[];
-    appriseUrls: string[];
-  } | null> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.getUserPreferences(userId);
-    }
-    // Fallback to sync SQLite method if repo not ready
-    return null;
-  }
-
-  /**
-   * Async method to save user notification preferences.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async saveUserNotificationPreferencesAsync(userId: number, prefs: {
-    enableWebPush: boolean;
-    enableApprise: boolean;
-    enabledChannels: number[];
-    enableDirectMessages: boolean;
-    notifyOnEmoji: boolean;
-    notifyOnMqtt: boolean;
-    notifyOnNewNode: boolean;
-    notifyOnTraceroute: boolean;
-    notifyOnInactiveNode: boolean;
-    notifyOnServerEvents: boolean;
-    prefixWithNodeName: boolean;
-    monitoredNodes: string[];
-    whitelist: string[];
-    blacklist: string[];
-    appriseUrls: string[];
-  }): Promise<boolean> {
-    if (this.notificationsRepo) {
-      return this.notificationsRepo.saveUserPreferences(userId, prefs);
-    }
-    // Fallback - return false if repo not ready
-    return false;
-  }
 
   /**
    * Delete a node and all associated data (async version for PostgreSQL)
@@ -8995,15 +7280,6 @@ class DatabaseService {
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  async getLongestActiveRouteSegmentAsync(): Promise<DbRouteSegment | null> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      const segment = await this.traceroutesRepo.getLongestActiveRouteSegment();
-      if (!segment) return null;
-      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
-    }
-    return this.getLongestActiveRouteSegment();
-  }
-
   getRecordHolderRouteSegment(): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -9017,15 +7293,6 @@ class DatabaseService {
     `);
     const segment = stmt.get() as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
-  }
-
-  async getRecordHolderRouteSegmentAsync(): Promise<DbRouteSegment | null> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      const segment = await this.traceroutesRepo.getRecordHolderRouteSegment();
-      if (!segment) return null;
-      return { ...segment, isRecordHolder: segment.isRecordHolder ?? false };
-    }
-    return this.getRecordHolderRouteSegment();
   }
 
   updateRecordHolderSegment(newSegment: DbRouteSegment): void {
@@ -9277,11 +7544,7 @@ class DatabaseService {
    * @returns Record mapping nodeNum to stats {avgRssi, packetCount, lastHeard}
    */
   async getDirectNeighborStatsAsync(hoursBack: number = 24): Promise<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>> {
-    if (!this.neighborsRepo) {
-      return {};
-    }
-
-    const stats = await this.neighborsRepo.getDirectNeighborRssiAsync(hoursBack);
+    const stats = await this.neighbors.getDirectNeighborRssiAsync(hoursBack);
     const result: Record<number, { avgRssi: number; packetCount: number; lastHeard: number }> = {};
 
     for (const [nodeNum, stat] of stats) {
@@ -9302,18 +7565,15 @@ class DatabaseService {
    * @returns Number of neighbor records deleted
    */
   async deleteNeighborInfoForNodeAsync(nodeNum: number): Promise<number> {
-    if (!this.neighborsRepo) {
-      return 0;
-    }
-
     // Clear from cache
     this._neighborsByNodeCache.delete(nodeNum);
     this._neighborsCache = this._neighborsCache.filter(n => n.nodeNum !== nodeNum);
 
-    // Delete from database
-    const deleted = await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum);
-    logger.info(`Deleted ${deleted} neighbor records for node ${nodeNum}`);
-    return deleted;
+    // Count then delete from database
+    const count = await this.neighbors.getNeighborCountForNode(nodeNum);
+    await this.neighbors.deleteNeighborInfoForNode(nodeNum);
+    logger.info(`Deleted ${count} neighbor records for node ${nodeNum}`);
+    return count;
   }
 
   // Favorite operations
@@ -9418,34 +7678,16 @@ class DatabaseService {
     const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
 
     // Persist to/remove from the ignored_nodes table
-    if (this.ignoredNodesRepo) {
-      if (isIgnored) {
-        this.ignoredNodesRepo.addIgnoredNodeAsync(
-          nodeNum, nodeId, node?.longName, node?.shortName
-        ).catch(err => {
-          logger.error('Failed to add node to persistent ignore list:', err);
-        });
-      } else {
-        this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum).catch(err => {
-          logger.error('Failed to remove node from persistent ignore list:', err);
-        });
-      }
+    if (isIgnored) {
+      this.ignoredNodes.addIgnoredNodeAsync(
+        nodeNum, nodeId, node?.longName, node?.shortName
+      ).catch(err => {
+        logger.error('Failed to add node to persistent ignore list:', err);
+      });
     } else {
-      // SQLite fallback: use raw SQL for the ignored_nodes table
-      try {
-        if (isIgnored) {
-          const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt)
-            VALUES (?, ?, ?, ?, ?)
-          `);
-          stmt.run(nodeNum, nodeId, node?.longName || null, node?.shortName || null, Date.now());
-        } else {
-          const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
-          stmt.run(nodeNum);
-        }
-      } catch (err) {
-        logger.error('Failed to update persistent ignore list:', err);
-      }
+      this.ignoredNodes.removeIgnoredNodeAsync(nodeNum).catch(err => {
+        logger.error('Failed to remove node from persistent ignore list:', err);
+      });
     }
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
@@ -9484,80 +7726,9 @@ class DatabaseService {
     logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
   }
 
-  // Persistent ignored nodes operations
-  async addIgnoredNodeAsync(
-    nodeNum: number,
-    nodeId: string,
-    longName?: string | null,
-    shortName?: string | null,
-    ignoredBy?: string | null,
-  ): Promise<void> {
-    if (this.ignoredNodesRepo) {
-      await this.ignoredNodesRepo.addIgnoredNodeAsync(nodeNum, nodeId, longName, shortName, ignoredBy);
-    } else {
-      const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO ignored_nodes (nodeNum, nodeId, longName, shortName, ignoredAt, ignoredBy)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(nodeNum, nodeId, longName || null, shortName || null, Date.now(), ignoredBy || null);
-    }
-  }
+  // Persistent ignored nodes operations — use databaseService.ignoredNodes.xxxAsync() directly
 
-  async removeIgnoredNodeAsync(nodeNum: number): Promise<void> {
-    if (this.ignoredNodesRepo) {
-      await this.ignoredNodesRepo.removeIgnoredNodeAsync(nodeNum);
-    } else {
-      const stmt = this.db.prepare('DELETE FROM ignored_nodes WHERE nodeNum = ?');
-      stmt.run(nodeNum);
-    }
-  }
-
-  async getIgnoredNodesAsync(): Promise<Array<{
-    nodeNum: number;
-    nodeId: string;
-    longName: string | null;
-    shortName: string | null;
-    ignoredAt: number;
-    ignoredBy: string | null;
-  }>> {
-    if (this.ignoredNodesRepo) {
-      return this.ignoredNodesRepo.getIgnoredNodesAsync();
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare('SELECT * FROM ignored_nodes');
-    return stmt.all() as any[];
-  }
-
-  async isNodeIgnoredAsync(nodeNum: number): Promise<boolean> {
-    if (this.ignoredNodesRepo) {
-      return this.ignoredNodesRepo.isNodeIgnoredAsync(nodeNum);
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare('SELECT nodeNum FROM ignored_nodes WHERE nodeNum = ?');
-    const row = stmt.get(nodeNum);
-    return !!row;
-  }
-
-  // Embed profile operations
-  async getEmbedProfilesAsync(): Promise<EmbedProfile[]> {
-    return this.embedProfileRepo!.getAllAsync();
-  }
-
-  async getEmbedProfileByIdAsync(id: string): Promise<EmbedProfile | null> {
-    return this.embedProfileRepo!.getByIdAsync(id);
-  }
-
-  async createEmbedProfileAsync(input: EmbedProfileInput): Promise<EmbedProfile> {
-    return this.embedProfileRepo!.createAsync(input);
-  }
-
-  async updateEmbedProfileAsync(id: string, input: Partial<EmbedProfileInput>): Promise<EmbedProfile | null> {
-    return this.embedProfileRepo!.updateAsync(id, input);
-  }
-
-  async deleteEmbedProfileAsync(id: string): Promise<boolean> {
-    return this.embedProfileRepo!.deleteAsync(id);
-  }
+  // Embed profile operations — use databaseService.embedProfiles.xxxAsync() directly
 
   // Geofence cooldown operations
   getGeofenceCooldownAsync(triggerId: string, nodeNum: number): Promise<number | null> {
@@ -9788,114 +7959,76 @@ class DatabaseService {
       const password = 'changeme';
       const adminUsername = getEnvironmentConfig().adminUsername;
 
-      if (this.authRepo) {
-        // PostgreSQL/MySQL: use Drizzle repository
-        const allUsers = await this.authRepo.getAllUsers();
-        const hasAdmin = allUsers.some(u => u.isAdmin);
-        if (hasAdmin) {
-          logger.debug('✅ Admin user already exists');
-          return;
-        }
-
-        logger.debug('📝 No admin user found, creating default admin...');
-        const bcrypt = await import('bcrypt');
-        const passwordHash = await bcrypt.hash(password, 10);
-        const now = Date.now();
-
-        const adminId = await this.authRepo.createUser({
-          username: adminUsername,
-          passwordHash,
-          email: null,
-          displayName: 'Administrator',
-          authMethod: 'local',
-          oidcSubject: null,
-          isAdmin: true,
-          isActive: true,
-          passwordLocked: false,
-          createdAt: now,
-          updatedAt: now,
-          lastLoginAt: null
-        });
-
-        // Grant all permissions for admin
-        const allResources = ['dashboard', 'nodes', 'messages', 'traceroutes', 'channels', 'configuration', 'info', 'notifications', 'audit', 'users', 'packets'];
-        for (const resource of allResources) {
-          await this.authRepo.createPermission({
-            userId: adminId,
-            resource,
-            canRead: true,
-            canWrite: true,
-            canDelete: true
-          });
-        }
-
-        // Log the password
-        logger.warn('');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('🔐 FIRST RUN: Admin user created');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn(`   Username: ${adminUsername}`);
-        logger.warn(`   Password: changeme`);
-        logger.warn('');
-        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('');
-
-        // Log to audit log (fire-and-forget)
-        this.auditLogAsync(
-          adminId,
-          'first_run_admin_created',
-          'users',
-          JSON.stringify({ username: adminUsername }),
-          'system'
-        ).catch(err => logger.error('Failed to write audit log:', err));
-
-        // Save to settings
-        await this.setSettingAsync('setup_complete', 'true');
-      } else {
-        // SQLite: use sync models
-        if (this.userModel.hasAdminUser()) {
-          logger.debug('✅ Admin user already exists');
-          return;
-        }
-
-        logger.debug('📝 No admin user found, creating default admin...');
-
-        const admin = await this.userModel.create({
-          username: adminUsername,
-          password: password,
-          authProvider: 'local',
-          isAdmin: true,
-          displayName: 'Administrator'
-        });
-
-        // Grant all permissions
-        this.permissionModel.grantDefaultPermissions(admin.id, true);
-
-        // Log the password
-        logger.warn('');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('🔐 FIRST RUN: Admin user created');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn(`   Username: ${adminUsername}`);
-        logger.warn(`   Password: changeme`);
-        logger.warn('');
-        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
-        logger.warn('═══════════════════════════════════════════════════════════');
-        logger.warn('');
-
-        // Log to audit log
-        this.auditLog(
-          admin.id,
-          'first_run_admin_created',
-          'users',
-          JSON.stringify({ username: adminUsername }),
-          null
-        );
-
-        // Save to settings
-        this.setSetting('setup_complete', 'true');
+      // Use AuthRepository for all database backends
+      const allUsers = await this.auth.getAllUsers();
+      const hasAdmin = allUsers.some(u => u.isAdmin);
+      if (hasAdmin) {
+        logger.debug('✅ Admin user already exists');
+        return;
       }
+
+      logger.debug('📝 No admin user found, creating default admin...');
+      const bcrypt = await import('bcrypt');
+      const passwordHash = await bcrypt.hash(password, 10);
+      const now = Date.now();
+
+      const adminId = await this.auth.createUser({
+        username: adminUsername,
+        passwordHash,
+        email: null,
+        displayName: 'Administrator',
+        authMethod: 'local',
+        oidcSubject: null,
+        isAdmin: true,
+        isActive: true,
+        passwordLocked: false,
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: null
+      });
+
+      // Grant all permissions for admin
+      // Resource names must match the CHECK constraint in the permissions table (set by migration 006)
+      const allResources = [
+        'dashboard', 'nodes', 'messages', 'settings', 'configuration', 'info',
+        'automation', 'connection', 'traceroute', 'audit', 'security', 'themes',
+        'channel_0', 'channel_1', 'channel_2', 'channel_3',
+        'channel_4', 'channel_5', 'channel_6', 'channel_7',
+        'nodes_private', 'meshcore', 'packetmonitor'
+      ];
+      for (const resource of allResources) {
+        await this.auth.createPermission({
+          userId: adminId,
+          resource,
+          canRead: true,
+          canWrite: true,
+          canDelete: true
+        });
+      }
+
+      // Log the password
+      logger.warn('');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('🔐 FIRST RUN: Admin user created');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn(`   Username: ${adminUsername}`);
+      logger.warn(`   Password: changeme`);
+      logger.warn('');
+      logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('');
+
+      // Log to audit log (fire-and-forget)
+      this.auditLogAsync(
+        adminId,
+        'first_run_admin_created',
+        'users',
+        JSON.stringify({ username: adminUsername }),
+        'system'
+      ).catch(err => logger.error('Failed to write audit log:', err));
+
+      // Save to settings
+      await this.settings.setSetting('setup_complete', 'true');
     } catch (error) {
       logger.error('❌ Failed to create admin user:', error);
       throw error;
@@ -9917,96 +8050,53 @@ class DatabaseService {
         { resource: 'info' as const, canViewOnMap: false, canRead: true, canWrite: false, canDelete: false }
       ];
 
-      // Use appropriate method based on database type
-      if (this.authRepo) {
-        // PostgreSQL/MySQL: use Drizzle repository
-        const existingUser = await this.authRepo.getUserByUsername('anonymous');
-        if (existingUser) {
-          logger.debug('✅ Anonymous user already exists');
-          return;
-        }
-
-        logger.debug('📝 Creating anonymous user for unauthenticated access...');
-        const now = Date.now();
-        const anonymousId = await this.authRepo.createUser({
-          username: 'anonymous',
-          passwordHash,
-          email: null,
-          displayName: 'Anonymous User',
-          authMethod: 'local',
-          oidcSubject: null,
-          isAdmin: false,
-          isActive: true,
-          passwordLocked: false,
-          createdAt: now,
-          updatedAt: now,
-          lastLoginAt: null
-        });
-
-        // Grant default permissions
-        for (const perm of defaultAnonPermissions) {
-          await this.authRepo.createPermission({
-            userId: anonymousId,
-            resource: perm.resource,
-            canViewOnMap: perm.canViewOnMap,
-            canRead: perm.canRead,
-            canWrite: perm.canWrite,
-            canDelete: perm.canDelete
-          });
-        }
-
-        logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
-        logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
-
-        // Log to audit log (fire-and-forget for async)
-        this.auditLogAsync(
-          anonymousId,
-          'anonymous_user_created',
-          'users',
-          JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
-          'system'
-        ).catch(err => logger.error('Failed to write audit log:', err));
-      } else {
-        // SQLite: use sync models
-        const anonymousUser = this.userModel.findByUsername('anonymous');
-        if (anonymousUser) {
-          logger.debug('✅ Anonymous user already exists');
-          return;
-        }
-
-        logger.debug('📝 Creating anonymous user for unauthenticated access...');
-        const anonymous = await this.userModel.create({
-          username: 'anonymous',
-          password: randomPassword,  // Random password - effectively cannot login
-          authProvider: 'local',
-          isAdmin: false,
-          displayName: 'Anonymous User'
-        });
-
-        // Grant default permissions
-        for (const perm of defaultAnonPermissions) {
-          this.permissionModel.grant({
-            userId: anonymous.id,
-            resource: perm.resource,
-            canViewOnMap: perm.canViewOnMap,
-            canRead: perm.canRead,
-            canWrite: perm.canWrite,
-            grantedBy: anonymous.id
-          });
-        }
-
-        logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
-        logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
-
-        // Log to audit log
-        this.auditLog(
-          anonymous.id,
-          'anonymous_user_created',
-          'users',
-          JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
-          null
-        );
+      // Use AuthRepository for all database backends
+      const existingUser = await this.auth.getUserByUsername('anonymous');
+      if (existingUser) {
+        logger.debug('✅ Anonymous user already exists');
+        return;
       }
+
+      logger.debug('📝 Creating anonymous user for unauthenticated access...');
+      const now = Date.now();
+      const anonymousId = await this.auth.createUser({
+        username: 'anonymous',
+        passwordHash,
+        email: null,
+        displayName: 'Anonymous User',
+        authMethod: 'local',
+        oidcSubject: null,
+        isAdmin: false,
+        isActive: true,
+        passwordLocked: false,
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: null
+      });
+
+      // Grant default permissions
+      for (const perm of defaultAnonPermissions) {
+        await this.auth.createPermission({
+          userId: anonymousId,
+          resource: perm.resource,
+          canViewOnMap: perm.canViewOnMap,
+          canRead: perm.canRead,
+          canWrite: perm.canWrite,
+          canDelete: perm.canDelete
+        });
+      }
+
+      logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
+      logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
+
+      // Log to audit log (fire-and-forget)
+      this.auditLogAsync(
+        anonymousId,
+        'anonymous_user_created',
+        'users',
+        JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
+        'system'
+      ).catch(err => logger.error('Failed to write audit log:', err));
     } catch (error) {
       logger.error('❌ Failed to create anonymous user:', error);
       throw error;
@@ -10023,34 +8113,22 @@ class DatabaseService {
     valueBefore?: string | null,
     valueAfter?: string | null
   ): void {
-    // Route to async method for PostgreSQL/MySQL
-    if (this.authRepo) {
-      this.authRepo.createAuditLogEntry({
-        userId,
-        action,
-        resource,
-        details,
-        ipAddress,
-        userAgent: null,
-        timestamp: Date.now(),
-      }).catch(error => {
-        logger.error('Failed to write audit log (async):', error);
-      });
-      return;
-    }
-
-    // SQLite sync path
-    try {
-      const stmt = this.db.prepare(`
-        INSERT INTO audit_log (user_id, action, resource, details, ip_address, value_before, value_after, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      stmt.run(userId, action, resource, details, ipAddress, valueBefore || null, valueAfter || null, Date.now());
-    } catch (error) {
+    // Delegate to AuthRepository for all backends (fire-and-forget)
+    // Note: valueBefore/valueAfter not yet in Drizzle schema — tracked as future enhancement
+    void valueBefore;
+    void valueAfter;
+    this.auth.createAuditLogEntry({
+      userId,
+      action,
+      resource,
+      details,
+      ipAddress,
+      userAgent: null,
+      timestamp: Date.now(),
+    }).catch(error => {
       logger.error('Failed to write audit log:', error);
       // Don't throw - audit log failures shouldn't break the application
-    }
+    });
   }
 
   getAuditLogs(options: {
@@ -10470,65 +8548,12 @@ class DatabaseService {
 
   async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
     if (!userId) return;
-    const now = Math.floor(Date.now() / 1000);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query(
-          `INSERT INTO read_messages ("userId", "messageId", "readAt")
-           VALUES ($1, $2, $3)
-           ON CONFLICT ("userId", "messageId") DO NOTHING`,
-          [userId, messageId, now]
-        );
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      await pool.query(
-        `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
-        [userId, messageId, now]
-      );
-    } else {
-      this.markMessageAsRead(messageId, userId);
-    }
+    return this.notifications.markMessagesAsReadByIds([messageId], userId);
   }
 
   async markMessagesAsReadAsync(messageIds: string[], userId: number | null): Promise<void> {
     if (!userId || messageIds.length === 0) return;
-    const now = Math.floor(Date.now() / 1000);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query('BEGIN');
-        for (const messageId of messageIds) {
-          await client.query(
-            `INSERT INTO read_messages ("userId", "messageId", "readAt")
-             VALUES ($1, $2, $3)
-             ON CONFLICT ("userId", "messageId") DO NOTHING`,
-            [userId, messageId, now]
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      for (const messageId of messageIds) {
-        await pool.query(
-          `INSERT IGNORE INTO read_messages (userId, messageId, readAt) VALUES (?, ?, ?)`,
-          [userId, messageId, now]
-        );
-      }
-    } else {
-      this.markMessagesAsRead(messageIds, userId);
-    }
+    return this.notifications.markMessagesAsReadByIds(messageIds, userId);
   }
 
   markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
@@ -11156,22 +9181,24 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  // Packet Log operations
-  insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): number {
-    // Check if packet logging is enabled
-    const enabled = this.getSetting('packet_log_enabled');
-    if (enabled !== '1') {
-      return 0;
+
+  // Packet Log operations — delegated to MiscRepository (this.misc)
+  // Sync methods retain SQLite fallbacks for test compatibility and pre-init callers.
+
+  async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
+    const enabled = await this.getSettingAsync('packet_log_enabled');
+    if (enabled !== '1') return 0;
+
+    // For non-SQLite, use async repository
+    if (this.drizzleDbType !== 'sqlite') {
+      const id = await this.misc.insertPacketLog(packet);
+      const maxCountStr = await this.getSettingAsync('packet_log_max_count');
+      const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
+      await this.misc.enforcePacketLogMaxCount(maxCount);
+      return id;
     }
 
-    // For PostgreSQL/MySQL, use async method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.insertPacketLogAsync(packet).catch((error) => {
-        logger.error(`[DatabaseService] Failed to insert packet log: ${error}`);
-      });
-      return 0;
-    }
-
+    // SQLite: use synchronous raw SQL for immediate consistency
     const stmt = this.db.prepare(`
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
@@ -11180,197 +9207,65 @@ class DatabaseService {
         transport_mechanism, decrypted_by, decrypted_channel_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-
     const result = stmt.run(
-      packet.packet_id ?? null,
-      packet.timestamp,
-      packet.from_node,
-      packet.from_node_id ?? null,
-      packet.to_node ?? null,
-      packet.to_node_id ?? null,
-      packet.channel ?? null,
-      packet.portnum,
-      packet.portnum_name ?? null,
-      packet.encrypted ? 1 : 0,
-      packet.snr ?? null,
-      packet.rssi ?? null,
-      packet.hop_limit ?? null,
-      packet.hop_start ?? null,
-      packet.relay_node ?? null,
-      packet.payload_size ?? null,
-      packet.want_ack ? 1 : 0,
-      packet.priority ?? null,
-      packet.payload_preview ?? null,
-      packet.metadata ?? null,
-      packet.direction ?? 'rx',
-      packet.transport_mechanism ?? null,
-      packet.decrypted_by ?? null,
-      packet.decrypted_channel_id ?? null
+      packet.packet_id ?? null, packet.timestamp, packet.from_node,
+      packet.from_node_id ?? null, packet.to_node ?? null, packet.to_node_id ?? null,
+      packet.channel ?? null, packet.portnum, packet.portnum_name ?? null,
+      packet.encrypted ? 1 : 0, packet.snr ?? null, packet.rssi ?? null,
+      packet.hop_limit ?? null, packet.hop_start ?? null, packet.relay_node ?? null,
+      packet.payload_size ?? null, packet.want_ack ? 1 : 0, packet.priority ?? null,
+      packet.payload_preview ?? null, packet.metadata ?? null, packet.direction ?? 'rx',
+      packet.transport_mechanism ?? null, packet.decrypted_by ?? null, packet.decrypted_channel_id ?? null
     );
 
-    // Enforce max count limit
-    this.enforcePacketLogMaxCount();
+    // Enforce max count
+    const maxCountStr = this.getSetting('packet_log_max_count');
+    const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
+    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM packet_log');
+    const countResult = countStmt.get() as { count: number };
+    if (Number(countResult.count) > maxCount) {
+      const deleteCount = Number(countResult.count) - maxCount;
+      this.db.prepare(`DELETE FROM packet_log WHERE id IN (SELECT id FROM packet_log ORDER BY timestamp ASC LIMIT ?)`).run(deleteCount);
+    }
 
     return Number(result.lastInsertRowid);
   }
 
-  private enforcePacketLogMaxCount(): void {
-    const maxCountStr = this.getSetting('packet_log_max_count');
-    const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
-
-    // Get current count
-    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM packet_log');
-    const countResult = countStmt.get() as { count: number };
-    const currentCount = Number(countResult.count);
-
-    if (currentCount > maxCount) {
-      // Delete oldest packets to get back to max count
-      const deleteCount = currentCount - maxCount;
-      const deleteStmt = this.db.prepare(`
-        DELETE FROM packet_log
-        WHERE id IN (
-          SELECT id FROM packet_log
-          ORDER BY timestamp ASC
-          LIMIT ?
-        )
-      `);
-      deleteStmt.run(deleteCount);
-      logger.debug(`🧹 Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
-    }
-  }
-
-  /**
-   * Async version of insertPacketLog - works with all database backends
-   */
-  async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
-    // Check if packet logging is enabled
-    const enabled = await this.getSettingAsync('packet_log_enabled');
-    if (enabled !== '1') {
-      return 0;
-    }
-
-    if (!this.drizzleDatabase) {
-      // Fallback to sync for SQLite if drizzle not ready
-      return this.insertPacketLog(packet);
-    }
-
-    try {
-      const values = {
-        packet_id: packet.packet_id ?? null,
-        timestamp: packet.timestamp,
-        from_node: packet.from_node,
-        from_node_id: packet.from_node_id ?? null,
-        to_node: packet.to_node ?? null,
-        to_node_id: packet.to_node_id ?? null,
-        channel: packet.channel ?? null,
-        portnum: packet.portnum,
-        portnum_name: packet.portnum_name ?? null,
-        encrypted: packet.encrypted,
-        snr: packet.snr ?? null,
-        rssi: packet.rssi ?? null,
-        hop_limit: packet.hop_limit ?? null,
-        hop_start: packet.hop_start ?? null,
-        relay_node: packet.relay_node ?? null,
-        payload_size: packet.payload_size ?? null,
-        want_ack: packet.want_ack ?? false,
-        priority: packet.priority ?? null,
-        payload_preview: packet.payload_preview ?? null,
-        metadata: packet.metadata ?? null,
-        direction: packet.direction ?? 'rx',
-        created_at: Date.now(),
-        transport_mechanism: packet.transport_mechanism ?? null,
-        decrypted_by: packet.decrypted_by ?? null,
-        decrypted_channel_id: packet.decrypted_channel_id ?? null,
-      };
-
-      // Use type assertion to avoid complex type narrowing
-      // The drizzleDatabase is the raw Drizzle ORM database instance
-      const db = this.drizzleDatabase as any;
-      if (this.drizzleDbType === 'postgres') {
-        await db.insert(packetLogPostgres).values(values);
-      } else if (this.drizzleDbType === 'mysql') {
-        await db.insert(packetLogMysql).values(values);
-      } else {
-        await db.insert(packetLogSqlite).values(values);
-      }
-
-      // TODO: Enforce max count for async version
-      return 0;
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to insert packet log async: ${error}`);
-      return 0;
-    }
-  }
-
-  getPacketLogs(options: {
-    offset?: number;
-    limit?: number;
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
+  async getPacketLogsAsync(options: {
+    offset?: number; limit?: number; portnum?: number; from_node?: number;
+    to_node?: number; channel?: number; encrypted?: boolean; since?: number;
     relay_node?: number | 'unknown';
-  }): DbPacketLog[] {
+  }): Promise<DbPacketLog[]> {
+    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogs(options);
+    // SQLite fallback using raw SQL on main connection
     const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
     let query = `
-      SELECT
-        pl.*,
-        from_nodes.longName as from_node_longName,
-        to_nodes.longName as to_node_longName
+      SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
       FROM packet_log pl
       LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
       LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
       WHERE 1=1
     `;
     const params: any[] = [];
-
-    if (portnum !== undefined) {
-      query += ' AND pl.portnum = ?';
-      params.push(portnum);
-    }
-    if (from_node !== undefined) {
-      query += ' AND pl.from_node = ?';
-      params.push(from_node);
-    }
-    if (to_node !== undefined) {
-      query += ' AND pl.to_node = ?';
-      params.push(to_node);
-    }
-    if (channel !== undefined) {
-      query += ' AND pl.channel = ?';
-      params.push(channel);
-    }
-    if (encrypted !== undefined) {
-      query += ' AND pl.encrypted = ?';
-      params.push(encrypted ? 1 : 0);
-    }
-    if (since !== undefined) {
-      query += ' AND pl.timestamp >= ?';
-      params.push(since);
-    }
-    if (relay_node === 'unknown') {
-      query += ' AND pl.relay_node IS NULL';
-    } else if (relay_node !== undefined) {
-      query += ' AND pl.relay_node = ?';
-      params.push(relay_node);
-    }
-
+    if (portnum !== undefined) { query += ' AND pl.portnum = ?'; params.push(portnum); }
+    if (from_node !== undefined) { query += ' AND pl.from_node = ?'; params.push(from_node); }
+    if (to_node !== undefined) { query += ' AND pl.to_node = ?'; params.push(to_node); }
+    if (channel !== undefined) { query += ' AND pl.channel = ?'; params.push(channel); }
+    if (encrypted !== undefined) { query += ' AND pl.encrypted = ?'; params.push(encrypted ? 1 : 0); }
+    if (since !== undefined) { query += ' AND pl.timestamp >= ?'; params.push(since); }
+    if (relay_node === 'unknown') { query += ' AND pl.relay_node IS NULL'; }
+    else if (relay_node !== undefined) { query += ' AND pl.relay_node = ?'; params.push(relay_node); }
     query += ' ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
-
     const stmt = this.db.prepare(query);
     return stmt.all(...params) as DbPacketLog[];
   }
 
-  getPacketLogById(id: number): DbPacketLog | null {
+  async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
+    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogById(id);
+    // SQLite fallback
     const stmt = this.db.prepare(`
-      SELECT
-        pl.*,
-        from_nodes.longName as from_node_longName,
-        to_nodes.longName as to_node_longName
+      SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
       FROM packet_log pl
       LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
       LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
@@ -11380,106 +9275,23 @@ class DatabaseService {
     return result || null;
   }
 
-  async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
-    // For PostgreSQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const result = await this.postgresPool.query(`
-          SELECT
-            pl.*,
-            from_nodes."longName" as "from_node_longName",
-            to_nodes."longName" as "to_node_longName"
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
-          WHERE pl.id = $1
-        `, [id]);
-        const row = result.rows?.[0];
-        if (!row) return null;
-        return {
-          ...row,
-          id: row.id != null ? Number(row.id) : row.id,
-          packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
-          timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
-          from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
-          to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
-          relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
-          created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
-        } as DbPacketLog;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log by id:', error);
-        return null;
-      }
-    }
-    // For MySQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const [rows] = await this.mysqlPool.query(`
-          SELECT
-            pl.*,
-            from_nodes.longName as from_node_longName,
-            to_nodes.longName as to_node_longName
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-          WHERE pl.id = ?
-        `, [id]);
-        const row = (rows as any[])?.[0];
-        return row ? (row as DbPacketLog) : null;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log by id:', error);
-        return null;
-      }
-    }
-    // For SQLite, use sync method
-    return this.getPacketLogById(id);
-  }
-
-  getPacketLogCount(options: {
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-    relay_node?: number | 'unknown';
-  } = {}): number {
+  async getPacketLogCountAsync(options: {
+    portnum?: number; from_node?: number; to_node?: number; channel?: number;
+    encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
+  } = {}): Promise<number> {
+    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogCount(options);
+    // SQLite fallback
     const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
     const params: any[] = [];
-
-    if (portnum !== undefined) {
-      query += ' AND portnum = ?';
-      params.push(portnum);
-    }
-    if (from_node !== undefined) {
-      query += ' AND from_node = ?';
-      params.push(from_node);
-    }
-    if (to_node !== undefined) {
-      query += ' AND to_node = ?';
-      params.push(to_node);
-    }
-    if (channel !== undefined) {
-      query += ' AND channel = ?';
-      params.push(channel);
-    }
-    if (encrypted !== undefined) {
-      query += ' AND encrypted = ?';
-      params.push(encrypted ? 1 : 0);
-    }
-    if (since !== undefined) {
-      query += ' AND timestamp >= ?';
-      params.push(since);
-    }
-    if (relay_node === 'unknown') {
-      query += ' AND relay_node IS NULL';
-    } else if (relay_node !== undefined) {
-      query += ' AND relay_node = ?';
-      params.push(relay_node);
-    }
-
+    if (portnum !== undefined) { query += ' AND portnum = ?'; params.push(portnum); }
+    if (from_node !== undefined) { query += ' AND from_node = ?'; params.push(from_node); }
+    if (to_node !== undefined) { query += ' AND to_node = ?'; params.push(to_node); }
+    if (channel !== undefined) { query += ' AND channel = ?'; params.push(channel); }
+    if (encrypted !== undefined) { query += ' AND encrypted = ?'; params.push(encrypted ? 1 : 0); }
+    if (since !== undefined) { query += ' AND timestamp >= ?'; params.push(since); }
+    if (relay_node === 'unknown') { query += ' AND relay_node IS NULL'; }
+    else if (relay_node !== undefined) { query += ' AND relay_node = ?'; params.push(relay_node); }
     const stmt = this.db.prepare(query);
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
@@ -11488,384 +9300,19 @@ class DatabaseService {
   clearPacketLogs(): number {
     const stmt = this.db.prepare('DELETE FROM packet_log');
     const result = stmt.run();
-    logger.debug(`🧹 Cleared ${result.changes} packet log entries`);
+    logger.debug(`Cleared ${result.changes} packet log entries`);
     return Number(result.changes);
   }
 
-  /**
-   * Clear all packet logs - async version for PostgreSQL/MySQL
-   */
   async clearPacketLogsAsync(): Promise<number> {
-    // For PostgreSQL
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const result = await this.postgresPool.query('DELETE FROM packet_log');
-        const deletedCount = result.rowCount ?? 0;
-        logger.debug(`🧹 Cleared ${deletedCount} packet log entries (PostgreSQL)`);
-        return deletedCount;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to clear packet logs (PostgreSQL):', error);
-        throw error;
-      }
-    }
-
-    // For MySQL/MariaDB
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const [result] = await this.mysqlPool.execute('DELETE FROM packet_log');
-        const deletedCount = (result as any).affectedRows ?? 0;
-        logger.debug(`🧹 Cleared ${deletedCount} packet log entries (MySQL)`);
-        return deletedCount;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to clear packet logs (MySQL):', error);
-        throw error;
-      }
-    }
-
-    // Fallback to SQLite
+    if (this.miscRepo) return this.miscRepo.clearPacketLogs();
     return this.clearPacketLogs();
   }
 
-  /**
-   * Get packet log count - async version for PostgreSQL/MySQL
-   */
-  async getPacketLogCountAsync(options: {
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-    relay_node?: number | 'unknown';
-  } = {}): Promise<number> {
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
-    // For PostgreSQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-        let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
-
-        if (portnum !== undefined) {
-          query += ` AND portnum = $${paramIndex++}`;
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ` AND from_node = $${paramIndex++}`;
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ` AND to_node = $${paramIndex++}`;
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ` AND channel = $${paramIndex++}`;
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ` AND encrypted = $${paramIndex++}`;
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ` AND timestamp >= $${paramIndex++}`;
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ` AND relay_node = $${paramIndex++}`;
-          params.push(relay_node);
-        }
-
-        const result = await this.postgresPool.query(query, params);
-        return Number(result.rows?.[0]?.count ?? 0);
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log count:', error);
-        return 0;
-      }
-    }
-
-    // For MySQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-        let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
-
-        if (portnum !== undefined) {
-          query += ' AND portnum = ?';
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ' AND from_node = ?';
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ' AND to_node = ?';
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ' AND channel = ?';
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ' AND encrypted = ?';
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ' AND timestamp >= ?';
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ' AND relay_node = ?';
-          params.push(relay_node);
-        }
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return Number((rows as any[])?.[0]?.count ?? 0);
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet log count:', error);
-        return 0;
-      }
-    }
-
-    // For SQLite, use sync method
-    return this.getPacketLogCount(options);
-  }
-
-  /**
-   * Get packet logs - async version for PostgreSQL/MySQL
-   */
-  async getPacketLogsAsync(options: {
-    offset?: number;
-    limit?: number;
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-    relay_node?: number | 'unknown';
-  }): Promise<DbPacketLog[]> {
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
-
-    // For PostgreSQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-
-        let query = `
-          SELECT
-            pl.*,
-            from_nodes."longName" as "from_node_longName",
-            to_nodes."longName" as "to_node_longName"
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
-          WHERE 1=1
-        `;
-
-        if (portnum !== undefined) {
-          query += ` AND pl.portnum = $${paramIndex++}`;
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ` AND pl.from_node = $${paramIndex++}`;
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ` AND pl.to_node = $${paramIndex++}`;
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ` AND pl.channel = $${paramIndex++}`;
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ` AND pl.encrypted = $${paramIndex++}`;
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ` AND pl.timestamp >= $${paramIndex++}`;
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND pl.relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ` AND pl.relay_node = $${paramIndex++}`;
-          params.push(relay_node);
-        }
-
-        query += ` ORDER BY pl.timestamp DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-        params.push(limit, offset);
-
-        const result = await this.postgresPool.query(query, params);
-        // Convert BIGINT fields from strings to numbers (PostgreSQL returns BIGINT as strings)
-        return (result.rows ?? []).map((row: any) => ({
-          ...row,
-          id: row.id != null ? Number(row.id) : row.id,
-          packet_id: row.packet_id != null ? Number(row.packet_id) : row.packet_id,
-          timestamp: row.timestamp != null ? Number(row.timestamp) : row.timestamp,
-          from_node: row.from_node != null ? Number(row.from_node) : row.from_node,
-          to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
-          relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
-          created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
-        })) as DbPacketLog[];
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet logs:', error);
-        return [];
-      }
-    }
-    // For MySQL, use pool.query with parameterized query
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-
-        let query = `
-          SELECT
-            pl.*,
-            from_nodes.longName as from_node_longName,
-            to_nodes.longName as to_node_longName
-          FROM packet_log pl
-          LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-          LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-          WHERE 1=1
-        `;
-
-        if (portnum !== undefined) {
-          query += ` AND pl.portnum = ?`;
-          params.push(portnum);
-        }
-        if (from_node !== undefined) {
-          query += ` AND pl.from_node = ?`;
-          params.push(from_node);
-        }
-        if (to_node !== undefined) {
-          query += ` AND pl.to_node = ?`;
-          params.push(to_node);
-        }
-        if (channel !== undefined) {
-          query += ` AND pl.channel = ?`;
-          params.push(channel);
-        }
-        if (encrypted !== undefined) {
-          query += ` AND pl.encrypted = ?`;
-          params.push(encrypted);
-        }
-        if (since !== undefined) {
-          query += ` AND pl.timestamp >= ?`;
-          params.push(since);
-        }
-        if (relay_node === 'unknown') {
-          query += ' AND pl.relay_node IS NULL';
-        } else if (relay_node !== undefined) {
-          query += ' AND pl.relay_node = ?';
-          params.push(relay_node);
-        }
-
-        query += ` ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?`;
-        params.push(limit, offset);
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return (rows ?? []) as DbPacketLog[];
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet logs:', error);
-        return [];
-      }
-    }
-    // For SQLite, use sync method
-    return this.getPacketLogs(options);
-  }
-
-  /**
-   * Get distinct relay_node values from packet_log for filter dropdowns
-   */
   async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
-    // relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
-    // We match by (nodeNum & 0xFF) to find candidate node names.
-    const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL AND relay_node > 0';
-
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const distinctResult = await this.postgresPool.query(distinctQuery);
-        const relayValues = (distinctResult.rows ?? []).map((r: any) => Number(r.relay_node));
-
-        const results: DbDistinctRelayNode[] = [];
-        for (const rv of relayValues) {
-          const matchResult = await this.postgresPool.query(
-            `SELECT "longName", "shortName" FROM nodes WHERE ("nodeNum" & 255) = $1`,
-            [rv]
-          );
-          results.push({
-            relay_node: rv,
-            matching_nodes: (matchResult.rows ?? []).map((r: any) => ({
-              longName: r.longName ?? null,
-              shortName: r.shortName ?? null,
-            })),
-          });
-        }
-        return results;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
-        return [];
-      }
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const [distinctRows] = await this.mysqlPool.query(distinctQuery);
-        const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
-
-        const results: DbDistinctRelayNode[] = [];
-        for (const rv of relayValues) {
-          const [matchRows] = await this.mysqlPool.query(
-            'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?',
-            [rv]
-          );
-          results.push({
-            relay_node: rv,
-            matching_nodes: (matchRows as any[]).map((r: any) => ({
-              longName: r.longName ?? null,
-              shortName: r.shortName ?? null,
-            })),
-          });
-        }
-        return results;
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
-        return [];
-      }
-    }
-
-    // SQLite sync
-    try {
-      const distinctStmt = this.db.prepare(distinctQuery);
-      const relayValues = (distinctStmt.all() as any[]).map((r: any) => Number(r.relay_node));
-
-      const matchStmt = this.db.prepare(
-        'SELECT longName, shortName FROM nodes WHERE (nodeNum & 255) = ?'
-      );
-
-      return relayValues.map(rv => ({
-        relay_node: rv,
-        matching_nodes: (matchStmt.all(rv) as any[]).map((r: any) => ({
-          longName: r.longName ?? null,
-          shortName: r.shortName ?? null,
-        })),
-      }));
-    } catch (error) {
-      logger.error('[DatabaseService] Failed to get distinct relay nodes:', error);
-      return [];
-    }
+    return this.misc.getDistinctRelayNodes();
   }
 
-  /**
-   * Update packet log entry with decryption results (for retroactive decryption)
-   * Updates the decrypted_by, decrypted_channel_id, portnum, and metadata fields
-   */
   async updatePacketLogDecryptionAsync(
     id: number,
     decryptedBy: 'server' | 'node',
@@ -11873,774 +9320,41 @@ class DatabaseService {
     portnum: number,
     metadata: string
   ): Promise<void> {
-    if (this.drizzleDbType === 'postgres' && this.drizzleDatabase) {
-      const db = this.drizzleDatabase as any;
-      await db.execute(sql`
-        UPDATE packet_log
-        SET decrypted_by = ${decryptedBy},
-            decrypted_channel_id = ${decryptedChannelId},
-            portnum = ${portnum},
-            encrypted = false,
-            metadata = ${metadata}
-        WHERE id = ${id}
-      `);
-    } else if (this.drizzleDbType === 'mysql' && this.drizzleDatabase) {
-      const db = this.drizzleDatabase as any;
-      await db.execute(sql`
-        UPDATE packet_log
-        SET decrypted_by = ${decryptedBy},
-            decrypted_channel_id = ${decryptedChannelId},
-            portnum = ${portnum},
-            encrypted = false,
-            metadata = ${metadata}
-        WHERE id = ${id}
-      `);
-    } else {
-      // SQLite
-      const stmt = this.db.prepare(`
-        UPDATE packet_log
-        SET decrypted_by = ?,
-            decrypted_channel_id = ?,
-            portnum = ?,
-            encrypted = 0,
-            metadata = ?
-        WHERE id = ?
-      `);
-      stmt.run(decryptedBy, decryptedChannelId, portnum, metadata, id);
+    if (this.miscRepo) {
+      return this.miscRepo.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
     }
-  }
-
-  /**
-   * Get database size - async version for PostgreSQL/MySQL
-   * Note: PostgreSQL uses pg_database_size() which requires different permissions
-   * Returns 0 for PostgreSQL/MySQL as exact size calculation differs
-   */
-  async getDatabaseSizeAsync(): Promise<number> {
-    // For PostgreSQL/MySQL, return 0 (size calculation is different)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
-    }
-    // For SQLite, use sync method
-    return this.getDatabaseSize();
+    // SQLite fallback
+    const stmt = this.db.prepare(`
+      UPDATE packet_log SET decrypted_by = ?, decrypted_channel_id = ?,
+      portnum = ?, encrypted = 0, metadata = ? WHERE id = ?
+    `);
+    stmt.run(decryptedBy, decryptedChannelId, portnum, metadata, id);
   }
 
   cleanupOldPacketLogs(): number {
-    // For PostgreSQL/MySQL, packet log cleanup not yet implemented
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO: Implement packet log cleanup for PostgreSQL via repository
-      logger.debug('🧹 Packet log cleanup skipped (PostgreSQL/MySQL not yet implemented)');
-      return 0;
-    }
-
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
     const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
-
     const stmt = this.db.prepare('DELETE FROM packet_log WHERE timestamp < ?');
     const result = stmt.run(cutoffTimestamp);
-    logger.debug(`🧹 Cleaned up ${result.changes} packet log entries older than ${maxAgeHours} hours`);
     return Number(result.changes);
   }
 
   async cleanupOldPacketLogsAsync(): Promise<number> {
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          'DELETE FROM packet_log WHERE timestamp < $1',
-          [cutoffTimestamp]
-        );
-        const deleted = result.rowCount ?? 0;
-        logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
-        return deleted;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [result] = await pool.query(
-        'DELETE FROM packet_log WHERE timestamp < ?',
-        [cutoffTimestamp]
-      );
-      const deleted = (result as any).affectedRows ?? 0;
-      logger.debug(`🧹 Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
-      return deleted;
-    }
+    if (this.miscRepo) return this.miscRepo.cleanupOldPacketLogs(maxAgeHours);
     return this.cleanupOldPacketLogs();
   }
 
-  /**
-   * Get packet counts grouped by from_node (for distribution charts)
-   * Returns top N nodes by packet count, plus counts for remainder grouped as "Other"
-   */
   async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
-    const { since, limit = 10, portnum } = options || {};
-
-    // For PostgreSQL
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`pl.timestamp >= $${paramIndex++}`);
-          params.push(since);
-        }
-        if (portnum !== undefined) {
-          conditions.push(`pl.portnum = $${paramIndex++}`);
-          params.push(portnum);
-        }
-
-        let query = `
-          SELECT
-            pl.from_node,
-            n."nodeId" as "from_node_id",
-            n."longName" as "from_node_longName",
-            COUNT(*) as count
-          FROM packet_log pl
-          LEFT JOIN nodes n ON pl.from_node = n."nodeNum"
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY pl.from_node, n."nodeId", n."longName" ORDER BY count DESC LIMIT $${paramIndex++}`;
-        params.push(limit);
-
-        const result = await this.postgresPool.query(query, params);
-        return (result.rows ?? []).map((row: any) => ({
-          from_node: Number(row.from_node),
-          from_node_id: row.from_node_id,
-          from_node_longName: row.from_node_longName,
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by node:', error);
-        return [];
-      }
-    }
-
-    // For MySQL
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`pl.timestamp >= ?`);
-          params.push(since);
-        }
-        if (portnum !== undefined) {
-          conditions.push(`pl.portnum = ?`);
-          params.push(portnum);
-        }
-
-        let query = `
-          SELECT
-            pl.from_node,
-            n.nodeId as from_node_id,
-            n.longName as from_node_longName,
-            COUNT(*) as count
-          FROM packet_log pl
-          LEFT JOIN nodes n ON pl.from_node = n.nodeNum
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY pl.from_node, n.nodeId, n.longName ORDER BY count DESC LIMIT ?`;
-        params.push(limit);
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return ((rows as any[]) ?? []).map((row: any) => ({
-          from_node: Number(row.from_node),
-          from_node_id: row.from_node_id,
-          from_node_longName: row.from_node_longName,
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by node:', error);
-        return [];
-      }
-    }
-
-    // For SQLite
-    try {
-      const params: any[] = [];
-      const conditions: string[] = [];
-
-      if (since !== undefined) {
-        conditions.push(`pl.timestamp >= ?`);
-        params.push(since);
-      }
-      if (portnum !== undefined) {
-        conditions.push(`pl.portnum = ?`);
-        params.push(portnum);
-      }
-
-      let query = `
-        SELECT
-          pl.from_node,
-          n.nodeId as from_node_id,
-          n.longName as from_node_longName,
-          COUNT(*) as count
-        FROM packet_log pl
-        LEFT JOIN nodes n ON pl.from_node = n.nodeNum
-      `;
-
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.join(' AND ')}`;
-      }
-
-      query += ` GROUP BY pl.from_node ORDER BY count DESC LIMIT ?`;
-      params.push(limit);
-
-      const stmt = this.db.prepare(query);
-      const rows = stmt.all(...params) as any[];
-      return rows.map((row: any) => ({
-        from_node: Number(row.from_node),
-        from_node_id: row.from_node_id,
-        from_node_longName: row.from_node_longName,
-        count: Number(row.count),
-      }));
-    } catch (error) {
-      logger.error('[DatabaseService] Failed to get packet counts by node:', error);
-      return [];
-    }
+    return this.misc.getPacketCountsByNode(options);
   }
 
-  /**
-   * Get packet counts grouped by portnum (for distribution charts)
-   * Includes port name from meshtastic constants
-   */
   async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
-    const { since, from_node } = options || {};
-
-    // For PostgreSQL
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const params: any[] = [];
-        let paramIndex = 1;
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`timestamp >= $${paramIndex++}`);
-          params.push(since);
-        }
-        if (from_node !== undefined) {
-          conditions.push(`from_node = $${paramIndex++}`);
-          params.push(from_node);
-        }
-
-        let query = `
-          SELECT
-            portnum,
-            COUNT(*) as count
-          FROM packet_log
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY portnum ORDER BY count DESC`;
-
-        const result = await this.postgresPool.query(query, params);
-        return (result.rows ?? []).map((row: any) => ({
-          portnum: Number(row.portnum),
-          portnum_name: getPortNumName(Number(row.portnum)),
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
-        return [];
-      }
-    }
-
-    // For MySQL
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const params: any[] = [];
-        const conditions: string[] = [];
-
-        if (since !== undefined) {
-          conditions.push(`timestamp >= ?`);
-          params.push(since);
-        }
-        if (from_node !== undefined) {
-          conditions.push(`from_node = ?`);
-          params.push(from_node);
-        }
-
-        let query = `
-          SELECT
-            portnum,
-            COUNT(*) as count
-          FROM packet_log
-        `;
-
-        if (conditions.length > 0) {
-          query += ` WHERE ${conditions.join(' AND ')}`;
-        }
-
-        query += ` GROUP BY portnum ORDER BY count DESC`;
-
-        const [rows] = await this.mysqlPool.query(query, params);
-        return ((rows as any[]) ?? []).map((row: any) => ({
-          portnum: Number(row.portnum),
-          portnum_name: getPortNumName(Number(row.portnum)),
-          count: Number(row.count),
-        }));
-      } catch (error) {
-        logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
-        return [];
-      }
-    }
-
-    // For SQLite
-    try {
-      const conditions: string[] = [];
-      const params: any[] = [];
-
-      if (since !== undefined) {
-        conditions.push(`timestamp >= ?`);
-        params.push(since);
-      }
-      if (from_node !== undefined) {
-        conditions.push(`from_node = ?`);
-        params.push(from_node);
-      }
-
-      let query = `
-        SELECT
-          portnum,
-          COUNT(*) as count
-        FROM packet_log
-      `;
-
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.join(' AND ')}`;
-      }
-
-      query += ` GROUP BY portnum ORDER BY count DESC`;
-
-      const stmt = this.db.prepare(query);
-      const rows = stmt.all(...params) as any[];
-      return rows.map((row: any) => ({
-        portnum: Number(row.portnum),
-        portnum_name: getPortNumName(Number(row.portnum)),
-        count: Number(row.count),
-      }));
-    } catch (error) {
-      logger.error('[DatabaseService] Failed to get packet counts by portnum:', error);
-      return [];
-    }
+    return this.misc.getPacketCountsByPortnum(options);
   }
 
-  // Custom Themes Methods
-
-  /**
-   * Get all themes (custom only - built-in themes are in CSS)
-   */
-  getAllCustomThemes(): DbCustomTheme[] {
-    // For PostgreSQL/MySQL, use getAllCustomThemesAsync() instead
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-    try {
-      const stmt = this.db.prepare(`
-        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
-        FROM custom_themes
-        ORDER BY name ASC
-      `);
-      const themes = stmt.all() as DbCustomTheme[];
-      logger.debug(`📚 Retrieved ${themes.length} custom themes`);
-      return themes;
-    } catch (error) {
-      logger.error('❌ Failed to get custom themes:', error);
-      throw error;
-    }
-  }
-
-  async getAllCustomThemesAsync(): Promise<DbCustomTheme[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(`
-          SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
-          FROM custom_themes
-          ORDER BY name ASC
-        `);
-        return result.rows.map((row: any) => ({
-          id: Number(row.id),
-          name: row.name,
-          slug: row.slug,
-          definition: row.definition,
-          is_builtin: row.is_builtin ? 1 : 0,
-          created_by: row.created_by ? Number(row.created_by) : undefined,
-          created_at: Number(row.created_at),
-          updated_at: Number(row.updated_at),
-        }));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(`
-        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
-        FROM custom_themes
-        ORDER BY name ASC
-      `);
-      return (rows as any[]).map((row: any) => ({
-        id: Number(row.id),
-        name: row.name,
-        slug: row.slug,
-        definition: row.definition,
-        is_builtin: row.is_builtin ? 1 : 0,
-        created_by: row.created_by ? Number(row.created_by) : undefined,
-        created_at: Number(row.created_at),
-        updated_at: Number(row.updated_at),
-      }));
-    }
-    return this.getAllCustomThemes();
-  }
-
-  /**
-   * Get a specific theme by slug
-   */
-  getCustomThemeBySlug(slug: string): DbCustomTheme | undefined {
-    // For PostgreSQL/MySQL, use getCustomThemeBySlugAsync() instead
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return undefined;
-    }
-    try {
-      const stmt = this.db.prepare(`
-        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
-        FROM custom_themes
-        WHERE slug = ?
-      `);
-      const theme = stmt.get(slug) as DbCustomTheme | undefined;
-      if (theme) {
-        logger.debug(`🎨 Retrieved custom theme: ${theme.name}`);
-      }
-      return theme;
-    } catch (error) {
-      logger.error(`❌ Failed to get custom theme ${slug}:`, error);
-      throw error;
-    }
-  }
-
-  async getCustomThemeBySlugAsync(slug: string): Promise<DbCustomTheme | undefined> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
-           FROM custom_themes WHERE slug = $1`,
-          [slug]
-        );
-        if (result.rows.length === 0) return undefined;
-        const row = result.rows[0];
-        return {
-          id: Number(row.id),
-          name: row.name,
-          slug: row.slug,
-          definition: row.definition,
-          is_builtin: row.is_builtin ? 1 : 0,
-          created_by: row.created_by ? Number(row.created_by) : undefined,
-          created_at: Number(row.created_at),
-          updated_at: Number(row.updated_at),
-        };
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(
-        `SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
-         FROM custom_themes WHERE slug = ?`,
-        [slug]
-      );
-      const arr = rows as any[];
-      if (arr.length === 0) return undefined;
-      const row = arr[0];
-      return {
-        id: Number(row.id),
-        name: row.name,
-        slug: row.slug,
-        definition: row.definition,
-        is_builtin: row.is_builtin ? 1 : 0,
-        created_by: row.created_by ? Number(row.created_by) : undefined,
-        created_at: Number(row.created_at),
-        updated_at: Number(row.updated_at),
-      };
-    }
-    return this.getCustomThemeBySlug(slug);
-  }
-
-  /**
-   * Create a new custom theme
-   */
-  createCustomTheme(name: string, slug: string, definition: ThemeDefinition, userId?: number): DbCustomTheme {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error('Use createCustomThemeAsync() for PostgreSQL/MySQL');
-    }
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const definitionJson = JSON.stringify(definition);
-
-      const stmt = this.db.prepare(`
-        INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, 0, ?, ?, ?)
-      `);
-
-      const result = stmt.run(name, slug, definitionJson, userId || null, now, now);
-      const id = Number(result.lastInsertRowid);
-
-      logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
-
-      return {
-        id,
-        name,
-        slug,
-        definition: definitionJson,
-        is_builtin: 0,
-        created_by: userId,
-        created_at: now,
-        updated_at: now
-      };
-    } catch (error) {
-      logger.error(`❌ Failed to create custom theme ${name}:`, error);
-      throw error;
-    }
-  }
-
-  async createCustomThemeAsync(name: string, slug: string, definition: ThemeDefinition, userId?: number): Promise<DbCustomTheme> {
-    const now = Math.floor(Date.now() / 1000);
-    const definitionJson = JSON.stringify(definition);
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
-           VALUES ($1, $2, $3, false, $4, $5, $6)
-           RETURNING id`,
-          [name, slug, definitionJson, userId || null, now, now]
-        );
-        const id = Number(result.rows[0].id);
-        logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
-        return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [result] = await pool.query(
-        `INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, 0, ?, ?, ?)`,
-        [name, slug, definitionJson, userId || null, now, now]
-      );
-      const id = Number((result as any).insertId);
-      logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
-      return { id, name, slug, definition: definitionJson, is_builtin: 0, created_by: userId, created_at: now, updated_at: now };
-    }
-    return this.createCustomTheme(name, slug, definition, userId);
-  }
-
-  /**
-   * Update an existing custom theme
-   */
-  updateCustomTheme(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): boolean {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error('Use updateCustomThemeAsync() for PostgreSQL/MySQL');
-    }
-    try {
-      const theme = this.getCustomThemeBySlug(slug);
-      if (!theme) {
-        logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
-        return false;
-      }
-
-      const now = Math.floor(Date.now() / 1000);
-      const fieldsToUpdate: string[] = [];
-      const values: any[] = [];
-
-      if (updates.name !== undefined) {
-        fieldsToUpdate.push('name = ?');
-        values.push(updates.name);
-      }
-
-      if (updates.definition !== undefined) {
-        fieldsToUpdate.push('definition = ?');
-        values.push(JSON.stringify(updates.definition));
-      }
-
-      if (fieldsToUpdate.length === 0) {
-        logger.debug('⏭️  No fields to update');
-        return true;
-      }
-
-      fieldsToUpdate.push('updated_at = ?');
-      values.push(now);
-      values.push(slug);
-
-      const stmt = this.db.prepare(`
-        UPDATE custom_themes
-        SET ${fieldsToUpdate.join(', ')}
-        WHERE slug = ?
-      `);
-
-      stmt.run(...values);
-      logger.debug(`✅ Updated custom theme: ${slug}`);
-      return true;
-    } catch (error) {
-      logger.error(`❌ Failed to update custom theme ${slug}:`, error);
-      throw error;
-    }
-  }
-
-  async updateCustomThemeAsync(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): Promise<boolean> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const existing = await client.query('SELECT id, is_builtin FROM custom_themes WHERE slug = $1', [slug]);
-        if (existing.rows.length === 0) {
-          logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
-          return false;
-        }
-
-        const now = Math.floor(Date.now() / 1000);
-        const setClauses: string[] = [];
-        const values: any[] = [];
-        let paramIndex = 1;
-
-        if (updates.name !== undefined) {
-          setClauses.push(`name = $${paramIndex++}`);
-          values.push(updates.name);
-        }
-        if (updates.definition !== undefined) {
-          setClauses.push(`definition = $${paramIndex++}`);
-          values.push(JSON.stringify(updates.definition));
-        }
-        if (setClauses.length === 0) return true;
-
-        setClauses.push(`updated_at = $${paramIndex++}`);
-        values.push(now);
-        values.push(slug);
-
-        await client.query(
-          `UPDATE custom_themes SET ${setClauses.join(', ')} WHERE slug = $${paramIndex}`,
-          values
-        );
-        logger.debug(`✅ Updated custom theme: ${slug}`);
-        return true;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [existingRows] = await pool.query('SELECT id, is_builtin FROM custom_themes WHERE slug = ?', [slug]);
-      if ((existingRows as any[]).length === 0) {
-        logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
-        return false;
-      }
-
-      const now = Math.floor(Date.now() / 1000);
-      const setClauses: string[] = [];
-      const values: any[] = [];
-
-      if (updates.name !== undefined) {
-        setClauses.push('name = ?');
-        values.push(updates.name);
-      }
-      if (updates.definition !== undefined) {
-        setClauses.push('definition = ?');
-        values.push(JSON.stringify(updates.definition));
-      }
-      if (setClauses.length === 0) return true;
-
-      setClauses.push('updated_at = ?');
-      values.push(now);
-      values.push(slug);
-
-      await pool.query(`UPDATE custom_themes SET ${setClauses.join(', ')} WHERE slug = ?`, values);
-      logger.debug(`✅ Updated custom theme: ${slug}`);
-      return true;
-    }
-    return this.updateCustomTheme(slug, updates);
-  }
-
-  /**
-   * Delete a custom theme
-   */
-  deleteCustomTheme(slug: string): boolean {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error('Use deleteCustomThemeAsync() for PostgreSQL/MySQL');
-    }
-    try {
-      const theme = this.getCustomThemeBySlug(slug);
-      if (!theme) {
-        logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
-        return false;
-      }
-
-      if (theme.is_builtin) {
-        logger.error(`❌ Cannot delete built-in theme: ${slug}`);
-        throw new Error('Cannot delete built-in themes');
-      }
-
-      const stmt = this.db.prepare('DELETE FROM custom_themes WHERE slug = ?');
-      stmt.run(slug);
-      logger.debug(`🗑️  Deleted custom theme: ${slug}`);
-      return true;
-    } catch (error) {
-      logger.error(`❌ Failed to delete custom theme ${slug}:`, error);
-      throw error;
-    }
-  }
-
-  async deleteCustomThemeAsync(slug: string): Promise<boolean> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const existing = await client.query('SELECT id, is_builtin FROM custom_themes WHERE slug = $1', [slug]);
-        if (existing.rows.length === 0) {
-          logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
-          return false;
-        }
-        if (existing.rows[0].is_builtin) {
-          throw new Error('Cannot delete built-in themes');
-        }
-        await client.query('DELETE FROM custom_themes WHERE slug = $1', [slug]);
-        logger.debug(`🗑️  Deleted custom theme: ${slug}`);
-        return true;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [existingRows] = await pool.query('SELECT id, is_builtin FROM custom_themes WHERE slug = ?', [slug]);
-      if ((existingRows as any[]).length === 0) {
-        logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
-        return false;
-      }
-      if ((existingRows as any[])[0].is_builtin) {
-        throw new Error('Cannot delete built-in themes');
-      }
-      await pool.query('DELETE FROM custom_themes WHERE slug = ?', [slug]);
-      logger.debug(`🗑️  Deleted custom theme: ${slug}`);
-      return true;
-    }
-    return this.deleteCustomTheme(slug);
-  }
 
   /**
    * Validate that a theme definition has all required color variables
@@ -12657,149 +9371,34 @@ class DatabaseService {
 
   /**
    * Create or update PostgreSQL schema
-   * Uses idempotent CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS
-   * This ensures new tables are created when upgrading existing databases
+   * Runs all migrations from the registry (001 baseline creates all tables).
    */
   private async createPostgresSchema(pool: PgPool): Promise<void> {
     logger.info('[PostgreSQL] Ensuring database schema is up to date...');
 
     const client = await pool.connect();
     try {
-      // Run migration 056 FIRST to fix backup_history table schema
-      // This must run before POSTGRES_SCHEMA_SQL which creates indexes on columns that may not exist
-      await runMigration056Postgres(client);
-
-      // Execute the canonical schema SQL - all statements are idempotent
-      // (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
-      await client.query(POSTGRES_SCHEMA_SQL);
-
-      // Run migration 047: Convert position override columns to BOOLEAN
-      await runMigration047Postgres(client);
-
-      // Run migration 049: Add missing notification channel settings columns
-      await runMigration049Postgres(client);
-
-      // Run migration 050: Add channel database tables
-      await runMigration050Postgres(client);
-
-      // Run migration 051: Add decrypted_by column to messages
-      await runMigration051Postgres(client);
-
-      // Run migration 052: Fix upgrade_history schema
-      await runMigration052Postgres(client);
-
-      // Run migration 053: Add viewOnMap permission column
-      await runMigration053Postgres(client);
-
-      // Run migration 054: Add news tables
-      await runMigration054Postgres(client);
-
-      // Run migration 055: Add remote admin discovery columns
-      await runMigration055Postgres(client);
-
-      // Run migration 057: Add via_mqtt column to packet_log
-      await runMigration057Postgres(client);
-
-      // Run migration 058: Convert via_mqtt to transport_mechanism
-      await runMigration058Postgres(client);
-
-      // Run migration 059: Add canViewOnMap to channel_database_permissions
-      await runMigration059Postgres(client);
-
-      // Run migration 060: Add enabled column to auto_traceroute_nodes
-      await runMigration060Postgres(client);
-
-      // Run migration 061: Add spam detection columns to nodes
-      await runMigration061Postgres(client);
-
-      // Run migration 062: Upgrade position columns from REAL to DOUBLE PRECISION
-      await runMigration062Postgres(client);
-
-      // Run migration 063: Add position_history_hours column
-      await runMigration063Postgres(client);
-
-      // Run migration 064: Add enforce_name_validation column to channel_database
-      await runMigration064Postgres(client);
-
-      // Run migration 065: Add sortOrder column to channel_database
-      await runMigration065Postgres(client);
-
-      // Run migration 066: Add ignored_nodes table
-      await runMigration066Postgres(client);
-
-      // Run migration 067: Add auto time sync schema
-      await runMigration067Postgres(client);
-
-      // Run migration 068: Add MFA columns to users table
-      await runMigration068Postgres(client);
-
-      // Run migration 069: Add position snapshot columns to traceroutes and route_segments
-      await runMigration069Postgres(client);
-
-      // Run migration 070: Add MeshCore tables
-      await runMigration070MeshcorePostgres(client);
-
-      // Run migration 071: Add meshcore permission resource
-      await runMigration071Postgres(client);
-
-      // Run migration 072: Add DM unread index
-      await runMigration072Postgres(client);
-
-      // Run migration 073: Add packetId to telemetry
-      await runMigration073Postgres(client);
-
-      // Run migration 074: Add show_meshcore_nodes to user_map_preferences
-      await runMigration074Postgres(client);
-
-      // Run migration 075: Upgrade telemetry packetId to BIGINT
-      await runMigration075Postgres(client);
-
-      // Run migration 076: Add show_accuracy_regions and show_estimated_positions
-      await runMigration076Postgres(client);
-
-      // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
-      await runMigration077Postgres(client);
-
-      // Run migration 078: Create embed_profiles table
-      await runMigration078Postgres(client);
-
-      // Run migration 079: Create geofence_cooldowns table
-      await runMigration079Postgres(client);
-
-      // Run migration 080: Add favoriteLocked column to nodes
-      await runMigration080Postgres(client);
-
-      // Run migration 081: Add time offset detection columns to nodes
-      await runMigration081Postgres(client);
-
-      // Run migration 082: Add packetmonitor permission
-      await runMigration082Postgres(client);
-
-      // Run migration 083: Add missing map preference columns
-      await runMigration083Postgres(client);
-
-      // Run migration 084: Add key mismatch columns
-      await runMigration084Postgres(client);
-
-      // Run migration 085: Fix custom_themes column names and add missing columns
-      await runMigration085Postgres(client);
-
-      // Run migration 086: Add auto_distance_delete_log table
-      await runMigration086Postgres(client);
-
-      // Verify all expected tables exist
-      const result = await client.query(`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public'
+      // Pre-3.7 detection: if tables exist but ignored_nodes doesn't, database is too old
+      const tableCount = await client.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
       `);
-      const existingTables = new Set(result.rows.map(r => r.table_name));
-      const missingTables = POSTGRES_TABLE_NAMES.filter(t => !existingTables.has(t));
-
-      if (missingTables.length > 0) {
-        logger.warn(`[PostgreSQL] Missing tables after schema creation: ${missingTables.join(', ')}`);
-      } else {
-        logger.info(`[PostgreSQL] Schema verified: all ${POSTGRES_TABLE_NAMES.length} tables present`);
+      const ignoredNodesExists = await client.query(`
+        SELECT EXISTS (SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'ignored_nodes') as exists
+      `);
+      if (parseInt(tableCount.rows[0]?.count) > 0 && !ignoredNodesExists.rows[0]?.exists) {
+        throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
       }
+
+      // Run ALL migrations from the registry — 001 baseline creates all tables
+      for (const migration of registry.getAll()) {
+        if (migration.postgres) {
+          await migration.postgres(client);
+        }
+      }
+
+      logger.info('[PostgreSQL] Schema initialization complete');
     } finally {
       client.release();
     }
@@ -12807,206 +9406,75 @@ class DatabaseService {
 
   /**
    * Create or update MySQL schema
-   * Uses idempotent CREATE TABLE IF NOT EXISTS
-   * This ensures new tables are created when upgrading existing databases
+   * Runs all migrations from the registry (001 baseline creates all tables).
    */
   private async createMySQLSchema(pool: MySQLPool): Promise<void> {
     logger.info('[MySQL] Ensuring database schema is up to date...');
 
-    // Run migration 056 FIRST to fix backup_history table schema
-    // This must run before MYSQL_SCHEMA_SQL which creates indexes on columns that may not exist
-    await runMigration056Mysql(pool);
-
     const connection = await pool.getConnection();
     try {
-      // Split the schema SQL by semicolons and execute each statement
-      // MySQL doesn't support multi-statement queries by default
-      const statements = MYSQL_SCHEMA_SQL
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-
-      let executed = 0;
-      for (const stmt of statements) {
-        try {
-          await connection.query(stmt);
-          executed++;
-        } catch (error: any) {
-          // Ignore "index already exists" errors for idempotent index creation
-          if (error.code === 'ER_DUP_KEYNAME') {
-            logger.debug(`[MySQL] Index already exists, skipping: ${stmt.substring(0, 50)}...`);
-          } else {
-            throw error;
-          }
-        }
-      }
-
-      logger.debug(`[MySQL] Executed ${executed} schema statements`);
-
-      // Run migration 047: Convert position override columns to BOOLEAN
-      await runMigration047Mysql(pool);
-
-      // Run migration 049: Add missing notification channel settings columns
-      await runMigration049Mysql(pool);
-
-      // Run migration 050: Add channel database tables
-      await runMigration050Mysql(pool);
-
-      // Run migration 051: Add decrypted_by column to messages
-      await runMigration051Mysql(pool);
-
-      // Run migration 052: Fix upgrade_history schema
-      await runMigration052Mysql(pool);
-
-      // Run migration 053: Add viewOnMap permission column
-      await runMigration053Mysql(pool);
-
-      // Run migration 054: Add news tables
-      await runMigration054Mysql(pool);
-
-      // Run migration 055: Add remote admin discovery columns
-      await runMigration055Mysql(pool);
-
-      // Run migration 057: Add via_mqtt column to packet_log
-      await runMigration057Mysql(pool);
-
-      // Run migration 058: Convert via_mqtt to transport_mechanism
-      await runMigration058Mysql(pool);
-
-      // Run migration 059: Add canViewOnMap to channel_database_permissions
-      await runMigration059Mysql(pool);
-
-      // Run migration 060: Add enabled column to auto_traceroute_nodes
-      await runMigration060Mysql(pool);
-
-      // Run migration 061: Add spam detection columns to nodes
-      await runMigration061Mysql(pool);
-
-      // Run migration 062: Position precision (no-op for MySQL, already uses DOUBLE)
-      await runMigration062Mysql(pool);
-
-      // Run migration 063: Add position_history_hours column
-      await runMigration063Mysql(pool);
-
-      // Run migration 064: Add enforce_name_validation column to channel_database
-      await runMigration064Mysql(pool);
-
-      // Run migration 065: Add sortOrder column to channel_database
-      await runMigration065Mysql(pool);
-
-      // Run migration 066: Add ignored_nodes table
-      await runMigration066Mysql(pool);
-
-      // Run migration 067: Add auto time sync schema
-      await runMigration067Mysql(pool);
-
-      // Run migration 068: Add MFA columns to users table
-      await runMigration068Mysql(pool);
-
-      // Run migration 069: Add position snapshot columns to traceroutes and route_segments
-      await runMigration069Mysql(pool);
-
-      // Run migration 070: Add MeshCore tables
-      await runMigration070MeshcoreMysql(pool);
-
-      // Run migration 071: Add meshcore permission resource
-      await runMigration071Mysql(pool);
-
-      // Run migration 072: Add DM unread index
-      await runMigration072Mysql(pool);
-
-      // Run migration 073: Add packetId to telemetry
-      await runMigration073Mysql(pool);
-
-      // Run migration 074: Add show_meshcore_nodes to user_map_preferences
-      await runMigration074Mysql(pool);
-
-      // Run migration 075: Upgrade telemetry packetId to BIGINT
-      await runMigration075Mysql(pool);
-
-      // Run migration 076: Add show_accuracy_regions and show_estimated_positions
-      await runMigration076Mysql(pool);
-
-      // Run migration 077: Upgrade ignored_nodes.nodeNum to BIGINT
-      await runMigration077Mysql(pool);
-
-      // Run migration 078: Create embed_profiles table
-      await runMigration078Mysql(pool);
-
-      // Run migration 079: Create geofence_cooldowns table
-      await runMigration079Mysql(pool);
-
-      // Run migration 080: Add favoriteLocked column to nodes
-      await runMigration080Mysql(pool);
-
-      // Run migration 081: Add time offset detection columns to nodes
-      await runMigration081Mysql(pool);
-
-      // Run migration 082: Add packetmonitor permission
-      await runMigration082Mysql(pool);
-
-      // Run migration 083: Add missing map preference columns
-      await runMigration083Mysql(pool);
-
-      // Run migration 084: Add key mismatch columns
-      await runMigration084Mysql(pool);
-
-      // Run migration 085: Fix custom_themes column names and add missing columns
-      await runMigration085Mysql(pool);
-
-      // Run migration 086: Add auto_distance_delete_log table
-      await runMigration086Mysql(pool);
-
-      // Verify all expected tables exist
-      const [rows] = await connection.query(`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = DATABASE()
+      // Pre-3.7 detection: if tables exist but ignored_nodes doesn't, database is too old
+      const [tableCountRows] = await connection.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
       `);
-      const existingTables = new Set((rows as any[]).map(r => r.table_name || r.TABLE_NAME));
-      const missingTables = MYSQL_TABLE_NAMES.filter(t => !existingTables.has(t));
-
-      if (missingTables.length > 0) {
-        logger.warn(`[MySQL] Missing tables after schema creation: ${missingTables.join(', ')}`);
-      } else {
-        logger.info(`[MySQL] Schema verified: all ${MYSQL_TABLE_NAMES.length} tables present`);
+      const [ignoredNodesRows] = await connection.query(`
+        SELECT COUNT(*) as count FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'ignored_nodes'
+      `);
+      const tableCount = parseInt((tableCountRows as any[])[0]?.count);
+      const ignoredNodesExists = parseInt((ignoredNodesRows as any[])[0]?.count) > 0;
+      if (tableCount > 0 && !ignoredNodesExists) {
+        throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
       }
     } finally {
       connection.release();
     }
+
+    // Run ALL migrations from the registry — 001 baseline creates all tables
+    for (const migration of registry.getAll()) {
+      if (migration.mysql) {
+        await migration.mysql(pool);
+      }
+    }
+
+    logger.info('[MySQL] Schema initialization complete');
   }
 
-  // ============ ASYNC AUTH METHODS FOR POSTGRESQL ============
-  // These methods delegate to the authRepo for PostgreSQL/MySQL support
+  // ============ ASYNC AUTH METHODS ============
+  // These methods delegate to the AuthRepository for all database backends
+
+  /**
+   * Map a DbUser from the AuthRepository to the User type expected by auth middleware.
+   */
+  private mapDbUserToUser(dbUser: any): any {
+    return {
+      id: dbUser.id,
+      username: dbUser.username,
+      passwordHash: dbUser.passwordHash,
+      email: dbUser.email,
+      displayName: dbUser.displayName,
+      authProvider: dbUser.authMethod,
+      oidcSubject: dbUser.oidcSubject,
+      isAdmin: dbUser.isAdmin,
+      isActive: dbUser.isActive,
+      passwordLocked: dbUser.passwordLocked,
+      mfaEnabled: dbUser.mfaEnabled ?? false,
+      mfaSecret: dbUser.mfaSecret ?? null,
+      mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
+      createdAt: dbUser.createdAt,
+      lastLoginAt: dbUser.lastLoginAt,
+    };
+  }
 
   /**
    * Async method to find a user by username.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async findUserByUsernameAsync(username: string): Promise<any | null> {
-    if (this.authRepo) {
-      const dbUser = await this.authRepo.getUserByUsername(username);
-      if (!dbUser) return null;
-      // Map DbUser to User type expected by auth middleware
-      return {
-        id: dbUser.id,
-        username: dbUser.username,
-        passwordHash: dbUser.passwordHash,
-        email: dbUser.email,
-        displayName: dbUser.displayName,
-        authProvider: dbUser.authMethod,
-        oidcSubject: dbUser.oidcSubject,
-        isAdmin: dbUser.isAdmin,
-        isActive: dbUser.isActive,
-        passwordLocked: dbUser.passwordLocked,
-        mfaEnabled: dbUser.mfaEnabled ?? false,
-        mfaSecret: dbUser.mfaSecret ?? null,
-        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
-        createdAt: dbUser.createdAt,
-        lastLoginAt: dbUser.lastLoginAt,
-      };
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.userModel.findByUsername(username);
+    const dbUser = await this.auth.getUserByUsername(username);
+    if (!dbUser) return null;
+    return this.mapDbUserToUser(dbUser);
   }
 
   /**
@@ -13015,39 +9483,18 @@ class DatabaseService {
    * Returns the user if authentication succeeds, null otherwise.
    */
   async authenticateAsync(username: string, password: string): Promise<any | null> {
-    if (this.authRepo) {
-      const dbUser = await this.authRepo.getUserByUsername(username);
-      if (!dbUser || !dbUser.passwordHash) return null;
+    const dbUser = await this.auth.getUserByUsername(username);
+    if (!dbUser || !dbUser.passwordHash) return null;
 
-      // Verify password using bcrypt
-      const bcrypt = await import('bcrypt');
-      const isValid = await bcrypt.compare(password, dbUser.passwordHash);
-      if (!isValid) return null;
+    // Verify password using bcrypt
+    const bcrypt = await import('bcrypt');
+    const isValid = await bcrypt.compare(password, dbUser.passwordHash);
+    if (!isValid) return null;
 
-      // Update last login
-      await this.authRepo.updateUser(dbUser.id, { lastLoginAt: Date.now() });
+    // Update last login
+    await this.auth.updateUser(dbUser.id, { lastLoginAt: Date.now() });
 
-      // Map DbUser to User type
-      return {
-        id: dbUser.id,
-        username: dbUser.username,
-        passwordHash: dbUser.passwordHash,
-        email: dbUser.email,
-        displayName: dbUser.displayName,
-        authProvider: dbUser.authMethod,
-        oidcSubject: dbUser.oidcSubject,
-        isAdmin: dbUser.isAdmin,
-        isActive: dbUser.isActive,
-        passwordLocked: dbUser.passwordLocked,
-        mfaEnabled: dbUser.mfaEnabled ?? false,
-        mfaSecret: dbUser.mfaSecret ?? null,
-        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
-        createdAt: dbUser.createdAt,
-        lastLoginAt: Date.now(),
-      };
-    }
-    // Fallback to sync for SQLite
-    return this.userModel.authenticate(username, password);
+    return { ...this.mapDbUserToUser(dbUser), lastLoginAt: Date.now() };
   }
 
   /**
@@ -13056,29 +9503,9 @@ class DatabaseService {
    * Returns the user associated with the token if valid, null otherwise.
    */
   async validateApiTokenAsync(token: string): Promise<any | null> {
-    if (this.authRepo) {
-      const result = await this.authRepo.validateApiToken(token);
-      if (!result) return null;
-      // Map DbUser to User type
-      return {
-        id: result.id,
-        username: result.username,
-        passwordHash: result.passwordHash,
-        email: result.email,
-        displayName: result.displayName,
-        authProvider: result.authMethod,
-        oidcSubject: result.oidcSubject,
-        isAdmin: result.isAdmin,
-        isActive: result.isActive,
-        passwordLocked: result.passwordLocked,
-        createdAt: result.createdAt,
-        lastLoginAt: result.lastLoginAt,
-      };
-    }
-    // Fallback to sync for SQLite - apiTokenModel.validate returns userId
-    const userId = await this.apiTokenModel.validate(token);
-    if (!userId) return null;
-    return this.userModel.findById(userId);
+    const result = await this.auth.validateApiToken(token);
+    if (!result) return null;
+    return this.mapDbUserToUser(result);
   }
 
   /**
@@ -13086,30 +9513,9 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async findUserByIdAsync(id: number): Promise<any | null> {
-    if (this.authRepo) {
-      const dbUser = await this.authRepo.getUserById(id);
-      if (!dbUser) return null;
-      // Map DbUser to User type expected by auth middleware
-      return {
-        id: dbUser.id,
-        username: dbUser.username,
-        passwordHash: dbUser.passwordHash,
-        email: dbUser.email,
-        displayName: dbUser.displayName,
-        authProvider: dbUser.authMethod,
-        oidcSubject: dbUser.oidcSubject,
-        isAdmin: dbUser.isAdmin,
-        isActive: dbUser.isActive,
-        passwordLocked: dbUser.passwordLocked,
-        mfaEnabled: dbUser.mfaEnabled ?? false,
-        mfaSecret: dbUser.mfaSecret ?? null,
-        mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
-        createdAt: dbUser.createdAt,
-        lastLoginAt: dbUser.lastLoginAt,
-      };
-    }
-    // Fallback to sync for SQLite if repo not ready
-    return this.userModel.findById(id);
+    const dbUser = await this.auth.getUserById(id);
+    if (!dbUser) return null;
+    return this.mapDbUserToUser(dbUser);
   }
 
   /**
@@ -13117,41 +9523,32 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async checkPermissionAsync(userId: number, resource: string, action: string): Promise<boolean> {
-    if (this.authRepo) {
-      const permissions = await this.authRepo.getPermissionsForUser(userId);
-      for (const perm of permissions) {
-        if (perm.resource === resource) {
-          if (action === 'viewOnMap') return perm.canViewOnMap;
-          if (action === 'read') return perm.canRead;
-          if (action === 'write') return perm.canWrite;
-        }
+    const permissions = await this.auth.getPermissionsForUser(userId);
+    for (const perm of permissions) {
+      if (perm.resource === resource) {
+        if (action === 'viewOnMap') return perm.canViewOnMap;
+        if (action === 'read') return perm.canRead;
+        if (action === 'write') return perm.canWrite;
       }
-      return false;
     }
-    // Fallback to sync for SQLite if repo not ready
-    return this.permissionModel.check(userId, resource as any, action as any);
+    return false;
   }
 
   /**
    * Async method to get user permission set.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   * Returns permissions in the same format as PermissionModel.getUserPermissionSet()
    */
   async getUserPermissionSetAsync(userId: number): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
-    if (this.authRepo) {
-      const permissions = await this.authRepo.getPermissionsForUser(userId);
-      const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
-      for (const perm of permissions) {
-        permissionSet[perm.resource] = {
-          viewOnMap: perm.canViewOnMap ?? false,
-          read: perm.canRead,
-          write: perm.canWrite,
-        };
-      }
-      return permissionSet;
+    const permissions = await this.auth.getPermissionsForUser(userId);
+    const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
+    for (const perm of permissions) {
+      permissionSet[perm.resource] = {
+        viewOnMap: perm.canViewOnMap ?? false,
+        read: perm.canRead,
+        write: perm.canWrite,
+      };
     }
-    // Fallback to sync for SQLite if repo not ready
-    return this.permissionModel.getUserPermissionSet(userId);
+    return permissionSet;
   }
 
   /**
@@ -13163,26 +9560,26 @@ class DatabaseService {
     action: string,
     resource: string | null,
     details: string | null,
-    ipAddress: string
+    ipAddress: string | null,
+    valueBefore?: string | null,
+    valueAfter?: string | null
   ): Promise<void> {
-    if (this.authRepo) {
-      try {
-        await this.authRepo.createAuditLogEntry({
-          userId,
-          action,
-          resource,
-          details,
-          ipAddress,
-          userAgent: null,
-          timestamp: Date.now(),
-        });
-      } catch (error) {
-        logger.error('[auditLogAsync] Failed to write audit log:', error);
-      }
-      return;
+    // Note: valueBefore/valueAfter not yet in Drizzle schema — tracked as future enhancement
+    void valueBefore;
+    void valueAfter;
+    try {
+      await this.auth.createAuditLogEntry({
+        userId,
+        action,
+        resource,
+        details,
+        ipAddress,
+        userAgent: null,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      logger.error('[auditLogAsync] Failed to write audit log:', error);
     }
-    // Fallback to sync for SQLite
-    this.auditLog(userId, action, resource, details, ipAddress);
   }
 
   // ============ ASYNC MESSAGE METHODS ============
@@ -13193,108 +9590,45 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async getMessageAsync(id: string): Promise<DbMessage | null> {
-    if (this.messagesRepo) {
-      const result = await this.messagesRepo.getMessage(id);
-      // Transform null values to undefined to match DbMessage type
-      if (result) {
-        return {
-          ...result,
-          portnum: result.portnum ?? undefined,
-          requestId: result.requestId ?? undefined,
-          rxTime: result.rxTime ?? undefined,
-          hopStart: result.hopStart ?? undefined,
-          hopLimit: result.hopLimit ?? undefined,
-          relayNode: result.relayNode ?? undefined,
-          replyId: result.replyId ?? undefined,
-          emoji: result.emoji ?? undefined,
-          viaMqtt: result.viaMqtt ?? undefined,
-          rxSnr: result.rxSnr ?? undefined,
-          rxRssi: result.rxRssi ?? undefined,
-          ackFailed: result.ackFailed ?? undefined,
-          routingErrorReceived: result.routingErrorReceived ?? undefined,
-          deliveryState: result.deliveryState ?? undefined,
-          wantAck: result.wantAck ?? undefined,
-          ackFromNode: result.ackFromNode ?? undefined,
-          decryptedBy: result.decryptedBy ?? undefined,
-        };
-      }
-      return null;
+    const result = await this.messages.getMessage(id);
+    // Transform null values to undefined to match DbMessage type
+    if (result) {
+      return {
+        ...result,
+        portnum: result.portnum ?? undefined,
+        requestId: result.requestId ?? undefined,
+        rxTime: result.rxTime ?? undefined,
+        hopStart: result.hopStart ?? undefined,
+        hopLimit: result.hopLimit ?? undefined,
+        relayNode: result.relayNode ?? undefined,
+        replyId: result.replyId ?? undefined,
+        emoji: result.emoji ?? undefined,
+        viaMqtt: result.viaMqtt ?? undefined,
+        rxSnr: result.rxSnr ?? undefined,
+        rxRssi: result.rxRssi ?? undefined,
+        ackFailed: result.ackFailed ?? undefined,
+        routingErrorReceived: result.routingErrorReceived ?? undefined,
+        deliveryState: result.deliveryState ?? undefined,
+        wantAck: result.wantAck ?? undefined,
+        ackFromNode: result.ackFromNode ?? undefined,
+        decryptedBy: result.decryptedBy ?? undefined,
+      };
     }
-    // Fallback to sync for SQLite
-    return this.getMessage(id);
+    return null;
   }
 
-  /**
-   * Async method to delete a message by ID.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async deleteMessageAsync(id: string): Promise<boolean> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.deleteMessage(id);
-    }
-    // Fallback to sync for SQLite
-    return this.deleteMessage(id);
-  }
+  // deleteMessageAsync, purgeChannelMessagesAsync, purgeDirectMessagesAsync
+  // migrated to direct repository access: databaseService.messages.deleteMessage(), etc.
 
-  /**
-   * Async method to purge all messages from a channel.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeChannelMessagesAsync(channel: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeChannelMessages(channel);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeChannelMessages(channel);
-  }
 
-  /**
-   * Async method to purge all direct messages with a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeDirectMessagesAsync(nodeNum: number): Promise<number> {
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeDirectMessages(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeDirectMessages(nodeNum);
-  }
-
-  /**
-   * Async method to purge all traceroutes for a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
-  async purgeNodeTraceroutesAsync(nodeNum: number): Promise<number> {
-    if (this.traceroutesRepo) {
-      return this.traceroutesRepo.deleteTraceroutesForNode(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeNodeTraceroutes(nodeNum);
-  }
-
-  /**
-   * Async method to purge all telemetry for a node.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
+  /** @deprecated Use databaseService.telemetry.purgeNodeTelemetry() instead */
   async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.purgeNodeTelemetry(nodeNum);
-    }
-    // Fallback to sync for SQLite
-    return this.purgeNodeTelemetry(nodeNum);
+    return this.telemetry.purgeNodeTelemetry(nodeNum);
   }
 
-  /**
-   * Async method to purge position history for a node.
-   * Deletes only position-related telemetry types.
-   * Works with all database backends (SQLite, PostgreSQL, MySQL).
-   */
+  /** @deprecated Use databaseService.telemetry.purgePositionHistory() instead */
   async purgePositionHistoryAsync(nodeNum: number): Promise<number> {
-    if (this.telemetryRepo) {
-      return this.telemetryRepo.purgePositionHistory(nodeNum);
-    }
-    // No sync fallback - position history purge is only available through async repo
-    return 0;
+    return this.telemetry.purgePositionHistory(nodeNum);
   }
 
   /**
@@ -13302,16 +9636,9 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async updatePasswordAsync(userId: number, newPassword: string): Promise<void> {
-    // Import bcrypt dynamically to avoid circular dependencies
     const bcrypt = await import('bcrypt');
     const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { passwordHash });
-      return;
-    }
-    // Fallback to sync for SQLite
-    await this.userModel.updatePassword(userId, newPassword);
+    await this.auth.updateUser(userId, { passwordHash });
   }
 
   // ============ ASYNC MFA METHODS ============
@@ -13320,204 +9647,42 @@ class DatabaseService {
    * Update MFA secret and backup codes for a user.
    */
   async updateUserMfaSecretAsync(userId: number, secret: string, backupCodes: string): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
+    await this.auth.updateUser(userId, { mfaSecret: secret, mfaBackupCodes: backupCodes });
   }
 
   /**
    * Clear MFA data for a user (disable MFA).
    */
   async clearUserMfaAsync(userId: number): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
+    await this.auth.updateUser(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null });
   }
 
   /**
    * Enable MFA for a user (set mfaEnabled to true).
    */
   async enableUserMfaAsync(userId: number): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaEnabled: true });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaEnabled: true });
+    await this.auth.updateUser(userId, { mfaEnabled: true });
   }
 
   /**
    * Update backup codes for a user (after one is consumed).
    */
   async consumeBackupCodeAsync(userId: number, remainingCodes: string): Promise<void> {
-    if (this.authRepo) {
-      await this.authRepo.updateUser(userId, { mfaBackupCodes: remainingCodes });
-      return;
-    }
-    // Fallback to sync for SQLite
-    this.userModel.update(userId, { mfaBackupCodes: remainingCodes });
+    await this.auth.updateUser(userId, { mfaBackupCodes: remainingCodes });
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============
-  // These methods provide server-side decryption channel management
-
-  /**
-   * Get a channel database entry by ID
-   */
-  async getChannelDatabaseByIdAsync(id: number): Promise<import('../db/types.js').DbChannelDatabase | null> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getByIdAsync(id);
-  }
-
-  /**
-   * Get all channel database entries
-   */
-  async getAllChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getAllAsync();
-  }
-
-  /**
-   * Get all enabled channel database entries (for decryption)
-   */
-  async getEnabledChannelDatabaseEntriesAsync(): Promise<import('../db/types.js').DbChannelDatabase[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getEnabledAsync();
-  }
-
-  /**
-   * Create a new channel database entry
-   */
-  async createChannelDatabaseEntryAsync(data: {
-    name: string;
-    psk: string;
-    pskLength: number;
-    description?: string | null;
-    isEnabled?: boolean;
-    enforceNameValidation?: boolean;
-    createdBy?: number | null;
-  }): Promise<number> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.createAsync(data);
-  }
-
-  /**
-   * Update a channel database entry
-   */
-  async updateChannelDatabaseEntryAsync(id: number, data: {
-    name?: string;
-    psk?: string;
-    pskLength?: number;
-    description?: string | null;
-    isEnabled?: boolean;
-    enforceNameValidation?: boolean;
-    sortOrder?: number;
-  }): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.updateAsync(id, data);
-  }
-
-  /**
-   * Delete a channel database entry
-   */
-  async deleteChannelDatabaseEntryAsync(id: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.deleteAsync(id);
-  }
-
-  /**
-   * Reorder channel database entries
-   * Updates the sortOrder for each entry in the provided array
-   */
-  async reorderChannelDatabaseEntriesAsync(updates: { id: number; sortOrder: number }[]): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.reorderAsync(updates);
-  }
-
-  /**
-   * Increment decrypted packet count for a channel
-   */
-  async incrementChannelDatabaseDecryptedCountAsync(id: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.incrementDecryptedCountAsync(id);
-  }
-
-  /**
-   * Get permission for a specific user and channel database
-   */
-  async getChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission | null> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionAsync(userId, channelDatabaseId);
-  }
-
-  /**
-   * Get all channel database permissions for a user
-   */
-  async getChannelDatabasePermissionsForUserAsync(userId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionsForUserAsync(userId);
-  }
-
-  /**
-   * Get all permissions for a channel database entry
-   */
-  async getChannelDatabasePermissionsForChannelAsync(channelDatabaseId: number): Promise<import('../db/types.js').DbChannelDatabasePermission[]> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.getPermissionsForChannelAsync(channelDatabaseId);
-  }
-
-  /**
-   * Set permission for a user on a channel database entry
-   */
-  async setChannelDatabasePermissionAsync(data: {
-    userId: number;
-    channelDatabaseId: number;
-    canViewOnMap: boolean;
-    canRead: boolean;
-    grantedBy?: number | null;
-  }): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.setPermissionAsync(data);
-  }
+  // ============ CHANNEL DATABASE (business logic only) ============
 
   /**
    * Get channel database permissions for a user as a map keyed by channel database ID
    * Returns { [channelDbId]: { viewOnMap: boolean, read: boolean } }
+   * KEPT: Has business logic (transforms permissions list into a lookup map)
    */
   async getChannelDatabasePermissionsForUserAsSetAsync(userId: number): Promise<{
     [channelDbId: number]: { viewOnMap: boolean; read: boolean }
   }> {
-    const permissions = await this.getChannelDatabasePermissionsForUserAsync(userId);
+    const permissions = await this.channelDatabase.getPermissionsForUserAsync(userId);
     const result: { [channelDbId: number]: { viewOnMap: boolean; read: boolean } } = {};
     for (const perm of permissions) {
       result[perm.channelDatabaseId] = {
@@ -13528,37 +9693,14 @@ class DatabaseService {
     return result;
   }
 
-  /**
-   * Delete permission for a user on a channel database entry
-   */
-  async deleteChannelDatabasePermissionAsync(userId: number, channelDatabaseId: number): Promise<void> {
-    if (!this.channelDatabaseRepo) {
-      throw new Error('Channel database repository not initialized');
-    }
-    return this.channelDatabaseRepo.deletePermissionAsync(userId, channelDatabaseId);
-  }
-
   // ============ NEWS CACHE ============
-
-  /**
-   * Get cached news feed
-   */
-  async getNewsCacheAsync(): Promise<{ feedData: string; fetchedAt: number; sourceUrl: string } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getNewsCache();
-  }
 
   /**
    * Save news feed to cache
    */
   async saveNewsCacheAsync(feedData: string, sourceUrl: string): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
     const now = Math.floor(Date.now() / 1000);
-    return this.miscRepo.saveNewsCache({
+    return this.misc.saveNewsCache({
       feedData,
       fetchedAt: now,
       sourceUrl,
@@ -13571,10 +9713,7 @@ class DatabaseService {
    * Get user's news status
    */
   async getUserNewsStatusAsync(userId: number): Promise<{ lastSeenNewsId: string | null; dismissedNewsIds: string[] } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    const status = await this.miscRepo.getUserNewsStatus(userId);
+    const status = await this.misc.getUserNewsStatus(userId);
     if (!status) {
       return null;
     }
@@ -13588,10 +9727,7 @@ class DatabaseService {
    * Save user's news status
    */
   async saveUserNewsStatusAsync(userId: number, lastSeenNewsId: string | null, dismissedNewsIds: string[]): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.saveUserNewsStatus({
+    return this.misc.saveUserNewsStatus({
       userId,
       lastSeenNewsId,
       dismissedNewsIds: JSON.stringify(dismissedNewsIds),
@@ -13613,93 +9749,10 @@ class DatabaseService {
     nodeId?: string | null;
     nodeNum?: number | null;
   }): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.insertBackupHistory({
+    return this.misc.insertBackupHistory({
       ...backup,
       createdAt: Date.now(),
     });
-  }
-
-  /**
-   * Get all backup history records ordered by timestamp (newest first)
-   */
-  async getBackupHistoryListAsync(): Promise<Array<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  }>> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getBackupHistoryList();
-  }
-
-  /**
-   * Get a backup history record by filename
-   */
-  async getBackupByFilenameAsync(filename: string): Promise<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  } | null> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getBackupByFilename(filename);
-  }
-
-  /**
-   * Delete a backup history record by filename
-   */
-  async deleteBackupHistoryAsync(filename: string): Promise<void> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.deleteBackupHistory(filename);
-  }
-
-  /**
-   * Count total backup history records
-   */
-  async countBackupsAsync(): Promise<number> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.countBackups();
-  }
-
-  /**
-   * Get oldest backup history records (for purging)
-   */
-  async getOldestBackupsAsync(limit: number): Promise<Array<{
-    id?: number;
-    filename: string;
-    filePath: string;
-    timestamp: number;
-    backupType: string;
-    fileSize?: number | null;
-    nodeId?: string | null;
-    nodeNum?: number | null;
-    createdAt: number;
-  }>> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    return this.miscRepo.getOldestBackups(limit);
   }
 
   /**
@@ -13711,10 +9764,7 @@ class DatabaseService {
     oldestBackup: string | null;
     newestBackup: string | null;
   }> {
-    if (!this.miscRepo) {
-      throw new Error('Misc repository not initialized');
-    }
-    const stats = await this.miscRepo.getBackupStats();
+    const stats = await this.misc.getBackupStats();
     return {
       count: stats.count,
       totalSize: stats.totalSize,
@@ -13788,23 +9838,6 @@ class DatabaseService {
   /**
    * Get auto time sync nodes
    */
-  async getAutoTimeSyncNodesAsync(): Promise<number[]> {
-    if (this.miscRepo) {
-      return await this.miscRepo.getAutoTimeSyncNodes();
-    }
-    return [];
-  }
-
-  /**
-   * Set auto time sync nodes
-   */
-  async setAutoTimeSyncNodesAsync(nodeNums: number[]): Promise<void> {
-    if (this.miscRepo) {
-      await this.miscRepo.setAutoTimeSyncNodes(nodeNums);
-      logger.debug(`✅ Set auto-time-sync filter to ${nodeNums.length} nodes`);
-    }
-  }
-
   /**
    * Get time sync filter settings
    */
@@ -13815,7 +9848,7 @@ class DatabaseService {
     expirationHours: number;
     intervalMinutes: number;
   }> {
-    const nodeNums = await this.getAutoTimeSyncNodesAsync();
+    const nodeNums = await this.misc.getAutoTimeSyncNodes();
     return {
       enabled: this.isAutoTimeSyncEnabled(),
       nodeNums,
@@ -13839,7 +9872,7 @@ class DatabaseService {
       this.setAutoTimeSyncEnabled(settings.enabled);
     }
     if (settings.nodeNums !== undefined) {
-      await this.setAutoTimeSyncNodesAsync(settings.nodeNums);
+      await this.misc.setAutoTimeSyncNodes(settings.nodeNums);
     }
     if (settings.filterEnabled !== undefined) {
       this.setAutoTimeSyncNodeFilterEnabled(settings.filterEnabled);
@@ -13857,10 +9890,6 @@ class DatabaseService {
    * Get a node that needs time sync
    */
   async getNodeNeedingTimeSyncAsync(): Promise<DbNode | null> {
-    if (!this.nodesRepo) {
-      return null;
-    }
-
     const activeHours = 48; // Only consider nodes heard in last 48 hours
     // lastHeard is stored in seconds, so convert cutoff to seconds
     const activeNodeCutoff = Math.floor((Date.now() - (activeHours * 60 * 60 * 1000)) / 1000);
@@ -13871,28 +9900,19 @@ class DatabaseService {
     // Get filter settings
     let filterNodeNums: number[] | undefined;
     if (this.isAutoTimeSyncNodeFilterEnabled()) {
-      filterNodeNums = await this.getAutoTimeSyncNodesAsync();
+      filterNodeNums = await this.misc.getAutoTimeSyncNodes();
       if (filterNodeNums.length === 0) {
         // Filter is enabled but no nodes selected - skip
         return null;
       }
     }
 
-    const node = await this.nodesRepo.getNodeNeedingTimeSyncAsync(
+    const node = await this.nodes.getNodeNeedingTimeSyncAsync(
       activeNodeCutoff,
       expirationMsAgo,
       filterNodeNums
     );
     return node as DbNode | null;
-  }
-
-  /**
-   * Update a node's lastTimeSync timestamp
-   */
-  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
-    if (this.nodesRepo) {
-      await this.nodesRepo.updateNodeTimeSyncAsync(nodeNum, timestamp);
-    }
   }
 
   /**
@@ -14077,6 +10097,169 @@ class DatabaseService {
       logger.error(`[DatabaseService] Failed to save map preferences async: ${error}`);
       throw error;
     }
+  }
+  // ============================================================
+  // Async wrappers for sync methods (Phase 4 migration)
+  // These allow callers to use await consistently.
+  // For SQLite, they delegate to the sync method.
+  // For PG/MySQL, the sync methods already fire-and-forget async internally.
+  // ============================================================
+
+  // Group 1: Cleanup/Maintenance
+  async cleanupOldMessagesAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldMessages(days);
+  }
+
+  async cleanupOldTraceroutesAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldTraceroutes(days);
+  }
+
+  async cleanupOldRouteSegmentsAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldRouteSegments(days);
+  }
+
+  async cleanupOldNeighborInfoAsync(days: number = 30): Promise<number> {
+    return this.cleanupOldNeighborInfo(days);
+  }
+
+  async cleanupInactiveNodesAsync(days: number = 30): Promise<number> {
+    return this.cleanupInactiveNodes(days);
+  }
+
+  async cleanupInvalidChannelsAsync(): Promise<number> {
+    return this.cleanupInvalidChannels();
+  }
+
+  async cleanupAuditLogsAsync(days: number): Promise<number> {
+    return this.cleanupAuditLogs(days);
+  }
+
+  async vacuumAsync(): Promise<void> {
+    return this.vacuum();
+  }
+
+  async getDatabaseSizeAsync(): Promise<number> {
+    return this.getDatabaseSize();
+  }
+
+  // Group 2: Messages
+  async getMessagesByChannelAsync(channel: number, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+    return this.getMessagesByChannel(channel, limit, offset);
+  }
+
+  async markAllDMMessagesAsReadAsync(localNodeId: string, userId: number | null): Promise<number> {
+    return this.markAllDMMessagesAsRead(localNodeId, userId);
+  }
+
+  async markChannelMessagesAsReadAsync(channelId: number, userId: number | null, beforeTimestamp?: number): Promise<number> {
+    return this.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
+  }
+
+  async markDMMessagesAsReadAsync(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): Promise<number> {
+    return this.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp);
+  }
+
+  // Group 3: Nodes
+  async getNodesWithPublicKeysAsync(): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
+    return this.getNodesWithPublicKeys();
+  }
+
+  async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean): Promise<void> {
+    this.setNodeIgnored(nodeNum, isIgnored);
+  }
+
+  async getNodePositionOverrideAsync(nodeNum: number): Promise<{
+    enabled: boolean;
+    latitude?: number;
+    longitude?: number;
+    altitude?: number;
+    isPrivate?: boolean;
+  } | null> {
+    return this.getNodePositionOverride(nodeNum);
+  }
+
+  async setNodePositionOverrideAsync(
+    nodeNum: number,
+    enabled: boolean,
+    latitude?: number,
+    longitude?: number,
+    altitude?: number,
+    isPrivate: boolean = false
+  ): Promise<void> {
+    this.setNodePositionOverride(nodeNum, enabled, latitude, longitude, altitude, isPrivate);
+  }
+
+  async clearNodePositionOverrideAsync(nodeNum: number): Promise<void> {
+    this.clearNodePositionOverride(nodeNum);
+  }
+
+  async handleAutoWelcomeEnabledAsync(): Promise<number> {
+    return this.handleAutoWelcomeEnabled();
+  }
+
+  async markAllNodesAsWelcomedAsync(): Promise<number> {
+    return this.markAllNodesAsWelcomed();
+  }
+
+  // Group 4: Traceroutes
+  async recordTracerouteRequestAsync(fromNodeNum: number, toNodeNum: number): Promise<void> {
+    await this.recordTracerouteRequest(fromNodeNum, toNodeNum);
+  }
+
+  async getAllTraceroutesForRecalculationAsync(): Promise<any[]> {
+    return this.getAllTraceroutesForRecalculation();
+  }
+
+  async clearRecordHolderSegmentAsync(): Promise<void> {
+    this.clearRecordHolderSegment();
+  }
+
+  async updateRecordHolderSegmentAsync(segment: DbRouteSegment): Promise<void> {
+    this.updateRecordHolderSegment(segment);
+  }
+
+  // Group 5: Neighbors/Telemetry
+  async getNeighborsForNodeAsync(nodeNum: number): Promise<DbNeighborInfo[]> {
+    return this.getNeighborsForNode(nodeNum);
+  }
+
+  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): Promise<DbTelemetry[]> {
+    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours);
+  }
+
+  // Group 6: Ghost Nodes (in-memory, but async-compatible wrappers)
+  async getSuppressedGhostNodesAsync(): Promise<Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }>> {
+    return this.getSuppressedGhostNodes();
+  }
+
+  async suppressGhostNodeAsync(nodeNum: number, durationMs: number = 30 * 60 * 1000): Promise<void> {
+    this.suppressGhostNode(nodeNum, durationMs);
+  }
+
+  async unsuppressGhostNodeAsync(nodeNum: number): Promise<void> {
+    this.unsuppressGhostNode(nodeNum);
+  }
+
+  async isNodeSuppressedAsync(nodeNum: number | undefined | null): Promise<boolean> {
+    return this.isNodeSuppressed(nodeNum);
+  }
+
+  // Group 7: Settings/Config
+  async isAutoTimeSyncEnabledAsync(): Promise<boolean> {
+    return this.isAutoTimeSyncEnabled();
+  }
+
+  async getAutoTimeSyncIntervalMinutesAsync(): Promise<number> {
+    return this.getAutoTimeSyncIntervalMinutes();
+  }
+
+  // Group 8: Export/Import
+  async exportDataAsync(): Promise<{ nodes: DbNode[]; messages: DbMessage[] }> {
+    return this.exportData();
+  }
+
+  async importDataAsync(data: { nodes: DbNode[]; messages: DbMessage[] }): Promise<void> {
+    this.importData(data);
   }
 }
 
