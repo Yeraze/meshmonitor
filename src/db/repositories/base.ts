@@ -4,6 +4,7 @@
  * Provides common functionality for all repository implementations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
+import { sql } from 'drizzle-orm';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { MySql2Database } from 'drizzle-orm/mysql2';
@@ -115,6 +116,15 @@ export abstract class BaseRepository {
       throw new Error('Cannot access MySQL database when using SQLite or PostgreSQL');
     }
     return this.mysqlDb;
+  }
+
+  /**
+   * Quote a column name for use in raw SQL.
+   * PostgreSQL requires double-quoted "camelCase" identifiers; SQLite/MySQL do not.
+   * Returns a raw SQL fragment that can be interpolated into sql`` templates.
+   */
+  protected col(name: string) {
+    return this.isPostgres() ? sql.raw(`"${name}"`) : sql.raw(name);
   }
 
   /**
