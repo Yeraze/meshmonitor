@@ -523,79 +523,30 @@ export class AuthRepository extends BaseRepository {
   async revokeApiToken(tokenId: number, revokedBy: number): Promise<boolean> {
     const now = this.now();
     const { apiTokens } = this.tables;
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .update(apiTokens)
-        .set({ isActive: false, revokedAt: now, revokedBy })
-        .where(and(
-          eq(apiTokens.id, tokenId),
-          eq(apiTokens.isActive, true)
-        ));
-      return (result.changes ?? 0) > 0;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .update(apiTokens)
-        .set({ isActive: false, revokedAt: now, revokedBy })
-        .where(and(
-          eq(apiTokens.id, tokenId),
-          eq(apiTokens.isActive, true)
-        ));
-      return (result[0].affectedRows ?? 0) > 0;
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .update(apiTokens)
-        .set({ isActive: false, revokedAt: now, revokedBy })
-        .where(and(
-          eq(apiTokens.id, tokenId),
-          eq(apiTokens.isActive, true)
-        ))
-        .returning({ id: apiTokensPostgres.id });
-      return result.length > 0;
-    }
+    const result = await this.db
+      .update(apiTokens)
+      .set({ isActive: false, revokedAt: now, revokedBy })
+      .where(and(
+        eq(apiTokens.id, tokenId),
+        eq(apiTokens.isActive, true)
+      ));
+    return this.getAffectedRows(result) > 0;
   }
 
   /**
    * Revoke all active API tokens for a user.
-   * Keeps branching: different result shapes for affected row count.
    */
   async revokeAllUserApiTokens(userId: number, revokedBy: number): Promise<number> {
     const now = this.now();
     const { apiTokens } = this.tables;
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const result = await db
-        .update(apiTokens)
-        .set({ isActive: false, revokedAt: now, revokedBy })
-        .where(and(
-          eq(apiTokens.userId, userId),
-          eq(apiTokens.isActive, true)
-        ));
-      return result.changes ?? 0;
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const result = await db
-        .update(apiTokens)
-        .set({ isActive: false, revokedAt: now, revokedBy })
-        .where(and(
-          eq(apiTokens.userId, userId),
-          eq(apiTokens.isActive, true)
-        ));
-      return result[0].affectedRows ?? 0;
-    } else {
-      const db = this.getPostgresDb();
-      const result = await db
-        .update(apiTokens)
-        .set({ isActive: false, revokedAt: now, revokedBy })
-        .where(and(
-          eq(apiTokens.userId, userId),
-          eq(apiTokens.isActive, true)
-        ))
-        .returning({ id: apiTokensPostgres.id });
-      return result.length;
-    }
+    const result = await this.db
+      .update(apiTokens)
+      .set({ isActive: false, revokedAt: now, revokedBy })
+      .where(and(
+        eq(apiTokens.userId, userId),
+        eq(apiTokens.isActive, true)
+      ));
+    return this.getAffectedRows(result);
   }
 
   /**
