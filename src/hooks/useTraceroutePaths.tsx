@@ -14,7 +14,7 @@ import React, { useMemo } from 'react';
 import { Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, MQTT_SNR_SENTINEL } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, isMqttSnr } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -288,7 +288,7 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            if (snrValue === MQTT_SNR_SENTINEL) {
+            if (isMqttSnr(snrValue)) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -335,7 +335,7 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            if (snrValue === MQTT_SNR_SENTINEL) {
+            if (isMqttSnr(snrValue)) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -373,7 +373,7 @@ export function useTraceroutePaths({
         const segKey = segment.nodeNums.slice().sort().join('-');
         const snrData = segmentSNRs.get(segKey);
         if (!snrData || snrData.length === 0) return false; // Hide unknown segments at low zoom
-        const rfSnrs = snrData.filter(d => d.snr !== MQTT_SNR_SENTINEL).map(d => d.snr);
+        const rfSnrs = snrData.filter(d => !isMqttSnr(d.snr)).map(d => d.snr);
         if (rfSnrs.length === 0) return false; // Hide pure MQTT at low zoom
         const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
         return avgSnr >= -10; // Only good + medium quality links
@@ -477,7 +477,7 @@ export function useTraceroutePaths({
           color={segmentColor}
           weight={weight}
           opacity={segmentOpacity}
-          dashArray={isMqttSegment ? '3, 6' : undefined}
+          dashArray={isMqttSegment ? '3,6' : undefined}
           className={`route-segment node-${segment.nodeNums[0]} node-${segment.nodeNums[1]}`}
         >
           <Popup>
@@ -750,7 +750,7 @@ export function useTraceroutePaths({
              );
              
              const weight = getLineWeight(forwardSegmentSnrs[i]);
-             const isMqtt = forwardSegmentSnrs[i] === MQTT_SNR_SENTINEL;
+             const isMqtt = isMqttSnr(forwardSegmentSnrs[i]);
 
              allElements.push(
                <Polyline
@@ -759,7 +759,7 @@ export function useTraceroutePaths({
                  color={themeColors.tracerouteForward ?? themeColors.blue}
                  weight={weight}
                  opacity={0.9}
-                 dashArray="8, 4"
+                 dashArray="3,6"
                  className={`route-segment node-${forwardSequence[i]} node-${forwardSequence[i + 1]}`}
                >
                  <Popup>
@@ -853,7 +853,7 @@ export function useTraceroutePaths({
              );
              
              const weight = getLineWeight(backSegmentSnrs[i]);
-             const isMqtt = backSegmentSnrs[i] === MQTT_SNR_SENTINEL;
+             const isMqtt = isMqttSnr(backSegmentSnrs[i]);
 
              allElements.push(
                <Polyline
@@ -862,7 +862,7 @@ export function useTraceroutePaths({
                  color={themeColors.tracerouteReturn ?? themeColors.red}
                  weight={weight}
                  opacity={0.9}
-                 dashArray="8, 4"
+                 dashArray="3,6"
                  className={`route-segment node-${backSequence[i]} node-${backSequence[i + 1]}`}
                >
                  <Popup>

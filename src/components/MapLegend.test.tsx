@@ -26,9 +26,9 @@ vi.mock('react-leaflet', () => ({
 vi.mock('../contexts/SettingsContext', () => ({
   useSettings: () => ({
     overlayColors: {
-      tracerouteForward: '#74c7ec',
-      tracerouteReturn: '#74c7ec',
-      mqttSegment: '#9399b2',
+      tracerouteForward: '#f5c2e7',
+      tracerouteReturn: '#f5c2e7',
+      mqttSegment: '#b4befe',
       neighborLine: '#fab387',
       positionHistoryOld: { r: 0, g: 191, b: 255 },
       positionHistoryNew: { r: 255, g: 69, b: 0 },

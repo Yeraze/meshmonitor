@@ -10,6 +10,17 @@ import { PositionHistoryItem } from '../contexts/MapContext';
  */
 export const MQTT_SNR_SENTINEL = -32;
 
+/**
+ * Scaled SNR zero sentinel for MQTT hops.
+ * Many MQTT gateways leave SNR at protobuf default (0) instead of setting -128.
+ * Raw 0 / 4 = 0.0 dB — treated as MQTT since real RF SNR of exactly 0 is rare.
+ */
+export const MQTT_SNR_ZERO = 0;
+
+/** Returns true if the scaled SNR value indicates an MQTT/unknown hop */
+export const isMqttSnr = (snr: number | undefined): boolean =>
+  snr === MQTT_SNR_SENTINEL || snr === MQTT_SNR_ZERO;
+
 // Constants for arrow generation
 const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
 const MIN_ARROWS_PER_SEGMENT = 1;
@@ -158,7 +169,7 @@ export const getSegmentSnrColor = (
   defaultColor: string
 ): string => {
   if (!snrData || snrData.length === 0) return defaultColor;
-  const rfSnrs = snrData.filter(d => d.snr !== MQTT_SNR_SENTINEL).map(d => d.snr);
+  const rfSnrs = snrData.filter(d => !isMqttSnr(d.snr)).map(d => d.snr);
   if (rfSnrs.length === 0) return defaultColor;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
   if (avgSnr > 0) return snrColors.good;
@@ -176,7 +187,7 @@ export const getSegmentSnrOpacity = (
 ): number => {
   if (isMqtt) return 0.5;
   if (!snrData || snrData.length === 0) return 0.5;
-  const rfSnrs = snrData.filter(d => d.snr !== MQTT_SNR_SENTINEL).map(d => d.snr);
+  const rfSnrs = snrData.filter(d => !isMqttSnr(d.snr)).map(d => d.snr);
   if (rfSnrs.length === 0) return 0.5;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
   // Map from -20..+15 to 0.4..0.85
@@ -242,7 +253,7 @@ export const generateCurvedArrowMarkers = (
       <Marker key={`${pathKey}-arrow-${i}`} position={midPoint} icon={createArrowIcon(angle, color)}>
         {snr !== undefined && (
           <Tooltip permanent={false} direction="top" offset={[0, -10]}>
-            {snr.toFixed(1)} dB
+            {snr.toFixed(1)} dB{isMqttSnr(snr) ? ' (MQTT)' : ''}
           </Tooltip>
         )}
       </Marker>

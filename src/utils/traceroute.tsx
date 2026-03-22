@@ -14,8 +14,8 @@ const INT8_MIN_SNR = -128;
  */
 function formatSnrDisplay(snrValue: number | null): string {
   if (snrValue === null) return '';
-  // INT8_MIN (-128) indicates unknown SNR (MQTT gateway, old firmware, etc.)
-  if (snrValue === INT8_MIN_SNR) {
+  // INT8_MIN (-128) or 0 (protobuf default) indicates MQTT gateway or unknown SNR
+  if (snrValue === INT8_MIN_SNR || snrValue === 0) {
     return ' (MQTT)';
   }
   return ` (${(snrValue / 4).toFixed(1)} dB)`;
@@ -26,8 +26,8 @@ function formatSnrDisplay(snrValue: number | null): string {
  */
 function formatSnrElement(snrValue: number | null, key: string): React.ReactNode {
   if (snrValue === null) return null;
-  // INT8_MIN (-128) indicates unknown SNR (MQTT gateway, old firmware, etc.)
-  if (snrValue === INT8_MIN_SNR) {
+  // INT8_MIN (-128) or 0 (protobuf default) indicates MQTT gateway or unknown SNR
+  if (snrValue === INT8_MIN_SNR || snrValue === 0) {
     return (
       <span
         key={key}
