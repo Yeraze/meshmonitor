@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isViaMqtt, TransportMechanism, getTransportMechanismName } from './meshtastic.js';
+import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName } from './meshtastic.js';
 
 describe('isViaMqtt', () => {
   it('should return true for MQTT transport mechanism', () => {
@@ -71,5 +71,64 @@ describe('getTransportMechanismName', () => {
 
   it('should return UNKNOWN for unknown value', () => {
     expect(getTransportMechanismName(99)).toBe('UNKNOWN_99');
+  });
+});
+
+describe('RoutingError', () => {
+  it('defines PKI error codes', () => {
+    expect(RoutingError.PKI_FAILED).toBe(34);
+    expect(RoutingError.PKI_UNKNOWN_PUBKEY).toBe(35);
+    expect(RoutingError.PKI_SEND_FAIL_PUBLIC_KEY).toBe(39);
+  });
+});
+
+describe('isPkiError', () => {
+  it('returns true for PKI_FAILED', () => {
+    expect(isPkiError(RoutingError.PKI_FAILED)).toBe(true);
+  });
+
+  it('returns true for PKI_UNKNOWN_PUBKEY', () => {
+    expect(isPkiError(RoutingError.PKI_UNKNOWN_PUBKEY)).toBe(true);
+  });
+
+  it('returns true for PKI_SEND_FAIL_PUBLIC_KEY', () => {
+    expect(isPkiError(RoutingError.PKI_SEND_FAIL_PUBLIC_KEY)).toBe(true);
+  });
+
+  it('returns false for non-PKI errors', () => {
+    expect(isPkiError(RoutingError.NONE)).toBe(false);
+    expect(isPkiError(RoutingError.NO_ROUTE)).toBe(false);
+    expect(isPkiError(RoutingError.NO_CHANNEL)).toBe(false);
+  });
+
+  it('returns false for zero (success/ACK)', () => {
+    expect(isPkiError(0)).toBe(false);
+  });
+
+  it('all three PKI errors should trigger key mismatch detection', () => {
+    // Documents behavior change from PR #2382:
+    // All PKI errors now flag keyMismatchDetected regardless of
+    // whether the target node is in the radio's device database.
+    const pkiErrors = [
+      RoutingError.PKI_FAILED,
+      RoutingError.PKI_UNKNOWN_PUBKEY,
+      RoutingError.PKI_SEND_FAIL_PUBLIC_KEY,
+    ];
+    for (const err of pkiErrors) {
+      expect(isPkiError(err)).toBe(true);
+    }
+  });
+});
+
+describe('getPortNumName', () => {
+  it('returns name for known portnums', () => {
+    expect(getPortNumName(1)).toBe('TEXT_MESSAGE_APP');
+    expect(getPortNumName(3)).toBe('POSITION_APP');
+    expect(getPortNumName(67)).toBe('TELEMETRY_APP');
+    expect(getPortNumName(70)).toBe('TRACEROUTE_APP');
+  });
+
+  it('returns UNKNOWN for unknown portnums', () => {
+    expect(getPortNumName(999)).toBe('UNKNOWN_999');
   });
 });

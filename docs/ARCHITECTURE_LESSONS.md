@@ -837,6 +837,18 @@ await this.sendNodeInfoRequest(nodeNum, 0);
 
 **Location**: `src/server/meshtasticManager.ts` — `processKeyRepairs()` and immediate purge path
 
+### PKI Error Detection
+
+**Problem**: PKI routing errors (`PKI_UNKNOWN_PUBKEY`, `PKI_SEND_FAIL_PUBLIC_KEY`, `PKI_FAILED`) should always flag `keyMismatchDetected` on the target node.
+
+**Rule**: Never suppress PKI error detection based on device DB state. All three PKI errors must trigger key mismatch detection regardless of whether the target node is in the radio's local database. The mismatch flag clears naturally when keys are re-synced (via NodeInfo exchange or device sync).
+
+**Anti-pattern**: Don't gate PKI error handling on `isNodeInDeviceDb()` — the radio not having the node is exactly the scenario where `PKI_UNKNOWN_PUBKEY` fires.
+
+**Location**: `src/server/meshtasticManager.ts` — `processRoutingErrorMessage()`, both Path A (request packets) and Path B (message-tracked packets).
+
+**Helper**: `isPkiError(errorReason)` in `src/server/constants/meshtastic.ts` classifies all three PKI error codes.
+
 ### Settings Allowlist
 
 **Problem**: New settings silently fail to save if not added to the allowlist.
@@ -847,5 +859,5 @@ await this.sendNodeInfoRequest(nodeNum, 0);
 
 ---
 
-**Last Updated**: 2026-03-13
-**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes), #2243 (key mismatch detection), #2246 (neighbor info zoom setting)
+**Last Updated**: 2026-03-22
+**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes), #2243 (key mismatch detection), #2246 (neighbor info zoom setting), #2365 (key mismatch clearing), #2382 (PKI error detection)
