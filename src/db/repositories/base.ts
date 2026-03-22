@@ -172,6 +172,51 @@ export abstract class BaseRepository {
   }
 
   /**
+   * Insert with upsert (ON CONFLICT DO UPDATE / ON DUPLICATE KEY UPDATE).
+   * Normalizes across SQLite/PostgreSQL (onConflictDoUpdate) and MySQL (onDuplicateKeyUpdate).
+   *
+   * @param table - Drizzle table from this.tables
+   * @param values - Row values to insert
+   * @param target - Conflict target column (for SQLite/PG onConflictDoUpdate)
+   * @param updateSet - Columns to update on conflict
+   */
+  protected async upsert(table: any, values: any, target: any, updateSet: any): Promise<any> {
+    if (this.isMySQL()) {
+      return this.getMysqlDb()
+        .insert(table)
+        .values(values)
+        .onDuplicateKeyUpdate({ set: updateSet });
+    }
+    return (this.db as any)
+      .insert(table)
+      .values(values)
+      .onConflictDoUpdate({ target, set: updateSet });
+  }
+
+  /**
+   * Insert and ignore duplicates (ON CONFLICT DO NOTHING).
+   * Normalizes across SQLite/PostgreSQL (onConflictDoNothing) and MySQL (try/catch).
+   *
+   * @param table - Drizzle table from this.tables
+   * @param values - Row values to insert
+   * @returns The raw insert result
+   */
+  protected async insertIgnore(table: any, values: any): Promise<any> {
+    if (this.isMySQL()) {
+      // MySQL lacks onConflictDoNothing — use try/catch to swallow duplicate key errors
+      try {
+        return await this.db.insert(table).values(values);
+      } catch {
+        return null;
+      }
+    }
+    return (this.db as any)
+      .insert(table)
+      .values(values)
+      .onConflictDoNothing();
+  }
+
+  /**
    * Get current timestamp in milliseconds
    */
   protected now(): number {

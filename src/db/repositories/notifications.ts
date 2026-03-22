@@ -129,22 +129,7 @@ export class NotificationsRepository extends BaseRepository {
       lastUsedAt: now,
     };
 
-    if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      await db
-        .insert(pushSubscriptions)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: setData });
-    } else {
-      // SQLite and PostgreSQL both use onConflictDoUpdate
-      await (this.db as any)
-        .insert(pushSubscriptions)
-        .values(values)
-        .onConflictDoUpdate({
-          target: pushSubscriptions.endpoint,
-          set: setData,
-        });
-    }
+    await this.upsert(pushSubscriptions, values, pushSubscriptions.endpoint, setData);
   }
 
   /**
