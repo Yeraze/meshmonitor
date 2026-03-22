@@ -970,7 +970,7 @@ export class MiscRepository extends BaseRepository {
           LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes."nodeNum"
           LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes."nodeNum"
           WHERE ${whereClause}
-          ORDER BY pl.timestamp DESC LIMIT ${limit} OFFSET ${offset}
+          ORDER BY pl.timestamp DESC, pl.created_at DESC LIMIT ${limit} OFFSET ${offset}
         `;
       } else {
         joinQuery = sql`
@@ -979,7 +979,7 @@ export class MiscRepository extends BaseRepository {
           LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
           LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
           WHERE ${whereClause}
-          ORDER BY pl.timestamp DESC LIMIT ${limit} OFFSET ${offset}
+          ORDER BY pl.timestamp DESC, pl.created_at DESC LIMIT ${limit} OFFSET ${offset}
         `;
       }
 
