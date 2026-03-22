@@ -1424,6 +1424,7 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       deliveryState VARCHAR(50),
       wantAck BOOLEAN,
       ackFromNode BIGINT,
+      decrypted_by VARCHAR(16),
       createdAt BIGINT NOT NULL,
       INDEX idx_messages_timestamp (timestamp),
       INDEX idx_messages_channel (channel)
