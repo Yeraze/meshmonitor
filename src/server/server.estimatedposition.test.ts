@@ -11,7 +11,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
     };
 
     meshtasticManager = {
-      getAllNodes: vi.fn()
+      getAllNodesAsync: vi.fn()
     };
   });
 
@@ -28,7 +28,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         position: null
       };
 
-      meshtasticManager.getAllNodes.mockReturnValue([nodeWithoutPosition]);
+      meshtasticManager.getAllNodesAsync.mockReturnValue([nodeWithoutPosition]);
 
       // Mock telemetry with estimated position
       databaseService.getTelemetryByNode.mockReturnValue([
@@ -55,7 +55,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
       ]);
 
       // Act - Simulate the enhancement logic from server.ts
-      const nodes = meshtasticManager.getAllNodes();
+      const nodes = meshtasticManager.getAllNodesAsync();
       const enhancedNodes = nodes.map((node: any) => {
         if (!node.user?.id) return { ...node, isMobile: false };
 
@@ -99,7 +99,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         }
       };
 
-      meshtasticManager.getAllNodes.mockReturnValue([nodeWithPosition]);
+      meshtasticManager.getAllNodesAsync.mockReturnValue([nodeWithPosition]);
 
       // Mock telemetry with estimated position
       databaseService.getTelemetryByNode.mockReturnValue([
@@ -126,7 +126,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
       ]);
 
       // Act - Simulate the enhancement logic
-      const nodes = meshtasticManager.getAllNodes();
+      const nodes = meshtasticManager.getAllNodesAsync();
       const enhancedNodes = nodes.map((node: any) => {
         if (!node.user?.id) return { ...node, isMobile: false };
 
@@ -166,7 +166,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         position: null
       };
 
-      meshtasticManager.getAllNodes.mockReturnValue([nodeWithoutPosition]);
+      meshtasticManager.getAllNodesAsync.mockReturnValue([nodeWithoutPosition]);
 
       // Mock telemetry without estimated position
       databaseService.getTelemetryByNode.mockReturnValue([
@@ -182,7 +182,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
       ]);
 
       // Act
-      const nodes = meshtasticManager.getAllNodes();
+      const nodes = meshtasticManager.getAllNodesAsync();
       const enhancedNodes = nodes.map((node: any) => {
         if (!node.user?.id) return { ...node, isMobile: false };
 
@@ -220,7 +220,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         position: null
       };
 
-      meshtasticManager.getAllNodes.mockReturnValue([nodeWithoutPosition]);
+      meshtasticManager.getAllNodesAsync.mockReturnValue([nodeWithoutPosition]);
 
       // Mock telemetry with multiple estimated positions (most recent first)
       const now = Date.now();
@@ -268,7 +268,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
       ]);
 
       // Act
-      const nodes = meshtasticManager.getAllNodes();
+      const nodes = meshtasticManager.getAllNodesAsync();
       const enhancedNodes = nodes.map((node: any) => {
         if (!node.user?.id) return { ...node, isMobile: false };
 
