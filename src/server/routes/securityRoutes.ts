@@ -275,7 +275,7 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
       keyIsLowEntropy: false,
       duplicateKeyDetected: false,
       keyMismatchDetected: false,
-      keySecurityIssueDetails: undefined, // This will now properly clear the field
+      keySecurityIssueDetails: null, // null explicitly clears the field (undefined would preserve existing value)
     });
 
     // Clear time offset flags

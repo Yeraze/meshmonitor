@@ -164,10 +164,10 @@ export class NodesRepository extends BaseRepository {
           lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket ?? existingNode.lastPKIPacket),
           // Don't update welcomedAt here - it's managed by markNodeAsWelcomedIfNotAlready
           // to avoid race conditions where this upsert overwrites a concurrent welcome update
-          keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode.keyIsLowEntropy,
-          duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode.duplicateKeyDetected,
-          keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode.keyMismatchDetected,
-          keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? existingNode.keySecurityIssueDetails,
+          keyIsLowEntropy: nodeData.keyIsLowEntropy !== undefined ? nodeData.keyIsLowEntropy : existingNode.keyIsLowEntropy,
+          duplicateKeyDetected: nodeData.duplicateKeyDetected !== undefined ? nodeData.duplicateKeyDetected : existingNode.duplicateKeyDetected,
+          keyMismatchDetected: nodeData.keyMismatchDetected !== undefined ? nodeData.keyMismatchDetected : existingNode.keyMismatchDetected,
+          keySecurityIssueDetails: nodeData.keySecurityIssueDetails !== undefined ? nodeData.keySecurityIssueDetails : existingNode.keySecurityIssueDetails,
           positionChannel: nodeData.positionChannel ?? existingNode.positionChannel,
           positionPrecisionBits: nodeData.positionPrecisionBits ?? existingNode.positionPrecisionBits,
           positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
