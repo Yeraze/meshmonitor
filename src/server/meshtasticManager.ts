@@ -817,7 +817,7 @@ class MeshtasticManager {
       : `!${destination.toString(16).padStart(8, '0')}`;
 
     packetLogService.logPacket({
-      timestamp: Math.floor(Date.now() / 1000),
+      timestamp: Date.now(),
       from_node: localNodeNum,
       from_node_id: localNodeId,
       to_node: destination,
@@ -3658,7 +3658,7 @@ class MeshtasticManager {
 
         packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
-          timestamp: Math.floor(Date.now() / 1000), // Use server time for consistent ordering (rxTime preserved in metadata.rx_time)
+          timestamp: Date.now(), // Use server time in ms for consistent ordering (rxTime preserved in metadata.rx_time)
           from_node: fromNum,
           from_node_id: fromNodeId ?? undefined,
           to_node: toNum ?? undefined,
