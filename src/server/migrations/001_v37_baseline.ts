@@ -924,6 +924,10 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "toNodeId" TEXT NOT NULL,
     "distanceKm" REAL NOT NULL,
     "isRecordHolder" BOOLEAN DEFAULT false,
+    "fromLatitude" DOUBLE PRECISION,
+    "fromLongitude" DOUBLE PRECISION,
+    "toLatitude" DOUBLE PRECISION,
+    "toLongitude" DOUBLE PRECISION,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL
   );
@@ -1548,6 +1552,10 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       toNodeId VARCHAR(32) NOT NULL,
       distanceKm DOUBLE NOT NULL,
       isRecordHolder BOOLEAN DEFAULT false,
+      fromLatitude DOUBLE,
+      fromLongitude DOUBLE,
+      toLatitude DOUBLE,
+      toLongitude DOUBLE,
       timestamp BIGINT NOT NULL,
       createdAt BIGINT NOT NULL,
       INDEX idx_route_segments_from_to (fromNodeNum, toNodeNum)
