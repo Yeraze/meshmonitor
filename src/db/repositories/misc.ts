@@ -838,6 +838,9 @@ export class MiscRepository extends BaseRepository {
       to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
       relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
       created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
+      // PostgreSQL lowercases unquoted aliases — normalize for frontend
+      from_node_longName: row.from_node_longName ?? row.from_node_longname ?? null,
+      to_node_longName: row.to_node_longName ?? row.to_node_longname ?? null,
     } as DbPacketLog;
   }
 
