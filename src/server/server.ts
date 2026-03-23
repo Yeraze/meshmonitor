@@ -207,6 +207,32 @@ let embedOriginsCache: string[] = [];
 let embedOriginsCacheTime = 0;
 const EMBED_ORIGINS_CACHE_TTL = 60000;
 
+/** Convert protobuf bytes (Uint8Array, Buffer, byte array, or object) to base64 string */
+function bytesToBase64(key: any): string {
+  if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
+    return Buffer.from(key).toString('base64');
+  }
+  if (key && typeof key === 'object' && key.type === 'Buffer' && Array.isArray(key.data)) {
+    return Buffer.from(key.data).toString('base64');
+  }
+  if (Array.isArray(key)) {
+    return Buffer.from(key).toString('base64');
+  }
+  if (typeof key === 'string') {
+    return key;
+  }
+  // Handle generic iterables/objects with byte data (e.g., protobuf Bytes wrappers)
+  if (key && typeof key === 'object') {
+    try {
+      return Buffer.from(Object.values(key) as number[]).toString('base64');
+    } catch {
+      // fall through
+    }
+  }
+  logger.warn('Unknown admin key format:', typeof key, key);
+  return '';
+}
+
 function refreshEmbedOriginsCache(): void {
   databaseService.embedProfiles.getAllAsync().then(profiles => {
     embedOriginsCache = [...new Set(
@@ -5924,26 +5950,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               // Convert admin keys from Uint8Array to base64 strings for UI
               const localAdminKeys = finalConfig.deviceConfig.security.adminKey || [];
               config = {
-                adminKeys: localAdminKeys.map((key: any) => {
-                  if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
-                    return Buffer.from(key).toString('base64');
-                  }
-                  // Handle JSON-serialized Buffer objects (e.g., { type: 'Buffer', data: [...] })
-                  if (key && typeof key === 'object' && key.type === 'Buffer' && Array.isArray(key.data)) {
-                    return Buffer.from(key.data).toString('base64');
-                  }
-                  // Handle array of bytes
-                  if (Array.isArray(key)) {
-                    return Buffer.from(key).toString('base64');
-                  }
-                  // Already a string (base64)
-                  if (typeof key === 'string') {
-                    return key;
-                  }
-                  // Fallback - try to convert
-                  logger.warn('Unknown admin key format:', typeof key, key);
-                  return String(key);
-                }),
+                adminKeys: localAdminKeys.map((key: any) => bytesToBase64(key)),
                 isManaged: finalConfig.deviceConfig.security.isManaged,
                 serialEnabled: finalConfig.deviceConfig.security.serialEnabled,
                 debugLogApiEnabled: finalConfig.deviceConfig.security.debugLogApiEnabled,
@@ -6135,26 +6142,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
             // Convert admin keys from Uint8Array to base64 strings for UI
             const remoteAdminKeys = remoteConfig.adminKey || [];
             config = {
-              adminKeys: remoteAdminKeys.map((key: any) => {
-                if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
-                  return Buffer.from(key).toString('base64');
-                }
-                // Handle JSON-serialized Buffer objects (e.g., { type: 'Buffer', data: [...] })
-                if (key && typeof key === 'object' && key.type === 'Buffer' && Array.isArray(key.data)) {
-                  return Buffer.from(key.data).toString('base64');
-                }
-                // Handle array of bytes
-                if (Array.isArray(key)) {
-                  return Buffer.from(key).toString('base64');
-                }
-                // Already a string (base64)
-                if (typeof key === 'string') {
-                  return key;
-                }
-                // Fallback - try to convert
-                logger.warn('Unknown admin key format:', typeof key, key);
-                return String(key);
-              }),
+              adminKeys: remoteAdminKeys.map((key: any) => bytesToBase64(key)),
               isManaged: remoteConfig.isManaged,
               serialEnabled: remoteConfig.serialEnabled,
               debugLogApiEnabled: remoteConfig.debugLogApiEnabled,
