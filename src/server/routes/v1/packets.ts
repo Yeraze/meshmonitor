@@ -8,6 +8,12 @@ import express from 'express';
 import packetLogService from '../../services/packetLogService.js';
 import { logger } from '../../../utils/logger.js';
 
+/** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
+function normalizeSinceToMs(value: string): number {
+  const n = parseInt(value, 10);
+  return n < 10_000_000_000 ? n * 1000 : n;
+}
+
 const router = express.Router();
 
 /**
@@ -44,7 +50,7 @@ router.get('/', async (req, res) => {
     const to_node = req.query.to_node ? parseInt(req.query.to_node as string, 10) : undefined;
     const channel = req.query.channel ? parseInt(req.query.channel as string, 10) : undefined;
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
-    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
 
     const filterOptions = { portnum, from_node, to_node, channel, encrypted, since };
 

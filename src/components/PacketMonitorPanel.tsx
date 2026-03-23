@@ -226,7 +226,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     event.stopPropagation(); // Prevent row click
     // Set relay node to 0 if undefined/null (triggers "unknown relay" mode in modal)
     setSelectedRelayNode(packet.relay_node ?? 0);
-    setSelectedRxTime(new Date(packet.timestamp * 1000));
+    setSelectedRxTime(new Date(packet.timestamp < 10_000_000_000 ? packet.timestamp * 1000 : packet.timestamp));
     setSelectedMessageRssi(packet.rssi ?? undefined);
 
     // Fetch direct neighbor stats (refresh to ensure up-to-date data)
@@ -297,7 +297,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   // Format timestamp — prepend short date for entries before today
   const formatTimestamp = (timestamp: number): string => {
-    const date = new Date(timestamp * 1000);
+    const date = new Date(timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp);
     const time = date.toLocaleTimeString('en-US', {
       hour12: timeFormat === '12',
       hour: '2-digit',
@@ -746,7 +746,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           <td
                             className="timestamp"
                             style={{ width: '110px' }}
-                            title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}
+                            title={formatDateTime(new Date(packet.timestamp < 10_000_000_000 ? packet.timestamp * 1000 : packet.timestamp), timeFormat, dateFormat)}
                           >
                             {formatTimestamp(packet.timestamp)}
                           </td>
