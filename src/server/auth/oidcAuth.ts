@@ -85,6 +85,16 @@ function scheduleRetry(): void {
 }
 
 /**
+ * Clean up pending retry timers for graceful shutdown
+ */
+export function cleanupOIDC(): void {
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+}
+
+/**
  * Check if OIDC is enabled and initialized
  * Returns true if OIDC is configured (even if init temporarily failed and is retrying)
  */
