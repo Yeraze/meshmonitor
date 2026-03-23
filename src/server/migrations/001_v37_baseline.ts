@@ -481,14 +481,25 @@ export const migration = {
     db.exec(`
       CREATE TABLE IF NOT EXISTS user_map_preferences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userId INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
         centerLat REAL,
         centerLng REAL,
         zoom REAL,
         selectedLayer TEXT,
+        map_tileset TEXT,
+        show_paths INTEGER DEFAULT 0,
+        show_neighbor_info INTEGER DEFAULT 0,
+        show_route INTEGER DEFAULT 1,
+        show_motion INTEGER DEFAULT 1,
+        show_mqtt_nodes INTEGER DEFAULT 1,
+        show_meshcore_nodes INTEGER DEFAULT 1,
+        show_animations INTEGER DEFAULT 0,
+        show_accuracy_regions INTEGER DEFAULT 0,
+        show_estimated_positions INTEGER DEFAULT 0,
+        position_history_hours INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `);
 
@@ -900,6 +911,7 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "routeBack" TEXT,
     "snrTowards" TEXT,
     "snrBack" TEXT,
+    "routePositions" TEXT,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL
   );
@@ -912,6 +924,10 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "toNodeId" TEXT NOT NULL,
     "distanceKm" REAL NOT NULL,
     "isRecordHolder" BOOLEAN DEFAULT false,
+    "fromLatitude" DOUBLE PRECISION,
+    "fromLongitude" DOUBLE PRECISION,
+    "toLatitude" DOUBLE PRECISION,
+    "toLongitude" DOUBLE PRECISION,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL
   );
@@ -1521,6 +1537,7 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       routeBack TEXT,
       snrTowards TEXT,
       snrBack TEXT,
+      routePositions TEXT,
       timestamp BIGINT NOT NULL,
       createdAt BIGINT NOT NULL,
       INDEX idx_traceroutes_from_to (fromNodeNum, toNodeNum),
@@ -1535,6 +1552,10 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       toNodeId VARCHAR(32) NOT NULL,
       distanceKm DOUBLE NOT NULL,
       isRecordHolder BOOLEAN DEFAULT false,
+      fromLatitude DOUBLE,
+      fromLongitude DOUBLE,
+      toLatitude DOUBLE,
+      toLongitude DOUBLE,
       timestamp BIGINT NOT NULL,
       createdAt BIGINT NOT NULL,
       INDEX idx_route_segments_from_to (fromNodeNum, toNodeNum)

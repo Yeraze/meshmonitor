@@ -395,38 +395,31 @@ export class UserModel {
    * Get user's map preferences
    */
   getMapPreferences(userId: number): Record<string, any> | null {
+    // Detect which user ID column exists (userId vs user_id depending on migration state)
+    const columns = this.db.prepare("PRAGMA table_info(user_map_preferences)").all() as any[];
+    const userIdCol = columns.find((c: any) => c.name === 'user_id') ? 'user_id' : 'userId';
+
     const stmt = this.db.prepare(`
-      SELECT
-        map_tileset as mapTileset,
-        show_paths as showPaths,
-        show_neighbor_info as showNeighborInfo,
-        show_route as showRoute,
-        show_motion as showMotion,
-        show_mqtt_nodes as showMqttNodes,
-        show_meshcore_nodes as showMeshCoreNodes,
-        show_animations as showAnimations,
-        show_accuracy_regions as showAccuracyRegions,
-        show_estimated_positions as showEstimatedPositions,
-        position_history_hours as positionHistoryHours
-      FROM user_map_preferences
-      WHERE user_id = ?
+      SELECT * FROM user_map_preferences
+      WHERE ${userIdCol} = ?
+      LIMIT 1
     `);
 
     const row = stmt.get(userId) as any;
     if (!row) return null;
 
     return {
-      mapTileset: row.mapTileset || null,
-      showPaths: Boolean(row.showPaths),
-      showNeighborInfo: Boolean(row.showNeighborInfo),
-      showRoute: Boolean(row.showRoute),
-      showMotion: Boolean(row.showMotion),
-      showMqttNodes: Boolean(row.showMqttNodes),
-      showMeshCoreNodes: Boolean(row.showMeshCoreNodes),
-      showAnimations: Boolean(row.showAnimations),
-      showAccuracyRegions: Boolean(row.showAccuracyRegions),
-      showEstimatedPositions: Boolean(row.showEstimatedPositions),
-      positionHistoryHours: row.positionHistoryHours ?? null,
+      mapTileset: row.map_tileset || row.mapTileset || null,
+      showPaths: Boolean(row.show_paths ?? row.showPaths ?? false),
+      showNeighborInfo: Boolean(row.show_neighbor_info ?? row.showNeighborInfo ?? false),
+      showRoute: Boolean(row.show_route ?? row.showRoute ?? true),
+      showMotion: Boolean(row.show_motion ?? row.showMotion ?? true),
+      showMqttNodes: Boolean(row.show_mqtt_nodes ?? row.showMqttNodes ?? true),
+      showMeshCoreNodes: Boolean(row.show_meshcore_nodes ?? row.showMeshCoreNodes ?? true),
+      showAnimations: Boolean(row.show_animations ?? row.showAnimations ?? false),
+      showAccuracyRegions: Boolean(row.show_accuracy_regions ?? row.showAccuracyRegions ?? false),
+      showEstimatedPositions: Boolean(row.show_estimated_positions ?? row.showEstimatedPositions ?? false),
+      positionHistoryHours: row.position_history_hours ?? row.positionHistoryHours ?? null,
     };
   }
 

@@ -361,8 +361,11 @@ class SystemBackupService {
    */
   async listBackups(): Promise<SystemBackupInfo[]> {
     try {
+      const dbType = databaseService.drizzleDbType;
+      const col = (name: string) => dbType === 'postgres' ? `"${name}"` : name;
+
       const rows = await this.queryRows(`
-        SELECT dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version
+        SELECT ${col('backupPath')}, timestamp, ${col('backupType')}, ${col('totalSize')}, ${col('tableCount')}, ${col('appVersion')}, ${col('schemaVersion')}
         FROM system_backup_history
         ORDER BY timestamp DESC
       `);
@@ -371,14 +374,14 @@ class SystemBackupService {
         // PostgreSQL returns bigint as strings, so we need to parse them
         const timestampNum = typeof row.timestamp === 'string' ? parseInt(row.timestamp, 10) : row.timestamp;
         return {
-          dirname: row.dirname,
+          dirname: row.backupPath,
           timestamp: new Date(timestampNum).toISOString(),
           timestampUnix: timestampNum,
-          type: row.type,
-          size: typeof row.size === 'string' ? parseInt(row.size, 10) : row.size,
-          tableCount: row.table_count,
-          meshmonitorVersion: row.meshmonitor_version,
-          schemaVersion: row.schema_version
+          type: row.backupType,
+          size: typeof row.totalSize === 'string' ? parseInt(row.totalSize, 10) : row.totalSize,
+          tableCount: row.tableCount,
+          meshmonitorVersion: row.appVersion,
+          schemaVersion: row.schemaVersion
         };
       });
     } catch (error) {
