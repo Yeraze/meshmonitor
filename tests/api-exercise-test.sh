@@ -193,11 +193,21 @@ check "GET /api/auth/status (authenticated)" "$(api GET /api/auth/status)" 200
 echo ""
 echo -e "${BLUE}=== Nodes ===${NC}"
 
+check "GET /api/status" "$(api GET /api/status)" 200
+check "GET /api/stats" "$(api GET /api/stats)" 200
+check "GET /api/config" "$(api GET /api/config)" 200
+check "GET /api/config/current" "$(api GET /api/config/current)" 200
+check "GET /api/connection" "$(api GET /api/connection)" 200
+check "GET /api/connection/info" "$(api GET /api/connection/info)" 200
+check "GET /api/version/check" "$(api GET /api/version/check)" 200
+check "GET /api/virtual-node/status" "$(api GET /api/virtual-node/status)" 200
 check "GET /api/nodes" "$(api GET /api/nodes)" 200
 check "GET /api/nodes/active" "$(api GET /api/nodes/active)" 200
 check "GET /api/nodes/security-issues" "$(api GET /api/nodes/security-issues)" 200
 check "GET /api/ignored-nodes" "$(api GET /api/ignored-nodes)" 200
 check "GET /api/auto-favorite/status" "$(api GET /api/auto-favorite/status)" 200
+check "GET /api/device/tx-status" "$(api GET /api/device/tx-status)" 200
+check "GET /api/device/security-keys" "$(api GET /api/device/security-keys)" 200
 
 # Get a node ID for testing
 FIRST_NODE_ID=$(api_body GET /api/nodes | python3 -c "
@@ -227,10 +237,13 @@ fi
 echo ""
 echo -e "${BLUE}=== Telemetry ===${NC}"
 
+check "GET /api/telemetry/available/nodes" "$(api GET /api/telemetry/available/nodes)" 200
+
 if [ -n "$FIRST_NODE_ID" ]; then
   check "GET /api/telemetry/:nodeId" "$(api GET /api/telemetry/$FIRST_NODE_ID)" 200
   check "GET /api/telemetry/:nodeId/rates" "$(api GET /api/telemetry/$FIRST_NODE_ID/rates)" 200
   check "GET /api/telemetry/:nodeId/smarthops" "$(api GET /api/telemetry/$FIRST_NODE_ID/smarthops)" 200
+  check "GET /api/telemetry/:nodeId/linkquality" "$(api GET /api/telemetry/$FIRST_NODE_ID/linkquality)" 200
 else
   log_skip "Telemetry endpoints (no nodes)"
 fi
@@ -240,7 +253,10 @@ fi
 echo ""
 echo -e "${BLUE}=== Messages ===${NC}"
 
+check "GET /api/messages" "$(api GET /api/messages)" 200
+check "GET /api/messages/channel/0" "$(api GET /api/messages/channel/0)" 200
 check "GET /api/messages/search?q=test" "$(api GET '/api/messages/search?q=test')" 200
+check "GET /api/messages/unread-counts" "$(api GET /api/messages/unread-counts)" 200
 
 # ─── Traceroutes ───────────────────────────────────────────
 
@@ -248,6 +264,8 @@ echo ""
 echo -e "${BLUE}=== Traceroutes ===${NC}"
 
 check "GET /api/traceroutes/recent" "$(api GET /api/traceroutes/recent)" 200
+check "GET /api/route-segments/record-holder" "$(api GET /api/route-segments/record-holder)" 200
+check "GET /api/route-segments/longest-active" "$(api GET /api/route-segments/longest-active)" 200
 
 # ─── Neighbors ─────────────────────────────────────────────
 
@@ -267,6 +285,8 @@ echo ""
 echo -e "${BLUE}=== Channels ===${NC}"
 
 check "GET /api/channels" "$(api GET /api/channels)" 200
+check "GET /api/channels/all" "$(api GET /api/channels/all)" 200
+check "GET /api/channels/debug" "$(api GET /api/channels/debug)" 200
 
 # ─── Packets ──────────────────────────────────────────────
 
@@ -278,6 +298,7 @@ check "GET /api/packets?limit=10" "$(api GET '/api/packets?limit=10')" 200
 check "GET /api/packets/stats" "$(api GET /api/packets/stats)" 200
 check "GET /api/packets/stats/distribution" "$(api GET /api/packets/stats/distribution)" 200
 check "GET /api/packets/relay-nodes" "$(api GET /api/packets/relay-nodes)" 200
+check "GET /api/packets/export?limit=10" "$(api GET '/api/packets/export?limit=10')" 200
 
 # ─── Audit ─────────────────────────────────────────────────
 
@@ -296,6 +317,7 @@ echo -e "${BLUE}=== Security ===${NC}"
 check "GET /api/security/issues" "$(api GET /api/security/issues)" 200
 check "GET /api/security/scanner/status" "$(api GET /api/security/scanner/status)" 200
 check "GET /api/security/key-mismatches" "$(api GET /api/security/key-mismatches)" 200
+check "GET /api/security/export" "$(api GET /api/security/export)" 200
 
 # ─── User Management ──────────────────────────────────────
 
@@ -314,6 +336,7 @@ for u in users:
 
 check "GET /api/users/:id" "$(api GET /api/users/$ADMIN_ID)" 200
 check "GET /api/users/:id/permissions" "$(api GET /api/users/$ADMIN_ID/permissions)" 200
+check "GET /api/users/:id/channel-database-permissions" "$(api GET /api/users/$ADMIN_ID/channel-database-permissions)" 200
 
 # Create test user with unique name (deactivate doesn't free the username)
 TEST_USERNAME="apitest_$(date +%s)"
@@ -358,6 +381,12 @@ echo -e "${BLUE}=== Settings ===${NC}"
 
 check "GET /api/settings" "$(api GET /api/settings)" 200
 check "POST /api/settings (no-op)" "$(api POST /api/settings '{}')" 200
+check "GET /api/settings/traceroute-nodes" "$(api GET /api/settings/traceroute-nodes)" 200
+check "GET /api/settings/traceroute-log" "$(api GET /api/settings/traceroute-log)" 200
+check "GET /api/settings/time-sync-nodes" "$(api GET /api/settings/time-sync-nodes)" 200
+check "GET /api/settings/auto-ping" "$(api GET /api/settings/auto-ping)" 200
+check "GET /api/settings/key-repair-log" "$(api GET /api/settings/key-repair-log)" 200
+check "GET /api/settings/distance-delete/log" "$(api GET /api/settings/distance-delete/log)" 200
 
 # ─── Channel Database ─────────────────────────────────────
 
@@ -381,20 +410,38 @@ echo ""
 echo -e "${BLUE}=== Solar ===${NC}"
 
 check "GET /api/solar/estimates" "$(api GET /api/solar/estimates)" 200
+check "GET /api/solar/estimates/range" "$(api GET '/api/solar/estimates/range?start=0&end=9999999999999')" 200
 
-# ─── Notifications ─────────────────────────────────────────
+# ─── Push Notifications ───────────────────────────────────
 
 echo ""
-echo -e "${BLUE}=== Notifications ===${NC}"
+echo -e "${BLUE}=== Push Notifications ===${NC}"
 
-check "GET /api/settings (notification prefs via settings)" "$(api GET /api/settings)" 200
+check "GET /api/push/status" "$(api GET /api/push/status)" 200
+check "GET /api/push/vapid-key" "$(api GET /api/push/vapid-key)" 200
+check "GET /api/push/preferences" "$(api GET /api/push/preferences)" 200
+
+# ─── Apprise ──────────────────────────────────────────────
+
+echo ""
+echo -e "${BLUE}=== Apprise ===${NC}"
+
+check "GET /api/apprise/status" "$(api GET /api/apprise/status)" 200
+check "GET /api/apprise/urls" "$(api GET /api/apprise/urls)" 200
 
 # ─── Themes ────────────────────────────────────────────────
 
 echo ""
 echo -e "${BLUE}=== Custom Themes ===${NC}"
 
-check "GET /api/settings (themes via settings)" "$(api GET /api/settings)" 200
+check "GET /api/themes" "$(api GET /api/themes)" 200
+
+# ─── Map Preferences ──────────────────────────────────────
+
+echo ""
+echo -e "${BLUE}=== Map Preferences ===${NC}"
+
+check "GET /api/user/map-preferences" "$(api GET /api/user/map-preferences)" 200
 
 # ─── Embed Profiles ───────────────────────────────────────
 
@@ -403,12 +450,48 @@ echo -e "${BLUE}=== Embed Profiles ===${NC}"
 
 check "GET /api/embed-profiles" "$(api GET /api/embed-profiles)" 200
 
+# ─── Maintenance ──────────────────────────────────────────
+
+echo ""
+echo -e "${BLUE}=== Maintenance ===${NC}"
+
+check "GET /api/maintenance/status" "$(api GET /api/maintenance/status)" 200
+check "GET /api/maintenance/size" "$(api GET /api/maintenance/size)" 200
+
+# ─── Backups ──────────────────────────────────────────────
+
+echo ""
+echo -e "${BLUE}=== Backups ===${NC}"
+
+check "GET /api/backup/list" "$(api GET /api/backup/list)" 200
+check "GET /api/backup/settings" "$(api GET /api/backup/settings)" 200
+check "GET /api/system/backup/list" "$(api GET /api/system/backup/list)" 200
+check "GET /api/system/backup/settings" "$(api GET /api/system/backup/settings)" 200
+check "GET /api/system/status" "$(api GET /api/system/status)" 200
+
+# ─── Ghost Nodes ──────────────────────────────────────────
+
+echo ""
+echo -e "${BLUE}=== Ghost Nodes ===${NC}"
+
+check "GET /api/admin/suppressed-ghosts" "$(api GET /api/admin/suppressed-ghosts)" 200
+
+# ─── Announcements ────────────────────────────────────────
+
+echo ""
+echo -e "${BLUE}=== Announcements ===${NC}"
+
+check "GET /api/announce/last" "$(api GET /api/announce/last)" 200
+check "GET /api/announce/preview" "$(api GET /api/announce/preview)" 200 400
+
 # ─── Firmware ──────────────────────────────────────────────
 
 echo ""
 echo -e "${BLUE}=== Firmware ===${NC}"
 
 check "GET /api/firmware/status" "$(api GET /api/firmware/status)" 200
+check "GET /api/firmware/releases" "$(api GET /api/firmware/releases)" 200
+check "GET /api/firmware/backups" "$(api GET /api/firmware/backups)" 200
 
 # ─── Upgrade ───────────────────────────────────────────────
 
@@ -416,6 +499,7 @@ echo ""
 echo -e "${BLUE}=== Upgrade ===${NC}"
 
 check "GET /api/upgrade/history" "$(api GET /api/upgrade/history)" 200
+check "GET /api/upgrade/status" "$(api GET /api/upgrade/status)" 200
 
 # ─── MeshCore ──────────────────────────────────────────────
 
@@ -423,6 +507,9 @@ echo ""
 echo -e "${BLUE}=== MeshCore ===${NC}"
 
 check "GET /api/meshcore/status" "$(api GET /api/meshcore/status)" 200 404
+check "GET /api/meshcore/nodes" "$(api GET /api/meshcore/nodes)" 200 404
+check "GET /api/meshcore/contacts" "$(api GET /api/meshcore/contacts)" 200 404
+check "GET /api/meshcore/messages" "$(api GET /api/meshcore/messages)" 200 404
 
 # ─── V1 API ───────────────────────────────────────────────
 
@@ -460,6 +547,10 @@ if [ -n "$API_TOKEN" ]; then
   check "GET /api/v1/packets" "$(v1 GET /api/v1/packets)" 200
   check "GET /api/v1/channel-database" "$(v1 GET /api/v1/channel-database)" 200
   check "GET /api/v1/solar" "$(v1 GET /api/v1/solar)" 200
+  check "GET /api/v1/solar/range" "$(v1 GET '/api/v1/solar/range?start=0&end=9999999999999')" 200
+  check "GET /api/v1/messages/search?q=test" "$(v1 GET '/api/v1/messages/search?q=test')" 200
+  check "GET /api/v1/docs/openapi.json" "$(v1 GET /api/v1/docs/openapi.json)" 200
+  check "GET /api/v1/docs/openapi.yaml" "$(v1 GET /api/v1/docs/openapi.yaml)" 200
 
   if [ -n "$FIRST_NODE_ID" ]; then
     check "GET /api/v1/nodes/:nodeId" "$(v1 GET /api/v1/nodes/$FIRST_NODE_ID)" 200
