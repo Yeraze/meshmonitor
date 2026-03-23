@@ -3031,6 +3031,18 @@ class MeshtasticManager {
     // Check if we already have this node with actual names in the database
     const existingNode = await databaseService.nodes.getNode(nodeNum);
 
+    // Clear any erroneous security flags on the local node — we can't have a key mismatch with ourselves
+    if (existingNode?.keyMismatchDetected || existingNode?.keySecurityIssueDetails) {
+      logger.info(`🔐 Clearing erroneous security flags on local node ${nodeId}`);
+      await databaseService.nodes.upsertNode({
+        nodeNum,
+        nodeId,
+        keyMismatchDetected: false,
+        keySecurityIssueDetails: null,
+      });
+      dataEventEmitter.emitNodeUpdate(nodeNum, { keyMismatchDetected: false, keySecurityIssueDetails: undefined });
+    }
+
     if (existingNode && existingNode.longName && existingNode.longName !== 'Local Device') {
       // We already have real node info, use it and lock it
       this.localNodeInfo = {
@@ -3761,8 +3773,10 @@ class MeshtasticManager {
           packetId: meshPacket.id ? Number(meshPacket.id) : undefined,
         });
 
-        // Update Link Quality based on hop count comparison
-        this.updateLinkQualityForMessage(fromNum, messageHops);
+        // Update Link Quality based on hop count comparison (skip local node — our own echoed packets aren't meaningful)
+        if (!this.localNodeInfo || fromNum !== this.localNodeInfo.nodeNum) {
+          this.updateLinkQualityForMessage(fromNum, messageHops);
+        }
       }
     }
 
@@ -5347,7 +5361,8 @@ class MeshtasticManager {
           const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
           // PKI errors from our local node (couldn't encrypt to target)
-          if (isPkiError(errorReason) && fromNodeId === localNodeId) {
+          // Skip if target is our own node — can't have a key mismatch with ourselves
+          if (isPkiError(errorReason) && fromNodeId === localNodeId && toNodeId !== localNodeId) {
             const errorDescription = errorReason === RoutingError.PKI_FAILED
               ? 'PKI encryption failed — your radio\'s stored key for this node may be outdated. Click "Exchange Node Info" to re-sync keys with the radio.'
               : 'Your radio does not have this node\'s public key (even though MeshMonitor does). Click "Exchange Node Info" to push the key to your radio, or purge the node to force a fresh key exchange.';
@@ -5365,7 +5380,8 @@ class MeshtasticManager {
           }
 
           // NO_CHANNEL from the target node (it couldn't decrypt our request)
-          if (errorReason === RoutingError.NO_CHANNEL && fromNodeId === toNodeId) {
+          // Skip if the target is our own local node — we can't have a key mismatch with ourselves
+          if (errorReason === RoutingError.NO_CHANNEL && fromNodeId === toNodeId && toNodeId !== localNodeId) {
             const existingNode = await databaseService.nodes.getNode(toNum);
             if (!existingNode?.keyMismatchDetected) {
               const errorDescription = 'NO_CHANNEL error on request - target node rejected the message. ' +
@@ -5394,7 +5410,8 @@ class MeshtasticManager {
 
       // Detect PKI/encryption errors and flag the target node
       // Only flag if the error is from our local radio (we couldn't encrypt to target)
-      if (isPkiError(errorReason) && fromNodeId === localNodeId) {
+      // Skip if target is our own node — can't have a key mismatch with ourselves
+      if (isPkiError(errorReason) && fromNodeId === localNodeId && targetNodeId !== localNodeId) {
         if (originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
 
@@ -5419,7 +5436,7 @@ class MeshtasticManager {
       // Detect NO_CHANNEL errors on DMs from the target node — this can indicate a
       // key/channel mismatch where the firmware used the wrong encryption context.
       // Flag it for Auto Key Management to attempt repair via NodeInfo exchange.
-      if (errorReason === RoutingError.NO_CHANNEL && isDM && fromNodeId === targetNodeId) {
+      if (errorReason === RoutingError.NO_CHANNEL && isDM && fromNodeId === targetNodeId && targetNodeId !== localNodeId) {
         if (originalMessage.toNodeNum) {
           const targetNodeNum = originalMessage.toNodeNum;
           const errorDescription = 'NO_CHANNEL error on DM - target node rejected the message. ' +
