@@ -481,14 +481,25 @@ export const migration = {
     db.exec(`
       CREATE TABLE IF NOT EXISTS user_map_preferences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userId INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
         centerLat REAL,
         centerLng REAL,
         zoom REAL,
         selectedLayer TEXT,
+        map_tileset TEXT,
+        show_paths INTEGER DEFAULT 0,
+        show_neighbor_info INTEGER DEFAULT 0,
+        show_route INTEGER DEFAULT 1,
+        show_motion INTEGER DEFAULT 1,
+        show_mqtt_nodes INTEGER DEFAULT 1,
+        show_meshcore_nodes INTEGER DEFAULT 1,
+        show_animations INTEGER DEFAULT 0,
+        show_accuracy_regions INTEGER DEFAULT 0,
+        show_estimated_positions INTEGER DEFAULT 0,
+        position_history_hours INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `);
 
