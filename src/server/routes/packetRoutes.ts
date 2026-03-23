@@ -8,6 +8,12 @@ import { PortNum } from '../constants/meshtastic.js';
 
 const BROADCAST_NODE = 4294967295; // 0xFFFFFFFF
 
+/** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
+function normalizeSinceToMs(value: string): number {
+  const n = parseInt(value, 10);
+  return n < 10_000_000_000 ? n * 1000 : n;
+}
+
 const router = express.Router();
 
 /**
@@ -140,7 +146,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     const to_node = req.query.to_node ? parseInt(req.query.to_node as string, 10) : undefined;
     const channel = req.query.channel ? parseInt(req.query.channel as string, 10) : undefined;
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
-    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
 
     const isAdmin = (req as any).isAdmin;
@@ -214,7 +220,7 @@ router.get('/stats', requirePacketPermissions, async (_req, res) => {
  * GET /api/packets/stats/distribution
  * Get packet distribution by device and by type
  * Query params:
- *   - since: Unix timestamp (seconds) to filter packets from
+ *   - since: Unix timestamp (seconds or milliseconds, auto-detected) to filter packets from
  */
 router.get('/stats/distribution', requirePacketPermissions, async (req, res) => {
   try {
@@ -230,7 +236,7 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
       });
     }
 
-    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
     const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
 
@@ -280,7 +286,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     const to_node = req.query.to_node ? parseInt(req.query.to_node as string, 10) : undefined;
     const channel = req.query.channel ? parseInt(req.query.channel as string, 10) : undefined;
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
-    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
 
     const isAdmin = (req as any).isAdmin;

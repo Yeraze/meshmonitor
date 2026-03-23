@@ -226,7 +226,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     event.stopPropagation(); // Prevent row click
     // Set relay node to 0 if undefined/null (triggers "unknown relay" mode in modal)
     setSelectedRelayNode(packet.relay_node ?? 0);
-    setSelectedRxTime(new Date(packet.timestamp * 1000));
+    setSelectedRxTime(new Date(toMs(packet.timestamp)));
     setSelectedMessageRssi(packet.rssi ?? undefined);
 
     // Fetch direct neighbor stats (refresh to ensure up-to-date data)
@@ -295,9 +295,34 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   };
 
-  // Format timestamp — prepend short date for entries before today
+  // Convert timestamp to milliseconds (handles both old seconds and new ms data)
+  const toMs = (ts: number) => ts < 10_000_000_000 ? ts * 1000 : ts;
+
+  // Format date column — "Today" or short date
+  const formatDateColumn = (timestamp: number): string => {
+    const date = new Date(toMs(timestamp));
+    const now = new Date();
+    const isToday = date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+
+    if (isToday) {
+      return t('packet_monitor.today', 'Today');
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    if (dateFormat === 'DD/MM/YYYY') {
+      return `${day}/${month}`;
+    } else if (dateFormat === 'YYYY-MM-DD') {
+      return `${month}-${day}`;
+    }
+    return `${month}/${day}`;
+  };
+
+  // Format time column — time with milliseconds
   const formatTimestamp = (timestamp: number): string => {
-    const date = new Date(timestamp * 1000);
+    const date = new Date(toMs(timestamp));
     const time = date.toLocaleTimeString('en-US', {
       hour12: timeFormat === '12',
       hour: '2-digit',
@@ -305,28 +330,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       second: '2-digit',
     });
     const ms = String(date.getMilliseconds()).padStart(3, '0');
-    const timeStr = `${time}.${ms}`;
-
-    const now = new Date();
-    const isToday = date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth() &&
-      date.getDate() === now.getDate();
-
-    if (isToday) {
-      return timeStr;
-    }
-
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    let dateStr: string;
-    if (dateFormat === 'DD/MM/YYYY') {
-      dateStr = `${day}/${month}`;
-    } else if (dateFormat === 'YYYY-MM-DD') {
-      dateStr = `${month}-${day}`;
-    } else {
-      dateStr = `${month}/${day}`;
-    }
-    return `${dateStr} ${timeStr}`;
+    // Insert ms before AM/PM if 12h format (e.g. "12:09:55 PM" → "12:09:55.979 PM")
+    return timeFormat === '12'
+      ? time.replace(/(\d{2}:\d{2}:\d{2})\s*(AM|PM)/i, `$1.${ms} $2`)
+      : `${time}.${ms}`;
   };
 
   // Calculate hops
@@ -642,6 +649,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <th style={{ width: '60px' }}>#</th>
                     <th style={{ width: '35px' }}>{t('packet_monitor.column.dir')}</th>
                     <th style={{ width: '45px' }}>{t('packet_monitor.column.via')}</th>
+                    <th style={{ width: '55px' }}>{t('packet_monitor.column.date')}</th>
                     <th style={{ width: '110px' }}>{t('packet_monitor.column.time')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
                     <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
@@ -744,9 +752,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             {getTransportMechanismName(packet.transport_mechanism).short}
                           </td>
                           <td
+                            className="date"
+                            style={{ width: '55px' }}
+                          >
+                            {formatDateColumn(packet.timestamp)}
+                          </td>
+                          <td
                             className="timestamp"
                             style={{ width: '110px' }}
-                            title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}
+                            title={formatDateTime(new Date(toMs(packet.timestamp)), timeFormat, dateFormat)}
                           >
                             {formatTimestamp(packet.timestamp)}
                           </td>
