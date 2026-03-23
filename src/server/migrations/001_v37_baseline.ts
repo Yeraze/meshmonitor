@@ -900,6 +900,7 @@ export async function runMigration001Postgres(client: PoolClient): Promise<void>
     "routeBack" TEXT,
     "snrTowards" TEXT,
     "snrBack" TEXT,
+    "routePositions" TEXT,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL
   );
@@ -1521,6 +1522,7 @@ export async function runMigration001Mysql(pool: MySQLPool): Promise<void> {
       routeBack TEXT,
       snrTowards TEXT,
       snrBack TEXT,
+      routePositions TEXT,
       timestamp BIGINT NOT NULL,
       createdAt BIGINT NOT NULL,
       INDEX idx_traceroutes_from_to (fromNodeNum, toNodeNum),
