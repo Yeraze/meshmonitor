@@ -395,14 +395,17 @@ export class UserModel {
    * Get user's map preferences
    */
   getMapPreferences(userId: number): Record<string, any> | null {
-    // Use SELECT * to handle varying column availability across migration states
+    // Detect which user ID column exists (userId vs user_id depending on migration state)
+    const columns = this.db.prepare("PRAGMA table_info(user_map_preferences)").all() as any[];
+    const userIdCol = columns.find((c: any) => c.name === 'user_id') ? 'user_id' : 'userId';
+
     const stmt = this.db.prepare(`
       SELECT * FROM user_map_preferences
-      WHERE user_id = ? OR userId = ?
+      WHERE ${userIdCol} = ?
       LIMIT 1
     `);
 
-    const row = stmt.get(userId, userId) as any;
+    const row = stmt.get(userId) as any;
     if (!row) return null;
 
     return {
