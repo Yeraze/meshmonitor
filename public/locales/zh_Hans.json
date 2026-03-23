@@ -3414,5 +3414,13 @@
     "telemetry_config.health_interval": "健康遥测更新间隔(秒)",
     "telemetry_config.health_interval_description": "多久发送一次健康指标到网状网络",
     "telemetry_config.health_screen": "启用健康页面",
-    "telemetry_config.health_screen_description": "在设备屏幕上显示健康指标"
+    "telemetry_config.health_screen_description": "在设备屏幕上显示健康指标",
+    "nav.search": "查找",
+    "nav.packet_monitor": "数据包监视",
+    "search.button": "查找",
+    "search.case_sensitive": "区分大小写",
+    "search.scope": "范围",
+    "search.scope_all": "所有消息",
+    "search.channels_filter": "频道",
+    "search.sender_filter": "发件人"
 }
