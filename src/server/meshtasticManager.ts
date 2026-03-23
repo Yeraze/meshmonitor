@@ -10870,14 +10870,6 @@ class MeshtasticManager {
     return dbNodes.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
   }
 
-  // Get data from database instead of maintaining in-memory state
-  async getAllNodes(): Promise<DeviceInfo[]> {
-    const dbNodes = await databaseService.nodes.getAllNodes();
-    return await Promise.all(dbNodes.map(async node => {
-      const uptimeTelemetry = await databaseService.telemetry.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
-      return this.mapDbNodeToDeviceInfo(node, uptimeTelemetry?.value);
-    }));
-  }
 
   // Shared mapping logic for converting a DB node to DeviceInfo
   private mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): DeviceInfo {

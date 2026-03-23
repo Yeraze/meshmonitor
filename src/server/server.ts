@@ -836,7 +836,7 @@ setSettingsCallbacks({
  */
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
-    const allNodes = await meshtasticManager.getAllNodes();
+    const allNodes = await meshtasticManager.getAllNodesAsync();
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions
@@ -2150,7 +2150,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get DM unread counts if user has messages permission (batch query)
     if (hasMessagesRead && localNodeInfo) {
       const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId);
-      const allNodes = await meshtasticManager.getAllNodes();
+      const allNodes = await meshtasticManager.getAllNodesAsync();
       const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
       const directMessages: { [nodeId: string]: number } = {};
