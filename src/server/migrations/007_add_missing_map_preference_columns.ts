@@ -14,9 +14,42 @@ import { PoolClient } from 'pg';
 import { Pool as MySQLPool } from 'mysql2/promise';
 import { logger } from '../../utils/logger.js';
 
-export function runMigration083Sqlite(_db: Database.Database): void {
-  // SQLite already has all columns from migration 030 — nothing to do
-  logger.debug('Migration 083: SQLite already has all map preference columns, skipping.');
+export function runMigration083Sqlite(db: Database.Database): void {
+  // v3.7 baseline may not have these columns — add idempotently
+  const columnsToAdd = [
+    { name: 'map_tileset', type: 'TEXT' },
+    { name: 'show_paths', type: 'INTEGER DEFAULT 0' },
+    { name: 'show_neighbor_info', type: 'INTEGER DEFAULT 0' },
+    { name: 'show_route', type: 'INTEGER DEFAULT 1' },
+    { name: 'show_motion', type: 'INTEGER DEFAULT 1' },
+    { name: 'show_mqtt_nodes', type: 'INTEGER DEFAULT 1' },
+    { name: 'show_meshcore_nodes', type: 'INTEGER DEFAULT 1' },
+    { name: 'show_animations', type: 'INTEGER DEFAULT 0' },
+    { name: 'show_accuracy_regions', type: 'INTEGER DEFAULT 0' },
+    { name: 'show_estimated_positions', type: 'INTEGER DEFAULT 0' },
+    { name: 'position_history_hours', type: 'INTEGER' },
+  ];
+
+  for (const col of columnsToAdd) {
+    try {
+      db.exec(`ALTER TABLE user_map_preferences ADD COLUMN ${col.name} ${col.type}`);
+      logger.debug(`✅ Added ${col.name} column to user_map_preferences`);
+    } catch {
+      // Column already exists — ignore
+    }
+  }
+
+  // Also ensure user_id column exists (baseline may have userId instead)
+  try {
+    db.exec(`ALTER TABLE user_map_preferences ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE`);
+    // If we added user_id, populate from userId
+    db.exec(`UPDATE user_map_preferences SET user_id = userId WHERE user_id IS NULL`);
+    logger.debug('✅ Added user_id column to user_map_preferences');
+  } catch {
+    // Column already exists — ignore
+  }
+
+  logger.debug('Migration 083: SQLite map preference columns ensured.');
 }
 
 export async function runMigration083Postgres(client: PoolClient): Promise<void> {
