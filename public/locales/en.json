@@ -1170,6 +1170,8 @@
   "packet_monitor.loading": "Loading packets...",
   "packet_monitor.no_packets": "No packets logged yet",
   "packet_monitor.loading_more": "Loading more packets...",
+  "packet_monitor.column.date": "Date",
+  "packet_monitor.today": "Today",
   "packet_monitor.column.time": "Time",
   "packet_monitor.column.from": "From",
   "packet_monitor.column.to": "To",
