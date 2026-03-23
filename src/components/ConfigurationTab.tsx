@@ -708,7 +708,16 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               if (Array.isArray(key)) {
                 return btoa(String.fromCharCode(...key));
               }
-              return String(key);
+              // Handle JSON-serialized Uint8Array or other objects with numeric values
+              if (key && typeof key === 'object') {
+                try {
+                  const bytes = Object.values(key) as number[];
+                  return btoa(String.fromCharCode(...bytes));
+                } catch {
+                  // fall through
+                }
+              }
+              return '';
             });
             setSecurityAdminKeys(keys.length > 0 ? keys : ['']);
           }
