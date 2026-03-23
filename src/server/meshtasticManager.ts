@@ -2723,7 +2723,7 @@ class MeshtasticManager {
                     logger.warn(`⚠️ Low-entropy key detected for local node ${localNodeId}!`);
                   } else {
                     updateData.keyIsLowEntropy = false;
-                    updateData.keySecurityIssueDetails = undefined;
+                    updateData.keySecurityIssueDetails = null;
                   }
 
                   await databaseService.nodes.upsertNode(updateData);
@@ -4322,7 +4322,7 @@ class MeshtasticManager {
           // Explicitly clear the flag when key is NOT low-entropy
           // This ensures that if a node regenerates their key, the flag is cleared immediately
           nodeData.keyIsLowEntropy = false;
-          nodeData.keySecurityIssueDetails = undefined;
+          nodeData.keySecurityIssueDetails = null;
         }
 
         // Check if this node had a key mismatch that is now fixed
@@ -4398,10 +4398,10 @@ class MeshtasticManager {
             }
 
             nodeData.keyMismatchDetected = false;
-            nodeData.lastMeshReceivedKey = undefined;
+            nodeData.lastMeshReceivedKey = null;
             // Don't clear keySecurityIssueDetails if there's a low-entropy issue
             if (!isLowEntropy) {
-              nodeData.keySecurityIssueDetails = undefined;
+              nodeData.keySecurityIssueDetails = null;
             }
 
             // Clear the repair state and log success
@@ -5884,7 +5884,7 @@ class MeshtasticManager {
               // Explicitly clear the flag when key is NOT low-entropy
               // This ensures that if a node regenerates their key, the flag is cleared immediately
               nodeData.keyIsLowEntropy = false;
-              nodeData.keySecurityIssueDetails = undefined;
+              nodeData.keySecurityIssueDetails = null;
             }
           }
         }
