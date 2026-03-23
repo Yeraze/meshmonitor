@@ -12,13 +12,18 @@ import { getEnvironmentConfig } from '../config/environment.js';
 
 let oidcConfig: client.Configuration | null = null;
 let isInitialized = false;
+let oidcWantedButFailed = false;
+let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+const RETRY_DELAY_MS = 30_000; // Retry every 30 seconds on failure
+const MAX_RETRIES = 10;
+let retryCount = 0;
 
 /**
  * Initialize OIDC client
  */
 export async function initializeOIDC(): Promise<boolean> {
-  if (isInitialized) {
-    return oidcConfig !== null;
+  if (isInitialized && oidcConfig !== null) {
+    return true;
   }
 
   const env = getEnvironmentConfig();
@@ -48,19 +53,53 @@ export async function initializeOIDC(): Promise<boolean> {
 
     logger.debug('✅ OIDC client initialized successfully');
     isInitialized = true;
+    oidcWantedButFailed = false;
+    retryCount = 0;
     return true;
   } catch (error) {
     logger.error('❌ Failed to initialize OIDC client:', error);
+    oidcWantedButFailed = true;
     isInitialized = true;
+    scheduleRetry();
     return false;
   }
 }
 
 /**
+ * Schedule a retry of OIDC initialization after a transient failure
+ */
+function scheduleRetry(): void {
+  if (retryTimeout) return; // Already scheduled
+  if (retryCount >= MAX_RETRIES) {
+    logger.error(`❌ OIDC initialization failed after ${MAX_RETRIES} retries — giving up. Restart the server to try again.`);
+    return;
+  }
+
+  retryCount++;
+  logger.info(`🔄 Scheduling OIDC retry ${retryCount}/${MAX_RETRIES} in ${RETRY_DELAY_MS / 1000}s...`);
+  retryTimeout = setTimeout(async () => {
+    retryTimeout = null;
+    isInitialized = false; // Allow re-initialization
+    await initializeOIDC();
+  }, RETRY_DELAY_MS);
+}
+
+/**
+ * Clean up pending retry timers for graceful shutdown
+ */
+export function cleanupOIDC(): void {
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+}
+
+/**
  * Check if OIDC is enabled and initialized
+ * Returns true if OIDC is configured (even if init temporarily failed and is retrying)
  */
 export function isOIDCEnabled(): boolean {
-  return oidcConfig !== null;
+  return oidcConfig !== null || oidcWantedButFailed;
 }
 
 /**
