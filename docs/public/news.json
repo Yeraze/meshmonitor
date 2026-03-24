@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-03-15T18:00:00Z",
+  "lastUpdated": "2026-03-24T20:00:00Z",
   "items": [
+    {
+      "minVersion": "3.10.0",
+      "id": "news-2026-03-24-v3.10.0-database-refactor",
+      "title": "MeshMonitor v3.10.0 — Major Database Refactoring & Channel Management",
+      "content": "MeshMonitor v3.10.0 is a major release featuring a comprehensive database architecture overhaul — **5,672 lines of code removed** across 278 files while adding new features and fixing dozens of bugs.\n\n## New Features\n\n- **Channel drag-and-drop reorder** — Rearrange device channel slots with automatic message history migration so your chat history follows the channel\n- **Dead nodes report** — New Security tab section showing nodes not heard from in 7+ days with bulk delete capability\n- **Rsyslog server setting** — Configure remote syslog server in Device Configuration > Network\n- **Polar grid map overlay** — Visual polar grid overlay for directional analysis\n- **Configurable default map center** — Set your preferred starting map location\n- **Auto responder environment variables** — Expose auto responder tokens as environment variables for external scripts\n- **Millisecond packet timestamps** — Sub-second precision in packet monitor with dedicated date column\n- **OIDC retry on failure** — Authentication no longer permanently disables if OIDC provider is temporarily unavailable\n\n## Database Architecture Improvements\n\n- **Full async migration** — All synchronous database calls replaced with async equivalents across all three backends\n- **Repository pattern** — Monolithic DatabaseService decomposed into domain-specific repositories (nodes, messages, telemetry, channels, etc.)\n- **Centralized migration registry** — Clean v3.7 baseline with standardized migration system\n- **N+1 query elimination** — Bulk queries replace per-node loops in security scanner, neighbor info, and node listing\n- **Cross-database helpers** — New `col()`, `upsert()`, `insertIgnore()`, and `getAffectedRows()` helpers eliminate backend-specific branching\n\n## Bug Fixes\n\n- Channel database no longer shadows device channels with the same PSK\n- PostgreSQL connection pool exhaustion with large meshes (200+ nodes)\n- Local node no longer self-flags security warnings or bounces link quality\n- Key mismatch warnings now properly clear after resolution on all backends\n- Traceroute race conditions and duplication issues resolved\n- Admin keys no longer show as [object Object] in security config\n- MQTT detection and visual distinction in traceroutes improved\n- Packet monitor shows node names instead of hex IDs on PostgreSQL",
+      "date": "2026-03-24T20:00:00Z",
+      "category": "release",
+      "priority": "important"
+    },
     {
       "minVersion": "3.9.4",
       "id": "news-2026-03-15-distance-delete-traceroute",
