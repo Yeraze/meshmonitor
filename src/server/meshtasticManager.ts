@@ -3988,22 +3988,39 @@ class MeshtasticManager {
             logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
           }
 
-          // Dual-channel insertion: if server-decrypted and the packet has a radio channel,
-          // also insert a copy in the radio channel so both views show the message (#2375)
-          if (!isDirectMessage && context?.decryptedBy === 'server' && meshPacket.channel !== undefined) {
-            const radioChannelIndex = meshPacket.channel;
-            const radioChannel = await databaseService.channels.getChannelById(radioChannelIndex);
-            if (radioChannel) {
-              const radioCopy: TextMessage = {
+          // Dual-channel insertion for server-decrypted messages (#2375, #2413)
+          // Messages should appear in BOTH the device channel and database channel views
+          if (!isDirectMessage && context?.decryptedBy === 'server' && context?.decryptedChannelId !== undefined) {
+            if (channelIndex < CHANNEL_DB_OFFSET) {
+              // Primary went to device channel — also insert into database channel
+              const dbChannelIndex = CHANNEL_DB_OFFSET + context.decryptedChannelId;
+              const dbCopy: TextMessage = {
                 ...message,
-                id: `${message.id}_radio`,
-                channel: radioChannelIndex,
+                id: `${message.id}_dbchan`,
+                channel: dbChannelIndex,
                 decryptedBy: 'server',
               };
-              const radioInserted = await databaseService.messages.insertMessage(radioCopy);
-              if (radioInserted) {
-                dataEventEmitter.emitNewMessage(radioCopy as any);
-                logger.debug(`💾 Also saved to radio channel ${radioChannelIndex} ("${radioChannel.name}")`);
+              const dbInserted = await databaseService.messages.insertMessage(dbCopy);
+              if (dbInserted) {
+                dataEventEmitter.emitNewMessage(dbCopy as any);
+                logger.debug(`💾 Also saved to database channel ${dbChannelIndex}`);
+              }
+            } else if (meshPacket.channel !== undefined) {
+              // Primary went to database channel — also insert into radio channel if it exists
+              const radioChannelIndex = meshPacket.channel;
+              const radioChannel = await databaseService.channels.getChannelById(radioChannelIndex);
+              if (radioChannel) {
+                const radioCopy: TextMessage = {
+                  ...message,
+                  id: `${message.id}_radio`,
+                  channel: radioChannelIndex,
+                  decryptedBy: 'server',
+                };
+                const radioInserted = await databaseService.messages.insertMessage(radioCopy);
+                if (radioInserted) {
+                  dataEventEmitter.emitNewMessage(radioCopy as any);
+                  logger.debug(`💾 Also saved to radio channel ${radioChannelIndex} ("${radioChannel.name}")`);
+                }
               }
             }
           }
