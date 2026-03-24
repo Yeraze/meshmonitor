@@ -159,7 +159,7 @@
     "auth.oidc_failed": "Не удалось запустить логин OIDC",
     "auth.local_disabled_no_oidc": "Локальная аутентификация отключена, и OIDC не настроен. Пожалуйста, свяжитесь с администратором.",
     "nodes.title": "Ноды",
-    "nodes.map": "Карта",
+    "nodes.map": "Вид карты",
     "nodes.list": "Список нод",
     "nodes.node_details": "Детали ноды",
     "nodes.expand_node_list": "Развернуть список нод",
@@ -3700,5 +3700,14 @@
     "channels_config.location_enabled": "Местоположение: Включено",
     "admin_commands.mark_licensed": "Лицензия (HAM)",
     "admin_commands.mark_licensed_description": "Укажите, что вы являетесь лицензированным радиолюбителем. Полное имя должно совпадать с номером лицензии.",
-    "node_identity.is_licensed": "Лицензия (HAM)"
+    "node_identity.is_licensed": "Лицензия (HAM)",
+    "settings.notifications_and_security": "Уведомления & Безопасность",
+    "settings.units_and_formats": "Единицы измерения & Форматы",
+    "settings.sorting": "Сортировка",
+    "settings.appearance": "Внешний вид",
+    "settings.map": "Карта",
+    "settings.telemetry": "Телеметрия",
+    "firmware.title": "Обновления прошивки",
+    "firmware.description": "Управление обновлениями прошивки для вашего узла.",
+    "firmware.not_ota_capable": "Ваше оборудование не поддерживает обновления Wi-Fi по воздуху (OTA)."
 }
