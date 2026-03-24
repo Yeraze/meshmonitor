@@ -127,6 +127,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPsk, setWifiPsk] = useState('');
   const [ntpServer, setNtpServer] = useState('');
+  const [rsyslogServer, setRsyslogServer] = useState('');
   const [addressMode, setAddressMode] = useState(0);
   const [ipv4Address, setIpv4Address] = useState('');
   const [ipv4Gateway, setIpv4Gateway] = useState('');
@@ -488,6 +489,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setWifiSsid(config.deviceConfig.network.wifiSsid || '');
           setWifiPsk(config.deviceConfig.network.wifiPsk || '');
           setNtpServer(config.deviceConfig.network.ntpServer || '');
+          setRsyslogServer(config.deviceConfig.network.rsyslogServer || '');
           setAddressMode(config.deviceConfig.network.addressMode ?? 0);
           // Static IP config
           if (config.deviceConfig.network.ipv4Config) {
@@ -1015,6 +1017,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         wifiSsid,
         wifiPsk,
         ntpServer,
+        rsyslogServer,
         addressMode,
         // Static IP config - only include if using static address mode
         ipv4Config: addressMode === 1 ? {
@@ -1702,6 +1705,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         // Update remaining network fields
         if (net.wifiPsk !== undefined) setWifiPsk(net.wifiPsk);
         if (net.ntpServer !== undefined) setNtpServer(net.ntpServer);
+        if (net.rsyslogServer !== undefined) setRsyslogServer(net.rsyslogServer);
         if (net.ipv4Config) {
           if (net.ipv4Config.ip !== undefined) setIpv4Address(net.ipv4Config.ip);
           if (net.ipv4Config.gateway !== undefined) setIpv4Gateway(net.ipv4Config.gateway);
@@ -2295,6 +2299,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setWifiPsk={setWifiPsk}
             ntpServer={ntpServer}
             setNtpServer={setNtpServer}
+            rsyslogServer={rsyslogServer}
+            setRsyslogServer={setRsyslogServer}
             addressMode={addressMode}
             setAddressMode={setAddressMode}
             ipv4Address={ipv4Address}
