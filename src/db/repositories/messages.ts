@@ -7,6 +7,7 @@
 import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * Repository for message operations
@@ -403,5 +404,82 @@ export class MessagesRepository extends BaseRepository {
       .offset(offset);
 
     return { messages: this.normalizeBigInts(messages) as DbMessage[], total };
+  }
+
+  /**
+   * Migrate messages when channels are moved between slots.
+   * Runs all updates in a single transaction — rolls back entirely on any error.
+   *
+   * @param moves - Array of {from, to} slot pairs. Handles swaps automatically.
+   * @returns {success, totalRowsAffected} or throws on failure (transaction rolled back)
+   */
+  async migrateMessagesForChannelMoves(moves: { from: number; to: number }[]): Promise<{ success: boolean; totalRowsAffected: number }> {
+    if (moves.length === 0) return { success: true, totalRowsAffected: 0 };
+
+    const TEMP_CHANNEL = -99;
+    let totalRowsAffected = 0;
+
+    // Detect swaps: if A→B and B→A both exist
+    const swapPairs = new Set<string>();
+    for (const move of moves) {
+      const reverse = moves.find(m => m.from === move.to && m.to === move.from);
+      if (reverse) {
+        const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
+        swapPairs.add(key);
+      }
+    }
+
+    // Build ordered SQL operations
+    const operations: { sql: any; description: string }[] = [];
+
+    // Process swaps first (need temp value to avoid conflicts)
+    const processedSwaps = new Set<string>();
+    for (const move of moves) {
+      const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
+      if (swapPairs.has(key) && !processedSwaps.has(key)) {
+        processedSwaps.add(key);
+        const a = Math.min(move.from, move.to);
+        const b = Math.max(move.from, move.to);
+        operations.push(
+          { sql: sql`UPDATE messages SET channel = ${TEMP_CHANNEL} WHERE channel = ${a}`, description: `swap step 1: channel ${a} → temp` },
+          { sql: sql`UPDATE messages SET channel = ${a} WHERE channel = ${b}`, description: `swap step 2: channel ${b} → ${a}` },
+          { sql: sql`UPDATE messages SET channel = ${b} WHERE channel = ${TEMP_CHANNEL}`, description: `swap step 3: temp → ${b}` }
+        );
+      }
+    }
+
+    // Process simple moves (not part of a swap)
+    for (const move of moves) {
+      const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
+      if (!swapPairs.has(key)) {
+        operations.push(
+          { sql: sql`UPDATE messages SET channel = ${move.to} WHERE channel = ${move.from}`, description: `move: channel ${move.from} → ${move.to}` }
+        );
+      }
+    }
+
+    // Execute all operations in a transaction
+    try {
+      await this.executeRun(sql`BEGIN`);
+
+      for (const op of operations) {
+        const result = await this.executeRun(op.sql);
+        const rows = this.getAffectedRows(result);
+        totalRowsAffected += rows;
+        logger.info(`📦 Message migration: ${op.description} (${rows} rows)`);
+      }
+
+      await this.executeRun(sql`COMMIT`);
+      logger.info(`📦 Message migration complete: ${moves.length} move(s), ${totalRowsAffected} total rows affected`);
+      return { success: true, totalRowsAffected };
+    } catch (error) {
+      logger.error('📦 Message migration failed, rolling back:', error);
+      try {
+        await this.executeRun(sql`ROLLBACK`);
+      } catch (rollbackError) {
+        logger.error('📦 Rollback also failed:', rollbackError);
+      }
+      throw error;
+    }
   }
 }

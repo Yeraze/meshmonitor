@@ -2360,6 +2360,53 @@ apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), as
   }
 });
 
+/**
+ * Detect channel moves/swaps by comparing PSKs before and after a change.
+ * Returns an array of {from, to} slot pairs indicating where channels moved.
+ */
+function detectChannelMoves(
+  before: { id: number; psk?: string | null }[],
+  after: { id: number; psk?: string | null }[]
+): { from: number; to: number }[] {
+  const moves: { from: number; to: number }[] = [];
+
+  for (const oldCh of before) {
+    if (!oldCh.psk || oldCh.psk === '') continue;
+    const newCh = after.find(ch => ch.psk === oldCh.psk && ch.id !== oldCh.id);
+    if (newCh) {
+      // This PSK moved from oldCh.id to newCh.id
+      // Avoid duplicates (swap would register A→B and B→A)
+      if (!moves.find(m => m.from === newCh.id && m.to === oldCh.id)) {
+        moves.push({ from: oldCh.id, to: newCh.id });
+      }
+    }
+  }
+
+  return moves;
+}
+
+/**
+ * Snapshot channel slots and migrate messages after a channel configuration change.
+ * Call snapshotBefore() before applying changes, then migrateIfNeeded() after.
+ */
+async function snapshotChannelsBeforeChange() {
+  return (await databaseService.channels.getAllChannels()).map(ch => ({ id: ch.id, psk: ch.psk }));
+}
+
+async function migrateMessagesIfChannelsMoved(beforeSnapshot: { id: number; psk?: string | null }[]) {
+  try {
+    const afterSnapshot = (await databaseService.channels.getAllChannels()).map(ch => ({ id: ch.id, psk: ch.psk }));
+    const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
+    if (moves.length > 0) {
+      logger.info(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
+      await databaseService.messages.migrateMessagesForChannelMoves(moves);
+    }
+  } catch (error) {
+    logger.error('📦 Failed to migrate messages after channel change:', error);
+    // Don't fail the channel operation — message migration is best-effort
+  }
+}
+
 // Update a channel configuration
 apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (req, res) => {
   try {
@@ -2405,6 +2452,9 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
       return res.status(404).json({ error: 'Channel not found' });
     }
 
+    // Snapshot channels before change for message migration
+    const beforeSnapshot = await snapshotChannelsBeforeChange();
+
     // Prepare the updated channel data
     const updatedChannelData = {
       id: channelId,
@@ -2437,6 +2487,9 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
       logger.error(`⚠️ Failed to send channel ${channelId} config to device:`, deviceError);
       // Continue even if device update fails - database is updated
     }
+
+    // Migrate messages if channel PSK moved to a different slot
+    await migrateMessagesIfChannelsMoved(beforeSnapshot);
 
     const updatedChannel = await databaseService.channels.getChannelById(channelId);
     logger.info(`✅ Updated channel ${channelId}: ${name}`);
@@ -2508,6 +2561,9 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
       return !!value;
     };
 
+    // Snapshot channels before change for message migration
+    const beforeSnapshot = await snapshotChannelsBeforeChange();
+
     const importedChannelData = {
       id: slotId,
       name,
@@ -2537,12 +2593,121 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
       // Continue even if device update fails - database is updated
     }
 
+    // Migrate messages if channel PSK moved to a different slot
+    await migrateMessagesIfChannelsMoved(beforeSnapshot);
+
     const importedChannel = await databaseService.channels.getChannelById(slotId);
     logger.info(`✅ Imported channel to slot ${slotId}: ${name}`);
     res.json({ success: true, channel: importedChannel });
   } catch (error) {
     logger.error('Error importing channel:', error);
     res.status(500).json({ error: 'Failed to import channel' });
+  }
+});
+
+// Reorder device channel slots (drag-and-drop)
+apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), async (req, res) => {
+  try {
+    const { newOrder } = req.body;
+
+    // Validate: newOrder must be an array of 8 slot indices [0-7], each used exactly once
+    if (!Array.isArray(newOrder) || newOrder.length !== 8) {
+      return res.status(400).json({ error: 'newOrder must be an array of 8 slot indices' });
+    }
+    const sorted = [...newOrder].sort();
+    if (sorted.some((v, i) => v !== i)) {
+      return res.status(400).json({ error: 'newOrder must contain each slot index 0-7 exactly once' });
+    }
+
+    // Check if anything actually changed
+    const isIdentity = newOrder.every((v: number, i: number) => v === i);
+    if (isIdentity) {
+      return res.json({ success: true, requiresReboot: false });
+    }
+
+    const allChannels = await databaseService.channels.getAllChannels();
+
+    // Build the new channel configs based on the reorder mapping
+    // newOrder[newSlot] = oldSlot — means "new slot i gets the channel from old slot newOrder[i]"
+    const channelsBySlot = new Map(allChannels.map(ch => [ch.id, ch]));
+
+    // Begin edit settings transaction
+    logger.info(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
+    await meshtasticManager.beginEditSettings();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    for (let newSlot = 0; newSlot < 8; newSlot++) {
+      const oldSlot = newOrder[newSlot];
+      if (oldSlot === newSlot) continue; // No change for this slot
+
+      const sourceChannel = channelsBySlot.get(oldSlot);
+      // Slot 0 is always primary, others secondary
+      const role = newSlot === 0 ? 1 : (sourceChannel?.role === 1 ? 2 : (sourceChannel?.role ?? 0));
+
+      if (sourceChannel && sourceChannel.role !== 0) {
+        await meshtasticManager.setChannelConfig(newSlot, {
+          name: sourceChannel.name || '',
+          psk: sourceChannel.psk || undefined,
+          role,
+          uplinkEnabled: sourceChannel.uplinkEnabled ?? true,
+          downlinkEnabled: sourceChannel.downlinkEnabled ?? true,
+          positionPrecision: sourceChannel.positionPrecision ?? undefined,
+        });
+
+        // Update database
+        await databaseService.channels.upsertChannel({
+          id: newSlot,
+          name: sourceChannel.name || '',
+          psk: sourceChannel.psk,
+          role,
+          uplinkEnabled: sourceChannel.uplinkEnabled,
+          downlinkEnabled: sourceChannel.downlinkEnabled,
+          positionPrecision: sourceChannel.positionPrecision,
+        });
+      } else {
+        // Empty/disabled slot
+        await meshtasticManager.setChannelConfig(newSlot, {
+          name: '',
+          psk: undefined,
+          role: 0,
+        });
+        await databaseService.channels.upsertChannel({
+          id: newSlot,
+          name: '',
+          psk: null,
+          role: 0,
+        });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    // Commit to device
+    await meshtasticManager.commitEditSettings();
+    logger.info(`✅ Channel reorder committed`);
+
+    // Migrate messages — derive moves directly from newOrder mapping
+    // newOrder[newSlot] = oldSlot, so messages on oldSlot should move to newSlot
+    const moves: { from: number; to: number }[] = [];
+    for (let newSlot = 0; newSlot < 8; newSlot++) {
+      const oldSlot = newOrder[newSlot];
+      if (oldSlot !== newSlot) {
+        moves.push({ from: oldSlot, to: newSlot });
+      }
+    }
+    if (moves.length > 0) {
+      logger.info(`📦 Channel reorder message migration: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
+      try {
+        await databaseService.messages.migrateMessagesForChannelMoves(moves);
+      } catch (error) {
+        logger.error('📦 Failed to migrate messages after channel reorder:', error);
+      }
+    }
+
+    res.json({ success: true, requiresReboot: true });
+  } catch (error) {
+    logger.error('Error reordering channels:', error);
+    res.status(500).json({ error: 'Failed to reorder channels' });
   }
 });
 
@@ -2681,6 +2846,9 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
       throw new Error('Failed to start configuration transaction');
     }
 
+    // Snapshot channels before change for message migration
+    const beforeSnapshot = await snapshotChannelsBeforeChange();
+
     // Import channels FIRST (before LoRa config to avoid premature reboot)
     const importedChannels = [];
     if (decoded.channels && decoded.channels.length > 0) {
@@ -2741,6 +2909,24 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
         logger.info(`✅ Imported LoRa config`);
       } catch (error) {
         logger.error(`❌ Failed to import LoRa config:`, error);
+      }
+    }
+
+    // Migrate messages before device reboots — build "after" from decoded config
+    // since the DB won't be updated until device reconnects
+    if (decoded.channels && decoded.channels.length > 0) {
+      const afterSnapshot = decoded.channels.map((ch: any, i: number) => ({
+        id: i,
+        psk: ch.psk === 'none' ? null : (ch.psk || null),
+      }));
+      const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
+      if (moves.length > 0) {
+        logger.info(`📦 Detected channel move(s) from config import: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
+        try {
+          await databaseService.messages.migrateMessagesForChannelMoves(moves);
+        } catch (error) {
+          logger.error('📦 Failed to migrate messages after config import:', error);
+        }
       }
     }
 

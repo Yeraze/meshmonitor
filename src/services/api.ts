@@ -380,6 +380,28 @@ class ApiService {
     return result.channel;
   }
 
+  /**
+   * Reorder device channel slots. Accepts the new slot assignment as an array
+   * where the index is the new slot and the value is the old slot index.
+   * E.g., [0, 2, 1, 3, 4, 5, 6, 7] swaps slots 1 and 2.
+   */
+  async reorderDeviceChannels(newOrder: number[]): Promise<{ success: boolean; requiresReboot: boolean }> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/reorder`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify({ newOrder }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reorder channels');
+    }
+
+    return response.json();
+  }
+
   async exportChannel(channelId: number): Promise<void> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/channels/${channelId}/export`, {
