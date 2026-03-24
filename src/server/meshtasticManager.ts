@@ -3906,8 +3906,22 @@ class MeshtasticManager {
         if (isDirectMessage) {
           channelIndex = -1;
         } else if (context?.decryptedBy === 'server' && context?.decryptedChannelId !== undefined) {
-          // Use Channel Database ID + offset for server-decrypted messages
-          channelIndex = CHANNEL_DB_OFFSET + context.decryptedChannelId;
+          // Check if the database channel's PSK matches a device channel — if so, prefer the device channel
+          // This prevents database channels from "shadowing" device channels with the same key (#2375, #2413)
+          const dbChannel = await databaseService.channelDatabase.getByIdAsync(context.decryptedChannelId);
+          const deviceChannels = await databaseService.channels.getAllChannels();
+          const matchingDeviceChannel = dbChannel?.psk
+            ? deviceChannels.find(dc => dc.psk === dbChannel.psk && dc.role !== 0)
+            : null;
+
+          if (matchingDeviceChannel) {
+            // Device channel has the same PSK — use device channel slot instead of database channel
+            channelIndex = matchingDeviceChannel.id;
+            logger.debug(`📡 Server-decrypted message matches device channel ${matchingDeviceChannel.id} ("${matchingDeviceChannel.name}") — using device channel instead of database channel`);
+          } else {
+            // No matching device channel — use Channel Database ID + offset
+            channelIndex = CHANNEL_DB_OFFSET + context.decryptedChannelId;
+          }
         } else {
           channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
         }
