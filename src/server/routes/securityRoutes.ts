@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import meshtasticManager from '../meshtasticManager.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { logger } from '../../utils/logger.js';
 
@@ -331,6 +332,109 @@ router.get('/key-mismatches', async (_req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching key mismatch history:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch key mismatch history' });
+  }
+});
+
+/**
+ * GET /api/security/dead-nodes
+ * Returns nodes not heard from in 7+ days
+ */
+router.get('/dead-nodes', async (_req: Request, res: Response) => {
+  try {
+    const DEAD_NODE_DAYS = 7;
+    const cutoffSeconds = Math.floor(Date.now() / 1000) - (DEAD_NODE_DAYS * 24 * 60 * 60);
+
+    const allNodes = await databaseService.nodes.getAllNodes();
+    const localNodeNum = parseInt(await databaseService.settings.getSetting('localNodeNum') || '0');
+
+    const deadNodes = allNodes
+      .filter(node => {
+        // Exclude local node
+        if (Number(node.nodeNum) === localNodeNum) return false;
+        // Exclude broadcast address
+        if (Number(node.nodeNum) === 0xFFFFFFFF) return false;
+        // Exclude ignored nodes
+        if (node.isIgnored) return false;
+        // Include if never heard or last heard before cutoff
+        if (!node.lastHeard) return true;
+        return Number(node.lastHeard) < cutoffSeconds;
+      })
+      .map(node => ({
+        nodeNum: Number(node.nodeNum),
+        nodeId: node.nodeId,
+        longName: node.longName,
+        shortName: node.shortName,
+        hwModel: node.hwModel,
+        lastHeard: node.lastHeard ? Number(node.lastHeard) : null,
+        inDeviceDb: meshtasticManager.isNodeInDeviceDb(Number(node.nodeNum)),
+      }))
+      .sort((a, b) => (a.lastHeard ?? 0) - (b.lastHeard ?? 0)); // Oldest first
+
+    res.json({ nodes: deadNodes, count: deadNodes.length, thresholdDays: DEAD_NODE_DAYS });
+  } catch (error) {
+    logger.error('Error fetching dead nodes:', error);
+    res.status(500).json({ error: 'Failed to fetch dead nodes' });
+  }
+});
+
+/**
+ * POST /api/security/dead-nodes/bulk-delete
+ * Delete multiple nodes from local DB and optionally from device NodeDB
+ */
+router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { nodeNums } = req.body;
+    const user = (req as any).user;
+
+    if (!Array.isArray(nodeNums) || nodeNums.length === 0) {
+      return res.status(400).json({ error: 'nodeNums must be a non-empty array' });
+    }
+
+    const results: { nodeNum: number; deleted: boolean; removedFromDevice: boolean; error?: string }[] = [];
+
+    for (const nodeNum of nodeNums) {
+      try {
+        const num = Number(nodeNum);
+        let removedFromDevice = false;
+
+        // Remove from device NodeDB if present
+        if (meshtasticManager.isNodeInDeviceDb(num)) {
+          try {
+            await meshtasticManager.sendRemoveNode(num);
+            removedFromDevice = true;
+          } catch (deviceErr) {
+            logger.warn(`⚠️ Failed to remove node ${num} from device:`, deviceErr);
+          }
+        }
+
+        // Delete from local database
+        await databaseService.deleteNodeAsync(num);
+        results.push({ nodeNum: num, deleted: true, removedFromDevice });
+
+        logger.info(`🗑️ Dead node cleanup: deleted node ${num}${removedFromDevice ? ' (+ device)' : ''}`);
+      } catch (err) {
+        logger.error(`Error deleting node ${nodeNum}:`, err);
+        results.push({ nodeNum: Number(nodeNum), deleted: false, removedFromDevice: false, error: String(err) });
+      }
+    }
+
+    const deletedCount = results.filter(r => r.deleted).length;
+
+    // Audit log
+    if (user?.id) {
+      await databaseService.auditLogAsync(
+        user.id,
+        'dead_nodes_cleanup',
+        'nodes',
+        `Bulk deleted ${deletedCount} dead node(s): ${nodeNums.join(', ')}`,
+        req.ip || ''
+      );
+    }
+
+    res.json({ success: true, deletedCount, results });
+  } catch (error) {
+    logger.error('Error bulk deleting dead nodes:', error);
+    res.status(500).json({ error: 'Failed to bulk delete nodes' });
   }
 });
 

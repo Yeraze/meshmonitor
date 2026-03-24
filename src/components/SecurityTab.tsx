@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { TabType } from '../types/ui';
 import { getHardwareModelName } from '../utils/hardwareModel';
+import { logger } from '../utils/logger';
 import '../styles/SecurityTab.css';
 
 interface SecurityNode {
@@ -52,6 +53,22 @@ interface DuplicateKeyGroup {
   nodes: SecurityNode[];
 }
 
+interface DeadNode {
+  nodeNum: number;
+  nodeId: string;
+  longName: string | null;
+  shortName: string | null;
+  hwModel: number | null;
+  lastHeard: number | null;
+  inDeviceDb: boolean;
+}
+
+interface DeadNodesResponse {
+  nodes: DeadNode[];
+  count: number;
+  thresholdDays: number;
+}
+
 interface SecurityTabProps {
   onTabChange?: (tab: TabType) => void;
   onSelectDMNode?: (nodeId: string) => void;
@@ -69,20 +86,26 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [expandedNode, setExpandedNode] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [mismatchEvents, setMismatchEvents] = useState<any[]>([]);
+  const [deadNodes, setDeadNodes] = useState<DeadNode[]>([]);
+  const [selectedDeadNodes, setSelectedDeadNodes] = useState<Set<number>>(new Set());
+  const [isDeletingNodes, setIsDeletingNodes] = useState(false);
 
   const canWrite = hasPermission('security', 'write');
 
   const fetchSecurityData = async () => {
     try {
-      const [issuesData, statusData, mismatchData] = await Promise.all([
+      const [issuesData, statusData, mismatchData, deadNodesData] = await Promise.all([
         api.get<SecurityIssuesResponse>('/api/security/issues'),
         api.get<ScannerStatus>('/api/security/scanner/status'),
-        api.get<{ events: any[] }>('/api/security/key-mismatches')
+        api.get<{ events: any[] }>('/api/security/key-mismatches'),
+        api.get<DeadNodesResponse>('/api/security/dead-nodes')
       ]);
 
       setIssues(issuesData);
       setScannerStatus(statusData);
       setMismatchEvents(mismatchData.events || []);
+      setDeadNodes(deadNodesData.nodes || []);
+      setSelectedDeadNodes(new Set());
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('security.failed_load'));
@@ -237,6 +260,54 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       case 'fixed': return t('security.key_mismatch_status_fixed');
       case 'exhausted': return t('security.key_mismatch_status_exhausted');
       default: return action;
+    }
+  };
+
+  const formatLastHeard = (lastHeard: number | null): string => {
+    if (!lastHeard) return t('security.dead_nodes_never', 'Never');
+    const now = Math.floor(Date.now() / 1000);
+    const diffSeconds = now - lastHeard;
+    const days = Math.floor(diffSeconds / 86400);
+    if (days > 30) {
+      const months = Math.floor(days / 30);
+      return t('security.dead_nodes_months_ago', '{{count}} month(s) ago', { count: months });
+    }
+    return t('security.dead_nodes_days_ago', '{{count}} day(s) ago', { count: days });
+  };
+
+  const toggleDeadNodeSelection = (nodeNum: number) => {
+    setSelectedDeadNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeNum)) next.delete(nodeNum);
+      else next.add(nodeNum);
+      return next;
+    });
+  };
+
+  const toggleAllDeadNodes = () => {
+    if (selectedDeadNodes.size === deadNodes.length) {
+      setSelectedDeadNodes(new Set());
+    } else {
+      setSelectedDeadNodes(new Set(deadNodes.map(n => n.nodeNum)));
+    }
+  };
+
+  const handleBulkDeleteDeadNodes = async () => {
+    if (selectedDeadNodes.size === 0) return;
+    const confirmed = window.confirm(
+      t('security.dead_nodes_confirm_delete', 'Are you sure you want to delete {{count}} node(s)? This cannot be undone.', { count: selectedDeadNodes.size })
+    );
+    if (!confirmed) return;
+
+    setIsDeletingNodes(true);
+    try {
+      await api.post('/api/security/dead-nodes/bulk-delete', { nodeNums: Array.from(selectedDeadNodes) });
+      setSelectedDeadNodes(new Set());
+      await fetchSecurityData();
+    } catch (err) {
+      logger.error('Error bulk deleting dead nodes:', err);
+    } finally {
+      setIsDeletingNodes(false);
     }
   };
 
@@ -705,6 +776,102 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                 </div>
               </div>
             )}
+            {/* Dead Nodes Section */}
+            <div className="issues-section">
+              <h3>{t('security.dead_nodes_title', 'Dead Nodes')} ({deadNodes.length})</h3>
+              {deadNodes.length === 0 ? (
+                <div className="no-issues">
+                  <p>{t('security.dead_nodes_empty', 'No dead nodes found. All nodes have been heard from within the last 7 days.')}</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={toggleAllDeadNodes}
+                      style={{
+                        padding: '0.4rem 0.75rem',
+                        fontSize: '0.85rem',
+                        backgroundColor: 'var(--ctp-surface1)',
+                        color: 'var(--ctp-text)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {selectedDeadNodes.size === deadNodes.length
+                        ? t('security.dead_nodes_deselect_all', 'Deselect All')
+                        : t('security.dead_nodes_select_all', 'Select All')}
+                    </button>
+                    {selectedDeadNodes.size > 0 && canWrite && (
+                      <button
+                        onClick={handleBulkDeleteDeadNodes}
+                        disabled={isDeletingNodes}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          fontSize: '0.85rem',
+                          backgroundColor: 'var(--ctp-red)',
+                          color: 'var(--ctp-base)',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: isDeletingNodes ? 'not-allowed' : 'pointer',
+                          opacity: isDeletingNodes ? 0.6 : 1
+                        }}
+                      >
+                        {isDeletingNodes
+                          ? t('security.dead_nodes_deleting', 'Deleting...')
+                          : t('security.dead_nodes_delete_button', 'Delete {{count}} node(s)', { count: selectedDeadNodes.size })}
+                      </button>
+                    )}
+                  </div>
+                  <table className="top-broadcasters-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '30px' }}></th>
+                        <th>{t('security.dead_nodes_name', 'Name')}</th>
+                        <th>{t('security.dead_nodes_id', 'ID')}</th>
+                        <th>{t('security.dead_nodes_hardware', 'Hardware')}</th>
+                        <th>{t('security.dead_nodes_last_heard', 'Last Heard')}</th>
+                        <th>{t('security.dead_nodes_location', 'Location')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deadNodes.map(node => (
+                        <tr key={node.nodeNum} style={{ opacity: selectedDeadNodes.has(node.nodeNum) ? 1 : 0.8 }}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedDeadNodes.has(node.nodeNum)}
+                              onChange={() => toggleDeadNodeSelection(node.nodeNum)}
+                            />
+                          </td>
+                          <td>
+                            {node.longName || node.shortName || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Unknown</span>}
+                            {node.shortName && node.longName && (
+                              <span style={{ color: 'var(--ctp-subtext0)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>({node.shortName})</span>
+                            )}
+                          </td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{node.nodeId}</td>
+                          <td>{node.hwModel != null ? getHardwareModelName(node.hwModel) : '-'}</td>
+                          <td>{formatLastHeard(node.lastHeard)}</td>
+                          <td>
+                            {node.inDeviceDb ? (
+                              <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--ctp-yellow)' }}>
+                                📡 {t('security.dead_nodes_local_and_device', 'Local + Device')}
+                              </span>
+                            ) : (
+                              <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--ctp-subtext0)' }}>
+                                💾 {t('security.dead_nodes_local_only_short', 'Local Only')}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+
             {/* Key Mismatch Events Section */}
             <div className="issues-section">
               <h3>{t('security.key_mismatch_title')}</h3>
