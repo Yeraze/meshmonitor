@@ -1,5 +1,24 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
@@ -39,6 +58,64 @@ interface ChannelEditState {
   positionPrecision: number;
 }
 
+/** Wrapper that makes a channel card draggable */
+const SortableChannelCard: React.FC<{
+  id: string;
+  children: React.ReactNode;
+}> = ({ id, children }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+    boxShadow: isDragging ? '0 8px 24px rgba(0, 0, 0, 0.4)' : 'none',
+    borderRadius: '8px',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <div
+          ref={setActivatorNodeRef}
+          {...listeners}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '2.5rem',
+            minHeight: '100%',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            backgroundColor: isDragging ? 'var(--ctp-surface2)' : 'var(--ctp-surface0)',
+            borderRadius: '8px 0 0 8px',
+            borderRight: '1px solid var(--ctp-surface1)',
+            fontSize: '1.4rem',
+            color: isDragging ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)',
+            userSelect: 'none',
+            flexShrink: 0,
+            transition: 'background-color 0.15s, color 0.15s',
+          }}
+          title="Drag to reorder"
+        >
+          ⠿
+        </div>
+        <div style={{ flex: 1 }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   channels,
   onChannelsUpdated
@@ -52,7 +129,70 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const [importSlotId, setImportSlotId] = useState<number>(0);
   const [importFileContent, setImportFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track the current slot order for drag-and-drop (array of original slot indices)
+  const [slotOrder, setSlotOrder] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
+  const originalOrder = useRef<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
+
+  // Reset slot order when channels are refreshed from server (e.g., after successful reorder)
+  React.useEffect(() => {
+    const identity = [0, 1, 2, 3, 4, 5, 6, 7];
+    setSlotOrder(identity);
+    originalOrder.current = identity;
+  }, [channels]);
+
+  // Detect if user has reordered channels
+  const hasReorderChanges = useMemo(() => {
+    return slotOrder.some((v, i) => v !== originalOrder.current[i]);
+  }, [slotOrder]);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(Number(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSlotOrder(prev => {
+        const oldIndex = prev.indexOf(Number(active.id));
+        const newIndex = prev.indexOf(Number(over.id));
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    }
+  }, []);
+
+  const handleApplyReorder = async () => {
+    if (!hasReorderChanges) return;
+    setIsReordering(true);
+    try {
+      await apiService.reorderDeviceChannels(slotOrder);
+      showToast(t('channels_config.reorder_success', 'Channels reordered successfully. Device will reboot.'), 'success');
+      originalOrder.current = [...slotOrder];
+      onChannelsUpdated?.();
+    } catch (error) {
+      logger.error('Error reordering channels:', error);
+      const errorMsg = error instanceof Error ? error.message : t('channels_config.reorder_failed', 'Failed to reorder channels');
+      showToast(errorMsg, 'error');
+      // Revert
+      setSlotOrder([...originalOrder.current]);
+    } finally {
+      setIsReordering(false);
+    }
+  };
+
+  const handleCancelReorder = () => {
+    setSlotOrder([...originalOrder.current]);
+  };
 
   // Compute auto-position channel: lowest-index channel with positionPrecision > 0
   const autoPositionChannelId = useMemo(() => {
@@ -62,11 +202,12 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     return sorted.length > 0 ? sorted[0].id : null;
   }, [channels]);
 
-  // Create array of 8 slots (0-7) with channel data
-  const channelSlots = Array.from({ length: 8 }, (_, index) => {
-    const existingChannel = channels.find(ch => ch.id === index);
+  // Create array of 8 slots based on current drag order
+  const channelSlots = slotOrder.map((originalSlot, displayIndex) => {
+    const existingChannel = channels.find(ch => ch.id === originalSlot);
     return {
-      slotId: index,
+      slotId: originalSlot,
+      displaySlot: displayIndex,
       channel: existingChannel || null
     };
   });
@@ -246,32 +387,83 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
           {t('channels_config.description')}
         </p>
 
-        <div style={{ display: 'grid', gap: '1rem' }}>
-          {channelSlots.map(({ slotId, channel }) => (
-            <div
-              key={slotId}
+        {/* Reorder action bar */}
+        {hasReorderChanges && (
+          <div style={{
+            display: 'flex',
+            gap: '0.5rem',
+            marginBottom: '1rem',
+            padding: '0.75rem',
+            backgroundColor: 'var(--ctp-surface0)',
+            borderRadius: '8px',
+            border: '1px solid var(--ctp-blue)',
+            alignItems: 'center'
+          }}>
+            <span style={{ flex: 1, color: 'var(--ctp-text)' }}>
+              {t('channels_config.reorder_pending', 'Channel order changed. Apply to device?')}
+            </span>
+            <button
+              onClick={handleApplyReorder}
+              disabled={isReordering}
               style={{
-                border: channel?.role === 1
-                  ? '2px solid var(--ctp-blue)'
-                  : '1px solid var(--ctp-surface1)',
-                borderRadius: '8px',
-                padding: '1rem',
-                backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
-                opacity: channel?.role === 0 ? 0.5 : 1,
-                boxShadow: channel?.role === 1 ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
+                padding: '0.5rem 1rem',
+                backgroundColor: 'var(--ctp-blue)',
+                color: 'var(--ctp-base)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isReordering ? 'not-allowed' : 'pointer',
+                opacity: isReordering ? 0.6 : 1
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                <div>
-                  <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
-                    {t('channels_config.slot', { slot: slotId })}: {channel ? (
-                      <>
-                        {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
-                        {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
-                        {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('channels_config.disabled')}</span>}
-                      </>
-                    ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
-                  </h4>
+              {isReordering ? t('common.saving', 'Saving...') : t('channels_config.apply_order', 'Apply Order')}
+            </button>
+            <button
+              onClick={handleCancelReorder}
+              disabled={isReordering}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: 'var(--ctp-surface1)',
+                color: 'var(--ctp-text)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isReordering ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {t('common.cancel', 'Cancel')}
+            </button>
+          </div>
+        )}
+
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <SortableContext items={slotOrder} strategy={verticalListSortingStrategy}>
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {channelSlots.map(({ slotId, displaySlot, channel }) => (
+                <SortableChannelCard key={slotId} id={String(slotId)}>
+                  <div
+                    style={{
+                      border: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
+                        ? '2px solid var(--ctp-blue)'
+                        : '1px solid var(--ctp-surface1)',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                      backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+                      opacity: channel?.role === 0 ? 0.5 : 1,
+                      boxShadow: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
+                        ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+                          {t('channels_config.slot', { slot: hasReorderChanges ? displaySlot : slotId })}: {channel ? (
+                            <>
+                              {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
+                              {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
+                              {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
+                              {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('channels_config.disabled')}</span>}
+                            </>
+                          ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
+                        </h4>
                   {channel && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
                       {(() => {
@@ -348,8 +540,31 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </SortableChannelCard>
+              ))}
+            </div>
+          </SortableContext>
+          <DragOverlay>
+            {activeDragId !== null && (() => {
+              const ch = channels.find(c => c.id === activeDragId);
+              return (
+                <div style={{
+                  border: '2px solid var(--ctp-blue)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  backgroundColor: 'var(--ctp-surface0)',
+                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
+                  opacity: 0.95,
+                }}>
+                  <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+                    {ch?.name || t('channels_config.empty')}
+                    {ch?.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
+                  </h4>
+                </div>
+              );
+            })()}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       {/* Edit Channel Modal */}
