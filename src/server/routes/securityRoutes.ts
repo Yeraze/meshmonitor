@@ -381,7 +381,7 @@ router.get('/dead-nodes', async (_req: Request, res: Response) => {
  * POST /api/security/dead-nodes/bulk-delete
  * Delete multiple nodes from local DB and optionally from device NodeDB
  */
-router.post('/dead-nodes/bulk-delete', async (req: Request, res: Response) => {
+router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), async (req: Request, res: Response) => {
   try {
     const { nodeNums } = req.body;
     const user = (req as any).user;
