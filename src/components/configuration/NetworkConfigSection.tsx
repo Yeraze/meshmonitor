@@ -17,6 +17,8 @@ interface NetworkConfigSectionProps {
   setWifiPsk: (value: string) => void;
   ntpServer: string;
   setNtpServer: (value: string) => void;
+  rsyslogServer: string;
+  setRsyslogServer: (value: string) => void;
   addressMode: number;
   setAddressMode: (value: number) => void;
   // Static IP config
@@ -42,6 +44,8 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   setWifiPsk,
   ntpServer,
   setNtpServer,
+  rsyslogServer,
+  setRsyslogServer,
   addressMode,
   setAddressMode,
   ipv4Address,
@@ -60,7 +64,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
-    wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+    wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
     ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
   });
 
@@ -72,13 +76,14 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
       wifiSsid !== initial.wifiSsid ||
       wifiPsk !== initial.wifiPsk ||
       ntpServer !== initial.ntpServer ||
+      rsyslogServer !== initial.rsyslogServer ||
       addressMode !== initial.addressMode ||
       ipv4Address !== initial.ipv4Address ||
       ipv4Gateway !== initial.ipv4Gateway ||
       ipv4Subnet !== initial.ipv4Subnet ||
       ipv4Dns !== initial.ipv4Dns
     );
-  }, [wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+  }, [wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
       ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
 
   // Reset to initial values (for SaveBar dismiss)
@@ -88,22 +93,23 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
     setWifiSsid(initial.wifiSsid);
     setWifiPsk(initial.wifiPsk);
     setNtpServer(initial.ntpServer);
+    setRsyslogServer(initial.rsyslogServer);
     setAddressMode(initial.addressMode);
     setIpv4Address(initial.ipv4Address);
     setIpv4Gateway(initial.ipv4Gateway);
     setIpv4Subnet(initial.ipv4Subnet);
     setIpv4Dns(initial.ipv4Dns);
-  }, [setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setAddressMode,
+  }, [setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setRsyslogServer, setAddressMode,
       setIpv4Address, setIpv4Gateway, setIpv4Subnet, setIpv4Dns]);
 
   // Update initial values after successful save
   const handleSave = useCallback(async () => {
     await onSave();
     initialValuesRef.current = {
-      wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+      wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
       ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
     };
-  }, [onSave, wifiEnabled, wifiSsid, wifiPsk, ntpServer, addressMode,
+  }, [onSave, wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
       ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
 
   // Register with SaveBar
@@ -321,6 +327,24 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           value={ntpServer}
           onChange={(e) => setNtpServer(e.target.value)}
           placeholder="meshtastic.pool.ntp.org"
+          maxLength={33}
+          className="setting-input"
+          style={{ width: '400px' }}
+        />
+      </div>
+
+      {/* Rsyslog Server */}
+      <div className="setting-item">
+        <label htmlFor="rsyslogServer">
+          {t('network_config.rsyslog_server')}
+          <span className="setting-description">{t('network_config.rsyslog_server_description')}</span>
+        </label>
+        <input
+          id="rsyslogServer"
+          type="text"
+          value={rsyslogServer}
+          onChange={(e) => setRsyslogServer(e.target.value)}
+          placeholder="192.168.1.100:514"
           maxLength={33}
           className="setting-input"
           style={{ width: '400px' }}

@@ -2824,6 +2824,8 @@
   "network_config.dns_description": "DNS server address (e.g., 8.8.8.8).",
   "network_config.ntp_server": "NTP Server",
   "network_config.ntp_server_description": "Custom NTP server address (default: meshtastic.pool.ntp.org). Maximum 33 characters.",
+  "network_config.rsyslog_server": "Rsyslog Server",
+  "network_config.rsyslog_server_description": "Remote syslog server address (e.g., 192.168.1.100:514). Leave blank to disable.",
   "network_config.save_button": "Save Network Config",
 
   "config.network_saved": "Network configuration saved",
