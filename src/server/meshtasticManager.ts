@@ -361,7 +361,7 @@ class MeshtasticManager {
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
   private configCaptureComplete = false;  // Flag to track when capture is done
   private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
-  private preConfigChannelSnapshot: { id: number; psk?: string | null }[] = [];  // Channel state before config sync
+  private preConfigChannelSnapshot: { id: number; psk?: string | null; name?: string | null }[] = [];  // Channel state before config sync
 
   constructor() {
     // Initialize message queue service with send callback
@@ -624,7 +624,7 @@ class MeshtasticManager {
       // Snapshot channel state before config sync for migration detection (#2425)
       try {
         this.preConfigChannelSnapshot = (await databaseService.channels.getAllChannels())
-          .map(ch => ({ id: ch.id, psk: ch.psk }));
+          .map(ch => ({ id: ch.id, psk: ch.psk, name: ch.name }));
         logger.debug(`📸 Snapshotted ${this.preConfigChannelSnapshot.length} channels before config sync`);
       } catch {
         this.preConfigChannelSnapshot = [];
@@ -10930,13 +10930,17 @@ class MeshtasticManager {
 
     try {
       const afterSnapshot = (await databaseService.channels.getAllChannels())
-        .map(ch => ({ id: ch.id, psk: ch.psk }));
+        .map(ch => ({ id: ch.id, psk: ch.psk, name: ch.name }));
 
-      // Detect moves by comparing PSKs
+      // Detect moves by comparing PSK + name (both must match to confirm identity)
       const moves: { from: number; to: number }[] = [];
       for (const oldCh of this.preConfigChannelSnapshot) {
         if (!oldCh.psk || oldCh.psk === '') continue;
-        const newCh = afterSnapshot.find(ch => ch.psk === oldCh.psk && ch.id !== oldCh.id);
+        const newCh = afterSnapshot.find(ch =>
+          ch.id !== oldCh.id &&
+          ch.psk === oldCh.psk &&
+          (ch.name || '') === (oldCh.name || '')
+        );
         if (newCh) {
           if (!moves.find(m => m.from === newCh.id && m.to === oldCh.id)) {
             moves.push({ from: oldCh.id, to: newCh.id });
@@ -10944,11 +10948,13 @@ class MeshtasticManager {
         }
       }
 
-      // Detect new channels (PSK in after but not in before)
+      // Detect new channels (no matching PSK+name in before snapshot)
       const newChannels: number[] = [];
       for (const newCh of afterSnapshot) {
         if (!newCh.psk || newCh.psk === '') continue;
-        const existed = this.preConfigChannelSnapshot.find(ch => ch.psk === newCh.psk);
+        const existed = this.preConfigChannelSnapshot.find(ch =>
+          ch.psk === newCh.psk && (ch.name || '') === (newCh.name || '')
+        );
         if (!existed) {
           newChannels.push(newCh.id);
         }
