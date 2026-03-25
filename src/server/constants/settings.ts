@@ -56,6 +56,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoResponderTriggers',
   'autoResponderSkipIncompleteNodes',
   'timerTriggers',
+  'iconStyle',
   'preferredSortField',
   'preferredSortDirection',
   'preferredDashboardSortOption',
