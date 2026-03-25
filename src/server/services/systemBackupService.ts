@@ -234,7 +234,7 @@ class SystemBackupService {
       if (!pool) throw new Error('PostgreSQL pool not initialized');
       await pool.query(
         `INSERT INTO system_backup_history
-         (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, "createdAt")
+         ("backupPath", timestamp, "backupType", "totalSize", "tableCount", "appVersion", "schemaVersion", "createdAt")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now()]
       );
@@ -243,7 +243,7 @@ class SystemBackupService {
       if (!pool) throw new Error('MySQL pool not initialized');
       await pool.execute(
         `INSERT INTO system_backup_history
-         (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, createdAt)
+         (backupPath, timestamp, backupType, totalSize, tableCount, appVersion, schemaVersion, createdAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now()]
       );
@@ -251,7 +251,7 @@ class SystemBackupService {
       const db = databaseService.db;
       const stmt = db.prepare(`
         INSERT INTO system_backup_history
-        (dirname, timestamp, type, size, table_count, meshmonitor_version, schema_version, createdAt)
+        (backupPath, timestamp, backupType, totalSize, tableCount, appVersion, schemaVersion, createdAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(dirname, timestamp, type, size, tableCount, meshmonitorVersion, schemaVersion, Date.now());
@@ -468,10 +468,11 @@ class SystemBackupService {
       const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
 
       // Check if backup exists either in database or on disk
+      const bpCol = dbType === 'postgres' ? '"backupPath"' : 'backupPath';
       const row = await this.queryOne(
         dbType === 'postgres'
-          ? 'SELECT dirname FROM system_backup_history WHERE dirname = $1'
-          : 'SELECT dirname FROM system_backup_history WHERE dirname = ?',
+          ? `SELECT ${bpCol} FROM system_backup_history WHERE ${bpCol} = $1`
+          : `SELECT ${bpCol} FROM system_backup_history WHERE ${bpCol} = ?`,
         [dirname]
       );
 
@@ -490,8 +491,8 @@ class SystemBackupService {
       if (row) {
         await this.executeStatement(
           dbType === 'postgres'
-            ? 'DELETE FROM system_backup_history WHERE dirname = $1'
-            : 'DELETE FROM system_backup_history WHERE dirname = ?',
+            ? `DELETE FROM system_backup_history WHERE ${bpCol} = $1`
+            : `DELETE FROM system_backup_history WHERE ${bpCol} = ?`,
           [dirname]
         );
       }
@@ -531,10 +532,11 @@ class SystemBackupService {
 
       // Get oldest backups to delete
       const toDelete = totalBackups - limit;
+      const bpCol = dbType === 'postgres' ? '"backupPath"' : 'backupPath';
       const oldBackups = await this.queryRows(
         dbType === 'postgres'
-          ? 'SELECT dirname FROM system_backup_history ORDER BY timestamp ASC LIMIT $1'
-          : 'SELECT dirname FROM system_backup_history ORDER BY timestamp ASC LIMIT ?',
+          ? `SELECT ${bpCol} FROM system_backup_history ORDER BY timestamp ASC LIMIT $1`
+          : `SELECT ${bpCol} FROM system_backup_history ORDER BY timestamp ASC LIMIT ?`,
         [toDelete]
       );
 
@@ -542,7 +544,7 @@ class SystemBackupService {
 
       for (const backup of oldBackups) {
         // Delete directory from disk
-        const backupPath = path.join(SYSTEM_BACKUP_DIR, backup.dirname);
+        const backupPath = path.join(SYSTEM_BACKUP_DIR, backup.backupPath);
         if (fs.existsSync(backupPath)) {
           fs.rmSync(backupPath, { recursive: true, force: true });
         }
@@ -550,12 +552,12 @@ class SystemBackupService {
         // Delete from database
         await this.executeStatement(
           dbType === 'postgres'
-            ? 'DELETE FROM system_backup_history WHERE dirname = $1'
-            : 'DELETE FROM system_backup_history WHERE dirname = ?',
-          [backup.dirname]
+            ? `DELETE FROM system_backup_history WHERE ${bpCol} = $1`
+            : `DELETE FROM system_backup_history WHERE ${bpCol} = ?`,
+          [backup.backupPath]
         );
 
-        logger.debug(`  🗑️  Purged: ${backup.dirname}`);
+        logger.debug(`  🗑️  Purged: ${backup.backupPath}`);
       }
 
       logger.info(`✅ Purged ${oldBackups.length} old system backups`);
