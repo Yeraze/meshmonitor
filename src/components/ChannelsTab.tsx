@@ -427,6 +427,7 @@ export default function ChannelsTab({
                   setSelectedChannel(channelId);
                   selectedChannelRef.current = channelId;
                   setReplyingTo(null);
+                  markMessagesAsRead(undefined, channelId);
                   setUnreadCounts(prev => {
                     const updated = { ...prev, [channelId]: 0 };
                     logger.debug('📝 Setting unread counts:', updated);
@@ -470,6 +471,7 @@ export default function ChannelsTab({
                       setSelectedChannel(channelId);
                       selectedChannelRef.current = channelId;
                       setReplyingTo(null);
+                      markMessagesAsRead(undefined, channelId);
                       setUnreadCounts(prev => {
                         const updated = { ...prev, [channelId]: 0 };
                         logger.debug('📝 Setting unread counts:', updated);
