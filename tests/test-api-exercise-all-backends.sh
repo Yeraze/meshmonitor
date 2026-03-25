@@ -26,11 +26,11 @@ COMPOSE_FILE="docker-compose.dev.yml"
 
 cd "$PROJECT_ROOT"
 
-# Backend definitions: profile -> container name
+# Backend definitions: profile -> compose service name
 declare -A BACKENDS
 BACKENDS[sqlite]="meshmonitor-sqlite"
 BACKENDS[postgres]="meshmonitor"
-BACKENDS[mysql]="meshmonitor-mysql-app"
+BACKENDS[mysql]="meshmonitor-mysql"
 
 # Port for dev containers
 DEV_PORT=8081
