@@ -361,6 +361,7 @@ class MeshtasticManager {
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
   private configCaptureComplete = false;  // Flag to track when capture is done
   private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
+  private preConfigChannelSnapshot: { id: number; psk?: string | null }[] = [];  // Channel state before config sync
 
   constructor() {
     // Initialize message queue service with send callback
@@ -619,6 +620,16 @@ class MeshtasticManager {
       this.configCaptureComplete = false;
       this.isCapturingInitConfig = true;
       this.deviceNodeNums.clear();
+
+      // Snapshot channel state before config sync for migration detection (#2425)
+      try {
+        this.preConfigChannelSnapshot = (await databaseService.channels.getAllChannels())
+          .map(ch => ({ id: ch.id, psk: ch.psk }));
+        logger.debug(`📸 Snapshotted ${this.preConfigChannelSnapshot.length} channels before config sync`);
+      } catch {
+        this.preConfigChannelSnapshot = [];
+      }
+
       logger.info('📸 Starting init config capture for virtual node server');
 
       // Send want_config_id to request full node DB and config
@@ -2804,6 +2815,9 @@ class MeshtasticManager {
             this.configCaptureComplete = true;
             this.isCapturingInitConfig = false;
             logger.info(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
+
+            // Detect channel moves/swaps from external sources (#2425)
+            await this.detectAndMigrateChannelChanges();
 
             // Call registered callback if present
             if (this.onConfigCaptureComplete) {
@@ -10904,6 +10918,107 @@ class MeshtasticManager {
   // Get node numbers that exist in the connected radio's local database
   getDeviceNodeNums(): number[] {
     return Array.from(this.deviceNodeNums);
+  }
+
+  /**
+   * Detect channel moves/swaps after config sync and migrate messages + permissions.
+   * Compares pre-config snapshot against current DB state to find channels that moved slots.
+   * Called after configComplete when the device has finished sending its channel config. (#2425)
+   */
+  private async detectAndMigrateChannelChanges(): Promise<void> {
+    if (this.preConfigChannelSnapshot.length === 0) return;
+
+    try {
+      const afterSnapshot = (await databaseService.channels.getAllChannels())
+        .map(ch => ({ id: ch.id, psk: ch.psk }));
+
+      // Detect moves by comparing PSKs
+      const moves: { from: number; to: number }[] = [];
+      for (const oldCh of this.preConfigChannelSnapshot) {
+        if (!oldCh.psk || oldCh.psk === '') continue;
+        const newCh = afterSnapshot.find(ch => ch.psk === oldCh.psk && ch.id !== oldCh.id);
+        if (newCh) {
+          if (!moves.find(m => m.from === newCh.id && m.to === oldCh.id)) {
+            moves.push({ from: oldCh.id, to: newCh.id });
+          }
+        }
+      }
+
+      // Detect new channels (PSK in after but not in before)
+      const newChannels: number[] = [];
+      for (const newCh of afterSnapshot) {
+        if (!newCh.psk || newCh.psk === '') continue;
+        const existed = this.preConfigChannelSnapshot.find(ch => ch.psk === newCh.psk);
+        if (!existed) {
+          newChannels.push(newCh.id);
+        }
+      }
+
+      if (moves.length === 0 && newChannels.length === 0) {
+        logger.debug('📡 No channel changes detected on config sync');
+        return;
+      }
+
+      logger.info(`📡 Channel changes detected on startup config sync:`);
+      if (moves.length > 0) {
+        logger.info(`  Moves: ${moves.map(m => `slot ${m.from}→${m.to}`).join(', ')}`);
+      }
+      if (newChannels.length > 0) {
+        logger.info(`  New channels: slots ${newChannels.join(', ')}`);
+      }
+
+      // 1. Migrate messages for moved channels
+      if (moves.length > 0) {
+        try {
+          await databaseService.messages.migrateMessagesForChannelMoves(moves);
+          logger.info(`📦 Message migration complete for ${moves.length} channel move(s)`);
+        } catch (error) {
+          logger.error('📦 Failed to migrate messages on startup:', error);
+        }
+      }
+
+      // 2. Migrate user permissions for moved channels
+      if (moves.length > 0) {
+        try {
+          await databaseService.auth.migratePermissionsForChannelMoves(moves);
+          logger.info(`🔑 Permission migration complete for ${moves.length} channel move(s)`);
+        } catch (error) {
+          logger.error('🔑 Failed to migrate permissions on startup:', error);
+        }
+      }
+
+      // 3. Set new/unknown channels to no permissions for non-admin users
+      if (newChannels.length > 0) {
+        logger.info(`🔑 New channels detected (${newChannels.join(', ')}) — non-admin users will have no access until granted`);
+        // New channels naturally have no permissions since no permission rows exist
+        // No action needed — absence of permission = no access
+      }
+
+      // 4. Audit log the changes
+      try {
+        const details: string[] = [];
+        if (moves.length > 0) {
+          details.push(`Channel moves: ${moves.map(m => `slot ${m.from}→${m.to}`).join(', ')}`);
+          details.push(`Messages and permissions migrated`);
+        }
+        if (newChannels.length > 0) {
+          details.push(`New channels on slots: ${newChannels.join(', ')} (default: no user permissions)`);
+        }
+        await databaseService.auditLogAsync(
+          0, // system user
+          'channel_migration_on_startup',
+          'channels',
+          details.join('. '),
+          'system'
+        );
+      } catch (error) {
+        logger.error('Failed to write audit log for channel migration:', error);
+      }
+    } catch (error) {
+      logger.error('📡 Error detecting channel changes on startup:', error);
+    } finally {
+      this.preConfigChannelSnapshot = [];
+    }
   }
 
   // Check if a node exists in the connected radio's local database

@@ -5,7 +5,7 @@
  * Includes: users, permissions, sessions, audit_log, api_tokens
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, desc, and } from 'drizzle-orm';
+import { eq, lt, desc, and, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import {
@@ -710,5 +710,46 @@ export class AuthRepository extends BaseRepository {
       await this.db.delete(sessions).where(eq(sessions.sid, session.sid));
     }
     return toDelete.length;
+  }
+
+  /**
+   * Migrate channel permissions when channels are moved between slots.
+   * Uses the same swap/move pattern as message migration.
+   */
+  async migratePermissionsForChannelMoves(moves: { from: number; to: number }[]): Promise<void> {
+    if (moves.length === 0) return;
+
+    const TEMP_RESOURCE = 'channel_temp_swap';
+
+    // Detect swap pairs
+    const swapPairs = new Set<string>();
+    for (const move of moves) {
+      const reverse = moves.find(m => m.from === move.to && m.to === move.from);
+      if (reverse) {
+        swapPairs.add([Math.min(move.from, move.to), Math.max(move.from, move.to)].join(','));
+      }
+    }
+
+    // Process swaps first (need temp value)
+    const processedSwaps = new Set<string>();
+    for (const move of moves) {
+      const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
+      if (swapPairs.has(key) && !processedSwaps.has(key)) {
+        processedSwaps.add(key);
+        const a = Math.min(move.from, move.to);
+        const b = Math.max(move.from, move.to);
+        await this.executeRun(sql`UPDATE permissions SET resource = ${TEMP_RESOURCE} WHERE resource = ${'channel_' + a}`);
+        await this.executeRun(sql`UPDATE permissions SET resource = ${'channel_' + a} WHERE resource = ${'channel_' + b}`);
+        await this.executeRun(sql`UPDATE permissions SET resource = ${'channel_' + b} WHERE resource = ${TEMP_RESOURCE}`);
+      }
+    }
+
+    // Process simple moves
+    for (const move of moves) {
+      const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
+      if (!swapPairs.has(key)) {
+        await this.executeRun(sql`UPDATE permissions SET resource = ${'channel_' + move.to} WHERE resource = ${'channel_' + move.from}`);
+      }
+    }
   }
 }
