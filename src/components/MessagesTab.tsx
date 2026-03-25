@@ -789,8 +789,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       key={node.nodeNum}
                       className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
                       onClick={() => {
-                        setSelectedDMNode(node.user?.id || '');
+                        const nodeId = node.user?.id || '';
+                        setSelectedDMNode(nodeId);
                         setReplyingTo(null);
+                        if (nodeId) markMessagesAsRead(undefined, -1, nodeId);
                       }}
                     >
                       <div className="node-header">
@@ -950,8 +952,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             className="node-dropdown-select"
             value={selectedDMNode || ''}
             onChange={e => {
-              setSelectedDMNode(e.target.value);
+              const nodeId = e.target.value;
+              setSelectedDMNode(nodeId);
               setReplyingTo(null);
+              if (nodeId) markMessagesAsRead(undefined, -1, nodeId);
             }}
           >
             <option value="">{t('messages.select_conversation')}</option>
