@@ -629,20 +629,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             <div style={{ width: '100%' }}>
               <table className="packet-table packet-table-fixed">
                 <colgroup>
-                  <col style={{ width: '60px' }} />
-                  <col style={{ width: '35px' }} />
-                  <col style={{ width: '45px' }} />
-                  <col style={{ width: '110px' }} />
-                  <col style={{ width: '140px' }} />
-                  <col style={{ width: '140px' }} />
-                  <col style={{ width: '120px' }} />
-                  <col style={{ width: '110px' }} />
-                  <col style={{ width: '60px' }} />
-                  <col style={{ width: '60px' }} />
-                  <col style={{ width: '60px' }} />
-                  <col style={{ width: '80px' }} />
-                  <col style={{ width: '60px' }} />
-                  <col style={{ minWidth: '200px' }} />
+                  <col style={{ width: '60px' }} />   {/* # */}
+                  <col style={{ width: '35px' }} />   {/* Dir */}
+                  <col style={{ width: '45px' }} />   {/* Via */}
+                  <col style={{ width: '55px' }} />   {/* Date */}
+                  <col style={{ width: '110px' }} />  {/* Time */}
+                  <col style={{ width: '140px' }} />  {/* From */}
+                  <col style={{ width: '140px' }} />  {/* To */}
+                  <col style={{ width: '120px' }} />  {/* Type */}
+                  <col style={{ width: '110px' }} />  {/* Slot */}
+                  <col style={{ width: '60px' }} />   {/* SNR */}
+                  <col style={{ width: '60px' }} />   {/* RSSI */}
+                  <col style={{ width: '60px' }} />   {/* Hops */}
+                  <col style={{ width: '80px' }} />   {/* Last Hop */}
+                  <col style={{ width: '60px' }} />   {/* Size */}
+                  <col style={{ minWidth: '200px' }} /> {/* Content */}
                 </colgroup>
                 <thead>
                   <tr>
@@ -739,14 +740,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           </td>
                           <td
                             className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`}
-                            style={{ width: '35px', textAlign: 'center' }}
+                            style={{ width: '35px' }}
                             title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}
                           >
                             {packet.direction === 'tx' ? 'TX' : 'RX'}
                           </td>
                           <td
                             className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`}
-                            style={{ width: '45px', textAlign: 'center' }}
+                            style={{ width: '45px' }}
                             title={getTransportMechanismName(packet.transport_mechanism).full}
                           >
                             {getTransportMechanismName(packet.transport_mechanism).short}
