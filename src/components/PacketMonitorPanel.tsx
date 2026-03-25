@@ -18,6 +18,7 @@ import './PacketMonitorPanel.css';
 interface PacketMonitorPanelProps {
   onClose: () => void;
   onNodeClick?: (nodeId: string) => void;
+  standalone?: boolean;
 }
 
 
@@ -55,7 +56,7 @@ const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
   }
 };
 
-const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
+const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick, standalone }) => {
   const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
@@ -446,7 +447,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   if (!canView) {
     return (
-      <div className="packet-monitor-panel">
+      <div className={`packet-monitor-panel${standalone ? ' packet-monitor-standalone' : ''}`}>
         <div className="packet-monitor-header">
           <h3>{t('packet_monitor.title')}</h3>
           <button className="close-btn" onClick={onClose} aria-label={t('common.close')}>
@@ -464,7 +465,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   return (
     <>
-      <div className="packet-monitor-panel">
+      <div className={`packet-monitor-panel${standalone ? ' packet-monitor-standalone' : ''}`}>
         <div className="packet-monitor-header">
           <h3>{t('packet_monitor.title')}</h3>
           <div
