@@ -26,6 +26,7 @@ import { migration as fixMessageNodeNumBigintMigration, runMigration087Postgres,
 import { migration as authAlignMigration, runMigration012Postgres, runMigration012Mysql } from '../server/migrations/012_align_sqlite_auth_schema.js';
 import { migration as auditLogColumnsMigration, runMigration013Postgres, runMigration013Mysql } from '../server/migrations/013_add_audit_log_missing_columns.js';
 import { migration as messagesDecryptedByMigration, runMigration014Postgres, runMigration014Mysql } from '../server/migrations/014_add_messages_decrypted_by.js';
+import { migration as notificationPrefsUniqueMigration, runMigration015Postgres, runMigration015Mysql } from '../server/migrations/015_add_notification_prefs_unique.js';
 
 // ============================================================================
 // Registry
@@ -183,4 +184,18 @@ registry.register({
   sqlite: (db) => messagesDecryptedByMigration.up(db),
   postgres: (client) => runMigration014Postgres(client),
   mysql: (pool) => runMigration014Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// 015 — Add UNIQUE constraint to user_notification_preferences.userId
+// The upsert for notification preferences requires this constraint.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 15,
+  name: 'add_notification_prefs_unique',
+  settingsKey: 'migration_015_add_notification_prefs_unique',
+  sqlite: (db) => notificationPrefsUniqueMigration.up(db),
+  postgres: (client) => runMigration015Postgres(client),
+  mysql: (pool) => runMigration015Mysql(pool),
 });
