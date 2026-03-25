@@ -19,7 +19,7 @@ describe('migrations registry', () => {
     expect(last.name).toContain('notification_prefs_unique');
   });
 
-  it('migrations are sequentially numbered from 1 to 12', () => {
+  it('migrations are sequentially numbered from 1 to 15', () => {
     const all = registry.getAll();
     for (let i = 0; i < all.length; i++) {
       expect(all[i].number).toBe(i + 1);
