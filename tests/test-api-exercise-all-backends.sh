@@ -50,11 +50,14 @@ cleanup() {
 
 trap cleanup EXIT
 
-# Pre-flight: stop any running dev containers
+# Pre-flight: stop any running dev containers and clean up volumes
 echo -e "${BLUE}Stopping any running dev containers...${NC}"
 for profile in sqlite postgres mysql; do
-    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
 done
+# Extra cleanup: kill any leftover containers on port 8081
+docker ps --filter "publish=8081" -q 2>/dev/null | xargs -r docker stop 2>/dev/null || true
+sleep 2
 
 for profile in sqlite postgres mysql; do
     CONTAINER="${BACKENDS[$profile]}"
@@ -70,8 +73,14 @@ for profile in sqlite postgres mysql; do
 
     # MySQL needs extra time for database initialization
     if [ "$profile" = "mysql" ]; then
-        echo -e "${BLUE}Waiting 30s for MySQL to initialize...${NC}"
-        sleep 30
+        echo -e "${BLUE}Waiting for MySQL database to be healthy...${NC}"
+        for i in $(seq 1 60); do
+            if docker compose -f "$COMPOSE_FILE" ps meshmonitor-mysql 2>/dev/null | grep -q "healthy"; then
+                echo -e "${GREEN}✓ MySQL database healthy${NC}"
+                break
+            fi
+            sleep 2
+        done
     fi
 
     # Wait for container to be healthy (up to 3 minutes)
@@ -114,9 +123,10 @@ for profile in sqlite postgres mysql; do
         TOTAL_FAIL=$((TOTAL_FAIL + 1))
     fi
 
-    # Stop backend
+    # Stop backend and clean volumes
     echo -e "${BLUE}Stopping $profile...${NC}"
-    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
+    sleep 3
 done
 
 # Summary
