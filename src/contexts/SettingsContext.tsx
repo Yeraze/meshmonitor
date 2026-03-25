@@ -15,6 +15,7 @@ export type PositionHistoryLineStyle = 'linear' | 'spline';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
+export type IconStyle = 'lucide' | 'emoji';
 export type NodeHopsCalculation = 'nodeinfo' | 'traceroute' | 'messages';
 
 // Built-in theme types
@@ -61,6 +62,7 @@ interface SettingsContextType {
   overlayScheme: OverlayScheme;
   overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
+  iconStyle: IconStyle;
   neighborInfoMinZoom: number;
   defaultMapCenterLat: number | null;
   defaultMapCenterLon: number | null;
@@ -101,6 +103,7 @@ interface SettingsContextType {
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
+  setIconStyle: (style: IconStyle) => void;
   setNeighborInfoMinZoom: (zoom: number) => void;
   setDefaultMapCenterLat: (lat: number | null) => void;
   setDefaultMapCenterLon: (lon: number | null) => void;
@@ -227,6 +230,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
     return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
+  });
+
+  const [iconStyle, setIconStyleState] = useState<IconStyle>(() => {
+    const saved = localStorage.getItem('iconStyle');
+    return (saved === 'emoji' ? 'emoji' : 'lucide') as IconStyle;
   });
 
   const [neighborInfoMinZoom, setNeighborInfoMinZoomState] = useState<number>(() => {
@@ -451,6 +459,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMapPinStyle = (style: MapPinStyle) => {
     setMapPinStyleState(style);
     localStorage.setItem('mapPinStyle', style);
+  };
+
+  const setIconStyle = (style: IconStyle) => {
+    setIconStyleState(style);
+    localStorage.setItem('iconStyle', style);
   };
 
   const setNeighborInfoMinZoom = (zoom: number) => {
@@ -918,6 +931,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
+          if (settings.iconStyle) {
+            setIconStyleState(settings.iconStyle as IconStyle);
+            localStorage.setItem('iconStyle', settings.iconStyle);
+          }
+
           if (settings.neighborInfoMinZoom !== undefined) {
             const zoom = parseInt(settings.neighborInfoMinZoom, 10);
             if (!isNaN(zoom)) {
@@ -1147,6 +1165,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayScheme,
     overlayColors,
     mapPinStyle,
+    iconStyle,
     neighborInfoMinZoom,
     defaultMapCenterLat,
     defaultMapCenterLon,
@@ -1187,6 +1206,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDateFormat,
     setMapTileset,
     setMapPinStyle,
+    setIconStyle,
     setNeighborInfoMinZoom,
     setDefaultMapCenterLat,
     setDefaultMapCenterLon,
@@ -1245,6 +1265,7 @@ export const useMapSettings = () => {
   return {
     mapTileset: s.mapTileset, setMapTileset: s.setMapTileset,
     mapPinStyle: s.mapPinStyle, setMapPinStyle: s.setMapPinStyle,
+    iconStyle: s.iconStyle, setIconStyle: s.setIconStyle,
     neighborInfoMinZoom: s.neighborInfoMinZoom, setNeighborInfoMinZoom: s.setNeighborInfoMinZoom,
     overlayScheme: s.overlayScheme, overlayColors: s.overlayColors,
     customTilesets: s.customTilesets,

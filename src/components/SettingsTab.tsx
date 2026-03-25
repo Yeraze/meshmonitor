@@ -32,6 +32,7 @@ type PositionHistoryLineStyle = 'linear' | 'spline';
 type TimeFormat = '12' | '24';
 type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 type MapPinStyle = 'meshmonitor' | 'official';
+type IconStyle = 'lucide' | 'emoji';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -49,6 +50,7 @@ interface SettingsTabProps {
   dateFormat: DateFormat;
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
+  iconStyle: IconStyle;
   theme: Theme;
   language: string;
   solarMonitoringEnabled: boolean;
@@ -74,6 +76,7 @@ interface SettingsTabProps {
   onDateFormatChange: (format: DateFormat) => void;
   onMapTilesetChange: (tilesetId: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
+  onIconStyleChange: (style: IconStyle) => void;
   onThemeChange: (theme: Theme) => void;
   onLanguageChange: (language: string) => void;
   onSolarMonitoringEnabledChange: (enabled: boolean) => void;
@@ -99,6 +102,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   dateFormat,
   mapTileset,
   mapPinStyle,
+  iconStyle,
   theme,
   language,
   solarMonitoringEnabled,
@@ -124,6 +128,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onDateFormatChange,
   onMapTilesetChange,
   onMapPinStyleChange,
+  onIconStyleChange,
   onThemeChange,
   onLanguageChange,
   onSolarMonitoringEnabledChange,
@@ -178,6 +183,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
   const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
+  const [localIconStyle, setLocalIconStyle] = useState(iconStyle);
   const [localNeighborInfoMinZoom, setLocalNeighborInfoMinZoom] = useState(neighborInfoMinZoom);
   const [localDefaultMapCenterLat, setLocalDefaultMapCenterLat] = useState<number | null>(defaultMapCenterLat);
   const [localDefaultMapCenterLon, setLocalDefaultMapCenterLon] = useState<number | null>(defaultMapCenterLon);
@@ -328,6 +334,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
     setLocalMapPinStyle(mapPinStyle);
+    setLocalIconStyle(iconStyle);
     setLocalNeighborInfoMinZoom(neighborInfoMinZoom);
     setLocalDefaultMapCenterLat(defaultMapCenterLat);
     setLocalDefaultMapCenterLon(defaultMapCenterLon);
@@ -383,6 +390,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localDateFormat !== dateFormat ||
       localMapTileset !== mapTileset ||
       localMapPinStyle !== mapPinStyle ||
+      localIconStyle !== iconStyle ||
       localNeighborInfoMinZoom !== neighborInfoMinZoom ||
       localDefaultMapCenterLat !== defaultMapCenterLat ||
       localDefaultMapCenterLon !== defaultMapCenterLon ||
@@ -407,8 +415,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localAnalyticsProvider !== initialAnalyticsProvider ||
       JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localTheme, localNodeHopsCalculation, localDashboardSortOption,
-      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, theme, nodeHopsCalculation, preferredDashboardSortOption,
+  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localTheme, localNodeHopsCalculation, localDashboardSortOption,
+      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, theme, nodeHopsCalculation, preferredDashboardSortOption,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
@@ -434,6 +442,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
     setLocalMapPinStyle(mapPinStyle);
+    setLocalIconStyle(iconStyle);
     setLocalDefaultMapCenterLat(defaultMapCenterLat);
     setLocalDefaultMapCenterLon(defaultMapCenterLon);
     setLocalDefaultMapCenterZoom(defaultMapCenterZoom);
@@ -459,7 +468,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
-      dateFormat, mapTileset, mapPinStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, theme, nodeHopsCalculation, preferredDashboardSortOption,
+      dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, theme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
@@ -485,6 +494,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         dateFormat: localDateFormat,
         mapTileset: localMapTileset,
         mapPinStyle: localMapPinStyle,
+        iconStyle: localIconStyle,
         neighborInfoMinZoom: localNeighborInfoMinZoom.toString(),
         defaultMapCenterLat: localDefaultMapCenterLat !== null ? localDefaultMapCenterLat.toString() : '',
         defaultMapCenterLon: localDefaultMapCenterLon !== null ? localDefaultMapCenterLon.toString() : '',
@@ -532,6 +542,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange(localDateFormat);
       onMapTilesetChange(localMapTileset);
       onMapPinStyleChange(localMapPinStyle);
+      onIconStyleChange(localIconStyle);
       setNeighborInfoMinZoom(localNeighborInfoMinZoom);
       setDefaultMapCenterLat(localDefaultMapCenterLat);
       setDefaultMapCenterLon(localDefaultMapCenterLon);
@@ -570,7 +581,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours,
       localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours,
       localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
-      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localTheme,
+      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localTheme,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
       localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
@@ -1104,6 +1115,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <option value="meshmonitor">{t('settings.map_pin_meshmonitor')}</option>
               <option value="official">{t('settings.map_pin_official')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="iconStyle">
+              {t('settings.icon_style_label', 'Icon Style')}
+              <span className="setting-description">{t('settings.icon_style_description', 'Choose between modern Lucide icons or classic emoji icons for the navigation sidebar.')}</span>
+            </label>
+            <select
+              id="iconStyle"
+              value={localIconStyle}
+              onChange={(e) => setLocalIconStyle(e.target.value as IconStyle)}
+              className="setting-input"
+            >
+              <option value="lucide">{t('settings.icon_style_lucide', 'Lucide (Modern)')}</option>
+              <option value="emoji">{t('settings.icon_style_emoji', 'Emoji (Classic)')}</option>
             </select>
           </div>
           <TapbackEmojiSettings />
