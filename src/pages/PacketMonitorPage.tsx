@@ -33,6 +33,7 @@ const PacketMonitorContent: React.FC = () => {
       background: 'var(--bg-primary)'
     }}>
       <PacketMonitorPanel
+        standalone
         onClose={() => window.close()}
         onNodeClick={(nodeId) => {
           // In pop-out mode, we can't navigate to node details

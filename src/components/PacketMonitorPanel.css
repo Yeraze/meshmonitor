@@ -8,10 +8,17 @@
   overflow: hidden;
 }
 
-/* Hide on mobile */
+/* Mobile: allow packet monitor to render everywhere except map overlay */
 @media (max-width: 768px) {
-  .packet-monitor-panel {
-    display: none !important;
+  .packet-monitor-panel .packet-monitor-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .packet-monitor-panel .packet-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
