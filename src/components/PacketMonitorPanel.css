@@ -258,7 +258,7 @@
 }
 
 .packet-table .channel {
-  text-align: center;
+  text-align: left;
   font-family: var(--font-mono);
 }
 
@@ -266,12 +266,12 @@
 .packet-table .rssi,
 .packet-table .hops,
 .packet-table .size {
-  text-align: right;
+  text-align: left;
   font-family: var(--font-mono);
 }
 
 .packet-table .last-hop {
-  text-align: center;
+  text-align: left;
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -309,7 +309,7 @@
 .packet-table .direction {
   font-size: 10px;
   font-weight: 700;
-  text-align: center;
+  text-align: left;
   border-radius: var(--radius-xs);
   padding: 2px 4px !important;
 }
