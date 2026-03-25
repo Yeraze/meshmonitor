@@ -75,11 +75,11 @@ for profile in sqlite postgres mysql; do
     if [ "$profile" = "mysql" ]; then
         echo -e "${BLUE}Waiting for MySQL database to be healthy...${NC}"
         for i in $(seq 1 60); do
-            if docker compose -f "$COMPOSE_FILE" ps meshmonitor-mysql 2>/dev/null | grep -q "healthy"; then
+            if COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "healthy"; then
                 echo -e "${GREEN}✓ MySQL database healthy${NC}"
                 break
             fi
-            sleep 2
+            sleep 3
         done
     fi
 
@@ -87,7 +87,7 @@ for profile in sqlite postgres mysql; do
     echo -e "${BLUE}Waiting for $CONTAINER to be ready...${NC}"
     READY=false
     for i in $(seq 1 90); do
-        if docker compose -f "$COMPOSE_FILE" ps "$CONTAINER" 2>/dev/null | grep -q "Up"; then
+        if COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" ps "$CONTAINER" 2>/dev/null | grep -q "Up"; then
             # Check if API responds
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/health" 2>/dev/null || echo "000")
             if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "404" ]; then
