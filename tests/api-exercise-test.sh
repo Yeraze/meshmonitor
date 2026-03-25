@@ -115,6 +115,74 @@ check() {
   return 0
 }
 
+# Make an API request returning both status and body (separated by newline)
+api_full() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local url="${BASE_URL}${path}"
+
+  local curl_args=(-s -w "\n%{http_code}" -b "$COOKIE_FILE" -c "$COOKIE_FILE")
+  curl_args+=(-X "$method")
+
+  if [ -n "$CSRF_TOKEN" ]; then
+    curl_args+=(-H "X-CSRF-Token: $CSRF_TOKEN")
+  fi
+
+  if [ -n "$body" ]; then
+    curl_args+=(-H "Content-Type: application/json")
+    curl_args+=(-d "$body")
+  fi
+
+  curl "${curl_args[@]}" "$url" 2>/dev/null || echo -e "\n000"
+}
+
+# Check response status AND validate JSON body structure using Python
+# Usage: check_json "description" "METHOD" "/path" "python_validation_expr"
+# The python expression receives the parsed JSON as 'data' and should return True/False
+# Example: check_json "GET /api/nodes" "GET" "/api/nodes" "isinstance(data, list) and len(data) >= 0"
+check_json() {
+  local desc="$1"
+  local method="$2"
+  local path="$3"
+  local validation="$4"
+  local expected_status="${5:-200}"
+
+  local response
+  response=$(api_full "$method" "$path")
+  local status
+  status=$(echo "$response" | tail -1)
+  local body
+  body=$(echo "$response" | sed '$d')
+
+  if [ "$status" != "$expected_status" ]; then
+    log_fail "$desc" "HTTP ${status} (expected ${expected_status})"
+    return 0
+  fi
+
+  # Validate JSON structure
+  local valid
+  valid=$(echo "$body" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    result = bool(${validation})
+    print('OK' if result else 'FAIL')
+except Exception as e:
+    print(f'ERR:{e}')
+" 2>/dev/null || echo "ERR:python failed")
+
+  if [ "$valid" = "OK" ]; then
+    log_pass "$desc (${status}, body validated)"
+  elif [[ "$valid" == ERR:* ]]; then
+    log_fail "$desc" "JSON parse error: ${valid#ERR:}"
+  else
+    log_fail "$desc" "body validation failed (HTTP ${status})"
+  fi
+
+  return 0
+}
+
 # ─── Setup ─────────────────────────────────────────────────
 
 echo "=========================================="
@@ -193,18 +261,18 @@ check "GET /api/auth/status (authenticated)" "$(api GET /api/auth/status)" 200
 echo ""
 echo -e "${BLUE}=== Nodes ===${NC}"
 
-check "GET /api/status" "$(api GET /api/status)" 200
-check "GET /api/stats" "$(api GET /api/stats)" 200
-check "GET /api/config" "$(api GET /api/config)" 200
-check "GET /api/config/current" "$(api GET /api/config/current)" 200
-check "GET /api/connection" "$(api GET /api/connection)" 200
-check "GET /api/connection/info" "$(api GET /api/connection/info)" 200
+check_json "GET /api/status" "GET" "/api/status" "'status' in data"
+check_json "GET /api/stats" "GET" "/api/stats" "'messageCount' in data and 'nodeCount' in data and 'channelCount' in data"
+check_json "GET /api/config" "GET" "/api/config" "isinstance(data, dict)"
+check_json "GET /api/config/current" "GET" "/api/config/current" "isinstance(data, dict)"
+check_json "GET /api/connection" "GET" "/api/connection" "'connected' in data"
+check_json "GET /api/connection/info" "GET" "/api/connection/info" "isinstance(data, dict)"
 check "GET /api/version/check" "$(api GET /api/version/check)" 200
-check "GET /api/virtual-node/status" "$(api GET /api/virtual-node/status)" 200
-check "GET /api/nodes" "$(api GET /api/nodes)" 200
-check "GET /api/nodes/active" "$(api GET /api/nodes/active)" 200
-check "GET /api/nodes/security-issues" "$(api GET /api/nodes/security-issues)" 200
-check "GET /api/ignored-nodes" "$(api GET /api/ignored-nodes)" 200
+check_json "GET /api/virtual-node/status" "GET" "/api/virtual-node/status" "'enabled' in data"
+check_json "GET /api/nodes" "GET" "/api/nodes" "isinstance(data, list)"
+check_json "GET /api/nodes/active" "GET" "/api/nodes/active" "isinstance(data, list)"
+check_json "GET /api/nodes/security-issues" "GET" "/api/nodes/security-issues" "isinstance(data, list)"
+check_json "GET /api/ignored-nodes" "GET" "/api/ignored-nodes" "isinstance(data, list)"
 check "GET /api/auto-favorite/status" "$(api GET /api/auto-favorite/status)" 200
 check "GET /api/device/tx-status" "$(api GET /api/device/tx-status)" 200
 check "GET /api/device/security-keys" "$(api GET /api/device/security-keys)" 200
@@ -237,7 +305,7 @@ fi
 echo ""
 echo -e "${BLUE}=== Telemetry ===${NC}"
 
-check "GET /api/telemetry/available/nodes" "$(api GET /api/telemetry/available/nodes)" 200
+check_json "GET /api/telemetry/available/nodes" "GET" "/api/telemetry/available/nodes" "isinstance(data, (list, dict))"
 
 if [ -n "$FIRST_NODE_ID" ]; then
   check "GET /api/telemetry/:nodeId" "$(api GET /api/telemetry/$FIRST_NODE_ID)" 200
@@ -253,17 +321,17 @@ fi
 echo ""
 echo -e "${BLUE}=== Messages ===${NC}"
 
-check "GET /api/messages" "$(api GET /api/messages)" 200
-check "GET /api/messages/channel/0" "$(api GET /api/messages/channel/0)" 200
-check "GET /api/messages/search?q=test" "$(api GET '/api/messages/search?q=test')" 200
-check "GET /api/messages/unread-counts" "$(api GET /api/messages/unread-counts)" 200
+check_json "GET /api/messages" "GET" "/api/messages" "isinstance(data, list)"
+check_json "GET /api/messages/channel/0" "GET" "/api/messages/channel/0" "'messages' in data"
+check_json "GET /api/messages/search?q=test" "GET" "/api/messages/search?q=test" "'success' in data and 'data' in data"
+check_json "GET /api/messages/unread-counts" "GET" "/api/messages/unread-counts" "'channels' in data"
 
 # ─── Traceroutes ───────────────────────────────────────────
 
 echo ""
 echo -e "${BLUE}=== Traceroutes ===${NC}"
 
-check "GET /api/traceroutes/recent" "$(api GET /api/traceroutes/recent)" 200
+check_json "GET /api/traceroutes/recent" "GET" "/api/traceroutes/recent" "isinstance(data, list)"
 check "GET /api/route-segments/record-holder" "$(api GET /api/route-segments/record-holder)" 200
 check "GET /api/route-segments/longest-active" "$(api GET /api/route-segments/longest-active)" 200
 
@@ -284,8 +352,8 @@ fi
 echo ""
 echo -e "${BLUE}=== Channels ===${NC}"
 
-check "GET /api/channels" "$(api GET /api/channels)" 200
-check "GET /api/channels/all" "$(api GET /api/channels/all)" 200
+check_json "GET /api/channels" "GET" "/api/channels" "isinstance(data, list)"
+check_json "GET /api/channels/all" "GET" "/api/channels/all" "isinstance(data, list)"
 check "GET /api/channels/debug" "$(api GET /api/channels/debug)" 200
 
 # ─── Packets ──────────────────────────────────────────────
@@ -293,10 +361,10 @@ check "GET /api/channels/debug" "$(api GET /api/channels/debug)" 200
 echo ""
 echo -e "${BLUE}=== Packets ===${NC}"
 
-check "GET /api/packets" "$(api GET /api/packets)" 200
-check "GET /api/packets?limit=10" "$(api GET '/api/packets?limit=10')" 200
-check "GET /api/packets/stats" "$(api GET /api/packets/stats)" 200
-check "GET /api/packets/stats/distribution" "$(api GET /api/packets/stats/distribution)" 200
+check_json "GET /api/packets" "GET" "/api/packets" "'packets' in data and 'total' in data"
+check_json "GET /api/packets?limit=10" "GET" "/api/packets?limit=10" "'packets' in data and isinstance(data['packets'], list)"
+check_json "GET /api/packets/stats" "GET" "/api/packets/stats" "'total' in data"
+check_json "GET /api/packets/stats/distribution" "GET" "/api/packets/stats/distribution" "'byDevice' in data and 'byType' in data"
 check "GET /api/packets/relay-nodes" "$(api GET /api/packets/relay-nodes)" 200
 check "GET /api/packets/export?limit=10" "$(api GET '/api/packets/export?limit=10')" 200
 
@@ -305,18 +373,19 @@ check "GET /api/packets/export?limit=10" "$(api GET '/api/packets/export?limit=1
 echo ""
 echo -e "${BLUE}=== Audit Logs ===${NC}"
 
-check "GET /api/audit" "$(api GET /api/audit)" 200
-check "GET /api/audit?limit=10" "$(api GET '/api/audit?limit=10')" 200
-check "GET /api/audit/stats/summary" "$(api GET /api/audit/stats/summary)" 200
+check_json "GET /api/audit" "GET" "/api/audit" "'logs' in data and 'total' in data"
+check_json "GET /api/audit?limit=10" "GET" "/api/audit?limit=10" "'logs' in data and 'total' in data"
+check_json "GET /api/audit/stats/summary" "GET" "/api/audit/stats/summary" "isinstance(data, dict)"
 
 # ─── Security ─────────────────────────────────────────────
 
 echo ""
 echo -e "${BLUE}=== Security ===${NC}"
 
-check "GET /api/security/issues" "$(api GET /api/security/issues)" 200
-check "GET /api/security/scanner/status" "$(api GET /api/security/scanner/status)" 200
-check "GET /api/security/key-mismatches" "$(api GET /api/security/key-mismatches)" 200
+check_json "GET /api/security/issues" "GET" "/api/security/issues" "'total' in data and 'nodes' in data"
+check_json "GET /api/security/scanner/status" "GET" "/api/security/scanner/status" "'running' in data"
+check_json "GET /api/security/key-mismatches" "GET" "/api/security/key-mismatches" "'events' in data"
+check_json "GET /api/security/dead-nodes" "GET" "/api/security/dead-nodes" "'nodes' in data and 'count' in data"
 check "GET /api/security/export" "$(api GET /api/security/export)" 200
 
 # ─── User Management ──────────────────────────────────────
@@ -324,7 +393,7 @@ check "GET /api/security/export" "$(api GET /api/security/export)" 200
 echo ""
 echo -e "${BLUE}=== User Management ===${NC}"
 
-check "GET /api/users" "$(api GET /api/users)" 200
+check_json "GET /api/users" "GET" "/api/users" "isinstance(data, (list, dict)) and (isinstance(data, list) or 'users' in data)"
 
 ADMIN_ID=$(api_body GET /api/users | python3 -c "
 import sys,json
@@ -379,10 +448,10 @@ check "GET /api/token" "$(api GET /api/token)" 200
 echo ""
 echo -e "${BLUE}=== Settings ===${NC}"
 
-check "GET /api/settings" "$(api GET /api/settings)" 200
+check_json "GET /api/settings" "GET" "/api/settings" "isinstance(data, dict)"
 check "POST /api/settings (no-op)" "$(api POST /api/settings '{}')" 200
-check "GET /api/settings/traceroute-nodes" "$(api GET /api/settings/traceroute-nodes)" 200
-check "GET /api/settings/traceroute-log" "$(api GET /api/settings/traceroute-log)" 200
+check_json "GET /api/settings/traceroute-nodes" "GET" "/api/settings/traceroute-nodes" "isinstance(data, (list, dict))"
+check_json "GET /api/settings/traceroute-log" "GET" "/api/settings/traceroute-log" "'success' in data and 'log' in data"
 check "GET /api/settings/time-sync-nodes" "$(api GET /api/settings/time-sync-nodes)" 200
 check "GET /api/settings/auto-ping" "$(api GET /api/settings/auto-ping)" 200
 check "GET /api/settings/key-repair-log" "$(api GET /api/settings/key-repair-log)" 200
@@ -455,19 +524,19 @@ check "GET /api/embed-profiles" "$(api GET /api/embed-profiles)" 200
 echo ""
 echo -e "${BLUE}=== Maintenance ===${NC}"
 
-check "GET /api/maintenance/status" "$(api GET /api/maintenance/status)" 200
-check "GET /api/maintenance/size" "$(api GET /api/maintenance/size)" 200
+check_json "GET /api/maintenance/status" "GET" "/api/maintenance/status" "isinstance(data, dict)"
+check_json "GET /api/maintenance/size" "GET" "/api/maintenance/size" "isinstance(data, dict)"
 
 # ─── Backups ──────────────────────────────────────────────
 
 echo ""
 echo -e "${BLUE}=== Backups ===${NC}"
 
-check "GET /api/backup/list" "$(api GET /api/backup/list)" 200
-check "GET /api/backup/settings" "$(api GET /api/backup/settings)" 200
-check "GET /api/system/backup/list" "$(api GET /api/system/backup/list)" 200
-check "GET /api/system/backup/settings" "$(api GET /api/system/backup/settings)" 200
-check "GET /api/system/status" "$(api GET /api/system/status)" 200
+check_json "GET /api/backup/list" "GET" "/api/backup/list" "isinstance(data, list)"
+check_json "GET /api/backup/settings" "GET" "/api/backup/settings" "isinstance(data, dict)"
+check_json "GET /api/system/backup/list" "GET" "/api/system/backup/list" "isinstance(data, list)"
+check_json "GET /api/system/backup/settings" "GET" "/api/system/backup/settings" "isinstance(data, dict)"
+check_json "GET /api/system/status" "GET" "/api/system/status" "isinstance(data, dict)"
 
 # ─── Ghost Nodes ──────────────────────────────────────────
 
@@ -535,17 +604,63 @@ if [ -n "$API_TOKEN" ]; then
       "$url" 2>/dev/null || echo "000"
   }
 
-  check "GET /api/v1" "$(v1 GET /api/v1)" 200
-  check "GET /api/v1/nodes" "$(v1 GET /api/v1/nodes)" 200
-  check "GET /api/v1/channels" "$(v1 GET /api/v1/channels)" 200
-  check "GET /api/v1/messages" "$(v1 GET /api/v1/messages)" 200
-  check "GET /api/v1/telemetry" "$(v1 GET /api/v1/telemetry)" 200
-  check "GET /api/v1/traceroutes" "$(v1 GET /api/v1/traceroutes)" 200
-  check "GET /api/v1/network" "$(v1 GET /api/v1/network)" 200
-  check "GET /api/v1/network/topology" "$(v1 GET /api/v1/network/topology)" 200
-  check "GET /api/v1/network/direct-neighbors" "$(v1 GET /api/v1/network/direct-neighbors)" 200
-  check "GET /api/v1/packets" "$(v1 GET /api/v1/packets)" 200
-  check "GET /api/v1/channel-database" "$(v1 GET /api/v1/channel-database)" 200
+  # V1 API needs its own check_json since it uses Bearer token auth
+  v1_body() {
+    local method="$1"
+    local path="$2"
+    local url="${BASE_URL}${path}"
+    curl -s -w "\n%{http_code}" -X "$method" \
+      -H "Authorization: Bearer $API_TOKEN" \
+      "$url" 2>/dev/null || echo -e "\n000"
+  }
+
+  check_v1() {
+    local desc="$1"
+    local path="$2"
+    local validation="$3"
+    local response
+    response=$(v1_body GET "$path")
+    local status
+    status=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    if [ "$status" != "200" ]; then
+      log_fail "$desc" "HTTP ${status} (expected 200)"
+      return 0
+    fi
+
+    local valid
+    valid=$(echo "$body" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    result = bool(${validation})
+    print('OK' if result else 'FAIL')
+except Exception as e:
+    print(f'ERR:{e}')
+" 2>/dev/null || echo "ERR:python failed")
+
+    if [ "$valid" = "OK" ]; then
+      log_pass "$desc (200, body validated)"
+    elif [[ "$valid" == ERR:* ]]; then
+      log_fail "$desc" "JSON parse error: ${valid#ERR:}"
+    else
+      log_fail "$desc" "body validation failed"
+    fi
+  }
+
+  check_v1 "GET /api/v1" "/api/v1" "'version' in data or 'success' in data"
+  check_v1 "GET /api/v1/nodes" "/api/v1/nodes" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/channels" "/api/v1/channels" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/messages" "/api/v1/messages" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/telemetry" "/api/v1/telemetry" "'success' in data or isinstance(data, dict)"
+  check_v1 "GET /api/v1/traceroutes" "/api/v1/traceroutes" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/network" "/api/v1/network" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/network/topology" "/api/v1/network/topology" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/network/direct-neighbors" "/api/v1/network/direct-neighbors" "'success' in data or isinstance(data, dict)"
+  check_v1 "GET /api/v1/packets" "/api/v1/packets" "'success' in data and 'data' in data"
+  check_v1 "GET /api/v1/channel-database" "/api/v1/channel-database" "'success' in data and 'data' in data"
   check "GET /api/v1/solar" "$(v1 GET /api/v1/solar)" 200
   check "GET /api/v1/solar/range" "$(v1 GET '/api/v1/solar/range?start=0&end=9999999999999')" 200
   check "GET /api/v1/messages/search?q=test" "$(v1 GET '/api/v1/messages/search?q=test')" 200
