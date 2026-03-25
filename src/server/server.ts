@@ -2702,6 +2702,12 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
       } catch (error) {
         logger.error('📦 Failed to migrate messages after channel reorder:', error);
       }
+      try {
+        await databaseService.auth.migratePermissionsForChannelMoves(moves);
+        logger.info(`🔑 Permission migration complete for channel reorder`);
+      } catch (error) {
+        logger.error('🔑 Failed to migrate permissions after channel reorder:', error);
+      }
     }
 
     res.json({ success: true, requiresReboot: true });
