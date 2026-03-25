@@ -739,14 +739,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           </td>
                           <td
                             className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`}
-                            style={{ width: '35px', textAlign: 'center' }}
+                            style={{ width: '35px' }}
                             title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}
                           >
                             {packet.direction === 'tx' ? 'TX' : 'RX'}
                           </td>
                           <td
                             className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`}
-                            style={{ width: '45px', textAlign: 'center' }}
+                            style={{ width: '45px' }}
                             title={getTransportMechanismName(packet.transport_mechanism).full}
                           >
                             {getTransportMechanismName(packet.transport_mechanism).short}
