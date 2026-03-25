@@ -38,7 +38,7 @@ export const pushSubscriptionsPostgres = pgTable('push_subscriptions', {
 
 export const userNotificationPreferencesSqlite = sqliteTable('user_notification_preferences', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().unique().references(() => usersSqlite.id, { onDelete: 'cascade' }),
   notifyOnMessage: integer('enable_web_push', { mode: 'boolean' }).default(true),
   notifyOnDirectMessage: integer('enable_direct_messages', { mode: 'boolean' }).default(true),
   notifyOnEmoji: integer('notify_on_emoji', { mode: 'boolean' }).default(false),
@@ -60,7 +60,7 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
 
 export const userNotificationPreferencesPostgres = pgTable('user_notification_preferences', {
   id: pgSerial('id').primaryKey(),
-  userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  userId: pgInteger('userId').notNull().unique().references(() => usersPostgres.id, { onDelete: 'cascade' }),
   notifyOnMessage: pgBoolean('notifyOnMessage').default(true),
   notifyOnDirectMessage: pgBoolean('notifyOnDirectMessage').default(true),
   notifyOnChannelMessage: pgBoolean('notifyOnChannelMessage').default(false),
@@ -112,7 +112,7 @@ export const pushSubscriptionsMysql = mysqlTable('push_subscriptions', {
 
 export const userNotificationPreferencesMysql = mysqlTable('user_notification_preferences', {
   id: mySerial('id').primaryKey(),
-  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  userId: myInt('userId').notNull().unique().references(() => usersMysql.id, { onDelete: 'cascade' }),
   notifyOnMessage: myBoolean('notifyOnMessage').default(true),
   notifyOnDirectMessage: myBoolean('notifyOnDirectMessage').default(true),
   notifyOnChannelMessage: myBoolean('notifyOnChannelMessage').default(false),
