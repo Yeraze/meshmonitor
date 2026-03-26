@@ -5,7 +5,7 @@
  * The news is shown to users via a popup after login.
  */
 
-import * as cron from 'node-cron';
+import { validateCron, scheduleCron, type CronJob } from '../utils/cronScheduler.js';
 import { createRequire } from 'module';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
@@ -33,7 +33,7 @@ export interface NewsFeed {
 const DEFAULT_NEWS_URL = 'https://meshmonitor.org/news.json';
 
 class NewsService {
-  private cronJob: cron.ScheduledTask | null = null;
+  private cronJob: CronJob | null = null;
   private isInitialized = false;
 
   /**
@@ -65,12 +65,12 @@ class NewsService {
     // Schedule to run every 6 hours (cron: "0 */6 * * *")
     const cronExpression = '0 */6 * * *';
 
-    if (!cron.validate(cronExpression)) {
+    if (!validateCron(cronExpression)) {
       logger.error('Invalid cron expression for news service');
       return;
     }
 
-    this.cronJob = cron.schedule(
+    this.cronJob = scheduleCron(
       cronExpression,
       async () => {
         logger.info('News service cron job triggered');
@@ -80,9 +80,6 @@ class NewsService {
         timezone: 'Etc/UTC'
       }
     );
-
-    // Explicitly start the cron job
-    this.cronJob.start();
 
     this.isInitialized = true;
     logger.info('News service initialized (runs every 6 hours)');

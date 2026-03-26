@@ -25,14 +25,12 @@ vi.mock('./logger', () => ({
   },
 }));
 
-// Mock node-cron
-vi.mock('node-cron', () => ({
-  default: {
-    schedule: vi.fn((expression, callback) => ({
-      stop: vi.fn(),
-    })),
-    validate: vi.fn(() => true),
-  },
+// Mock cron scheduler
+vi.mock('./utils/cronScheduler.js', () => ({
+  validateCron: vi.fn(() => true),
+  scheduleCron: vi.fn((_expression: string, _callback: () => void) => ({
+    stop: vi.fn(),
+  })),
 }));
 
 describe('Timer Triggers - Text Message Support', () => {

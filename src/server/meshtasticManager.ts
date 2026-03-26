@@ -23,7 +23,7 @@ import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
-import * as cron from 'node-cron';
+import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
 import fs from 'fs';
 import path from 'path';
 const require = createRequire(import.meta.url);
@@ -288,8 +288,8 @@ class MeshtasticManager {
   private timeOffsetInterval: NodeJS.Timeout | null = null;
   private localStatsIntervalMinutes: number = 15;  // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
-  private announceCronJob: cron.ScheduledTask | null = null;
-  private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private announceCronJob: CronJob | null = null;
+  private timerCronJobs: Map<string, CronJob> = new Map();
   private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
   private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
   private geofenceCooldowns: Map<string, number> = new Map(); // "triggerId:nodeNum" -> firedAt timestamp
@@ -1615,8 +1615,8 @@ class MeshtasticManager {
       logger.debug(`📢 Starting announce scheduler with cron expression: ${scheduleExpression}`);
 
       // Validate and schedule the cron job
-      if (cron.validate(scheduleExpression)) {
-        this.announceCronJob = cron.schedule(scheduleExpression, async () => {
+      if (validateCron(scheduleExpression)) {
+        this.announceCronJob = scheduleCron(scheduleExpression, async () => {
           logger.debug(`📢 Cron job triggered (connected: ${this.isConnected})`);
           if (this.isConnected) {
             try {
@@ -1775,13 +1775,13 @@ class MeshtasticManager {
       }
 
       // Validate cron expression
-      if (!cron.validate(trigger.cronExpression)) {
+      if (!validateCron(trigger.cronExpression)) {
         logger.error(`⏱️ Invalid cron expression for timer "${trigger.name}": ${trigger.cronExpression}`);
         continue;
       }
 
       // Schedule the cron job
-      const job = cron.schedule(trigger.cronExpression, async () => {
+      const job = scheduleCron(trigger.cronExpression, async () => {
         logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
         const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
         if (responseType === 'text' && trigger.response?.trim()) {
