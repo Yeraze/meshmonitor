@@ -61,11 +61,13 @@ const createTestDatabase = () => {
         CREATE TABLE IF NOT EXISTS api_tokens (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id INTEGER NOT NULL,
+          name TEXT NOT NULL DEFAULT 'API Token',
           token_hash TEXT UNIQUE NOT NULL,
           prefix TEXT NOT NULL,
           is_active INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
           last_used_at INTEGER,
+          expires_at INTEGER,
           created_by INTEGER NOT NULL,
           revoked_at INTEGER,
           revoked_by INTEGER,
