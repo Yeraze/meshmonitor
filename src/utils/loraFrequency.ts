@@ -10,7 +10,8 @@
  * - channel_num: Frequency slot (0-based, derived from 1-based channelNum)
  *
  * Note: Meshtastic protobuf uses 1-based channelNum (1 = first channel, 0 = use hash algorithm).
- * The firmware converts to 0-based internally: channel_num = channelNum - 1
+ * When channelNum is 0, the firmware hashes the primary channel name using the DJB2 algorithm
+ * and takes modulo numChannels to determine the default frequency slot.
  * This function accepts the raw 1-based value from the device and converts it.
  *
  * References:
@@ -22,6 +23,8 @@
  * @param overrideFrequency - Override frequency in MHz (takes precedence if > 0)
  * @param frequencyOffset - Frequency offset in MHz to add to calculated frequency
  * @param bandwidth - Bandwidth in kHz (default 250 for LongFast preset)
+ * @param channelName - Primary channel name (used for hash when channelNum is 0)
+ * @param modemPreset - Modem preset number (used to derive channel name when name is empty)
  * @returns Formatted frequency string (e.g., "906.875 MHz") or "Unknown"/"Invalid channel"
  */
 export function calculateLoRaFrequency(
@@ -29,7 +32,9 @@ export function calculateLoRaFrequency(
   channelNum: number,
   overrideFrequency: number,
   frequencyOffset: number,
-  bandwidth: number = 250 // Default to LongFast preset (250 kHz)
+  bandwidth: number = 250, // Default to LongFast preset (250 kHz)
+  channelName?: string,
+  modemPreset?: number
 ): string {
   // If overrideFrequency is set (non-zero), use it (takes precedence over calculated frequency)
   if (overrideFrequency && overrideFrequency > 0) {
@@ -87,7 +92,7 @@ export function calculateLoRaFrequency(
   const channelSpacing = bw / 1000; // Convert to MHz
 
   // Calculate maximum number of channels that fit in the frequency range
-  const maxChannels = Math.floor((freqEnd - freqStart) / channelSpacing);
+  const numChannels = Math.floor((freqEnd - freqStart) / channelSpacing);
 
   // Validate channelNum (must be >= 0; 0 = hash algorithm, 1+ = explicit)
   if (channelNum < 0) {
@@ -95,12 +100,24 @@ export function calculateLoRaFrequency(
   }
 
   // Convert Meshtastic 1-based channelNum to 0-based slot index
-  // Meshtastic uses: 0 = use hash algorithm (default to slot 0), 1+ = explicit channel
-  // Firmware: channel_num = (channelNum ? channelNum - 1 : hash) % numChannels
-  const slotIndex = channelNum > 0 ? channelNum - 1 : 0;
+  // Firmware: channel_num = (channelNum ? channelNum - 1 : hash(channelName)) % numChannels
+  let slotIndex: number;
+  if (channelNum > 0) {
+    slotIndex = channelNum - 1;
+  } else {
+    // When channelNum is 0, firmware uses DJB2 hash of the channel name.
+    // If the channel name is empty (default config), derive it from the modem preset.
+    const hashName = channelName || getModemPresetChannelName(modemPreset);
+    if (hashName) {
+      slotIndex = djb2Hash(hashName) % numChannels;
+    } else {
+      // No channel name or preset available — can't compute hash, fall back to slot 0
+      slotIndex = 0;
+    }
+  }
 
   // Validate slot index
-  if (slotIndex < 0 || slotIndex >= maxChannels) {
+  if (slotIndex < 0 || slotIndex >= numChannels) {
     return 'Invalid channel';
   }
 
@@ -110,4 +127,50 @@ export function calculateLoRaFrequency(
   const calculatedFreq = freqStart + halfBwOffset + (slotIndex * channelSpacing) + (frequencyOffset || 0);
 
   return `${calculatedFreq.toFixed(3)} MHz`;
+}
+
+/**
+ * Map modem preset enum values to the CamelCase channel names used by the
+ * Meshtastic firmware for DJB2 hashing when the channel name is empty.
+ * These match the firmware's Channel::getName() fallback values.
+ *
+ * Reference: meshtastic/firmware ChannelFile.cpp
+ */
+const MODEM_PRESET_CHANNEL_NAMES: { [key: number]: string } = {
+  0: 'LongFast',
+  1: 'LongSlow',
+  2: 'VeryLongSlow',
+  3: 'MediumSlow',
+  4: 'MediumFast',
+  5: 'ShortSlow',
+  6: 'ShortFast',
+  7: 'LongModerate',
+};
+
+export function getModemPresetChannelName(modemPreset?: number): string | undefined {
+  if (modemPreset === undefined || modemPreset === null) return undefined;
+  return MODEM_PRESET_CHANNEL_NAMES[modemPreset];
+}
+
+/**
+ * DJB2 hash algorithm — matches the Meshtastic firmware's hash() function
+ * in RadioInterface.cpp. Used to compute the default frequency slot when
+ * channelNum is 0 (not explicitly set by the user).
+ *
+ * Reference: https://github.com/meshtastic/firmware/blob/master/src/mesh/RadioInterface.cpp
+ *   uint32_t hash(const char *str) {
+ *     uint32_t hash = 5381;
+ *     int c;
+ *     while ((c = *str++) != 0)
+ *       hash = ((hash << 5) + hash) + (unsigned char)c;
+ *     return hash;
+ *   }
+ */
+export function djb2Hash(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    // Use unsigned 32-bit arithmetic: hash * 33 + charCode
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0;
+  }
+  return hash;
 }

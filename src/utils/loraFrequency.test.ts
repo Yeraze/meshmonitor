@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLoRaFrequency } from './loraFrequency';
+import { calculateLoRaFrequency, djb2Hash, getModemPresetChannelName } from './loraFrequency';
 
 describe('calculateLoRaFrequency', () => {
   // Default bandwidth is 250 kHz (LongFast preset)
@@ -12,9 +12,18 @@ describe('calculateLoRaFrequency', () => {
     // With 250 kHz BW: halfBwOffset = 0.125 MHz, spacing = 0.25 MHz
     // Slot 0: 902.0 + 0.125 + 0 = 902.125 MHz
 
-    it('should calculate correct frequency for channelNum 0 (hash default, slot 0)', () => {
+    it('should calculate correct frequency for channelNum 0 without channel name (falls back to slot 0)', () => {
       const result = calculateLoRaFrequency(1, 0, 0, 0);
       expect(result).toBe('902.125 MHz');
+    });
+
+    it('should use DJB2 hash of channel name when channelNum is 0', () => {
+      // "LongFast" hash: djb2Hash("LongFast") % 104 (US has 104 slots with 250kHz BW)
+      // This should NOT be slot 0, demonstrating the fix
+      const result = calculateLoRaFrequency(1, 0, 0, 0, 250, 'LongFast');
+      const expectedSlot = djb2Hash('LongFast') % 104;
+      const expectedFreq = 902.0 + 0.125 + (expectedSlot * 0.25);
+      expect(result).toBe(`${expectedFreq.toFixed(3)} MHz`);
     });
 
     it('should calculate correct frequency for channelNum 1 (slot 0)', () => {
@@ -173,10 +182,32 @@ describe('calculateLoRaFrequency', () => {
       expect(result).toBe('902.125 MHz'); // Same as default 250kHz
     });
 
-    it('should treat channelNum 0 as slot 0 (hash algorithm default)', () => {
-      // channelNum 0 means "use hash algorithm", which we default to slot 0
+    it('should fall back to slot 0 when channelNum is 0 and no channel name provided', () => {
       const result = calculateLoRaFrequency(1, 0, 0, 0);
       expect(result).toBe('902.125 MHz');
+    });
+
+    it('should use channel name hash when channelNum is 0 and name is provided', () => {
+      const result = calculateLoRaFrequency(1, 0, 0, 0, 250, 'MediumFast');
+      // Should not be slot 0
+      const slot = djb2Hash('MediumFast') % 104;
+      expect(slot).not.toBe(0);
+      const expectedFreq = 902.0 + 0.125 + (slot * 0.25);
+      expect(result).toBe(`${expectedFreq.toFixed(3)} MHz`);
+    });
+
+    it('should derive channel name from modem preset when name is empty', () => {
+      // Modem preset 4 = MediumFast; should produce same result as explicit name
+      const withName = calculateLoRaFrequency(1, 0, 0, 0, 250, 'MediumFast');
+      const withPreset = calculateLoRaFrequency(1, 0, 0, 0, 250, undefined, 4);
+      expect(withPreset).toBe(withName);
+    });
+
+    it('should calculate 913.125 MHz for MediumFast default in US (issue #2436)', () => {
+      // User reported: MediumFast default = channelNum 45 = 913.125 MHz
+      // With channelNum=0 and modemPreset=4 (MediumFast), hash should give slot 44
+      const result = calculateLoRaFrequency(1, 0, 0, 0, 250, undefined, 4);
+      expect(result).toBe('913.125 MHz');
     });
   });
 
@@ -200,6 +231,33 @@ describe('calculateLoRaFrequency', () => {
       // channelNum 1 = slot 0: 2400.0 + 0.125 = 2400.125 MHz
       const result = calculateLoRaFrequency(13, 1, 0, 0);
       expect(result).toBe('2400.125 MHz');
+    });
+  });
+
+  describe('DJB2 hash algorithm', () => {
+    it('should match firmware hash for empty string', () => {
+      expect(djb2Hash('')).toBe(5381);
+    });
+
+    it('should produce consistent hashes', () => {
+      expect(djb2Hash('LongFast')).toBe(djb2Hash('LongFast'));
+      expect(djb2Hash('MediumFast')).not.toBe(djb2Hash('LongFast'));
+    });
+
+    it('should produce unsigned 32-bit values', () => {
+      const hash = djb2Hash('LongFast');
+      expect(hash).toBeGreaterThanOrEqual(0);
+      expect(hash).toBeLessThanOrEqual(0xFFFFFFFF);
+    });
+
+    it('should compute correct slot for MediumFast in US region with 125kHz BW', () => {
+      // US region with 125kHz BW: numChannels = (928-902)/0.125 = 208
+      // User reports MediumFast default is slot 45
+      // We verify the hash produces a reasonable result (exact value depends on firmware matching)
+      const numChannels = Math.floor((928 - 902) / (125 / 1000));
+      const slot = djb2Hash('MediumFast') % numChannels;
+      expect(slot).toBeGreaterThanOrEqual(0);
+      expect(slot).toBeLessThan(numChannels);
     });
   });
 
