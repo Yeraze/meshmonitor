@@ -484,7 +484,7 @@ export function useTraceroutePaths({
             <div className="route-popup">
               <h4>Route Segment</h4>
               {isMqttSegment && (
-                <div className="mqtt-badge">via MQTT</div>
+                <div className="mqtt-badge">via IP</div>
               )}
               <div className="route-endpoints">
                 <strong
@@ -785,7 +785,7 @@ export function useTraceroutePaths({
                      {forwardSegmentSnrs[i] !== undefined && (
                         <div className="route-usage" style={{ marginTop: '8px', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '4px' }}>
                           Segment SNR: <strong>{forwardSegmentSnrs[i]?.toFixed(1)} dB</strong>
-                          {isMqtt && ' (MQTT)'}
+                          {isMqtt && ' (IP)'}
                         </div>
                      )}
                    </div>
@@ -888,7 +888,7 @@ export function useTraceroutePaths({
                      {backSegmentSnrs[i] !== undefined && (
                         <div className="route-usage" style={{ marginTop: '8px', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '4px' }}>
                           Segment SNR: <strong>{backSegmentSnrs[i]?.toFixed(1)} dB</strong>
-                          {isMqtt && ' (MQTT)'}
+                          {isMqtt && ' (IP)'}
                         </div>
                      )}
                    </div>

@@ -253,7 +253,7 @@ export const generateCurvedArrowMarkers = (
       <Marker key={`${pathKey}-arrow-${i}`} position={midPoint} icon={createArrowIcon(angle, color)}>
         {snr !== undefined && (
           <Tooltip permanent={false} direction="top" offset={[0, -10]}>
-            {snr.toFixed(1)} dB{isMqttSnr(snr) ? ' (MQTT)' : ''}
+            {snr.toFixed(1)} dB{isMqttSnr(snr) ? ' (IP)' : ''}
           </Tooltip>
         )}
       </Marker>
