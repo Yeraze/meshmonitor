@@ -1041,7 +1041,7 @@
   "map.legend.unidirectional": "One-way",
   "map.legend.thickerBrighter": "Thicker line = stronger signal",
   "map.legend.otherLines": "Other Lines",
-  "map.legend.mqtt": "MQTT",
+  "map.legend.mqtt": "IP",
   "map.legend.traceroute": "Traceroute",
   "map.legend.tracerouteForward": "Traceroute \u2192",
   "map.legend.tracerouteReturn": "Traceroute \u2190",

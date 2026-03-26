@@ -379,7 +379,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                       📍
                     </span>
                   )}
-                  {hop.snr !== undefined && <span className="traceroute-snr">{isMqttSnr(hop.snr) ? 'MQTT' : `${hop.snr.toFixed(1)} dB`}</span>}
+                  {hop.snr !== undefined && <span className="traceroute-snr">{isMqttSnr(hop.snr) ? 'IP' : `${hop.snr.toFixed(1)} dB`}</span>}
                 </span>
                 {idx < fullPath.length - 1 && <span className="traceroute-arrow">→</span>}
               </React.Fragment>

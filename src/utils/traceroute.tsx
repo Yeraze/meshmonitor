@@ -10,13 +10,13 @@ import { calculateDistance, formatDistance } from './distance';
 const INT8_MIN_SNR = -128;
 
 /**
- * Formats SNR value for display, showing "MQTT" for unknown/MQTT links
+ * Formats SNR value for display, showing "IP" for non-LoRa links
  */
 function formatSnrDisplay(snrValue: number | null): string {
   if (snrValue === null) return '';
-  // INT8_MIN (-128) or 0 (protobuf default) indicates MQTT gateway or unknown SNR
+  // INT8_MIN (-128) or 0 (protobuf default) indicates IP gateway or unknown SNR
   if (snrValue === INT8_MIN_SNR || snrValue === 0) {
-    return ' (MQTT)';
+    return ' (IP)';
   }
   return ` (${(snrValue / 4).toFixed(1)} dB)`;
 }
