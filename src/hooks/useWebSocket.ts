@@ -236,6 +236,8 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       // Add message directly to cache - processPollData will run when cache updates
       // and handle timestamp conversion, notification sounds via the useEffect
       addMessageToCache(data);
+      // Invalidate unread counts so badges update promptly (#2316)
+      queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
     });
 
     socket.on('channel:updated', (data: Channel) => {
