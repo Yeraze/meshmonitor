@@ -1953,7 +1953,7 @@
     "automation.auto_traceroute.favorites_only_description": "Только трассировка узлов, отмеченные как избранные",
     "tileset_manager.max_zoom_help": "Максимальный уровень зума (1-22)",
     "network_config.title": "Конфигурация сети",
-    "lora_config.channel_num_description": "Номер канала LoRa для скачкообразного изменения частоты. Диапазон: 0-255 (по умолчанию: 0)",
+    "lora_config.channel_num_description": "Номер канала LoRa для изменения частоты. Диапазон: 0-255 (по умолчанию: 0)",
     "auto_upgrade_test.toast_upgrade_failed": "Ошибка теста обновления",
     "mqtt_config.proxy_to_client_description": "Передача MQTT-пакетов через подключенное мобильное приложение вместо прямого подключения по Wi-Fi",
     "mqtt_config.proxy_to_client_meshmonitor_note": "Для MeshMonitor: включите эту функцию и настройте контейнер-дополнительный компонент MQTT Proxy.",
