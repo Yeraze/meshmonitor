@@ -6,7 +6,7 @@
 
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import * as cron from 'node-cron';
+import { validateCron, scheduleCron, type CronJob } from '../utils/cronScheduler.js';
 
 interface SolarEstimateResponse {
   result: Record<string, number>; // timestamp -> watt_hours mapping
@@ -19,7 +19,7 @@ interface SolarEstimateResponse {
 }
 
 class SolarMonitoringService {
-  private cronJob: cron.ScheduledTask | null = null;
+  private cronJob: CronJob | null = null;
   private isInitialized = false;
 
   /**
@@ -36,12 +36,12 @@ class SolarMonitoringService {
     // Minutes Hours Days Months DayOfWeek
     const cronExpression = '5 * * * *';
 
-    if (!cron.validate(cronExpression)) {
+    if (!validateCron(cronExpression)) {
       logger.error('❌ Invalid cron expression for solar monitoring');
       return;
     }
 
-    this.cronJob = cron.schedule(
+    this.cronJob = scheduleCron(
       cronExpression,
       async () => {
         logger.info('☀️  Solar monitoring cron job triggered');
@@ -51,9 +51,6 @@ class SolarMonitoringService {
         timezone: 'Etc/UTC' // Use UTC timezone for consistency
       }
     );
-
-    // Explicitly start the cron job
-    this.cronJob.start();
 
     this.isInitialized = true;
     logger.info('✅ Solar monitoring service initialized (runs at :05 of every hour)');

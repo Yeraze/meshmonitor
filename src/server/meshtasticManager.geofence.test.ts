@@ -30,13 +30,11 @@ vi.mock('./logger.js', () => ({
   },
 }));
 
-vi.mock('node-cron', () => ({
-  default: {
-    schedule: vi.fn((_expression: string, _callback: () => void) => ({
-      stop: vi.fn(),
-    })),
-    validate: vi.fn(() => true),
-  },
+vi.mock('./utils/cronScheduler.js', () => ({
+  validateCron: vi.fn(() => true),
+  scheduleCron: vi.fn((_expression: string, _callback: () => void) => ({
+    stop: vi.fn(),
+  })),
 }));
 
 import type { GeofenceTrigger, GeofenceShape, GeofenceNodeFilter } from '../components/auto-responder/types.js';
