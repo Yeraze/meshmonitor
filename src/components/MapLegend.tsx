@@ -52,7 +52,7 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory }) => {
   // Other overlay line types (non-neighbor)
   const otherLineItems: LinkLegendItem[] = [
     { color: overlayColors.tracerouteForward, width: 2, dashArray: '3,6', opacity: 1, label: t('map.legend.traceroute', 'Traceroute') },
-    { color: overlayColors.mqttSegment, width: 2, dashArray: '3,6', opacity: 1, label: t('map.legend.mqtt', 'MQTT') },
+    { color: overlayColors.mqttSegment, width: 2, dashArray: '3,6', opacity: 1, label: t('map.legend.mqtt', 'IP') },
   ];
 
   const formatTime = (timestamp: number) => {
