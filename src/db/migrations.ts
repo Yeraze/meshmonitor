@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 16 migrations in sequential order for use by the migration runner.
+ * Registers all 17 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -28,6 +28,7 @@ import { migration as auditLogColumnsMigration, runMigration013Postgres, runMigr
 import { migration as messagesDecryptedByMigration, runMigration014Postgres, runMigration014Mysql } from '../server/migrations/014_add_messages_decrypted_by.js';
 import { migration as notificationPrefsUniqueMigration, runMigration015Postgres, runMigration015Mysql } from '../server/migrations/015_add_notification_prefs_unique.js';
 import { migration as renameSystemBackupColumnsMigration, runMigration016Postgres, runMigration016Mysql } from '../server/migrations/016_rename_system_backup_columns.js';
+import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
 
 // ============================================================================
 // Registry
@@ -215,4 +216,19 @@ registry.register({
   sqlite: (db) => renameSystemBackupColumnsMigration.up(db),
   postgres: (client) => runMigration016Postgres(client),
   mysql: (pool) => runMigration016Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 017: Add missing name and expires_at columns to api_tokens
+// Pre-3.7 databases created api_tokens without these columns.
+// Fixes: https://github.com/Yeraze/meshmonitor/issues/2435
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 17,
+  name: 'add_api_tokens_name_column',
+  settingsKey: 'migration_017_add_api_tokens_name_column',
+  sqlite: (db) => apiTokensNameMigration.up(db),
+  postgres: (client) => runMigration017Postgres(client),
+  mysql: (pool) => runMigration017Mysql(pool),
 });
