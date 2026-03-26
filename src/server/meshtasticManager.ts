@@ -18,6 +18,7 @@ import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
+import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
@@ -10993,19 +10994,32 @@ class MeshtasticManager {
         }
       }
 
-      // 3. Set new/unknown channels to no permissions for non-admin users
+      // 3. Migrate automation channel references (auto-responder, timer, geofence triggers, auto-ack)
+      if (moves.length > 0) {
+        try {
+          await migrateAutomationChannels(
+            moves,
+            (key) => databaseService.settings.getSetting(key),
+            (key, value) => databaseService.settings.setSetting(key, value)
+          );
+        } catch (error) {
+          logger.error('🔄 Failed to migrate automation channels on startup:', error);
+        }
+      }
+
+      // 4. Set new/unknown channels to no permissions for non-admin users
       if (newChannels.length > 0) {
         logger.info(`🔑 New channels detected (${newChannels.join(', ')}) — non-admin users will have no access until granted`);
         // New channels naturally have no permissions since no permission rows exist
         // No action needed — absence of permission = no access
       }
 
-      // 4. Audit log the changes
+      // 5. Audit log the changes
       try {
         const details: string[] = [];
         if (moves.length > 0) {
           details.push(`Channel moves: ${moves.map(m => `slot ${m.from}→${m.to}`).join(', ')}`);
-          details.push(`Messages and permissions migrated`);
+          details.push(`Messages, permissions, and automations migrated`);
         }
         if (newChannels.length > 0) {
           details.push(`New channels on slots: ${newChannels.join(', ')} (default: no user permissions)`);

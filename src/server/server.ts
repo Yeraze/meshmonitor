@@ -42,6 +42,7 @@ import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
+import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 
@@ -2400,6 +2401,11 @@ async function migrateMessagesIfChannelsMoved(beforeSnapshot: { id: number; psk?
     if (moves.length > 0) {
       logger.info(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
       await databaseService.messages.migrateMessagesForChannelMoves(moves);
+      await migrateAutomationChannels(
+        moves,
+        (key) => databaseService.settings.getSetting(key),
+        (key, value) => databaseService.settings.setSetting(key, value)
+      );
     }
   } catch (error) {
     logger.error('📦 Failed to migrate messages after channel change:', error);
@@ -2930,6 +2936,11 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
         logger.info(`📦 Detected channel move(s) from config import: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
         try {
           await databaseService.messages.migrateMessagesForChannelMoves(moves);
+          await migrateAutomationChannels(
+            moves,
+            (key) => databaseService.settings.getSetting(key),
+            (key, value) => databaseService.settings.setSetting(key, value)
+          );
         } catch (error) {
           logger.error('📦 Failed to migrate messages after config import:', error);
         }
