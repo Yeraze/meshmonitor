@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 14 migrations in sequential order for use by the migration runner.
+ * Registers all 16 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -27,6 +27,7 @@ import { migration as authAlignMigration, runMigration012Postgres, runMigration0
 import { migration as auditLogColumnsMigration, runMigration013Postgres, runMigration013Mysql } from '../server/migrations/013_add_audit_log_missing_columns.js';
 import { migration as messagesDecryptedByMigration, runMigration014Postgres, runMigration014Mysql } from '../server/migrations/014_add_messages_decrypted_by.js';
 import { migration as notificationPrefsUniqueMigration, runMigration015Postgres, runMigration015Mysql } from '../server/migrations/015_add_notification_prefs_unique.js';
+import { migration as renameSystemBackupColumnsMigration, runMigration016Postgres, runMigration016Mysql } from '../server/migrations/016_rename_system_backup_columns.js';
 
 // ============================================================================
 // Registry
@@ -198,4 +199,20 @@ registry.register({
   sqlite: (db) => notificationPrefsUniqueMigration.up(db),
   postgres: (client) => runMigration015Postgres(client),
   mysql: (pool) => runMigration015Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 016: Rename legacy system_backup_history columns
+// Pre-3.7 databases used dirname/type/size/table_count/meshmonitor_version/
+// schema_version; baseline CREATE TABLE IF NOT EXISTS didn't rename them.
+// Fixes: https://github.com/Yeraze/meshmonitor/issues/2419
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 16,
+  name: 'rename_system_backup_columns',
+  settingsKey: 'migration_016_rename_system_backup_columns',
+  sqlite: (db) => renameSystemBackupColumnsMigration.up(db),
+  postgres: (client) => runMigration016Postgres(client),
+  mysql: (pool) => runMigration016Mysql(pool),
 });
