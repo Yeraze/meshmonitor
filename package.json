@@ -23,7 +23,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "migrate-db": "tsx src/cli/migrate-db.ts"
+    "migrate-db": "node dist/cli/migrate-db.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
