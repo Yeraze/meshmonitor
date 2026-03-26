@@ -213,9 +213,9 @@ For Kubernetes deployments, use the Helm chart values file:
 
 ```yaml
 # values.yaml
-meshmonitor:
-  nodeIp: "192.168.1.100"
-  port: 3000
+env:
+  meshtasticNodeIp: "192.168.1.100"
+  port: "3001"
 
 ingress:
   enabled: true
@@ -223,6 +223,23 @@ ingress:
   tls:
     enabled: true
 ```
+
+For environment variables not covered by the built-in chart fields (CORS, reverse proxy, database, sessions, etc.), use `extraEnv`:
+
+```yaml
+extraEnv:
+  - name: ALLOWED_ORIGINS
+    value: "https://meshmonitor.example.com"
+  - name: TRUST_PROXY
+    value: "true"
+  - name: SESSION_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: meshmonitor-secrets
+        key: session-secret
+```
+
+This accepts standard Kubernetes env var syntax, including `valueFrom` for Secrets and ConfigMaps.
 
 See the [Production Deployment guide](/configuration/production) for complete Helm configuration.
 

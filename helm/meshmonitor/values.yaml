@@ -51,6 +51,25 @@ env:
   # Example: "/meshmonitor" for hosting at https://example.com/meshmonitor/
   baseUrl: ""
 
+# Additional environment variables
+# Use this to pass any environment variable to MeshMonitor that isn't
+# covered by the fields above (e.g., CORS, reverse proxy, database, etc.)
+# Format: standard Kubernetes env var syntax
+# Example:
+#   extraEnv:
+#     - name: ALLOWED_ORIGINS
+#       value: "https://meshmonitor.example.com"
+#     - name: TRUST_PROXY
+#       value: "true"
+#     - name: DATABASE_URL
+#       value: "postgresql://user:pass@host:5432/meshmonitor"
+#     - name: SESSION_SECRET
+#       valueFrom:
+#         secretKeyRef:
+#           name: meshmonitor-secrets
+#           key: session-secret
+extraEnv: []
+
 # Auto-upgrade configuration (Docker only)
 # Note: Kubernetes deployments should use kubectl/helm for upgrades
 autoupgrade:
