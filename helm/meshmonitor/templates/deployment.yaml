@@ -47,6 +47,9 @@ spec:
         - name: AUTO_UPGRADE_ENABLED
           value: "true"
         {{- end }}
+        {{- if .Values.extraEnv }}
+        {{- toYaml .Values.extraEnv | nindent 8 }}
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /api/health

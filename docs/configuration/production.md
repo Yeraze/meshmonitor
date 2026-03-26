@@ -132,6 +132,31 @@ ingress:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 ```
 
+#### Additional Environment Variables
+
+The Helm chart exposes common settings (`MESHTASTIC_NODE_IP`, `PORT`, `BASE_URL`, etc.) as dedicated values fields. For any other environment variable — such as CORS, reverse proxy, database, or session settings — use `extraEnv`:
+
+```yaml
+# values.yaml
+extraEnv:
+  - name: ALLOWED_ORIGINS
+    value: "https://meshmonitor.example.com"
+  - name: TRUST_PROXY
+    value: "true"
+  - name: SESSION_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: meshmonitor-secrets
+        key: session-secret
+  - name: DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: meshmonitor-secrets
+        key: database-url
+```
+
+This accepts standard [Kubernetes env var syntax](https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/), including `valueFrom` for referencing Secrets and ConfigMaps. See the [Environment Variables](/configuration/index) page for the full list of supported variables.
+
 Deploy:
 
 ```bash
