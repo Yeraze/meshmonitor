@@ -108,7 +108,7 @@ Migrations use a centralized registry in `src/db/migrations.ts`. Each migration 
 4. Make migrations **idempotent** — use try/catch for SQLite (`duplicate column`), `IF NOT EXISTS` for PostgreSQL, `information_schema` checks for MySQL
 5. **Column naming**: SQLite uses `snake_case`, PostgreSQL/MySQL use `camelCase` (quoted in PG raw SQL)
 
-**Current migration count:** 14 (latest: `014_add_messages_decrypted_by`)
+**Current migration count:** 16 (latest: `016_rename_system_backup_columns`)
 
 ## Testing
 
