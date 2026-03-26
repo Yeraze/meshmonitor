@@ -1875,25 +1875,27 @@ function App() {
 
   // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
 
-  // Mark messages as read when viewing a channel
+  // Mark messages as read when viewing a channel — also re-fires when new messages arrive
+  // so that incoming messages are immediately marked as read while the user is viewing the channel.
+  // Without the message count dependency, new messages would show as "unread" until the user
+  // clicks away and back (#2316).
+  const currentChannelMsgCount = (channelMessages[selectedChannel] || []).length;
   useEffect(() => {
     if (activeTab === 'channels' && selectedChannel >= 0) {
-      // Mark all messages in the selected channel as read
-      console.log('📖 Marking channel messages as read:', selectedChannel);
-      logger.debug('📖 Marking channel messages as read:', selectedChannel);
       markMessagesAsRead(undefined, selectedChannel);
     }
-  }, [selectedChannel, activeTab, markMessagesAsRead]);
+  }, [selectedChannel, activeTab, markMessagesAsRead, currentChannelMsgCount]);
 
-  // Mark messages as read when viewing a DM conversation
+  // Mark messages as read when viewing a DM conversation — also re-fires on new messages
+  // Filter to only the selected conversation so we don't fire on messages from other DMs
+  const currentDMMsgCount = selectedDMNode
+    ? messages.filter(msg => msg.fromNodeId === selectedDMNode || msg.toNodeId === selectedDMNode).length
+    : 0;
   useEffect(() => {
     if (activeTab === 'messages' && selectedDMNode) {
-      // Mark all DMs with the selected node as read
-      console.log('📖 Marking DM messages as read with node:', selectedDMNode);
-      logger.debug('📖 Marking DM messages as read with node:', selectedDMNode);
       markMessagesAsRead(undefined, undefined, selectedDMNode);
     }
-  }, [selectedDMNode, activeTab, markMessagesAsRead]);
+  }, [selectedDMNode, activeTab, markMessagesAsRead, currentDMMsgCount]);
 
   // Handle push notification navigation (click on notification -> navigate to channel/DM and scroll to message)
   useNotificationNavigationHandler(
