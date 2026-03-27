@@ -59,6 +59,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### NWI Mesh Net
+- **URL**: [meshview.nwimesh.net](https://meshview.nwimesh.net/)
+- **Network**: [NWIMesh.net](https://nwimesh.net/)
+- **Location**: Northwest Indiana, US
+- **Description**: A regional mesh network serving Northwest Indiana (Lake, Porter, Newton, Jasper, and LaPorte counties) with a cross-lake link extending connectivity to Chicago.
+
+---
+
 ### Indiana Mesh
 - **URL**: [meshmap.tranziq.net](https://meshmap.tranziq.net/)
 - **Network**: [CIMesh](https://cimesh.net/)
