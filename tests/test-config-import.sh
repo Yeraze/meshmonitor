@@ -240,9 +240,9 @@ wait_for_reconnect() {
     fi
 
     # Now wait for device to reconnect (reboot complete)
-    # UI waits up to 60 seconds for reconnect
-    echo "Waiting for device to reconnect (up to 60 seconds)..."
-    MAX_WAIT_RECONNECT=60
+    # Allow extra time for reconnect initial delay (default 60s) plus device reboot time
+    echo "Waiting for device to reconnect (up to 180 seconds)..."
+    MAX_WAIT_RECONNECT=180
     ELAPSED=0
 
     while [ $ELAPSED -lt $MAX_WAIT_RECONNECT ]; do
