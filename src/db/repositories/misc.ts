@@ -1001,7 +1001,7 @@ export class MiscRepository extends BaseRepository {
    * Cleanup old packet logs based on max age
    */
   async cleanupOldPacketLogs(maxAgeHours: number): Promise<number> {
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+    const cutoffTimestamp = Date.now() - (maxAgeHours * 60 * 60 * 1000);
 
     try {
       const results = await this.executeRun(

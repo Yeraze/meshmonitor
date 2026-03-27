@@ -2492,7 +2492,7 @@ class DatabaseService {
    * Excludes internal traffic (packets where both from and to are the local node)
    */
   getPacketCountsPerNodeLastHour(): Array<{ nodeNum: number; packetCount: number }> {
-    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+    const oneHourAgo = Date.now() - 3600000;
 
     // For PostgreSQL/MySQL, use async method
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -2521,7 +2521,7 @@ class DatabaseService {
    * Excludes internal traffic (packets where both from and to are the local node)
    */
   async getPacketCountsPerNodeLastHourAsync(): Promise<Array<{ nodeNum: number; packetCount: number }>> {
-    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+    const oneHourAgo = Date.now() - 3600000;
 
     // Get local node number to exclude internal traffic
     const localNodeNumStr = this.getSetting('localNodeNum');
@@ -2574,7 +2574,7 @@ class DatabaseService {
    * Excludes internal traffic (packets where both from and to are the local node)
    */
   async getTopBroadcastersAsync(limit: number = 5): Promise<Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>> {
-    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+    const oneHourAgo = Date.now() - 3600000;
 
     // Get local node number to exclude internal traffic
     const localNodeNumStr = this.getSetting('localNodeNum');
@@ -9423,7 +9423,7 @@ class DatabaseService {
   cleanupOldPacketLogs(): number {
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+    const cutoffTimestamp = Date.now() - (maxAgeHours * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM packet_log WHERE timestamp < ?');
     const result = stmt.run(cutoffTimestamp);
     return Number(result.changes);
