@@ -215,9 +215,10 @@ class SecurityDigestService {
 
     try {
       // Gather security data using existing functions
-      const [keyIssueNodes, excessiveNodes, topBroadcasters] = await Promise.all([
+      const [keyIssueNodes, excessiveNodes, timeOffsetNodes, topBroadcasters] = await Promise.all([
         this.databaseService.getNodesWithKeySecurityIssuesAsync(),
         this.databaseService.getNodesWithExcessivePacketsAsync(),
+        this.databaseService.getNodesWithTimeOffsetIssuesAsync(),
         this.databaseService.getTopBroadcastersAsync(10),
       ]);
 
@@ -232,7 +233,16 @@ class SecurityDigestService {
           existing.isExcessivePackets = true;
           existing.packetRatePerHour = node.packetRatePerHour;
         } else {
-          nodeMap.set(node.nodeNum, { ...node, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: true });
+          nodeMap.set(node.nodeNum, { ...node, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: true, isTimeOffsetIssue: false, timeOffsetSeconds: null });
+        }
+      }
+      for (const node of timeOffsetNodes) {
+        const existing = nodeMap.get(node.nodeNum);
+        if (existing) {
+          existing.isTimeOffsetIssue = (node as any).isTimeOffsetIssue || false;
+          existing.timeOffsetSeconds = (node as any).timeOffsetSeconds || null;
+        } else {
+          nodeMap.set(node.nodeNum, { ...node, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false, isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false, timeOffsetSeconds: (node as any).timeOffsetSeconds || null });
         }
       }
 
