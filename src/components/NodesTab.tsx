@@ -2159,12 +2159,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   : undefined;
 
                 // Calculate bearing for unidirectional arrow (degrees from north)
+                // Arrow points FROM neighbor TO node (neighbor→node = "I heard this neighbor")
                 // Scale longitude difference by cos(lat) to correct for latitude
                 const latMid = (ni.nodeLatitude! + ni.neighborLatitude!) / 2;
                 const bearing = !isBidirectional
                   ? Math.atan2(
-                      (ni.neighborLongitude! - ni.nodeLongitude!) * Math.cos(latMid * Math.PI / 180),
-                      ni.neighborLatitude! - ni.nodeLatitude!
+                      (ni.nodeLongitude! - ni.neighborLongitude!) * Math.cos(latMid * Math.PI / 180),
+                      ni.nodeLatitude! - ni.neighborLatitude!
                     ) * (180 / Math.PI)
                   : 0;
 
@@ -2182,7 +2183,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         <div className="route-popup">
                           <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
                           <div className="route-endpoints">
-                            <strong>{ni.nodeName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.neighborName}</strong>
+                            <strong>{ni.neighborName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.nodeName}</strong>
                           </div>
                           {isBidirectional && (
                             <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
@@ -2205,16 +2206,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </div>
                       </Popup>
                     </Polyline>
-                    {/* Midpoint arrow for unidirectional lines */}
+                    {/* Direction arrows along unidirectional lines at 25%, 50%, 75% for visibility at any zoom */}
                     {!isBidirectional && ni.nodeLatitude && ni.neighborLatitude && (
-                      <Marker
-                        position={[
-                          (ni.nodeLatitude + ni.neighborLatitude) / 2,
-                          (ni.nodeLongitude! + ni.neighborLongitude!) / 2
-                        ]}
-                        icon={createArrowIcon(bearing, overlayColors.neighborLine)}
-                        interactive={false}
-                      />
+                      <>
+                        {[0.25, 0.5, 0.75].map(fraction => (
+                          <Marker
+                            key={`arrow-${fraction}`}
+                            position={[
+                              ni.neighborLatitude! + (ni.nodeLatitude! - ni.neighborLatitude!) * fraction,
+                              ni.neighborLongitude! + (ni.nodeLongitude! - ni.neighborLongitude!) * fraction
+                            ]}
+                            icon={createArrowIcon(bearing, overlayColors.neighborLine)}
+                            interactive={false}
+                          />
+                        ))}
+                      </>
                     )}
                   </React.Fragment>
                 );
