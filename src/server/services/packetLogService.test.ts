@@ -41,7 +41,7 @@ describe('PacketLogService', () => {
 
       await packetLogService.logPacket({
         packet_id: 12345,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: Date.now(),
         from_node: 123456789,
         from_node_id: '!075bcd15',
         to_node: 987654321,
@@ -65,7 +65,7 @@ describe('PacketLogService', () => {
 
       await packetLogService.logPacket({
         packet_id: 12346,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: Date.now(),
         from_node: 123456789,
         to_node: 987654321,
         channel: 0,
@@ -86,7 +86,7 @@ describe('PacketLogService', () => {
 
       await packetLogService.logPacket({
         packet_id: 12347,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: Date.now(),
         from_node: 123456789,
         channel: 0,
         portnum: 1,
@@ -103,7 +103,7 @@ describe('PacketLogService', () => {
 
       await packetLogService.logPacket({
         packet_id: 12348,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: Date.now(),
         from_node: 123456789,
         from_node_id: '!075bcd15',
         to_node: 987654321,
@@ -136,7 +136,7 @@ describe('PacketLogService', () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       // Add test data
-      const baseTime = Math.floor(Date.now() / 1000);
+      const baseTime = Date.now();
 
       await packetLogService.logPacket({
         packet_id: 1,
@@ -208,7 +208,7 @@ describe('PacketLogService', () => {
     });
 
     it('should filter by since timestamp', async () => {
-      const baseTime = Math.floor(Date.now() / 1000);
+      const baseTime = Date.now();
       const packets = await packetLogService.getPackets({ since: baseTime - 60 });
       expect(packets.length).toBe(2); // Should only get packets from last 60s
     });
@@ -241,7 +241,7 @@ describe('PacketLogService', () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       // Add test data
-      const baseTime = Math.floor(Date.now() / 1000);
+      const baseTime = Date.now();
       for (let i = 0; i < 5; i++) {
         await packetLogService.logPacket({
           packet_id: i,
@@ -275,7 +275,7 @@ describe('PacketLogService', () => {
 
       await packetLogService.logPacket({
         packet_id: 99999,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: Date.now(),
         from_node: 111,
         channel: 0,
         portnum: 1,
@@ -306,7 +306,7 @@ describe('PacketLogService', () => {
       for (let i = 0; i < 10; i++) {
         await packetLogService.logPacket({
           packet_id: i,
-          timestamp: Math.floor(Date.now() / 1000),
+          timestamp: Date.now(),
           from_node: 111,
           channel: 0,
           portnum: 1,
@@ -325,8 +325,8 @@ describe('PacketLogService', () => {
     it('should cleanup old packets automatically', async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
-      const oldTime = Math.floor(Date.now() / 1000) - (25 * 60 * 60); // 25 hours ago
-      const newTime = Math.floor(Date.now() / 1000);
+      const oldTime = Date.now() - (25 * 60 * 60 * 1000); // 25 hours ago
+      const newTime = Date.now();
 
       // Add old packet
       await packetLogService.logPacket({

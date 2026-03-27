@@ -163,7 +163,7 @@ export class NeighborsRepository extends BaseRepository {
    * @returns Map of nodeNum to DirectNeighborStats
    */
   async getDirectNeighborRssiAsync(hoursBack: number = 24): Promise<Map<number, DirectNeighborStats>> {
-    const cutoffTime = Math.floor(Date.now() / 1000) - (hoursBack * 60 * 60);
+    const cutoffTime = Date.now() - (hoursBack * 60 * 60 * 1000);
     const resultMap = new Map<number, DirectNeighborStats>();
     const { packetLog } = this.tables;
 
