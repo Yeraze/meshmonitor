@@ -6,8 +6,8 @@
 
 export interface ChannelSnapshot {
   id: number;
-  psk: string | null;
-  name: string | null;
+  psk?: string | null;
+  name?: string | null;
 }
 
 export function detectChannelMoves(
