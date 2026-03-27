@@ -1034,9 +1034,12 @@ export class MiscRepository extends BaseRepository {
       const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
 
       const results: DbDistinctRelayNode[] = [];
+      const hopsAway = this.col('hopsAway');
       for (const rv of relayValues) {
+        // Only include nodes that could plausibly be relays:
+        // direct neighbors (hopsAway <= 1) or unknown hop distance (NULL)
         const matchRows = await this.executeQuery(
-          sql`SELECT ${longName}, ${shortName} FROM nodes WHERE (${nodeNum} & 255) = ${rv}`
+          sql`SELECT ${longName}, ${shortName} FROM nodes WHERE (${nodeNum} & 255) = ${rv} AND (${hopsAway} IS NULL OR ${hopsAway} <= 1)`
         );
         results.push({
           relay_node: rv,
