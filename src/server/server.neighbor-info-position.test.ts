@@ -47,12 +47,12 @@ const mockNodes: Record<number, any> = {
 
 // Mock neighbor info data
 const mockNeighborInfo = [
-  { id: 1, nodeNum: 1, neighborNodeNum: 2, snr: 10.5, timestamp: Math.floor(Date.now() / 1000) },
-  { id: 2, nodeNum: 2, neighborNodeNum: 3, snr: 8.0, timestamp: Math.floor(Date.now() / 1000) }
+  { id: 1, nodeNum: 1, neighborNodeNum: 2, snr: 10.5, timestamp: Date.now() },
+  { id: 2, nodeNum: 2, neighborNodeNum: 3, snr: 8.0, timestamp: Date.now() }
 ];
 
 const mockNeighborsForNode1 = [
-  { id: 1, nodeNum: 1, neighborNodeNum: 2, snr: 10.5, timestamp: Math.floor(Date.now() / 1000) }
+  { id: 1, nodeNum: 1, neighborNodeNum: 2, snr: 10.5, timestamp: Date.now() }
 ];
 
 // Database mock

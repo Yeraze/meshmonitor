@@ -5729,7 +5729,8 @@ class MeshtasticManager {
       }
 
       const senderHopsAway = senderNode?.hopsAway || 0;
-      const nowSeconds = Math.floor(Date.now() / 1000);
+      const nowMs = Date.now();
+      const nowSeconds = Math.floor(nowMs / 1000);
 
       // Process each neighbor in the list
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
@@ -5780,8 +5781,8 @@ class MeshtasticManager {
           neighborNodeNum: vn.nodeNum,
           snr: vn.snr,
           lastRxTime: vn.lastRxTime,
-          timestamp: nowSeconds,
-          createdAt: nowSeconds,
+          timestamp: nowMs,
+          createdAt: nowMs,
         }));
 
         await databaseService.neighbors.insertNeighborInfoBatch(records);
