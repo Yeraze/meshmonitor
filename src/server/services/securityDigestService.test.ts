@@ -117,7 +117,7 @@ describe('securityDigestService', () => {
 
       const result = formatDigestDetailed(issues, baseUrl);
       expect(result).toContain('DriftNode');
-      expect(result).toContain('3600s drift');
+      expect(result).toContain('01h 00m 00s drift');
     });
   });
 });

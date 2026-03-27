@@ -35,6 +35,20 @@ function nodeName(node: { nodeNum: number; longName: string | null; shortName: s
   return node.longName || node.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`;
 }
 
+function formatDrift(seconds: number): string {
+  const abs = Math.abs(seconds);
+  const days = Math.floor(abs / 86400);
+  const hours = Math.floor((abs % 86400) / 3600);
+  const mins = Math.floor((abs % 3600) / 60);
+  const secs = abs % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours.toString().padStart(2, '0')}h`);
+  parts.push(`${mins.toString().padStart(2, '0')}m`);
+  parts.push(`${secs.toString().padStart(2, '0')}s`);
+  return parts.join(' ');
+}
+
 function nodeId(nodeNum: number): string {
   return `!${nodeNum.toString(16).padStart(8, '0')}`;
 }
@@ -228,7 +242,7 @@ export function formatDigestDetailed(
     lines.push(md ? '*None*' : 'None');
   } else {
     for (const node of timeOffsetNodes) {
-      const offset = node.timeOffsetSeconds != null ? ` — ${Math.abs(node.timeOffsetSeconds)}s drift` : '';
+      const offset = node.timeOffsetSeconds != null ? ` — ${formatDrift(node.timeOffsetSeconds)} drift` : '';
       if (md) {
         lines.push(`- **${nodeName(node)}**${offset}`);
       } else {
