@@ -96,6 +96,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [digestTime, setDigestTime] = useState('06:00');
   const [digestReportType, setDigestReportType] = useState<'summary' | 'detailed'>('summary');
   const [digestSuppressEmpty, setDigestSuppressEmpty] = useState(true);
+  const [digestFormat, setDigestFormat] = useState<'text' | 'markdown'>('text');
   const [digestSaving, setDigestSaving] = useState(false);
   const [digestSending, setDigestSending] = useState(false);
   const [digestMessage, setDigestMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -141,6 +142,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         setDigestTime(settings.securityDigestTime || '06:00');
         setDigestReportType((settings.securityDigestReportType as 'summary' | 'detailed') || 'summary');
         setDigestSuppressEmpty(settings.securityDigestSuppressEmpty !== 'false');
+        setDigestFormat((settings.securityDigestFormat as 'text' | 'markdown') || 'text');
       } catch {
         // Settings may not exist yet, use defaults
       }
@@ -158,6 +160,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         securityDigestTime: digestTime,
         securityDigestReportType: digestReportType,
         securityDigestSuppressEmpty: String(digestSuppressEmpty),
+        securityDigestFormat: digestFormat,
       });
       setDigestMessage({ type: 'success', text: t('common.saved', 'Settings saved') });
     } catch {
@@ -165,7 +168,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     } finally {
       setDigestSaving(false);
     }
-  }, [digestEnabled, digestAppriseUrl, digestTime, digestReportType, digestSuppressEmpty, t]);
+  }, [digestEnabled, digestAppriseUrl, digestTime, digestReportType, digestSuppressEmpty, digestFormat, t]);
 
   const sendDigestNow = useCallback(async () => {
     setDigestSending(true);
@@ -505,6 +508,17 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
               >
                 <option value="summary">{t('security.digest_summary', 'Summary')}</option>
                 <option value="detailed">{t('security.digest_detailed', 'Detailed')}</option>
+              </select>
+            </div>
+            <div className="digest-row">
+              <label className="digest-label">{t('security.digest_format', 'Format')}</label>
+              <select
+                className="digest-input digest-select"
+                value={digestFormat}
+                onChange={e => setDigestFormat(e.target.value as 'text' | 'markdown')}
+              >
+                <option value="text">{t('security.digest_format_text', 'Plain Text')}</option>
+                <option value="markdown">{t('security.digest_format_markdown', 'Markdown')}</option>
               </select>
             </div>
             <div className="digest-row">

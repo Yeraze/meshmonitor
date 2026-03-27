@@ -19,10 +19,12 @@ describe('securityDigestService', () => {
       const result = formatDigestSummary(issues, baseUrl);
       expect(result).toContain('Security Digest');
       expect(result).toContain('5 nodes');
-      expect(result).toContain('Duplicate PSK: 3');
-      expect(result).toContain('Low-Entropy Key: 1');
-      expect(result).toContain('Excessive Packets: 1');
-      expect(result).toContain('Time Offset: 0');
+      expect(result).toContain('Duplicate PSK:');
+      expect(result).toContain('3 node');
+      expect(result).toContain('Low-Entropy Key:');
+      expect(result).toContain('1 node');
+      expect(result).toContain('Excessive Packets:');
+      expect(result).toContain('Time Offset:');
       expect(result).toContain(baseUrl);
     });
 

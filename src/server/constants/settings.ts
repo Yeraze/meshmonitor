@@ -128,6 +128,7 @@ export const VALID_SETTINGS_KEYS = [
   'securityDigestTime',
   'securityDigestReportType',
   'securityDigestSuppressEmpty',
+  'securityDigestFormat',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

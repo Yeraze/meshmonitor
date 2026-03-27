@@ -29,12 +29,24 @@ interface SecurityIssuesData {
   }>;
 }
 
+export type DigestFormat = 'text' | 'markdown';
+
+function nodeName(node: { nodeNum: number; longName: string | null; shortName: string | null }): string {
+  return node.longName || node.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`;
+}
+
+function nodeId(nodeNum: number): string {
+  return `!${nodeNum.toString(16).padStart(8, '0')}`;
+}
+
 export function formatDigestSummary(
   issues: SecurityIssuesData,
   baseUrl: string,
-  suppressEmpty: boolean = true
+  suppressEmpty: boolean = true,
+  format: DigestFormat = 'text'
 ): string | null {
   const date = new Date().toISOString().split('T')[0];
+  const md = format === 'markdown';
   const issueTypeCount = [
     issues.duplicateKeyCount > 0,
     issues.lowEntropyCount > 0,
@@ -44,12 +56,38 @@ export function formatDigestSummary(
 
   if (issues.total === 0) {
     if (suppressEmpty) return null;
+    if (md) {
+      return [
+        `# MeshMonitor Security Digest — ${date}`,
+        '',
+        '> No security issues detected.',
+        '',
+        `[View details](${baseUrl}/security)`,
+      ].join('\n');
+    }
     return [
       `MeshMonitor Security Digest — ${date}`,
       '',
       'No security issues detected.',
       '',
       `View details: ${baseUrl}/security`,
+    ].join('\n');
+  }
+
+  if (md) {
+    return [
+      `# MeshMonitor Security Digest — ${date}`,
+      '',
+      `> **${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''}** detected across **${issues.total} nodes**`,
+      '',
+      '| Issue Type | Count |',
+      '|---|---|',
+      `| Duplicate PSK | ${issues.duplicateKeyCount} |`,
+      `| Low-Entropy Key | ${issues.lowEntropyCount} |`,
+      `| Excessive Packets | ${issues.excessivePacketsCount} |`,
+      `| Time Offset | ${issues.timeOffsetCount} |`,
+      '',
+      `[View details](${baseUrl}/security)`,
     ].join('\n');
   }
 
@@ -58,10 +96,10 @@ export function formatDigestSummary(
     '',
     `${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''} detected across ${issues.total} nodes`,
     '',
-    `Duplicate PSK: ${issues.duplicateKeyCount} node${issues.duplicateKeyCount !== 1 ? 's' : ''}`,
-    `Low-Entropy Key: ${issues.lowEntropyCount} node${issues.lowEntropyCount !== 1 ? 's' : ''}`,
-    `Excessive Packets: ${issues.excessivePacketsCount} node${issues.excessivePacketsCount !== 1 ? 's' : ''}`,
-    `Time Offset: ${issues.timeOffsetCount} node${issues.timeOffsetCount !== 1 ? 's' : ''}`,
+    `  Duplicate PSK:    ${issues.duplicateKeyCount} node${issues.duplicateKeyCount !== 1 ? 's' : ''}`,
+    `  Low-Entropy Key:  ${issues.lowEntropyCount} node${issues.lowEntropyCount !== 1 ? 's' : ''}`,
+    `  Excessive Packets: ${issues.excessivePacketsCount} node${issues.excessivePacketsCount !== 1 ? 's' : ''}`,
+    `  Time Offset:      ${issues.timeOffsetCount} node${issues.timeOffsetCount !== 1 ? 's' : ''}`,
     '',
     `View details: ${baseUrl}/security`,
   ].join('\n');
@@ -70,9 +108,11 @@ export function formatDigestSummary(
 export function formatDigestDetailed(
   issues: SecurityIssuesData,
   baseUrl: string,
-  suppressEmpty: boolean = true
+  suppressEmpty: boolean = true,
+  format: DigestFormat = 'text'
 ): string | null {
   const date = new Date().toISOString().split('T')[0];
+  const md = format === 'markdown';
   const issueTypeCount = [
     issues.duplicateKeyCount > 0,
     issues.lowEntropyCount > 0,
@@ -82,6 +122,15 @@ export function formatDigestDetailed(
 
   if (issues.total === 0) {
     if (suppressEmpty) return null;
+    if (md) {
+      return [
+        `# MeshMonitor Security Digest — ${date}`,
+        '',
+        '> No security issues detected.',
+        '',
+        `[View details](${baseUrl}/security)`,
+      ].join('\n');
+    }
     return [
       `MeshMonitor Security Digest — ${date}`,
       '',
@@ -91,28 +140,48 @@ export function formatDigestDetailed(
     ].join('\n');
   }
 
-  const lines: string[] = [
-    `MeshMonitor Security Digest — ${date}`,
-    '',
-    `${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''} detected across ${issues.total} nodes`,
-  ];
+  const lines: string[] = [];
+
+  if (md) {
+    lines.push(
+      `# MeshMonitor Security Digest — ${date}`,
+      '',
+      `> **${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''}** detected across **${issues.total} nodes**`,
+    );
+  } else {
+    lines.push(
+      `MeshMonitor Security Digest — ${date}`,
+      '',
+      `${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''} detected across ${issues.total} nodes`,
+    );
+  }
 
   // Duplicate PSK — group by publicKey
   const dupNodes = issues.nodes.filter(n => n.duplicateKeyDetected);
-  lines.push('', '--- Duplicate PSK ---');
+  lines.push('', md ? '## Duplicate PSK' : '--- Duplicate PSK ---');
   if (dupNodes.length === 0) {
-    lines.push('None');
+    lines.push(md ? '*None*' : 'None');
   } else {
-    const groups = new Map<string, string[]>();
+    const groups = new Map<string, typeof issues.nodes>();
     for (const node of dupNodes) {
       const key = node.publicKey || 'unknown';
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(node.longName || node.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`);
+      groups.get(key)!.push(node);
     }
     let groupNum = 1;
-    for (const [, nodeNames] of groups) {
-      if (nodeNames.length > 1) {
-        lines.push(`Group ${groupNum} (${nodeNames.length} nodes): ${nodeNames.join(', ')}`);
+    for (const [, groupNodes] of groups) {
+      if (groupNodes.length > 1) {
+        if (md) {
+          lines.push(`**Group ${groupNum}** (${groupNodes.length} nodes):`);
+          for (const node of groupNodes) {
+            lines.push(`- ${nodeName(node)} \`${nodeId(node.nodeNum)}\``);
+          }
+        } else {
+          lines.push(`  Group ${groupNum} (${groupNodes.length} nodes):`);
+          for (const node of groupNodes) {
+            lines.push(`    - ${nodeName(node)} (${nodeId(node.nodeNum)})`);
+          }
+        }
         groupNum++;
       }
     }
@@ -123,44 +192,52 @@ export function formatDigestDetailed(
 
   // Low-Entropy Key
   const lowEntropyNodes = issues.nodes.filter(n => n.keyIsLowEntropy);
-  lines.push('', '--- Low-Entropy Key ---');
+  lines.push('', md ? '## Low-Entropy Key' : '--- Low-Entropy Key ---');
   if (lowEntropyNodes.length === 0) {
-    lines.push('None');
+    lines.push(md ? '*None*' : 'None');
   } else {
     for (const node of lowEntropyNodes) {
-      const name = node.longName || node.shortName || 'Unknown';
-      const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
-      lines.push(`${name} (${nodeId})`);
+      if (md) {
+        lines.push(`- **${nodeName(node)}** \`${nodeId(node.nodeNum)}\``);
+      } else {
+        lines.push(`  - ${nodeName(node)} (${nodeId(node.nodeNum)})`);
+      }
     }
   }
 
   // Excessive Packets
   const excessiveNodes = issues.nodes.filter(n => n.isExcessivePackets);
-  lines.push('', '--- Excessive Packets ---');
+  lines.push('', md ? '## Excessive Packets' : '--- Excessive Packets ---');
   if (excessiveNodes.length === 0) {
-    lines.push('None');
+    lines.push(md ? '*None*' : 'None');
   } else {
     for (const node of excessiveNodes) {
-      const name = node.longName || node.shortName || 'Unknown';
       const rate = node.packetRatePerHour != null ? ` — ${node.packetRatePerHour} pkt/hr` : '';
-      lines.push(`${name}${rate}`);
+      if (md) {
+        lines.push(`- **${nodeName(node)}**${rate}`);
+      } else {
+        lines.push(`  - ${nodeName(node)}${rate}`);
+      }
     }
   }
 
   // Time Offset
   const timeOffsetNodes = issues.nodes.filter(n => n.isTimeOffsetIssue);
-  lines.push('', '--- Time Offset ---');
+  lines.push('', md ? '## Time Offset' : '--- Time Offset ---');
   if (timeOffsetNodes.length === 0) {
-    lines.push('None');
+    lines.push(md ? '*None*' : 'None');
   } else {
     for (const node of timeOffsetNodes) {
-      const name = node.longName || node.shortName || 'Unknown';
       const offset = node.timeOffsetSeconds != null ? ` — ${Math.abs(node.timeOffsetSeconds)}s drift` : '';
-      lines.push(`${name}${offset}`);
+      if (md) {
+        lines.push(`- **${nodeName(node)}**${offset}`);
+      } else {
+        lines.push(`  - ${nodeName(node)}${offset}`);
+      }
     }
   }
 
-  lines.push('', `View details: ${baseUrl}/security`);
+  lines.push('', md ? `[View details](${baseUrl}/security)` : `View details: ${baseUrl}/security`);
   return lines.join('\n');
 }
 
@@ -211,6 +288,7 @@ class SecurityDigestService {
 
     const reportType = this.databaseService.getSetting('securityDigestReportType') || 'summary';
     const suppressEmpty = this.databaseService.getSetting('securityDigestSuppressEmpty') !== 'false';
+    const format = (this.databaseService.getSetting('securityDigestFormat') || 'text') as DigestFormat;
     const baseUrl = this.databaseService.getSetting('externalUrl') || '';
 
     try {
@@ -258,8 +336,8 @@ class SecurityDigestService {
       };
 
       const body = reportType === 'detailed'
-        ? formatDigestDetailed(issues, baseUrl, suppressEmpty)
-        : formatDigestSummary(issues, baseUrl, suppressEmpty);
+        ? formatDigestDetailed(issues, baseUrl, suppressEmpty, format)
+        : formatDigestSummary(issues, baseUrl, suppressEmpty, format);
 
       if (body === null) {
         logger.info('Security digest suppressed — no issues found');
@@ -275,6 +353,7 @@ class SecurityDigestService {
           title: 'MeshMonitor Security Digest',
           body,
           type: issues.total > 0 ? 'warning' : 'info',
+          format: format === 'markdown' ? 'markdown' : 'text',
         }),
         signal: AbortSignal.timeout(15000),
       });
