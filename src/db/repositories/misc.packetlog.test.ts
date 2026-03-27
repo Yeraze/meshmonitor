@@ -25,7 +25,8 @@ describe('MiscRepository - Packet Log Queries', () => {
         nodeId TEXT,
         longName TEXT,
         shortName TEXT,
-        lastHeard INTEGER
+        lastHeard INTEGER,
+        hopsAway INTEGER
       )
     `);
 
@@ -72,9 +73,9 @@ describe('MiscRepository - Packet Log Queries', () => {
     repo = new MiscRepository(drizzleDb as any, 'sqlite');
 
     // Insert test nodes
-    db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName) VALUES (100, '!00000064', 'Node Alpha', 'ALPH')`);
-    db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName) VALUES (200, '!000000c8', 'Node Beta', 'BETA')`);
-    db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName) VALUES (300, '!0000012c', 'Node Gamma', 'GAMM')`);
+    db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hopsAway) VALUES (100, '!00000064', 'Node Alpha', 'ALPH', 0)`);
+    db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hopsAway) VALUES (200, '!000000c8', 'Node Beta', 'BETA', 1)`);
+    db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hopsAway) VALUES (300, '!0000012c', 'Node Gamma', 'GAMM', 0)`);
 
     // Insert test packets
     const now = Math.floor(Date.now() / 1000);
