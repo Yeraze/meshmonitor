@@ -458,12 +458,12 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const meshtasticConnectTimeoutMs = parseInt32(
     'MESHTASTIC_CONNECT_TIMEOUT_MS',
     process.env.MESHTASTIC_CONNECT_TIMEOUT_MS,
-    10000 // 10 seconds default
+    60000 // 60 seconds default
   );
   const meshtasticReconnectInitialDelayMs = parseInt32(
     'MESHTASTIC_RECONNECT_INITIAL_DELAY_MS',
     process.env.MESHTASTIC_RECONNECT_INITIAL_DELAY_MS,
-    1000 // 1 second default
+    60000 // 60 seconds default
   );
   const meshtasticReconnectMaxDelayMs = parseInt32(
     'MESHTASTIC_RECONNECT_MAX_DELAY_MS',
@@ -473,7 +473,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const meshtasticModuleConfigDelayMs = parseInt32(
     'MESHTASTIC_MODULE_CONFIG_DELAY_MS',
     process.env.MESHTASTIC_MODULE_CONFIG_DELAY_MS,
-    100 // 100ms default
+    1000 // 1 second default
   );
   const timezoneRaw = process.env.TZ || 'UTC';
   let timezone = { value: timezoneRaw, wasProvided: process.env.TZ !== undefined };
