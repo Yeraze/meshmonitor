@@ -370,11 +370,15 @@
   font-size: 13px;
 }
 
+.top-broadcasters-table .packet-count,
+.top-broadcasters-table th:last-child {
+  text-align: right;
+  width: 100px;
+}
+
 .top-broadcasters-table .packet-count {
   font-weight: 600;
   color: var(--ctp-peach);
-  text-align: right;
-  width: 100px;
 }
 
 .expand-icon {

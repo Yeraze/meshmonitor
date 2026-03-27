@@ -77,12 +77,11 @@ describe('MiscRepository - Packet Log Queries', () => {
     db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hopsAway) VALUES (200, '!000000c8', 'Node Beta', 'BETA', 1)`);
     db.exec(`INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hopsAway) VALUES (300, '!0000012c', 'Node Gamma', 'GAMM', 0)`);
 
-    // Insert test packets
-    const now = Math.floor(Date.now() / 1000);
-    const nowMs = Date.now();
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node) VALUES (1, ${now}, 100, '!00000064', 200, '!000000c8', 1, 'TEXT_MESSAGE_APP', 'rx', ${nowMs}, 100)`);
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node) VALUES (2, ${now}, 200, '!000000c8', 100, '!00000064', 1, 'TEXT_MESSAGE_APP', 'rx', ${nowMs + 1}, 200)`);
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at) VALUES (3, ${now - 60}, 100, '!00000064', 4294967295, '!ffffffff', 3, 'POSITION_APP', 'rx', ${nowMs - 60000})`);
+    // Insert test packets (timestamps in milliseconds)
+    const now = Date.now();
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node) VALUES (1, ${now}, 100, '!00000064', 200, '!000000c8', 1, 'TEXT_MESSAGE_APP', 'rx', ${now}, 100)`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node) VALUES (2, ${now}, 200, '!000000c8', 100, '!00000064', 1, 'TEXT_MESSAGE_APP', 'rx', ${now + 1}, 200)`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at) VALUES (3, ${now - 60000}, 100, '!00000064', 4294967295, '!ffffffff', 3, 'POSITION_APP', 'rx', ${now - 60000})`);
   });
 
   afterEach(() => {
@@ -103,8 +102,8 @@ describe('MiscRepository - Packet Log Queries', () => {
 
     it('returns null longName for unknown nodes', async () => {
       // Insert packet from unknown node
-      const now = Math.floor(Date.now() / 1000);
-      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, direction, created_at) VALUES (99, ${now}, 999, '!000003e7', NULL, 1, 'rx', ${Date.now()})`);
+      const now = Date.now();
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, direction, created_at) VALUES (99, ${now}, 999, '!000003e7', NULL, 1, 'rx', ${now})`);
 
       const packets = await repo.getPacketLogs({});
       const unknownPkt = packets.find(p => p.packet_id === 99);

@@ -198,7 +198,7 @@ describe('Packet Routes', () => {
     (DatabaseService as any).cleanupOldPacketLogs = () => {
       const maxAgeHours = (DatabaseService as any).getSetting('packet_log_max_age_hours');
       const hours = maxAgeHours ? parseInt(maxAgeHours, 10) : 24;
-      const cutoffTime = Math.floor(Date.now() / 1000) - (hours * 60 * 60);
+      const cutoffTime = Date.now() - (hours * 60 * 60 * 1000);
       const result = db.prepare('DELETE FROM packet_log WHERE timestamp < ?').run(cutoffTime);
       return result.changes;
     };
