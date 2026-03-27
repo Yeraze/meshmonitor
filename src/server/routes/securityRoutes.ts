@@ -9,6 +9,7 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import meshtasticManager from '../meshtasticManager.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
+import { securityDigestService } from '../services/securityDigestService.js';
 import { logger } from '../../utils/logger.js';
 
 const router = Router();
@@ -435,6 +436,20 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
   } catch (error) {
     logger.error('Error bulk deleting dead nodes:', error);
     res.status(500).json({ error: 'Failed to bulk delete nodes' });
+  }
+});
+
+/**
+ * POST /api/security/digest/send
+ * Manually trigger a security digest (admin only)
+ */
+router.post('/digest/send', requirePermission('security', 'write'), async (_req: Request, res: Response) => {
+  try {
+    const result = await securityDigestService.sendDigest();
+    res.json(result);
+  } catch (error) {
+    logger.error('Error sending security digest:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
