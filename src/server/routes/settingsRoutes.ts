@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { securityDigestService } from '../services/securityDigestService.js';
 import { VALID_SETTINGS_KEYS } from '../constants/settings.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
@@ -710,6 +711,11 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         JSON.stringify(Object.fromEntries(Object.entries(changedSettings).map(([k, v]) => [k, v.before]))),
         JSON.stringify(Object.fromEntries(Object.entries(changedSettings).map(([k, v]) => [k, v.after])))
       );
+    }
+
+    // Reschedule security digest if any digest setting changed
+    if (Object.keys(filteredSettings).some(k => k.startsWith('securityDigest'))) {
+      securityDigestService.reschedule();
     }
 
     res.json({ success: true, settings: filteredSettings });

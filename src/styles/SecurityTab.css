@@ -381,6 +381,117 @@
   color: var(--ctp-peach);
 }
 
+/* Security Digest Section */
+.digest-section {
+  margin-bottom: 20px;
+}
+
+.digest-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--ctp-surface0);
+  border-radius: var(--radius-lg);
+}
+
+.digest-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.digest-label {
+  min-width: 140px;
+  font-size: 14px;
+  color: var(--ctp-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.digest-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-text);
+  font-size: 14px;
+}
+
+.digest-input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.digest-time {
+  max-width: 120px;
+  flex: unset;
+}
+
+.digest-select {
+  max-width: 200px;
+  flex: unset;
+}
+
+.digest-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.digest-save-btn,
+.digest-send-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.digest-save-btn {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.digest-save-btn:hover:not(:disabled) {
+  background: var(--ctp-sapphire);
+}
+
+.digest-send-btn {
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+}
+
+.digest-send-btn:hover:not(:disabled) {
+  background: var(--ctp-teal);
+}
+
+.digest-save-btn:disabled,
+.digest-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.digest-message {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.digest-message.success {
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+}
+
+.digest-message.error {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+}
+
 .expand-icon {
   color: var(--ctp-overlay0);
   font-size: 12px;

@@ -32,6 +32,7 @@ import { databaseMaintenanceService } from './services/databaseMaintenanceServic
 import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
+import { securityDigestService } from './services/securityDigestService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
@@ -502,6 +503,10 @@ setTimeout(async () => {
     // Initialize duplicate key scanner
     duplicateKeySchedulerService.start();
     logger.debug('Duplicate key scanner initialized');
+
+    // Initialize security digest scheduler
+    securityDigestService.initialize(databaseService);
+    logger.debug('Security digest service initialized');
 
     // Initialize solar monitoring service
     solarMonitoringService.initialize();
