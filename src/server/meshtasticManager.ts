@@ -19,6 +19,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
+import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
@@ -10936,20 +10937,7 @@ class MeshtasticManager {
         .map(ch => ({ id: ch.id, psk: ch.psk, name: ch.name }));
 
       // Detect moves by comparing PSK + name (both must match to confirm identity)
-      const moves: { from: number; to: number }[] = [];
-      for (const oldCh of this.preConfigChannelSnapshot) {
-        if (!oldCh.psk || oldCh.psk === '') continue;
-        const newCh = afterSnapshot.find(ch =>
-          ch.id !== oldCh.id &&
-          ch.psk === oldCh.psk &&
-          (ch.name || '') === (oldCh.name || '')
-        );
-        if (newCh) {
-          if (!moves.find(m => m.from === newCh.id && m.to === oldCh.id)) {
-            moves.push({ from: oldCh.id, to: newCh.id });
-          }
-        }
-      }
+      const moves = detectChannelMoves(this.preConfigChannelSnapshot, afterSnapshot);
 
       // Detect new channels (no matching PSK+name in before snapshot)
       const newChannels: number[] = [];
