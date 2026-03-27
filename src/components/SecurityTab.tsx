@@ -90,6 +90,16 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [selectedDeadNodes, setSelectedDeadNodes] = useState<Set<number>>(new Set());
   const [isDeletingNodes, setIsDeletingNodes] = useState(false);
 
+  // Security Digest state
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [digestAppriseUrl, setDigestAppriseUrl] = useState('');
+  const [digestTime, setDigestTime] = useState('06:00');
+  const [digestReportType, setDigestReportType] = useState<'summary' | 'detailed'>('summary');
+  const [digestSuppressEmpty, setDigestSuppressEmpty] = useState(true);
+  const [digestSaving, setDigestSaving] = useState(false);
+  const [digestSending, setDigestSending] = useState(false);
+  const [digestMessage, setDigestMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const canWrite = hasPermission('security', 'write');
 
   const fetchSecurityData = async () => {
@@ -120,6 +130,58 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     const interval = setInterval(fetchSecurityData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Load digest settings
+  useEffect(() => {
+    const loadDigestSettings = async () => {
+      try {
+        const settings = await api.get<Record<string, string>>('/api/settings');
+        setDigestEnabled(settings.securityDigestEnabled === 'true');
+        setDigestAppriseUrl(settings.securityDigestAppriseUrl || '');
+        setDigestTime(settings.securityDigestTime || '06:00');
+        setDigestReportType((settings.securityDigestReportType as 'summary' | 'detailed') || 'summary');
+        setDigestSuppressEmpty(settings.securityDigestSuppressEmpty !== 'false');
+      } catch {
+        // Settings may not exist yet, use defaults
+      }
+    };
+    loadDigestSettings();
+  }, []);
+
+  const saveDigestSettings = useCallback(async () => {
+    setDigestSaving(true);
+    setDigestMessage(null);
+    try {
+      await api.post('/api/settings', {
+        securityDigestEnabled: String(digestEnabled),
+        securityDigestAppriseUrl: digestAppriseUrl,
+        securityDigestTime: digestTime,
+        securityDigestReportType: digestReportType,
+        securityDigestSuppressEmpty: String(digestSuppressEmpty),
+      });
+      setDigestMessage({ type: 'success', text: t('common.saved', 'Settings saved') });
+    } catch {
+      setDigestMessage({ type: 'error', text: t('common.save_failed', 'Failed to save settings') });
+    } finally {
+      setDigestSaving(false);
+    }
+  }, [digestEnabled, digestAppriseUrl, digestTime, digestReportType, digestSuppressEmpty, t]);
+
+  const sendDigestNow = useCallback(async () => {
+    setDigestSending(true);
+    setDigestMessage(null);
+    try {
+      const result = await api.post<{ success: boolean; message: string }>('/api/security/digest/send', {});
+      setDigestMessage({
+        type: result.success ? 'success' : 'error',
+        text: result.message,
+      });
+    } catch {
+      setDigestMessage({ type: 'error', text: t('common.failed', 'Failed to send digest') });
+    } finally {
+      setDigestSending(false);
+    }
+  }, [t]);
 
   const triggerScan = useCallback(async () => {
     setScanning(true);
@@ -396,6 +458,89 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
           )}
         </div>
       </div>
+
+      {/* Security Digest */}
+      {canWrite && (
+        <div className="issues-section digest-section">
+          <h3>{t('security.digest_title', 'Security Digest')}</h3>
+          <p className="section-description">
+            {t('security.digest_description', 'Schedule a daily security report delivered via Apprise.')}
+          </p>
+          <div className="digest-controls">
+            <div className="digest-row">
+              <label className="digest-label">
+                <input
+                  type="checkbox"
+                  checked={digestEnabled}
+                  onChange={e => setDigestEnabled(e.target.checked)}
+                />
+                {t('security.digest_enabled', 'Enable daily digest')}
+              </label>
+            </div>
+            <div className="digest-row">
+              <label className="digest-label">{t('security.digest_apprise_url', 'Apprise URL')}</label>
+              <input
+                type="text"
+                className="digest-input"
+                value={digestAppriseUrl}
+                onChange={e => setDigestAppriseUrl(e.target.value)}
+                placeholder="discord://webhook_id/webhook_token"
+              />
+            </div>
+            <div className="digest-row">
+              <label className="digest-label">{t('security.digest_time', 'Send at')}</label>
+              <input
+                type="time"
+                className="digest-input digest-time"
+                value={digestTime}
+                onChange={e => setDigestTime(e.target.value)}
+              />
+            </div>
+            <div className="digest-row">
+              <label className="digest-label">{t('security.digest_report_type', 'Report type')}</label>
+              <select
+                className="digest-input digest-select"
+                value={digestReportType}
+                onChange={e => setDigestReportType(e.target.value as 'summary' | 'detailed')}
+              >
+                <option value="summary">{t('security.digest_summary', 'Summary')}</option>
+                <option value="detailed">{t('security.digest_detailed', 'Detailed')}</option>
+              </select>
+            </div>
+            <div className="digest-row">
+              <label className="digest-label">
+                <input
+                  type="checkbox"
+                  checked={digestSuppressEmpty}
+                  onChange={e => setDigestSuppressEmpty(e.target.checked)}
+                />
+                {t('security.digest_suppress_empty', 'Suppress when no issues')}
+              </label>
+            </div>
+            <div className="digest-actions">
+              <button
+                className="digest-save-btn"
+                onClick={saveDigestSettings}
+                disabled={digestSaving}
+              >
+                {digestSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save')}
+              </button>
+              <button
+                className="digest-send-btn"
+                onClick={sendDigestNow}
+                disabled={digestSending || !digestAppriseUrl}
+              >
+                {digestSending ? t('common.sending', 'Sending...') : t('security.digest_send_now', 'Send Now')}
+              </button>
+            </div>
+            {digestMessage && (
+              <div className={`digest-message ${digestMessage.type}`}>
+                {digestMessage.text}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Summary Statistics */}
       <div className="security-stats">
