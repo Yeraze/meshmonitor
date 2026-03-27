@@ -261,7 +261,7 @@ class SecurityDigestService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          urls: appriseUrl,
+          urls: [appriseUrl],
           title: 'MeshMonitor Security Digest',
           body,
           type: issues.total > 0 ? 'warning' : 'info',
