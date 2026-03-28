@@ -282,6 +282,10 @@ class MeshtasticManager {
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
+  // Reconnect flood prevention timing (#2474)
+  private static readonly SCHEDULER_STAGGER_MS = 5000;  // Delay between each scheduler start
+  private static readonly CONFIG_COMPLETE_FALLBACK_MS = 120000;  // Fallback if configComplete never arrives
+
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
@@ -363,6 +367,7 @@ class MeshtasticManager {
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
   private configCaptureComplete = false;  // Flag to track when capture is done
   private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
+  private channel0Exists = false;  // Cache for channel 0 existence check to avoid repeated DB queries
   private preConfigChannelSnapshot: { id: number; psk?: string | null; name?: string | null }[] = [];  // Channel state before config sync
 
   constructor() {
@@ -622,6 +627,7 @@ class MeshtasticManager {
       this.configCaptureComplete = false;
       this.isCapturingInitConfig = true;
       this.deviceNodeNums.clear();
+      this.channel0Exists = false;  // Reset channel 0 cache on reconnect
 
       // Snapshot channel state before config sync for migration detection (#2425)
       try {
@@ -668,41 +674,44 @@ class MeshtasticManager {
         logger.info('📦 Skipping module config request on reconnect (already fetched this session)');
       }
 
-      // Give the node a moment to send initial config, then do basic setup
-      setTimeout(async () => {
-        // Channel 0 will be created automatically when device config syncs
+      // Register a one-time callback to start schedulers AFTER the device
+      // finishes sending its config (configComplete event). This prevents
+      // flooding the device with outbound requests while it's still streaming
+      // config data — the root cause of ECONNRESET on WiFi devices (#2474).
+      const previousCallback = this.onConfigCaptureComplete;
+      this.onConfigCaptureComplete = () => {
+        // Call any previously registered callback (e.g., virtual node server init)
+        if (previousCallback) {
+          try { previousCallback(); } catch (e) { logger.error('❌ Error in previous config capture callback:', e); }
+        }
 
         // If localNodeInfo wasn't set during configuration, initialize it from database
         if (!this.localNodeInfo) {
-          await this.initializeLocalNodeInfoFromDatabase();
+          this.initializeLocalNodeInfoFromDatabase().catch(e =>
+            logger.error('❌ Error initializing local node info:', e));
         }
 
-        // Start automatic traceroute scheduler
-        this.startTracerouteScheduler();
+        // Stagger scheduler starts to avoid overwhelming the device (#2474)
+        // Each scheduler gets its own delay so outbound requests are spread out
+        const S = MeshtasticManager.SCHEDULER_STAGGER_MS;
+        setTimeout(() => this.startTracerouteScheduler(), S * 1);
+        setTimeout(() => this.startRemoteAdminScanner().catch(e =>
+          logger.error('❌ Error starting remote admin scanner:', e)), S * 2);
+        setTimeout(() => this.startTimeSyncScheduler().catch(e =>
+          logger.error('❌ Error starting time sync scheduler:', e)), S * 3);
+        setTimeout(() => this.startLocalStatsScheduler(), S * 4);
+        setTimeout(() => this.startTimeOffsetScheduler(), S * 5);
+        setTimeout(() => this.startAnnounceScheduler().catch(e =>
+          logger.error('❌ Error starting announce scheduler:', e)), S * 6);
+        setTimeout(() => this.startTimerScheduler().catch(e =>
+          logger.error('❌ Error starting timer scheduler:', e)), S * 7);
 
-        // Start remote admin discovery scanner
-        await this.startRemoteAdminScanner();
-
-        // Start automatic time sync scheduler
-        await this.startTimeSyncScheduler();
-
-        // Start automatic LocalStats collection
-        this.startLocalStatsScheduler();
-
-        // Start time-offset telemetry scheduler
-        this.startTimeOffsetScheduler();
-
-        // Start automatic announcement scheduler
-        await this.startAnnounceScheduler();
-
-        // Start timer trigger scheduler
-        await this.startTimerScheduler();
-
-        // Start geofence engine
-        await this.initGeofenceEngine();
+        // Start geofence engine (no outbound traffic, safe immediately)
+        this.initGeofenceEngine().catch(e =>
+          logger.error('❌ Error initializing geofence engine:', e));
 
         // Start auto key repair scheduler
-        this.startKeyRepairScheduler();
+        setTimeout(() => this.startKeyRepairScheduler(), S * 8);
 
         // Auto-favorite staleness sweep - runs every 60 minutes
         setInterval(() => {
@@ -711,15 +720,28 @@ class MeshtasticManager {
           });
         }, 60 * 60 * 1000);
 
-        // Run initial sweep after 30 seconds to handle cleanup from previous session
+        // Run initial sweep after all schedulers have started
         setTimeout(() => {
           this.autoFavoriteSweep().catch(error => {
             logger.error('❌ Error in initial auto-favorite sweep:', error);
           });
-        }, 30000);
+        }, S * 9);
 
-        logger.debug(`✅ Configuration complete: ${await databaseService.nodes.getNodeCount()} nodes, ${await databaseService.channels.getChannelCount()} channels`);
-      }, 5000);
+        logger.info(`✅ Config capture complete — schedulers will start over the next ${(S * 9) / 1000} seconds`);
+      };
+
+      // Fallback: if configComplete never arrives (device disconnects mid-config),
+      // start schedulers after the fallback timeout anyway
+      setTimeout(() => {
+        if (!this.configCaptureComplete && this.isConnected) {
+          logger.warn(`⚠️ configComplete not received after ${MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS / 1000}s — starting schedulers via fallback`);
+          this.configCaptureComplete = true;
+          this.isCapturingInitConfig = false;
+          if (this.onConfigCaptureComplete) {
+            try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in fallback config complete:', e); }
+          }
+        }
+      }, MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS);
 
     } catch (error) {
       logger.error('❌ Failed to request configuration:', error);
@@ -3942,14 +3964,16 @@ class MeshtasticManager {
           channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
         }
 
-        // Ensure channel 0 exists if this message uses it
-        if (!isDirectMessage && channelIndex === 0) {
+        // Ensure channel 0 exists if this message uses it (cached to avoid
+        // repeated DB queries during config capture — up to 241 messages) (#2474)
+        if (!isDirectMessage && channelIndex === 0 && !this.channel0Exists) {
           const channel0 = await databaseService.channels.getChannelById(0);
           if (!channel0) {
             logger.debug('📡 Creating channel 0 for message (name will be set when device config syncs)');
             // Create with role=1 (Primary) as channel 0 is always the primary channel in Meshtastic
             await databaseService.channels.upsertChannel({ id: 0, name: '', role: 1 });
           }
+          this.channel0Exists = true;
         }
 
         // Extract replyId and emoji from decoded Data message
