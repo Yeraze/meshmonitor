@@ -40,7 +40,7 @@ describe('AuthRepository.migratePermissionsForChannelMoves', () => {
       )
     `);
 
-    // Create permissions table
+    // Create permissions table with CHECK constraint matching production schema (migration 006)
     db.exec(`
       CREATE TABLE permissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,15 @@ describe('AuthRepository.migratePermissionsForChannelMoves', () => {
         can_write INTEGER NOT NULL DEFAULT 0,
         granted_at INTEGER,
         granted_by INTEGER,
-        UNIQUE(user_id, resource)
+        UNIQUE(user_id, resource),
+        CHECK (resource IN (
+          'dashboard', 'nodes', 'messages', 'settings',
+          'configuration', 'info', 'automation', 'connection',
+          'traceroute', 'audit', 'security', 'themes',
+          'channel_0', 'channel_1', 'channel_2', 'channel_3',
+          'channel_4', 'channel_5', 'channel_6', 'channel_7',
+          'nodes_private', 'meshcore', 'packetmonitor'
+        ))
       )
     `);
 
