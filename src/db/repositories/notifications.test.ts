@@ -260,12 +260,14 @@ const POSTGRES_CREATE = `
 `;
 
 const MYSQL_CREATE = `
+  SET FOREIGN_KEY_CHECKS = 0;
   DROP TABLE IF EXISTS read_messages;
   DROP TABLE IF EXISTS messages;
   DROP TABLE IF EXISTS user_notification_preferences;
   DROP TABLE IF EXISTS push_subscriptions;
   DROP TABLE IF EXISTS users;
   DROP TABLE IF EXISTS nodes;
+  SET FOREIGN_KEY_CHECKS = 1;
 
   CREATE TABLE nodes (
     nodeNum BIGINT PRIMARY KEY,

@@ -108,9 +108,11 @@ const POSTGRES_CREATE = `
 `;
 
 const MYSQL_CREATE = `
+  SET FOREIGN_KEY_CHECKS = 0;
   DROP TABLE IF EXISTS channel_database_permissions;
   DROP TABLE IF EXISTS channel_database;
   DROP TABLE IF EXISTS users;
+  SET FOREIGN_KEY_CHECKS = 1;
 
   CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
