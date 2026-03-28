@@ -95,10 +95,10 @@ export async function createPostgresBackend(createTablesSql: string): Promise<Te
       available: true,
     };
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     if (process.env.CI === 'true') {
       throw new Error(
-        'PostgreSQL is required in CI but not available on port 5433. ' +
-        'Check the GitHub Actions service container configuration.'
+        `PostgreSQL test backend failed: ${errMsg}`
       );
     }
     return {
@@ -166,10 +166,10 @@ export async function createMysqlBackend(createTablesSql: string): Promise<TestB
       available: true,
     };
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     if (process.env.CI === 'true') {
       throw new Error(
-        'MySQL is required in CI but not available on port 3307. ' +
-        'Check the GitHub Actions service container configuration.'
+        `MySQL test backend failed: ${errMsg}`
       );
     }
     return {
