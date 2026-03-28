@@ -127,12 +127,21 @@ export async function createMysqlBackend(createTablesSql: string): Promise<TestB
       password: 'test',
       database: 'meshmonitor_test',
       connectionLimit: 5,
-      connectTimeout: 5000,
+      connectTimeout: 15000,
     });
 
-    // Test connection
-    const conn = await pool.getConnection();
-    conn.release();
+    // Test connection with retry (MySQL containers can be slow to accept connections)
+    let conn;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        conn = await pool.getConnection();
+        conn.release();
+        break;
+      } catch (e) {
+        if (attempt === 2) throw e;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
 
     // Create tables (split by semicolons for MySQL multi-statement)
     const statements = createTablesSql.split(';').map(s => s.trim()).filter(Boolean);
