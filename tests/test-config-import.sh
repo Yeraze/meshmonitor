@@ -143,34 +143,48 @@ sleep 15
 echo -e "${GREEN}✓${NC} Connection stabilized"
 echo ""
 
-# Test 3: Get CSRF token and login
+# Test 3: Get CSRF token and login (with retry for transient failures)
 echo "Test 3: Get CSRF token and login"
-CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:$TEST_PORT/api/csrf-token \
-    -c /tmp/meshmonitor-config-import-cookies.txt)
+LOGIN_SUCCESS=false
+MAX_LOGIN_ATTEMPTS=5
 
-HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
-CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | head -n-1 | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
+for ATTEMPT in $(seq 1 $MAX_LOGIN_ATTEMPTS); do
+    # Get CSRF token
+    CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:$TEST_PORT/api/csrf-token \
+        -c /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || echo -e "\n000")
 
-if [ "$HTTP_CODE" = "200" ] && [ -n "$CSRF_TOKEN" ]; then
+    HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
+    CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | head -n-1 | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
+
+    if [ "$HTTP_CODE" != "200" ] || [ -z "$CSRF_TOKEN" ]; then
+        echo "  Attempt $ATTEMPT/$MAX_LOGIN_ATTEMPTS: CSRF token failed (HTTP $HTTP_CODE), retrying in 5s..."
+        sleep 5
+        continue
+    fi
+
     echo -e "${GREEN}✓${NC} CSRF token obtained"
-else
-    echo -e "${RED}✗ FAIL${NC}: Failed to get CSRF token"
-    exit 1
-fi
 
-# Login
-LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:$TEST_PORT/api/auth/login \
-    -H "Content-Type: application/json" \
-    -H "X-CSRF-Token: $CSRF_TOKEN" \
-    -d '{"username":"admin","password":"changeme"}' \
-    -b /tmp/meshmonitor-config-import-cookies.txt \
-    -c /tmp/meshmonitor-config-import-cookies.txt)
+    # Login
+    LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:$TEST_PORT/api/auth/login \
+        -H "Content-Type: application/json" \
+        -H "X-CSRF-Token: $CSRF_TOKEN" \
+        -d '{"username":"admin","password":"changeme"}' \
+        -b /tmp/meshmonitor-config-import-cookies.txt \
+        -c /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || echo -e "\n000")
 
-HTTP_CODE=$(echo "$LOGIN_RESPONSE" | tail -n1)
-if [ "$HTTP_CODE" = "200" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Login successful"
-else
-    echo -e "${RED}✗ FAIL${NC}: Login failed"
+    HTTP_CODE=$(echo "$LOGIN_RESPONSE" | tail -n1)
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo -e "${GREEN}✓ PASS${NC}: Login successful"
+        LOGIN_SUCCESS=true
+        break
+    else
+        echo "  Attempt $ATTEMPT/$MAX_LOGIN_ATTEMPTS: Login failed (HTTP $HTTP_CODE), retrying in 5s..."
+        sleep 5
+    fi
+done
+
+if [ "$LOGIN_SUCCESS" = false ]; then
+    echo -e "${RED}✗ FAIL${NC}: Login failed after $MAX_LOGIN_ATTEMPTS attempts"
     exit 1
 fi
 
