@@ -282,6 +282,10 @@ class MeshtasticManager {
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
+  // Reconnect flood prevention timing (#2474)
+  private static readonly SCHEDULER_STAGGER_MS = 5000;  // Delay between each scheduler start
+  private static readonly CONFIG_COMPLETE_FALLBACK_MS = 120000;  // Fallback if configComplete never arrives
+
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
@@ -689,24 +693,25 @@ class MeshtasticManager {
 
         // Stagger scheduler starts to avoid overwhelming the device (#2474)
         // Each scheduler gets its own delay so outbound requests are spread out
-        setTimeout(() => this.startTracerouteScheduler(), 5000);
+        const S = MeshtasticManager.SCHEDULER_STAGGER_MS;
+        setTimeout(() => this.startTracerouteScheduler(), S * 1);
         setTimeout(() => this.startRemoteAdminScanner().catch(e =>
-          logger.error('❌ Error starting remote admin scanner:', e)), 10000);
+          logger.error('❌ Error starting remote admin scanner:', e)), S * 2);
         setTimeout(() => this.startTimeSyncScheduler().catch(e =>
-          logger.error('❌ Error starting time sync scheduler:', e)), 15000);
-        setTimeout(() => this.startLocalStatsScheduler(), 20000);
-        setTimeout(() => this.startTimeOffsetScheduler(), 25000);
+          logger.error('❌ Error starting time sync scheduler:', e)), S * 3);
+        setTimeout(() => this.startLocalStatsScheduler(), S * 4);
+        setTimeout(() => this.startTimeOffsetScheduler(), S * 5);
         setTimeout(() => this.startAnnounceScheduler().catch(e =>
-          logger.error('❌ Error starting announce scheduler:', e)), 30000);
+          logger.error('❌ Error starting announce scheduler:', e)), S * 6);
         setTimeout(() => this.startTimerScheduler().catch(e =>
-          logger.error('❌ Error starting timer scheduler:', e)), 35000);
+          logger.error('❌ Error starting timer scheduler:', e)), S * 7);
 
         // Start geofence engine (no outbound traffic, safe immediately)
         this.initGeofenceEngine().catch(e =>
           logger.error('❌ Error initializing geofence engine:', e));
 
         // Start auto key repair scheduler
-        setTimeout(() => this.startKeyRepairScheduler(), 40000);
+        setTimeout(() => this.startKeyRepairScheduler(), S * 8);
 
         // Auto-favorite staleness sweep - runs every 60 minutes
         setInterval(() => {
@@ -715,28 +720,28 @@ class MeshtasticManager {
           });
         }, 60 * 60 * 1000);
 
-        // Run initial sweep after 45 seconds to handle cleanup from previous session
+        // Run initial sweep after all schedulers have started
         setTimeout(() => {
           this.autoFavoriteSweep().catch(error => {
             logger.error('❌ Error in initial auto-favorite sweep:', error);
           });
-        }, 45000);
+        }, S * 9);
 
-        logger.info('✅ Config capture complete — schedulers will start over the next 45 seconds');
+        logger.info(`✅ Config capture complete — schedulers will start over the next ${(S * 9) / 1000} seconds`);
       };
 
       // Fallback: if configComplete never arrives (device disconnects mid-config),
-      // start schedulers after 120 seconds anyway
+      // start schedulers after the fallback timeout anyway
       setTimeout(() => {
         if (!this.configCaptureComplete && this.isConnected) {
-          logger.warn('⚠️ configComplete not received after 120s — starting schedulers via fallback');
+          logger.warn(`⚠️ configComplete not received after ${MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS / 1000}s — starting schedulers via fallback`);
           this.configCaptureComplete = true;
           this.isCapturingInitConfig = false;
           if (this.onConfigCaptureComplete) {
             try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in fallback config complete:', e); }
           }
         }
-      }, 120000);
+      }, MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS);
 
     } catch (error) {
       logger.error('❌ Failed to request configuration:', error);
