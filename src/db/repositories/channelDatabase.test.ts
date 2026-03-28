@@ -125,7 +125,7 @@ const MYSQL_CREATE = `
   );
 
   CREATE TABLE channel_database (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     psk VARCHAR(255) NOT NULL,
     pskLength INT NOT NULL DEFAULT 32,
@@ -142,7 +142,7 @@ const MYSQL_CREATE = `
   );
 
   CREATE TABLE channel_database_permissions (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     userId INT NOT NULL,
     channelDatabaseId INT NOT NULL,
     canViewOnMap BOOLEAN NOT NULL DEFAULT FALSE,

@@ -93,7 +93,7 @@ const MYSQL_CREATE = `
   DROP TABLE IF EXISTS route_segments;
   DROP TABLE IF EXISTS traceroutes;
   CREATE TABLE traceroutes (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     fromNodeNum BIGINT NOT NULL,
     toNodeNum BIGINT NOT NULL,
     fromNodeId VARCHAR(32) NOT NULL,
@@ -107,7 +107,7 @@ const MYSQL_CREATE = `
     createdAt BIGINT NOT NULL
   );
   CREATE TABLE route_segments (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     fromNodeNum BIGINT NOT NULL,
     toNodeNum BIGINT NOT NULL,
     fromNodeId VARCHAR(32) NOT NULL,

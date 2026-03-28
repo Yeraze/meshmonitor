@@ -301,7 +301,7 @@ const MYSQL_CREATE = `
   );
 
   CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
     passwordHash VARCHAR(255),
     email VARCHAR(255),
@@ -318,7 +318,7 @@ const MYSQL_CREATE = `
   );
 
   CREATE TABLE push_subscriptions (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     userId INTEGER REFERENCES users(id) ON DELETE CASCADE,
     endpoint TEXT NOT NULL,
     p256dhKey VARCHAR(512) NOT NULL,
@@ -331,7 +331,7 @@ const MYSQL_CREATE = `
   );
 
   CREATE TABLE user_notification_preferences (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     userId INTEGER NOT NULL UNIQUE,
     notifyOnMessage BOOLEAN DEFAULT TRUE,
     notifyOnDirectMessage BOOLEAN DEFAULT TRUE,
@@ -377,7 +377,7 @@ const MYSQL_CREATE = `
   );
 
   CREATE TABLE read_messages (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     userId INTEGER NOT NULL,
     messageId VARCHAR(64) NOT NULL,
     readAt BIGINT NOT NULL,
