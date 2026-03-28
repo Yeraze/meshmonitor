@@ -5,7 +5,7 @@
  * Includes: users, permissions, sessions, audit_log, api_tokens
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, desc, and, sql } from 'drizzle-orm';
+import { eq, lt, desc, and } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import {
