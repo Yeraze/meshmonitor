@@ -219,15 +219,26 @@ export class TcpTransport extends EventEmitter {
         return;
       }
 
-      this.socket.write(packet, (error) => {
+      // Handle TCP backpressure: if the kernel buffer is full, socket.write()
+      // returns false and we must wait for 'drain' before sending more data.
+      // Without this, rapid writes overwhelm WiFi-connected devices (#2474).
+      const canContinue = this.socket.write(packet, (error) => {
         if (error) {
           logger.error('❌ Failed to send data:', error.message);
           reject(error);
-        } else {
-          logger.debug(`📤 Sent ${data.length} bytes`);
-          resolve();
         }
       });
+
+      if (canContinue) {
+        logger.debug(`📤 Sent ${data.length} bytes`);
+        resolve();
+      } else {
+        logger.debug(`📤 Sent ${data.length} bytes (waiting for drain)`);
+        this.socket.once('drain', () => {
+          logger.debug('📤 TCP drain — write buffer cleared');
+          resolve();
+        });
+      }
     });
   }
 
