@@ -43,6 +43,10 @@ const MapDrawingLayer: React.FC<{
   const internalChangeRef = useRef(false);
   const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
   const [polygonVertices, setPolygonVertices] = useState<L.LatLng[]>([]);
+  // Ref mirrors polygonVertices so Leaflet event handlers (which capture stale
+  // closures) always see the latest vertices. Without this, the dblclick handler
+  // sees the pre-double-click array and the >= 3 check fails. (#2474)
+  const polygonVerticesRef = useRef<L.LatLng[]>([]);
 
   const centerIcon = useMemo(() => L.divIcon({
     className: 'custom-center-icon',
@@ -235,6 +239,16 @@ const MapDrawingLayer: React.FC<{
     });
   }, [map, nodePositions]);
 
+  // Disable double-click zoom when drawing polygons so the dblclick event
+  // reaches our handler instead of being consumed by Leaflet's zoom
+  useEffect(() => {
+    if (shapeType === 'polygon') {
+      map.doubleClickZoom.disable();
+    } else {
+      map.doubleClickZoom.enable();
+    }
+  }, [map, shapeType]);
+
   useMapEvents({
     click: (e) => {
       if (shapeType === 'circle' && !circleRef.current) {
@@ -249,15 +263,25 @@ const MapDrawingLayer: React.FC<{
         if (!isDrawingPolygon) {
           setIsDrawingPolygon(true);
         }
-        const newVertices = [...polygonVertices, e.latlng];
+        const newVertices = [...polygonVerticesRef.current, e.latlng];
         setPolygonVertices(newVertices);
+        polygonVerticesRef.current = newVertices;
+
+        // Update the shape progressively so the parent always has the latest
+        // polygon — this also enables the save button as soon as 3+ vertices exist
+        if (newVertices.length >= 3) {
+          updatePolygonShape(newVertices, true);
+        }
       }
     },
     dblclick: () => {
-      if (shapeType === 'polygon' && isDrawingPolygon && polygonVertices.length >= 3) {
+      // Finalize the polygon on double-click — use ref to avoid stale closure
+      const currentVertices = polygonVerticesRef.current;
+      if (shapeType === 'polygon' && isDrawingPolygon && currentVertices.length >= 3) {
         setIsDrawingPolygon(false);
-        updatePolygonShape(polygonVertices);
+        updatePolygonShape(currentVertices);
         setPolygonVertices([]);
+        polygonVerticesRef.current = [];
       }
     },
   });
@@ -277,6 +301,7 @@ const MapDrawingLayer: React.FC<{
       clearPolygon();
       setIsDrawingPolygon(false);
       setPolygonVertices([]);
+      polygonVerticesRef.current = [];
 
       if (shape && shape.type === 'circle') {
         renderCircle(shape as CircleShapeData);
