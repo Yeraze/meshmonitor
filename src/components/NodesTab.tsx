@@ -690,13 +690,30 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         const data = await response.json();
         setMapStyles(data);
 
-        // Load saved style data if one was previously selected
-        if (activeStyleId && data.some((s: MapStyle) => s.id === activeStyleId)) {
-          const styleRes = await fetch(`${baseUrl}/api/map-styles/styles/${activeStyleId}/data`);
+        // Determine which style to use: localStorage > server default > none
+        let resolvedStyleId = activeStyleId;
+
+        if (!resolvedStyleId) {
+          // No localStorage value — check server default
+          try {
+            const settingsRes = await fetch(`${baseUrl}/api/settings`, { credentials: 'include' });
+            if (settingsRes.ok) {
+              const settings = await settingsRes.json();
+              if (settings.activeMapStyleId) {
+                resolvedStyleId = settings.activeMapStyleId;
+                setActiveStyleId(resolvedStyleId);
+              }
+            }
+          } catch { /* ignore settings fetch failure */ }
+        }
+
+        // Load style data if we have a resolved ID
+        if (resolvedStyleId && data.some((s: MapStyle) => s.id === resolvedStyleId)) {
+          const styleRes = await fetch(`${baseUrl}/api/map-styles/styles/${resolvedStyleId}/data`);
           if (styleRes.ok) {
             setActiveStyleJson(await styleRes.json());
           }
-        } else if (activeStyleId) {
+        } else if (resolvedStyleId) {
           // Saved style no longer exists, clear it
           setActiveStyleId(null);
           try { localStorage.removeItem('meshmonitor-activeMapStyleId'); } catch { /* ignore */ }
@@ -1853,6 +1870,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             const styleId = e.target.value || null;
                             setActiveStyleId(styleId);
                             try { localStorage.setItem('meshmonitor-activeMapStyleId', styleId ?? ''); } catch { /* ignore */ }
+                            // Save as server default so incognito/new browsers get this style
+                            api.getBaseUrl().then(baseUrl => {
+                              csrfFetch(`${baseUrl}/api/settings`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ activeMapStyleId: styleId ?? '' }),
+                              }).catch(err => console.error('Failed to save map style setting:', err));
+                            });
                             if (styleId) {
                               try {
                                 const baseUrl = await api.getBaseUrl();
