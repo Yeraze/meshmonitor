@@ -540,7 +540,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   const [mapStyles, setMapStyles] = useState<MapStyle[]>([]);
-  const [activeStyleId, setActiveStyleId] = useState<string | null>(null);
+  const [activeStyleId, setActiveStyleId] = useState<string | null>(() => {
+    try { return localStorage.getItem('meshmonitor-activeMapStyleId') || null; } catch { return null; }
+  });
   const [activeStyleJson, setActiveStyleJson] = useState<Record<string, unknown> | null>(null);
 
   // Track if map controls are collapsed
@@ -687,6 +689,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         if (!response.ok) return;
         const data = await response.json();
         setMapStyles(data);
+
+        // Load saved style data if one was previously selected
+        if (activeStyleId && data.some((s: MapStyle) => s.id === activeStyleId)) {
+          const styleRes = await fetch(`${baseUrl}/api/map-styles/styles/${activeStyleId}/data`);
+          if (styleRes.ok) {
+            setActiveStyleJson(await styleRes.json());
+          }
+        } else if (activeStyleId) {
+          // Saved style no longer exists, clear it
+          setActiveStyleId(null);
+          try { localStorage.removeItem('meshmonitor-activeMapStyleId'); } catch { /* ignore */ }
+        }
       } catch (err) {
         console.error('Failed to fetch map styles:', err);
       }
@@ -1838,6 +1852,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           onChange={async (e) => {
                             const styleId = e.target.value || null;
                             setActiveStyleId(styleId);
+                            try { localStorage.setItem('meshmonitor-activeMapStyleId', styleId ?? ''); } catch { /* ignore */ }
                             if (styleId) {
                               try {
                                 const baseUrl = await api.getBaseUrl();
