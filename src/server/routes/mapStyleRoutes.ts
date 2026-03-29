@@ -102,7 +102,14 @@ export function createMapStyleRouter(service: MapStyleService): Router {
         }
 
         // Derive name from provided name or URL path
-        const name = requestedName || new URL(url).pathname.split('/').pop()?.replace(/\.[^.]+$/, '') || 'style';
+        let name = 'Imported Style';
+        if (requestedName) {
+          name = requestedName;
+        } else {
+          try {
+            name = new URL(url).pathname.split('/').pop()?.replace(/\.[^.]+$/, '') || 'Imported Style';
+          } catch { /* malformed URL, use default name */ }
+        }
 
         const style = service.addStyle(name, content, 'url', url);
         logger.info(`[MapStyleRoutes] Style added from URL: ${style.name} (${style.id})`);
