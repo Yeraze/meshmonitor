@@ -367,6 +367,7 @@ class MeshtasticManager {
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
   private configCaptureComplete = false;  // Flag to track when capture is done
   private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
+  private externalConfigCaptureCallback: (() => void) | null = null;  // External callback (e.g., virtual node server init)
   private channel0Exists = false;  // Cache for channel 0 existence check to avoid repeated DB queries
   private preConfigChannelSnapshot: { id: number; psk?: string | null; name?: string | null }[] = [];  // Channel state before config sync
 
@@ -678,11 +679,13 @@ class MeshtasticManager {
       // finishes sending its config (configComplete event). This prevents
       // flooding the device with outbound requests while it's still streaming
       // config data — the root cause of ECONNRESET on WiFi devices (#2474).
-      const previousCallback = this.onConfigCaptureComplete;
+      // Replace (not chain) the config capture callback on each reconnect.
+      // Chaining would accumulate scheduler starts across reconnects, causing
+      // duplicate cron jobs (e.g., 4 reconnects = 4x auto-welcome messages).
       this.onConfigCaptureComplete = () => {
-        // Call any previously registered callback (e.g., virtual node server init)
-        if (previousCallback) {
-          try { previousCallback(); } catch (e) { logger.error('❌ Error in previous config capture callback:', e); }
+        // Call external callback (e.g., virtual node server init) — registered once, safe to call on every reconnect
+        if (this.externalConfigCaptureCallback) {
+          try { this.externalConfigCaptureCallback(); } catch (e) { logger.error('❌ Error in external config capture callback:', e); }
         }
 
         // If localNodeInfo wasn't set during configuration, initialize it from database
@@ -930,7 +933,7 @@ class MeshtasticManager {
    * This is used to initialize the virtual node server after connection is ready
    */
   public registerConfigCaptureCompleteCallback(callback: () => void): void {
-    this.onConfigCaptureComplete = callback;
+    this.externalConfigCaptureCallback = callback;
   }
 
   private startTracerouteScheduler(): void {
