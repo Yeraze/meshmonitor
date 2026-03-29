@@ -85,10 +85,19 @@ const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({ layers }) => {
             }}
             onEachFeature={(feature, leafletLayer) => {
               const props = feature.properties ?? {};
-              const title = (props['title'] ?? props['name']) as string | undefined;
-              if (title) {
-                leafletLayer.bindPopup(title);
-                leafletLayer.bindTooltip(title, { permanent: false, sticky: true });
+              // Try common name/title property keys (case-insensitive)
+              const nameKeys = ['name', 'title', 'label', 'description', 'NAME', 'TITLE', 'LABEL', 'Name', 'Title', 'Label'];
+              const labelKey = nameKeys.find(k => props[k] && typeof props[k] === 'string');
+              const label = labelKey ? props[labelKey] as string : undefined;
+
+              if (label) {
+                // Build popup with all non-empty string properties
+                const popupLines = Object.entries(props)
+                  .filter(([, v]) => v && typeof v === 'string' && String(v).length < 200)
+                  .slice(0, 10)
+                  .map(([k, v]) => `<b>${k}:</b> ${v}`);
+                leafletLayer.bindPopup(popupLines.join('<br/>'));
+                leafletLayer.bindTooltip(label, { permanent: false, sticky: true });
               }
             }}
           />
