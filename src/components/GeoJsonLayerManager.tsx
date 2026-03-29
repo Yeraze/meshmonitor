@@ -32,14 +32,14 @@ const GeoJsonLayerManager: React.FC = () => {
     setUploading(true);
     try {
       const baseUrl = await api.getBaseUrl();
-      const content = await file.text();
+      const buffer = await file.arrayBuffer();
       const response = await csrfFetch(`${baseUrl}/api/geojson/upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
           'X-Filename': file.name,
         },
-        body: content,
+        body: buffer,
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Upload failed' }));
