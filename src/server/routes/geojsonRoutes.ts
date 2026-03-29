@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import express from 'express';
 import { GeoJsonService, LayerStyle } from '../services/geojsonService.js';
 import { logger } from '../../utils/logger.js';
+import { requirePermission } from '../auth/authMiddleware.js';
 
 export function createGeoJsonRouter(service: GeoJsonService): Router {
   const router = Router();
@@ -34,6 +35,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
    */
   router.post(
     '/upload',
+    requirePermission('settings', 'write'),
     express.raw({ type: '*/*', limit: '10mb' }),
     async (req: Request, res: Response) => {
       try {
@@ -65,7 +67,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
    * PUT /api/geojson/layers/:id
    * Update layer metadata (name, visible, style)
    */
-  router.put('/layers/:id', express.json(), async (req: Request, res: Response) => {
+  router.put('/layers/:id', requirePermission('settings', 'write'), express.json(), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const updates = req.body as { name?: string; visible?: boolean; style?: LayerStyle };
@@ -85,7 +87,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
    * DELETE /api/geojson/layers/:id
    * Delete a GeoJSON layer
    */
-  router.delete('/layers/:id', async (req: Request, res: Response) => {
+  router.delete('/layers/:id', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       service.deleteLayer(id);

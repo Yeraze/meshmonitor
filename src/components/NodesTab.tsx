@@ -1793,7 +1793,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           );
                           setGeoJsonLayers(newLayers);
                           api.getBaseUrl().then(baseUrl => {
-                            fetch(`${baseUrl}/api/geojson/layers/${layer.id}`, {
+                            csrfFetch(`${baseUrl}/api/geojson/layers/${layer.id}`, {
                               method: 'PUT',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ visible: e.target.checked }),
