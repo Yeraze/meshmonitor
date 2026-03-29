@@ -17,22 +17,38 @@ interface VectorTileLayerProps {
   url: string;
   attribution?: string;
   maxZoom?: number;
+  styleJson?: Record<string, unknown>;
 }
 
 /**
  * Vector tile layer component for rendering .pbf/.mvt tiles using MapLibre GL
  *
  * Uses MapLibre GL renderer wrapped as a Leaflet layer to display vector tiles.
- * Vector tiles are rendered client-side with a default style.
+ * Vector tiles are rendered client-side with a default style, or a custom styleJson.
  */
-export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLayerProps) {
+export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: VectorTileLayerProps) {
   const map = useMap();
 
   useEffect(() => {
     if (!map) return;
 
-    // Create MapLibre GL style object for vector tiles
-    const style = {
+    let style: unknown;
+
+    if (styleJson) {
+      // Deep-clone and patch all vector sources to point at the active tile URL
+      const patched = JSON.parse(JSON.stringify(styleJson));
+      if (patched.sources && typeof patched.sources === 'object') {
+        for (const [, source] of Object.entries(patched.sources)) {
+          if (source && typeof source === 'object' && (source as any).type === 'vector') {
+            (source as any).tiles = [url];
+            delete (source as any).url;
+          }
+        }
+      }
+      style = patched;
+    } else {
+    // Create MapLibre GL default style object for vector tiles
+    const defaultStyle = {
       version: 8,
       sources: {
         'vector-tiles': {
@@ -278,6 +294,9 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLa
       ]
     };
 
+      style = defaultStyle;
+    }
+
     // Create MapLibre GL layer using Leaflet's extended API
     const vectorLayer = L.maplibreGL({
       style: style,
@@ -291,7 +310,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLa
     return () => {
       map.removeLayer(vectorLayer);
     };
-  }, [map, url, attribution, maxZoom]);
+  }, [map, url, attribution, maxZoom, styleJson]);
 
   return null;
 }
