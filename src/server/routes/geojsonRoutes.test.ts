@@ -4,14 +4,36 @@
  * Uses a real GeoJsonService with a temp directory (no mocking of the service).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
+import session from 'express-session';
 import request from 'supertest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { GeoJsonService } from '../services/geojsonService.js';
 import { createGeoJsonRouter } from './geojsonRoutes.js';
+import databaseService from '../../services/database.js';
+
+// Mock DatabaseService for authMiddleware's requirePermission
+vi.mock('../../services/database.js', () => ({
+  default: {
+    drizzleDbType: 'sqlite',
+    findUserByIdAsync: vi.fn(),
+    findUserByUsernameAsync: vi.fn(),
+    checkPermissionAsync: vi.fn(),
+    getUserPermissionSetAsync: vi.fn(),
+  }
+}));
+
+const mockDatabase = databaseService as unknown as {
+  findUserByIdAsync: ReturnType<typeof vi.fn>;
+  findUserByUsernameAsync: ReturnType<typeof vi.fn>;
+  checkPermissionAsync: ReturnType<typeof vi.fn>;
+  getUserPermissionSetAsync: ReturnType<typeof vi.fn>;
+};
+
+const defaultUser = { id: 1, username: 'admin', isAdmin: true, isActive: true };
 
 const VALID_GEOJSON = JSON.stringify({
   type: 'FeatureCollection',
@@ -26,6 +48,13 @@ const VALID_GEOJSON = JSON.stringify({
 
 function createApp(service: GeoJsonService) {
   const app = express();
+  app.use(session({ secret: 'test-secret', resave: false, saveUninitialized: false }));
+  // Inject authenticated session
+  app.use((req, _res, next) => {
+    req.session.userId = defaultUser.id;
+    req.session.username = defaultUser.username;
+    next();
+  });
   const router = createGeoJsonRouter(service);
   app.use('/', router);
   return app;
@@ -37,6 +66,12 @@ describe('GeoJSON Routes', () => {
   let app: express.Express;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockDatabase.findUserByIdAsync.mockResolvedValue(defaultUser);
+    mockDatabase.findUserByUsernameAsync.mockResolvedValue(null);
+    mockDatabase.checkPermissionAsync.mockResolvedValue(true);
+    mockDatabase.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
+
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'geojson-test-'));
     service = new GeoJsonService(tmpDir);
     app = createApp(service);
