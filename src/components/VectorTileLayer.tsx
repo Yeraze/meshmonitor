@@ -298,17 +298,25 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
     }
 
     // Create MapLibre GL layer using Leaflet's extended API
-    const vectorLayer = L.maplibreGL({
-      style: style,
-      attribution: attribution
-    });
+    let vectorLayer: any;
+    try {
+      vectorLayer = L.maplibreGL({
+        style: style,
+        attribution: attribution
+      });
 
-    // Add to map
-    vectorLayer.addTo(map);
+      // Add to map
+      vectorLayer.addTo(map);
+    } catch (err) {
+      console.error('Failed to create MapLibre GL layer:', err);
+      return;
+    }
 
     // Cleanup on unmount
     return () => {
-      map.removeLayer(vectorLayer);
+      try {
+        map.removeLayer(vectorLayer);
+      } catch { /* layer may already be removed */ }
     };
   }, [map, url, attribution, maxZoom, styleJson]);
 
