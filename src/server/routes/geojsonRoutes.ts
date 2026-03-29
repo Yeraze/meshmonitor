@@ -36,7 +36,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
   router.post(
     '/upload',
     requirePermission('settings', 'write'),
-    express.raw({ type: '*/*', limit: '10mb' }),
+    express.raw({ type: '*/*', limit: '25mb' }),
     async (req: Request, res: Response) => {
       try {
         const filename = req.headers['x-filename'] as string | undefined;
