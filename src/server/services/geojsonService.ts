@@ -292,6 +292,11 @@ export class GeoJsonService {
     }
 
     const filePath = path.join(this.dataDir, layer.filename);
+    if (!fs.existsSync(filePath)) {
+      // Auto-remove orphaned manifest entry when backing file is missing
+      this.deleteLayer(id);
+      throw new Error(`GeoJSON layer file missing, removed from manifest: ${layer.filename}`);
+    }
     return fs.readFileSync(filePath, 'utf-8');
   }
 

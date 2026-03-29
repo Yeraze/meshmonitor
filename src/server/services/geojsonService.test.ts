@@ -211,6 +211,16 @@ describe('GeoJsonService', () => {
     it('throws when layer id does not exist', () => {
       expect(() => service.getLayerData('missing')).toThrow();
     });
+
+    it('auto-removes orphaned layer when file is missing', () => {
+      const layer = service.addLayer('orphan.geojson', validFeatureCollection);
+      // Delete the backing file but leave manifest entry
+      fs.unlinkSync(path.join(tmpDir, layer.filename));
+      expect(() => service.getLayerData(layer.id)).toThrow(/removed from manifest/);
+      // Manifest should no longer contain the layer
+      const manifest = service.loadManifest();
+      expect(manifest.layers.find(l => l.id === layer.id)).toBeUndefined();
+    });
   });
 
   describe('getLayers', () => {
