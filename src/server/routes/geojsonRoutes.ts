@@ -44,13 +44,29 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
           return res.status(400).json({ error: 'Missing X-Filename header' });
         }
 
-        const content = req.body instanceof Buffer ? req.body.toString('utf-8') : String(req.body);
-
-        if (!service.validateGeoJson(content)) {
-          return res.status(400).json({ error: 'Invalid GeoJSON content' });
+        const fileType = GeoJsonService.getFileType(filename);
+        if (!fileType) {
+          return res.status(400).json({ error: 'Unsupported file type. Accepted: .geojson, .json, .kml, .kmz' });
         }
 
-        const layer = service.addLayer(filename, content);
+        const rawBuffer = req.body instanceof Buffer ? req.body : Buffer.from(req.body);
+        let geojsonContent: string;
+
+        if (fileType === 'kmz') {
+          geojsonContent = await service.convertKmzToGeoJson(rawBuffer);
+        } else if (fileType === 'kml') {
+          const kmlContent = rawBuffer.toString('utf-8');
+          geojsonContent = service.convertKmlToGeoJson(kmlContent);
+        } else {
+          geojsonContent = rawBuffer.toString('utf-8');
+        }
+
+        if (!service.validateGeoJson(geojsonContent)) {
+          return res.status(400).json({ error: 'Invalid or empty GeoJSON content (conversion may have produced no features)' });
+        }
+
+        const layer = service.addLayer(filename, geojsonContent);
+        logger.info(`[GeoJsonRoutes] Layer uploaded: ${layer.name} (source: ${fileType})`);
         return res.status(201).json(layer);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -58,7 +74,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
         if (message.toLowerCase().includes('not found')) {
           return res.status(404).json({ error: message });
         }
-        return res.status(500).json({ error: message });
+        return res.status(400).json({ error: message });
       }
     }
   );

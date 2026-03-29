@@ -125,7 +125,7 @@ describe('GeoJSON Routes', () => {
         .send(Buffer.from('{"not": "geojson"}'));
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/invalid geojson/i);
+      expect(res.body.error).toMatch(/invalid.*geojson/i);
     });
 
     it('rejects missing X-Filename header with 400', async () => {

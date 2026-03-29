@@ -100,7 +100,7 @@ const GeoJsonLayerManager: React.FC = () => {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".geojson,.json"
+            accept=".geojson,.json,.kml,.kmz"
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -112,7 +112,7 @@ const GeoJsonLayerManager: React.FC = () => {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
           >
-            {uploading ? 'Uploading...' : 'Upload GeoJSON File'}
+            {uploading ? 'Uploading...' : 'Upload Overlay (GeoJSON/KML/KMZ)'}
           </button>
         </div>
       </div>

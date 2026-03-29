@@ -8,6 +8,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
+import { DOMParser } from '@xmldom/xmldom';
+import { kml } from '@tmcw/togeojson';
+import JSZip from 'jszip';
 import { logger } from '../../utils/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -116,6 +119,43 @@ export class GeoJsonService {
     } catch {
       return false;
     }
+  }
+
+  // ---- KML/KMZ conversion ---------------------------------------------------
+
+  /**
+   * Convert KML string to GeoJSON string
+   */
+  convertKmlToGeoJson(kmlContent: string): string {
+    const doc = new DOMParser().parseFromString(kmlContent, 'text/xml');
+    const geojson = kml(doc);
+    return JSON.stringify(geojson);
+  }
+
+  /**
+   * Convert KMZ buffer to GeoJSON string.
+   * KMZ is a ZIP archive containing a doc.kml file.
+   */
+  async convertKmzToGeoJson(buffer: Buffer): Promise<string> {
+    const zip = await JSZip.loadAsync(buffer);
+    // Find the KML file inside the archive (usually doc.kml)
+    const kmlFile = zip.file(/\.kml$/i)[0];
+    if (!kmlFile) {
+      throw new Error('No .kml file found inside KMZ archive');
+    }
+    const kmlContent = await kmlFile.async('string');
+    return this.convertKmlToGeoJson(kmlContent);
+  }
+
+  /**
+   * Check if a filename is a supported format and return its type
+   */
+  static getFileType(filename: string): 'geojson' | 'kml' | 'kmz' | null {
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === '.geojson' || ext === '.json') return 'geojson';
+    if (ext === '.kml') return 'kml';
+    if (ext === '.kmz') return 'kmz';
+    return null;
   }
 
   // ---- Layer operations ----------------------------------------------------
