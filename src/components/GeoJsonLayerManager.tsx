@@ -36,7 +36,7 @@ const GeoJsonLayerManager: React.FC = () => {
       const response = await csrfFetch(`${baseUrl}/api/geojson/upload`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/octet-stream',
           'X-Filename': file.name,
         },
         body: content,
