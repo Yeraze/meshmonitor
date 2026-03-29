@@ -11040,7 +11040,7 @@ class MeshtasticManager {
           details.push(`New channels on slots: ${newChannels.join(', ')} (default: no user permissions)`);
         }
         await databaseService.auditLogAsync(
-          0, // system user
+          null, // system operation — no user context at startup
           'channel_migration_on_startup',
           'channels',
           details.join('. '),
