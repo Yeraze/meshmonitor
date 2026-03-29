@@ -24,6 +24,7 @@ import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
+import GeoJsonOverlay from './GeoJsonOverlay';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
@@ -35,6 +36,7 @@ import { MapNodePopupContent } from './MapNodePopupContent';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import { mapContactsToNodes } from '../utils/meshcoreHelpers';
+import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 
 /**
  * Spiderfier initialization constants
@@ -535,6 +537,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Track if packet logging is enabled on the server
   const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
+  const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
 
   // Track if map controls are collapsed
   const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
@@ -656,6 +659,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
     fetchPacketLogStatus();
   }, [canViewPacketMonitor]);
+
+  useEffect(() => {
+    const fetchGeoJsonLayers = async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/geojson/layers`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setGeoJsonLayers(data);
+      } catch (err) {
+        console.error('Failed to fetch GeoJSON layers:', err);
+      }
+    };
+    fetchGeoJsonLayers();
+  }, []);
 
   // Refs to access latest values without recreating listeners
   const processedNodesRef = useRef(processedNodes);
@@ -1764,6 +1782,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       {t('map.showPolarGrid')}
                     </span>
                   </label>
+                  {geoJsonLayers.map(layer => (
+                    <label key={layer.id} className="map-control-item">
+                      <input
+                        type="checkbox"
+                        checked={layer.visible}
+                        onChange={(e) => {
+                          const newLayers = geoJsonLayers.map(l =>
+                            l.id === layer.id ? { ...l, visible: e.target.checked } : l
+                          );
+                          setGeoJsonLayers(newLayers);
+                          api.getBaseUrl().then(baseUrl => {
+                            csrfFetch(`${baseUrl}/api/geojson/layers/${layer.id}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ visible: e.target.checked }),
+                            }).catch(err => console.error('Failed to update layer visibility:', err));
+                          }).catch(err => console.error('Failed to get base URL:', err));
+                        }}
+                      />
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{
+                          display: 'inline-block', width: '8px', height: '8px',
+                          borderRadius: '50%', backgroundColor: layer.style.color,
+                        }} />
+                        {layer.name}
+                      </span>
+                    </label>
+                  ))}
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
                       <input
@@ -2101,6 +2147,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {showPolarGrid && ownNodePosition && (
                 <PolarGridOverlay center={ownNodePosition} />
               )}
+
+              <GeoJsonOverlay layers={geoJsonLayers} />
 
               {/* Draw traceroute paths (independent layer) */}
               <TraceroutePathsLayer paths={traceroutePathsElements} enabled={showPaths} />
