@@ -34,14 +34,15 @@ const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({ layers }) => {
   }, [layers, dataCache, fetchLayerData]);
 
   const getStyleForFeature = (layer: GeoJsonLayer, featureProps: Record<string, unknown> | null) => {
-    const base = {
+    // Layer UI overrides take priority for opacity/weight (user controls).
+    // Feature properties provide color/fill variations within a layer.
+    return {
       color: (featureProps?.['stroke'] as string) ?? layer.style.color,
-      weight: (featureProps?.['stroke-width'] as number) ?? layer.style.weight,
-      opacity: (featureProps?.['stroke-opacity'] as number) ?? layer.style.opacity,
+      weight: layer.style.weight,
+      opacity: layer.style.opacity,
       fillColor: (featureProps?.['fill'] as string) ?? layer.style.color,
-      fillOpacity: (featureProps?.['fill-opacity'] as number) ?? layer.style.fillOpacity,
+      fillOpacity: layer.style.fillOpacity,
     };
-    return base;
   };
 
   const getMarkerColor = (layer: GeoJsonLayer, featureProps: Record<string, unknown> | null): string => {
