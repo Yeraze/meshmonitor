@@ -738,6 +738,8 @@ import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
+import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
+import { GeoJsonService } from './services/geojsonService.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -840,6 +842,12 @@ apiRouter.use('/embed-profiles', embedProfileRoutes);
 
 // Firmware OTA update routes (admin only)
 apiRouter.use('/firmware', firmwareUpdateRoutes);
+
+// GeoJSON overlay layer routes
+const geojsonDataDir = path.join(process.env.DATA_DIR || './data', 'geojson');
+const geojsonService = new GeoJsonService(geojsonDataDir);
+const geojsonRouter = createGeoJsonRouter(geojsonService);
+apiRouter.use('/geojson', geojsonRouter);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
