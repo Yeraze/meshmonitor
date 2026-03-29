@@ -844,7 +844,7 @@ apiRouter.use('/embed-profiles', embedProfileRoutes);
 apiRouter.use('/firmware', firmwareUpdateRoutes);
 
 // GeoJSON overlay layer routes
-const geojsonDataDir = path.join(process.env.DATA_DIR || './data', 'geojson');
+const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');
 const geojsonService = new GeoJsonService(geojsonDataDir);
 const geojsonRouter = createGeoJsonRouter(geojsonService);
 apiRouter.use('/geojson', geojsonRouter);
