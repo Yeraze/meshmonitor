@@ -37,6 +37,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import { mapContactsToNodes } from '../utils/meshcoreHelpers';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
+import type { MapStyle } from '../server/services/mapStyleService.js';
 
 /**
  * Spiderfier initialization constants
@@ -538,6 +539,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Track if packet logging is enabled on the server
   const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
+  const [mapStyles, setMapStyles] = useState<MapStyle[]>([]);
+  const [activeStyleId, setActiveStyleId] = useState<string | null>(() => {
+    try { return localStorage.getItem('meshmonitor-activeMapStyleId') || null; } catch { return null; }
+  });
+  const [activeStyleJson, setActiveStyleJson] = useState<Record<string, unknown> | null>(null);
 
   // Track if map controls are collapsed
   const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
@@ -673,6 +679,50 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       }
     };
     fetchGeoJsonLayers();
+  }, []);
+
+  useEffect(() => {
+    const fetchMapStyles = async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/map-styles/styles`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setMapStyles(data);
+
+        // Determine which style to use: localStorage > server default > none
+        let resolvedStyleId = activeStyleId;
+
+        if (!resolvedStyleId) {
+          // No localStorage value — check server default
+          try {
+            const settingsRes = await fetch(`${baseUrl}/api/settings`, { credentials: 'include' });
+            if (settingsRes.ok) {
+              const settings = await settingsRes.json();
+              if (settings.activeMapStyleId) {
+                resolvedStyleId = settings.activeMapStyleId;
+                setActiveStyleId(resolvedStyleId);
+              }
+            }
+          } catch { /* ignore settings fetch failure */ }
+        }
+
+        // Load style data if we have a resolved ID
+        if (resolvedStyleId && data.some((s: MapStyle) => s.id === resolvedStyleId)) {
+          const styleRes = await fetch(`${baseUrl}/api/map-styles/styles/${resolvedStyleId}/data`);
+          if (styleRes.ok) {
+            setActiveStyleJson(await styleRes.json());
+          }
+        } else if (resolvedStyleId) {
+          // Saved style no longer exists, clear it
+          setActiveStyleId(null);
+          try { localStorage.removeItem('meshmonitor-activeMapStyleId'); } catch { /* ignore */ }
+        }
+      } catch (err) {
+        console.error('Failed to fetch map styles:', err);
+      }
+    };
+    fetchMapStyles();
   }, []);
 
   // Refs to access latest values without recreating listeners
@@ -1810,6 +1860,49 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </span>
                     </label>
                   ))}
+                  {getTilesetById(activeTileset, customTilesets).isVector && mapStyles.length > 0 && (
+                    <div className="map-control-item">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em' }}>
+                        Map Style
+                        <select
+                          value={activeStyleId ?? ''}
+                          onChange={async (e) => {
+                            const styleId = e.target.value || null;
+                            setActiveStyleId(styleId);
+                            try { localStorage.setItem('meshmonitor-activeMapStyleId', styleId ?? ''); } catch { /* ignore */ }
+                            // Save as server default so incognito/new browsers get this style
+                            api.getBaseUrl().then(baseUrl => {
+                              csrfFetch(`${baseUrl}/api/settings`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ activeMapStyleId: styleId ?? '' }),
+                              }).catch(err => console.error('Failed to save map style setting:', err));
+                            });
+                            if (styleId) {
+                              try {
+                                const baseUrl = await api.getBaseUrl();
+                                const response = await fetch(`${baseUrl}/api/map-styles/styles/${styleId}/data`);
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  setActiveStyleJson(data);
+                                }
+                              } catch (err) {
+                                console.error('Failed to fetch map style data:', err);
+                              }
+                            } else {
+                              setActiveStyleJson(null);
+                            }
+                          }}
+                          style={{ padding: '2px 6px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
+                        >
+                          <option value="">Default Style</option>
+                          {mapStyles.map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
                       <input
@@ -1840,6 +1933,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   url={getTilesetById(activeTileset, customTilesets).url}
                   attribution={getTilesetById(activeTileset, customTilesets).attribution}
                   maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
+                  styleJson={activeStyleJson ?? undefined}
                 />
               ) : (
                 <TileLayer

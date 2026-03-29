@@ -129,6 +129,7 @@ export const VALID_SETTINGS_KEYS = [
   'securityDigestReportType',
   'securityDigestSuppressEmpty',
   'securityDigestFormat',
+  'activeMapStyleId',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
