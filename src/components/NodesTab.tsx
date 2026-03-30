@@ -2290,8 +2290,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 const distKm = calculateDistance(ni.nodeLatitude!, ni.nodeLongitude!, ni.neighborLatitude!, ni.neighborLongitude!);
                 const distStr = formatDistance(distKm, distanceUnit);
 
+                // Normalize timestamp: old data may be in seconds, new data in milliseconds
+                const tsMs = ni.timestamp < 10_000_000_000 ? ni.timestamp * 1000 : ni.timestamp;
                 // Data age (clamped to 0 to handle clock skew)
-                const ageMs = Math.max(0, Date.now() - ni.timestamp);
+                const ageMs = Math.max(0, Date.now() - tsMs);
                 const ageMin = Math.floor(ageMs / 60000);
                 const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
 
@@ -2343,7 +2345,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             </div>
                           )}
                           <div className="route-usage">
-                            {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong> ({ageStr})
+                            {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(tsMs), timeFormat, dateFormat)}</strong> ({ageStr})
                           </div>
                         </div>
                       </Popup>
