@@ -3777,10 +3777,10 @@ class MeshtasticManager {
       }
 
       // Only include SNR/RSSI if they have valid values
-      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
       }
-      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
       }
       await databaseService.nodes.upsertNode(nodeData);
@@ -4610,10 +4610,10 @@ class MeshtasticManager {
       };
 
       // Only include SNR/RSSI if they have valid values
-      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
       }
-      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
       }
 
@@ -4830,10 +4830,10 @@ class MeshtasticManager {
       };
 
       // Only include SNR/RSSI if they have valid values
-      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
       }
-      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
       }
 
@@ -5042,7 +5042,7 @@ class MeshtasticManager {
           const node = await databaseService.nodes.getNode(nodeNum);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const rawSnr = snrTowards[index];
-          const snr = rawSnr === undefined ? 'N/A' : (rawSnr === -128 || rawSnr === 0) ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
+          const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
           const dist = await calcDistance(fullPath[index], nodeNum);
           if (dist) {
             routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
@@ -5118,7 +5118,7 @@ class MeshtasticManager {
           const node = await databaseService.nodes.getNode(nodeNum);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const rawSnr = snrBack[index];
-          const snr = rawSnr === undefined ? 'N/A' : (rawSnr === -128 || rawSnr === 0) ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
+          const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
           const dist = await calcDistanceReturn(fullReturnPath[index], nodeNum);
           if (dist) {
             routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
@@ -6174,7 +6174,7 @@ class MeshtasticManager {
       }
 
       // Save SNR as telemetry if present in NodeInfo
-      if (nodeInfo.snr !== undefined && nodeInfo.snr !== null && nodeInfo.snr !== 0) {
+      if (nodeInfo.snr != null && nodeInfo.snr !== -128) {
         const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
         const now = Date.now();
 
