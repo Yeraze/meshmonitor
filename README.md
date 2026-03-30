@@ -189,6 +189,10 @@ This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICE
 - **GitHub Issues**: Report bugs and request features
 - **Documentation**: [meshmonitor.org](https://meshmonitor.org/)
 
+## Third-Party Clients
+
+- **[meshmonitor-chat.el](https://git.andros.dev/andros/meshmonitor-chat.el)** - Emacs chat client using the REST API v1. Channel and DM support, delivery confirmation, emoji reactions, polling.
+
 ## Acknowledgments
 
 - [Meshtastic](https://meshtastic.org/) - Open source mesh networking
