@@ -3762,8 +3762,8 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000),
+        // Use server time for lastHeard — rxTime from the device clock is unreliable
+        lastHeard: Date.now() / 1000,
         // Update channel from every firmware-decoded packet so outbound messages (DMs,
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
@@ -4279,7 +4279,7 @@ class MeshtasticManager {
           const technicalData: any = {
             nodeNum: fromNum,
             nodeId: nodeId,
-            lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000),
+            lastHeard: Date.now() / 1000,
           };
           if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
             technicalData.snr = meshPacket.rxSnr;
@@ -4296,7 +4296,7 @@ class MeshtasticManager {
             longitude: coords.longitude,
             altitude: position.altitude,
             // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-            lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000),
+            lastHeard: Date.now() / 1000,
             positionChannel: channelIndex,
             positionPrecisionBits: precisionBits,
             positionGpsAccuracy: gpsAccuracy,
@@ -4387,8 +4387,8 @@ class MeshtasticManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000, Date.now() / 1000),
+        // Use server time for lastHeard — rxTime from the device clock is unreliable
+        lastHeard: Date.now() / 1000,
       };
 
       // Capture public key if present
@@ -4606,7 +4606,7 @@ class MeshtasticManager {
         nodeNum: fromNum,
         nodeId: nodeId,
         // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000)
+        lastHeard: Date.now() / 1000
       };
 
       // Only include SNR/RSSI if they have valid values
@@ -4826,7 +4826,7 @@ class MeshtasticManager {
         nodeNum: fromNum,
         nodeId: nodeId,
         // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000)
+        lastHeard: Date.now() / 1000
       };
 
       // Only include SNR/RSSI if they have valid values
