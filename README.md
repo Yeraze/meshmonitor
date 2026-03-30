@@ -6,6 +6,7 @@
 [![Docker Pulls](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/size?color=%235b4566&tag=latest&label=image%20size&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
 [![License](https://img.shields.io/github/license/Yeraze/meshmonitor)](https://github.com/Yeraze/meshmonitor/blob/main/LICENSE)
 [![Translation Status](https://hosted.weblate.org/widgets/meshmonitor/-/svg-badge.svg)](https://hosted.weblate.org/engage/meshmonitor/)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FYeraze%2Fmeshmonitor.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FYeraze%2Fmeshmonitor?ref=badge_shield)
 
 A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and multi-database support (SQLite, PostgreSQL, MySQL).
 
@@ -182,6 +183,9 @@ Quick start:
 ## License
 
 This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICENSE) file for details.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FYeraze%2Fmeshmonitor.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FYeraze%2Fmeshmonitor?ref=badge_large)
 
 ## Community & Support
 
