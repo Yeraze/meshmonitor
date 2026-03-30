@@ -1583,8 +1583,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               const nodeNeighbors = neighborInfo.filter(ni => ni.nodeNum === nodeNum);
               if (nodeNeighbors.length === 0) return null;
 
-              // Get most recent timestamp
-              const mostRecent = Math.max(...nodeNeighbors.map(n => n.timestamp));
+              // Get most recent timestamp (normalize: old data in seconds, new in ms)
+              const mostRecent = Math.max(...nodeNeighbors.map(n => n.timestamp < 10_000_000_000 ? n.timestamp * 1000 : n.timestamp));
               const age = Math.floor((Date.now() - mostRecent) / (1000 * 60));
               const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
