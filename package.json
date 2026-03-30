@@ -34,7 +34,7 @@
     "@tanstack/react-virtual": "^3.13.23",
     "@tmcw/togeojson": "^7.1.2",
     "@types/pbf": "^3.0.5",
-    "@xmldom/xmldom": "^0.8.11",
+    "@xmldom/xmldom": "^0.9.9",
     "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.8.0",
