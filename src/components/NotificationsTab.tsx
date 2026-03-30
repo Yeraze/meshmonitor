@@ -486,7 +486,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-          {/* Web Push Toggle */}
+          {/* Web Push / System Notifications Toggle */}
           <div style={{
             padding: '16px',
             backgroundColor: '#252535',
@@ -507,10 +507,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               />
               <div>
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
-                  📱 {t('notifications.webpush_title')}
+                  {'__TAURI__' in window ? '🖥️' : '📱'} {'__TAURI__' in window ? t('notifications.system_notifications_title', 'System Notifications') : t('notifications.webpush_title')}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  {t('notifications.webpush_description')}
+                  {'__TAURI__' in window ? t('notifications.system_notifications_description', 'Native desktop notifications for mesh activity') : t('notifications.webpush_description')}
                 </div>
               </div>
             </label>
@@ -1074,7 +1074,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       {/* ========================================
           SECTION 2: Web Push Configuration (only shown if enabled)
           ======================================== */}
-      {preferences.enableWebPush && (
+      {preferences.enableWebPush && !('__TAURI__' in window) && (
       <div id="notif-webpush" className="settings-section">
         <h3>📱 {t('notifications.webpush_config_title')}</h3>
 

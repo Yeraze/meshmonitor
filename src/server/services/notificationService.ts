@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import { getHardwareModelName } from '../../utils/nodeHelpers.js';
 import { pushNotificationService } from './pushNotificationService.js';
 import { appriseNotificationService, AppriseNotificationPayload } from './appriseNotificationService.js';
+import { desktopNotificationService } from './desktopNotificationService.js';
 
 export interface NotificationPayload {
   title: string;
@@ -58,7 +59,7 @@ class NotificationService {
   ): Promise<BroadcastResult> {
     logger.debug(`📢 Broadcasting notification: "${payload.title}"`);
 
-    // Dispatch to both services in parallel
+    // Dispatch to all services in parallel
     const results = await Promise.allSettled([
       // Web Push
       pushNotificationService.isAvailable()
@@ -75,6 +76,14 @@ class NotificationService {
             } as AppriseNotificationPayload,
             filterContext
           )
+        : Promise.resolve({ sent: 0, failed: 0, filtered: 0 }),
+
+      // Desktop (native OS notifications)
+      desktopNotificationService.isAvailable()
+        ? desktopNotificationService.broadcastWithFiltering(
+            { title: payload.title, body: payload.body, type: payload.type },
+            filterContext
+          )
         : Promise.resolve({ sent: 0, failed: 0, filtered: 0 })
     ]);
 
@@ -87,6 +96,10 @@ class NotificationService {
       ? results[1].value
       : { sent: 0, failed: 0, filtered: 0 };
 
+    const desktopResult = results[2].status === 'fulfilled'
+      ? results[2].value
+      : { sent: 0, failed: 0, filtered: 0 };
+
     // Log any failures
     if (results[0].status === 'rejected') {
       logger.error('❌ Web Push broadcast failed:', results[0].reason);
@@ -94,18 +107,22 @@ class NotificationService {
     if (results[1].status === 'rejected') {
       logger.error('❌ Apprise broadcast failed:', results[1].reason);
     }
+    if (results[2].status === 'rejected') {
+      logger.error('❌ Desktop notification broadcast failed:', results[2].reason);
+    }
 
     // Calculate totals
     const total = {
-      sent: webPushResult.sent + appriseResult.sent,
-      failed: webPushResult.failed + appriseResult.failed,
-      filtered: webPushResult.filtered + appriseResult.filtered
+      sent: webPushResult.sent + appriseResult.sent + desktopResult.sent,
+      failed: webPushResult.failed + appriseResult.failed + desktopResult.failed,
+      filtered: webPushResult.filtered + appriseResult.filtered + desktopResult.filtered
     };
 
     logger.info(
       `📊 Broadcast complete: ${total.sent} sent, ${total.failed} failed, ${total.filtered} filtered ` +
       `(Push: ${webPushResult.sent}/${webPushResult.failed}/${webPushResult.filtered}, ` +
-      `Apprise: ${appriseResult.sent}/${appriseResult.failed}/${appriseResult.filtered})`
+      `Apprise: ${appriseResult.sent}/${appriseResult.failed}/${appriseResult.filtered}, ` +
+      `Desktop: ${desktopResult.sent}/${desktopResult.failed}/${desktopResult.filtered})`
     );
 
     return {
@@ -151,7 +168,8 @@ class NotificationService {
       // Send to users with notifyOnNewNode enabled
       await Promise.allSettled([
         pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload),
-        appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload)
+        appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload),
+        desktopNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload)
       ]);
 
       logger.info(`📤 Sent new node notification for ${longName} (${shortName}) [${nodeId}]`);
@@ -175,7 +193,8 @@ class NotificationService {
       // Send to users with notifyOnTraceroute enabled
       await Promise.allSettled([
         pushNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload),
-        appriseNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload)
+        appriseNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload),
+        desktopNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload)
       ]);
 
       logger.info(`📤 Sent traceroute notification for ${fromNodeId} → ${toNodeId}`);
@@ -196,7 +215,8 @@ class NotificationService {
     // Send to users with the preference enabled
     await Promise.allSettled([
       pushNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId),
-      appriseNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId)
+      appriseNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId),
+      desktopNotificationService.broadcastToPreferenceUsers(preferenceKey, payload)
     ]);
   }
 }
