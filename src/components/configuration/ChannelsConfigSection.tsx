@@ -271,6 +271,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     }
 
     try {
+      // 1. Disable channel on the device
       await apiService.updateChannel(slotId, {
         name: '',
         psk: '',
@@ -278,6 +279,12 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         uplinkEnabled: false,
         downlinkEnabled: false,
       });
+      // 2. Delete channel record and messages from database
+      try {
+        await apiService.delete(`/api/channels/${slotId}`);
+      } catch {
+        // DB cleanup is best-effort — channel is already disabled on device
+      }
       showToast(t('channels_config.toast_channel_deleted', { slot: slotId }), 'success');
       onChannelsUpdated?.();
     } catch (error) {
@@ -286,6 +293,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       showToast(errorMsg, 'error');
     }
   };
+
 
   const handleExportChannel = async (channelId: number) => {
     try {

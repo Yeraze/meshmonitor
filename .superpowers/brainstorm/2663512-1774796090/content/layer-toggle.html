@@ -1,0 +1,46 @@
+<h2>GeoJSON Layer Toggle Placement</h2>
+<p class="subtitle">Where should visibility toggles appear on the map view?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Leaflet Layer Control</h3>
+      <p>Native stacked-layers icon in map corner. Familiar pattern for Leaflet users. Expands to show checkboxes per layer.</p>
+      <div style="margin-top: 12px; padding: 12px; background: var(--surface-1); border-radius: 8px; font-family: monospace; font-size: 13px;">
+        <div style="display: inline-block; padding: 6px 10px; background: white; border: 2px solid #999; border-radius: 4px; color: #333;">
+          ☐ Emergency Points<br>
+          ☐ Municipal Boundaries<br>
+          ☑ Infrastructure<br>
+          ──────────<br>
+          ☑ OSM Tiles
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Existing Map Controls</h3>
+      <p>Add GeoJSON toggles alongside the existing polar grid toggle and other map controls already on the map view.</p>
+      <div style="margin-top: 12px; padding: 12px; background: var(--surface-1); border-radius: 8px; font-family: monospace; font-size: 13px;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span style="padding: 4px 8px; background: #2d5a27; color: white; border-radius: 4px;">📡 Polar Grid</span>
+          <span style="padding: 4px 8px; background: #1a5276; color: white; border-radius: 4px;">🗺 Emergency Pts</span>
+          <span style="padding: 4px 8px; background: #444; color: #aaa; border-radius: 4px;">🗺 Boundaries</span>
+          <span style="padding: 4px 8px; background: #6c3483; color: white; border-radius: 4px;">🗺 Infrastructure</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>No Map Toggle</h3>
+      <p>Layers are always shown if enabled in Map Settings. Simple but requires navigating to settings to change visibility.</p>
+      <div style="margin-top: 12px; padding: 12px; background: var(--surface-1); border-radius: 8px; font-size: 13px; color: var(--text-muted);">
+        No additional UI on map — configure in Settings → Map Settings
+      </div>
+    </div>
+  </div>
+</div>
