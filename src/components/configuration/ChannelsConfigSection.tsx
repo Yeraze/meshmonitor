@@ -259,6 +259,34 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     }
   };
 
+  const handleDeleteChannel = async (slotId: number) => {
+    // Channel 0 (Primary) cannot be deleted
+    if (slotId === 0) {
+      showToast(t('channels_config.toast_cannot_delete_primary', 'Cannot delete the primary channel'), 'error');
+      return;
+    }
+
+    if (!confirm(t('channels_config.confirm_delete', `Are you sure you want to delete channel ${slotId}? This will disable the channel on the device.`))) {
+      return;
+    }
+
+    try {
+      await apiService.updateChannel(slotId, {
+        name: '',
+        psk: '',
+        role: 0, // DISABLED
+        uplinkEnabled: false,
+        downlinkEnabled: false,
+      });
+      showToast(t('channels_config.toast_channel_deleted', { slot: slotId }), 'success');
+      onChannelsUpdated?.();
+    } catch (error) {
+      logger.error('Error deleting channel:', error);
+      const errorMsg = error instanceof Error ? error.message : t('channels_config.toast_delete_failed', 'Failed to delete channel');
+      showToast(errorMsg, 'error');
+    }
+  };
+
   const handleExportChannel = async (channelId: number) => {
     try {
       await apiService.exportChannel(channelId);
@@ -537,6 +565,22 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   >
                     📤 {t('common.import')}
                   </button>
+                  {slotId > 0 && channel && channel.role !== 0 && (
+                    <button
+                      onClick={() => handleDeleteChannel(slotId)}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        fontSize: '0.9rem',
+                        backgroundColor: 'var(--ctp-red)',
+                        color: 'var(--ctp-base)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🗑️ {t('common.delete')}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
