@@ -2,7 +2,9 @@
  * WebSocket Service
  *
  * Initializes Socket.io server for real-time mesh data updates.
- * Shares Express session authentication with WebSocket connections.
+ * Supports two authentication methods:
+ * - Express session (web UI)
+ * - Bearer token via handshake auth (API clients)
  */
 
 import { Server as HttpServer } from 'http';
@@ -12,6 +14,7 @@ import { dataEventEmitter, type DataEvent } from './dataEventEmitter.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import type { DbMessage } from '../../services/database.js';
+import databaseService from '../../services/database.js';
 
 /**
  * Transform a DbMessage to the format expected by the client (MeshMessage)
@@ -121,22 +124,37 @@ export function initializeWebSocket(
     );
   });
 
-  // Authentication check - require valid session
-  io.use((socket, next) => {
+  // Authentication check - session first, then Bearer token fallback
+  io.use(async (socket, next) => {
+    // 1. Try session auth (web UI)
     const session = (socket.request as any).session;
-
-    if (!session || !session.userId) {
-      logger.debug(`[WebSocket] Connection rejected: No valid session`);
-      return next(new Error('Authentication required'));
+    if (session?.userId) {
+      (socket as any).userId = session.userId;
+      (socket as any).username = session.username;
+      (socket as any).isAdmin = session.isAdmin;
+      logger.debug(`[WebSocket] Session auth: ${session.username}`);
+      return next();
     }
 
-    // Attach user info to socket for later use
-    (socket as any).userId = session.userId;
-    (socket as any).username = session.username;
-    (socket as any).isAdmin = session.isAdmin;
+    // 2. Try Bearer token auth (API clients)
+    const token = socket.handshake.auth?.token as string | undefined;
+    if (token) {
+      try {
+        const user = await databaseService.validateApiTokenAsync(token);
+        if (user) {
+          (socket as any).userId = user.id;
+          (socket as any).username = user.username;
+          (socket as any).isAdmin = user.isAdmin || false;
+          logger.debug(`[WebSocket] Token auth: ${user.username}`);
+          return next();
+        }
+      } catch (err) {
+        logger.warn(`[WebSocket] Token validation error:`, err);
+      }
+    }
 
-    logger.debug(`[WebSocket] Authenticated connection from user: ${session.username}`);
-    next();
+    logger.debug(`[WebSocket] Connection rejected: No valid session or token`);
+    return next(new Error('Authentication required'));
   });
 
   // Handle connections
