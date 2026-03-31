@@ -10005,55 +10005,14 @@ class DatabaseService {
   }
 
   /**
-   * Get user's map preferences - works with all database backends
+   * Get user's map preferences - delegates to MiscRepository (Drizzle ORM)
    */
   async getMapPreferencesAsync(userId: number): Promise<Record<string, any> | null> {
-    if (this.drizzleDbType === 'sqlite') {
-      return this.userModel.getMapPreferences(userId);
-    }
-
-    try {
-      const columns = `map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
-        show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
-        show_estimated_positions, position_history_hours`;
-
-      let row: any = null;
-
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = await this.postgresPool.query(
-          `SELECT ${columns} FROM user_map_preferences WHERE "userId" = $1`, [userId]
-        );
-        row = result.rows[0] || null;
-      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [rows] = await this.mysqlPool.query(
-          `SELECT ${columns} FROM user_map_preferences WHERE userId = ?`, [userId]
-        );
-        row = (rows as any[])[0] || null;
-      }
-
-      if (!row) return null;
-
-      return {
-        mapTileset: row.map_tileset || null,
-        showPaths: Boolean(row.show_paths),
-        showNeighborInfo: Boolean(row.show_neighbor_info),
-        showRoute: Boolean(row.show_route),
-        showMotion: Boolean(row.show_motion),
-        showMqttNodes: Boolean(row.show_mqtt_nodes),
-        showMeshCoreNodes: Boolean(row.show_meshcore_nodes),
-        showAnimations: Boolean(row.show_animations),
-        showAccuracyRegions: Boolean(row.show_accuracy_regions),
-        showEstimatedPositions: Boolean(row.show_estimated_positions),
-        positionHistoryHours: row.position_history_hours ?? null,
-      };
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to get map preferences async: ${error}`);
-      return null;
-    }
+    return this.miscRepo!.getMapPreferences(userId);
   }
 
   /**
-   * Save user's map preferences - works with all database backends
+   * Save user's map preferences - delegates to MiscRepository (Drizzle ORM)
    */
   async saveMapPreferencesAsync(userId: number, preferences: {
     mapTileset?: string;
@@ -10068,124 +10027,7 @@ class DatabaseService {
     showEstimatedPositions?: boolean;
     positionHistoryHours?: number | null;
   }): Promise<void> {
-    if (this.drizzleDbType === 'sqlite') {
-      this.userModel.saveMapPreferences(userId, preferences);
-      return;
-    }
-
-    const now = Date.now();
-
-    try {
-      // Check if row exists
-      let exists = false;
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = await this.postgresPool.query(
-          'SELECT "userId" FROM user_map_preferences WHERE "userId" = $1', [userId]
-        );
-        exists = (result.rows.length > 0);
-      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [rows] = await this.mysqlPool.query(
-          'SELECT userId FROM user_map_preferences WHERE userId = ?', [userId]
-        );
-        exists = ((rows as any[]).length > 0);
-      }
-
-      if (exists) {
-        // Build dynamic UPDATE
-        const updates: string[] = [];
-        const params: any[] = [];
-        let paramIdx = 1; // For Postgres $N placeholders
-
-        const fieldMap: Record<string, string> = {
-          mapTileset: 'map_tileset',
-          showPaths: 'show_paths',
-          showNeighborInfo: 'show_neighbor_info',
-          showRoute: 'show_route',
-          showMotion: 'show_motion',
-          showMqttNodes: 'show_mqtt_nodes',
-          showMeshCoreNodes: 'show_meshcore_nodes',
-          showAnimations: 'show_animations',
-          showAccuracyRegions: 'show_accuracy_regions',
-          showEstimatedPositions: 'show_estimated_positions',
-          positionHistoryHours: 'position_history_hours',
-        };
-
-        for (const [key, col] of Object.entries(fieldMap)) {
-          const value = (preferences as any)[key];
-          if (value !== undefined) {
-            if (this.drizzleDbType === 'postgres') {
-              updates.push(`${col} = $${paramIdx++}`);
-            } else {
-              updates.push(`${col} = ?`);
-            }
-            // Convert booleans for storage
-            if (typeof value === 'boolean') {
-              params.push(value);
-            } else {
-              params.push(value);
-            }
-          }
-        }
-
-        if (updates.length > 0) {
-          if (this.drizzleDbType === 'postgres') {
-            updates.push(`"updatedAt" = $${paramIdx++}`);
-            params.push(now);
-            const sql = `UPDATE user_map_preferences SET ${updates.join(', ')} WHERE "userId" = $${paramIdx}`;
-            params.push(userId);
-            await this.postgresPool!.query(sql, params);
-          } else if (this.drizzleDbType === 'mysql') {
-            updates.push('updatedAt = ?');
-            params.push(now);
-            const sql = `UPDATE user_map_preferences SET ${updates.join(', ')} WHERE userId = ?`;
-            params.push(userId);
-            await this.mysqlPool!.query(sql, params);
-          }
-        }
-      } else {
-        // INSERT new row
-        const boolVal = (v: boolean | undefined, def: boolean) => v !== undefined ? v : def;
-
-        if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-          await this.postgresPool.query(
-            `INSERT INTO user_map_preferences (
-              "userId", map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
-              show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
-              show_estimated_positions, position_history_hours, created_at, "updatedAt"
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-            [
-              userId, preferences.mapTileset || null,
-              boolVal(preferences.showPaths, false), boolVal(preferences.showNeighborInfo, false),
-              boolVal(preferences.showRoute, true), boolVal(preferences.showMotion, true),
-              boolVal(preferences.showMqttNodes, true), boolVal(preferences.showMeshCoreNodes, true),
-              boolVal(preferences.showAnimations, true), boolVal(preferences.showAccuracyRegions, false),
-              boolVal(preferences.showEstimatedPositions, true), preferences.positionHistoryHours ?? null,
-              now, now,
-            ]
-          );
-        } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-          await this.mysqlPool.query(
-            `INSERT INTO user_map_preferences (
-              userId, map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
-              show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
-              show_estimated_positions, position_history_hours, created_at, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              userId, preferences.mapTileset || null,
-              boolVal(preferences.showPaths, false), boolVal(preferences.showNeighborInfo, false),
-              boolVal(preferences.showRoute, true), boolVal(preferences.showMotion, true),
-              boolVal(preferences.showMqttNodes, true), boolVal(preferences.showMeshCoreNodes, true),
-              boolVal(preferences.showAnimations, true), boolVal(preferences.showAccuracyRegions, false),
-              boolVal(preferences.showEstimatedPositions, true), preferences.positionHistoryHours ?? null,
-              now, now,
-            ]
-          );
-        }
-      }
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to save map preferences async: ${error}`);
-      throw error;
-    }
+    return this.miscRepo!.saveMapPreferences(userId, preferences);
   }
   // ============================================================
   // Async wrappers for sync methods (Phase 4 migration)

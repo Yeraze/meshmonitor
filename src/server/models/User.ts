@@ -439,8 +439,6 @@ export class UserModel {
     showEstimatedPositions?: boolean;
     positionHistoryHours?: number | null;
   }): void {
-    const now = Date.now();
-
     // Check if preferences exist
     const existing = this.db.prepare('SELECT user_id FROM user_map_preferences WHERE user_id = ?').get(userId);
 
@@ -495,8 +493,6 @@ export class UserModel {
       }
 
       if (updates.length > 0) {
-        updates.push('updated_at = ?');
-        params.push(now);
         params.push(userId);
 
         const stmt = this.db.prepare(`
@@ -508,13 +504,15 @@ export class UserModel {
       }
     } else {
       // Insert new preferences
+      // Note: created_at/updated_at columns omitted — column naming is inconsistent
+      // across upgrade paths (createdAt vs created_at) and timestamps are not essential here
       const stmt = this.db.prepare(`
         INSERT INTO user_map_preferences (
           user_id, map_tileset, show_paths, show_neighbor_info,
           show_route, show_motion, show_mqtt_nodes, show_meshcore_nodes, show_animations,
           show_accuracy_regions, show_estimated_positions,
-          position_history_hours, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          position_history_hours
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -529,9 +527,7 @@ export class UserModel {
         preferences.showAnimations ? 1 : 0,
         preferences.showAccuracyRegions ? 1 : 0, // default false
         preferences.showEstimatedPositions !== undefined ? (preferences.showEstimatedPositions ? 1 : 0) : 1, // default true
-        preferences.positionHistoryHours ?? null,
-        now,
-        now
+        preferences.positionHistoryHours ?? null
       );
     }
   }

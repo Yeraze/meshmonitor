@@ -511,6 +511,8 @@ echo ""
 echo -e "${BLUE}=== Map Preferences ===${NC}"
 
 check "GET /api/user/map-preferences" "$(api GET /api/user/map-preferences)" 200
+check "POST /api/user/map-preferences" "$(api POST /api/user/map-preferences '{"showRoute":true,"showNeighborInfo":false,"showMqttNodes":true}')" 200
+check "GET /api/user/map-preferences (after save)" "$(api GET /api/user/map-preferences)" 200
 
 # ─── Embed Profiles ───────────────────────────────────────
 
