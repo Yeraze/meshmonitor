@@ -2091,7 +2091,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         font-size: 10px;
                         font-weight: bold;
                       ">MC</div>
-                      <div style="
+                      ${showLabel ? `<div style="
                         position: absolute;
                         top: -20px;
                         left: 50%;
@@ -2102,7 +2102,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         border-radius: 3px;
                         font-size: 11px;
                         white-space: nowrap;
-                      ">${node.name || 'MeshCore'}</div>
+                      ">${node.name || 'MeshCore'}</div>` : ''}
                     `,
                     iconSize: [24, 24],
                     iconAnchor: [12, 12],
