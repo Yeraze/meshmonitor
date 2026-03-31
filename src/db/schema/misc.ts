@@ -95,8 +95,8 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   centerLng: real('centerLng'),
   zoom: real('zoom'),
   selectedLayer: text('selectedLayer'),
-  createdAt: integer('createdAt').notNull(),
-  updatedAt: integer('updatedAt').notNull(),
+  createdAt: integer('createdAt'),
+  updatedAt: integer('updatedAt'),
 });
 
 export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
@@ -106,8 +106,8 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   centerLng: pgReal('centerLng'),
   zoom: pgReal('zoom'),
   selectedLayer: pgText('selectedLayer'),
-  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
-  updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  createdAt: pgBigint('createdAt', { mode: 'number' }),
+  updatedAt: pgBigint('updatedAt', { mode: 'number' }),
 });
 
 // ============ UPGRADE HISTORY ============
@@ -340,8 +340,8 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   centerLng: myDouble('centerLng'),
   zoom: myDouble('zoom'),
   selectedLayer: myVarchar('selectedLayer', { length: 64 }),
-  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
-  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }),
 });
 
 export const upgradeHistoryMysql = mysqlTable('upgrade_history', {

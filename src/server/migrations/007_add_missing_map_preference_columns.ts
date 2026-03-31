@@ -62,7 +62,11 @@ export async function runMigration083Postgres(client: PoolClient): Promise<void>
     { name: 'show_route', type: 'BOOLEAN DEFAULT true' },
     { name: 'show_motion', type: 'BOOLEAN DEFAULT true' },
     { name: 'show_mqtt_nodes', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_meshcore_nodes', type: 'BOOLEAN DEFAULT true' },
     { name: 'show_animations', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_accuracy_regions', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_estimated_positions', type: 'BOOLEAN DEFAULT false' },
+    { name: 'position_history_hours', type: 'INTEGER' },
     { name: 'created_at', type: 'BIGINT' },
   ];
 
@@ -92,7 +96,11 @@ export async function runMigration083Mysql(pool: MySQLPool): Promise<void> {
     { name: 'show_route', type: 'BOOLEAN DEFAULT true' },
     { name: 'show_motion', type: 'BOOLEAN DEFAULT true' },
     { name: 'show_mqtt_nodes', type: 'BOOLEAN DEFAULT true' },
+    { name: 'show_meshcore_nodes', type: 'BOOLEAN DEFAULT true' },
     { name: 'show_animations', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_accuracy_regions', type: 'BOOLEAN DEFAULT false' },
+    { name: 'show_estimated_positions', type: 'BOOLEAN DEFAULT false' },
+    { name: 'position_history_hours', type: 'INTEGER' },
     { name: 'created_at', type: 'BIGINT' },
   ];
 
