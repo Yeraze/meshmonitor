@@ -1,0 +1,93 @@
+# =============================================================================
+# MeshMonitor - Raspberry Pi Docker Compose (SD Card Optimized)
+# =============================================================================
+#
+# Designed for 64-bit Raspberry Pi (Pi 4/5) running off micro-SD.
+# Minimizes disk writes to extend SD card lifespan.
+#
+# SD Card Protection (5 layers):
+#   1. Docker logging  - local driver, capped at ~200KB per service
+#   2. Access logs     - disabled via ACCESS_LOG_ENABLED=false
+#   3. Audit/app logs  - tmpfs on /data/logs (RAM-only)
+#   4. Temp files      - tmpfs on /tmp in both containers
+#   5. Debug output    - suppressed via NODE_ENV=production
+#
+# Only remaining disk writes: SQLite DB (/data/meshmonitor.db) and Apprise
+# config - these are necessary for persistence across restarts.
+#
+# Usage:
+#   docker compose -f docker-compose.rpi.yml up -d
+#
+# Validate syntax:
+#   docker compose -f docker-compose.rpi.yml config
+#
+# View logs (in-memory only, lost on restart):
+#   docker compose -f docker-compose.rpi.yml logs -f
+#
+# Serial device:
+#   Default: /dev/ttyUSB0. Override with SERIAL_DEVICE env var:
+#     SERIAL_DEVICE=/dev/ttyACM0 docker compose -f docker-compose.rpi.yml up -d
+#
+# =============================================================================
+# Recommended: Docker daemon-level log defaults
+# Add to /etc/docker/daemon.json to cap ALL container logs system-wide:
+#
+#   {
+#     "log-driver": "local",
+#     "log-opts": {
+#       "max-size": "100k",
+#       "max-file": "2"
+#     }
+#   }
+#
+# Then: sudo systemctl restart docker
+# =============================================================================
+
+services:
+  serial-bridge:
+    image: ghcr.io/yeraze/meshtastic-serial-bridge:latest
+    container_name: meshmonitor-rpi-serial-bridge
+    restart: unless-stopped
+    devices:
+      - ${SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
+    environment:
+      - SERIAL_DEVICE=/dev/ttyUSB0
+      - BAUD_RATE=115200
+      - TCP_PORT=4403
+    tmpfs:
+      - /tmp:size=10M
+    logging:
+      driver: local
+      options:
+        max-size: "100k"
+        max-file: "2"
+
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor-rpi
+    restart: unless-stopped
+    ports:
+      - "8080:3001"
+    depends_on:
+      - serial-bridge
+    volumes:
+      - meshmonitor-rpi-data:/data
+    tmpfs:
+      # Overlay /data/logs onto RAM so audit.log never hits disk
+      - /data/logs:size=10M
+      - /tmp:size=50M
+    environment:
+      - NODE_ENV=production
+      - TZ=${TZ:-America/New_York}
+      - MESHTASTIC_NODE_IP=serial-bridge
+      - MESHTASTIC_NODE_PORT=4403
+      - ACCESS_LOG_ENABLED=false
+    logging:
+      driver: local
+      options:
+        max-size: "100k"
+        max-file: "2"
+
+volumes:
+  meshmonitor-rpi-data:
+    driver: local

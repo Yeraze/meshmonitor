@@ -2527,6 +2527,30 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
   }
 });
 
+// Delete a channel's messages and database record
+apiRouter.delete('/channels/:id', requirePermission('channel_0', 'write'), async (req, res) => {
+  try {
+    const channelId = parseInt(req.params.id);
+    if (isNaN(channelId) || channelId < 0 || channelId > 7) {
+      return res.status(400).json({ error: 'Invalid channel ID (0-7)' });
+    }
+    if (channelId === 0) {
+      return res.status(400).json({ error: 'Cannot delete primary channel' });
+    }
+
+    // Purge messages for this channel
+    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId);
+    // Delete the channel record
+    await databaseService.channels.deleteChannel(channelId);
+
+    logger.info(`🗑️ Deleted channel ${channelId}: ${deletedCount} messages purged`);
+    res.json({ success: true, message: `Channel ${channelId} deleted`, messagesDeleted: deletedCount });
+  } catch (error) {
+    logger.error('Error deleting channel:', error);
+    res.status(500).json({ error: 'Failed to delete channel' });
+  }
+});
+
 // Import a channel configuration to a specific slot
 apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write'), async (req, res) => {
   try {

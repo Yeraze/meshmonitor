@@ -1,0 +1,783 @@
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Ignore dupe incoming msg (id=0x266ea36c fr=0xda56b3f8 to=0x699c7c54, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=4 WANTRESP via MQTT hopStart=7)
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Update DB node 0xda56b3f8, rx_time=0
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Rebroadcast received message coming from 0
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Packet History - insert: Reusing slot aged 0.029s TRACE MATCHED PACKET
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Expand short PSK #1
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Use AES128 key!
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: enqueue for send (id=0x266ea36c fr=0xda56b3f8 to=0x699c7c54, transport = 5, WantAck=0, HopLim=6 Ch=0x8 encrypted len=104 via MQTT hopStart=7 relay=0x5e priority=70)
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: txGood=397,txRelay=357,rxGood=588,rxBad=711
+Mar  7 19:37:27 MadQ_fb65 Router ﻿[9549]: Incoming msg was filtered from 0xda56b3f8
+Mar  7 19:37:27 MadQ_fb65 ApiServer ﻿[9549]: Previous TCP connection still open, try again in 200ms
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9549]: PACKET FROM PHONE (id=0x27607988 fr=0x00000000 to=0xffffffff, transport = 0, WantAck=1, HopLim=0 Ch=0x0 Portnum=1)
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: handleReceived(USER) (id=0x27607988 fr=0x00000000 to=0xffffffff, transport = 0, WantAck=1, HopLim=0 Ch=0x0 Portnum=1 rxtime=1772930238)
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'text' wantsPacket=1
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Received text msg from=0x0, id=0x27607988, msg=figures the sun came out today down in lewes, I come back up here and it's still cloudy and foggy.
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'text' considered
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'neighborinfo' considered
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'ExternalNotificationModule' wantsPacket=1
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'ExternalNotificationModule' considered
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'routing' wantsPacket=1
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Routing sniffing (id=0x27607988 fr=0x00000000 to=0xffffffff, transport = 0, WantAck=1, HopLim=0 Ch=0x0 Portnum=1 rxtime=1772930238)
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Module 'routing' considered
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Setting next retransmission in 8556 msecs: 
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]:  (id=0x27607988 fr=0x00000000 to=0xffffffff, transport = 0, WantAck=1, HopLim=4 Ch=0x0 Portnum=1 rxtime=1772930238)
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Packet History - insert: Reusing slot aged 2353.925s TRACE OLDEST SLOT
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Expand short PSK #1
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: Use AES128 key!
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: MQTT onSend - Publish 
+Mar  7 19:37:27 MadQ_fb65 ServerAPI ﻿[9550]: encrypted message
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9550]: MQTT Publish msh/US/DE/2/e/LongFast/!0f376b5e, 161 bytes
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9550]: enqueue for send (id=0x27607988 fr=0x0f376b5e to=0xffffffff, transport = 0, WantAck=0, HopLim=4 Ch=0x8 encrypted len=120 rxtime=1772930238 hopStart=4 relay=0x5e priority=100)
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9550]: txGood=397,txRelay=357,rxGood=588,rxBad=711
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9550]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:37:28 MadQ_fb65 Meshtastic ﻿[9550]: Tell client we have new packets 797
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9550]: Corrected frequency offset: 37.781246
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9550]: Lora RX (id=0x97a1ddac fr=0x9e75af40 to=0xffffffff, transport = 0, WantAck=0, HopLim=0 Ch=0x8 encrypted len=49 rxSNR=-8.25 rxRSSI=-115 via MQTT hopStart=4 relay=0xc8)
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9550]: Packet RX: 600ms
+Mar  7 19:37:28 MadQ_fb65 mqtt ﻿[9550]: Partially randomized packet id 3635146303
+Mar  7 19:37:28 MadQ_fb65 mqtt ﻿[9550]: Enqueued local (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Packet History - insert: Reusing slot aged 4.422s TRACE MATCHED PACKET
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Ignore dupe incoming msg (id=0x97a1ddac fr=0x9e75af40 to=0xffffffff, transport = 1, WantAck=0, HopLim=0 Ch=0x8 encrypted len=49 rxSNR=-8.25 rxRSSI=-115 via MQTT hopStart=4 relay=0xc8)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: cancelSending id=0x97a1ddac, removed=0
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Incoming msg was filtered from 0x9e75af40
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Rx someone rebroadcasting for us (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Didn't find pending packet
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Packet History - insert: Reusing slot aged 2313.082s TRACE OLDEST SLOT
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: handleReceived(REMOTE) (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Module 'neighborinfo' considered
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Module 'routing' wantsPacket=1
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Received routing from=0xf376b5e, id=0xd8abee3f, portnum=5, payloadlen=2
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Routing sniffing (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Delivering rx packet (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Ignore update from self
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Forwarding to phone (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Module 'routing' considered
+Mar  7 19:37:28 MadQ_fb65 Meshtastic ﻿[9550]: Tell client we have new packets 798
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9550]: Can not send yet, busyRx
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9550]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9550]: phone downloaded packet (id=0xd8abee3f fr=0x0f376b5e to=0x0f376b5e, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=5 requestId=27607988 rxtime=1772930238 priority=120)
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9550]: Can not send yet, busyRx
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9550]: Can not send yet, busyRx
+Mar  7 19:37:28 MadQ_fb65 mqtt ﻿[9550]: Received MQTT topic msh/US/DE/2/e/PKI/!0168bbd7, len=132
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Packet History - insert: Reusing slot aged 2305.546s TRACE OLDEST SLOT
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Attempt PKI decryption
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9550]: Random nonce value: 549298414
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Attempt decrypt with nonce:  09 dc 97 05 ee a0 bd 20 f8 b3 56 da 00#012
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Attempt decrypt with shared_key starting with:  b1 89 e6 9c 1f 6c 9a 6d#012
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: PKI Decryption worked!
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Packet decrypted using PKI!
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: decoded message (id=0x0597dc09 fr=0xda56b3f8 to=0x0f376b5e, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=1 PKI rxtime=1772930239 via MQTT hopStart=7)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: handleReceived(REMOTE) (id=0x0597dc09 fr=0xda56b3f8 to=0x0f376b5e, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=1 PKI rxtime=1772930239 via MQTT hopStart=7)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Module 'text' wantsPacket=1
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Received text msg from=0xda56b3f8, id=0x597dc09, msg=Hello MadQ "DEMe.sh MeshBot says Hello! DM for more info."
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Module 'text' considered
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Module 'ExternalNotificationModule' wantsPacket=1
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Toggling nagCycleCutoff to 9566095
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: externalNotificationModule - Notification Module or Bell
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Init NCP5623 Ambient light w/ current=10.000000, red=0, green=0, blue=0
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: externalNotificationModule - Notification Module or Bell (Buzzer)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Module 'ExternalNotificationModule' considered
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Module 'routing' wantsPacket=1
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Routing sniffing (id=0x0597dc09 fr=0xda56b3f8 to=0x0f376b5e, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=1 PKI rxtime=1772930239 via MQTT hopStart=7)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Delivering rx packet (id=0x0597dc09 fr=0xda56b3f8 to=0x0f376b5e, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=1 PKI rxtime=1772930239 via MQTT hopStart=7)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Update DB node 0xda56b3f8, rx_time=1772930239
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Sort took 3 milliseconds
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Forwarding to phone (id=0x0597dc09 fr=0xda56b3f8 to=0x0f376b5e, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=1 PKI rxtime=1772930239 via MQTT hopStart=7)
+Mar  7 19:37:28 MadQ_fb65 Router ﻿[9551]: Module 'routing' considered
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9551]: Ignore received packet due to error=-7 (maybe id=0x7f5475b4 fr=0xf99c7c54 to=0xffffffff flags=0x39 rxSNR=-6.5 rxRSSI=-104 nextHop=0xdc relay=0x67)
+Mar  7 19:37:28 MadQ_fb65 RadioIf ﻿[9551]: Packet RX (noise?) : 641ms
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9551]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:37:28 MadQ_fb65 ServerAPI ﻿[9551]: phone downloaded packet (id=0x0597dc09 fr=0xda56b3f8 to=0x0f376b5e, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=1 PKI rxtime=1772930239 via MQTT hopStart=7)
+Mar  7 19:37:29 MadQ_fb65 Meshtastic ﻿[9551]: Tell client we have new packets 799
+Mar  7 19:37:29 MadQ_fb65 ExternalNotification ﻿[9551]: Init NCP5623 Ambient light w/ current=10.000000, red=0, green=0, blue=0
+Mar  7 19:39:14 MadQ_fb65 ethConnect ﻿[15]: API server listening on TCP port 4403
+Mar  7 19:39:14 MadQ_fb65 ethConnect ﻿[15]: Update NTP time from meshtastic.pool.ntp.org
+Mar  7 19:39:17 MadQ_fb65 ethConnect ﻿[18]: NTP Update failed
+Mar  7 19:39:17 MadQ_fb65 GPS ﻿[18]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:18 MadQ_fb65 ApiServer ﻿[19]: Incoming API connection
+Mar  7 19:39:18 MadQ_fb65 ApiServer ﻿[19]: Incoming ethernet connection
+Mar  7 19:39:18 MadQ_fb65 PowerFSM ﻿[19]: Loss of power in Powered
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Client wants config, nonce=4294967295
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Got 6 files in manifest
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Start API client config millis=19113
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_MY_INFO
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: getFromRadio=STATE_SEND_UIDATA
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send My NodeInfo
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send device metadata
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send channels 8
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: device
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: position
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: power
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: network
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: display
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: lora
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: bluetooth
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: security
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send config: sessionkey
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: mqtt
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: serial
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: ext notification
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: store forward
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: range test
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: telemetry
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: canned message
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: audio
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: remote hardware
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: neighbor info
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: ambient lighting
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: detection sensor
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Send module config: paxcounter
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Unknown module config type 14
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Unknown module config type 15
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Unknown module config type 16
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: nodeinfo: 20/68
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: nodeinfo: 40/68
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: nodeinfo: 60/68
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Done sending 68 of 68 nodeinfos millis=19790
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: File: channels.proto (170) bytes
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: File: config.proto (252) bytes
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: File: module.proto (135) bytes
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: File: nodes.proto (7813) bytes
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: File: transmit_history.dat (18) bytes
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: File: device.proto (134) bytes
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_FILEMANIFEST
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: Config Send Complete millis=19879
+Mar  7 19:39:18 MadQ_fb65 ServerAPI ﻿[19]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:18 MadQ_fb65 GPS ﻿[19]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Loss of power in Powered
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Init NRF52 Bluetooth
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Init the Bluefruit nRF52 module
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Bluetooth pin set to '780419'
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Init the Device Information Service
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Init the Battery Service
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Init the Mesh bluetooth service
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Set up the advertising payload(s)
+Mar  7 19:39:19 MadQ_fb65 PowerFSM ﻿[20]: Advertise
+Mar  7 19:39:19 MadQ_fb65 ApiServer ﻿[20]: Previous TCP connection still open, try again in 200ms
+Mar  7 19:39:19 MadQ_fb65 ServerAPI ﻿[20]: PACKET FROM PHONE (id=0xc7539f19 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI priority=70)
+Mar  7 19:39:19 MadQ_fb65 ServerAPI ﻿[20]: Enqueued local (id=0xc7539f19 fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI priority=70)
+Mar  7 19:39:19 MadQ_fb65 ServerAPI ﻿[20]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:19 MadQ_fb65 Meshtastic ﻿[20]: Tell client we have new packets 2
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Packet History - insert: Using new slot @uptime 20.614s TRACE NEW
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: handleReceived(REMOTE) (id=0xc7539f19 fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'Admin' wantsPacket=1
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Received Admin from=0x0, id=0xc7539f19, portnum=6, payloadlen=2
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Handle admin payload 5
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Client got config
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Get config: LoRa
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Set admin key to  0f e0 eb 7b dd 4b 2c 28#012
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Initial packet id 918068934
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Partially randomized packet id 2352744135
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Asked module 'Admin' to send a response
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'neighborinfo' considered
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'routing' wantsPacket=1
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Routing sniffing (id=0xc7539f19 fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Another module replied to this message, no need for 2nd ack
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'routing' considered
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Send response (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Ignore update from self
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Enqueued local (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Rx someone rebroadcasting for us (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Didn't find pending packet
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Packet History - insert: Using new slot @uptime 20.771s TRACE NEW
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: handleReceived(REMOTE) (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'Admin' wantsPacket=1
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Received Admin from=0x36e40a1c, id=0x8c3c06c7, portnum=6, payloadlen=39
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Allow admin response message
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Handle admin payload 6
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module API did not handle admin message 6
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'Admin' considered
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'neighborinfo' considered
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'routing' wantsPacket=1
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Routing sniffing (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Received a ACK for 0xc7539f19, stopping retransmissions
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Delivering rx packet (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Ignore update from self
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Forwarding to phone (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:19 MadQ_fb65 Router ﻿[20]: Module 'routing' considered
+Mar  7 19:39:19 MadQ_fb65 GPS ﻿[20]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:39:20 MadQ_fb65 ServerAPI ﻿[21]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:20 MadQ_fb65 ServerAPI ﻿[21]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:21 MadQ_fb65 ServerAPI ﻿[21]: phone downloaded packet (id=0x8c3c06c7 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=6 PKI requestId=c7539f19 priority=70)
+Mar  7 19:39:21 MadQ_fb65 Meshtastic ﻿[21]: Tell client we have new packets 4
+Mar  7 19:39:21 MadQ_fb65 GPS ﻿[21]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:39:21 MadQ_fb65 GPS ﻿[22]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:39:22 MadQ_fb65 RadioIf ﻿[22]: Corrected frequency offset: 53.281250
+Mar  7 19:39:22 MadQ_fb65 RadioIf ﻿[23]: Lora RX (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 0, WantAck=0, HopLim=4 Ch=0x8 encrypted len=55 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:22 MadQ_fb65 RadioIf ﻿[23]: Packet RX: 641ms
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Packet History - insert: Using new slot @uptime 23.020s TRACE NEW
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Use channel 0 (hash 0x8)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Expand short PSK #1
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Use AES128 key!
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: decoded message (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x0 Portnum=3 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: handleReceived(REMOTE) (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x0 Portnum=3 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Module 'position' wantsPacket=1
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Received position from=0x4c5a6b8, id=0x91fc955a, portnum=3, payloadlen=33
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: POSITION node=04c5a6b8 l=33 lat=396886016 lon=-756547584 msl=18 hae=0 geo=0 pdop=225 hdop=0 vdop=0 siv=10 fxq=0 fxt=0 pts=0 time=1772930356
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Upgrade time to quality Net
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: RTC not found (found address 0x00)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: RTC not found (found address 0x00)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Adding node to database with 69 nodes and 49588 bytes free!
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: updatePosition REMOTE node=0x4c5a6b8 time=1772930356 lat=396886016 lon=-756547584
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Node status update: 38 online, 69 total
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Module 'position' considered
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Module 'neighborinfo' considered
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Module 'routing' wantsPacket=1
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Routing sniffing (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x0 Portnum=3 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Rebroadcast received message coming from 6
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Packet History - insert: Reusing slot aged 0.151s TRACE MATCHED PACKET
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Expand short PSK #1
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Use AES128 key!
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: enqueue for send (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=3 Ch=0x8 encrypted len=55 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x1c priority=64)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: txGood=0,txRelay=0,rxGood=1,rxBad=0
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: rx_snr found. hop_limit:3 rx_snr:-13.250000
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: rx_snr found in packet. Setting tx delay:784
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Delivering rx packet (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x0 Portnum=3 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Update DB node 0x4c5a6b8, rx_time=0
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Sort took 0 milliseconds
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Forwarding to phone (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x0 Portnum=3 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: Module 'routing' considered
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: MQTT onSend - Publish 
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: encrypted message
+Mar  7 19:39:22 MadQ_fb65 Router ﻿[23]: MQTT Publish msh/US/DE/2/e/LongFast/!36e40a1c, 107 bytes
+Mar  7 19:39:22 MadQ_fb65 GPS ﻿[23]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:39:22 MadQ_fb65 Meshtastic ﻿[23]: Tell client we have new packets 5
+Mar  7 19:39:22 MadQ_fb65 mqtt ﻿[23]: Received MQTT topic msh/US/DE/2/e/DEMe.sh/!0168bbd7, len=120
+Mar  7 19:39:22 MadQ_fb65 mqtt ﻿[23]: Use channel 1 (hash 0x59)
+Mar  7 19:39:22 MadQ_fb65 mqtt ﻿[23]: Use AES256 key!
+Mar  7 19:39:23 MadQ_fb65 mqtt ﻿[23]: decoded message (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 via MQTT hopStart=7)
+Mar  7 19:39:23 MadQ_fb65 ServerAPI ﻿[23]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:23 MadQ_fb65 ServerAPI ﻿[23]: phone downloaded packet (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x0 Portnum=3 rxSNR=-13.25 rxRSSI=-119 hopStart=5 relay=0x6)
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[23]: Packet History - insert: Using new slot @uptime 23.995s TRACE NEW
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: handleReceived(REMOTE) (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 rxtime=1772930356 via MQTT hopStart=7)
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Module 'position' wantsPacket=1
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Received position from=0x99e9688f, id=0x29f66539, portnum=3, payloadlen=41
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: POSITION node=99e9688f l=41 lat=394226746 lon=-756633166 msl=42 hae=0 geo=0 pdop=210 hdop=0 vdop=0 siv=7 fxq=0 fxt=0 pts=1772930343 time=1772930367
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: updatePosition REMOTE node=0x99e9688f time=1772930367 lat=394226746 lon=-756633166
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Node status update: 38 online, 69 total
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Module 'position' considered
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Module 'routing' wantsPacket=1
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Routing sniffing (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 rxtime=1772930356 via MQTT hopStart=7)
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Rebroadcast received message coming from 0
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Packet History - insert: Reusing slot aged 0.083s TRACE MATCHED PACKET
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Use AES256 key!
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: enqueue for send (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x59 encrypted len=63 rxtime=1772930356 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: txGood=0,txRelay=0,rxGood=1,rxBad=0
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: rx_snr found. hop_limit:3 rx_snr:-13.250000
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: rx_snr found in packet. Setting tx delay:672
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Delivering rx packet (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 rxtime=1772930356 via MQTT hopStart=7)
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Update DB node 0x99e9688f, rx_time=1772930356
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Forwarding to phone (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 rxtime=1772930356 via MQTT hopStart=7)
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Module 'routing' considered
+Mar  7 19:39:23 MadQ_fb65 GPS ﻿[24]: No GNSS Module (baudrate 9600)
+Mar  7 19:39:23 MadQ_fb65 mqtt ﻿[24]: Received MQTT topic msh/US/DE/2/e/DEMe.sh/!1f7a31a3, len=120
+Mar  7 19:39:23 MadQ_fb65 mqtt ﻿[24]: Use channel 1 (hash 0x59)
+Mar  7 19:39:23 MadQ_fb65 mqtt ﻿[24]: Use AES256 key!
+Mar  7 19:39:23 MadQ_fb65 mqtt ﻿[24]: decoded message (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 via MQTT hopStart=7)
+Mar  7 19:39:23 MadQ_fb65 Meshtastic ﻿[24]: Tell client we have new packets 6
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Packet History - insert: Reusing slot aged 0.873s TRACE MATCHED PACKET
+Mar  7 19:39:23 MadQ_fb65 Router ﻿[24]: Ignore dupe incoming msg (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 via MQTT hopStart=7)
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[24]: Repeated reliable tx
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[24]: Incoming msg was filtered from 0x99e9688f
+Mar  7 19:39:24 MadQ_fb65 RadioIf ﻿[24]: Can not send yet, busyRx
+Mar  7 19:39:24 MadQ_fb65 RadioIf ﻿[24]: rx_snr found. hop_limit:3 rx_snr:-13.250000
+Mar  7 19:39:24 MadQ_fb65 RadioIf ﻿[24]: rx_snr found in packet. Setting tx delay:644
+Mar  7 19:39:24 MadQ_fb65 ApiServer ﻿[25]: Previous TCP connection still open, try again in 200ms
+Mar  7 19:39:24 MadQ_fb65 ServerAPI ﻿[25]: PACKET FROM PHONE (id=0x838eab0a fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI priority=70)
+Mar  7 19:39:24 MadQ_fb65 ServerAPI ﻿[25]: Enqueued local (id=0x838eab0a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI rxtime=1772930357 priority=70)
+Mar  7 19:39:24 MadQ_fb65 ServerAPI ﻿[25]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:24 MadQ_fb65 ServerAPI ﻿[25]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:24 MadQ_fb65 ServerAPI ﻿[25]: phone downloaded packet (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=3 rxtime=1772930356 via MQTT hopStart=7)
+Mar  7 19:39:24 MadQ_fb65 Meshtastic ﻿[25]: Tell client we have new packets 7
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Packet History - insert: Using new slot @uptime 25.060s TRACE NEW
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: handleReceived(REMOTE) (id=0x838eab0a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI rxtime=1772930357 priority=70)
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Module 'Admin' wantsPacket=1
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Received Admin from=0x0, id=0x838eab0a, portnum=6, payloadlen=6
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Handle admin payload 38
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Client received remove_nodenum command
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: NodeDB::removeNodeByNum purged 1 entries. Save changes
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Opening /prefs/nodes.proto, fullAtomic=0
+Mar  7 19:39:24 MadQ_fb65 Router ﻿[25]: Save /prefs/nodes.proto
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Partially randomized packet id 1210313416
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Asked module 'Admin' to send a response
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'neighborinfo' considered
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'routing' wantsPacket=1
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Routing sniffing (id=0x838eab0a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=6 WANTRESP PKI rxtime=1772930357 priority=70)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Another module replied to this message, no need for 2nd ack
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'routing' considered
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Send response (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Ignore update from self
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Enqueued local (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Rx someone rebroadcasting for us (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Didn't find pending packet
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Packet History - insert: Using new slot @uptime 26.611s TRACE NEW
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: handleReceived(REMOTE) (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'neighborinfo' considered
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'routing' wantsPacket=1
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Received routing from=0x36e40a1c, id=0x4823eac8, portnum=5, payloadlen=2
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Routing sniffing (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Received a ACK for 0x838eab0a, stopping retransmissions
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Delivering rx packet (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Ignore update from self
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Forwarding to phone (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Module 'routing' considered
+Mar  7 19:39:25 MadQ_fb65 RadioIf ﻿[26]: Corrected frequency offset: 212.156235
+Mar  7 19:39:25 MadQ_fb65 RadioIf ﻿[26]: Lora RX (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 0, WantAck=0, HopLim=3 Ch=0x8 encrypted len=55 rxSNR=4.75 rxRSSI=-88 hopStart=5 relay=0x9e)
+Mar  7 19:39:25 MadQ_fb65 RadioIf ﻿[26]: Packet RX: 641ms
+Mar  7 19:39:25 MadQ_fb65 RadioIf ﻿[26]: rx_snr found. hop_limit:3 rx_snr:-13.250000
+Mar  7 19:39:25 MadQ_fb65 RadioIf ﻿[26]: rx_snr found in packet. Setting tx delay:448
+Mar  7 19:39:25 MadQ_fb65 mqtt ﻿[26]: Ignore downlink message we originally sent
+Mar  7 19:39:25 MadQ_fb65 ServerAPI ﻿[26]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:25 MadQ_fb65 ServerAPI ﻿[26]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:25 MadQ_fb65 ServerAPI ﻿[26]: phone downloaded packet (id=0x4823eac8 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=5 PKI requestId=838eab0a rxtime=1772930359 priority=120)
+Mar  7 19:39:25 MadQ_fb65 Meshtastic ﻿[26]: Tell client we have new packets 9
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Packet History - insert: Reusing slot aged 3.627s TRACE MATCHED PACKET
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Ignore dupe incoming msg (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=3 Ch=0x8 encrypted len=55 rxSNR=4.75 rxRSSI=-88 hopStart=5 relay=0x9e)
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: cancelSending id=0x91fc955a, removed=1
+Mar  7 19:39:25 MadQ_fb65 Router ﻿[26]: Incoming msg was filtered from 0x4c5a6b8
+Mar  7 19:39:26 MadQ_fb65 GPS ﻿[27]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:26 MadQ_fb65 RadioIf ﻿[27]: Can not send yet, busyRx
+Mar  7 19:39:26 MadQ_fb65 GPS ﻿[27]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:27 MadQ_fb65 RadioIf ﻿[28]: Corrected frequency offset: 18.406248
+Mar  7 19:39:27 MadQ_fb65 RadioIf ﻿[28]: Lora RX (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 0, WantAck=0, HopLim=2 Ch=0x8 encrypted len=55 rxSNR=-4.5 rxRSSI=-112 hopStart=5)
+Mar  7 19:39:27 MadQ_fb65 RadioIf ﻿[28]: Packet RX: 641ms
+Mar  7 19:39:27 MadQ_fb65 Router ﻿[28]: Packet History - insert: Reusing slot aged 1.344s TRACE MATCHED PACKET
+Mar  7 19:39:27 MadQ_fb65 Router ﻿[28]: Ignore dupe incoming msg (id=0x91fc955a fr=0x04c5a6b8 to=0xffffffff, transport = 1, WantAck=0, HopLim=2 Ch=0x8 encrypted len=55 rxSNR=-4.5 rxRSSI=-112 hopStart=5)
+Mar  7 19:39:27 MadQ_fb65 Router ﻿[28]: cancelSending id=0x91fc955a, removed=0
+Mar  7 19:39:27 MadQ_fb65 Router ﻿[28]: Incoming msg was filtered from 0x4c5a6b8
+Mar  7 19:39:27 MadQ_fb65 GPS ﻿[28]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:39:28 MadQ_fb65 RadioIf ﻿[29]: Ignore received packet due to error=-7 (maybe id=0x9a6e0af9 fr=0x3d5a542a to=0x84c5a6b8 flags=0x63 rxSNR=-8.5 rxRSSI=-110 nextHop=0x0 relay=0x0)
+Mar  7 19:39:28 MadQ_fb65 RadioIf ﻿[29]: Packet RX (noise?) : 1050ms
+Mar  7 19:39:28 MadQ_fb65 GPS ﻿[29]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:39:28 MadQ_fb65 GPS ﻿[29]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:39:29 MadQ_fb65 GPS ﻿[30]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:39:30 MadQ_fb65 GPS ﻿[31]: No GNSS Module (baudrate 115200)
+Mar  7 19:39:30 MadQ_fb65 RadioIf ﻿[31]: Started Tx (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x59 encrypted len=63 rxtime=1772930356 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:39:30 MadQ_fb65 RadioIf ﻿[31]: 0 packets remain in the TX queue
+Mar  7 19:39:31 MadQ_fb65 RadioIf ﻿[32]: Packet TX: 722ms
+Mar  7 19:39:31 MadQ_fb65 RadioIf ﻿[32]: Completed sending (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x59 encrypted len=63 rxtime=1772930356 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:39:32 MadQ_fb65 RadioIf ﻿[33]: Ignore received packet due to error=-7 (maybe id=0x29f66539 fr=0x99e9688f to=0xfffffff8 flags=0xf5 rxSNR=-17.25 rxRSSI=-122 nextHop=0x0 relay=0x97)
+Mar  7 19:39:32 MadQ_fb65 RadioIf ﻿[33]: Packet RX (noise?) : 722ms
+Mar  7 19:39:32 MadQ_fb65 GPS ﻿[33]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:33 MadQ_fb65 GPS ﻿[34]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:33 MadQ_fb65 GPS ﻿[34]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:39:34 MadQ_fb65 GPS ﻿[35]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:39:35 MadQ_fb65 GPS ﻿[36]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:39:35 MadQ_fb65 NodeInfo ﻿[36]: Send our nodeinfo to mesh (wantReplies=0)
+Mar  7 19:39:35 MadQ_fb65 NodeInfo ﻿[36]: Skip send NodeInfo since we sent it <600s ago
+Mar  7 19:39:35 MadQ_fb65 GPS ﻿[36]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:39:37 MadQ_fb65 GPS ﻿[38]: No GNSS Module (baudrate 38400)
+Mar  7 19:39:38 MadQ_fb65 RadioIf ﻿[39]: Ignore received packet due to error=-7 (maybe id=0x19c6663a fr=0xa9e9688f to=0xffffffff flags=0xc5 rxSNR=-18 rxRSSI=-125 nextHop=0x0 relay=0x1c)
+Mar  7 19:39:38 MadQ_fb65 RadioIf ﻿[39]: Packet RX (noise?) : 722ms
+Mar  7 19:39:39 MadQ_fb65 GPS ﻿[40]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:40 MadQ_fb65 GPS ﻿[41]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:40 MadQ_fb65 GPS ﻿[41]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:39:41 MadQ_fb65 GPS ﻿[42]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:39:42 MadQ_fb65 GPS ﻿[43]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:39:42 MadQ_fb65 RadioIf ﻿[43]: Corrected frequency offset: 10.656249
+Mar  7 19:39:42 MadQ_fb65 RadioIf ﻿[43]: Lora RX (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 0, WantAck=0, HopLim=4 Ch=0x59 encrypted len=63 rxSNR=-6.75 rxRSSI=-110 via MQTT hopStart=7)
+Mar  7 19:39:42 MadQ_fb65 RadioIf ﻿[43]: Packet RX: 722ms
+Mar  7 19:39:42 MadQ_fb65 Router ﻿[43]: Packet History - insert: Reusing slot aged 18.692s TRACE MATCHED PACKET
+Mar  7 19:39:42 MadQ_fb65 Router ﻿[43]: Ignore dupe incoming msg (id=0x29f66539 fr=0x99e9688f to=0xffffffff, transport = 1, WantAck=0, HopLim=4 Ch=0x59 encrypted len=63 rxSNR=-6.75 rxRSSI=-110 via MQTT hopStart=7)
+Mar  7 19:39:42 MadQ_fb65 Router ﻿[43]: cancelSending id=0x29f66539, removed=0
+Mar  7 19:39:42 MadQ_fb65 Router ﻿[43]: Incoming msg was filtered from 0x99e9688f
+Mar  7 19:39:42 MadQ_fb65 GPS ﻿[43]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:39:44 MadQ_fb65 GPS ﻿[45]: No GNSS Module (baudrate 9600)
+Mar  7 19:39:46 MadQ_fb65 GPS ﻿[47]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:46 MadQ_fb65 GPS ﻿[47]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:47 MadQ_fb65 GPS ﻿[48]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:39:48 MadQ_fb65 GPS ﻿[49]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:39:48 MadQ_fb65 GPS ﻿[49]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:39:49 MadQ_fb65 GPS ﻿[50]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:39:50 MadQ_fb65 GPS ﻿[51]: No GNSS Module (baudrate 115200)
+Mar  7 19:39:51 MadQ_fb65 ApiServer ﻿[52]: Previous TCP connection still open, try again in 200ms
+Mar  7 19:39:51 MadQ_fb65 ServerAPI ﻿[52]: PACKET FROM PHONE (id=0xf78daf6a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=67 WANTRESP dest=36e40a1c requestId=12044ecb)
+Mar  7 19:39:51 MadQ_fb65 ServerAPI ﻿[52]: Enqueued local (id=0xf78daf6a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=67 WANTRESP dest=36e40a1c requestId=12044ecb rxtime=1772930385)
+Mar  7 19:39:51 MadQ_fb65 ServerAPI ﻿[52]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:51 MadQ_fb65 Meshtastic ﻿[52]: Tell client we have new packets 10
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Packet History - insert: Using new slot @uptime 52.873s TRACE NEW
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: handleReceived(REMOTE) (id=0xf78daf6a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=67 WANTRESP dest=36e40a1c requestId=12044ecb rxtime=1772930385)
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: NeighborInfoRequested.
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Our NodeDB contains 0 neighbors
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Partially randomized packet id 1397799625
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Asked module 'neighborinfo' to send a response
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Module 'DeviceTelemetry' wantsPacket=1
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Received DeviceTelemetry from=0x0, id=0xf78daf6a, portnum=67, payloadlen=2
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: (Received from MadQ): air_util_tx=0.000000, channel_utilization=0.000000, battery_level=0, voltage=0.000000
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: updateTelemetry REMOTE node=0x36e40a1c 
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Node status update: 37 online, 68 total
+Mar  7 19:39:51 MadQ_fb65 Router ﻿[52]: Module 'DeviceTelemetry' considered
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[52]: Module 'routing' wantsPacket=1
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[52]: Routing sniffing (id=0xf78daf6a fr=0x00000000 to=0x36e40a1c, transport = 0, WantAck=1, HopLim=3 Ch=0x0 Portnum=67 WANTRESP dest=36e40a1c requestId=12044ecb rxtime=1772930385)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[52]: Another module replied to this message, no need for 2nd ack
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[52]: Received a ACK for 0x12044ecb, stopping retransmissions
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Module 'routing' considered
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Send response (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Ignore update from self
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Enqueued local (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Rx someone rebroadcasting for us (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Didn't find pending packet
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Packet History - insert: Using new slot @uptime 53.043s TRACE NEW
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: handleReceived(REMOTE) (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Received neighborinfo from=0x36e40a1c, id=0x5350bac9, portnum=71, payloadlen=15
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: RECEIVED NEIGHBORINFO PACKET from Node 0x36e40a1c to Node 0x36e40a1c (last sent by 0x36e40a1c)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Packet contains 0 neighbors
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]:   Updating neighbours
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: updateNeighbors
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Module 'neighborinfo' considered
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Module 'routing' wantsPacket=1
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Routing sniffing (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Received a ACK for 0xf78daf6a, stopping retransmissions
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Delivering rx packet (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Ignore update from self
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Forwarding to phone (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Router ﻿[53]: Module 'routing' considered
+Mar  7 19:39:52 MadQ_fb65 ServerAPI ﻿[53]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:52 MadQ_fb65 ServerAPI ﻿[53]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:52 MadQ_fb65 ServerAPI ﻿[53]: phone downloaded packet (id=0x5350bac9 fr=0x36e40a1c to=0x36e40a1c, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=71 requestId=f78daf6a rxtime=1772930385 priority=70)
+Mar  7 19:39:52 MadQ_fb65 Meshtastic ﻿[53]: Tell client we have new packets 12
+Mar  7 19:39:52 MadQ_fb65 GPS ﻿[53]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:53 MadQ_fb65 GPS ﻿[54]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:53 MadQ_fb65 mqtt ﻿[54]: Received MQTT topic msh/US/DE/2/e/DEMe.sh/!0168bbd7, len=108
+Mar  7 19:39:53 MadQ_fb65 mqtt ﻿[54]: Use channel 1 (hash 0x59)
+Mar  7 19:39:53 MadQ_fb65 mqtt ﻿[54]: Use AES256 key!
+Mar  7 19:39:53 MadQ_fb65 mqtt ﻿[54]: decoded message (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 via MQTT hopStart=7)
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Packet History - insert: Using new slot @uptime 54.834s TRACE NEW
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: handleReceived(REMOTE) (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 rxtime=1772930387 via MQTT hopStart=7)
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Module 'DeviceTelemetry' wantsPacket=1
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Received DeviceTelemetry from=0x99e9688f, id=0x7192613a, portnum=67, payloadlen=29
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: (Received from 🚙): air_util_tx=0.832833, channel_utilization=13.653334, battery_level=101, voltage=4.212000
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: updateTelemetry REMOTE node=0x99e9688f 
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Node status update: 37 online, 68 total
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Module 'DeviceTelemetry' considered
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Module 'routing' wantsPacket=1
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Routing sniffing (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 rxtime=1772930387 via MQTT hopStart=7)
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Rebroadcast received message coming from 0
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Packet History - insert: Reusing slot aged 0.082s TRACE MATCHED PACKET
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Use AES256 key!
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: enqueue for send (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x59 encrypted len=51 rxtime=1772930387 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: txGood=1,txRelay=1,rxGood=4,rxBad=3
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Delivering rx packet (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 rxtime=1772930387 via MQTT hopStart=7)
+Mar  7 19:39:53 MadQ_fb65 Router ﻿[54]: Update DB node 0x99e9688f, rx_time=1772930387
+Mar  7 19:39:54 MadQ_fb65 Router ﻿[54]: Sort took 1 milliseconds
+Mar  7 19:39:54 MadQ_fb65 Router ﻿[54]: Forwarding to phone (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 rxtime=1772930387 via MQTT hopStart=7)
+Mar  7 19:39:54 MadQ_fb65 Router ﻿[54]: Module 'routing' considered
+Mar  7 19:39:54 MadQ_fb65 GPS ﻿[54]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:39:55 MadQ_fb65 Meshtastic ﻿[56]: Tell client we have new packets 13
+Mar  7 19:39:55 MadQ_fb65 Power ﻿[56]: Battery: usbPower=0, isCharging=0, batMv=4237, batPct=100
+Mar  7 19:39:55 MadQ_fb65 mqtt ﻿[56]: Received MQTT topic msh/US/DE/2/e/DEMe.sh/!1f7a31a3, len=108
+Mar  7 19:39:55 MadQ_fb65 mqtt ﻿[56]: Use channel 1 (hash 0x59)
+Mar  7 19:39:55 MadQ_fb65 mqtt ﻿[56]: Use AES256 key!
+Mar  7 19:39:55 MadQ_fb65 mqtt ﻿[56]: decoded message (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 via MQTT hopStart=7)
+Mar  7 19:39:55 MadQ_fb65 ServerAPI ﻿[56]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:39:55 MadQ_fb65 ServerAPI ﻿[56]: phone downloaded packet (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 rxtime=1772930387 via MQTT hopStart=7)
+Mar  7 19:39:55 MadQ_fb65 Router ﻿[56]: Packet History - insert: Reusing slot aged 1.201s TRACE MATCHED PACKET
+Mar  7 19:39:55 MadQ_fb65 Router ﻿[56]: Ignore dupe incoming msg (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x1 Portnum=67 via MQTT hopStart=7)
+Mar  7 19:39:55 MadQ_fb65 Router ﻿[56]: Repeated reliable tx
+Mar  7 19:39:55 MadQ_fb65 Router ﻿[56]: Incoming msg was filtered from 0x99e9688f
+Mar  7 19:39:55 MadQ_fb65 GPS ﻿[56]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:39:55 MadQ_fb65 GPS ﻿[56]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:39:56 MadQ_fb65 GPS ﻿[57]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:39:56 MadQ_fb65 RadioIf ﻿[57]: Started Tx (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x59 encrypted len=51 rxtime=1772930387 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:39:56 MadQ_fb65 RadioIf ﻿[57]: 0 packets remain in the TX queue
+Mar  7 19:39:57 MadQ_fb65 GPS ﻿[58]: No GNSS Module (baudrate 38400)
+Mar  7 19:39:58 MadQ_fb65 RadioIf ﻿[58]: Packet TX: 641ms
+Mar  7 19:39:58 MadQ_fb65 RadioIf ﻿[59]: Completed sending (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x59 encrypted len=51 rxtime=1772930387 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:39:58 MadQ_fb65 GPS ﻿[59]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:39:58 MadQ_fb65 GPS ﻿[59]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:39:59 MadQ_fb65 RadioIf ﻿[60]: Ignore received packet due to error=-7 (maybe id=0x7183212a fr=0x99e9688f to=0xffffffff flags=0xf5 rxSNR=-18.25 rxRSSI=-123 nextHop=0x0 relay=0x5b)
+Mar  7 19:39:59 MadQ_fb65 RadioIf ﻿[60]: Packet RX (noise?) : 641ms
+Mar  7 19:39:59 MadQ_fb65 Meshtastic ﻿[60]: SX126x AGC reset: warm sleep + Calibrate(0x7F)
+Mar  7 19:39:59 MadQ_fb65 GPS ﻿[60]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:40:00 MadQ_fb65 RadioIf ﻿[61]: Ignore received packet due to error=-7 (maybe id=0xa634b9c8 fr=0xbc7b6312 to=0xffffffff flags=0x63 rxSNR=-15 rxRSSI=-114 nextHop=0x0 relay=0x12)
+Mar  7 19:40:00 MadQ_fb65 RadioIf ﻿[61]: Packet RX (noise?) : 641ms
+Mar  7 19:40:00 MadQ_fb65 GPS ﻿[61]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:40:00 MadQ_fb65 GPS ﻿[61]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:40:01 MadQ_fb65 GPS ﻿[62]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:40:02 MadQ_fb65 GPS ﻿[63]: No GNSS Module (baudrate 4800)
+Mar  7 19:40:02 MadQ_fb65 RadioIf ﻿[63]: Corrected frequency offset: 169.531250
+Mar  7 19:40:02 MadQ_fb65 RadioIf ﻿[63]: Lora RX (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 0, WantAck=0, HopLim=5 Ch=0x59 encrypted len=51 rxSNR=0.75 rxRSSI=-104 via MQTT hopStart=7)
+Mar  7 19:40:02 MadQ_fb65 RadioIf ﻿[63]: Packet RX: 641ms
+Mar  7 19:40:02 MadQ_fb65 Router ﻿[63]: Packet History - insert: Reusing slot aged 7.563s TRACE MATCHED PACKET
+Mar  7 19:40:02 MadQ_fb65 Router ﻿[63]: Ignore dupe incoming msg (id=0x7192613a fr=0x99e9688f to=0xffffffff, transport = 1, WantAck=0, HopLim=5 Ch=0x59 encrypted len=51 rxSNR=0.75 rxRSSI=-104 via MQTT hopStart=7)
+Mar  7 19:40:02 MadQ_fb65 Router ﻿[63]: cancelSending id=0x7192613a, removed=0
+Mar  7 19:40:02 MadQ_fb65 Router ﻿[63]: Incoming msg was filtered from 0x99e9688f
+Mar  7 19:40:04 MadQ_fb65 RadioIf ﻿[65]: Ignore received packet due to error=-7 (maybe id=0x7192613a fr=0x99e9688f to=0xffffffff flags=0xf4 rxSNR=-14 rxRSSI=-115 nextHop=0x0 relay=0x6)
+Mar  7 19:40:04 MadQ_fb65 RadioIf ﻿[65]: Packet RX (noise?) : 641ms
+Mar  7 19:40:04 MadQ_fb65 GPS ﻿[65]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:40:05 MadQ_fb65 GPS ﻿[66]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:40:05 MadQ_fb65 RadioIf ﻿[66]: Ignore received packet due to error=-7 (maybe id=0xa634b9c8 fr=0xbc7b6312 to=0xffffffff flags=0x62 rxSNR=-15 rxRSSI=-112 nextHop=0x0 relay=0x6)
+Mar  7 19:40:05 MadQ_fb65 RadioIf ﻿[66]: Packet RX (noise?) : 641ms
+Mar  7 19:40:05 MadQ_fb65 GPS ﻿[66]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: Send: air_util_tx=0.037861, channel_utilization=16.178333, battery_level=100, voltage=4.237000, uptime=67
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: Partially randomized packet id 2697831114
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: updateTelemetry LOCAL
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: Node status update: 37 online, 68 total
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: Send packet to phone
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: Sending local stats: uptime=67, channel_utilization=16.178333, air_util_tx=0.037861, num_online_nodes=37, num_total_nodes=68
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: num_packets_tx=2, num_packets_rx=12, num_packets_rx_bad=7
+Mar  7 19:40:06 MadQ_fb65 DeviceTelemetry ﻿[67]: Partially randomized packet id 2972891851
+Mar  7 19:40:06 MadQ_fb65 ServerAPI ﻿[67]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:40:07 MadQ_fb65 ServerAPI ﻿[67]: phone downloaded packet (id=0xa0cda2ca fr=0x36e40a1c to=0xffffffff, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=67 rxtime=1772930400 priority=10)
+Mar  7 19:40:07 MadQ_fb65 ServerAPI ﻿[67]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:40:07 MadQ_fb65 ServerAPI ﻿[67]: phone downloaded packet (id=0xb132bacb fr=0x36e40a1c to=0xffffffff, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=67 rxtime=1772930400 priority=10)
+Mar  7 19:40:07 MadQ_fb65 Meshtastic ﻿[68]: Tell client we have new packets 15
+Mar  7 19:40:07 MadQ_fb65 GPS ﻿[68]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:40:07 MadQ_fb65 GPS ﻿[68]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:40:08 MadQ_fb65 GPS ﻿[69]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:40:09 MadQ_fb65 GPS ﻿[70]: No GNSS Module (baudrate 57600)
+Mar  7 19:40:11 MadQ_fb65 GPS ﻿[72]: Trying $PDTINFO (Unicore Family)...
+Mar  7 19:40:12 MadQ_fb65 GPS ﻿[73]: Trying $PCAS06,1*1A (ATGM33xx Family)...
+Mar  7 19:40:12 MadQ_fb65 GPS ﻿[73]: Trying $PAIR021*39 (Airoha Family)...
+Mar  7 19:40:13 MadQ_fb65 GPS ﻿[74]: Trying $PQTMVERNO*58 (LC86)...
+Mar  7 19:40:14 MadQ_fb65 GPS ﻿[75]: Trying $PCAS06,0*1B (L76K)...
+Mar  7 19:40:14 MadQ_fb65 GPS ﻿[75]: Trying $PMTK605*31 (MTK Family)...
+Mar  7 19:40:16 MadQ_fb65 GPS ﻿[77]: No GNSS Module (baudrate 9600)
+Mar  7 19:40:16 MadQ_fb65 GPS ﻿[77]: Give up on GPS probe and set to 9600
+Mar  7 19:40:25 MadQ_fb65 RadioIf ﻿[86]: Ignore received packet due to error=-7 (maybe id=0x5f3c6136 fr=0x9197aa28 to=0xffffffff flags=0x6a rxSNR=-18.25 rxRSSI=-120 nextHop=0x0 relay=0x12)
+Mar  7 19:40:25 MadQ_fb65 RadioIf ﻿[86]: Packet RX (noise?) : 559ms
+Mar  7 19:40:29 MadQ_fb65 RadioIf ﻿[90]: Ignore received packet due to error=-7 (maybe id=0x4e256137 fr=0x8197aa28 to=0xffffffff flags=0x71 rxSNR=-18.5 rxRSSI=-124 nextHop=0x0 relay=0xb8)
+Mar  7 19:40:29 MadQ_fb65 RadioIf ﻿[90]: Packet RX (noise?) : 559ms
+Mar  7 19:40:55 MadQ_fb65 Power ﻿[116]: Battery: usbPower=0, isCharging=0, batMv=4261, batPct=100
+Mar  7 19:40:59 MadQ_fb65 Meshtastic ﻿[120]: SX126x AGC reset: warm sleep + Calibrate(0x7F)
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Received MQTT topic msh/US/DE/2/e/LongFast/!67cfc5e4, len=115
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Use channel 0 (hash 0x8)
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Expand short PSK #1
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Use AES128 key!
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: decoded message (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=3 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Packet History - insert: Using new slot @uptime 121.491s TRACE NEW
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: handleReceived(REMOTE) (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=3 rxtime=1772930454 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Module 'position' wantsPacket=1
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Received position from=0x72a04567, id=0x9890328e, portnum=3, payloadlen=35
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: POSITION node=72a04567 l=35 lat=396558336 lon=-757661696 msl=37 hae=0 geo=0 pdop=111 hdop=0 vdop=0 siv=16 fxq=0 fxt=0 pts=0 time=1772930640
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Current RTC quality: Net. Ignore time of RTC quality of Net
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: updatePosition REMOTE node=0x72a04567 time=1772930640 lat=396558336 lon=-757661696
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Node status update: 37 online, 68 total
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Module 'position' considered
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Module 'routing' wantsPacket=1
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Routing sniffing (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=3 rxtime=1772930454 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Rebroadcast received message coming from 0
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Packet History - insert: Reusing slot aged 0.089s TRACE MATCHED PACKET
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Expand short PSK #1
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Use AES128 key!
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: enqueue for send (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=0 Ch=0x8 encrypted len=57 rxtime=1772930454 via MQTT hopStart=3 relay=0x1c priority=64)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: txGood=2,txRelay=2,rxGood=5,rxBad=9
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Delivering rx packet (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=3 rxtime=1772930454 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Update DB node 0x72a04567, rx_time=1772930454
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Sort took 2 milliseconds
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Forwarding to phone (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=3 rxtime=1772930454 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Module 'routing' considered
+Mar  7 19:41:00 MadQ_fb65 ServerAPI ﻿[121]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:41:00 MadQ_fb65 ServerAPI ﻿[121]: phone downloaded packet (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=3 rxtime=1772930454 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Meshtastic ﻿[121]: Tell client we have new packets 16
+Mar  7 19:41:00 MadQ_fb65 RadioIf ﻿[121]: Can not send yet, busyRx
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Received MQTT topic msh/US/DE/2/e/LongFast/!67cfc5d2, len=99
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Use channel 0 (hash 0x8)
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Expand short PSK #1
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: Use AES128 key!
+Mar  7 19:41:00 MadQ_fb65 mqtt ﻿[121]: decoded message (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=3 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Packet History - insert: Reusing slot aged 0.339s TRACE MATCHED PACKET
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Ignore dupe incoming msg (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=0 Ch=0x0 Portnum=3 via MQTT hopStart=3)
+Mar  7 19:41:00 MadQ_fb65 Router ﻿[121]: Incoming msg was filtered from 0x72a04567
+Mar  7 19:41:00 MadQ_fb65 RadioIf ﻿[121]: Can not send yet, busyRx
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: Can not send yet, busyRx
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: Can not send yet, busyRx
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: Can not send yet, busyRx
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: Ignore received packet due to error=-7 (maybe id=0xc221ef33 fr=0xf9355e94 to=0xffffffff flags=0x61 rxSNR=-13.75 rxRSSI=-117 nextHop=0x0 relay=0x6)
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: Packet RX (noise?) : 641ms
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: Started Tx (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=0 Ch=0x8 encrypted len=57 rxtime=1772930454 via MQTT hopStart=3 relay=0x1c priority=64)
+Mar  7 19:41:01 MadQ_fb65 RadioIf ﻿[122]: 0 packets remain in the TX queue
+Mar  7 19:41:02 MadQ_fb65 RadioIf ﻿[123]: Packet TX: 681ms
+Mar  7 19:41:02 MadQ_fb65 RadioIf ﻿[123]: Completed sending (id=0x9890328e fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=0 Ch=0x8 encrypted len=57 rxtime=1772930454 via MQTT hopStart=3 relay=0x1c priority=64)
+Mar  7 19:41:07 MadQ_fb65 DeviceTelemetry ﻿[127]: Send: air_util_tx=0.056778, channel_utilization=4.066667, battery_level=100, voltage=4.261000, uptime=127
+Mar  7 19:41:07 MadQ_fb65 DeviceTelemetry ﻿[127]: Partially randomized packet id 311102156
+Mar  7 19:41:07 MadQ_fb65 DeviceTelemetry ﻿[127]: updateTelemetry LOCAL
+Mar  7 19:41:07 MadQ_fb65 DeviceTelemetry ﻿[127]: Node status update: 37 online, 68 total
+Mar  7 19:41:07 MadQ_fb65 DeviceTelemetry ﻿[127]: Send packet to phone
+Mar  7 19:41:07 MadQ_fb65 Meshtastic ﻿[127]: Tell client we have new packets 17
+Mar  7 19:41:07 MadQ_fb65 ServerAPI ﻿[128]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:41:07 MadQ_fb65 ServerAPI ﻿[128]: phone downloaded packet (id=0x128b0acc fr=0x36e40a1c to=0xffffffff, transport = 0, WantAck=0, HopLim=4 Ch=0x0 Portnum=67 rxtime=1772930460 priority=10)
+Mar  7 19:41:12 MadQ_fb65 mqtt ﻿[133]: Received MQTT topic msh/US/DE/2/e/LongFast/!67cfc5e4, len=97
+Mar  7 19:41:12 MadQ_fb65 mqtt ﻿[133]: Use channel 0 (hash 0x8)
+Mar  7 19:41:12 MadQ_fb65 mqtt ﻿[133]: Expand short PSK #1
+Mar  7 19:41:12 MadQ_fb65 mqtt ﻿[133]: Use AES128 key!
+Mar  7 19:41:13 MadQ_fb65 mqtt ﻿[134]: decoded message (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=2 Ch=0x0 Portnum=67 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Packet History - insert: Using new slot @uptime 134.037s TRACE NEW
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: handleReceived(REMOTE) (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=2 Ch=0x0 Portnum=67 rxtime=1772930466 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Module 'DeviceTelemetry' wantsPacket=1
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Received DeviceTelemetry from=0x72a04567, id=0x8385768f, portnum=67, payloadlen=17
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Module 'DeviceTelemetry' considered
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Module 'routing' wantsPacket=1
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Routing sniffing (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=2 Ch=0x0 Portnum=67 rxtime=1772930466 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Rebroadcast received message coming from 0
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Packet History - insert: Reusing slot aged 0.058s TRACE MATCHED PACKET
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Expand short PSK #1
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Use AES128 key!
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: enqueue for send (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x8 encrypted len=39 rxtime=1772930466 via MQTT hopStart=3 relay=0x1c priority=64)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: txGood=3,txRelay=3,rxGood=5,rxBad=10
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Delivering rx packet (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=2 Ch=0x0 Portnum=67 rxtime=1772930466 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Update DB node 0x72a04567, rx_time=1772930466
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Sort took 0 milliseconds
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Forwarding to phone (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=2 Ch=0x0 Portnum=67 rxtime=1772930466 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Module 'routing' considered
+Mar  7 19:41:13 MadQ_fb65 Meshtastic ﻿[134]: Tell client we have new packets 18
+Mar  7 19:41:13 MadQ_fb65 mqtt ﻿[134]: Received MQTT topic msh/US/DE/2/e/LongFast/!67cfc5d2, len=83
+Mar  7 19:41:13 MadQ_fb65 mqtt ﻿[134]: Use channel 0 (hash 0x8)
+Mar  7 19:41:13 MadQ_fb65 mqtt ﻿[134]: Expand short PSK #1
+Mar  7 19:41:13 MadQ_fb65 mqtt ﻿[134]: Use AES128 key!
+Mar  7 19:41:13 MadQ_fb65 mqtt ﻿[134]: decoded message (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=67 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 ServerAPI ﻿[134]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:41:13 MadQ_fb65 ServerAPI ﻿[134]: phone downloaded packet (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=2 Ch=0x0 Portnum=67 rxtime=1772930466 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Packet History - insert: Reusing slot aged 0.332s TRACE MATCHED PACKET
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Ignore dupe incoming msg (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x0 Portnum=67 via MQTT hopStart=3)
+Mar  7 19:41:13 MadQ_fb65 Router ﻿[134]: Incoming msg was filtered from 0x72a04567
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Can not send yet, busyRx
+Mar  7 19:41:13 MadQ_fb65 RadioIf ﻿[134]: Ignore false preamble detection
+Mar  7 19:41:14 MadQ_fb65 RadioIf ﻿[135]: Started Tx (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x8 encrypted len=39 rxtime=1772930466 via MQTT hopStart=3 relay=0x1c priority=64)
+Mar  7 19:41:14 MadQ_fb65 RadioIf ﻿[135]: 0 packets remain in the TX queue
+Mar  7 19:41:15 MadQ_fb65 RadioIf ﻿[136]: Packet TX: 559ms
+Mar  7 19:41:15 MadQ_fb65 RadioIf ﻿[136]: Completed sending (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 5, WantAck=0, HopLim=1 Ch=0x8 encrypted len=39 rxtime=1772930466 via MQTT hopStart=3 relay=0x1c priority=64)
+Mar  7 19:41:16 MadQ_fb65 RadioIf ﻿[137]: Ignore received packet due to error=-7 (maybe id=0x8385768f fr=0x72a04567 to=0xffffffff flags=0x70 rxSNR=-14 rxRSSI=-119 nextHop=0x0 relay=0x6)
+Mar  7 19:41:16 MadQ_fb65 RadioIf ﻿[137]: Packet RX (noise?) : 559ms
+Mar  7 19:41:17 MadQ_fb65 RadioIf ﻿[138]: Corrected frequency offset: 159.843735
+Mar  7 19:41:17 MadQ_fb65 RadioIf ﻿[138]: Lora RX (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 0, WantAck=0, HopLim=0 Ch=0x8 encrypted len=39 rxSNR=-1.5 rxRSSI=-105 via MQTT hopStart=3)
+Mar  7 19:41:17 MadQ_fb65 RadioIf ﻿[138]: Packet RX: 559ms
+Mar  7 19:41:17 MadQ_fb65 Router ﻿[138]: Packet History - insert: Reusing slot aged 3.675s TRACE MATCHED PACKET
+Mar  7 19:41:17 MadQ_fb65 Router ﻿[138]: Ignore dupe incoming msg (id=0x8385768f fr=0x72a04567 to=0xffffffff, transport = 1, WantAck=0, HopLim=0 Ch=0x8 encrypted len=39 rxSNR=-1.5 rxRSSI=-105 via MQTT hopStart=3)
+Mar  7 19:41:17 MadQ_fb65 Router ﻿[138]: cancelSending id=0x8385768f, removed=0
+Mar  7 19:41:17 MadQ_fb65 Router ﻿[138]: Incoming msg was filtered from 0x72a04567
+Mar  7 19:41:20 MadQ_fb65 RadioIf ﻿[141]: Corrected frequency offset: 159.843735
+Mar  7 19:41:20 MadQ_fb65 RadioIf ﻿[141]: Lora RX (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 0, WantAck=0, HopLim=2 Ch=0x8 encrypted len=94 rxSNR=-3.25 rxRSSI=-105 hopStart=3)
+Mar  7 19:41:20 MadQ_fb65 RadioIf ﻿[141]: Packet RX: 968ms
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Packet History - insert: Using new slot @uptime 141.570s TRACE NEW
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Use channel 0 (hash 0x8)
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Expand short PSK #1
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Use AES128 key!
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: decoded message (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 1, WantAck=0, HopLim=2 Ch=0x0 Portnum=4 WANTRESP rxtime=1772930474 rxSNR=-3.25 rxRSSI=-105 hopStart=3)
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: handleReceived(REMOTE) (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 1, WantAck=0, HopLim=2 Ch=0x0 Portnum=4 WANTRESP rxtime=1772930474 rxSNR=-3.25 rxRSSI=-105 hopStart=3)
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Module 'nodeinfo' wantsPacket=1
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Received nodeinfo from=0x8bbe69d4, id=0x65fb5f8c, portnum=4, payloadlen=70
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Incoming Pubkey:  52 d5 0d ed 18 cb fc 90 21 68 44 10 23 fc 0f 11 d1 cc 76 c5 1d 76 af dc ff 6a 9c 84 d4 78 67 67#012
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Public Key set for node, not updating!
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Saved Pubkey:  52 d5 0d ed 18 cb fc 90 21 68 44 10 23 fc 0f 11 d1 cc 76 c5 1d 76 af dc ff 6a 9c 84 d4 78 67 67#012
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Update changed=0 user AH Main /AH , id=0x8bbe69d4, channel=0
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Module 'nodeinfo' considered
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Module 'neighborinfo' wantsPacket=1
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: NeighborInfo: handleReceivedProtobuf
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Module 'neighborinfo' considered
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Module 'routing' wantsPacket=1
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Routing sniffing (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 1, WantAck=0, HopLim=2 Ch=0x0 Portnum=4 WANTRESP rxtime=1772930474 rxSNR=-3.25 rxRSSI=-105 hopStart=3)
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Rebroadcast received message coming from 0
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Packet History - insert: Reusing slot aged 0.233s TRACE MATCHED PACKET
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Expand short PSK #1
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Use AES128 key!
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: enqueue for send (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 1, WantAck=0, HopLim=1 Ch=0x8 encrypted len=94 rxtime=1772930474 rxSNR=-3.25 rxRSSI=-105 hopStart=3 relay=0x1c priority=70)
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: txGood=4,txRelay=4,rxGood=7,rxBad=11
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: rx_snr found. hop_limit:1 rx_snr:-3.250000
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: rx_snr found in packet. Setting tx delay:756
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: Module 'routing' considered
+Mar  7 19:41:20 MadQ_fb65 Router ﻿[141]: MQTT onSend - Not forwarding packet due to DontMqttMeBro flag
+Mar  7 19:41:21 MadQ_fb65 mqtt ﻿[141]: Received MQTT topic msh/US/DE/2/e/LongFast/!0168bbd7, len=107
+Mar  7 19:41:21 MadQ_fb65 mqtt ﻿[141]: Use channel 0 (hash 0x8)
+Mar  7 19:41:21 MadQ_fb65 mqtt ﻿[141]: Expand short PSK #1
+Mar  7 19:41:21 MadQ_fb65 mqtt ﻿[141]: Use AES128 key!
+Mar  7 19:41:21 MadQ_fb65 mqtt ﻿[142]: decoded message (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=3 via MQTT hopStart=7)
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Packet History - insert: Using new slot @uptime 142.098s TRACE NEW
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: handleReceived(REMOTE) (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=3 rxtime=1772930475 via MQTT hopStart=7)
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Module 'position' wantsPacket=1
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Received position from=0xd6a505ec, id=0x4d9c8b32, portnum=3, payloadlen=27
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: POSITION node=d6a505ec l=27 lat=394510336 lon=-756629504 msl=22 hae=0 geo=0 pdop=0 hdop=0 vdop=0 siv=0 fxq=0 fxt=0 pts=0 time=1772930464
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Ignore time from mesh because it has a unknown or manual source
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: updatePosition REMOTE node=0xd6a505ec time=1772930464 lat=394510336 lon=-756629504
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Node status update: 37 online, 68 total
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Module 'position' considered
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Module 'routing' wantsPacket=1
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Routing sniffing (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=3 rxtime=1772930475 via MQTT hopStart=7)
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Rebroadcast received message coming from 0
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Packet History - insert: Reusing slot aged 0.089s TRACE MATCHED PACKET
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Expand short PSK #1
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Use AES128 key!
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: enqueue for send (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x8 encrypted len=49 rxtime=1772930475 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: txGood=4,txRelay=4,rxGood=7,rxBad=11
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: rx_snr found. hop_limit:1 rx_snr:-3.250000
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: rx_snr found in packet. Setting tx delay:1036
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Delivering rx packet (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=3 rxtime=1772930475 via MQTT hopStart=7)
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Update DB node 0xd6a505ec, rx_time=1772930475
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Sort took 1 milliseconds
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Forwarding to phone (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=3 rxtime=1772930475 via MQTT hopStart=7)
+Mar  7 19:41:21 MadQ_fb65 Router ﻿[142]: Module 'routing' considered
+Mar  7 19:41:21 MadQ_fb65 ServerAPI ﻿[142]: FromRadio=STATE_SEND_PACKETS
+Mar  7 19:41:21 MadQ_fb65 ServerAPI ﻿[142]: phone downloaded packet (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=7 Ch=0x0 Portnum=3 rxtime=1772930475 via MQTT hopStart=7)
+Mar  7 19:41:21 MadQ_fb65 Meshtastic ﻿[142]: Tell client we have new packets 19
+Mar  7 19:41:21 MadQ_fb65 RadioIf ﻿[142]: Can not send yet, busyRx
+Mar  7 19:41:21 MadQ_fb65 RadioIf ﻿[142]: rx_snr found. hop_limit:1 rx_snr:-3.250000
+Mar  7 19:41:21 MadQ_fb65 RadioIf ﻿[142]: rx_snr found in packet. Setting tx delay:448
+Mar  7 19:41:22 MadQ_fb65 RadioIf ﻿[143]: Ignore false preamble detection
+Mar  7 19:41:22 MadQ_fb65 RadioIf ﻿[143]: rx_snr found. hop_limit:1 rx_snr:-3.250000
+Mar  7 19:41:22 MadQ_fb65 RadioIf ﻿[143]: rx_snr found in packet. Setting tx delay:896
+Mar  7 19:41:23 MadQ_fb65 RadioIf ﻿[144]: Started Tx (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 1, WantAck=0, HopLim=1 Ch=0x8 encrypted len=94 rxtime=1772930474 rxSNR=-3.25 rxRSSI=-105 hopStart=3 relay=0x1c priority=70)
+Mar  7 19:41:23 MadQ_fb65 RadioIf ﻿[144]: 1 packets remain in the TX queue
+Mar  7 19:41:23 MadQ_fb65 mqtt ﻿[144]: Received MQTT topic msh/US/DE/2/e/LongFast/!1f7a31a3, len=107
+Mar  7 19:41:23 MadQ_fb65 mqtt ﻿[144]: Use channel 0 (hash 0x8)
+Mar  7 19:41:23 MadQ_fb65 mqtt ﻿[144]: Expand short PSK #1
+Mar  7 19:41:23 MadQ_fb65 mqtt ﻿[144]: Use AES128 key!
+Mar  7 19:41:23 MadQ_fb65 mqtt ﻿[144]: decoded message (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x0 Portnum=3 via MQTT hopStart=7)
+Mar  7 19:41:23 MadQ_fb65 Router ﻿[144]: Packet History - insert: Reusing slot aged 2.400s TRACE MATCHED PACKET
+Mar  7 19:41:23 MadQ_fb65 Router ﻿[144]: Ignore dupe incoming msg (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x0 Portnum=3 via MQTT hopStart=7)
+Mar  7 19:41:23 MadQ_fb65 Router ﻿[144]: Incoming msg was filtered from 0xd6a505ec
+Mar  7 19:41:24 MadQ_fb65 RadioIf ﻿[145]: Packet TX: 968ms
+Mar  7 19:41:24 MadQ_fb65 RadioIf ﻿[145]: Completed sending (id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567, transport = 1, WantAck=0, HopLim=1 Ch=0x8 encrypted len=94 rxtime=1772930474 rxSNR=-3.25 rxRSSI=-105 hopStart=3 relay=0x1c priority=70)
+Mar  7 19:41:24 MadQ_fb65 RadioIf ﻿[145]: Started Tx (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x8 encrypted len=49 rxtime=1772930475 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:41:24 MadQ_fb65 RadioIf ﻿[145]: 0 packets remain in the TX queue
+Mar  7 19:41:25 MadQ_fb65 RadioIf ﻿[145]: Packet TX: 600ms
+Mar  7 19:41:25 MadQ_fb65 RadioIf ﻿[145]: Completed sending (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 5, WantAck=0, HopLim=6 Ch=0x8 encrypted len=49 rxtime=1772930475 via MQTT hopStart=7 relay=0x1c priority=64)
+Mar  7 19:41:26 MadQ_fb65 RadioIf ﻿[147]: Ignore received packet due to error=-7 (maybe id=0x65fb5f8c fr=0x8bbe69d4 to=0xfaa14567 flags=0x60 rxSNR=-7.25 rxRSSI=-115 nextHop=0x0 relay=0xc8)
+Mar  7 19:41:26 MadQ_fb65 RadioIf ﻿[147]: Packet RX (noise?) : 968ms
+Mar  7 19:41:28 MadQ_fb65 RadioIf ﻿[149]: Corrected frequency offset: 221.843735
+Mar  7 19:41:28 MadQ_fb65 RadioIf ﻿[149]: Lora RX (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 0, WantAck=0, HopLim=5 Ch=0x8 encrypted len=49 rxSNR=5.75 rxRSSI=-89 via MQTT hopStart=7 relay=0x9e)
+Mar  7 19:41:28 MadQ_fb65 RadioIf ﻿[149]: Packet RX: 600ms
+Mar  7 19:41:28 MadQ_fb65 Router ﻿[149]: Packet History - insert: Reusing slot aged 4.821s TRACE MATCHED PACKET
+Mar  7 19:41:28 MadQ_fb65 Router ﻿[149]: Ignore dupe incoming msg (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 1, WantAck=0, HopLim=5 Ch=0x8 encrypted len=49 rxSNR=5.75 rxRSSI=-89 via MQTT hopStart=7 relay=0x9e)
+Mar  7 19:41:28 MadQ_fb65 Router ﻿[149]: cancelSending id=0x4d9c8b32, removed=0
+Mar  7 19:41:28 MadQ_fb65 Router ﻿[149]: Incoming msg was filtered from 0xd6a505ec
+Mar  7 19:41:31 MadQ_fb65 RadioIf ﻿[152]: Ignore received packet due to error=-7 (maybe id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff flags=0xf4 rxSNR=-8.25 rxRSSI=-107 nextHop=0xba relay=0xca)
+Mar  7 19:41:31 MadQ_fb65 RadioIf ﻿[152]: Packet RX (noise?) : 600ms
+Mar  7 19:41:32 MadQ_fb65 RadioIf ﻿[153]: Corrected frequency offset: 163.718735
+Mar  7 19:41:32 MadQ_fb65 RadioIf ﻿[153]: Lora RX (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 0, WantAck=0, HopLim=5 Ch=0x8 encrypted len=49 rxSNR=0.5 rxRSSI=-104 via MQTT hopStart=7)
+Mar  7 19:41:32 MadQ_fb65 RadioIf ﻿[153]: Packet RX: 600ms
+Mar  7 19:41:32 MadQ_fb65 Router ﻿[153]: Packet History - insert: Reusing slot aged 4.180s TRACE MATCHED PACKET
+Mar  7 19:41:32 MadQ_fb65 Router ﻿[153]: Ignore dupe incoming msg (id=0x4d9c8b32 fr=0xd6a505ec to=0xffffffff, transport = 1, WantAck=0, HopLim=5 Ch=0x8 encrypted len=49 rxSNR=0.5 rxRSSI=-104 via MQTT hopStart=7)
+Mar  7 19:41:32 MadQ_fb65 Router ﻿[153]: cancelSending id=0x4d9c8b32, removed=0
+Mar  7 19:41:32 MadQ_fb65 Router ﻿[153]: Incoming msg was filtered from 0xd6a505ec
+Mar  7 19:41:34 MadQ_fb65 RadioIf ﻿[155]: Ignore received packet due to error=-7 (maybe id=0x65fb5f8c fr=0x8bbe69d4 to=0x72a04567 flags=0x61 rxSNR=-17.5 rxRSSI=-121 nextHop=0x0 relay=0x40)
+Mar  7 19:41:34 MadQ_fb65 RadioIf ﻿[155]: Packet RX (noise?) : 968ms

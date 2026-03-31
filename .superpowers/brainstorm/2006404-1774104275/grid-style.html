@@ -1,0 +1,113 @@
+<h2>Polar Grid Style</h2>
+<p class="subtitle">What kind of polar grid overlay are you envisioning?</p>
+
+<div class="cards">
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:20px;display:flex;align-items:center;justify-content:center;min-height:280px">
+      <svg viewBox="0 0 300 300" width="260" height="260">
+        <!-- Background -->
+        <rect width="300" height="300" fill="#1a1a2e"/>
+        <!-- Concentric range rings only -->
+        <circle cx="150" cy="150" r="30" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="60" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="90" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="120" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <!-- Distance labels -->
+        <text x="152" y="118" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">1 km</text>
+        <text x="152" y="88" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">2 km</text>
+        <text x="152" y="58" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">3 km</text>
+        <!-- Center dot -->
+        <circle cx="150" cy="150" r="4" fill="#00c8ff"/>
+        <!-- Sample node markers -->
+        <circle cx="195" cy="105" r="5" fill="#ff6b6b"/>
+        <circle cx="110" cy="200" r="5" fill="#51cf66"/>
+        <circle cx="220" cy="170" r="5" fill="#ffd43b"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>A. Rings Only</h3>
+      <p>Concentric distance rings with labels. Clean and minimal — shows range at a glance without visual clutter.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="full-polar" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:20px;display:flex;align-items:center;justify-content:center;min-height:280px">
+      <svg viewBox="0 0 300 300" width="260" height="260">
+        <rect width="300" height="300" fill="#1a1a2e"/>
+        <!-- Concentric range rings -->
+        <circle cx="150" cy="150" r="30" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="60" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="90" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="120" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <!-- Azimuth lines (N/S/E/W + 45deg) -->
+        <line x1="150" y1="30" x2="150" y2="270" stroke="rgba(0,200,255,0.2)" stroke-width="1"/>
+        <line x1="30" y1="150" x2="270" y2="150" stroke="rgba(0,200,255,0.2)" stroke-width="1"/>
+        <line x1="65" y1="65" x2="235" y2="235" stroke="rgba(0,200,255,0.15)" stroke-width="1" stroke-dasharray="4,4"/>
+        <line x1="235" y1="65" x2="65" y2="235" stroke="rgba(0,200,255,0.15)" stroke-width="1" stroke-dasharray="4,4"/>
+        <!-- Cardinal labels -->
+        <text x="148" y="25" fill="rgba(0,200,255,0.7)" font-size="11" font-family="monospace" text-anchor="middle">N</text>
+        <text x="148" y="290" fill="rgba(0,200,255,0.7)" font-size="11" font-family="monospace" text-anchor="middle">S</text>
+        <text x="278" y="154" fill="rgba(0,200,255,0.7)" font-size="11" font-family="monospace" text-anchor="middle">E</text>
+        <text x="22" y="154" fill="rgba(0,200,255,0.7)" font-size="11" font-family="monospace" text-anchor="middle">W</text>
+        <!-- Distance labels -->
+        <text x="152" y="118" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">1 km</text>
+        <text x="152" y="88" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">2 km</text>
+        <text x="152" y="58" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">3 km</text>
+        <!-- Center dot -->
+        <circle cx="150" cy="150" r="4" fill="#00c8ff"/>
+        <!-- Sample node markers -->
+        <circle cx="195" cy="105" r="5" fill="#ff6b6b"/>
+        <circle cx="110" cy="200" r="5" fill="#51cf66"/>
+        <circle cx="220" cy="170" r="5" fill="#ffd43b"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>B. Full Polar Grid</h3>
+      <p>Range rings + azimuth lines (N/S/E/W and diagonals) with cardinal direction and distance labels. Classic radar-style overlay.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="sector" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:20px;display:flex;align-items:center;justify-content:center;min-height:280px">
+      <svg viewBox="0 0 300 300" width="260" height="260">
+        <rect width="300" height="300" fill="#1a1a2e"/>
+        <!-- Concentric range rings -->
+        <circle cx="150" cy="150" r="30" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="60" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="90" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <circle cx="150" cy="150" r="120" fill="none" stroke="rgba(0,200,255,0.3)" stroke-width="1"/>
+        <!-- 30-degree azimuth lines (12 total) -->
+        <line x1="150" y1="30" x2="150" y2="270" stroke="rgba(0,200,255,0.2)" stroke-width="1"/>
+        <line x1="30" y1="150" x2="270" y2="150" stroke="rgba(0,200,255,0.2)" stroke-width="1"/>
+        <line x1="65" y1="65" x2="235" y2="235" stroke="rgba(0,200,255,0.15)" stroke-width="1"/>
+        <line x1="235" y1="65" x2="65" y2="235" stroke="rgba(0,200,255,0.15)" stroke-width="1"/>
+        <!-- 30deg increments -->
+        <line x1="90" y1="46" x2="210" y2="254" stroke="rgba(0,200,255,0.12)" stroke-width="1"/>
+        <line x1="46" y1="90" x2="254" y2="210" stroke="rgba(0,200,255,0.12)" stroke-width="1"/>
+        <line x1="210" y1="46" x2="90" y2="254" stroke="rgba(0,200,255,0.12)" stroke-width="1"/>
+        <line x1="254" y1="90" x2="46" y2="210" stroke="rgba(0,200,255,0.12)" stroke-width="1"/>
+        <!-- Degree labels around outer ring -->
+        <text x="150" y="22" fill="rgba(0,200,255,0.7)" font-size="9" font-family="monospace" text-anchor="middle">0</text>
+        <text x="215" y="42" fill="rgba(0,200,255,0.5)" font-size="8" font-family="monospace">30</text>
+        <text x="258" y="90" fill="rgba(0,200,255,0.5)" font-size="8" font-family="monospace">60</text>
+        <text x="275" y="154" fill="rgba(0,200,255,0.7)" font-size="9" font-family="monospace">90</text>
+        <text x="258" y="218" fill="rgba(0,200,255,0.5)" font-size="8" font-family="monospace">120</text>
+        <text x="210" y="262" fill="rgba(0,200,255,0.5)" font-size="8" font-family="monospace">150</text>
+        <text x="150" y="290" fill="rgba(0,200,255,0.7)" font-size="9" font-family="monospace" text-anchor="middle">180</text>
+        <!-- Distance labels -->
+        <text x="152" y="118" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">1 km</text>
+        <text x="152" y="88" fill="rgba(0,200,255,0.6)" font-size="9" font-family="monospace">2 km</text>
+        <!-- Center dot -->
+        <circle cx="150" cy="150" r="4" fill="#00c8ff"/>
+        <!-- Sample node markers -->
+        <circle cx="195" cy="105" r="5" fill="#ff6b6b"/>
+        <circle cx="110" cy="200" r="5" fill="#51cf66"/>
+        <circle cx="220" cy="170" r="5" fill="#ffd43b"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>C. Full Sector Grid</h3>
+      <p>Range rings + 30-degree sector lines with degree labels. Maximum precision for bearing analysis — closer to the screenshot in the issue.</p>
+    </div>
+  </div>
+</div>
