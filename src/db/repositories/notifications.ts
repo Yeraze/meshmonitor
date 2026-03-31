@@ -373,24 +373,31 @@ export class NotificationsRepository extends BaseRepository {
         return inserted;
       } else if (this.isPostgres()) {
         const db = this.getPostgresDb();
-        // Use raw SQL for INSERT...SELECT with ON CONFLICT DO NOTHING
+        // Use INSERT...SELECT with WHERE NOT EXISTS to avoid duplicates
+        // (ON CONFLICT requires a unique constraint which may not exist on all installs)
         let result;
         if (beforeTimestamp !== undefined) {
           result = await db.execute(sql`
             INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
-            SELECT id, ${effectiveUserId}, ${now} FROM messages
-            WHERE channel = ${channelId}
-              AND portnum = 1
-              AND timestamp <= ${beforeTimestamp}
-            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
+            SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
+            WHERE m.channel = ${channelId}
+              AND m.portnum = 1
+              AND m.timestamp <= ${beforeTimestamp}
+              AND NOT EXISTS (
+                SELECT 1 FROM read_messages rm
+                WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
+              )
           `);
         } else {
           result = await db.execute(sql`
             INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
-            SELECT id, ${effectiveUserId}, ${now} FROM messages
-            WHERE channel = ${channelId}
-              AND portnum = 1
-            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
+            SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
+            WHERE m.channel = ${channelId}
+              AND m.portnum = 1
+              AND NOT EXISTS (
+                SELECT 1 FROM read_messages rm
+                WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
+              )
           `);
         }
         return Number(result.rowCount ?? 0);
