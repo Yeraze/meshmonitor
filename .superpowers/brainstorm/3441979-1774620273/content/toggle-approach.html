@@ -1,0 +1,59 @@
+<h2>How should the chart toggle work?</h2>
+<p class="subtitle">The popup currently shows SNR stats + time-of-day chart. We need to add a chronological view.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Tab Toggle (like Node Popup)</h3>
+      <p>Two small tab buttons above the chart area: <strong>"By Time of Day"</strong> and <strong>"Chronological"</strong>. Only one chart visible at a time. Matches the existing info/traceroute toggle pattern in node popups.</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">Route Segment Popup</div>
+        <div class="mockup-body" style="padding: 12px; font-size: 13px;">
+          <div style="font-weight: bold; margin-bottom: 8px;">NodeA ↔ NodeB</div>
+          <div style="color: #888; margin-bottom: 4px;">Used in <span style="color: #89b4fa;">3</span> traceroutes</div>
+          <div style="margin-bottom: 8px;">
+            <span style="color: #888;">Min:</span> -2.5 dB &nbsp;
+            <span style="color: #888;">Max:</span> 8.0 dB &nbsp;
+            <span style="color: #888;">Avg:</span> 4.2 dB
+          </div>
+          <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+            <button style="padding: 4px 10px; background: #89b4fa; color: #1e1e2e; border: none; border-radius: 4px; font-size: 11px; font-weight: bold;">Time of Day</button>
+            <button style="padding: 4px 10px; background: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 11px;">Chronological</button>
+          </div>
+          <div style="background: #1e1e2e; border: 1px solid #45475a; border-radius: 4px; height: 120px; display: flex; align-items: center; justify-content: center; color: #6c7086;">
+            [SNR chart - one view at a time]
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Stacked Charts</h3>
+      <p>Show both charts stacked vertically, no toggle needed. More information at a glance but makes the popup taller. Could be overwhelming in a small map popup.</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">Route Segment Popup</div>
+        <div class="mockup-body" style="padding: 12px; font-size: 13px;">
+          <div style="font-weight: bold; margin-bottom: 8px;">NodeA ↔ NodeB</div>
+          <div style="color: #888; margin-bottom: 4px;">Used in <span style="color: #89b4fa;">3</span> traceroutes</div>
+          <div style="margin-bottom: 8px;">
+            <span style="color: #888;">Min:</span> -2.5 dB &nbsp;
+            <span style="color: #888;">Max:</span> 8.0 dB &nbsp;
+            <span style="color: #888;">Avg:</span> 4.2 dB
+          </div>
+          <div style="font-size: 11px; color: #a6adc8; margin-bottom: 4px; font-weight: bold;">SNR by Time of Day</div>
+          <div style="background: #1e1e2e; border: 1px solid #45475a; border-radius: 4px; height: 90px; display: flex; align-items: center; justify-content: center; color: #6c7086; margin-bottom: 8px;">
+            [Time-of-day chart]
+          </div>
+          <div style="font-size: 11px; color: #a6adc8; margin-bottom: 4px; font-weight: bold;">SNR Over Time</div>
+          <div style="background: #1e1e2e; border: 1px solid #45475a; border-radius: 4px; height: 90px; display: flex; align-items: center; justify-content: center; color: #6c7086;">
+            [Chronological chart]
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
