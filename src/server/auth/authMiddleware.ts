@@ -9,14 +9,189 @@ import { ResourceType, PermissionAction } from '../../types/permission.js';
 import { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { extractProxyUser, isAdminUser, isNormalProxyUserAllowed } from './proxyAuth.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 
 /**
  * Attach user to request if authenticated (optional auth)
  * If not authenticated, attaches anonymous user for permission checks
+ *
+ * Authentication priority:
+ * 1. Proxy auth (if enabled) - highest priority
+ * 2. Session auth - fallback if no proxy headers
+ * 3. Anonymous user - fallback if no auth
  */
 export function optionalAuth() {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
+      const config = getEnvironmentConfig();
+
+      // NEW: Try proxy auth first (highest priority)
+      if (config.proxyAuthEnabled) {
+        const proxyUser = extractProxyUser(req);
+
+        if (proxyUser) {
+          // Application-layer group gate (PROXY_AUTH_NORMAL_USER_GROUPS)
+          if (!isNormalProxyUserAllowed(proxyUser.email, proxyUser.groups)) {
+            return _res.status(403).json({
+              error: 'Access denied: user is not in any allowed proxy group',
+              code: 'FORBIDDEN_PROXY_GROUP'
+            });
+          }
+
+          // Look up user by email
+          let user = await databaseService.findUserByEmailAsync(proxyUser.email);
+
+          if (!user) {
+            // Auto-provision if enabled
+            if (config.proxyAuthAutoProvision) {
+              logger.info(`🔐 Auto-provisioning proxy user: ${proxyUser.email}`);
+
+              const isAdmin = isAdminUser(proxyUser.email, proxyUser.groups);
+              const username = proxyUser.email.split('@')[0]; // Use email prefix as username
+
+              // Create user (reuse OIDC pattern)
+              const userId = await databaseService.auth.createUser({
+                username,
+                email: proxyUser.email,
+                displayName: proxyUser.email,
+                authMethod: 'proxy',
+                isAdmin,
+                isActive: true,
+                passwordHash: null,
+                passwordLocked: false,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                lastLoginAt: Date.now()
+              });
+
+              // Grant default permissions (same as OIDC)
+              const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
+              for (const resource of defaultResources) {
+                await databaseService.auth.createPermission({
+                  userId,
+                  resource,
+                  canRead: true,
+                  canWrite: false,
+                  grantedBy: null,
+                  grantedAt: Date.now()
+                });
+              }
+
+              user = await databaseService.findUserByIdAsync(userId);
+
+              // Audit log (if enabled)
+              if (config.proxyAuthAuditLogging) {
+                databaseService.auditLogAsync(
+                  userId,
+                  'proxy_user_created',
+                  'users',
+                  JSON.stringify({
+                    email: proxyUser.email,
+                    groups: proxyUser.groups,
+                    source: proxyUser.source,
+                    isAdmin
+                  }),
+                  req.ip || null
+                ).catch(err => logger.error('Audit log failed:', err));
+              }
+
+              logger.debug(`✅ Proxy user auto-created: ${username}`);
+            } else {
+              // Auto-provision disabled - fall through to session/anonymous auth
+              logger.warn(`❌ Proxy user not found and auto-provision disabled: ${proxyUser.email}`);
+            }
+          }
+
+          // Check if we need to migrate local user to proxy
+          if (user && user.authProvider === 'local') {
+            logger.info(`🔄 Migrating local user '${user.username}' to proxy auth`);
+
+            const isAdmin = isAdminUser(proxyUser.email, proxyUser.groups);
+
+            await databaseService.auth.updateUser(user.id, {
+              authMethod: 'proxy',
+              email: proxyUser.email || user.email,
+              passwordHash: null, // Clear password for proxy users (same as OIDC)
+              isAdmin,
+              lastLoginAt: Date.now()
+            });
+
+            user = await databaseService.findUserByIdAsync(user.id);
+
+            // Audit log
+            if (config.proxyAuthAuditLogging) {
+              databaseService.auditLogAsync(
+                user!.id,
+                'user_migrated_to_proxy',
+                'users',
+                JSON.stringify({
+                  userId: user!.id,
+                  username: user!.username,
+                  email: proxyUser.email,
+                  source: proxyUser.source
+                }),
+                req.ip || null
+              ).catch(err => logger.error('Audit log failed:', err));
+            }
+
+            logger.debug(`✅ User migrated to proxy auth: ${user!.username}`);
+          }
+
+          // Update admin status (re-evaluate on every request for immediate privilege changes)
+          if (user && user.authProvider === 'proxy') {
+            const currentIsAdmin = isAdminUser(proxyUser.email, proxyUser.groups);
+
+            if (currentIsAdmin !== user.isAdmin) {
+              logger.info(`🔄 Updating admin status for ${user.username}: ${user.isAdmin} → ${currentIsAdmin}`);
+
+              await databaseService.auth.updateUser(user.id, {
+                isAdmin: currentIsAdmin,
+                lastLoginAt: Date.now()
+              });
+
+              user = await databaseService.findUserByIdAsync(user.id);
+            } else {
+              // Just update lastLoginAt
+              await databaseService.auth.updateUser(user.id, {
+                lastLoginAt: Date.now()
+              });
+            }
+          }
+
+          // Attach user to request
+          if (user && user.isActive) {
+            req.user = user;
+
+            // Update session to match (creates session if not exists)
+            req.session.userId = user.id;
+            req.session.username = user.username;
+            req.session.authProvider = 'proxy';
+            req.session.isAdmin = user.isAdmin;
+
+            // Audit log successful auth (if enabled)
+            if (config.proxyAuthAuditLogging) {
+              databaseService.auditLogAsync(
+                user.id,
+                'proxy_auth_success',
+                'auth',
+                JSON.stringify({
+                  username: user.username,
+                  email: proxyUser.email,
+                  groups: proxyUser.groups,
+                  source: proxyUser.source,
+                  isAdmin: user.isAdmin
+                }),
+                req.ip || null
+              ).catch(err => logger.error('Audit log failed:', err));
+            }
+
+            return next();
+          }
+        }
+      }
+
+      // EXISTING: Session-based auth (fallback)
       if (req.session.userId) {
         const user = await databaseService.findUserByIdAsync(req.session.userId);
         if (user && user.isActive) {
