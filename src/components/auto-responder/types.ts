@@ -11,7 +11,7 @@ export interface ScriptMetadata {
   language: string;       // Inferred from extension or mm_meta
 }
 
-export type ResponseType = 'text' | 'http' | 'script';
+export type ResponseType = 'text' | 'http' | 'script' | 'traceroute';
 
 export interface AutoResponderTrigger {
   id: string;

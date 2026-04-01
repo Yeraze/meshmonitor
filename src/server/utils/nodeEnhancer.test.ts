@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, maskNodeLocationByChannel } from './nodeEnhancer.js';
 
 // Mock the auth middleware
 vi.mock('../auth/authMiddleware.js', () => ({
@@ -265,5 +265,96 @@ describe('nodeEnhancer: checkNodeChannelAccess', () => {
   it('should deny access for user with no permissions at all', async () => {
     const noPermUser = { id: 99, isAdmin: false } as any;
     expect(await checkNodeChannelAccess('!00000001', noPermUser)).toBe(false);
+  });
+});
+
+describe('nodeEnhancer: maskNodeLocationByChannel', () => {
+  // User 1: channel_0 and channel_1 access; no channel_2 access
+  // User 2: all channel access
+  // User 99: no access
+
+  it('should return all nodes unchanged for admin', async () => {
+    const adminUser = { id: 1, isAdmin: true } as any;
+    const nodes = [
+      { nodeId: '!00000001', latitude: 10, longitude: 20, positionChannel: 2 },
+    ];
+    const result = await maskNodeLocationByChannel(nodes, adminUser);
+    expect(result[0].latitude).toBe(10);
+    expect(result[0].longitude).toBe(20);
+    expect((result[0] as any).positionChannel).toBe(2);
+  });
+
+  it('should leave node unchanged when positionChannel is accessible', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const nodes = [
+      { nodeId: '!00000001', latitude: 10, longitude: 20, altitude: 100, positionChannel: 0 },
+    ];
+    const result = await maskNodeLocationByChannel(nodes, user);
+    expect(result[0].latitude).toBe(10);
+    expect(result[0].longitude).toBe(20);
+    expect((result[0] as any).altitude).toBe(100);
+  });
+
+  it('should strip location fields when positionChannel is inaccessible', async () => {
+    // User 1 has no access to channel_2
+    const user = { id: 1, isAdmin: false } as any;
+    const nodes = [
+      {
+        nodeId: '!00000001',
+        channel: 0,         // node last heard on public channel (accessible)
+        latitude: 10,
+        longitude: 20,
+        altitude: 100,
+        positionChannel: 2, // location came from private channel (inaccessible)
+        positionTimestamp: 1234567890,
+        positionPrecisionBits: 32,
+        positionGpsAccuracy: 5,
+        positionHdop: 1.2,
+      },
+    ];
+    const result = await maskNodeLocationByChannel(nodes, user);
+    expect((result[0] as any).latitude).toBeUndefined();
+    expect((result[0] as any).longitude).toBeUndefined();
+    expect((result[0] as any).altitude).toBeUndefined();
+    expect((result[0] as any).positionChannel).toBeUndefined();
+    expect((result[0] as any).positionTimestamp).toBeUndefined();
+    expect((result[0] as any).positionPrecisionBits).toBeUndefined();
+    expect((result[0] as any).positionGpsAccuracy).toBeUndefined();
+    expect((result[0] as any).positionHdop).toBeUndefined();
+    // Non-location fields should be preserved
+    expect((result[0] as any).nodeId).toBe('!00000001');
+    expect((result[0] as any).channel).toBe(0);
+  });
+
+  it('should leave node unchanged when positionChannel is not set', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const nodes = [
+      { nodeId: '!00000001', latitude: 10, longitude: 20 },
+    ];
+    const result = await maskNodeLocationByChannel(nodes, user);
+    expect(result[0].latitude).toBe(10);
+    expect(result[0].longitude).toBe(20);
+  });
+
+  it('should strip location for null user when positionChannel is set', async () => {
+    const nodes = [
+      { nodeId: '!00000001', latitude: 10, longitude: 20, positionChannel: 0 },
+    ];
+    const result = await maskNodeLocationByChannel(nodes, null);
+    expect((result[0] as any).latitude).toBeUndefined();
+    expect((result[0] as any).longitude).toBeUndefined();
+  });
+
+  it('should handle mixed nodes — mask only those with inaccessible positionChannels', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const nodes = [
+      { nodeId: '!node1', latitude: 10, longitude: 20, positionChannel: 0 }, // accessible
+      { nodeId: '!node2', latitude: 30, longitude: 40, positionChannel: 2 }, // inaccessible
+      { nodeId: '!node3', latitude: 50, longitude: 60 },                     // no positionChannel
+    ];
+    const result = await maskNodeLocationByChannel(nodes, user);
+    expect((result[0] as any).latitude).toBe(10);   // kept
+    expect((result[1] as any).latitude).toBeUndefined(); // masked
+    expect((result[2] as any).latitude).toBe(50);   // kept (no positionChannel)
   });
 });

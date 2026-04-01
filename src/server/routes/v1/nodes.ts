@@ -8,7 +8,7 @@
 import express, { Request, Response } from 'express';
 import databaseService, { DbNode } from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
-import { filterNodesByChannelPermission } from '../../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router();
 
@@ -74,8 +74,11 @@ router.get('/', async (req: Request, res: Response) => {
     // Filter nodes based on channel read permissions
     const filteredNodes = await filterNodesByChannelPermission(nodes, user);
 
+    // Strip location fields for nodes whose position came from an inaccessible channel
+    const locationMaskedNodes = await maskNodeLocationByChannel(filteredNodes, user);
+
     // Enrich nodes with uptime data from telemetry
-    const enrichedNodes = await enrichNodesWithUptime(filteredNodes);
+    const enrichedNodes = await enrichNodesWithUptime(locationMaskedNodes);
 
     res.json({
       success: true,
@@ -136,8 +139,11 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
       });
     }
 
+    // Strip location fields if the position came from an inaccessible channel
+    const [locationMaskedNode] = await maskNodeLocationByChannel([filteredNode], user);
+
     // Enrich with uptime data from telemetry
-    const [enrichedNode] = await enrichNodesWithUptime([filteredNode]);
+    const [enrichedNode] = await enrichNodesWithUptime([locationMaskedNode]);
 
     res.json({
       success: true,

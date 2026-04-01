@@ -11,7 +11,7 @@ import '../styles/messages.css';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { TimeFormat, DateFormat, useSettings } from '../contexts/SettingsContext';
+import { TimeFormat, DateFormat, useSettings, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
@@ -169,6 +169,19 @@ export default function ChannelsTab({
   const { t } = useTranslation();
   const { nodes } = useNodes();
   const { distanceUnit } = useSettings();
+  const { isChannelMuted, muteChannel, unmuteChannel } = useNotificationMuteSettings();
+
+  const [showMuteMenu, setShowMuteMenu] = useState<number | null>(null);
+
+  const handleMuteChannel = async (channelId: number, muteUntil: number | null) => {
+    await muteChannel(channelId, muteUntil);
+    setShowMuteMenu(null);
+  };
+
+  const handleUnmuteChannel = async (channelId: number) => {
+    await unmuteChannel(channelId);
+    setShowMuteMenu(null);
+  };
 
   // Refs
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
@@ -508,6 +521,9 @@ export default function ChannelsTab({
                               );
                             }
                           })()}
+                          {isChannelMuted(channelId) && (
+                            <span title={t('notifications.muted', 'Notifications muted')}>🔇</span>
+                          )}
                           {channelId === autoPositionChannelId && (
                             <span
                               className="location-icon"
@@ -588,20 +604,90 @@ export default function ChannelsTab({
                       {t('channels.info_link')}
                     </a>
                   </h3>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      markMessagesAsRead(undefined, selectedChannel);
-                    }}
-                    title={t('channels.mark_all_read_title')}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.9rem',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {t('channels.mark_all_read_button')}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {/* Mute button */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowMuteMenu(showMuteMenu === selectedChannel ? null : selectedChannel)}
+                        title={isChannelMuted(selectedChannel) ? t('notifications.mute_channel_active', 'Muted — click to change') : t('notifications.mute_channel', 'Mute notifications')}
+                        style={{ padding: '0.5rem 0.6rem', fontSize: '0.9rem' }}
+                        aria-label={isChannelMuted(selectedChannel) ? 'Muted' : 'Mute channel'}
+                      >
+                        {isChannelMuted(selectedChannel) ? '🔇' : '🔔'}
+                      </button>
+                      {showMuteMenu === selectedChannel && (
+                        <>
+                          <div
+                            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+                            onClick={() => setShowMuteMenu(null)}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            right: 0,
+                            marginTop: '4px',
+                            background: 'var(--ctp-surface0)',
+                            border: '1px solid var(--ctp-surface2)',
+                            borderRadius: '4px',
+                            zIndex: 1000,
+                            minWidth: '180px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                            overflow: 'hidden',
+                          }}>
+                            {isChannelMuted(selectedChannel) && (
+                              <button
+                                style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                                onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                onClick={() => handleUnmuteChannel(selectedChannel)}
+                              >
+                                🔔 {t('notifications.unmute', 'Unmute')}
+                              </button>
+                            )}
+                            <button
+                              style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                              onClick={() => handleMuteChannel(selectedChannel, null)}
+                            >
+                              🔇 {t('notifications.mute_indefinite', 'Mute indefinitely')}
+                            </button>
+                            <button
+                              style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                              onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
+                            >
+                              🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                            </button>
+                            <button
+                              style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                              onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
+                            >
+                              📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        markMessagesAsRead(undefined, selectedChannel);
+                      }}
+                      title={t('channels.mark_all_read_title')}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.9rem',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {t('channels.mark_all_read_button')}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Read-only banner for Channel Database channels */}

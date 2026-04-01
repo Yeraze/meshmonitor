@@ -29,6 +29,7 @@ import { migration as messagesDecryptedByMigration, runMigration014Postgres, run
 import { migration as notificationPrefsUniqueMigration, runMigration015Postgres, runMigration015Mysql } from '../server/migrations/015_add_notification_prefs_unique.js';
 import { migration as renameSystemBackupColumnsMigration, runMigration016Postgres, runMigration016Mysql } from '../server/migrations/016_rename_system_backup_columns.js';
 import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
+import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_mute_columns.js';
 
 // ============================================================================
 // Registry
@@ -231,4 +232,19 @@ registry.register({
   sqlite: (db) => apiTokensNameMigration.up(db),
   postgres: (client) => runMigration017Postgres(client),
   mysql: (pool) => runMigration017Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 018: Add per-channel and per-DM mute columns to user_notification_preferences
+// Implements per-source audio/push notification muting with optional expiry.
+// Implements: https://github.com/Yeraze/meshmonitor/issues/2545
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 18,
+  name: 'add_mute_columns',
+  settingsKey: 'migration_018_add_mute_columns',
+  sqlite: (db) => addMuteColumnsMigration.up(db),
+  postgres: (client) => runMigration018Postgres(client),
+  mysql: (pool) => runMigration018Mysql(pool),
 });

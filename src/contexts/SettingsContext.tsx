@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import api from '../services/api';
 import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
 import { type SortOption as DashboardSortOption } from '../components/Dashboard/types';
@@ -9,6 +10,18 @@ import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../confi
 import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type OverlayColors } from '../config/overlayColors';
 import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
+
+/** A per-channel mute rule. muteUntil = null means indefinite. */
+export interface MutedChannel {
+  channelId: number;
+  muteUntil: number | null;
+}
+
+/** A per-DM mute rule keyed by remote node UUID. muteUntil = null means indefinite. */
+export interface MutedDM {
+  nodeUuid: string;
+  muteUntil: number | null;
+}
 
 export type DistanceUnit = 'km' | 'mi';
 export type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -120,6 +133,14 @@ interface SettingsContextType {
   setSolarMonitoringAzimuth: (azimuth: number) => void;
   setSolarMonitoringDeclination: (declination: number) => void;
   setEnableAudioNotifications: (enabled: boolean) => void;
+  mutedChannels: MutedChannel[];
+  mutedDMs: MutedDM[];
+  muteChannel: (channelId: number, muteUntil: number | null) => Promise<void>;
+  unmuteChannel: (channelId: number) => Promise<void>;
+  muteDM: (nodeUuid: string, muteUntil: number | null) => Promise<void>;
+  unmuteDM: (nodeUuid: string) => Promise<void>;
+  isChannelMuted: (channelId: number) => boolean;
+  isDMMuted: (nodeUuid: string) => boolean;
   setNodeDimmingEnabled: (enabled: boolean) => void;
   setNodeDimmingStartHours: (hours: number) => void;
   setNodeDimmingMinOpacity: (opacity: number) => void;
@@ -312,6 +333,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   // Tapback emojis state (database-only, defaults to built-in emojis)
   const [tapbackEmojis, setTapbackEmojisState] = useState<TapbackEmoji[]>(DEFAULT_TAPBACK_EMOJIS);
+
+  // Per-channel and per-DM mute state (server-side, fetched from /api/push/preferences)
+  const [mutedChannels, setMutedChannels] = useState<MutedChannel[]>([]);
+  const [mutedDMs, setMutedDMs] = useState<MutedDM[]>([]);
 
   // Custom themes state
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
@@ -683,6 +708,100 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   /**
    * Set tapback emojis and save to database
    */
+  // Internal cache of the full notification preferences object, needed so mute
+  // updates can POST the complete preferences without losing other fields.
+  const [notificationPrefsCache, setNotificationPrefsCache] = React.useState<Record<string, unknown> | null>(null);
+
+  // Load mute preferences from /api/push/preferences on mount.
+  // Runs after authentication is established (same lifecycle as map preferences).
+  const loadMutePreferences = useCallback(async () => {
+    try {
+      const prefs = await api.get<Record<string, unknown>>('/api/push/preferences');
+      setNotificationPrefsCache(prefs);
+      if (Array.isArray(prefs.mutedChannels)) {
+        setMutedChannels(prefs.mutedChannels as MutedChannel[]);
+      }
+      if (Array.isArray(prefs.mutedDMs)) {
+        setMutedDMs(prefs.mutedDMs as MutedDM[]);
+      }
+    } catch (error) {
+      logger.debug('Could not load notification preferences (mute state):', error);
+    }
+  }, []);
+
+  /** Save mutedChannels/mutedDMs back to the server, merging with cached prefs. */
+  const saveMutePreferences = useCallback(async (
+    newMutedChannels: MutedChannel[],
+    newMutedDMs: MutedDM[]
+  ) => {
+    const base = notificationPrefsCache ?? {};
+    await api.post('/api/push/preferences', {
+      enableWebPush: true,
+      enableApprise: false,
+      enabledChannels: [],
+      enableDirectMessages: true,
+      notifyOnEmoji: true,
+      notifyOnMqtt: true,
+      notifyOnNewNode: true,
+      notifyOnTraceroute: true,
+      notifyOnInactiveNode: false,
+      notifyOnServerEvents: false,
+      prefixWithNodeName: false,
+      monitoredNodes: [],
+      whitelist: [],
+      blacklist: [],
+      appriseUrls: [],
+      ...base,
+      mutedChannels: newMutedChannels,
+      mutedDMs: newMutedDMs,
+    });
+    setNotificationPrefsCache(prev => ({
+      ...(prev ?? base),
+      mutedChannels: newMutedChannels,
+      mutedDMs: newMutedDMs,
+    }));
+  }, [notificationPrefsCache]);
+
+  const muteChannel = useCallback(async (channelId: number, muteUntil: number | null) => {
+    const next = [
+      ...mutedChannels.filter(r => r.channelId !== channelId),
+      { channelId, muteUntil },
+    ];
+    setMutedChannels(next);
+    await saveMutePreferences(next, mutedDMs);
+  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+
+  const unmuteChannel = useCallback(async (channelId: number) => {
+    const next = mutedChannels.filter(r => r.channelId !== channelId);
+    setMutedChannels(next);
+    await saveMutePreferences(next, mutedDMs);
+  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+
+  const muteDM = useCallback(async (nodeUuid: string, muteUntil: number | null) => {
+    const next = [
+      ...mutedDMs.filter(r => r.nodeUuid !== nodeUuid),
+      { nodeUuid, muteUntil },
+    ];
+    setMutedDMs(next);
+    await saveMutePreferences(mutedChannels, next);
+  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+
+  const unmuteDM = useCallback(async (nodeUuid: string) => {
+    const next = mutedDMs.filter(r => r.nodeUuid !== nodeUuid);
+    setMutedDMs(next);
+    await saveMutePreferences(mutedChannels, next);
+  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+
+  const isChannelMuted = useCallback((channelId: number): boolean => {
+    const rule = mutedChannels.find(r => r.channelId === channelId);
+    return !!rule && (rule.muteUntil === null || rule.muteUntil > Date.now());
+  }, [mutedChannels]);
+
+  const isDMMuted = useCallback((nodeUuid: string): boolean => {
+    const rule = mutedDMs.find(r => r.nodeUuid === nodeUuid);
+    return !!rule && (rule.muteUntil === null || rule.muteUntil > Date.now());
+  }, [mutedDMs]);
+
   const setTapbackEmojis = React.useCallback(async (emojis: TapbackEmoji[]) => {
     setTapbackEmojisState(emojis);
 
@@ -1130,6 +1249,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     loadCustomThemes();
   }, [loadCustomThemes]);
 
+  // Load mute preferences on mount (server-side, requires auth)
+  React.useEffect(() => {
+    loadMutePreferences();
+  }, [loadMutePreferences]);
+
   // Apply custom theme CSS when themes are loaded or theme changes
   React.useEffect(() => {
     logger.debug(`🔄 useEffect triggered - customThemes: ${customThemes.length}, theme: ${theme}`);
@@ -1223,6 +1347,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setSolarMonitoringAzimuth,
     setSolarMonitoringDeclination,
     setEnableAudioNotifications,
+    mutedChannels,
+    mutedDMs,
+    muteChannel,
+    unmuteChannel,
+    muteDM,
+    unmuteDM,
+    isChannelMuted,
+    isDMMuted,
     setNodeDimmingEnabled,
     setNodeDimmingStartHours,
     setNodeDimmingMinOpacity,
@@ -1307,5 +1439,19 @@ export const useSolarSettings = () => {
     solarMonitoringLongitude: s.solarMonitoringLongitude, setSolarMonitoringLongitude: s.setSolarMonitoringLongitude,
     solarMonitoringAzimuth: s.solarMonitoringAzimuth, setSolarMonitoringAzimuth: s.setSolarMonitoringAzimuth,
     solarMonitoringDeclination: s.solarMonitoringDeclination, setSolarMonitoringDeclination: s.setSolarMonitoringDeclination,
+  };
+};
+
+export const useNotificationMuteSettings = () => {
+  const s = useSettings();
+  return {
+    mutedChannels: s.mutedChannels,
+    mutedDMs: s.mutedDMs,
+    muteChannel: s.muteChannel,
+    unmuteChannel: s.unmuteChannel,
+    muteDM: s.muteDM,
+    unmuteDM: s.unmuteDM,
+    isChannelMuted: s.isChannelMuted,
+    isDMMuted: s.isDMMuted,
   };
 };

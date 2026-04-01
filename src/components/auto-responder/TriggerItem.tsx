@@ -208,12 +208,27 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <option value="text">Text Response</option>
                 <option value="http">HTTP Request</option>
                 <option value="script">Script Execution</option>
+                <option value="traceroute">Traceroute</option>
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Response:</label>
               <div style={{ flex: '1' }}>
-                {editResponseType === 'text' ? (
+                {editResponseType === 'traceroute' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <input
+                      type="text"
+                      value={editResponse}
+                      onChange={(e) => setEditResponse(e.target.value)}
+                      className="setting-input"
+                      style={{ width: '100%', fontFamily: 'monospace' }}
+                      placeholder="e.g., {node} or MyNode"
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                      Node name, short name, or node ID to traceroute to. Use <code>&#123;node&#125;</code> to capture from the trigger pattern.
+                    </span>
+                  </div>
+                ) : editResponseType === 'text' ? (
                   <textarea
                     value={editResponse}
                     onChange={(e) => setEditResponse(e.target.value)}
@@ -340,7 +355,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 ))}
               </div>
             </div>
-            {editResponseType !== 'script' && (
+            {editResponseType !== 'script' && editResponseType !== 'traceroute' && (
               <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
                   <input
@@ -354,7 +369,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </div>
             )}
             {/* Response Preview */}
-            {editResponse.trim() && editTrigger.trim() && editResponseType !== 'script' && (() => {
+            {editResponse.trim() && editTrigger.trim() && editResponseType !== 'script' && editResponseType !== 'traceroute' && (() => {
               // Simple preview function for TriggerItem
               const getPreview = () => {
                 let preview = editResponse;
@@ -642,13 +657,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 );
               })()}
             </div>
-            {trigger.responseType === 'script' && (
+            {(trigger.responseType === 'script' || trigger.responseType === 'traceroute') && (
               <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '0.25rem' }}>
-                {trigger.response}
+                {trigger.responseType === 'traceroute' ? `→ ${trigger.response}` : trigger.response}
               </div>
             )}
             <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
-              {trigger.responseType !== 'script' ? trigger.response : null}
+              {trigger.responseType !== 'script' && trigger.responseType !== 'traceroute' ? trigger.response : null}
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
@@ -681,7 +696,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <span style={{
                   fontSize: '0.7rem',
                   padding: '0.15rem 0.4rem',
-                  background: trigger.responseType === 'text' ? 'var(--ctp-green)' : trigger.responseType === 'script' ? 'var(--ctp-yellow)' : 'var(--ctp-mauve)',
+                  background: trigger.responseType === 'text' ? 'var(--ctp-green)' : trigger.responseType === 'script' ? 'var(--ctp-yellow)' : trigger.responseType === 'traceroute' ? 'var(--ctp-sapphire)' : 'var(--ctp-mauve)',
                   color: 'var(--ctp-base)',
                   borderRadius: '3px',
                   fontWeight: 'bold'
