@@ -102,6 +102,8 @@ const SQLITE_CREATE = `
     whitelist TEXT,
     blacklist TEXT,
     notify_on_mqtt INTEGER DEFAULT 1,
+    muted_channels TEXT,
+    muted_dms TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
@@ -224,6 +226,8 @@ const POSTGRES_CREATE = `
     "whitelist" TEXT,
     "blacklist" TEXT,
     "notifyOnMqtt" BOOLEAN DEFAULT TRUE,
+    "mutedChannels" TEXT,
+    "mutedDMs" TEXT,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL
   );
@@ -351,6 +355,8 @@ const MYSQL_CREATE = `
     whitelist TEXT,
     blacklist TEXT,
     notifyOnMqtt BOOLEAN DEFAULT TRUE,
+    mutedChannels TEXT,
+    mutedDMs TEXT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
