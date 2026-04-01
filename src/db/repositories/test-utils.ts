@@ -199,7 +199,7 @@ export async function clearTable(backend: TestBackend, tableName: string): Promi
       await backend.exec(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
       break;
     case 'mysql':
-      await backend.exec(`TRUNCATE TABLE ${tableName}`);
+      await backend.exec(`SET FOREIGN_KEY_CHECKS = 0; TRUNCATE TABLE ${tableName}; SET FOREIGN_KEY_CHECKS = 1`);
       break;
   }
 }
