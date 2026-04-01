@@ -13,7 +13,7 @@ interface TelemetryGaugeProps {
 }
 
 const SWEEP_DEG = 200;
-const START_DEG = 270 - SWEEP_DEG / 2; // 170 degrees from positive x-axis (clockwise from top)
+const START_DEG = 360 - SWEEP_DEG / 2; // 260 degrees — arc centered at top (12 o'clock), gap opens at bottom
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
