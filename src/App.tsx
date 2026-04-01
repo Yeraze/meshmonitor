@@ -63,7 +63,7 @@ import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import Sidebar from './components/Sidebar';
 import { SearchModal } from './components/SearchModal/SearchModal.js';
-import { SettingsProvider, useSettings } from './contexts/SettingsContext';
+import { SettingsProvider, useSettings, useNotificationMuteSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
@@ -316,6 +316,8 @@ function App() {
     setSolarMonitoringDeclination,
     overlayColors: schemeColors,
   } = useSettings();
+
+  const { isChannelMuted, isDMMuted } = useNotificationMuteSettings();
 
   // Map context
   const {
@@ -2382,7 +2384,15 @@ function App() {
 
             if (isFromOther && isTextMessage) {
               logger.debug('New message arrived from other user:', currentNewestMessage.fromNodeId);
-              playNotificationSound();
+              const isDM = currentNewestMessage.channel === -1;
+              const muted = isDM
+                ? isDMMuted(currentNewestMessage.fromNodeId)
+                : isChannelMuted(currentNewestMessage.channel);
+              if (!muted) {
+                playNotificationSound();
+              } else {
+                logger.debug('🔇 Notification sound suppressed (muted):', isDM ? `DM from ${currentNewestMessage.fromNodeId}` : `channel ${currentNewestMessage.channel}`);
+              }
             }
           }
 

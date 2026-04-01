@@ -12,7 +12,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import {
   formatDateTime,
   formatRelativeTime,
@@ -272,6 +272,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   onFocusMessageHandled,
 }) => {
   const { t } = useTranslation();
+  const { isDMMuted, muteDM, unmuteDM } = useNotificationMuteSettings();
 
   // Get settings and context for effective hops calculation
   const { nodeHopsCalculation } = useSettings();
@@ -818,6 +819,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           {node.user?.id && nodesWithPKC.has(node.user.id) && (
                             <span className="node-indicator-icon" title={t('nodes.has_pkc')}>🔐</span>
                           )}
+                          {node.user?.id && isDMMuted(node.user.id) && (
+                            <span className="node-indicator-icon" title={t('notifications.muted', 'Notifications muted')}>🔇</span>
+                          )}
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
                             <span
                               className="security-warning-icon"
@@ -1021,6 +1025,49 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     <>
                       <div className="actions-menu-overlay" onClick={() => setShowActionsMenu(false)} />
                       <div className="actions-menu-dropdown">
+                        {/* Notification Mute Actions */}
+                        {isDMMuted(selectedDMNode) ? (
+                          <button
+                            className="actions-menu-item"
+                            onClick={async () => {
+                              await unmuteDM(selectedDMNode);
+                              setShowActionsMenu(false);
+                            }}
+                          >
+                            🔔 {t('notifications.unmute', 'Unmute notifications')}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              className="actions-menu-item"
+                              onClick={async () => {
+                                await muteDM(selectedDMNode, null);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              🔇 {t('notifications.mute_indefinite', 'Mute notifications indefinitely')}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={async () => {
+                                await muteDM(selectedDMNode, Date.now() + 60 * 60 * 1000);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={async () => {
+                                await muteDM(selectedDMNode, Date.now() + 7 * 24 * 60 * 60 * 1000);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                            </button>
+                          </>
+                        )}
+                        <div className="actions-menu-divider" />
                         {/* Traceroute Actions */}
                         {hasPermission('traceroute', 'write') && (
                           <>

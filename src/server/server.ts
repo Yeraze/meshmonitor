@@ -7874,6 +7874,8 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         whitelist: ['Hi', 'Help'],
         blacklist: ['Test', 'Copy'],
         appriseUrls: [],
+        mutedChannels: [],
+        mutedDMs: [],
       });
     }
   } catch (error: any) {
@@ -7906,6 +7908,8 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       whitelist,
       blacklist,
       appriseUrls,
+      mutedChannels,
+      mutedDMs,
     } = req.body;
 
     // Validate input
@@ -7945,6 +7949,30 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'appriseUrls must be an array of strings' });
     }
 
+    // Validate mutedChannels
+    if (mutedChannels !== undefined && !Array.isArray(mutedChannels)) {
+      return res.status(400).json({ error: 'mutedChannels must be an array' });
+    }
+    if (mutedChannels && mutedChannels.some((r: any) =>
+      typeof r !== 'object' || r === null ||
+      typeof r.channelId !== 'number' ||
+      (r.muteUntil !== null && typeof r.muteUntil !== 'number')
+    )) {
+      return res.status(400).json({ error: 'mutedChannels entries must have channelId (number) and muteUntil (number|null)' });
+    }
+
+    // Validate mutedDMs
+    if (mutedDMs !== undefined && !Array.isArray(mutedDMs)) {
+      return res.status(400).json({ error: 'mutedDMs must be an array' });
+    }
+    if (mutedDMs && mutedDMs.some((r: any) =>
+      typeof r !== 'object' || r === null ||
+      typeof r.nodeUuid !== 'string' ||
+      (r.muteUntil !== null && typeof r.muteUntil !== 'number')
+    )) {
+      return res.status(400).json({ error: 'mutedDMs entries must have nodeUuid (string) and muteUntil (number|null)' });
+    }
+
     const prefs = {
       enableWebPush,
       enableApprise,
@@ -7961,6 +7989,8 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       whitelist,
       blacklist,
       appriseUrls: appriseUrls ?? [],
+      mutedChannels: mutedChannels ?? [],
+      mutedDMs: mutedDMs ?? [],
     };
 
     const success = await saveUserNotificationPreferencesAsync(userId, prefs);

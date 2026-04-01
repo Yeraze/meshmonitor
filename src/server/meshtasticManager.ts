@@ -229,7 +229,7 @@ type TextMessage = {
 interface AutoResponderTrigger {
   trigger: string | string[];
   response: string;
-  responseType?: 'text' | 'http' | 'script';
+  responseType?: 'text' | 'http' | 'script' | 'traceroute';
   channel?: number | 'dm' | 'none';
   verifyResponse?: boolean;
   multiline?: boolean;
@@ -299,6 +299,13 @@ class MeshtasticManager {
   private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
   private geofenceCooldowns: Map<string, number> = new Map(); // "triggerId:nodeNum" -> firedAt timestamp
   private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
+  private pendingAutoresponderTraceroutes: Map<number, {
+    replyToNodeNum: number;
+    isDM: boolean;
+    replyChannel: number;
+    packetId?: number;
+    timeoutHandle: NodeJS.Timeout;
+  }> = new Map(); // Track user-initiated traceroutes from the autoresponder
   private pendingTracerouteTimestamps: Map<number, number> = new Map(); // Track when traceroutes were initiated for timeout detection
   private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
@@ -5270,6 +5277,39 @@ class MeshtasticManager {
         logger.debug(`🗺️ Auto-traceroute to ${fromNodeId} marked as successful`);
       }
 
+      // If this was an autoresponder-initiated traceroute, send a compact reply
+      if (this.pendingAutoresponderTraceroutes.has(fromNum)) {
+        const pending = this.pendingAutoresponderTraceroutes.get(fromNum)!;
+        clearTimeout(pending.timeoutHandle);
+        this.pendingAutoresponderTraceroutes.delete(fromNum);
+
+        // Build compact route string using short names (must fit within 200 bytes)
+        const fromNode = await databaseService.nodes.getNode(fromNum);
+        const fromShort = fromNode?.shortName || fromNodeId.slice(-4);
+        const localShort = this.localNodeInfo?.shortName || 'ME';
+
+        let compactPath = localShort;
+        for (const hopNum of route) {
+          const hopNode = await databaseService.nodes.getNode(hopNum);
+          compactPath += '>' + (hopNode?.shortName || `!${hopNum.toString(16).slice(-4)}`);
+        }
+        compactPath += '>' + fromShort;
+
+        const hopCount = route.length + 1;
+        const compactMsg = `Trace to ${fromShort}: ${compactPath} (${hopCount} hop${hopCount !== 1 ? 's' : ''})`;
+
+        messageQueueService.enqueue(
+          this.truncateMessageForMeshtastic(compactMsg, 200),
+          pending.isDM ? pending.replyToNodeNum : 0,
+          undefined,
+          () => { logger.info(`✅ Autoresponder traceroute result reply delivered`); },
+          (reason: string) => { logger.warn(`❌ Autoresponder traceroute result reply failed: ${reason}`); },
+          pending.isDM ? undefined : pending.replyChannel,
+          1
+        );
+        logger.info(`🔍 Autoresponder traceroute result for ${fromNodeId} replied to !${pending.replyToNodeNum.toString(16).padStart(8, '0')}`);
+      }
+
       // Send notification for successful traceroute
       notificationService.notifyTraceroute(fromNodeId, toNodeId, routeText)
         .catch(err => logger.error('Failed to send traceroute notification:', err));
@@ -8083,6 +8123,119 @@ class MeshtasticManager {
               if (error.stdout) logger.warn(`🔧 Script stdout before failure: ${error.stdout.substring(0, 200)}`);
               return;
             }
+
+          } else if (trigger.responseType === 'traceroute') {
+            // Traceroute trigger - resolve target node and send traceroute
+            let resolvedTarget = trigger.response;
+            Object.entries(extractedParams).forEach(([key, value]) => {
+              resolvedTarget = resolvedTarget.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+            });
+            resolvedTarget = resolvedTarget.trim();
+
+            // Look up target node by long name, short name, or node ID
+            const allNodes = await databaseService.nodes.getAllNodes();
+            const searchLower = resolvedTarget.toLowerCase();
+            const targetNode = allNodes.find(n => {
+              const nid = n.nodeId?.toLowerCase() || '';
+              return (n.longName?.toLowerCase() === searchLower) ||
+                     (n.shortName?.toLowerCase() === searchLower) ||
+                     (nid === searchLower) ||
+                     (nid === `!${searchLower}`) ||
+                     (n.nodeNum.toString() === resolvedTarget);
+            });
+
+            if (!targetNode) {
+              const errMsg = `Unknown node: ${resolvedTarget.substring(0, 20)}`;
+              messageQueueService.enqueue(
+                this.truncateMessageForMeshtastic(errMsg, 200),
+                isDirectMessage ? message.fromNodeNum : 0,
+                packetId,
+                () => { logger.info('✅ Traceroute unknown-node reply delivered'); },
+                (reason: string) => { logger.warn(`❌ Traceroute unknown-node reply failed: ${reason}`); },
+                isDirectMessage ? undefined : message.channel as number,
+                1
+              );
+              return;
+            }
+
+            const targetNodeNum = targetNode.nodeNum;
+            const targetName = targetNode.longName || targetNode.nodeId || targetNode.nodeNum.toString();
+
+            // Deduplicate: if a traceroute to this node is already pending, tell the user
+            if (this.pendingAutoresponderTraceroutes.has(targetNodeNum)) {
+              const dupMsg = `Traceroute to ${targetName.substring(0, 15)} already queued`;
+              messageQueueService.enqueue(
+                this.truncateMessageForMeshtastic(dupMsg, 200),
+                isDirectMessage ? message.fromNodeNum : 0,
+                packetId,
+                () => {},
+                () => {},
+                isDirectMessage ? undefined : message.channel as number,
+                1
+              );
+              return;
+            }
+
+            // Send immediate ACK to the requesting node
+            const ackMsg = `Tracerouting to ${targetName.substring(0, 15)}...`;
+            messageQueueService.enqueue(
+              this.truncateMessageForMeshtastic(ackMsg, 200),
+              isDirectMessage ? message.fromNodeNum : 0,
+              packetId,
+              () => { logger.info(`✅ Traceroute ACK delivered to ${nodeId}`); },
+              (reason: string) => { logger.warn(`❌ Traceroute ACK failed to ${nodeId}: ${reason}`); },
+              isDirectMessage ? undefined : message.channel as number,
+              1
+            );
+
+            // Set up 75-second timeout to reply if no response arrives
+            const TRACEROUTE_TIMEOUT_MS = 75000;
+            const timeoutHandle = setTimeout(() => {
+              const pending = this.pendingAutoresponderTraceroutes.get(targetNodeNum);
+              if (!pending) return;
+              this.pendingAutoresponderTraceroutes.delete(targetNodeNum);
+              const timeoutMsg = `${targetName.substring(0, 15)} did not respond within timeout`;
+              messageQueueService.enqueue(
+                this.truncateMessageForMeshtastic(timeoutMsg, 200),
+                pending.isDM ? pending.replyToNodeNum : 0,
+                undefined,
+                () => { logger.info('✅ Traceroute timeout reply delivered'); },
+                (reason: string) => { logger.warn(`❌ Traceroute timeout reply failed: ${reason}`); },
+                pending.isDM ? undefined : pending.replyChannel,
+                1
+              );
+            }, TRACEROUTE_TIMEOUT_MS);
+
+            // Register the pending traceroute so the result handler can reply
+            this.pendingAutoresponderTraceroutes.set(targetNodeNum, {
+              replyToNodeNum: message.fromNodeNum,
+              isDM: isDirectMessage,
+              replyChannel: isDirectMessage ? -1 : (message.channel as number),
+              packetId,
+              timeoutHandle,
+            });
+
+            // Send the actual traceroute packet
+            try {
+              const channel = targetNode.channel ?? 0;
+              await this.sendTraceroute(targetNodeNum, channel);
+              logger.info(`🔍 Auto-responder traceroute to ${targetName} (${targetNode.nodeId}) initiated by ${nodeId}`);
+            } catch (error: any) {
+              logger.error(`❌ Auto-responder traceroute to ${targetName} failed: ${error.message}`);
+              clearTimeout(timeoutHandle);
+              this.pendingAutoresponderTraceroutes.delete(targetNodeNum);
+              const errMsg = `Failed to traceroute: ${error.message?.substring(0, 30)}`;
+              messageQueueService.enqueue(
+                this.truncateMessageForMeshtastic(errMsg, 200),
+                isDirectMessage ? message.fromNodeNum : 0,
+                undefined,
+                () => {},
+                () => {},
+                isDirectMessage ? undefined : message.channel as number,
+                1
+              );
+            }
+            return;
 
           } else {
             // Text trigger - use static response

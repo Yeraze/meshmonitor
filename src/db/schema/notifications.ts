@@ -54,6 +54,8 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   whitelist: text('whitelist'),
   blacklist: text('blacklist'),
   notifyOnMqtt: integer('notify_on_mqtt', { mode: 'boolean' }).default(true),
+  mutedChannels: text('muted_channels'),
+  mutedDMs: text('muted_dms'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
@@ -77,6 +79,8 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   whitelist: pgText('whitelist'),
   blacklist: pgText('blacklist'),
   notifyOnMqtt: pgBoolean('notifyOnMqtt').default(true),
+  mutedChannels: pgText('mutedChannels'),
+  mutedDMs: pgText('mutedDMs'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });
@@ -129,6 +133,8 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   whitelist: myText('whitelist'),
   blacklist: myText('blacklist'),
   notifyOnMqtt: myBoolean('notifyOnMqtt').default(true),
+  mutedChannels: myText('mutedChannels'),
+  mutedDMs: myText('mutedDMs'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
 });
