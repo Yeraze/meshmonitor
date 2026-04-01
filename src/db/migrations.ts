@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 17 migrations in sequential order for use by the migration runner.
+ * Registers all 18 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -29,6 +29,7 @@ import { migration as messagesDecryptedByMigration, runMigration014Postgres, run
 import { migration as notificationPrefsUniqueMigration, runMigration015Postgres, runMigration015Mysql } from '../server/migrations/015_add_notification_prefs_unique.js';
 import { migration as renameSystemBackupColumnsMigration, runMigration016Postgres, runMigration016Mysql } from '../server/migrations/016_rename_system_backup_columns.js';
 import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
+import { migration as addChannelToTraceroutesMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_channel_to_traceroutes.js';
 
 // ============================================================================
 // Registry
@@ -231,4 +232,18 @@ registry.register({
   sqlite: (db) => apiTokensNameMigration.up(db),
   postgres: (client) => runMigration017Postgres(client),
   mysql: (pool) => runMigration017Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 018: Add channel column to traceroutes table
+// Enables private-channel masking for traceroute data (MM-47).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 18,
+  name: 'add_channel_to_traceroutes',
+  settingsKey: 'migration_018_add_channel_to_traceroutes',
+  sqlite: (db) => addChannelToTraceroutesMigration.up(db),
+  postgres: (client) => runMigration018Postgres(client),
+  mysql: (pool) => runMigration018Mysql(pool),
 });

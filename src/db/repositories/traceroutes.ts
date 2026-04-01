@@ -32,6 +32,8 @@ export class TraceroutesRepository extends BaseRepository {
       routeBack: tracerouteData.routeBack,
       snrTowards: tracerouteData.snrTowards,
       snrBack: tracerouteData.snrBack,
+      routePositions: tracerouteData.routePositions ?? null,
+      channel: tracerouteData.channel ?? null,
       timestamp: tracerouteData.timestamp,
       createdAt: tracerouteData.createdAt,
     };

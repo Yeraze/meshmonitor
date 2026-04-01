@@ -172,6 +172,8 @@ export interface DbTraceroute {
   routeBack: string | null;
   snrTowards: string | null;
   snrBack: string | null;
+  routePositions?: string | null;
+  channel?: number | null;
   timestamp: number;
   createdAt: number;
 }
