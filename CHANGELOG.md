@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- **Telemetry Gauge & Numeric Display Modes**: Each telemetry widget now supports three display modes — chart (default), radial gauge, and numeric label. Mode and range preferences persist per-widget via `localStorage`. Gauge min/max ranges are editable inline. Available in both the Telemetry tab and the Dashboard.
+
 - **Multi-Channel AutoAnnounce & AutoResponder** ([#2078](https://github.com/Yeraze/meshmonitor/pull/2078)): Select multiple channels for automation targets
   - **AutoAnnounce**: Broadcast announcements to multiple channels simultaneously via checkbox selection (replaces single-channel dropdown)
   - **AutoResponder**: Triggers can now match messages on any combination of channels and DMs (replaces single-channel-per-trigger limitation)
