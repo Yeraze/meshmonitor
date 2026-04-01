@@ -10,7 +10,7 @@ export default defineConfig({
     }
   },
   title: "MeshMonitor",
-  description: "Web application for monitoring Meshtastic nodes over IP",
+  description: "Self-hosted web dashboard for Meshtastic networks. Real-time maps, messaging, telemetry, automation, and alerts. Runs on Docker, desktop, or Kubernetes.",
   base: '/',  // Custom domain: meshmonitor.org
 
   themeConfig: {
