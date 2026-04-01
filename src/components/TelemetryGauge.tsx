@@ -10,6 +10,7 @@ interface TelemetryGaugeProps {
   timestamp: number;
   nodeId: string;
   onRangeChange: (range: WidgetRange) => void;
+  canEditRange?: boolean;
 }
 
 const SWEEP_DEG = 200;
@@ -38,6 +39,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
   color,
   timestamp,
   onRangeChange,
+  canEditRange = false,
 }) => {
   const cx = 100;
   const cy = 90;
@@ -108,23 +110,25 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
           {timeStr}
         </text>
       </svg>
-      <div className="gauge-range-row">
-        <input
-          type="number"
-          className="gauge-range-input"
-          value={min}
-          onChange={handleMinChange}
-          aria-label="Gauge minimum"
-        />
-        <span className="gauge-range-dash">───</span>
-        <input
-          type="number"
-          className="gauge-range-input"
-          value={max}
-          onChange={handleMaxChange}
-          aria-label="Gauge maximum"
-        />
-      </div>
+      {canEditRange && (
+        <div className="gauge-range-row">
+          <input
+            type="number"
+            className="gauge-range-input"
+            value={min}
+            onChange={handleMinChange}
+            aria-label="Gauge minimum"
+          />
+          <span className="gauge-range-dash">───</span>
+          <input
+            type="number"
+            className="gauge-range-input"
+            value={max}
+            onChange={handleMaxChange}
+            aria-label="Gauge maximum"
+          />
+        </div>
+      )}
     </div>
   );
 };

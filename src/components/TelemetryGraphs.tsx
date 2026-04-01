@@ -10,6 +10,7 @@ import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/us
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
+import { useAuth } from '../contexts/AuthContext';
 import { ChartData } from '../types/ui';
 import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
@@ -112,6 +113,7 @@ interface TelemetryGraphWidgetProps {
   prepareChartData: (data: TelemetryData[], isTemperature?: boolean, globalMinTime?: number) => ChartData[];
   timeFormat: TimeFormat;
   t: (key: string, opts?: Record<string, unknown>) => string;
+  canEditSettings: boolean;
 }
 
 const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
@@ -139,6 +141,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   prepareChartData,
   timeFormat,
   t,
+  canEditSettings,
 }) => {
   const [mode, setMode] = useWidgetMode(nodeId, type);
   const [range, setRange] = useWidgetRange(nodeId, type);
@@ -182,32 +185,34 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
           {label} {unit && `(${unit})`}
         </h4>
         <div className="graph-actions">
-          <div className="mode-toggle-group" role="group" aria-label="Display mode">
-            <button
-              className={`mode-toggle-btn ${mode === 'chart' ? 'active' : ''}`}
-              onClick={() => setMode('chart')}
-              title="Chart"
-              aria-label="Chart mode"
-            >
-              ~
-            </button>
-            <button
-              className={`mode-toggle-btn ${mode === 'gauge' ? 'active' : ''}`}
-              onClick={() => setMode('gauge')}
-              title="Gauge"
-              aria-label="Gauge mode"
-            >
-              ⊙
-            </button>
-            <button
-              className={`mode-toggle-btn ${mode === 'numeric' ? 'active' : ''}`}
-              onClick={() => setMode('numeric')}
-              title="Numeric"
-              aria-label="Numeric mode"
-            >
-              #
-            </button>
-          </div>
+          {canEditSettings && (
+            <div className="mode-toggle-group" role="group" aria-label="Display mode">
+              <button
+                className={`mode-toggle-btn ${mode === 'chart' ? 'active' : ''}`}
+                onClick={() => setMode('chart')}
+                title="Chart"
+                aria-label="Chart mode"
+              >
+                ~
+              </button>
+              <button
+                className={`mode-toggle-btn ${mode === 'gauge' ? 'active' : ''}`}
+                onClick={() => setMode('gauge')}
+                title="Gauge"
+                aria-label="Gauge mode"
+              >
+                ⊙
+              </button>
+              <button
+                className={`mode-toggle-btn ${mode === 'numeric' ? 'active' : ''}`}
+                onClick={() => setMode('numeric')}
+                title="Numeric"
+                aria-label="Numeric mode"
+              >
+                #
+              </button>
+            </div>
+          )}
           {solarMonitoringEnabled && (
             <button
               className={`solar-toggle-btn ${getSolarVisibility(type) ? 'active' : ''}`}
@@ -260,6 +265,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
           timestamp={latest.timestamp}
           nodeId={nodeId}
           onRangeChange={setRange}
+          canEditRange={canEditSettings}
         />
       ) : mode === 'numeric' && latest ? (
         <TelemetryNumericLabel
@@ -376,6 +382,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
     const { solarMonitoringEnabled, timeFormat } = useSettings();
+    const { hasPermission } = useAuth();
+    const canEditSettings = hasPermission('settings', 'write');
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{
       x: number;
@@ -939,6 +947,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
               prepareChartData={prepareChartData}
               timeFormat={timeFormat}
               t={t as (key: string, opts?: Record<string, unknown>) => string}
+              canEditSettings={canEditSettings}
             />
           ))}
         </div>
