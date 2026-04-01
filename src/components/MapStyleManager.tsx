@@ -10,6 +10,9 @@ const MapStyleManager: React.FC = () => {
   const [fetchingUrl, setFetchingUrl] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importName, setImportName] = useState('');
+  const [tileJsonUrl, setTileJsonUrl] = useState('');
+  const [tileJsonName, setTileJsonName] = useState('');
+  const [generatingStyle, setGeneratingStyle] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csrfFetch = useCsrfFetch();
 
@@ -80,6 +83,39 @@ const MapStyleManager: React.FC = () => {
       alert(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setFetchingUrl(false);
+    }
+  };
+
+  const handleGenerateFromTileserver = async () => {
+    if (!tileJsonUrl.trim()) return;
+    setGeneratingStyle(true);
+    try {
+      const baseUrl = await api.getBaseUrl();
+      const response = await csrfFetch(`${baseUrl}/api/map-styles/generate-from-tileserver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tileJsonUrl: tileJsonUrl.trim(), name: tileJsonName.trim() || undefined }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Generation failed' }));
+        throw new Error(err.error ?? 'Generation failed');
+      }
+      const { style, filename } = await response.json() as { style: object; filename: string };
+      // Trigger browser download
+      const blob = new Blob([JSON.stringify(style, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setTileJsonUrl('');
+      setTileJsonName('');
+    } catch (err) {
+      console.error('Failed to generate map style from tileserver:', err);
+      alert(`Generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setGeneratingStyle(false);
     }
   };
 
@@ -169,6 +205,38 @@ const MapStyleManager: React.FC = () => {
             >
               {fetchingUrl ? 'Fetching...' : 'Fetch'}
             </button>
+          </div>
+
+          {/* Generate from tileserver */}
+          <div style={{ marginTop: '4px', borderTop: '1px solid var(--border-color, #eee)', paddingTop: '8px' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--text-muted, #888)', marginBottom: '4px' }}>
+              Generate a default style from your tileserver's TileJSON endpoint (e.g.{' '}
+              <code style={{ fontSize: '0.9em' }}>http://tileserver:8080/data/v3.json</code>).
+              Edit the downloaded file and upload it above.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="TileJSON URL (e.g. http://tileserver:8080/data/v3.json)"
+                value={tileJsonUrl}
+                onChange={(e) => setTileJsonUrl(e.target.value)}
+                style={{ flex: 2, minWidth: '200px', padding: '4px 8px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
+              />
+              <input
+                type="text"
+                placeholder="Name (optional)"
+                value={tileJsonName}
+                onChange={(e) => setTileJsonName(e.target.value)}
+                style={{ flex: 1, minWidth: '100px', padding: '4px 8px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
+              />
+              <button
+                className="button"
+                onClick={handleGenerateFromTileserver}
+                disabled={generatingStyle || !tileJsonUrl.trim()}
+              >
+                {generatingStyle ? 'Generating...' : 'Download Default Style'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
