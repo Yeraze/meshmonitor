@@ -34,6 +34,7 @@ import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
 import AutoTimeSyncSection from './components/AutoTimeSyncSection';
 import AutoPingSection from './components/AutoPingSection';
 import AutoFavoriteSection from './components/AutoFavoriteSection';
+import AutoHeapManagementSection from './components/AutoHeapManagementSection';
 import IgnoredNodesSection from './components/IgnoredNodesSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
@@ -4907,6 +4908,9 @@ function App() {
                 <AutoPingSection
                   baseUrl={baseUrl}
                 />
+              </div>
+              <div id="auto-heap-management">
+                <AutoHeapManagementSection baseUrl={baseUrl} />
               </div>
               <div id="remote-admin-scanner">
                 <RemoteAdminScannerSection

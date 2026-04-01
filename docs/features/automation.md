@@ -1883,6 +1883,16 @@ The Ignored Nodes panel displays:
 - [Settings - Ignored Nodes Filter](/features/settings#ignored-nodes-filter) - UI filtering for ignored nodes in the Node List
 - [Admin Commands](/features/admin-commands) - Managing nodes through admin commands
 
+## Auto Heap Management
+
+Automatically protects low-memory Meshtastic nodes from running out of heap by purging stale nodes and rebooting the device when free memory drops below a configurable threshold.
+
+When enabled, MeshMonitor watches the `heapFreeBytes` value in LocalStats telemetry. If free heap falls below your configured threshold, it removes the 10 least-recently-heard nodes from the device database and triggers a reboot (~10 seconds disconnect, then automatic reconnect). A 30-minute cooldown prevents repeated triggers.
+
+Most useful on nodes running MQTT, networking, and telemetry with 100+ nodes in the database — especially on LoRa32, T-Beam, and RAK4631 hardware.
+
+See the full [Auto Heap Management](/features/auto-heap-management) documentation for configuration details, threshold recommendations, target hardware, and FAQ.
+
 ## Configuration Storage
 
 All automation settings are stored on the MeshMonitor server and persist across container restarts and browser sessions. Changes made by any user with appropriate permissions will affect all users accessing the system.
