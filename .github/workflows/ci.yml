@@ -77,11 +77,11 @@ jobs:
         run: npm run typecheck
 
       - name: Run tests
-        run: npm run test:run -- --exclude="**/server.test.ts"
+        run: npm run test:run
 
       - name: Generate coverage report
         if: matrix.node-version == '24.x'  # Only generate coverage on one version
-        run: npm run test:coverage -- --exclude="**/server.test.ts"
+        run: npm run test:coverage
 
       - name: Upload coverage to Codecov
         if: matrix.node-version == '24.x'
