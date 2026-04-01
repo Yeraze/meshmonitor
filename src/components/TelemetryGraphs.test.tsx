@@ -44,6 +44,15 @@ const renderWithProviders = (component: React.ReactElement) => {
   return render(component, { wrapper: TestWrapper });
 };
 
+// Mock AuthContext so tests don't require AuthProvider
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    hasPermission: () => true,
+    isAdmin: true,
+    authenticated: true,
+  }),
+}));
+
 // Mock Recharts components to avoid rendering issues in tests
 vi.mock('recharts', () => ({
   ComposedChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
