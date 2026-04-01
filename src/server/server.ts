@@ -496,6 +496,22 @@ setTimeout(async () => {
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
 
+    // Auto-connect MeshCore if enabled via environment variables
+    if (process.env.MESHCORE_ENABLED === 'true') {
+      const meshcoreConfig = meshcoreManager.getEnvConfig();
+      if (meshcoreConfig) {
+        logger.info('[MeshCore] Auto-connecting on startup...');
+        const connected = await meshcoreManager.connect();
+        if (connected) {
+          logger.info('[MeshCore] Auto-connected successfully on startup');
+        } else {
+          logger.warn('[MeshCore] Auto-connect on startup failed — use the MeshCore tab to retry');
+        }
+      } else {
+        logger.warn('[MeshCore] MESHCORE_ENABLED=true but no serial port or TCP host configured');
+      }
+    }
+
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
     logger.debug('Backup scheduler initialized');
@@ -733,6 +749,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import meshcoreManager from './meshcoreManager.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
