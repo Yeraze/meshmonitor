@@ -6,6 +6,18 @@ export interface NotificationFilterContext {
   channelId: number;
   isDirectMessage: boolean;
   viaMqtt?: boolean;
+  /** For DMs: the UUID of the remote node. Used for per-DM mute checks. */
+  nodeUuid?: string;
+}
+
+export interface MutedChannel {
+  channelId: number;
+  muteUntil: number | null;
+}
+
+export interface MutedDM {
+  nodeUuid: string;
+  muteUntil: number | null;
 }
 
 export interface NotificationPreferences {
@@ -24,6 +36,17 @@ export interface NotificationPreferences {
   whitelist: string[];
   blacklist: string[];
   appriseUrls: string[];
+  mutedChannels: MutedChannel[];
+  mutedDMs: MutedDM[];
+}
+
+/**
+ * Check whether a mute rule is currently active.
+ * A rule with muteUntil = null is active indefinitely.
+ * A rule with muteUntil = timestamp is active until that time has passed.
+ */
+function isMuteActive(muteUntil: number | null): boolean {
+  return muteUntil === null || muteUntil > Date.now();
 }
 
 /**
@@ -90,7 +113,9 @@ export async function getUserNotificationPreferencesAsync(userId: number): Promi
         monitoredNodes: [], // Default to empty array
         whitelist: oldPrefs.whitelist || [],
         blacklist: oldPrefs.blacklist || [],
-        appriseUrls: [] // Default to empty array
+        appriseUrls: [], // Default to empty array
+        mutedChannels: [],
+        mutedDMs: [],
       };
     }
 
@@ -166,7 +191,7 @@ export async function shouldFilterNotificationAsync(
 
   const messageTextLower = filterContext.messageText.toLowerCase();
 
-  // WHITELIST (highest priority)
+  // WHITELIST (highest priority — overrides mutes)
   for (const word of prefs.whitelist) {
     if (word && messageTextLower.includes(word.toLowerCase())) {
       logger.debug(`✅ Whitelist match for user ${userId}: "${word}"`);
@@ -174,7 +199,22 @@ export async function shouldFilterNotificationAsync(
     }
   }
 
-  // BLACKLIST (second priority)
+  // MUTE CHECK (second priority — per-channel and per-DM mutes)
+  if (filterContext.isDirectMessage && filterContext.nodeUuid) {
+    const dmRule = (prefs.mutedDMs ?? []).find(r => r.nodeUuid === filterContext.nodeUuid);
+    if (dmRule && isMuteActive(dmRule.muteUntil)) {
+      logger.debug(`🔇 DM from ${filterContext.nodeUuid} muted for user ${userId}`);
+      return true; // Filter
+    }
+  } else if (!filterContext.isDirectMessage) {
+    const channelRule = (prefs.mutedChannels ?? []).find(r => r.channelId === filterContext.channelId);
+    if (channelRule && isMuteActive(channelRule.muteUntil)) {
+      logger.debug(`🔇 Channel ${filterContext.channelId} muted for user ${userId}`);
+      return true; // Filter
+    }
+  }
+
+  // BLACKLIST (third priority)
   for (const word of prefs.blacklist) {
     if (word && messageTextLower.includes(word.toLowerCase())) {
       logger.debug(`🚫 Blacklist match for user ${userId}: "${word}"`);
