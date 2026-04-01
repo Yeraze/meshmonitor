@@ -1949,7 +1949,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 lon={defaultMapCenterLon}
                 zoom={defaultMapCenterZoom}
               />
-              <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}`} />
+              <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend
                 positionHistory={positionHistoryLegendData}
