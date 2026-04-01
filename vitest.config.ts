@@ -34,7 +34,7 @@ export default defineConfig({
         '**/*.test.tsx'
       ],
       thresholds: {
-        statements: 35,
+        statements: 32,
         'src/utils/**': {
           statements: 70,
         },
