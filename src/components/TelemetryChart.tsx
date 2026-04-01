@@ -24,6 +24,11 @@ import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
 import type { TelemetryNodeInfo } from '../types/device';
 import type { ChartData } from '../types/ui';
+import { useWidgetMode } from '../hooks/useWidgetMode';
+import { useWidgetRange } from '../hooks/useWidgetRange';
+import { getLatestValue } from '../utils/telemetry';
+import TelemetryGauge from './TelemetryGauge';
+import TelemetryNumericLabel from './TelemetryNumericLabel';
 
 interface FavoriteChart {
   nodeId: string;
@@ -290,6 +295,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const color = getColor(favorite.telemetryType);
     const label = isPaxcounterCombined ? 'Paxcounter' : getTranslatedLabel(favorite.telemetryType);
 
+    // Widget mode and range (per-widget persistence in localStorage)
+    const [mode, setMode] = useWidgetMode(favorite.nodeId, favorite.telemetryType);
+    const [range, setRange] = useWidgetRange(favorite.nodeId, favorite.telemetryType);
+
     // Loading state
     if (isLoading) {
       return (
@@ -391,6 +400,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       chartData.sort((a, b) => a.timestamp - b.timestamp);
     }
 
+    const latest = getLatestValue(telemetryData);
+
     return (
       <div ref={setNodeRef} style={style} className="dashboard-chart-container">
         <div className="dashboard-chart-header">
@@ -401,6 +412,32 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             {nodeName} - {label} {unit && `(${unit})`}
           </h3>
           <div className="dashboard-chart-actions">
+            <div className="mode-toggle-group" role="group" aria-label="Display mode">
+              <button
+                className={`mode-toggle-btn ${mode === 'chart' ? 'active' : ''}`}
+                onClick={() => setMode('chart')}
+                title="Chart"
+                aria-label="Chart mode"
+              >
+                ~
+              </button>
+              <button
+                className={`mode-toggle-btn ${mode === 'gauge' ? 'active' : ''}`}
+                onClick={() => setMode('gauge')}
+                title="Gauge"
+                aria-label="Gauge mode"
+              >
+                ⊙
+              </button>
+              <button
+                className={`mode-toggle-btn ${mode === 'numeric' ? 'active' : ''}`}
+                onClick={() => setMode('numeric')}
+                title="Numeric"
+                aria-label="Numeric mode"
+              >
+                #
+              </button>
+            </div>
             {solarMonitoringEnabled && (
               <button
                 className={`solar-toggle-btn ${showSolar ? 'active' : ''}`}
@@ -421,90 +458,110 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
           </div>
         </div>
 
-        <ResponsiveContainer width="100%" height={200}>
-          <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
-            <XAxis
-              dataKey="timestamp"
-              type="number"
-              domain={globalTimeRange || ['dataMin', 'dataMax']}
-              tick={{ fontSize: 12 }}
-              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
-            />
-            <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#1e1e2e',
-                border: '1px solid #45475a',
-                borderRadius: '4px',
-                color: '#cdd6f4',
-              }}
-              labelStyle={{ color: '#cdd6f4' }}
-              labelFormatter={value => {
-                const date = new Date(value);
-                return date.toLocaleString([], {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                });
-              }}
-            />
-            {showSolar && solarEstimates.size > 0 && (
-              <Area
-                yAxisId="right"
-                type="monotone"
-                dataKey="solarEstimate"
-                fill="#f9e2af"
-                fillOpacity={0.3}
-                stroke="#f9e2af"
-                strokeOpacity={0.5}
-                strokeWidth={1}
-                connectNulls={true}
-                isAnimationActive={false}
+        {mode === 'gauge' && latest ? (
+          <TelemetryGauge
+            value={latest.value}
+            min={range.min}
+            max={range.max}
+            unit={unit}
+            color={color}
+            timestamp={latest.timestamp}
+            nodeId={favorite.nodeId}
+            onRangeChange={setRange}
+          />
+        ) : mode === 'numeric' && latest ? (
+          <TelemetryNumericLabel
+            value={latest.value}
+            unit={unit}
+            color={color}
+            timestamp={latest.timestamp}
+          />
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
+              <XAxis
+                dataKey="timestamp"
+                type="number"
+                domain={globalTimeRange || ['dataMin', 'dataMax']}
+                tick={{ fontSize: 12 }}
+                tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
               />
-            )}
-            {isPaxcounterCombined ? (
-              <>
+              <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e1e2e',
+                  border: '1px solid #45475a',
+                  borderRadius: '4px',
+                  color: '#cdd6f4',
+                }}
+                labelStyle={{ color: '#cdd6f4' }}
+                labelFormatter={value => {
+                  const date = new Date(value);
+                  return date.toLocaleString([], {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  });
+                }}
+              />
+              {showSolar && solarEstimates.size > 0 && (
+                <Area
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="solarEstimate"
+                  fill="#f9e2af"
+                  fillOpacity={0.3}
+                  stroke="#f9e2af"
+                  strokeOpacity={0.5}
+                  strokeWidth={1}
+                  connectNulls={true}
+                  isAnimationActive={false}
+                />
+              )}
+              {isPaxcounterCombined ? (
+                <>
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="paxWifi"
+                    name="WiFi"
+                    stroke={getColor('paxcounterWifi')}
+                    strokeWidth={2}
+                    dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls={true}
+                  />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="paxBle"
+                    name="BLE"
+                    stroke={getColor('paxcounterBle')}
+                    strokeWidth={2}
+                    dot={{ fill: getColor('paxcounterBle'), r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls={true}
+                  />
+                </>
+              ) : (
                 <Line
                   yAxisId="left"
                   type="monotone"
-                  dataKey="paxWifi"
-                  name="WiFi"
-                  stroke={getColor('paxcounterWifi')}
+                  dataKey="value"
+                  stroke={color}
                   strokeWidth={2}
-                  dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
+                  dot={{ fill: color, r: 3 }}
                   activeDot={{ r: 5 }}
                   connectNulls={true}
                 />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="paxBle"
-                  name="BLE"
-                  stroke={getColor('paxcounterBle')}
-                  strokeWidth={2}
-                  dot={{ fill: getColor('paxcounterBle'), r: 3 }}
-                  activeDot={{ r: 5 }}
-                  connectNulls={true}
-                />
-              </>
-            ) : (
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="value"
-                stroke={color}
-                strokeWidth={2}
-                dot={{ fill: color, r: 3 }}
-                activeDot={{ r: 5 }}
-                connectNulls={true}
-              />
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
       </div>
     );
   }

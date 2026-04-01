@@ -32,7 +32,16 @@ export default defineConfig({
         '**/*.d.ts',
         '**/*.test.ts',
         '**/*.test.tsx'
-      ]
+      ],
+      thresholds: {
+        statements: 32,
+        'src/utils/**': {
+          statements: 70,
+        },
+        'src/server/**': {
+          statements: 25,
+        },
+      }
     }
   },
   resolve: {

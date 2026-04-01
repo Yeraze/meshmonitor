@@ -89,7 +89,7 @@ jobs:
       - name: Run unit tests
         run: |
           echo "Running test suite..."
-          npm run test:run -- --exclude="**/server.test.ts"
+          npm run test:run
 
       - name: Generate test summary
         if: always()
