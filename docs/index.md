@@ -3,8 +3,11 @@ layout: home
 
 hero:
   name: "MeshMonitor"
-  text: "Monitor Your Meshtastic Network"
-  tagline: "A powerful web application for monitoring Meshtastic nodes over IP with real-time updates, interactive maps, and comprehensive network analytics."
+  text: "Your mesh. Your data."
+  tagline: "Self-hosted Meshtastic monitoring with real-time maps, alerts, and full network awareness."
+  image:
+    src: /images/main.png
+    alt: MeshMonitor interactive map view
   actions:
     - theme: brand
       text: Get Started
@@ -15,11 +18,11 @@ hero:
 features:
   - icon: 🗺️
     title: Interactive Map View
-    details: Visualize your mesh network on an interactive map with real-time node positions, signal strength indicators, and network topology.
+    details: Visualize your mesh network on an interactive map with real-time node positions, signal strength indicators, and network topology. Import GeoJSON, KML, and KMZ overlays to layer zone maps or emergency boundaries. Enable a polar grid overlay for RF coverage visualization.
 
   - icon: 📊
     title: Comprehensive Analytics
-    details: Track message statistics, node health, signal quality (SNR), and network performance over time with detailed charts and graphs.
+    details: Track message statistics, node health, signal quality (SNR), and network performance over time with detailed charts and graphs. Switch between chart, gauge, and numeric display modes for telemetry widgets.
 
   - icon: 🔄
     title: Real-time Updates
@@ -27,7 +30,7 @@ features:
 
   - icon: 💬
     title: Message Management
-    details: View, send, and manage messages across your mesh network. Support for multiple channels and message history.
+    details: View, send, and manage messages across your mesh network. Support for multiple channels and message history. Drag and drop to reorder channels to match your workflow.
 
   - icon: 🔐
     title: Security Monitoring
@@ -37,17 +40,17 @@ features:
     title: Easy Deployment
     details: Deploy with Docker Compose or Kubernetes (Helm charts included). Simple configuration for both development and production environments.
 
+  - icon: 💻
+    title: Desktop Application
+    details: Run MeshMonitor as a native app on Windows or macOS — no server, no Docker, no dependencies. System tray integration keeps your network awareness one click away.
+
   - icon: 🌐
     title: Virtual Node Server
     details: Connect multiple Meshtastic mobile apps simultaneously through MeshMonitor's Virtual Node proxy. Message queuing, config caching, and connection stability for 3-5+ concurrent mobile clients.
 
-  - icon: 📱
-    title: Responsive Design
-    details: Works seamlessly on desktop, tablet, and mobile devices. Monitor your network from anywhere.
-
-  - icon: 🗺️
+  - icon: 🧩
     title: Custom Map Tile Servers
-    details: Configure custom map tile servers with support for both vector (.pbf) and raster (.png) tiles. Enable offline operation, custom styling, and privacy-focused mapping. Works with TileServer GL, nginx caching proxy, and standard XYZ tile servers for complete independence from external services.
+    details: Configure custom map tile servers with support for both vector (.pbf) and raster (.png) tiles. Enable offline operation, custom styling, and privacy-focused mapping. Works with TileServer GL, nginx caching proxy, and standard XYZ tile servers for complete independence from external services. Upload custom MapLibre style JSON for fully branded or offline-first map appearances.
 
   - icon: 🎨
     title: Customizable Themes
@@ -57,7 +60,7 @@ features:
     title: Push Notifications
     details: Receive real-time alerts for new messages on iOS, Android, and desktop - even when the app is closed. Zero configuration, works with HTTPS.
 
-  - icon: 🔧
+  - icon: ⚙️
     title: Flexible Configuration
     details: Configure reverse proxies, HTTPS, environment variables, and more. Adapt MeshMonitor to your infrastructure needs.
 
@@ -67,17 +70,9 @@ features:
 
   - icon: ⚡
     title: Automation & Triggers
-    details: Create powerful automations with Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Respond to keywords, schedule broadcasts, and trigger actions based on node locations.
+    details: Create powerful automations with Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Define geographic zones and trigger responses when nodes enter, exit, or remain inside — perfect for arrival notifications, asset tracking, and proximity alerts. Extend further with custom Python or Bash scripts.
 
-  - icon: 📍
-    title: Geofence Triggers
-    details: Define geographic zones on an interactive map and trigger automated responses when nodes enter, exit, or remain inside. Perfect for arrival notifications, asset tracking, and proximity alerts.
-
-  - icon: 📜
-    title: Custom Scripting
-    details: Extend MeshMonitor with custom Python or Bash scripts. Execute scripts on message events, geofence triggers, or scheduled intervals. Full access to message context and node information.
-
-  - icon: 🔧
+  - icon: 🖥️
     title: Remote Administration
     details: Change node connections on-the-fly without container restarts. Configure device settings, manage channels, and send admin commands directly from the web interface.
 ---
@@ -102,6 +97,7 @@ services:
       - meshmonitor-data:/data
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
+      - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
     restart: unless-stopped
 
 volumes:
@@ -158,15 +154,15 @@ Communicate across your mesh network with multi-channel messaging and real-time 
 
 ![Channel Messaging](/images/channels.png)
 
-### Telemetry Dashboard
-Monitor node telemetry with customizable widgets, charts, and historical data analysis.
+### Message History
+Browse and search the full history of messages across all your channels.
 
-![Telemetry Dashboard](/images/dashboard.png)
+![Message History](/images/messages.png)
 
-### Device Configuration
-Configure your Meshtastic device settings, channels, and radio parameters directly from the web UI.
+### User Management
+Manage user accounts, permissions, and access control for your MeshMonitor instance.
 
-![Device Configuration](/images/device-config.png)
+![User Management](/images/users.png)
 
 ## Community & Support
 
