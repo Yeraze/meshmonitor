@@ -8920,7 +8920,7 @@ class MeshtasticManager {
 
       // Wait 3 seconds then reboot the local node
       await new Promise(resolve => setTimeout(resolve, 3000));
-      await this.sendRebootCommand(this.localNodeInfo.nodeNum, 10);
+      await this.sendRebootCommand(this.localNodeInfo!.nodeNum, 10);
 
       this.lastHeapPurgeAt = Date.now();
     } catch (error) {
