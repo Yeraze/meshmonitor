@@ -503,23 +503,29 @@ export class NotificationsRepository extends BaseRepository {
         if (beforeTimestamp !== undefined) {
           result = await db.execute(sql`
             INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
-            SELECT id, ${effectiveUserId}, ${now} FROM messages
-            WHERE ((${this.col('fromNodeId')} = ${localNodeId} AND ${this.col('toNodeId')} = ${remoteNodeId})
-                OR (${this.col('fromNodeId')} = ${remoteNodeId} AND ${this.col('toNodeId')} = ${localNodeId}))
-              AND portnum = 1
-              AND channel = -1
-              AND timestamp <= ${beforeTimestamp}
-            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
+            SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
+            WHERE ((m.${this.col('fromNodeId')} = ${localNodeId} AND m.${this.col('toNodeId')} = ${remoteNodeId})
+                OR (m.${this.col('fromNodeId')} = ${remoteNodeId} AND m.${this.col('toNodeId')} = ${localNodeId}))
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND m.timestamp <= ${beforeTimestamp}
+              AND NOT EXISTS (
+                SELECT 1 FROM read_messages rm
+                WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
+              )
           `);
         } else {
           result = await db.execute(sql`
             INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
-            SELECT id, ${effectiveUserId}, ${now} FROM messages
-            WHERE ((${this.col('fromNodeId')} = ${localNodeId} AND ${this.col('toNodeId')} = ${remoteNodeId})
-                OR (${this.col('fromNodeId')} = ${remoteNodeId} AND ${this.col('toNodeId')} = ${localNodeId}))
-              AND portnum = 1
-              AND channel = -1
-            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
+            SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
+            WHERE ((m.${this.col('fromNodeId')} = ${localNodeId} AND m.${this.col('toNodeId')} = ${remoteNodeId})
+                OR (m.${this.col('fromNodeId')} = ${remoteNodeId} AND m.${this.col('toNodeId')} = ${localNodeId}))
+              AND m.portnum = 1
+              AND m.channel = -1
+              AND NOT EXISTS (
+                SELECT 1 FROM read_messages rm
+                WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
+              )
           `);
         }
         return Number(result.rowCount ?? 0);
@@ -605,11 +611,14 @@ export class NotificationsRepository extends BaseRepository {
         const db = this.getPostgresDb();
         const result = await db.execute(sql`
           INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
-          SELECT id, ${effectiveUserId}, ${now} FROM messages
-          WHERE (${this.col('fromNodeId')} = ${localNodeId} OR ${this.col('toNodeId')} = ${localNodeId})
-            AND portnum = 1
-            AND channel = -1
-          ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
+          SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
+          WHERE (m.${this.col('fromNodeId')} = ${localNodeId} OR m.${this.col('toNodeId')} = ${localNodeId})
+            AND m.portnum = 1
+            AND m.channel = -1
+            AND NOT EXISTS (
+              SELECT 1 FROM read_messages rm
+              WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
+            )
         `);
         return Number(result.rowCount ?? 0);
       } else {
@@ -662,8 +671,11 @@ export class NotificationsRepository extends BaseRepository {
         for (const messageId of messageIds) {
           await db.execute(sql`
             INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
-            VALUES (${messageId}, ${effectiveUserId}, ${now})
-            ON CONFLICT (${this.col('messageId')}, ${this.col('userId')}) DO NOTHING
+            SELECT ${messageId}, ${effectiveUserId}, ${now}
+            WHERE NOT EXISTS (
+              SELECT 1 FROM read_messages rm
+              WHERE rm.${this.col('messageId')} = ${messageId} AND rm.${this.col('userId')} = ${effectiveUserId}
+            )
           `);
         }
       } else {
