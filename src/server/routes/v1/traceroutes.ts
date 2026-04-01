@@ -86,7 +86,7 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: traceroute
+      data: visible[0]
     });
   } catch (error) {
     logger.error('Error getting traceroute:', error);
