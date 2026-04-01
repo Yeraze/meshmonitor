@@ -4,7 +4,7 @@
  * Uses a real MapStyleService with a temp directory (no mocking of the service).
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
@@ -221,6 +221,193 @@ describe('MapStyle Routes', () => {
     it('returns 404 for nonexistent style', async () => {
       const res = await request(app).get('/styles/nonexistent-id/data');
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ---- POST /generate-from-tileserver ---------------------------------------
+
+  describe('POST /generate-from-tileserver', () => {
+    let fetchSpy: MockInstance;
+
+    const VALID_TILEJSON = {
+      tilejson: '2.2.0',
+      name: 'My Custom Tiles',
+      attribution: '&copy; OSM Contributors',
+      minzoom: 0,
+      maxzoom: 14,
+      tiles: ['http://tileserver:8080/data/v3/{z}/{x}/{y}.pbf'],
+      vector_layers: [
+        { id: 'water', geometry_type: 'polygon' },
+        { id: 'building', geometry_type: 'polygon' },
+        { id: 'transportation', geometry_type: 'line' },
+        { id: 'place', geometry_type: 'point' },
+        { id: 'landuse' }, // no geometry_type — unknown
+      ],
+    };
+
+    beforeEach(() => {
+      fetchSpy = vi.spyOn(global, 'fetch');
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    it('returns 400 when tileJsonUrl is missing', async () => {
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/tileJsonUrl/i);
+    });
+
+    it('returns 400 for an invalid URL', async () => {
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'not-a-url' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid/i);
+    });
+
+    it('returns 400 for non-http protocol', async () => {
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'ftp://tileserver/data.json' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/http/i);
+    });
+
+    it('returns 400 when remote fetch fails with non-200 status', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('Not Found', { status: 404 }));
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/HTTP 404/);
+    });
+
+    it('returns 400 when remote fetch throws a network error', async () => {
+      fetchSpy.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/ECONNREFUSED/);
+    });
+
+    it('returns 400 when TileJSON has no tiles array', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ vector_layers: [{ id: 'water' }] }), { status: 200 })
+      );
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/tiles/i);
+    });
+
+    it('returns 400 when TileJSON has no vector_layers', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ tiles: ['http://tileserver/tiles/{z}/{x}/{y}.png'] }),
+          { status: 200 }
+        )
+      );
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/vector_layers/i);
+    });
+
+    it('returns 200 with a valid MapLibre GL v8 style for a well-formed TileJSON', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify(VALID_TILEJSON), { status: 200 })
+      );
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.filename).toMatch(/\.json$/);
+      const style = res.body.style;
+      expect(style.version).toBe(8);
+      expect(typeof style.sources).toBe('object');
+      expect(Array.isArray(style.layers)).toBe(true);
+      expect(style.layers.length).toBeGreaterThan(0);
+    });
+
+    it('uses provided name in the generated style and filename', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify(VALID_TILEJSON), { status: 200 })
+      );
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json', name: 'My Map Style' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.style.name).toBe('My Map Style');
+      expect(res.body.filename).toContain('my_map_style');
+    });
+
+    it('generates layers for each vector layer in TileJSON', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify(VALID_TILEJSON), { status: 200 })
+      );
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+
+      expect(res.status).toBe(200);
+      const layers: { 'source-layer': string }[] = res.body.style.layers;
+      const sourceLayers = new Set(layers.map(l => l['source-layer']));
+      // All 5 vector layers should have at least one MapLibre layer
+      for (const vl of VALID_TILEJSON.vector_layers) {
+        expect(sourceLayers).toContain(vl.id);
+      }
+    });
+
+    it('uses correct layer types per geometry hint', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify(VALID_TILEJSON), { status: 200 })
+      );
+      const res = await request(app)
+        .post('/generate-from-tileserver')
+        .set('Content-Type', 'application/json')
+        .send({ tileJsonUrl: 'http://tileserver:8080/data/v3.json' });
+
+      expect(res.status).toBe(200);
+      const layers: { id: string; type: string; 'source-layer': string }[] = res.body.style.layers;
+
+      // point → circle
+      const placeLayers = layers.filter(l => l['source-layer'] === 'place');
+      expect(placeLayers).toHaveLength(1);
+      expect(placeLayers[0].type).toBe('circle');
+
+      // line → line
+      const transportLayers = layers.filter(l => l['source-layer'] === 'transportation');
+      expect(transportLayers).toHaveLength(1);
+      expect(transportLayers[0].type).toBe('line');
+
+      // polygon → fill + line
+      const waterLayers = layers.filter(l => l['source-layer'] === 'water');
+      expect(waterLayers).toHaveLength(2);
+      expect(waterLayers.map(l => l.type).sort()).toEqual(['fill', 'line']);
+
+      // unknown → fill + line
+      const landuseLayers = layers.filter(l => l['source-layer'] === 'landuse');
+      expect(landuseLayers).toHaveLength(2);
+      expect(landuseLayers.map(l => l.type).sort()).toEqual(['fill', 'line']);
     });
   });
 });
