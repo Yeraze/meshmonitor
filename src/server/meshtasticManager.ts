@@ -3606,8 +3606,12 @@ class MeshtasticManager {
         const fromNodeId = fromNum ? `!${fromNum.toString(16).padStart(8, '0')}` : null;
         const toNodeId = toNum ? `!${toNum.toString(16).padStart(8, '0')}` : null;
 
-        // Check if packet is encrypted (no decoded field or empty payload)
-        const isEncrypted = !meshPacket.decoded || !meshPacket.decoded.payload;
+        // Check if packet is encrypted — a packet is encrypted when neither the node nor the
+        // server successfully decoded it. Using `decryptedBy` (set above) is more reliable than
+        // checking `decoded.payload` because server-side decryption can succeed while returning
+        // an undefined payload (e.g. a packet whose inner Data.payload bytes are absent), and
+        // we don't want to re-label those as encrypted after a successful decrypt.
+        const isEncrypted = decryptedBy === null;
         const portnum = meshPacket.decoded?.portnum ?? 0;
         const portnumName = meshtasticProtobufService.getPortNumName(portnum);
 

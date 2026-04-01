@@ -9,8 +9,14 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/useTelemetry';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
-import { useSettings } from '../contexts/SettingsContext';
+import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
+import { useAuth } from '../contexts/AuthContext';
 import { ChartData } from '../types/ui';
+import { useWidgetMode } from '../hooks/useWidgetMode';
+import { useWidgetRange } from '../hooks/useWidgetRange';
+import { getLatestValue } from '../utils/telemetry';
+import TelemetryGauge from './TelemetryGauge';
+import TelemetryNumericLabel from './TelemetryNumericLabel';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -81,12 +87,303 @@ const SOLAR_DEFAULT_ON_TYPES = new Set([
   'soilMoisture',
 ]);
 
+// Sub-component so hooks (useWidgetMode, useWidgetRange) can be called legally per widget
+interface TelemetryGraphWidgetProps {
+  nodeId: string;
+  type: string;
+  data: TelemetryData[];
+  isPaxcounterCombined: boolean;
+  bleData?: TelemetryData[];
+  temperatureUnit: TemperatureUnit;
+  globalTimeRange: [number, number] | null;
+  globalMinTime: number | undefined;
+  solarEstimates: Map<number, number>;
+  solarMonitoringEnabled: boolean;
+  getSolarVisibility: (type: string) => boolean;
+  handleToggleSolar: (type: string) => void;
+  favorites: Set<string>;
+  createToggleFavorite: (type: string) => () => void;
+  handleMenuClick: (e: React.MouseEvent<HTMLButtonElement>, type: string) => void;
+  openMenu: string | null;
+  menuPosition: { x: number; y: number } | null;
+  handlePurgeData: (type: string) => void;
+  chartColors: { base: string; surface0: string; text: string };
+  getTelemetryLabel: (type: string) => string;
+  getColor: (type: string) => string;
+  prepareChartData: (data: TelemetryData[], isTemperature?: boolean, globalMinTime?: number) => ChartData[];
+  timeFormat: TimeFormat;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+  canEditSettings: boolean;
+}
+
+const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
+  nodeId,
+  type,
+  data,
+  isPaxcounterCombined,
+  bleData = [],
+  temperatureUnit,
+  globalTimeRange,
+  globalMinTime,
+  solarEstimates,
+  solarMonitoringEnabled,
+  getSolarVisibility,
+  handleToggleSolar,
+  favorites,
+  createToggleFavorite,
+  handleMenuClick,
+  openMenu,
+  menuPosition,
+  handlePurgeData,
+  chartColors,
+  getTelemetryLabel,
+  getColor,
+  prepareChartData,
+  timeFormat,
+  t,
+  canEditSettings,
+}) => {
+  const [mode, setMode] = useWidgetMode(nodeId, type);
+  const [range, setRange] = useWidgetRange(nodeId, type);
+
+  const isTemperature = type === 'temperature';
+  const chartData = prepareChartData(data, isTemperature, globalMinTime);
+  const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : data[0]?.unit || '';
+  const label = isPaxcounterCombined ? 'Paxcounter' : getTelemetryLabel(type);
+  const color = getColor(type);
+
+  if (isPaxcounterCombined) {
+    const bleByTimestamp = new Map<number, number>();
+    bleData.forEach(item => bleByTimestamp.set(item.timestamp, item.value));
+    chartData.forEach(point => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = point as any;
+      p.paxWifi = point.value;
+      p.paxBle = bleByTimestamp.get(point.timestamp) ?? null;
+      bleByTimestamp.delete(point.timestamp);
+    });
+    bleByTimestamp.forEach((value, timestamp) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const point: any = {
+        timestamp,
+        value: null,
+        time: '',
+        paxWifi: null,
+        paxBle: value,
+      };
+      chartData.push(point);
+    });
+    chartData.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  const latest = getLatestValue(data);
+
+  return (
+    <div key={type} className="graph-container">
+      <div className="graph-header">
+        <h4 className="graph-title" title={`${label} ${unit ? `(${unit})` : ''}`}>
+          {label} {unit && `(${unit})`}
+        </h4>
+        <div className="graph-actions">
+          {canEditSettings && (
+            <div className="mode-toggle-group" role="group" aria-label="Display mode">
+              <button
+                className={`mode-toggle-btn ${mode === 'chart' ? 'active' : ''}`}
+                onClick={() => setMode('chart')}
+                title="Chart"
+                aria-label="Chart mode"
+              >
+                ~
+              </button>
+              <button
+                className={`mode-toggle-btn ${mode === 'gauge' ? 'active' : ''}`}
+                onClick={() => setMode('gauge')}
+                title="Gauge"
+                aria-label="Gauge mode"
+              >
+                ⊙
+              </button>
+              <button
+                className={`mode-toggle-btn ${mode === 'numeric' ? 'active' : ''}`}
+                onClick={() => setMode('numeric')}
+                title="Numeric"
+                aria-label="Numeric mode"
+              >
+                #
+              </button>
+            </div>
+          )}
+          {solarMonitoringEnabled && (
+            <button
+              className={`solar-toggle-btn ${getSolarVisibility(type) ? 'active' : ''}`}
+              onClick={() => handleToggleSolar(type)}
+              aria-label={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
+              title={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
+            >
+              {getSolarVisibility(type) ? '\u2600' : '\u263C'}
+            </button>
+          )}
+          <button
+            className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
+            onClick={createToggleFavorite(type)}
+            aria-label={favorites.has(type) ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
+          >
+            {favorites.has(type) ? '★' : '☆'}
+          </button>
+          <button
+            className="graph-menu-btn"
+            onClick={e => handleMenuClick(e, type)}
+            aria-label={t('telemetry.more_options')}
+          >
+            ⋯
+          </button>
+          {openMenu === type && menuPosition && (
+            <div
+              className="telemetry-context-menu"
+              style={{
+                position: 'fixed',
+                top: `${menuPosition.y}px`,
+                left: `${menuPosition.x}px`,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button className="context-menu-item" onClick={() => handlePurgeData(type)}>
+                {t('telemetry.purge_data')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {mode === 'gauge' && latest ? (
+        <TelemetryGauge
+          value={latest.value}
+          min={range.min}
+          max={range.max}
+          unit={unit}
+          color={color}
+          timestamp={latest.timestamp}
+          nodeId={nodeId}
+          onRangeChange={setRange}
+          canEditRange={canEditSettings}
+        />
+      ) : mode === 'numeric' && latest ? (
+        <TelemetryNumericLabel
+          value={latest.value}
+          unit={unit}
+          color={color}
+          timestamp={latest.timestamp}
+        />
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
+            <XAxis
+              dataKey="timestamp"
+              type="number"
+              domain={globalTimeRange || ['dataMin', 'dataMax']}
+              tick={{ fontSize: 12 }}
+              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
+            />
+            <YAxis
+              yAxisId="left"
+              tick={{ fontSize: 12 }}
+              domain={['auto', 'auto']}
+              allowDecimals={!INTEGER_TELEMETRY_TYPES.has(type)}
+              tickFormatter={INTEGER_TELEMETRY_TYPES.has(type) ? (v: number) => Math.round(v).toString() : undefined}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fontSize: 12 }}
+              domain={['auto', 'auto']}
+              hide={true}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: chartColors.base,
+                border: `1px solid ${chartColors.surface0}`,
+                borderRadius: '4px',
+                color: chartColors.text,
+              }}
+              labelStyle={{ color: chartColors.text }}
+              labelFormatter={value => {
+                const date = new Date(value);
+                return date.toLocaleString([], {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                });
+              }}
+            />
+            {getSolarVisibility(type) && solarEstimates.size > 0 && (
+              <Area
+                yAxisId="right"
+                type="monotone"
+                dataKey="solarEstimate"
+                fill="#f9e2af"
+                fillOpacity={0.3}
+                stroke="#f9e2af"
+                strokeOpacity={0.5}
+                strokeWidth={1}
+                connectNulls={true}
+                isAnimationActive={false}
+              />
+            )}
+            {isPaxcounterCombined ? (
+              <>
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="paxWifi"
+                  name="WiFi"
+                  stroke={getColor('paxcounterWifi')}
+                  strokeWidth={2}
+                  dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={true}
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="paxBle"
+                  name="BLE"
+                  stroke={getColor('paxcounterBle')}
+                  strokeWidth={2}
+                  dot={{ fill: getColor('paxcounterBle'), r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={true}
+                />
+              </>
+            ) : (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="value"
+                stroke={color}
+                strokeWidth={2}
+                dot={{ fill: color, r: 3 }}
+                activeDot={{ r: 5 }}
+                connectNulls={true}
+              />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+};
+
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
   ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
     const { solarMonitoringEnabled, timeFormat } = useSettings();
+    const { hasPermission } = useAuth();
+    const canEditSettings = hasPermission('settings', 'write');
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{
       x: number;
@@ -623,191 +920,36 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       <div className="telemetry-graphs">
         <h3 className="telemetry-title">{t('telemetry.title', { count: telemetryHours })}</h3>
         <div className="graphs-grid">
-          {filteredData.map(([type, data]) => {
-            const isPaxcounterCombined = type === 'paxcounterWifi';
-            const isTemperature = type === 'temperature';
-            const chartData = prepareChartData(data, isTemperature, globalMinTime);
-            const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : data[0]?.unit || '';
-            const label = isPaxcounterCombined ? 'Paxcounter' : getTelemetryLabel(type);
-            const color = getColor(type);
-
-            // For paxcounter combined chart, merge BLE data into the same chart data
-            if (isPaxcounterCombined) {
-              const bleData = groupedData.get('paxcounterBle');
-              // Re-key: rename 'value' to 'paxWifi', add 'paxBle' from BLE data
-              const bleByTimestamp = new Map<number, number>();
-              if (bleData) {
-                bleData.forEach(item => bleByTimestamp.set(item.timestamp, item.value));
-              }
-              chartData.forEach(point => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const p = point as any;
-                p.paxWifi = point.value;
-                p.paxBle = bleByTimestamp.get(point.timestamp) ?? null;
-                bleByTimestamp.delete(point.timestamp);
-              });
-              // Add BLE-only timestamps
-              bleByTimestamp.forEach((value, timestamp) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const point: any = {
-                  timestamp,
-                  value: null,
-                  time: formatTime(new Date(timestamp), timeFormat),
-                  paxWifi: null,
-                  paxBle: value,
-                };
-                chartData.push(point);
-              });
-              chartData.sort((a, b) => a.timestamp - b.timestamp);
-            }
-
-            return (
-              <div key={type} className="graph-container">
-                <div className="graph-header">
-                  <h4 className="graph-title" title={`${label} ${unit ? `(${unit})` : ''}`}>
-                    {label} {unit && `(${unit})`}
-                  </h4>
-                  <div className="graph-actions">
-                    {solarMonitoringEnabled && (
-                      <button
-                        className={`solar-toggle-btn ${getSolarVisibility(type) ? 'active' : ''}`}
-                        onClick={() => handleToggleSolar(type)}
-                        aria-label={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
-                        title={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
-                      >
-                        {getSolarVisibility(type) ? '\u2600' : '\u263C'}
-                      </button>
-                    )}
-                    <button
-                      className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
-                      onClick={createToggleFavorite(type)}
-                      aria-label={favorites.has(type) ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
-                    >
-                      {favorites.has(type) ? '★' : '☆'}
-                    </button>
-                    <button
-                      className="graph-menu-btn"
-                      onClick={e => handleMenuClick(e, type)}
-                      aria-label={t('telemetry.more_options')}
-                    >
-                      ⋯
-                    </button>
-                    {openMenu === type && menuPosition && (
-                      <div
-                        className="telemetry-context-menu"
-                        style={{
-                          position: 'fixed',
-                          top: `${menuPosition.y}px`,
-                          left: `${menuPosition.x}px`,
-                        }}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <button className="context-menu-item" onClick={() => handlePurgeData(type)}>
-                          {t('telemetry.purge_data')}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
-                    <XAxis
-                      dataKey="timestamp"
-                      type="number"
-                      domain={globalTimeRange || ['dataMin', 'dataMax']}
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
-                    />
-                    <YAxis
-                      yAxisId="left"
-                      tick={{ fontSize: 12 }}
-                      domain={['auto', 'auto']}
-                      allowDecimals={!INTEGER_TELEMETRY_TYPES.has(type)}
-                      tickFormatter={INTEGER_TELEMETRY_TYPES.has(type) ? (v: number) => Math.round(v).toString() : undefined}
-                    />
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      tick={{ fontSize: 12 }}
-                      domain={['auto', 'auto']}
-                      hide={true}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: chartColors.base,
-                        border: `1px solid ${chartColors.surface0}`,
-                        borderRadius: '4px',
-                        color: chartColors.text,
-                      }}
-                      labelStyle={{ color: chartColors.text }}
-                      labelFormatter={value => {
-                        const date = new Date(value);
-                        return date.toLocaleString([], {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        });
-                      }}
-                    />
-                    {getSolarVisibility(type) && solarEstimates.size > 0 && (
-                      <Area
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="solarEstimate"
-                        fill="#f9e2af"
-                        fillOpacity={0.3}
-                        stroke="#f9e2af"
-                        strokeOpacity={0.5}
-                        strokeWidth={1}
-                        connectNulls={true}
-                        isAnimationActive={false}
-                      />
-                    )}
-                    {isPaxcounterCombined ? (
-                      <>
-                        <Line
-                          yAxisId="left"
-                          type="monotone"
-                          dataKey="paxWifi"
-                          name="WiFi"
-                          stroke={getColor('paxcounterWifi')}
-                          strokeWidth={2}
-                          dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
-                          activeDot={{ r: 5 }}
-                          connectNulls={true}
-                        />
-                        <Line
-                          yAxisId="left"
-                          type="monotone"
-                          dataKey="paxBle"
-                          name="BLE"
-                          stroke={getColor('paxcounterBle')}
-                          strokeWidth={2}
-                          dot={{ fill: getColor('paxcounterBle'), r: 3 }}
-                          activeDot={{ r: 5 }}
-                          connectNulls={true}
-                        />
-                      </>
-                    ) : (
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="value"
-                        stroke={color}
-                        strokeWidth={2}
-                        dot={{ fill: color, r: 3 }}
-                        activeDot={{ r: 5 }}
-                        connectNulls={true}
-                      />
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            );
-          })}
+          {filteredData.map(([type, data]) => (
+            <TelemetryGraphWidget
+              key={type}
+              nodeId={nodeId}
+              type={type}
+              data={data}
+              isPaxcounterCombined={type === 'paxcounterWifi'}
+              bleData={groupedData.get('paxcounterBle')}
+              temperatureUnit={temperatureUnit}
+              globalTimeRange={globalTimeRange}
+              globalMinTime={globalMinTime}
+              solarEstimates={solarEstimates}
+              solarMonitoringEnabled={solarMonitoringEnabled}
+              getSolarVisibility={getSolarVisibility}
+              handleToggleSolar={handleToggleSolar}
+              favorites={favorites}
+              createToggleFavorite={createToggleFavorite}
+              handleMenuClick={handleMenuClick}
+              openMenu={openMenu}
+              menuPosition={menuPosition}
+              handlePurgeData={handlePurgeData}
+              chartColors={chartColors}
+              getTelemetryLabel={getTelemetryLabel}
+              getColor={getColor}
+              prepareChartData={prepareChartData}
+              timeFormat={timeFormat}
+              t={t as (key: string, opts?: Record<string, unknown>) => string}
+              canEditSettings={canEditSettings}
+            />
+          ))}
         </div>
       </div>
     );

@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 18 migrations in sequential order for use by the migration runner.
+ * Registers all 19 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -29,7 +29,8 @@ import { migration as messagesDecryptedByMigration, runMigration014Postgres, run
 import { migration as notificationPrefsUniqueMigration, runMigration015Postgres, runMigration015Mysql } from '../server/migrations/015_add_notification_prefs_unique.js';
 import { migration as renameSystemBackupColumnsMigration, runMigration016Postgres, runMigration016Mysql } from '../server/migrations/016_rename_system_backup_columns.js';
 import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
-import { migration as addChannelToTraceroutesMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_channel_to_traceroutes.js';
+import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_mute_columns.js';
+import { migration as addChannelToTraceroutesMigration, runMigration019Postgres, runMigration019Mysql } from '../server/migrations/019_add_channel_to_traceroutes.js';
 
 // ============================================================================
 // Registry
@@ -235,15 +236,30 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 018: Add channel column to traceroutes table
-// Enables private-channel masking for traceroute data (MM-47).
+// Migration 018: Add per-channel and per-DM mute columns to user_notification_preferences
+// Implements per-source audio/push notification muting with optional expiry.
+// Implements: https://github.com/Yeraze/meshmonitor/issues/2545
 // ---------------------------------------------------------------------------
 
 registry.register({
   number: 18,
-  name: 'add_channel_to_traceroutes',
-  settingsKey: 'migration_018_add_channel_to_traceroutes',
-  sqlite: (db) => addChannelToTraceroutesMigration.up(db),
+  name: 'add_mute_columns',
+  settingsKey: 'migration_018_add_mute_columns',
+  sqlite: (db) => addMuteColumnsMigration.up(db),
   postgres: (client) => runMigration018Postgres(client),
   mysql: (pool) => runMigration018Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 019: Add channel column to traceroutes table
+// Enables private-channel masking for traceroute data (MM-47).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 19,
+  name: 'add_channel_to_traceroutes',
+  settingsKey: 'migration_019_add_channel_to_traceroutes',
+  sqlite: (db) => addChannelToTraceroutesMigration.up(db),
+  postgres: (client) => runMigration019Postgres(client),
+  mysql: (pool) => runMigration019Mysql(pool),
 });

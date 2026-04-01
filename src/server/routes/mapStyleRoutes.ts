@@ -9,6 +9,7 @@ import express from 'express';
 import { MapStyleService } from '../services/mapStyleService.js';
 import { logger } from '../../utils/logger.js';
 import { requirePermission } from '../auth/authMiddleware.js';
+import { generateStyleFromTileJson, type TileJsonResponse } from '../utils/tileStyleGenerator.js';
 
 export function createMapStyleRouter(service: MapStyleService): Router {
   const router = Router();
@@ -183,6 +184,84 @@ export function createMapStyleRouter(service: MapStyleService): Router {
       return res.status(500).json({ error: message });
     }
   });
+
+  /**
+   * POST /api/map-styles/generate-from-tileserver
+   * Fetch a TileJSON endpoint and generate a default MapLibre GL style.json.
+   * Returns the generated style as JSON for the client to download.
+   */
+  router.post(
+    '/generate-from-tileserver',
+    requirePermission('settings', 'write'),
+    express.json(),
+    async (req: Request, res: Response) => {
+      try {
+        const { tileJsonUrl, name: requestedName } = req.body as {
+          tileJsonUrl?: string;
+          name?: string;
+        };
+
+        if (!tileJsonUrl || typeof tileJsonUrl !== 'string') {
+          return res.status(400).json({ error: 'Missing tileJsonUrl in request body' });
+        }
+
+        // Validate protocol
+        let parsedUrl: URL;
+        try {
+          parsedUrl = new URL(tileJsonUrl);
+        } catch {
+          return res.status(400).json({ error: 'Invalid tileJsonUrl: not a valid URL' });
+        }
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+          return res.status(400).json({ error: 'Invalid tileJsonUrl: only http and https are supported' });
+        }
+
+        // Fetch TileJSON server-side (avoids CORS)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        let tileJson: TileJsonResponse;
+        try {
+          const response = await fetch(tileJsonUrl, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'MeshMonitor/1.0' },
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            return res.status(400).json({ error: `Failed to fetch TileJSON: HTTP ${response.status}` });
+          }
+          tileJson = (await response.json()) as TileJsonResponse;
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          const msg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+          return res.status(400).json({ error: `Failed to fetch TileJSON: ${msg}` });
+        }
+
+        // Validate TileJSON structure
+        if (!Array.isArray(tileJson.tiles) || tileJson.tiles.length === 0) {
+          return res.status(400).json({
+            error: 'TileJSON is missing a tiles array. Ensure the URL points to a vector TileJSON endpoint.',
+          });
+        }
+        if (!Array.isArray(tileJson.vector_layers) || tileJson.vector_layers.length === 0) {
+          return res.status(400).json({
+            error:
+              'TileJSON has no vector_layers. This may be a raster tileset; only vector tilesets are supported for style generation.',
+          });
+        }
+
+        const name = requestedName?.trim() || tileJson.name || 'Generated Style';
+        const style = generateStyleFromTileJson(tileJson, { name });
+
+        logger.info(`[MapStyleRoutes] Generated style from TileJSON at: ${tileJsonUrl}`);
+        return res.json({ style, filename: `${name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}-style.json` });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('[MapStyleRoutes] Error generating style from tileserver:', error);
+        return res.status(500).json({ error: message });
+      }
+    }
+  );
 
   return router;
 }

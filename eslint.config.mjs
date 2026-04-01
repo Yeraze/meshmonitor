@@ -70,4 +70,16 @@ export default [
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
+  // Test files are excluded from tsconfig.json, so disable project-based type-checking for them
+  {
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    languageOptions: {
+      parserOptions: {
+        project: false,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 ];

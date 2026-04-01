@@ -37,8 +37,13 @@ MeshCore is disabled by default. To enable it, set the following environment var
 | `MESHCORE_BAUD_RATE` | No | `115200` | Baud rate for serial connection |
 | `MESHCORE_TCP_HOST` | Conditional | - | TCP host address. Required for TCP connections. |
 | `MESHCORE_TCP_PORT` | No | `4403` | TCP port for network connection |
+| `MESHCORE_FIRMWARE_TYPE` | No | `companion` | Set to `repeater` for Repeater devices. Companion and Room Server devices use the default. |
 
 You must provide **either** `MESHCORE_SERIAL_PORT` (for USB serial) **or** `MESHCORE_TCP_HOST` (for TCP network) when MeshCore is enabled.
+
+::: tip
+`ENABLE_VIRTUAL_NODE` is a separate feature for proxying the Meshtastic protocol to mobile apps — it has **no relation** to MeshCore connectivity. Do not set it expecting it to affect MeshCore behavior.
+:::
 
 ### Docker Compose Example
 

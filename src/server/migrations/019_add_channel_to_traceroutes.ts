@@ -1,5 +1,5 @@
 /**
- * Migration 018: Add channel column to traceroutes table
+ * Migration 019: Add channel column to traceroutes table
  *
  * Traceroute packets arrive on a specific mesh channel. This column records
  * that channel index so the API can enforce the same private-channel masking
@@ -16,7 +16,7 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up: (db: Database): void => {
-    logger.info('Running migration 018 (SQLite): Adding channel column to traceroutes...');
+    logger.info('Running migration 019 (SQLite): Adding channel column to traceroutes...');
 
     try {
       db.exec('ALTER TABLE traceroutes ADD COLUMN channel INTEGER');
@@ -29,34 +29,34 @@ export const migration = {
       }
     }
 
-    logger.info('Migration 018 complete (SQLite): traceroutes.channel added');
+    logger.info('Migration 019 complete (SQLite): traceroutes.channel added');
   },
 
   down: (_db: Database): void => {
-    logger.debug('Migration 018 down: Not implemented (destructive column drops)');
+    logger.debug('Migration 019 down: Not implemented (destructive column drops)');
   }
 };
 
 // ============ PostgreSQL ============
 
-export async function runMigration018Postgres(client: import('pg').PoolClient): Promise<void> {
-  logger.info('Running migration 018 (PostgreSQL): Adding channel to traceroutes...');
+export async function runMigration019Postgres(client: import('pg').PoolClient): Promise<void> {
+  logger.info('Running migration 019 (PostgreSQL): Adding channel to traceroutes...');
 
   try {
     await client.query('ALTER TABLE traceroutes ADD COLUMN IF NOT EXISTS channel INTEGER');
     logger.debug('Ensured traceroutes.channel exists');
   } catch (error: any) {
-    logger.error('Migration 018 (PostgreSQL) failed:', error.message);
+    logger.error('Migration 019 (PostgreSQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 018 complete (PostgreSQL): traceroutes.channel added');
+  logger.info('Migration 019 complete (PostgreSQL): traceroutes.channel added');
 }
 
 // ============ MySQL ============
 
-export async function runMigration018Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
-  logger.info('Running migration 018 (MySQL): Adding channel to traceroutes...');
+export async function runMigration019Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  logger.info('Running migration 019 (MySQL): Adding channel to traceroutes...');
 
   try {
     const [rows] = await pool.query(`
@@ -70,9 +70,9 @@ export async function runMigration018Mysql(pool: import('mysql2/promise').Pool):
       logger.debug('traceroutes.channel already exists, skipping');
     }
   } catch (error: any) {
-    logger.error('Migration 018 (MySQL) failed:', error.message);
+    logger.error('Migration 019 (MySQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 018 complete (MySQL): traceroutes.channel added');
+  logger.info('Migration 019 complete (MySQL): traceroutes.channel added');
 }

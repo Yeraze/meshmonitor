@@ -21,6 +21,18 @@ import { logger } from '../../utils/logger.js';
 // Re-export for convenience
 export type { DbPushSubscription } from '../types.js';
 
+/** A single channel mute rule. muteUntil is Unix ms; null = indefinite. */
+export interface MutedChannel {
+  channelId: number;
+  muteUntil: number | null;
+}
+
+/** A single DM mute rule. muteUntil is Unix ms; null = indefinite. */
+export interface MutedDM {
+  nodeUuid: string;
+  muteUntil: number | null;
+}
+
 /**
  * Notification preferences data structure (database-agnostic)
  */
@@ -40,6 +52,8 @@ export interface NotificationPreferences {
   whitelist: string[];
   blacklist: string[];
   appriseUrls: string[];
+  mutedChannels: MutedChannel[];
+  mutedDMs: MutedDM[];
 }
 
 /**
@@ -213,6 +227,8 @@ export class NotificationsRepository extends BaseRepository {
       whitelist: JSON.stringify(prefs.whitelist),
       blacklist: JSON.stringify(prefs.blacklist),
       notifyOnMqtt: prefs.notifyOnMqtt,
+      mutedChannels: JSON.stringify(prefs.mutedChannels ?? []),
+      mutedDMs: JSON.stringify(prefs.mutedDMs ?? []),
       updatedAt: now,
     };
 
@@ -742,6 +758,8 @@ export class NotificationsRepository extends BaseRepository {
       whitelist: parseJsonArray(row.whitelist) as string[],
       blacklist: parseJsonArray(row.blacklist) as string[],
       appriseUrls: parseJsonArray(row.appriseUrls) as string[],
+      mutedChannels: parseJsonArray(row.mutedChannels) as unknown as MutedChannel[],
+      mutedDMs: parseJsonArray(row.mutedDMs) as unknown as MutedDM[],
     };
   }
 }

@@ -496,6 +496,22 @@ setTimeout(async () => {
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
 
+    // Auto-connect MeshCore if enabled via environment variables
+    if (process.env.MESHCORE_ENABLED === 'true') {
+      const meshcoreConfig = meshcoreManager.getEnvConfig();
+      if (meshcoreConfig) {
+        logger.info('[MeshCore] Auto-connecting on startup...');
+        const connected = await meshcoreManager.connect();
+        if (connected) {
+          logger.info('[MeshCore] Auto-connected successfully on startup');
+        } else {
+          logger.warn('[MeshCore] Auto-connect on startup failed — use the MeshCore tab to retry');
+        }
+      } else {
+        logger.warn('[MeshCore] MESHCORE_ENABLED=true but no serial port or TCP host configured');
+      }
+    }
+
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
     logger.debug('Backup scheduler initialized');
@@ -733,6 +749,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import meshcoreManager from './meshcoreManager.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
@@ -7857,6 +7874,8 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         whitelist: ['Hi', 'Help'],
         blacklist: ['Test', 'Copy'],
         appriseUrls: [],
+        mutedChannels: [],
+        mutedDMs: [],
       });
     }
   } catch (error: any) {
@@ -7889,6 +7908,8 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       whitelist,
       blacklist,
       appriseUrls,
+      mutedChannels,
+      mutedDMs,
     } = req.body;
 
     // Validate input
@@ -7928,6 +7949,30 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'appriseUrls must be an array of strings' });
     }
 
+    // Validate mutedChannels
+    if (mutedChannels !== undefined && !Array.isArray(mutedChannels)) {
+      return res.status(400).json({ error: 'mutedChannels must be an array' });
+    }
+    if (mutedChannels && mutedChannels.some((r: any) =>
+      typeof r !== 'object' || r === null ||
+      typeof r.channelId !== 'number' ||
+      (r.muteUntil !== null && typeof r.muteUntil !== 'number')
+    )) {
+      return res.status(400).json({ error: 'mutedChannels entries must have channelId (number) and muteUntil (number|null)' });
+    }
+
+    // Validate mutedDMs
+    if (mutedDMs !== undefined && !Array.isArray(mutedDMs)) {
+      return res.status(400).json({ error: 'mutedDMs must be an array' });
+    }
+    if (mutedDMs && mutedDMs.some((r: any) =>
+      typeof r !== 'object' || r === null ||
+      typeof r.nodeUuid !== 'string' ||
+      (r.muteUntil !== null && typeof r.muteUntil !== 'number')
+    )) {
+      return res.status(400).json({ error: 'mutedDMs entries must have nodeUuid (string) and muteUntil (number|null)' });
+    }
+
     const prefs = {
       enableWebPush,
       enableApprise,
@@ -7944,6 +7989,8 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       whitelist,
       blacklist,
       appriseUrls: appriseUrls ?? [],
+      mutedChannels: mutedChannels ?? [],
+      mutedDMs: mutedDMs ?? [],
     };
 
     const success = await saveUserNotificationPreferencesAsync(userId, prefs);

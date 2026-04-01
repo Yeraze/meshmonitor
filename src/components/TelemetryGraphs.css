@@ -121,6 +121,102 @@
   color: var(--ctp-red);
 }
 
+/* Mode toggle button group */
+.mode-toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mode-toggle-btn {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ctp-surface2);
+  transition: color 0.2s ease;
+  border-radius: var(--radius-sm);
+}
+
+.mode-toggle-btn:hover {
+  color: var(--ctp-yellow);
+}
+
+.mode-toggle-btn.active {
+  color: var(--ctp-yellow);
+}
+
+/* Gauge display */
+.telemetry-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  max-width: 200px;
+  margin: 0 auto;
+}
+
+.gauge-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.gauge-range-input {
+  width: 56px;
+  padding: 2px 4px;
+  font-size: 0.8rem;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-text);
+  text-align: center;
+}
+
+.gauge-range-input:focus {
+  outline: 1px solid var(--ctp-blue);
+}
+
+.gauge-range-dash {
+  color: var(--ctp-subtext0);
+  font-size: 0.8rem;
+  letter-spacing: -2px;
+}
+
+/* Numeric label display */
+.telemetry-numeric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  gap: 4px;
+}
+
+.telemetry-numeric-value {
+  font-size: 3rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.telemetry-numeric-unit {
+  font-size: 1rem;
+  color: var(--ctp-subtext0);
+}
+
+.telemetry-numeric-time {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--ctp-subtext0);
+}
+
 @media (max-width: 768px) {
   .graphs-grid {
     grid-template-columns: 1fr;
