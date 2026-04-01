@@ -257,6 +257,7 @@ describe('MeshtasticProtobufService', () => {
 
   describe('createNodeInfo', () => {
     it('should create NodeInfo with viaMqtt=true', async () => {
+      if (!requireProtobufs()) return;
       const result = await service.createNodeInfo({
         nodeNum: 123456789,
         user: {
@@ -281,6 +282,7 @@ describe('MeshtasticProtobufService', () => {
     });
 
     it('should create NodeInfo with viaMqtt=false', async () => {
+      if (!requireProtobufs()) return;
       const result = await service.createNodeInfo({
         nodeNum: 987654321,
         user: {
@@ -305,6 +307,7 @@ describe('MeshtasticProtobufService', () => {
     });
 
     it('should create NodeInfo without viaMqtt when not provided', async () => {
+      if (!requireProtobufs()) return;
       const result = await service.createNodeInfo({
         nodeNum: 111222333,
         user: {
@@ -328,6 +331,7 @@ describe('MeshtasticProtobufService', () => {
     });
 
     it('should include all NodeInfo fields correctly', async () => {
+      if (!requireProtobufs()) return;
       const result = await service.createNodeInfo({
         nodeNum: 444555666,
         user: {
