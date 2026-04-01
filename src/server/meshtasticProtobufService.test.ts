@@ -257,6 +257,7 @@ describe('MeshtasticProtobufService', () => {
 
   describe('createNodeInfo', () => {
     it('should create NodeInfo with viaMqtt=true', async () => {
+      if (!requireProtobufs()) return;
       const result = await service.createNodeInfo({
         nodeNum: 123456789,
         user: {
