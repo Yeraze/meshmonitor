@@ -54,6 +54,140 @@ docker compose up -d
 
 For detailed installation instructions, configuration options, and deployment scenarios, see the **[Getting Started Guide](https://meshmonitor.org/getting-started.html)**.
 
+## Proxy Authentication
+
+MeshMonitor supports authentication via reverse proxy headers for seamless single sign-on (SSO) integration with Cloudflare Access, oauth2-proxy, Authelia, Traefik ForwardAuth, and similar solutions.
+
+### Supported Proxies
+
+- **Cloudflare Access** - JWT-based authentication with custom role claims
+- **oauth2-proxy** - Standard OAuth2 proxy with email/groups headers
+- **Generic proxies** - Configurable header-based authentication
+
+### Quick Setup
+
+```yaml
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    environment:
+      # Enable proxy authentication
+      - PROXY_AUTH_ENABLED=true
+      - PROXY_AUTH_AUTO_PROVISION=true
+      
+      # Admin detection
+      - PROXY_AUTH_ADMIN_GROUPS=admins,mesh-admins
+      - PROXY_AUTH_ADMIN_EMAILS=admin@example.com
+      
+      # Required: Trust the reverse proxy
+      - TRUST_PROXY=1
+      
+      # Optional: Logout redirect
+      - PROXY_AUTH_LOGOUT_URL=https://auth.example.com/oauth2/sign_out
+```
+
+### Security Requirements
+
+⚠️ **IMPORTANT:** Proxy authentication requires:
+1. MeshMonitor is **NOT directly accessible** (use Docker networks, firewall rules, or VPN)
+2. `TRUST_PROXY` is configured to trust your reverse proxy
+3. Your proxy validates authentication before forwarding requests
+
+### Email Uniqueness Caveat
+
+⚠️ **Email uniqueness is NOT enforced** in the database schema. If multiple users share the same email address, the first match will be used. Ensure your proxy provides unique email addresses for each user.
+
+### Configuration Options
+
+```bash
+# Core settings
+PROXY_AUTH_ENABLED=false              # Enable proxy auth (default: false)
+PROXY_AUTH_AUTO_PROVISION=false       # Auto-create users (default: false)
+
+# Admin detection (at least one recommended)
+PROXY_AUTH_ADMIN_GROUPS=              # Comma-separated admin groups (case-insensitive match)
+PROXY_AUTH_ADMIN_EMAILS=              # Comma-separated admin emails (case-insensitive match)
+
+# Normal-user group gate (optional, see below)
+PROXY_AUTH_NORMAL_USER_GROUPS=        # Comma-separated groups allowed to access (empty = all allowed)
+
+# JWT configuration (for Cloudflare Access)
+PROXY_AUTH_JWT_GROUPS_CLAIM=groups    # Groups claim path (supports Auth0 custom namespaces)
+
+# Custom headers (optional, for non-standard proxies)
+PROXY_AUTH_HEADER_EMAIL=              # Custom email header name
+PROXY_AUTH_HEADER_GROUPS=             # Custom groups header name
+
+# Logout
+PROXY_AUTH_LOGOUT_URL=                # Redirect URL after logout
+
+# Audit logging
+PROXY_AUTH_AUDIT_LOGGING=true         # Log auth events (default: true)
+```
+
+### Cloudflare Access JWT Subset Tokens
+
+Cloudflare Access application JWTs contain a **subset** of the full identity — typically `email`, `aud`, `iss`, `sub`. Custom OIDC claims (e.g. Auth0 role claims) are only present when the IdP integration is configured to include them. If your `PROXY_AUTH_JWT_GROUPS_CLAIM` (e.g. `https://your-domain/roles`) is **missing** from the `Cf-Access-Jwt-Assertion` header, MeshMonitor will see empty groups and group-based admin will never trigger.
+
+**To verify:** Decode a real request JWT at [jwt.io](https://jwt.io/) using the `Cf-Access-Jwt-Assertion` header from browser DevTools, and confirm the groups claim exists and its shape. Cloudflare often places IdP custom claims under a `custom` object (e.g. `custom["https://your-domain/roles"]`); official examples may show a flatter layout — your decoded token is the ground truth for your tenant.
+
+**Fallback:** Set `PROXY_AUTH_ADMIN_EMAILS` to an operator email allowlist. MeshMonitor matches emails case-insensitively, so admin works even when the app JWT omits custom IdP claims.
+
+See: [Cloudflare Application Token](https://developers.cloudflare.com/cloudflare-one/identity/authorization-cookie/application-token/)
+
+### JWT Groups Normalization
+
+MeshMonitor normalizes groups claims from the JWT to handle different IdP formats:
+
+- **String arrays** (`["admin", "user"]`) — used as-is
+- **Single strings** (`"admin"`) — wrapped into an array
+- **Role objects** (`[{ "name": "admin" }, { "name": "user" }]`) — `.name` is extracted
+
+This handles Auth0 Post-Login Actions that emit role objects instead of plain strings. All group matching (admin groups, normal-user groups) is **case-insensitive**.
+
+### Normal-User Group Gate
+
+`PROXY_AUTH_NORMAL_USER_GROUPS` adds an application-layer group check as a second gate, on top of the reverse proxy's URL-level access control.
+
+**Two-layer model:**
+
+When configured, only users whose groups contain at least one value from this list (or who are admins) are allowed. Users who passed the proxy but lack a matching group receive `403 FORBIDDEN_PROXY_GROUP`.
+
+When empty (default), all proxy-authenticated users are allowed — the reverse proxy is the only gate.
+
+### Examples
+
+**Cloudflare Access + Auth0 (with normal-user gate):**
+```bash
+PROXY_AUTH_ENABLED=true
+PROXY_AUTH_AUTO_PROVISION=true
+PROXY_AUTH_JWT_GROUPS_CLAIM=https://mydomain.com/roles
+PROXY_AUTH_ADMIN_GROUPS=admins
+PROXY_AUTH_NORMAL_USER_GROUPS=meshmonitor-users
+PROXY_AUTH_ADMIN_EMAILS=operator@example.com
+PROXY_AUTH_LOGOUT_URL=https://yourteam.cloudflareaccess.com/cdn-cgi/access/logout
+TRUST_PROXY=1
+COOKIE_SECURE=true
+```
+
+**oauth2-proxy:**
+```bash
+PROXY_AUTH_ENABLED=true
+PROXY_AUTH_AUTO_PROVISION=true
+PROXY_AUTH_ADMIN_EMAILS=admin@example.com,superuser@example.com
+PROXY_AUTH_LOGOUT_URL=https://auth.example.com/oauth2/sign_out
+TRUST_PROXY=1
+```
+
+### User Migration
+
+When proxy authentication is enabled, existing local users are **automatically migrated** on first login if their email matches:
+- `authMethod` updated to `'proxy'`
+- Password cleared (same behavior as OIDC migration)
+- Admin status updated based on groups
+
+⚠️ **Migration is irreversible without admin intervention.** Migrated users cannot revert to local authentication without a password reset.
+
 ## Deployment Options
 
 MeshMonitor supports multiple deployment methods:
@@ -87,7 +221,7 @@ MeshMonitor supports multiple deployment methods:
 - **Interactive Maps** - Node positions and network topology visualization
 - **Multi-Database Support** - SQLite (default), PostgreSQL, and MySQL via Drizzle ORM
 - **Notifications** - Web Push and Apprise integration for 100+ services
-- **Authentication** - Local and OIDC/SSO support with RBAC
+- **Authentication** - Local, OIDC/SSO, and reverse proxy authentication with RBAC
 - **Security Monitoring** - Encryption key analysis and vulnerability detection
 - **Device Configuration** - Full node configuration UI
 - **Virtual Node Server** - Remote TCP access for Meshtastic Python clients

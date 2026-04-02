@@ -22,7 +22,7 @@ declare module 'express-session' {
   interface SessionData {
     userId?: number;
     username?: string;
-    authProvider?: 'local' | 'oidc';
+    authProvider?: 'local' | 'oidc' | 'proxy';
     isAdmin?: boolean;
     // OIDC-specific fields
     oidcState?: string;

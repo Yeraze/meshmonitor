@@ -18,7 +18,7 @@ interface User {
   username: string;
   email: string | null;
   displayName: string | null;
-  authProvider: 'local' | 'oidc';
+  authProvider: 'local' | 'oidc' | 'proxy';
   isAdmin: boolean;
   isActive: boolean;
   passwordLocked: boolean;

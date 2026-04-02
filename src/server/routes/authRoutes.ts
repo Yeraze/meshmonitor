@@ -318,6 +318,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
 router.post('/logout', (req: Request, res: Response) => {
   const userId = req.session.userId;
   const username = req.session.username;
+  const authProvider = req.session.authProvider;
 
   req.session.destroy((err) => {
     if (err) {
@@ -331,9 +332,18 @@ router.post('/logout', (req: Request, res: Response) => {
         userId,
         'logout',
         'auth',
-        JSON.stringify({ username }),
+        JSON.stringify({ username, authProvider }),
         req.ip || null
       );
+    }
+
+    // Check for proxy auth logout redirect
+    const config = getEnvironmentConfig();
+    if (authProvider === 'proxy' && config.proxyAuthLogoutUrl) {
+      return res.json({
+        success: true,
+        redirectUrl: config.proxyAuthLogoutUrl
+      });
     }
 
     return res.json({ success: true });

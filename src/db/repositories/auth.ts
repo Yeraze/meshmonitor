@@ -214,6 +214,23 @@ export class AuthRepository extends BaseRepository {
   }
 
   /**
+   * Get user by email
+   * Note: Email is NOT unique in the schema. If multiple users share the same email,
+   * returns the first match.
+   */
+  async getUserByEmail(email: string): Promise<DbUser | null> {
+    const { users } = this.tables;
+    const result = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (result.length === 0) return null;
+    return this.normalizeBigInts(result[0]) as DbUser;
+  }
+
+  /**
    * Get all users
    */
   async getAllUsers(): Promise<DbUser[]> {
