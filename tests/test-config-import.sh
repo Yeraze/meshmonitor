@@ -718,6 +718,7 @@ echo ""
 # Store first config for comparison
 CONFIG_1_SNAPSHOT=$(curl -s http://localhost:$TEST_PORT/api/channels \
     -b /tmp/meshmonitor-config-import-cookies.txt)
+echo "  Config snapshot 1: $CONFIG_1_SNAPSHOT"
 
 ##################################################
 # SECOND IMPORT CYCLE
@@ -806,6 +807,8 @@ CONFIG_2_SNAPSHOT=$(curl -s http://localhost:$TEST_PORT/api/channels \
 if [ "$CONFIG_1_SNAPSHOT" = "$CONFIG_2_SNAPSHOT" ]; then
     echo -e "${RED}✗ FAIL${NC}: Configuration did not change between imports"
     echo "This suggests the second import did not overwrite the first"
+    echo "  Snapshot 1: $CONFIG_1_SNAPSHOT"
+    echo "  Snapshot 2: $CONFIG_2_SNAPSHOT"
     exit 1
 else
     echo -e "${GREEN}✓ PASS${NC}: Configuration successfully changed between imports"

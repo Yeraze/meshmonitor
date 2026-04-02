@@ -32,12 +32,12 @@ SQLITE_DB_PATH="/tmp/test-migration-source.db"
 
 # Ensure dist/cli/migrate-db.js exists (needed by npm run migrate-db)
 if [ ! -f "$PROJECT_ROOT/dist/cli/migrate-db.js" ]; then
-    echo "Building project (migrate-db CLI not found in dist/)..."
-    npm run build > /dev/null 2>&1 || {
-        echo -e "${RED}✗ FAIL${NC}: Failed to build project for migrate-db CLI"
+    echo "Building server (migrate-db CLI not found in dist/)..."
+    npm run build:server > /dev/null 2>&1 || {
+        echo -e "${RED}✗ FAIL${NC}: Failed to build server for migrate-db CLI"
         exit 1
     }
-    echo -e "${GREEN}✓${NC} Build complete"
+    echo -e "${GREEN}✓${NC} Server build complete"
 fi
 
 # Track results
