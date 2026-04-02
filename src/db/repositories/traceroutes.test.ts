@@ -33,6 +33,7 @@ const SQLITE_CREATE = `
     snrTowards TEXT,
     snrBack TEXT,
     routePositions TEXT,
+    channel INTEGER,
     timestamp INTEGER NOT NULL,
     createdAt INTEGER NOT NULL
   );
@@ -68,6 +69,7 @@ const POSTGRES_CREATE = `
     "snrTowards" TEXT,
     "snrBack" TEXT,
     "routePositions" TEXT,
+    channel INTEGER,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL
   );
@@ -103,6 +105,7 @@ const MYSQL_CREATE = `
     snrTowards TEXT,
     snrBack TEXT,
     routePositions TEXT,
+    channel INT,
     timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL
   );

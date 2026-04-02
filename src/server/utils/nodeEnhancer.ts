@@ -184,6 +184,96 @@ export async function maskNodeLocationByChannel<T>(
 }
 
 /**
+ * Filter telemetry records where the user lacks access to the source channel.
+ *
+ * Each telemetry record carries an optional `channel` field indicating which mesh
+ * channel the packet was received on. Records from a private (inaccessible) channel
+ * are removed entirely — the individual values would leak channel-private sensor data.
+ *
+ * Records with no channel recorded are left unchanged (channel unknown / pre-migration).
+ * Admins always see all records.
+ *
+ * @param records - Array of telemetry records (any type with an optional channel field)
+ * @param user    - The user making the request, or null/undefined for anonymous
+ * @returns Array with records from inaccessible channels removed
+ */
+export async function maskTelemetryByChannel<T>(
+  records: T[],
+  user: User | null | undefined
+): Promise<T[]> {
+  if (user?.isAdmin) return records;
+
+  const permissions: PermissionSet = user
+    ? await databaseService.getUserPermissionSetAsync(user.id)
+    : {};
+
+  const channelDbPermissions = user
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
+    : {};
+
+  return records.filter(record => {
+    const r = record as { channel?: number | null };
+    const ch = r.channel;
+
+    // No channel recorded — no channel restriction
+    if (ch === undefined || ch === null) return true;
+
+    if (ch < CHANNEL_DB_OFFSET) {
+      const channelResource = `channel_${ch}` as ResourceType;
+      return permissions[channelResource]?.viewOnMap === true;
+    }
+
+    const channelDbId = ch - CHANNEL_DB_OFFSET;
+    return channelDbPermissions[channelDbId]?.viewOnMap === true;
+  });
+}
+
+/**
+ * Filter traceroute records where the user lacks access to the source channel.
+ *
+ * Traceroutes carry a `channel` field set when the response packet was received on
+ * a specific mesh channel. Traceroutes from a private (inaccessible) channel are
+ * removed so the route topology doesn't leak private-channel network data.
+ *
+ * Records with no channel recorded (null/pre-migration) are left unchanged.
+ * Admins always see all records.
+ *
+ * @param records - Array of traceroute records (any type with an optional channel field)
+ * @param user    - The user making the request, or null/undefined for anonymous
+ * @returns Array with records from inaccessible channels removed
+ */
+export async function maskTraceroutesByChannel<T>(
+  records: T[],
+  user: User | null | undefined
+): Promise<T[]> {
+  if (user?.isAdmin) return records;
+
+  const permissions: PermissionSet = user
+    ? await databaseService.getUserPermissionSetAsync(user.id)
+    : {};
+
+  const channelDbPermissions = user
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
+    : {};
+
+  return records.filter(record => {
+    const r = record as { channel?: number | null };
+    const ch = r.channel;
+
+    // No channel recorded — no channel restriction
+    if (ch === undefined || ch === null) return true;
+
+    if (ch < CHANNEL_DB_OFFSET) {
+      const channelResource = `channel_${ch}` as ResourceType;
+      return permissions[channelResource]?.viewOnMap === true;
+    }
+
+    const channelDbId = ch - CHANNEL_DB_OFFSET;
+    return channelDbPermissions[channelDbId]?.viewOnMap === true;
+  });
+}
+
+/**
  * Check if a user has viewOnMap permission for the channel that a specific node belongs to.
  * Used to enforce per-node channel-based access control on telemetry/position endpoints.
  */
