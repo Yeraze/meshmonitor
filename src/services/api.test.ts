@@ -4,6 +4,17 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 const mockFetch = vi.fn();
 global.fetch = mockFetch as any;
 
+// Mock sessionStorage (not available in Node.js test environment)
+if (typeof sessionStorage === 'undefined') {
+  const sessionStorageData: Record<string, string> = {};
+  (global as any).sessionStorage = {
+    getItem: (key: string) => sessionStorageData[key] ?? null,
+    setItem: (key: string, value: string) => { sessionStorageData[key] = value; },
+    removeItem: (key: string) => { delete sessionStorageData[key]; },
+    clear: () => { Object.keys(sessionStorageData).forEach(k => delete sessionStorageData[k]); },
+  };
+}
+
 // Mock window.location for browser environment
 const mockLocation = {
   pathname: '/',
@@ -518,6 +529,296 @@ describe('ApiService BASE_URL Support', () => {
         snr: 10.5,
         rssi: -80,
       });
+    });
+  });
+
+  describe('Message API Methods', () => {
+    beforeEach(() => {
+      mockLocation.pathname = '/';
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('getMessages should return messages array', async () => {
+      const mockMessages = [
+        { id: 1, text: 'Hello mesh', channelId: 0, fromNodeId: '!abc123', timestamp: 1000 }
+      ];
+      mockFetch.mockResolvedValue(createMockResponse({ messages: mockMessages }));
+
+      const messages = await apiService.getMessages(50);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/messages?limit=50');
+      expect(messages).toHaveLength(1);
+    });
+
+    it('getChannelMessages should call channel-specific endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ messages: [], hasMore: false }));
+
+      await apiService.getChannelMessages(1, 25, 0);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/messages/channel/1?limit=25&offset=0',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
+    it('getDirectMessages should call DM endpoint with two node IDs', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ messages: [], hasMore: false }));
+
+      await apiService.getDirectMessages('!abc12345', '!def67890', 20, 0);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/messages/direct/!abc12345/!def67890?limit=20&offset=0',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
+    it('searchMessages should call search endpoint with params', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({
+        success: true,
+        data: [],
+        total: 0,
+        count: 0,
+      }));
+
+      await apiService.searchMessages({ q: 'hello', limit: 10 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/messages/search'),
+        expect.objectContaining({ credentials: 'include' })
+      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('q=hello'), expect.anything());
+    });
+
+    it('sendMessage should POST to messages/send endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, messageId: 42 }));
+
+      await apiService.sendMessage({
+        text: 'Test message',
+        channel: 0,
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/messages/send', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('Test message'),
+      }));
+    });
+  });
+
+  describe('Node Operation API Methods', () => {
+    beforeEach(() => {
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('getSystemStatus should call system status endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ uptime: 12345, memoryUsage: 256 }));
+
+      const status = await apiService.getSystemStatus();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/system/status');
+      expect(status).toHaveProperty('uptime');
+    });
+
+    it('refreshNodes should call nodes refresh endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.refreshNodes();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/nodes/refresh', expect.objectContaining({
+        method: 'POST',
+      }));
+    });
+
+    it('sendTraceroute should POST to traceroute endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      // Must use valid 8-char hex node ID format: !XXXXXXXX
+      await apiService.sendTraceroute('!abc12345');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/traceroute', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('!abc12345'),
+      }));
+    });
+
+    it('getRecentTraceroutes should call traceroutes endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ traceroutes: [] }));
+
+      await apiService.getRecentTraceroutes();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/recent');
+    });
+
+    it('getNodesWithTelemetry should call telemetry nodes endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: ['!node1', '!node2'] }));
+
+      const nodes = await apiService.getNodesWithTelemetry();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/telemetry/available/nodes');
+    });
+  });
+
+  describe('Purge API Methods', () => {
+    beforeEach(() => {
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('purgeNodes should POST to purge nodes endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, purgedCount: 5 }));
+
+      await apiService.purgeNodes(24);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/purge/nodes', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('24'),
+      }));
+    });
+
+    it('purgeTelemetry should POST to purge telemetry endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.purgeTelemetry(48);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/purge/telemetry', expect.objectContaining({
+        method: 'POST',
+      }));
+    });
+
+    it('purgeMessages should POST to purge messages endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.purgeMessages(72);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/purge/messages', expect.objectContaining({
+        method: 'POST',
+      }));
+    });
+
+    it('purgeTraceroutes should POST to purge traceroutes endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.purgeTraceroutes();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/purge/traceroutes', expect.objectContaining({
+        method: 'POST',
+      }));
+    });
+  });
+
+  describe('Channel API Methods', () => {
+    beforeEach(() => {
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('getAllChannels should call all-channels endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ channels: [{ id: 0, name: 'LongFast' }] }));
+
+      await apiService.getAllChannels();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/channels/all');
+    });
+
+    it('updateChannel should PUT to channel endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.updateChannel(0, { name: 'TestChannel', psk: 'AQ==' });
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/channels/0', expect.objectContaining({
+        method: 'PUT',
+        body: expect.stringContaining('TestChannel'),
+      }));
+    });
+  });
+
+  describe('Config API Methods', () => {
+    beforeEach(() => {
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('getDeviceConfig should call device config endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ config: {} }));
+
+      await apiService.getDeviceConfig();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/device-config');
+    });
+
+    it('getCurrentConfig should call current config endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ config: {} }));
+
+      await apiService.getCurrentConfig();
+
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/api/config/current'));
+    });
+
+    it('setDeviceConfig should POST device config', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.setDeviceConfig({ role: 1 });
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/config/device', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"role"'),
+      }));
+    });
+
+    it('setNetworkConfig should POST network config', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.setNetworkConfig({ wifiEnabled: true });
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/config/network', expect.objectContaining({
+        method: 'POST',
+      }));
+    });
+  });
+
+  describe('Neighbor/Route API Methods', () => {
+    beforeEach(() => {
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('getDirectNeighborStats should call neighbor stats endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, data: {} }));
+
+      await apiService.getDirectNeighborStats(24);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/direct-neighbors?hours=24',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
+    it('getLongestActiveRouteSegment should call route segment endpoint', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ segment: null }));
+
+      await apiService.getLongestActiveRouteSegment();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/route-segments/longest-active');
+    });
+
+    it('getTracerouteHistory should call history endpoint with params', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ traceroutes: [] }));
+
+      await apiService.getTracerouteHistory(111, 222, 20);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/history/111/222?limit=20');
+    });
+
+    it('updateTracerouteInterval should POST interval setting', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.updateTracerouteInterval(30);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/settings/traceroute-interval', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('30'),
+      }));
     });
   });
 });
