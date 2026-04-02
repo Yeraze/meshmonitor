@@ -10830,6 +10830,7 @@ class MeshtasticManager {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
+      this.updateCachedDeviceConfig('lora', config);
       logger.debug('⚙️ Sent set_lora_config admin message');
     } catch (error) {
       logger.error('❌ Error sending LoRa config:', error);
@@ -10851,6 +10852,7 @@ class MeshtasticManager {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
+      this.updateCachedDeviceConfig('network', config);
       logger.debug('⚙️ Sent set_network_config admin message');
     } catch (error) {
       logger.error('❌ Error sending network config:', error);
@@ -10943,6 +10945,7 @@ class MeshtasticManager {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
+      this.updateCachedDeviceConfig('position', positionConfig);
       logger.debug('⚙️ Sent set_position_config admin message');
     } catch (error) {
       logger.error('❌ Error sending position config:', error);
@@ -10964,6 +10967,7 @@ class MeshtasticManager {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
+      this.updateCachedDeviceConfig('mqtt', config);
       logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
     } catch (error) {
       logger.error('❌ Error sending MQTT config:', error);
@@ -10985,6 +10989,7 @@ class MeshtasticManager {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
+      this.updateCachedDeviceConfig('neighborinfo', config);
       logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
     } catch (error) {
       logger.error('❌ Error sending NeighborInfo config:', error);
