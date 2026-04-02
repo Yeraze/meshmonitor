@@ -90,6 +90,9 @@ export async function getCachedTileHostnames(): Promise<string[]> {
 export async function buildConnectSrcDirective(isProduction: boolean, cookieSecure: boolean): Promise<string[]> {
   const connectSrc: string[] = [
     "'self'",
+    // WebSocket protocols for Socket.io real-time updates
+    'ws:',
+    'wss:',
     // Built-in tile servers
     'https://*.tile.openstreetmap.org',
     'https://*.basemaps.cartocdn.com',
