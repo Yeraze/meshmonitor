@@ -368,6 +368,7 @@ class MeshtasticManager {
   private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
   private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
   private rebootMergeInProgress = false;  // Guard against broadcasts during node identity merge
+  private lastHeapPurgeAt: number | null = null;  // Timestamp of last auto heap purge
 
   // Virtual Node Server - Message capture for initialization sequence
   private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
@@ -4791,6 +4792,7 @@ class MeshtasticManager {
           { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
           { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' }
         ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+        await this.checkAutoHeapManagement(localStats.heapFreeBytes, fromNum);
       } else if (telemetry.hostMetrics) {
         const hostMetrics = telemetry.hostMetrics;
         logger.debug(`🖥️ HostMetrics telemetry: uptime=${hostMetrics.uptimeSeconds}s, freemem=${hostMetrics.freememBytes}B`);
@@ -8864,6 +8866,65 @@ class MeshtasticManager {
       logger.error('❌ Error in auto-favorite sweep:', error);
     } finally {
       this.autoFavoriteSweepRunning = false;
+    }
+  }
+
+  /**
+   * Check if auto heap management should be triggered and purge oldest nodes if heap is low.
+   * Called after each LocalStats telemetry packet from the local node.
+   */
+  private async checkAutoHeapManagement(heapFreeBytes: number | undefined, fromNum: number): Promise<void> {
+    const enabled = await databaseService.settings.getSetting('autoHeapManagementEnabled');
+    if (enabled !== 'true') return;
+
+    const thresholdStr = await databaseService.settings.getSetting('autoHeapManagementThresholdBytes');
+    const threshold = parseInt(thresholdStr || '20000');
+
+    if (heapFreeBytes === undefined || heapFreeBytes >= threshold) return;
+
+    // Cooldown: skip if a purge happened within the last 30 minutes
+    const cooldownMs = 30 * 60 * 1000;
+    if (this.lastHeapPurgeAt !== null && (Date.now() - this.lastHeapPurgeAt) < cooldownMs) {
+      logger.debug(`🧹 Auto heap management: skipping purge (cooldown active, last purge ${Math.round((Date.now() - this.lastHeapPurgeAt) / 60000)}m ago)`);
+      return;
+    }
+
+    try {
+      // Get all nodes ordered by lastHeard ascending (oldest first), excluding local node
+      const allNodes = await databaseService.nodes.getAllNodes();
+      const localNodeNum = this.localNodeInfo?.nodeNum ?? fromNum;
+      const candidates = allNodes
+        .filter(n => Number(n.nodeNum) !== localNodeNum)
+        .sort((a, b) => (a.lastHeard ?? 0) - (b.lastHeard ?? 0))
+        .slice(0, 10);
+
+      if (candidates.length === 0) {
+        logger.warn('🧹 Auto heap management: no candidate nodes to purge');
+        return;
+      }
+
+      logger.info(`🧹 Auto heap management triggered: heap=${heapFreeBytes}B free (threshold=${threshold}B), purging ${candidates.length} oldest nodes`);
+
+      for (const node of candidates) {
+        await this.sendRemoveNode(Number(node.nodeNum));
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await databaseService.auditLogAsync(
+        null,
+        'auto_heap_management_purge',
+        'nodes',
+        `Auto heap management: purged ${candidates.length} nodes (heap was ${heapFreeBytes} bytes free, threshold ${threshold} bytes)`,
+        'system'
+      );
+
+      // Wait 3 seconds then reboot the local node
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      await this.sendRebootCommand(this.localNodeInfo!.nodeNum, 10);
+
+      this.lastHeapPurgeAt = Date.now();
+    } catch (error) {
+      logger.error('❌ Error in auto heap management:', error);
     }
   }
 
