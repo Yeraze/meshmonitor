@@ -203,23 +203,13 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate PSK is valid Base64 and expand shorthand keys
-    let finalPsk = psk;
+    // Validate PSK is valid Base64 and store verbatim (including shorthand AQ==)
     let finalPskLength: number;
     try {
       const pskBuffer = Buffer.from(psk, 'base64');
 
-      // Expand shorthand PSK (1-byte keys like AQ==) to full 16-byte key
-      const expandedPsk = expandShorthandPsk(pskBuffer);
-      if (!expandedPsk) {
-        return res.status(400).json({
-          success: false,
-          error: 'Bad Request',
-          message: 'PSK value 0 means no encryption, which is not supported for channel database'
-        });
-      }
-
-      if (expandedPsk.length !== 16 && expandedPsk.length !== 32) {
+      // Validate raw PSK length: 1 byte (shorthand), 16 bytes (AES-128), or 32 bytes (AES-256)
+      if (pskBuffer.length !== 1 && pskBuffer.length !== 16 && pskBuffer.length !== 32) {
         return res.status(400).json({
           success: false,
           error: 'Bad Request',
@@ -227,12 +217,17 @@ router.post('/', async (req: Request, res: Response) => {
         });
       }
 
-      // Use expanded key if it was a shorthand
-      if (expandedPsk.length !== pskBuffer.length) {
-        finalPsk = expandedPsk.toString('base64');
-        logger.debug(`Expanded shorthand PSK (${pskBuffer.length} byte) to ${expandedPsk.length}-byte key`);
+      // Detect no-encryption case (PSK byte value 0x00)
+      if (!expandShorthandPsk(pskBuffer)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'PSK value 0 means no encryption, which is not supported for channel database'
+        });
       }
-      finalPskLength = expandedPsk.length;
+
+      // Store the PSK verbatim — the decryption service expands shorthand keys at read time
+      finalPskLength = pskBuffer.length;
 
       // Validate pskLength if explicitly provided
       if (pskLength !== undefined && pskLength !== finalPskLength) {
@@ -252,7 +247,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const newChannelId = await databaseService.channelDatabase.createAsync({
       name,
-      psk: finalPsk,
+      psk,
       pskLength: finalPskLength,
       description: description ?? null,
       isEnabled: isEnabled ?? true,
@@ -431,23 +426,23 @@ router.put('/:id', async (req: Request, res: Response) => {
 
       try {
         const pskBuffer = Buffer.from(psk, 'base64');
-        const expandedPsk = expandShorthandPsk(pskBuffer);
-        if (!expandedPsk) {
-          return res.status(400).json({
-            success: false,
-            error: 'Bad Request',
-            message: 'PSK value 0 means no encryption, which is not supported for channel database'
-          });
-        }
-        if (expandedPsk.length !== 16 && expandedPsk.length !== 32) {
+        if (pskBuffer.length !== 1 && pskBuffer.length !== 16 && pskBuffer.length !== 32) {
           return res.status(400).json({
             success: false,
             error: 'Bad Request',
             message: 'PSK must be 1 byte (shorthand), 16 bytes (AES-128), or 32 bytes (AES-256) when decoded'
           });
         }
-        updates.psk = expandedPsk.length !== pskBuffer.length ? expandedPsk.toString('base64') : psk;
-        updates.pskLength = expandedPsk.length;
+        if (!expandShorthandPsk(pskBuffer)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Bad Request',
+            message: 'PSK value 0 means no encryption, which is not supported for channel database'
+          });
+        }
+        // Store the PSK verbatim — the decryption service expands shorthand keys at read time
+        updates.psk = psk;
+        updates.pskLength = pskBuffer.length;
       } catch (_err) {
         return res.status(400).json({
           success: false,

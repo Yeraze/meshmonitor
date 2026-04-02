@@ -195,14 +195,24 @@ describe('POST /api/v1/channel-database', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 400 when PSK length is wrong (not 16 or 32)', async () => {
-    // 8-byte PSK — not 16 or 32 bytes
+  it('returns 400 when PSK length is wrong (not 1, 16, or 32)', async () => {
+    // 8-byte PSK — not 1, 16, or 32 bytes
     const shortPsk = Buffer.alloc(8, 0x01).toString('base64');
     const res = await request(createApp(adminUser))
       .post('/api/v1/channel-database')
       .send({ name: 'New', psk: shortPsk });
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/16 bytes|32 bytes/);
+  });
+
+  it('creates channel with shorthand PSK AQ== and stores it verbatim', async () => {
+    const res = await request(createApp(adminUser))
+      .post('/api/v1/channel-database')
+      .send({ name: 'Default Key Channel', psk: 'AQ==' });
+    expect(res.status).toBe(201);
+    expect(mockDb.channelDatabase.createAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ psk: 'AQ==', pskLength: 1 }),
+    );
   });
 
   it('creates channel and returns 201 for admin with valid PSK', async () => {
