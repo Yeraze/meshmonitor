@@ -275,6 +275,10 @@ wait_for_reconnect() {
 
             echo -e "${GREEN}✓${NC} Fresh config requested"
 
+            # Give device time to send its configuration after reconnect
+            echo "Waiting 10 seconds for device config sync..."
+            sleep 10
+
             return 0
         fi
 
@@ -289,12 +293,13 @@ wait_for_reconnect() {
     return 1
 }
 
-# Function to wait for config sync (allow up to 60 seconds for full channel data sync)
+# Function to wait for config sync (allow up to 120 seconds for full channel data sync)
 wait_for_sync() {
     # User reported: "It takes 30-45 seconds for the UI to finish the import and show the new results"
     # UI actually gets channel data from /api/poll, not /api/channels!
-    echo "Waiting for configuration sync via /api/poll (up to 60 seconds)..."
-    MAX_WAIT=60
+    # LoRa config can take longer to sync than channels, especially after reboot
+    echo "Waiting for configuration sync via /api/poll (up to 120 seconds)..."
+    MAX_WAIT=120
     ELAPSED=0
 
     while [ $ELAPSED -lt $MAX_WAIT ]; do
