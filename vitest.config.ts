@@ -19,6 +19,11 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.paperclip/**',
+    ],
     env: {
       DATABASE_PATH: ':memory:',
     },

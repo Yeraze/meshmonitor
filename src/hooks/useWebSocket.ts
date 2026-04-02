@@ -181,13 +181,15 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       return;
     }
 
-    // Build the socket path respecting BASE_URL
+    // Build the socket URL and path respecting BASE_URL
+    // Explicit URL is required — Socket.io's auto-detection fails when a <base> tag is present
     const socketPath = `${appBasename}/socket.io`;
+    const socketUrl = `${window.location.protocol}//${window.location.host}`;
 
-    const socket = io({
+    const socket = io(socketUrl, {
       path: socketPath,
       withCredentials: true,
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
