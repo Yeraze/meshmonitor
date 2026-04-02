@@ -641,5 +641,29 @@
       "Admin purge with override password",
       "Persistent JSON storage in /data/mail/"
     ]
+  },
+  {
+    "name": "Pirate Weather ADV",
+    "filename": "PirateWeatherADV.py",
+    "icon": "🌦️",
+    "description": "Advanced Python weather script with dual-mode input: query by place name (location mode) or automatically use the requesting node's GPS coordinates (GPS mode). Supports CLI args for Timed Events, flexible input parsing, and reverse-geocodes GPS coordinates to a city name via OpenStreetMap Nominatim. All weather data from Pirate Weather API.",
+    "language": "Python",
+    "tags": ["Weather", "API", "Geocoding", "PirateWeather", "GPS", "Community"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/PirateWeatherADV.py",
+    "exampleTrigger": "weather — GPS mode, uses node coordinates\nweather {location:.+} — location mode, user types a place name",
+    "requirements": [
+      "Python 3.6+ (included in MeshMonitor)",
+      "PIRATE_WEATHER_API_KEY environment variable (free key from https://pirateweather.net/)",
+      "Optional: LOCAL_LAT / LOCAL_LON for GPS fallback when requesting node has no coordinates"
+    ],
+    "author": "Nullvoid3771",
+    "features": [
+      "Location mode: query weather by typing a place name",
+      "GPS mode: uses requesting node's FROM_LAT/FROM_LON, falls back to LOCAL_LAT/LOCAL_LON",
+      "Flexible input — accepts CLI args, PARAM_location env var, or GPS coordinates",
+      "Strips leading 'weather' keyword automatically",
+      "Reverse-geocodes GPS coordinates to city name via OSM Nominatim",
+      "No external Python dependencies"
+    ]
   }
 ]
