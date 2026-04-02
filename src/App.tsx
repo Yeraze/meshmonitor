@@ -4865,6 +4865,7 @@ function App() {
                 { id: 'auto-favorite', label: t('automation.auto_favorite.title', 'Auto Favorite') },
                 { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
                 { id: 'auto-ping', label: t('automation.auto_ping.title', 'Auto Ping') },
+                { id: 'auto-heap-management', label: t('automation.auto_heap.title', 'Auto Heap Management') },
                 { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },
                 { id: 'auto-time-sync', label: t('automation.time_sync.title', 'Auto Time Sync') },
                 { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
