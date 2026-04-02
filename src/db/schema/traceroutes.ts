@@ -3,8 +3,8 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, real as pgReal, doublePrecision as pgDouble, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, text as myText, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { pgTable, text as pgText, real as pgReal, doublePrecision as pgDouble, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, integer as pgInteger } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, text as myText, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial, int as myInt } from 'drizzle-orm/mysql-core';
 import { nodesSqlite, nodesPostgres, nodesMysql } from './nodes.js';
 
 // SQLite schemas
@@ -19,6 +19,7 @@ export const traceroutesSqlite = sqliteTable('traceroutes', {
   snrTowards: text('snrTowards'), // JSON string of SNR values
   snrBack: text('snrBack'), // JSON string of return SNR values
   routePositions: text('routePositions'), // JSON: { nodeNum: { lat, lng, alt? } } position snapshot at traceroute time
+  channel: integer('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   timestamp: integer('timestamp').notNull(),
   createdAt: integer('createdAt').notNull(),
 });
@@ -51,6 +52,7 @@ export const traceroutesPostgres = pgTable('traceroutes', {
   snrTowards: pgText('snrTowards'), // JSON string of SNR values
   snrBack: pgText('snrBack'), // JSON string of return SNR values
   routePositions: pgText('routePositions'), // JSON: { nodeNum: { lat, lng, alt? } } position snapshot at traceroute time
+  channel: pgInteger('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
@@ -83,6 +85,7 @@ export const traceroutesMysql = mysqlTable('traceroutes', {
   snrTowards: myText('snrTowards'), // JSON string of SNR values
   snrBack: myText('snrBack'), // JSON string of return SNR values
   routePositions: myText('routePositions'), // JSON: { nodeNum: { lat, lng, alt? } } position snapshot at traceroute time
+  channel: myInt('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

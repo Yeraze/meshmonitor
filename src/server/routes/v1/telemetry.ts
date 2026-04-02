@@ -7,7 +7,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
-import { checkNodeChannelAccess } from '../../utils/nodeEnhancer.js';
+import { checkNodeChannelAccess, maskTelemetryByChannel } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router();
 
@@ -53,6 +53,8 @@ router.get('/', async (req: Request, res: Response) => {
       if (beforeTimestamp) {
         telemetry = telemetry.filter(t => t.timestamp < beforeTimestamp);
       }
+      // Mask records from channels the user cannot access
+      telemetry = await maskTelemetryByChannel(telemetry, (req as any).user);
     } else {
       // Get all telemetry by getting all nodes and their telemetry
       const nodes = await databaseService.nodes.getAllNodes();
@@ -62,6 +64,8 @@ router.get('/', async (req: Request, res: Response) => {
         const nodeTelemetry = await databaseService.telemetry.getTelemetryByNode(node.nodeId, perNodeLimit, sinceTimestamp, beforeTimestamp);
         telemetry.push(...nodeTelemetry);
       }
+      // Mask records from channels the user cannot access
+      telemetry = await maskTelemetryByChannel(telemetry, (req as any).user);
     }
 
     res.json({

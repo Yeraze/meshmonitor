@@ -5244,6 +5244,7 @@ class MeshtasticManager {
         snrTowards: JSON.stringify(snrTowards),
         snrBack: JSON.stringify(snrBack),
         routePositions: JSON.stringify(routePositions),
+        channel: channelIndex >= 0 ? channelIndex : null,
         timestamp: timestamp,
         createdAt: Date.now()
       };

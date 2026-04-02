@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, maskNodeLocationByChannel } from './nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, maskNodeLocationByChannel, maskTelemetryByChannel, maskTraceroutesByChannel } from './nodeEnhancer.js';
 
 // Mock the auth middleware
 vi.mock('../auth/authMiddleware.js', () => ({
@@ -356,5 +356,151 @@ describe('nodeEnhancer: maskNodeLocationByChannel', () => {
     expect((result[0] as any).latitude).toBe(10);   // kept
     expect((result[1] as any).latitude).toBeUndefined(); // masked
     expect((result[2] as any).latitude).toBe(50);   // kept (no positionChannel)
+  });
+});
+
+describe('nodeEnhancer: maskTelemetryByChannel', () => {
+  // User 1: channel_0 and channel_1 access; no channel_2+ access
+  // User 2: all channel access
+  // User 99: no access
+
+  it('should return all records for admin', async () => {
+    const adminUser = { id: 1, isAdmin: true } as any;
+    const records = [
+      { nodeId: '!00000001', telemetryType: 'battery_level', value: 80, channel: 2 },
+      { nodeId: '!00000001', telemetryType: 'temperature', value: 25, channel: 0 },
+    ];
+    const result = await maskTelemetryByChannel(records, adminUser);
+    expect(result).toHaveLength(2);
+  });
+
+  it('should keep records from accessible channels', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { nodeId: '!00000001', telemetryType: 'battery_level', value: 80, channel: 0 },
+      { nodeId: '!00000001', telemetryType: 'temperature', value: 25, channel: 1 },
+    ];
+    const result = await maskTelemetryByChannel(records, user);
+    expect(result).toHaveLength(2);
+  });
+
+  it('should remove records from inaccessible channels', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { nodeId: '!00000001', telemetryType: 'battery_level', value: 80, channel: 0 }, // accessible
+      { nodeId: '!00000001', telemetryType: 'temperature', value: 25, channel: 2 },   // inaccessible
+      { nodeId: '!00000001', telemetryType: 'humidity', value: 60, channel: 3 },      // inaccessible
+    ];
+    const result = await maskTelemetryByChannel(records, user);
+    expect(result).toHaveLength(1);
+    expect((result[0] as any).telemetryType).toBe('battery_level');
+  });
+
+  it('should keep records with no channel (null/undefined)', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { nodeId: '!00000001', telemetryType: 'battery_level', value: 80, channel: null },
+      { nodeId: '!00000001', telemetryType: 'temperature', value: 25 }, // no channel field
+    ];
+    const result = await maskTelemetryByChannel(records, user);
+    expect(result).toHaveLength(2);
+  });
+
+  it('should remove all records for null user when channels are set', async () => {
+    const records = [
+      { nodeId: '!00000001', telemetryType: 'battery_level', value: 80, channel: 0 },
+    ];
+    const result = await maskTelemetryByChannel(records, null);
+    expect(result).toHaveLength(0);
+  });
+
+  it('should remove all records for user with no permissions when channels are set', async () => {
+    const user = { id: 99, isAdmin: false } as any;
+    const records = [
+      { nodeId: '!00000001', telemetryType: 'battery_level', value: 80, channel: 0 },
+    ];
+    const result = await maskTelemetryByChannel(records, user);
+    expect(result).toHaveLength(0);
+  });
+
+  it('should handle mixed records — keep accessible and null-channel, remove inaccessible', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { telemetryType: 'battery', value: 90, channel: 0 },   // accessible
+      { telemetryType: 'temp', value: 20, channel: 2 },      // inaccessible
+      { telemetryType: 'snr', value: -10 },                   // no channel
+    ];
+    const result = await maskTelemetryByChannel(records, user);
+    expect(result).toHaveLength(2);
+    expect((result[0] as any).telemetryType).toBe('battery');
+    expect((result[1] as any).telemetryType).toBe('snr');
+  });
+});
+
+describe('nodeEnhancer: maskTraceroutesByChannel', () => {
+  // User 1: channel_0 and channel_1 access; no channel_2+ access
+  // User 2: all channel access
+  // User 99: no access
+
+  it('should return all records for admin', async () => {
+    const adminUser = { id: 1, isAdmin: true } as any;
+    const records = [
+      { fromNodeId: '!00000001', toNodeId: '!00000002', channel: 2 },
+      { fromNodeId: '!00000001', toNodeId: '!00000003', channel: 0 },
+    ];
+    const result = await maskTraceroutesByChannel(records, adminUser);
+    expect(result).toHaveLength(2);
+  });
+
+  it('should keep traceroutes from accessible channels', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { fromNodeId: '!00000001', toNodeId: '!00000002', channel: 0 },
+      { fromNodeId: '!00000001', toNodeId: '!00000003', channel: 1 },
+    ];
+    const result = await maskTraceroutesByChannel(records, user);
+    expect(result).toHaveLength(2);
+  });
+
+  it('should remove traceroutes from inaccessible channels', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { fromNodeId: '!00000001', toNodeId: '!00000002', channel: 0 }, // accessible
+      { fromNodeId: '!00000001', toNodeId: '!00000003', channel: 3 }, // inaccessible
+    ];
+    const result = await maskTraceroutesByChannel(records, user);
+    expect(result).toHaveLength(1);
+    expect((result[0] as any).toNodeId).toBe('!00000002');
+  });
+
+  it('should keep traceroutes with no channel (null/undefined — pre-migration rows)', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { fromNodeId: '!00000001', toNodeId: '!00000002', channel: null },
+      { fromNodeId: '!00000001', toNodeId: '!00000003' }, // no channel field
+    ];
+    const result = await maskTraceroutesByChannel(records, user);
+    expect(result).toHaveLength(2);
+  });
+
+  it('should remove all records for null user when channels are set', async () => {
+    const records = [
+      { fromNodeId: '!00000001', toNodeId: '!00000002', channel: 0 },
+    ];
+    const result = await maskTraceroutesByChannel(records, null);
+    expect(result).toHaveLength(0);
+  });
+
+  it('should handle mixed records — keep accessible and null-channel, remove inaccessible', async () => {
+    const user = { id: 1, isAdmin: false } as any;
+    const records = [
+      { fromNodeId: '!A', toNodeId: '!B', channel: 0 },   // accessible
+      { fromNodeId: '!A', toNodeId: '!C', channel: 2 },   // inaccessible
+      { fromNodeId: '!A', toNodeId: '!D' },                // no channel
+    ];
+    const result = await maskTraceroutesByChannel(records, user);
+    expect(result).toHaveLength(2);
+    expect((result[0] as any).toNodeId).toBe('!B');
+    expect((result[1] as any).toNodeId).toBe('!D');
   });
 });
