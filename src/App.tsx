@@ -2596,7 +2596,7 @@ function App() {
         setTraceroutes(data.traceroutes);
       }
     },
-    [currentNodeId, playNotificationSound, setTraceroutes]
+    [currentNodeId, playNotificationSound, setTraceroutes, isChannelMuted, isDMMuted]
   );
 
   // Process poll data when it changes (from usePoll hook)

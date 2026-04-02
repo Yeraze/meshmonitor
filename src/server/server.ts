@@ -2206,10 +2206,39 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
       directMessages?: { [nodeId: string]: number };
     } = {};
 
+    // Load mute preferences for the current user (if authenticated)
+    let mutedChannelIds: Set<number> = new Set();
+    let mutedDMNodeIds: Set<string> = new Set();
+    if (userId) {
+      const { getUserNotificationPreferencesAsync } = await import('./utils/notificationFiltering.js');
+      const prefs = await getUserNotificationPreferencesAsync(userId);
+      if (prefs) {
+        const now = Date.now();
+        for (const rule of (prefs.mutedChannels ?? [])) {
+          if (rule.muteUntil === null || rule.muteUntil > now) {
+            mutedChannelIds.add(rule.channelId);
+          }
+        }
+        for (const rule of (prefs.mutedDMs ?? [])) {
+          if (rule.muteUntil === null || rule.muteUntil > now) {
+            mutedDMNodeIds.add(rule.nodeUuid);
+          }
+        }
+      }
+    }
+
     // Get channel unread counts if user has channels permission
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      result.channels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
+      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
+      // Filter out muted channels
+      const channels: { [channelId: number]: number } = {};
+      for (const [channelId, count] of Object.entries(rawCounts)) {
+        if (!mutedChannelIds.has(Number(channelId))) {
+          channels[Number(channelId)] = count as number;
+        }
+      }
+      result.channels = channels;
     }
 
     // Get DM unread counts if user has messages permission (batch query)
@@ -2220,7 +2249,8 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
       const directMessages: { [nodeId: string]: number } = {};
       for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
-        if (visibleNodeIds.has(nodeId) && count > 0) {
+        // Filter out muted DMs
+        if (visibleNodeIds.has(nodeId) && count > 0 && !mutedDMNodeIds.has(nodeId)) {
           directMessages[nodeId] = count;
         }
       }
