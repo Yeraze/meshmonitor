@@ -876,7 +876,9 @@ function App() {
         } catch (error) {
           logger.error('Failed to load config:', error);
           setNodeAddress('192.168.1.100');
-          setBaseUrl('');
+          // Keep initialBaseUrl detected from pathname — resetting to '' would break
+          // API calls when BASE_URL is configured on the server.
+          configBaseUrl = initialBaseUrl;
         }
 
         // Load settings from server
