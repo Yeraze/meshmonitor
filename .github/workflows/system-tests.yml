@@ -38,6 +38,9 @@ jobs:
       - name: Initialize submodules
         run: git submodule update --init --recursive
 
+      - name: Install dependencies
+        run: npm install --prefer-offline --no-audit --legacy-peer-deps
+
       - name: Run system tests (attempt 1)
         id: test1
         continue-on-error: true
