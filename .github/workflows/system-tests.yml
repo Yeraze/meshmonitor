@@ -1,0 +1,64 @@
+name: System Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - 'src/server/**'
+      - 'src/services/**'
+      - 'src/db/**'
+      - 'src/cli/**'
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - 'tests/system-tests.sh'
+      - 'tests/test-*.sh'
+      - '.github/workflows/system-tests.yml'
+
+# Only one system test at a time — hardware node is a shared resource
+concurrency:
+  group: system-tests
+  cancel-in-progress: true
+
+jobs:
+  system-tests:
+    name: System Tests (Hardware)
+    runs-on: [self-hosted, meshmonitor-hw]
+    # Run if: path filter matched OR the 'system-test' label was added
+    if: >
+      github.event.action != 'labeled' ||
+      github.event.label.name == 'system-test'
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Run system tests
+        run: ./tests/system-tests.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-test-results
+          path: test-results.md
+
+      - name: Post results to PR
+        if: always()
+        run: |
+          if [ -f test-results.md ]; then
+            # Wrap in a details block to keep the PR tidy
+            {
+              echo "<details><summary>System Test Results</summary>"
+              echo ""
+              cat test-results.md
+              echo ""
+              echo "</details>"
+            } > /tmp/system-test-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --body-file /tmp/system-test-comment.md
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
