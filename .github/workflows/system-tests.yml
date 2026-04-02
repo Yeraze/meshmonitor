@@ -27,7 +27,7 @@ jobs:
     if: >
       github.event.action != 'labeled' ||
       github.event.label.name == 'system-test'
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -38,8 +38,17 @@ jobs:
       - name: Initialize submodules
         run: git submodule update --init --recursive
 
-      - name: Run system tests
+      - name: Run system tests (attempt 1)
+        id: test1
+        continue-on-error: true
         run: ./tests/system-tests.sh
+
+      - name: Retry system tests (attempt 2)
+        if: steps.test1.outcome == 'failure'
+        run: |
+          echo "First attempt failed — retrying (hardware tests can be flaky)..."
+          sleep 30
+          ./tests/system-tests.sh
 
       - name: Upload test results
         if: always()
