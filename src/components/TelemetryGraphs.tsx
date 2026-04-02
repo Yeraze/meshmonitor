@@ -255,25 +255,33 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
         </div>
       </div>
 
-      {mode === 'gauge' && latest ? (
-        <TelemetryGauge
-          value={latest.value}
-          min={range.min}
-          max={range.max}
-          unit={unit}
-          color={color}
-          timestamp={latest.timestamp}
-          nodeId={nodeId}
-          onRangeChange={setRange}
-          canEditRange={canEditSettings}
-        />
-      ) : mode === 'numeric' && latest ? (
-        <TelemetryNumericLabel
-          value={latest.value}
-          unit={unit}
-          color={color}
-          timestamp={latest.timestamp}
-        />
+      {mode === 'gauge' ? (
+        latest ? (
+          <TelemetryGauge
+            value={latest.value}
+            min={range.min}
+            max={range.max}
+            unit={unit}
+            color={color}
+            timestamp={latest.timestamp}
+            nodeId={nodeId}
+            onRangeChange={setRange}
+            canEditRange={canEditSettings}
+          />
+        ) : (
+          <div className="telemetry-no-data">{t('telemetry.no_data')}</div>
+        )
+      ) : mode === 'numeric' ? (
+        latest ? (
+          <TelemetryNumericLabel
+            value={latest.value}
+            unit={unit}
+            color={color}
+            timestamp={latest.timestamp}
+          />
+        ) : (
+          <div className="telemetry-no-data">{t('telemetry.no_data')}</div>
+        )
       ) : (
         <ResponsiveContainer width="100%" height={200}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
