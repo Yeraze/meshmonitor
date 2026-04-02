@@ -30,6 +30,16 @@ SOURCE_PORT="8087"
 SOURCE_COMPOSE_FILE="docker-compose.migration-source-test.yml"
 SQLITE_DB_PATH="/tmp/test-migration-source.db"
 
+# Ensure dist/cli/migrate-db.js exists (needed by npm run migrate-db)
+if [ ! -f "$PROJECT_ROOT/dist/cli/migrate-db.js" ]; then
+    echo "Building server (migrate-db CLI not found in dist/)..."
+    npm run build:server > /dev/null 2>&1 || {
+        echo -e "${RED}✗ FAIL${NC}: Failed to build server for migrate-db CLI"
+        exit 1
+    }
+    echo -e "${GREEN}✓${NC} Server build complete"
+fi
+
 # Track results
 POSTGRES_RESULT="NOT_RUN"
 MYSQL_RESULT="NOT_RUN"
@@ -223,7 +233,8 @@ if [ "$POSTGRES_RESULT" != "FAILED" ]; then
     POSTGRES_URL="postgres://meshmonitor:testpass123@localhost:$POSTGRES_PORT/meshmonitor"
 
     # Run migration from project root with npm
-    if npm run migrate-db -- --from "sqlite:$SQLITE_DB_PATH" --to "$POSTGRES_URL" --verbose 2>&1 | tee /tmp/pg-migration.log; then
+    # Use pipefail in subshell so tee doesn't mask migration failures
+    if (set -o pipefail; npm run migrate-db -- --from "sqlite:$SQLITE_DB_PATH" --to "$POSTGRES_URL" --verbose 2>&1 | tee /tmp/pg-migration.log); then
         echo -e "${GREEN}✓${NC} PostgreSQL migration completed"
 
         # Verify data
@@ -232,6 +243,12 @@ if [ "$POSTGRES_RESULT" != "FAILED" ]; then
         PG_MESSAGE_COUNT=$(docker exec meshmonitor-postgres-test psql -U meshmonitor -d meshmonitor -t -c "SELECT COUNT(*) FROM messages;" 2>/dev/null | tr -d ' \n')
         PG_SETTINGS_COUNT=$(docker exec meshmonitor-postgres-test psql -U meshmonitor -d meshmonitor -t -c "SELECT COUNT(*) FROM settings;" 2>/dev/null | tr -d ' \n')
         PG_USER_COUNT=$(docker exec meshmonitor-postgres-test psql -U meshmonitor -d meshmonitor -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' \n')
+
+        # Default empty counts to 0 to avoid integer comparison errors
+        PG_NODE_COUNT=${PG_NODE_COUNT:-0}
+        PG_MESSAGE_COUNT=${PG_MESSAGE_COUNT:-0}
+        PG_SETTINGS_COUNT=${PG_SETTINGS_COUNT:-0}
+        PG_USER_COUNT=${PG_USER_COUNT:-0}
 
         echo "  - PostgreSQL Nodes: $PG_NODE_COUNT (source: $SQLITE_NODE_COUNT)"
         echo "  - PostgreSQL Messages: $PG_MESSAGE_COUNT (source: $SQLITE_MESSAGE_COUNT)"
@@ -304,7 +321,8 @@ if [ "$MYSQL_RESULT" != "FAILED" ]; then
     MYSQL_URL="mysql://meshmonitor:testpass123@localhost:$MYSQL_PORT/meshmonitor"
 
     # Run migration from project root with npm
-    if npm run migrate-db -- --from "sqlite:$SQLITE_DB_PATH" --to "$MYSQL_URL" --verbose 2>&1 | tee /tmp/mysql-migration.log; then
+    # Use pipefail in subshell so tee doesn't mask migration failures
+    if (set -o pipefail; npm run migrate-db -- --from "sqlite:$SQLITE_DB_PATH" --to "$MYSQL_URL" --verbose 2>&1 | tee /tmp/mysql-migration.log); then
         echo -e "${GREEN}✓${NC} MySQL migration completed"
 
         # Verify data
@@ -314,6 +332,12 @@ if [ "$MYSQL_RESULT" != "FAILED" ]; then
         MYSQL_SETTINGS_COUNT=$(docker exec meshmonitor-mysql-test mysql -u meshmonitor -ptestpass123 -D meshmonitor -N -e "SELECT COUNT(*) FROM settings;" 2>/dev/null | tr -d ' \n')
         MYSQL_USER_COUNT=$(docker exec meshmonitor-mysql-test mysql -u meshmonitor -ptestpass123 -D meshmonitor -N -e "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' \n')
 
+        # Default empty counts to 0 to avoid integer comparison errors
+        MYSQL_NODE_COUNT=${MYSQL_NODE_COUNT:-0}
+        MYSQL_MESSAGE_COUNT=${MYSQL_MESSAGE_COUNT:-0}
+        MYSQL_SETTINGS_COUNT=${MYSQL_SETTINGS_COUNT:-0}
+        MYSQL_USER_COUNT=${MYSQL_USER_COUNT:-0}
+
         echo "  - MySQL Nodes: $MYSQL_NODE_COUNT (source: $SQLITE_NODE_COUNT)"
         echo "  - MySQL Messages: $MYSQL_MESSAGE_COUNT (source: $SQLITE_MESSAGE_COUNT)"
         echo "  - MySQL Settings: $MYSQL_SETTINGS_COUNT (source: $SQLITE_SETTINGS_COUNT)"
@@ -321,8 +345,7 @@ if [ "$MYSQL_RESULT" != "FAILED" ]; then
 
         # Validate counts - target should have at least as many as source
         # Settings may have 1 extra row added by migration tool
-        if [ -n "$MYSQL_NODE_COUNT" ] && [ -n "$MYSQL_USER_COUNT" ] && \
-           [ "$MYSQL_NODE_COUNT" -ge "$SQLITE_NODE_COUNT" ] && \
+        if [ "$MYSQL_NODE_COUNT" -ge "$SQLITE_NODE_COUNT" ] && \
            [ "$MYSQL_MESSAGE_COUNT" -eq "$SQLITE_MESSAGE_COUNT" ] && \
            [ "$MYSQL_SETTINGS_COUNT" -ge "$SQLITE_SETTINGS_COUNT" ] && \
            [ "$MYSQL_USER_COUNT" -eq "$SQLITE_USER_COUNT" ]; then
