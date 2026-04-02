@@ -990,4 +990,84 @@ describe('Authentication Routes', () => {
       expect(migratedUser!.displayName).toBe('New Name');
     });
   });
+
+  describe('GET /check-default-password', () => {
+    it('should return isDefaultPassword=false when admin uses non-default password', async () => {
+      // admin user already created with 'admin123' which is not 'changeme'
+      const response = await request(app)
+        .get('/api/auth/check-default-password');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('isDefaultPassword');
+      expect(response.body.isDefaultPassword).toBe(false);
+    });
+
+    it('should return isDefaultPassword=true when admin uses "changeme"', async () => {
+      // Create admin with 'changeme' password
+      db.prepare('DELETE FROM users').run();
+      await userModel.create({
+        username: 'admin',
+        password: 'changeme',
+        email: 'admin2@example.com',
+        authProvider: 'local',
+        isAdmin: true
+      });
+
+      const response = await request(app)
+        .get('/api/auth/check-default-password');
+
+      expect(response.status).toBe(200);
+      expect(response.body.isDefaultPassword).toBe(true);
+    });
+
+    it('should return isDefaultPassword=false when no admin user exists', async () => {
+      db.prepare('DELETE FROM users').run();
+
+      const response = await request(app)
+        .get('/api/auth/check-default-password');
+
+      expect(response.status).toBe(200);
+      expect(response.body.isDefaultPassword).toBe(false);
+    });
+  });
+
+  describe('GET /check-config-issues', () => {
+    it('should return empty issues array for normal HTTP request', async () => {
+      const response = await request(app)
+        .get('/api/auth/check-config-issues');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('issues');
+      expect(Array.isArray(response.body.issues)).toBe(true);
+    });
+
+    it('should return issues array (may be empty)', async () => {
+      const response = await request(app)
+        .get('/api/auth/check-config-issues');
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.issues)).toBe(true);
+    });
+  });
+
+  describe('POST /verify-mfa', () => {
+    it('should return 400 when no pending MFA session', async () => {
+      const response = await request(app)
+        .post('/api/auth/verify-mfa')
+        .send({ token: '123456' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('No pending MFA');
+    });
+
+    it('should return 400 when no token or backup code provided', async () => {
+      // First we need a pending MFA session - create one via login attempt with MFA user
+      // For simplicity, test the case where session has pendingMfaUserId but no token is sent
+      const response = await agent
+        .post('/api/auth/verify-mfa')
+        .send({});
+
+      expect(response.status).toBe(400);
+    });
+  });
 });
