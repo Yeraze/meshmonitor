@@ -91,6 +91,7 @@ const SOLAR_DEFAULT_ON_TYPES = new Set([
 interface TelemetryGraphWidgetProps {
   nodeId: string;
   type: string;
+  baseUrl: string;
   data: TelemetryData[];
   isPaxcounterCombined: boolean;
   bleData?: TelemetryData[];
@@ -119,6 +120,7 @@ interface TelemetryGraphWidgetProps {
 const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   nodeId,
   type,
+  baseUrl,
   data,
   isPaxcounterCombined,
   bleData = [],
@@ -143,8 +145,8 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   t,
   canEditSettings,
 }) => {
-  const [mode, setMode] = useWidgetMode(nodeId, type);
-  const [range, setRange] = useWidgetRange(nodeId, type);
+  const [mode, setMode] = useWidgetMode(nodeId, type, baseUrl);
+  const [range, setRange] = useWidgetRange(nodeId, type, baseUrl);
 
   const isTemperature = type === 'temperature';
   const chartData = prepareChartData(data, isTemperature, globalMinTime);
@@ -933,6 +935,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
               key={type}
               nodeId={nodeId}
               type={type}
+              baseUrl={baseUrl}
               data={data}
               isPaxcounterCombined={type === 'paxcounterWifi'}
               bleData={groupedData.get('paxcounterBle')}
