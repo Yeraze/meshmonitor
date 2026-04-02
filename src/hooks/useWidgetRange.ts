@@ -18,8 +18,8 @@ const DEFAULT_RANGE: WidgetRange = { min: 0, max: 100 };
 
 type WidgetRangeMap = Record<string, WidgetRange>;
 
-function fetchWidgetRanges(): Promise<WidgetRangeMap> {
-  return fetch('/api/settings')
+function fetchWidgetRanges(baseUrl: string): Promise<WidgetRangeMap> {
+  return fetch(`${baseUrl}/api/settings`)
     .then(res => (res.ok ? res.json() : {}))
     .then((settings: Record<string, unknown>) => {
       if (!settings.telemetryWidgetRanges) return {};
@@ -32,21 +32,21 @@ function fetchWidgetRanges(): Promise<WidgetRangeMap> {
     .catch(() => ({}));
 }
 
-export function useWidgetRange(nodeId: string, type: string): [WidgetRange, (r: WidgetRange) => void] {
+export function useWidgetRange(nodeId: string, type: string, baseUrl = ''): [WidgetRange, (r: WidgetRange) => void] {
   const key = `${nodeId}_${type}`;
   const queryClient = useQueryClient();
   const csrfFetch = useCsrfFetch();
 
   const { data: ranges } = useQuery<WidgetRangeMap>({
     queryKey: ['widgetRanges'],
-    queryFn: fetchWidgetRanges,
+    queryFn: () => fetchWidgetRanges(baseUrl),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
 
   const mutation = useMutation({
     mutationFn: async (newRanges: WidgetRangeMap) => {
-      const res = await csrfFetch('/api/settings', {
+      const res = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telemetryWidgetRanges: JSON.stringify(newRanges) }),

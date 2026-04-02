@@ -5,8 +5,8 @@ export type WidgetMode = 'chart' | 'gauge' | 'numeric';
 
 type WidgetModeMap = Record<string, WidgetMode>;
 
-function fetchWidgetModes(): Promise<WidgetModeMap> {
-  return fetch('/api/settings')
+function fetchWidgetModes(baseUrl: string): Promise<WidgetModeMap> {
+  return fetch(`${baseUrl}/api/settings`)
     .then(res => (res.ok ? res.json() : {}))
     .then((settings: Record<string, unknown>) => {
       if (!settings.telemetryWidgetModes) return {};
@@ -19,21 +19,21 @@ function fetchWidgetModes(): Promise<WidgetModeMap> {
     .catch(() => ({}));
 }
 
-export function useWidgetMode(nodeId: string, type: string): [WidgetMode, (m: WidgetMode) => void] {
+export function useWidgetMode(nodeId: string, type: string, baseUrl = ''): [WidgetMode, (m: WidgetMode) => void] {
   const key = `${nodeId}_${type}`;
   const queryClient = useQueryClient();
   const csrfFetch = useCsrfFetch();
 
   const { data: modes } = useQuery<WidgetModeMap>({
     queryKey: ['widgetModes'],
-    queryFn: fetchWidgetModes,
+    queryFn: () => fetchWidgetModes(baseUrl),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
 
   const mutation = useMutation({
     mutationFn: async (newModes: WidgetModeMap) => {
-      const res = await csrfFetch('/api/settings', {
+      const res = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telemetryWidgetModes: JSON.stringify(newModes) }),

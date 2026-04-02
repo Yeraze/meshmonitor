@@ -296,8 +296,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const label = isPaxcounterCombined ? 'Paxcounter' : getTranslatedLabel(favorite.telemetryType);
 
     // Widget mode and range (per-widget persistence in localStorage)
-    const [mode, setMode] = useWidgetMode(favorite.nodeId, favorite.telemetryType);
-    const [range, setRange] = useWidgetRange(favorite.nodeId, favorite.telemetryType);
+    const [mode, setMode] = useWidgetMode(favorite.nodeId, favorite.telemetryType, baseUrl);
+    const [range, setRange] = useWidgetRange(favorite.nodeId, favorite.telemetryType, baseUrl);
 
     // Loading state
     if (isLoading) {
