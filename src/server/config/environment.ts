@@ -588,8 +588,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const proxyAuthHeaderGroups = process.env.PROXY_AUTH_HEADER_GROUPS || undefined;
   const proxyAuthLogoutUrl = process.env.PROXY_AUTH_LOGOUT_URL || undefined;
 
-  // Warning if enabled without TRUST_PROXY
-  if (proxyAuthEnabled.value && !trustProxy.wasProvided && nodeEnv.value !== 'production') {
+  // Warning if enabled without TRUST_PROXY (warn in all environments)
+  if (proxyAuthEnabled.value && !trustProxy.wasProvided) {
     logger.warn('⚠️  PROXY_AUTH_ENABLED is true but TRUST_PROXY is not configured!');
     logger.warn('   Proxy authentication requires TRUST_PROXY to prevent header spoofing.');
     logger.warn('   Set TRUST_PROXY=true or TRUST_PROXY=1 to trust the reverse proxy.');
