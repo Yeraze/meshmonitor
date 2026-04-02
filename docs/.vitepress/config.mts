@@ -41,6 +41,7 @@ export default defineConfig({
           items: [
             { text: 'Settings', link: '/features/settings' },
             { text: 'Automation', link: '/features/automation' },
+            { text: 'Auto Heap Management', link: '/features/auto-heap-management' },
             { text: 'Device Configuration', link: '/features/device' },
             { text: 'Admin Commands', link: '/features/admin-commands' },
             { text: 'Push Notifications', link: '/features/notifications' },

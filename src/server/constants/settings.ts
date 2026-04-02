@@ -132,6 +132,8 @@ export const VALID_SETTINGS_KEYS = [
   'activeMapStyleId',
   'telemetryWidgetModes',
   'telemetryWidgetRanges',
+  'autoHeapManagementEnabled',
+  'autoHeapManagementThresholdBytes',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
