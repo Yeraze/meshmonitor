@@ -9567,6 +9567,17 @@ class DatabaseService {
   }
 
   /**
+   * Find user by email (async).
+   * Note: Email is NOT unique in the schema. Returns first match if multiple users share email.
+   * Works with all database backends (SQLite, PostgreSQL, MySQL).
+   */
+  async findUserByEmailAsync(email: string): Promise<any | null> {
+    const dbUser = await this.auth.getUserByEmail(email);
+    if (!dbUser) return null;
+    return this.mapDbUserToUser(dbUser);
+  }
+
+  /**
    * Async method to authenticate a user with username and password.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    * Returns the user if authentication succeeds, null otherwise.

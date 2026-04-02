@@ -250,6 +250,21 @@ export interface EnvironmentConfig {
   adminUsername: string;
   adminUsernameProvided: boolean;
 
+  // Proxy Authentication
+  proxyAuthEnabled: boolean;
+  proxyAuthEnabledProvided: boolean;
+  proxyAuthAutoProvision: boolean;
+  proxyAuthAutoProvisionProvided: boolean;
+  proxyAuthAdminGroups: string[];
+  proxyAuthAdminEmails: string[];
+  proxyAuthNormalUserGroups: string[];
+  proxyAuthJwtGroupsClaim: string;
+  proxyAuthHeaderEmail: string | undefined;
+  proxyAuthHeaderGroups: string | undefined;
+  proxyAuthLogoutUrl: string | undefined;
+  proxyAuthAuditLogging: boolean;
+  proxyAuthAuditLoggingProvided: boolean;
+
   // Rate Limiting
   rateLimitApi: number;
   rateLimitApiProvided: boolean;
@@ -547,6 +562,39 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.ADMIN_USERNAME !== undefined
   };
 
+  // ============ PROXY AUTHENTICATION ============
+  const proxyAuthEnabled = parseBoolean('PROXY_AUTH_ENABLED', process.env.PROXY_AUTH_ENABLED, false);
+  const proxyAuthAutoProvision = parseBoolean('PROXY_AUTH_AUTO_PROVISION', process.env.PROXY_AUTH_AUTO_PROVISION, false);
+  const proxyAuthAuditLogging = parseBoolean('PROXY_AUTH_AUDIT_LOGGING', process.env.PROXY_AUTH_AUDIT_LOGGING, true);
+
+  // Parse comma-separated lists
+  const proxyAuthAdminGroups = (process.env.PROXY_AUTH_ADMIN_GROUPS || '')
+    .split(',')
+    .map(g => g.trim())
+    .filter(Boolean);
+
+  const proxyAuthAdminEmails = (process.env.PROXY_AUTH_ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const proxyAuthNormalUserGroups = (process.env.PROXY_AUTH_NORMAL_USER_GROUPS || '')
+    .split(',')
+    .map(g => g.trim())
+    .filter(Boolean);
+
+  const proxyAuthJwtGroupsClaim = process.env.PROXY_AUTH_JWT_GROUPS_CLAIM || 'groups';
+  const proxyAuthHeaderEmail = process.env.PROXY_AUTH_HEADER_EMAIL || undefined;
+  const proxyAuthHeaderGroups = process.env.PROXY_AUTH_HEADER_GROUPS || undefined;
+  const proxyAuthLogoutUrl = process.env.PROXY_AUTH_LOGOUT_URL || undefined;
+
+  // Warning if enabled without TRUST_PROXY (warn in all environments)
+  if (proxyAuthEnabled.value && !trustProxy.wasProvided) {
+    logger.warn('⚠️  PROXY_AUTH_ENABLED is true but TRUST_PROXY is not configured!');
+    logger.warn('   Proxy authentication requires TRUST_PROXY to prevent header spoofing.');
+    logger.warn('   Set TRUST_PROXY=true or TRUST_PROXY=1 to trust the reverse proxy.');
+  }
+
   // Rate Limiting
   // Defaults: API=1000/15min (~1req/sec), Auth=5/15min, Messages=30/min
   const rateLimitApi = parseRateLimit('RATE_LIMIT_API', process.env.RATE_LIMIT_API, nodeEnv.value === 'development' ? 10000 : 1000);
@@ -647,6 +695,19 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.info(`   DISABLE_LOCAL_AUTH: ${disableLocalAuth.value} (${src(disableLocalAuth.wasProvided)})`);
   if (adminUsername.wasProvided) {
     logger.info(`   ADMIN_USERNAME: ${adminUsername.value} (env)`);
+  }
+  if (proxyAuthEnabled.value) {
+    logger.info('   --- Proxy Authentication ---');
+    logger.info(`   PROXY_AUTH_ENABLED: ${proxyAuthEnabled.value}`);
+    logger.info(`   PROXY_AUTH_AUTO_PROVISION: ${proxyAuthAutoProvision.value}`);
+    logger.info(`   PROXY_AUTH_ADMIN_GROUPS: ${proxyAuthAdminGroups.length > 0 ? proxyAuthAdminGroups.join(', ') : 'not set'}`);
+    logger.info(`   PROXY_AUTH_ADMIN_EMAILS: ${proxyAuthAdminEmails.length > 0 ? '***configured***' : 'not set'}`);
+    logger.info(`   PROXY_AUTH_NORMAL_USER_GROUPS: ${proxyAuthNormalUserGroups.length > 0 ? proxyAuthNormalUserGroups.join(', ') : 'not set (all proxy users allowed)'}`);
+    logger.info(`   PROXY_AUTH_JWT_GROUPS_CLAIM: ${proxyAuthJwtGroupsClaim}`);
+    logger.info(`   PROXY_AUTH_AUDIT_LOGGING: ${proxyAuthAuditLogging.value}`);
+    if (proxyAuthLogoutUrl) {
+      logger.info(`   PROXY_AUTH_LOGOUT_URL: ${proxyAuthLogoutUrl}`);
+    }
   }
   logger.info('   --- Rate Limiting ---');
   logger.info(`   RATE_LIMIT_API: ${rateLimitApi.value} req/min (${src(rateLimitApi.wasProvided)})`);
@@ -752,6 +813,21 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     disableAnonymousProvided: disableAnonymous.wasProvided,
     adminUsername: adminUsername.value,
     adminUsernameProvided: adminUsername.wasProvided,
+
+    // Proxy Authentication
+    proxyAuthEnabled: proxyAuthEnabled.value,
+    proxyAuthEnabledProvided: proxyAuthEnabled.wasProvided,
+    proxyAuthAutoProvision: proxyAuthAutoProvision.value,
+    proxyAuthAutoProvisionProvided: proxyAuthAutoProvision.wasProvided,
+    proxyAuthAdminGroups,
+    proxyAuthAdminEmails,
+    proxyAuthNormalUserGroups,
+    proxyAuthJwtGroupsClaim,
+    proxyAuthHeaderEmail,
+    proxyAuthHeaderGroups,
+    proxyAuthLogoutUrl,
+    proxyAuthAuditLogging: proxyAuthAuditLogging.value,
+    proxyAuthAuditLoggingProvided: proxyAuthAuditLogging.wasProvided,
 
     // Rate Limiting
     rateLimitApi: rateLimitApi.value,
