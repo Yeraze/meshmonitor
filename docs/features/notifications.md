@@ -515,6 +515,51 @@ Apprise URLs contain authentication tokens that allow sending notifications to y
 - Ensure the container has network access to the notification service
 - For Discord/Slack, verify the webhook still exists
 
+## Muting Channels and DMs
+
+You can silence notifications for a specific channel or direct message conversation without disabling notifications globally. Mutes are stored on the server and apply across all your devices and browsers.
+
+### Muting a Channel
+
+1. Open the **Channels** tab
+2. Click the 🔔 icon next to the channel name in the channel header
+3. Select a mute duration from the dropdown:
+   - **Mute indefinitely** — stays muted until you unmute it
+   - **Mute for 1 hour** — automatically expires after 60 minutes
+   - **Mute for 1 week** — automatically expires after 7 days
+4. The channel icon changes to 🔇 in both the header and the sidebar
+
+### Muting a DM Conversation
+
+1. Open a direct message thread
+2. Click the **Actions ▼** menu at the top of the conversation
+3. Select a mute option (indefinitely, 1 hour, or 1 week)
+4. The DM entry in the sidebar shows a 🔇 indicator while muted
+
+### Unmuting
+
+- **Channel**: Click the 🔇 icon in the channel header and select **Unmute**
+- **DM**: Open the **Actions ▼** menu and select **Unmute**
+
+### What Muting Affects
+
+Muting a channel or DM suppresses:
+- Browser audio notification sounds
+- Web Push notifications sent to your browser/device
+- Apprise notifications (Discord, Slack, email, etc.) delivered by the server
+
+::: tip Whitelist Overrides Mutes
+If a message contains a keyword on your notification **whitelist**, it will still trigger a notification even if the channel is muted. Use the whitelist for high-priority terms (like your call sign) that should always break through.
+:::
+
+::: info Mute Expiry
+Time-based mutes expire automatically — no server-side job runs. Expiry is checked at the moment each notification is evaluated, so a mute that expires while you are away is correctly lifted the next time a message arrives.
+:::
+
+### Cross-Device Sync
+
+Mute preferences are stored in your user account on the MeshMonitor server (in `user_notification_preferences`). They apply regardless of which browser or device you use to access MeshMonitor.
+
 ## Notification Settings
 
 ### Notification Services
