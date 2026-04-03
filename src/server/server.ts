@@ -754,6 +754,7 @@ import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
+import sourceRoutes from './routes/sourceRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
 import { GeoJsonService } from './services/geojsonService.js';
@@ -861,6 +862,9 @@ apiRouter.use('/embed-profiles', embedProfileRoutes);
 
 // Firmware OTA update routes (admin only)
 apiRouter.use('/firmware', firmwareUpdateRoutes);
+
+// Sources management routes
+apiRouter.use('/sources', sourceRoutes);
 
 // GeoJSON overlay layer routes
 const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');
