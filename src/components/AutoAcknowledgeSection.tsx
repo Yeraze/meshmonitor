@@ -526,21 +526,26 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <label style={{ fontSize: '0.9rem' }}>
+          <div style={{ marginTop: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.cooldown_label')}
             </label>
-            <input
-              type="number"
-              value={localCooldownSeconds}
-              onChange={(e) => setLocalCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
-              min={0}
-              disabled={!localEnabled}
-              style={{ width: '80px', padding: '2px 4px' }}
-            />
-            <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
-              {t('automation.auto_ack.cooldown_help')}
-            </span>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.cooldown_description')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="number"
+                value={localCooldownSeconds}
+                onChange={(e) => setLocalCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
+                min={0}
+                disabled={!localEnabled}
+                style={{ width: '80px', padding: '2px 4px' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                {t('automation.auto_ack.cooldown_help')}
+              </span>
+            </div>
           </div>
         </div>
 
