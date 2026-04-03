@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- **Homepage Refresh** ([#2542](https://github.com/Yeraze/meshmonitor/pull/2542)): MeshMonitor.org homepage redesigned for clarity and accuracy.
+  - **New hero section**: Updated headline ("Your mesh. Your data."), new tagline, and hero image showing the interactive map
+  - **Desktop Application card**: New feature card highlighting the native Windows/macOS app — no server or Docker required, system tray integration
+  - **Expanded feature cards**: Interactive Map now mentions GeoJSON/KML/KMZ overlay import and polar RF grid; Analytics highlights chart/gauge/numeric display modes; Message Management notes drag-and-drop channel reordering; Custom Map Tile Servers describes MapLibre style JSON upload
+  - **Consolidated cards**: Automation, Geofence Triggers, and Custom Scripting merged into one card; Responsive Design card removed (17 → 15 cards)
+  - **Quick Start fix**: `ALLOWED_ORIGINS` environment variable added to the docker-compose snippet, preventing CORS errors on first run
+  - **Screenshot section fixed**: Broken image references replaced with working screenshots (Message History, User Management)
+  - **Updated meta description**: Site description now reflects current feature set for better SEO
+
+- **Per-Channel and Per-DM Notification Muting** ([#2549](https://github.com/Yeraze/meshmonitor/pull/2549)): Granular notification control at the channel and direct message level, persisted server-side.
+  - **Mute any channel or DM**: Mute notifications for a specific Meshtastic channel or DM conversation — independently of global notification settings
+  - **Time-based mute options**: Choose to mute indefinitely, for 1 hour, or for 1 week. Expiry is evaluated at read-time with no server-side cron
+  - **Visual indicators**: Muted channels and DMs show a 🔇 icon in the sidebar and in the channel/DM header
+  - **UI access**: Click the 🔔 icon in the Channels tab header to mute a channel; use the Actions ▼ menu in a DM thread to mute a DM conversation
+  - **Both push and audio suppressed**: Muting silences browser audio notifications AND push/Apprise server-side notifications; whitelist keywords still override mutes
+  - **Cross-device sync**: Mute preferences are stored in `user_notification_preferences` on the server and follow you across browsers and devices
+
 - **Telemetry Gauge & Numeric Display Modes**: Each telemetry widget now supports three display modes — chart (default), radial gauge, and numeric label. Mode and range preferences persist per-widget via `localStorage`. Gauge min/max ranges are editable inline. Available in both the Telemetry tab and the Dashboard.
 
 - **Multi-Channel AutoAnnounce & AutoResponder** ([#2078](https://github.com/Yeraze/meshmonitor/pull/2078)): Select multiple channels for automation targets
