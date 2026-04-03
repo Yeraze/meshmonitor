@@ -24,6 +24,7 @@ export interface AutoResponderTrigger {
   /** @deprecated Use channels instead. Kept for backward compatibility during migration. */
   channel?: number | 'dm' | 'none';
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
+  cooldownSeconds?: number; // Per-node cooldown in seconds (0 = disabled, default)
 }
 
 export type TimerResponseType = 'script' | 'text';
@@ -104,7 +105,7 @@ export interface TriggerItemProps {
   baseUrl: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string) => void;
+  onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string, cooldownSeconds?: number) => void;
   onRemove: () => void;
   showToast?: (message: string, type: 'success' | 'error' | 'warning') => void;
 }

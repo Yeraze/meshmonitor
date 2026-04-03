@@ -47,6 +47,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newMultiline, setNewMultiline] = useState(false);
   const [newVerifyResponse, setNewVerifyResponse] = useState(false);
   const [newChannels, setNewChannels] = useState<Array<number | 'dm'>>(['dm']);
+  const [newCooldownSeconds, setNewCooldownSeconds] = useState(0);
   const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [availableScripts, setAvailableScripts] = useState<ScriptMetadata[]>([]);
@@ -356,6 +357,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       multiline: newResponseType !== 'script' ? newMultiline : undefined,
       verifyResponse: newChannels.includes('dm') ? newVerifyResponse : false, // Only allow verify for DM
       channels: newChannels,
+      cooldownSeconds: newCooldownSeconds || undefined,
     };
 
     setLocalTriggers([...localTriggers, trigger]);
@@ -364,6 +366,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setNewMultiline(false);
     setNewVerifyResponse(false);
     setNewChannels(['dm']);
+    setNewCooldownSeconds(0);
   };
 
   const removeTrigger = (id: string) => {
@@ -381,7 +384,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string) => {
+  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string, cooldownSeconds?: number) => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
@@ -396,7 +399,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
     setLocalTriggers(localTriggers.map(t =>
       t.id === id
-        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channels, channel: undefined, scriptArgs: responseType === 'script' ? scriptArgs : undefined }
+        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channels, channel: undefined, scriptArgs: responseType === 'script' ? scriptArgs : undefined, cooldownSeconds: cooldownSeconds || undefined }
         : t
     ));
     setEditingId(null);
@@ -732,6 +735,22 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   title="HTTP URL: Use {parameter} to substitute matched values. The response body will be sent as the message."
                 />
               )}
+            </div>
+            {/* Cooldown for new trigger */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label', 'Cooldown:')}</label>
+              <input
+                type="number"
+                value={newCooldownSeconds}
+                onChange={(e) => setNewCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
+                min={0}
+                disabled={!localEnabled}
+                className="setting-input"
+                style={{ width: '80px' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                {t('auto_responder.cooldown_help', 'seconds per node (0 = disabled)')}
+              </span>
             </div>
             <button
               onClick={addTrigger}
@@ -1534,7 +1553,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   baseUrl={baseUrl}
                   onStartEdit={() => startEditing(trigger.id)}
                   onCancelEdit={cancelEditing}
-                  onSaveEdit={(t, rt, r, m, v, c, sa) => saveEdit(trigger.id, t, rt, r, m, v, c, sa)}
+                  onSaveEdit={(t, rt, r, m, v, c, sa, cd) => saveEdit(trigger.id, t, rt, r, m, v, c, sa, cd)}
                   onRemove={() => removeTrigger(trigger.id)}
                   showToast={showToast}
                 />
