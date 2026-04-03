@@ -5004,6 +5004,13 @@ class DatabaseService {
     const filterHwModelsEnabled = this.isTracerouteFilterHwModelsEnabled();
     const filterRegexEnabled = this.isTracerouteFilterRegexEnabled();
 
+    // Last heard and hop range filters (AND logic, applied before OR union filters)
+    const filterLastHeardEnabled = this.isTracerouteFilterLastHeardEnabled();
+    const filterLastHeardHours = this.getTracerouteFilterLastHeardHours();
+    const filterHopsEnabled = this.isTracerouteFilterHopsEnabled();
+    const filterHopsMin = this.getTracerouteFilterHopsMin();
+    const filterHopsMax = this.getTracerouteFilterHopsMax();
+
     // Get all nodes that are eligible for traceroute based on their status
     // Only consider nodes that have been heard within maxNodeAgeHours (active nodes)
     // Two categories:
@@ -5043,6 +5050,24 @@ class DatabaseService {
       localNodeNum,
       now - EXPIRATION_MS
     ) as DbNode[];
+
+    // Apply last-heard filter (AND logic — applied before OR union filters)
+    if (filterLastHeardEnabled) {
+      const lastHeardCutoff = Math.floor(Date.now() / 1000) - (filterLastHeardHours * 3600);
+      eligibleNodes = eligibleNodes.filter(node => {
+        // Exclude nodes with no lastHeard or lastHeard older than cutoff
+        return node.lastHeard != null && node.lastHeard >= lastHeardCutoff;
+      });
+    }
+
+    // Apply hop range filter (AND logic)
+    if (filterHopsEnabled) {
+      eligibleNodes = eligibleNodes.filter(node => {
+        // Treat NULL hopsAway as 1 (direct neighbor)
+        const hops = node.hopsAway ?? 1;
+        return hops >= filterHopsMin && hops <= filterHopsMax;
+      });
+    }
 
     // Apply filters using UNION logic (node is eligible if it matches ANY enabled filter)
     // If filterEnabled is true but no individual filters are enabled, all nodes pass
@@ -5163,6 +5188,31 @@ class DatabaseService {
         now - THREE_HOURS_MS,
         now - EXPIRATION_MS
       );
+
+      // Last heard and hop range filters (AND logic, applied before OR union filters)
+      const filterLastHeardEnabled = this.isTracerouteFilterLastHeardEnabled();
+      const filterLastHeardHours = this.getTracerouteFilterLastHeardHours();
+      const filterHopsEnabled = this.isTracerouteFilterHopsEnabled();
+      const filterHopsMin = this.getTracerouteFilterHopsMin();
+      const filterHopsMax = this.getTracerouteFilterHopsMax();
+
+      // Apply last-heard filter (AND logic — applied before OR union filters)
+      if (filterLastHeardEnabled) {
+        const lastHeardCutoff = Math.floor(Date.now() / 1000) - (filterLastHeardHours * 3600);
+        eligibleNodes = eligibleNodes.filter(node => {
+          // Exclude nodes with no lastHeard or lastHeard older than cutoff
+          return node.lastHeard != null && node.lastHeard >= lastHeardCutoff;
+        });
+      }
+
+      // Apply hop range filter (AND logic)
+      if (filterHopsEnabled) {
+        eligibleNodes = eligibleNodes.filter(node => {
+          // Treat NULL hopsAway as 1 (direct neighbor)
+          const hops = node.hopsAway ?? 1;
+          return hops >= filterHopsMin && hops <= filterHopsMax;
+        });
+      }
 
       // Check if node filter is enabled
       const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
