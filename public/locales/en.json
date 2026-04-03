@@ -2176,6 +2176,8 @@
   "automation.auto_ack.skip_incomplete_description": "Don't auto-acknowledge messages from nodes that are missing name or hardware info. Recommended for secure channels to avoid responding to nodes that may have overheard your encrypted traffic.",
   "automation.auto_ack.node_ignore_list": "Node Ignore List",
   "automation.auto_ack.node_ignore_list_description": "Do not auto-acknowledge messages from these node IDs. Enter one per line or comma-separated using !xxxxxxxx format.",
+  "automation.auto_ack.cooldown_label": "Per-node cooldown (seconds):",
+  "automation.auto_ack.cooldown_help": "0 = disabled",
   "automation.auto_ack.message_multihop": "Acknowledgment Message Template (Multi-hop Messages)",
   "automation.auto_ack.message_multihop_description": "Message to send for multi-hop messages (hop count > 0).",
   "automation.auto_ack.message_direct": "Acknowledgment Message Template (Direct Connections - 0 Hops)",

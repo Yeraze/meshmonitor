@@ -46,6 +46,8 @@ interface AutoAcknowledgeSectionProps {
   onMultihopEnabledChange: (enabled: boolean) => void;
   onMultihopTapbackEnabledChange: (enabled: boolean) => void;
   onMultihopReplyEnabledChange: (enabled: boolean) => void;
+  cooldownSeconds: number;
+  onCooldownSecondsChange: (value: number) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
 }
@@ -93,6 +95,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onMultihopEnabledChange,
   onMultihopTapbackEnabledChange,
   onMultihopReplyEnabledChange,
+  cooldownSeconds,
+  onCooldownSecondsChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
 }) => {
@@ -117,6 +121,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localMultihopEnabled, setLocalMultihopEnabled] = useState(multihopEnabled);
   const [localMultihopTapbackEnabled, setLocalMultihopTapbackEnabled] = useState(multihopTapbackEnabled);
   const [localMultihopReplyEnabled, setLocalMultihopReplyEnabled] = useState(multihopReplyEnabled);
+  const [localCooldownSeconds, setLocalCooldownSeconds] = useState(cooldownSeconds);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -142,17 +147,19 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMultihopEnabled(multihopEnabled);
     setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
     setLocalMultihopReplyEnabled(multihopReplyEnabled);
+    setLocalCooldownSeconds(cooldownSeconds);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, cooldownSeconds, testMessagesProp]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled || localDirectEnabled !== directEnabled || localDirectTapbackEnabled !== directTapbackEnabled || localDirectReplyEnabled !== directReplyEnabled || localMultihopEnabled !== multihopEnabled || localMultihopTapbackEnabled !== multihopTapbackEnabled || localMultihopReplyEnabled !== multihopReplyEnabled || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const cooldownChanged = localCooldownSeconds !== cooldownSeconds;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled || localDirectEnabled !== directEnabled || localDirectTapbackEnabled !== directTapbackEnabled || localDirectReplyEnabled !== directReplyEnabled || localMultihopEnabled !== multihopEnabled || localMultihopTapbackEnabled !== multihopTapbackEnabled || localMultihopReplyEnabled !== multihopReplyEnabled || cooldownChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, testMessages, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, localCooldownSeconds, testMessages, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, cooldownSeconds, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -173,8 +180,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMultihopEnabled(multihopEnabled);
     setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
     setLocalMultihopReplyEnabled(multihopReplyEnabled);
+    setLocalCooldownSeconds(cooldownSeconds);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, cooldownSeconds, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -286,6 +294,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckMultihopEnabled: String(localMultihopEnabled),
           autoAckMultihopTapbackEnabled: String(localMultihopTapbackEnabled),
           autoAckMultihopReplyEnabled: String(localMultihopReplyEnabled),
+          autoAckCooldownSeconds: String(localCooldownSeconds),
           autoAckTestMessages: testMessages
         })
       });
@@ -316,6 +325,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onMultihopEnabledChange(localMultihopEnabled);
       onMultihopTapbackEnabledChange(localMultihopTapbackEnabled);
       onMultihopReplyEnabledChange(localMultihopReplyEnabled);
+      onCooldownSecondsChange(localCooldownSeconds);
       onTestMessagesChange(testMessages);
 
       setHasChanges(false);
@@ -326,7 +336,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, testMessages, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onTapbackEnabledChange, onReplyEnabledChange, onDirectEnabledChange, onDirectTapbackEnabledChange, onDirectReplyEnabledChange, onMultihopEnabledChange, onMultihopTapbackEnabledChange, onMultihopReplyEnabledChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, localCooldownSeconds, testMessages, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onTapbackEnabledChange, onReplyEnabledChange, onDirectEnabledChange, onDirectTapbackEnabledChange, onDirectReplyEnabledChange, onMultihopEnabledChange, onMultihopTapbackEnabledChange, onMultihopReplyEnabledChange, onCooldownSecondsChange, onTestMessagesChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -514,6 +524,23 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 minHeight: '70px'
               }}
             />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <label style={{ fontSize: '0.9rem' }}>
+              {t('automation.auto_ack.cooldown_label')}
+            </label>
+            <input
+              type="number"
+              value={localCooldownSeconds}
+              onChange={(e) => setLocalCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
+              min={0}
+              disabled={!localEnabled}
+              style={{ width: '80px', padding: '2px 4px' }}
+            />
+            <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.cooldown_help')}
+            </span>
           </div>
         </div>
 
