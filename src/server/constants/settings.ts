@@ -134,6 +134,11 @@ export const VALID_SETTINGS_KEYS = [
   'telemetryWidgetRanges',
   'autoHeapManagementEnabled',
   'autoHeapManagementThresholdBytes',
+  'tracerouteFilterLastHeardEnabled',
+  'tracerouteFilterLastHeardHours',
+  'tracerouteFilterHopsEnabled',
+  'tracerouteFilterHopsMin',
+  'tracerouteFilterHopsMax',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

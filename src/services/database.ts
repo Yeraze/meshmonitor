@@ -5605,6 +5605,66 @@ class DatabaseService {
     logger.debug(`✅ Set traceroute filter regex enabled: ${enabled}`);
   }
 
+  // Last Heard filter
+  isTracerouteFilterLastHeardEnabled(): boolean {
+    const value = this.getSetting('tracerouteFilterLastHeardEnabled');
+    // Default to true — skip stale nodes by default
+    return value !== 'false';
+  }
+
+  setTracerouteFilterLastHeardEnabled(enabled: boolean): void {
+    this.setSetting('tracerouteFilterLastHeardEnabled', enabled ? 'true' : 'false');
+    logger.debug(`✅ Set traceroute filter last heard enabled: ${enabled}`);
+  }
+
+  getTracerouteFilterLastHeardHours(): number {
+    const value = this.getSetting('tracerouteFilterLastHeardHours');
+    if (!value) return 168; // Default: 7 days
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 168 : parsed;
+  }
+
+  setTracerouteFilterLastHeardHours(hours: number): void {
+    this.setSetting('tracerouteFilterLastHeardHours', hours.toString());
+    logger.debug(`✅ Set traceroute filter last heard hours: ${hours}`);
+  }
+
+  // Hop range filter
+  isTracerouteFilterHopsEnabled(): boolean {
+    const value = this.getSetting('tracerouteFilterHopsEnabled');
+    // Default to false — disabled by default
+    return value === 'true';
+  }
+
+  setTracerouteFilterHopsEnabled(enabled: boolean): void {
+    this.setSetting('tracerouteFilterHopsEnabled', enabled ? 'true' : 'false');
+    logger.debug(`✅ Set traceroute filter hops enabled: ${enabled}`);
+  }
+
+  getTracerouteFilterHopsMin(): number {
+    const value = this.getSetting('tracerouteFilterHopsMin');
+    if (!value) return 0;
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
+  setTracerouteFilterHopsMin(min: number): void {
+    this.setSetting('tracerouteFilterHopsMin', min.toString());
+    logger.debug(`✅ Set traceroute filter hops min: ${min}`);
+  }
+
+  getTracerouteFilterHopsMax(): number {
+    const value = this.getSetting('tracerouteFilterHopsMax');
+    if (!value) return 10;
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 10 : parsed;
+  }
+
+  setTracerouteFilterHopsMax(max: number): void {
+    this.setSetting('tracerouteFilterHopsMax', max.toString());
+    logger.debug(`✅ Set traceroute filter hops max: ${max}`);
+  }
+
   // Get the traceroute expiration hours (how long to wait before re-tracerouting a node)
   getTracerouteExpirationHours(): number {
     const value = this.getSetting('tracerouteExpirationHours');
