@@ -5765,6 +5765,11 @@ class DatabaseService {
     filterRegexEnabled: boolean;
     expirationHours: number;
     sortByHops: boolean;
+    filterLastHeardEnabled: boolean;
+    filterLastHeardHours: number;
+    filterHopsEnabled: boolean;
+    filterHopsMin: number;
+    filterHopsMax: number;
   } {
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
@@ -5780,6 +5785,11 @@ class DatabaseService {
       filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
       expirationHours: this.getTracerouteExpirationHours(),
       sortByHops: this.isTracerouteSortByHopsEnabled(),
+      filterLastHeardEnabled: this.isTracerouteFilterLastHeardEnabled(),
+      filterLastHeardHours: this.getTracerouteFilterLastHeardHours(),
+      filterHopsEnabled: this.isTracerouteFilterHopsEnabled(),
+      filterHopsMin: this.getTracerouteFilterHopsMin(),
+      filterHopsMax: this.getTracerouteFilterHopsMax(),
     };
   }
 
@@ -5798,6 +5808,11 @@ class DatabaseService {
     filterRegexEnabled?: boolean;
     expirationHours?: number;
     sortByHops?: boolean;
+    filterLastHeardEnabled?: boolean;
+    filterLastHeardHours?: number;
+    filterHopsEnabled?: boolean;
+    filterHopsMin?: number;
+    filterHopsMax?: number;
   }): void {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
     this.setAutoTracerouteNodes(settings.nodeNums);
@@ -5827,6 +5842,21 @@ class DatabaseService {
     if (settings.sortByHops !== undefined) {
       this.setTracerouteSortByHopsEnabled(settings.sortByHops);
     }
+    if (settings.filterLastHeardEnabled !== undefined) {
+      this.setTracerouteFilterLastHeardEnabled(settings.filterLastHeardEnabled);
+    }
+    if (settings.filterLastHeardHours !== undefined) {
+      this.setTracerouteFilterLastHeardHours(settings.filterLastHeardHours);
+    }
+    if (settings.filterHopsEnabled !== undefined) {
+      this.setTracerouteFilterHopsEnabled(settings.filterHopsEnabled);
+    }
+    if (settings.filterHopsMin !== undefined) {
+      this.setTracerouteFilterHopsMin(settings.filterHopsMin);
+    }
+    if (settings.filterHopsMax !== undefined) {
+      this.setTracerouteFilterHopsMax(settings.filterHopsMax);
+    }
     logger.debug('✅ Updated all traceroute filter settings');
   }
 
@@ -5845,6 +5875,11 @@ class DatabaseService {
     filterRegexEnabled: boolean;
     expirationHours: number;
     sortByHops: boolean;
+    filterLastHeardEnabled: boolean;
+    filterLastHeardHours: number;
+    filterHopsEnabled: boolean;
+    filterHopsMin: number;
+    filterHopsMax: number;
   }> {
     const nodeNums = await this.misc.getAutoTracerouteNodes();
     return {
@@ -5861,6 +5896,11 @@ class DatabaseService {
       filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
       expirationHours: this.getTracerouteExpirationHours(),
       sortByHops: this.isTracerouteSortByHopsEnabled(),
+      filterLastHeardEnabled: this.isTracerouteFilterLastHeardEnabled(),
+      filterLastHeardHours: this.getTracerouteFilterLastHeardHours(),
+      filterHopsEnabled: this.isTracerouteFilterHopsEnabled(),
+      filterHopsMin: this.getTracerouteFilterHopsMin(),
+      filterHopsMax: this.getTracerouteFilterHopsMax(),
     };
   }
 
@@ -5878,6 +5918,11 @@ class DatabaseService {
     filterRegexEnabled?: boolean;
     expirationHours?: number;
     sortByHops?: boolean;
+    filterLastHeardEnabled?: boolean;
+    filterLastHeardHours?: number;
+    filterHopsEnabled?: boolean;
+    filterHopsMin?: number;
+    filterHopsMax?: number;
   }): Promise<void> {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
     await this.misc.setAutoTracerouteNodes(settings.nodeNums);
@@ -5905,6 +5950,21 @@ class DatabaseService {
     }
     if (settings.sortByHops !== undefined) {
       this.setTracerouteSortByHopsEnabled(settings.sortByHops);
+    }
+    if (settings.filterLastHeardEnabled !== undefined) {
+      this.setTracerouteFilterLastHeardEnabled(settings.filterLastHeardEnabled);
+    }
+    if (settings.filterLastHeardHours !== undefined) {
+      this.setTracerouteFilterLastHeardHours(settings.filterLastHeardHours);
+    }
+    if (settings.filterHopsEnabled !== undefined) {
+      this.setTracerouteFilterHopsEnabled(settings.filterHopsEnabled);
+    }
+    if (settings.filterHopsMin !== undefined) {
+      this.setTracerouteFilterHopsMin(settings.filterHopsMin);
+    }
+    if (settings.filterHopsMax !== undefined) {
+      this.setTracerouteFilterHopsMax(settings.filterHopsMax);
     }
     logger.debug('✅ Updated all traceroute filter settings');
   }
