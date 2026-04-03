@@ -3,6 +3,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
+import type { ITransport } from './transports/transport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
@@ -278,7 +279,7 @@ interface AutoPingSession {
 }
 
 class MeshtasticManager {
-  private transport: TcpTransport | null = null;
+  private transport: ITransport | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
@@ -574,14 +575,13 @@ class MeshtasticManager {
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
 
-      // Create TCP transport
-      this.transport = new TcpTransport();
-
-      // Configure connection timing from environment
+      // Create TCP transport and configure connection timing from environment
+      const tcpTransport = new TcpTransport();
       const env = getEnvironmentConfig();
-      this.transport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
-      this.transport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
-      this.transport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
+      tcpTransport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
+      tcpTransport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
+      tcpTransport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
+      this.transport = tcpTransport;
 
       // Setup event handlers
       this.transport.on('connect', () => {

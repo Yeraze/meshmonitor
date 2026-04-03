@@ -1,5 +1,6 @@
 import { Socket } from 'net';
 import { EventEmitter } from 'events';
+import type { ITransport } from './transports/transport.js';
 import { logger } from '../utils/logger.js';
 
 export interface TcpTransportConfig {
@@ -7,7 +8,7 @@ export interface TcpTransportConfig {
   port: number;
 }
 
-export class TcpTransport extends EventEmitter {
+export class TcpTransport extends EventEmitter implements ITransport {
   private socket: Socket | null = null;
   private buffer: Buffer = Buffer.alloc(0);
   private reconnectAttempts = 0;
