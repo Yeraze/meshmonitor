@@ -2323,6 +2323,12 @@
   "automation.auto_traceroute.sort_by_hops_description": "When enabled, nodes with fewer hops are tracerouted first. This is useful in dense networks where traceroutes to distant nodes often fail. When disabled, nodes are selected randomly.",
   "automation.auto_traceroute.schedule_window": "Restrict to Time Window",
   "automation.auto_traceroute.schedule_window_description": "Only run auto-traceroutes during the specified time window. Uses server-local time.",
+  "automation.auto_traceroute.filter_by_last_heard": "Last Heard Within",
+  "automation.auto_traceroute.last_heard_within": "Only nodes heard within",
+  "automation.auto_traceroute.hours": "hours",
+  "automation.auto_traceroute.filter_by_hops": "Hop Range",
+  "automation.auto_traceroute.min_hops": "Min:",
+  "automation.auto_traceroute.max_hops": "Max:",
 
   "automation.remote_admin_scanner.title": "Remote Admin Scanner",
   "automation.remote_admin_scanner.description": "Automatically scan mesh nodes to discover which ones have remote admin access enabled. Nodes with admin access can be remotely configured and monitored. The scanner sends DeviceMetadata requests and stores firmware information for successful responses.",
