@@ -21,9 +21,9 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Insert a new traceroute
    */
-  async insertTraceroute(tracerouteData: DbTraceroute): Promise<void> {
+  async insertTraceroute(tracerouteData: DbTraceroute, sourceId?: string): Promise<void> {
     const { traceroutes } = this.tables;
-    const values = {
+    const values: any = {
       fromNodeNum: tracerouteData.fromNodeNum,
       toNodeNum: tracerouteData.toNodeNum,
       fromNodeId: tracerouteData.fromNodeId,
@@ -37,6 +37,9 @@ export class TraceroutesRepository extends BaseRepository {
       timestamp: tracerouteData.timestamp,
       createdAt: tracerouteData.createdAt,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     await this.db.insert(traceroutes).values(values);
   }

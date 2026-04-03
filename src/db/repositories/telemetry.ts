@@ -19,9 +19,9 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Insert a telemetry record
    */
-  async insertTelemetry(telemetryData: DbTelemetry): Promise<void> {
+  async insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): Promise<void> {
     const { telemetry } = this.tables;
-    const values = {
+    const values: any = {
       nodeId: telemetryData.nodeId,
       nodeNum: telemetryData.nodeNum,
       telemetryType: telemetryData.telemetryType,
@@ -35,6 +35,9 @@ export class TelemetryRepository extends BaseRepository {
       precisionBits: telemetryData.precisionBits ?? null,
       gpsAccuracy: telemetryData.gpsAccuracy ?? null,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     await this.db.insert(telemetry).values(values);
   }

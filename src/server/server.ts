@@ -512,6 +512,14 @@ setTimeout(async () => {
       }
     }
 
+    // Assign legacy NULL sourceId rows to the default source (Phase 2 data migration).
+    // Safe to run every startup — updates 0 rows after the first run.
+    const allSources = await databaseService.sources.getAllSources();
+    if (allSources.length > 0) {
+      await databaseService.sources.assignNullSourceIds(allSources[0].id);
+      logger.debug(`Assigned NULL sourceId rows to default source ${allSources[0].id}`);
+    }
+
     // Start all enabled sources via the registry
     const enabledSources = await databaseService.sources.getEnabledSources();
     for (const source of enabledSources) {

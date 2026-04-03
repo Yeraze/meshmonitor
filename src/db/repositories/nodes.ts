@@ -121,7 +121,7 @@ export class NodesRepository extends BaseRepository {
    * - Update path: coerceBigintField needed for MySQL/Postgres BIGINT timestamps (harmless for SQLite, now unified)
    * - Insert path: MySQL uses onDuplicateKeyUpdate vs onConflictDoUpdate
    */
-  async upsertNode(nodeData: Partial<DbNode>): Promise<void> {
+  async upsertNode(nodeData: Partial<DbNode>, sourceId?: string): Promise<void> {
     if (nodeData.nodeNum === undefined || nodeData.nodeNum === null || !nodeData.nodeId) {
       logger.error('Cannot upsert node: missing nodeNum or nodeId');
       return;
@@ -214,7 +214,13 @@ export class NodesRepository extends BaseRepository {
         positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
         createdAt: now,
         updatedAt: now,
-      };
+      } as any;
+
+      // Only set sourceId on INSERT — once a node is associated with a source,
+      // that association must not be overwritten by subsequent upserts.
+      if (sourceId) {
+        newNode.sourceId = sourceId;
+      }
 
       // All databases use atomic upsert to prevent race conditions where
       // concurrent getNode() calls both return null and then both try to INSERT

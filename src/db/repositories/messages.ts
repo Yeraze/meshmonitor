@@ -21,9 +21,9 @@ export class MessagesRepository extends BaseRepository {
    * Insert a new message (ignores duplicates).
    * Keeps branching: different upsert syntax and result shapes per dialect.
    */
-  async insertMessage(messageData: DbMessage): Promise<boolean> {
+  async insertMessage(messageData: DbMessage, sourceId?: string): Promise<boolean> {
     const { messages } = this.tables;
-    const values = {
+    const values: any = {
       id: messageData.id,
       fromNodeNum: messageData.fromNodeNum,
       toNodeNum: messageData.toNodeNum,
@@ -51,6 +51,9 @@ export class MessagesRepository extends BaseRepository {
       createdAt: messageData.createdAt,
       decryptedBy: messageData.decryptedBy ?? null,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     const result = await this.insertIgnore(messages, values);
     return this.getAffectedRows(result) > 0;

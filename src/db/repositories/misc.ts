@@ -847,11 +847,11 @@ export class MiscRepository extends BaseRepository {
   /**
    * Insert a packet log entry
    */
-  async insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
+  async insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>, sourceId?: string): Promise<number> {
     const { packetLog } = this.tables;
 
     try {
-      const values = {
+      const values: any = {
         packet_id: packet.packet_id ?? null,
         timestamp: packet.timestamp,
         from_node: packet.from_node,
@@ -878,6 +878,9 @@ export class MiscRepository extends BaseRepository {
         decrypted_by: packet.decrypted_by ?? null,
         decrypted_channel_id: packet.decrypted_channel_id ?? null,
       };
+      if (sourceId) {
+        values.sourceId = sourceId;
+      }
 
       await this.db.insert(packetLog).values(values);
       return 0;

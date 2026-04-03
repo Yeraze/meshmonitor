@@ -31,9 +31,9 @@ export class NeighborsRepository extends BaseRepository {
    * Callers must delete old records for the node first to avoid duplicates
    * (there is no unique constraint on nodeNum + neighborNodeNum).
    */
-  async insertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+  async insertNeighborInfo(neighborData: DbNeighborInfo, sourceId?: string): Promise<void> {
     const { neighborInfo } = this.tables;
-    const values = {
+    const values: any = {
       nodeNum: neighborData.nodeNum,
       neighborNodeNum: neighborData.neighborNodeNum,
       snr: neighborData.snr ?? null,
@@ -41,6 +41,9 @@ export class NeighborsRepository extends BaseRepository {
       timestamp: neighborData.timestamp,
       createdAt: neighborData.createdAt,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     await this.db.insert(neighborInfo).values(values);
   }
@@ -49,17 +52,23 @@ export class NeighborsRepository extends BaseRepository {
    * Insert multiple neighbor info records in a single query.
    * Callers must delete old records for the node first.
    */
-  async insertNeighborInfoBatch(records: DbNeighborInfo[]): Promise<void> {
+  async insertNeighborInfoBatch(records: DbNeighborInfo[], sourceId?: string): Promise<void> {
     if (records.length === 0) return;
     const { neighborInfo } = this.tables;
-    const values = records.map(r => ({
-      nodeNum: r.nodeNum,
-      neighborNodeNum: r.neighborNodeNum,
-      snr: r.snr ?? null,
-      lastRxTime: r.lastRxTime ?? null,
-      timestamp: r.timestamp,
-      createdAt: r.createdAt,
-    }));
+    const values = records.map(r => {
+      const row: any = {
+        nodeNum: r.nodeNum,
+        neighborNodeNum: r.neighborNodeNum,
+        snr: r.snr ?? null,
+        lastRxTime: r.lastRxTime ?? null,
+        timestamp: r.timestamp,
+        createdAt: r.createdAt,
+      };
+      if (sourceId) {
+        row.sourceId = sourceId;
+      }
+      return row;
+    });
 
     await this.db.insert(neighborInfo).values(values);
   }
@@ -68,8 +77,8 @@ export class NeighborsRepository extends BaseRepository {
    * Backwards-compatible alias for insertNeighborInfo
    * @deprecated Use insertNeighborInfo instead
    */
-  async upsertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
-    return this.insertNeighborInfo(neighborData);
+  async upsertNeighborInfo(neighborData: DbNeighborInfo, sourceId?: string): Promise<void> {
+    return this.insertNeighborInfo(neighborData, sourceId);
   }
 
   /**

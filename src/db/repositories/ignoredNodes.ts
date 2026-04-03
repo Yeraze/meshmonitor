@@ -35,20 +35,25 @@ export class IgnoredNodesRepository extends BaseRepository {
     longName?: string | null,
     shortName?: string | null,
     ignoredBy?: string | null,
+    sourceId?: string,
   ): Promise<void> {
     const now = Date.now();
     const { ignoredNodes } = this.tables;
-    const setData = {
+    const setData: any = {
       nodeId,
       longName: longName ?? null,
       shortName: shortName ?? null,
       ignoredAt: now,
       ignoredBy: ignoredBy ?? null,
     };
+    const insertData: any = { nodeNum, ...setData };
+    if (sourceId) {
+      insertData.sourceId = sourceId;
+    }
 
     await this.upsert(
       ignoredNodes,
-      { nodeNum, ...setData },
+      insertData,
       ignoredNodes.nodeNum,
       setData,
     );

@@ -78,7 +78,7 @@ export class ChannelsRepository extends BaseRepository {
    * - Channel 0 must always be PRIMARY (role=1)
    * - Other channels cannot be PRIMARY (will be forced to SECONDARY)
    */
-  async upsertChannel(channelData: ChannelInput): Promise<void> {
+  async upsertChannel(channelData: ChannelInput, sourceId?: string): Promise<void> {
     const now = this.now();
     let data = { ...channelData };
     const { channels } = this.tables;
@@ -126,7 +126,7 @@ export class ChannelsRepository extends BaseRepository {
       // Create new channel
       logger.debug(`Creating new channel with ID: ${data.id}`);
 
-      await this.db.insert(channels).values({
+      const newChannel: any = {
         id: data.id,
         name: data.name,
         psk: data.psk ?? null,
@@ -136,7 +136,11 @@ export class ChannelsRepository extends BaseRepository {
         positionPrecision: data.positionPrecision ?? null,
         createdAt: now,
         updatedAt: now,
-      });
+      };
+      if (sourceId) {
+        newChannel.sourceId = sourceId;
+      }
+      await this.db.insert(channels).values(newChannel);
 
       logger.debug(`Created channel: ${data.name} (ID: ${data.id})`);
     }

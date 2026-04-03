@@ -4,7 +4,7 @@
  * Handles CRUD operations for data sources (Meshtastic TCP nodes, MQTT brokers, MeshCore devices).
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.js';
 import { logger } from '../../utils/logger.js';
 
@@ -96,6 +96,42 @@ export class SourcesRepository extends BaseRepository {
   async getSourceCount(): Promise<number> {
     const rows = await this.getAllSources();
     return rows.length;
+  }
+
+  /**
+   * Assign all rows with NULL sourceId to the specified source.
+   *
+   * Called during server startup after the default source is confirmed, to tag
+   * legacy data from single-source mode. Safe to call multiple times — subsequent
+   * calls update 0 rows.
+   */
+  async assignNullSourceIds(sourceId: string): Promise<void> {
+    const dataTables = [
+      'nodes', 'messages', 'telemetry', 'traceroutes',
+      'channels', 'neighbor_info', 'packet_log', 'ignored_nodes', 'channel_database',
+    ];
+
+    for (const table of dataTables) {
+      try {
+        if (this.isPostgres()) {
+          await this.executeRun(
+            sql`UPDATE ${sql.raw(table)} SET "sourceId" = ${sourceId} WHERE "sourceId" IS NULL`
+          );
+        } else {
+          await this.executeRun(
+            sql`UPDATE ${sql.raw(table)} SET sourceId = ${sourceId} WHERE sourceId IS NULL`
+          );
+        }
+      } catch (err: any) {
+        // Column may not exist on first boot before migration 021 runs
+        if (err?.message?.includes('no column named sourceId') ||
+            err?.message?.includes('Unknown column')) {
+          logger.debug(`assignNullSourceIds: sourceId column not yet in ${table}, skipping`);
+        } else {
+          logger.warn(`assignNullSourceIds: unexpected error on ${table}:`, err?.message);
+        }
+      }
+    }
   }
 
   private toSource(row: any): Source {
