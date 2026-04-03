@@ -3753,5 +3753,12 @@
     "search.title": "Поиск сообщений",
     "search.placeholder": "Поиск текста в сообщениях...",
     "search.case_sensitive": "С учетом регистра",
-    "search.scope_all": ""
+    "search.scope_all": "Все сообщения",
+    "search.button": "Поиск",
+    "search.scope_channels": "Только каналы",
+    "search.channels_filter": "Каналы",
+    "search.sender_filter": "Отправитель",
+    "search.loading": "Поиск...",
+    "search.load_more": "Загрузить ещё",
+    "search.channel_label": "Название канала"
 }
