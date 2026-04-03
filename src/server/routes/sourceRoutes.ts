@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
 import { requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { MeshtasticManager } from '../meshtasticManager.js';
 
 const router = Router();
 
@@ -55,6 +57,16 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       createdBy: req.user?.id,
     });
 
+    // Start manager if source is enabled
+    if (source.enabled && source.type === 'meshtastic_tcp') {
+      try {
+        const manager = new MeshtasticManager(source.id);
+        await sourceManagerRegistry.addManager(manager);
+      } catch (err) {
+        logger.warn(`Could not start manager for new source ${source.id}:`, err);
+      }
+    }
+
     res.status(201).json(source);
   } catch (error) {
     logger.error('Error creating source:', error);
@@ -66,6 +78,11 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
 router.put('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
     const { name, config, enabled } = req.body;
+    const existing = await databaseService.sources.getSource(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Source not found' });
+    }
+
     const updates: any = {};
     if (name !== undefined) updates.name = name.trim();
     if (config !== undefined) updates.config = config;
@@ -75,6 +92,26 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     if (!source) {
       return res.status(404).json({ error: 'Source not found' });
     }
+
+    // Handle enable/disable transitions
+    const wasEnabled = existing.enabled;
+    const isNowEnabled = source.enabled;
+
+    if (!wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp') {
+      // Newly enabled: start manager if not already running
+      if (!sourceManagerRegistry.getManager(source.id)) {
+        try {
+          const manager = new MeshtasticManager(source.id);
+          await sourceManagerRegistry.addManager(manager);
+        } catch (err) {
+          logger.warn(`Could not start manager for source ${source.id}:`, err);
+        }
+      }
+    } else if (wasEnabled && !isNowEnabled) {
+      // Newly disabled: stop manager
+      await sourceManagerRegistry.removeManager(source.id);
+    }
+
     res.json(source);
   } catch (error) {
     logger.error('Error updating source:', error);
@@ -85,6 +122,9 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 // Delete source
 router.delete('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
+    // Stop the manager before deleting
+    await sourceManagerRegistry.removeManager(req.params.id);
+
     const deleted = await databaseService.sources.deleteSource(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Source not found' });
@@ -93,6 +133,27 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
   } catch (error) {
     logger.error('Error deleting source:', error);
     res.status(500).json({ error: 'Failed to delete source' });
+  }
+});
+
+// Get source status (connection state from registry)
+router.get('/:id/status', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) {
+      return res.status(404).json({ error: 'Source not found' });
+    }
+    const manager = sourceManagerRegistry.getManager(req.params.id);
+    const status = manager ? manager.getStatus() : {
+      sourceId: source.id,
+      sourceName: source.name,
+      sourceType: source.type,
+      connected: false,
+    };
+    res.json(status);
+  } catch (error) {
+    logger.error('Error fetching source status:', error);
+    res.status(500).json({ error: 'Failed to fetch source status' });
   }
 });
 

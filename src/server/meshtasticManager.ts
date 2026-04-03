@@ -655,7 +655,7 @@ class MeshtasticManager implements ISourceManager {
     dataEventEmitter.emitConnectionStatus({
       connected: true,
       reason: 'TCP connection established'
-    });
+    }, this.sourceId);
 
     // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
     this.localNodeInfo = null;
@@ -804,7 +804,7 @@ class MeshtasticManager implements ISourceManager {
       nodeNum: this.localNodeInfo?.nodeNum,
       nodeId: this.localNodeInfo?.nodeId,
       reason: 'TCP connection lost'
-    });
+    }, this.sourceId);
 
     // Clear localNodeInfo so node will be marked as not responsive
     this.localNodeInfo = null;
@@ -3123,7 +3123,7 @@ class MeshtasticManager implements ISourceManager {
         keyMismatchDetected: false,
         keySecurityIssueDetails: null,
       });
-      dataEventEmitter.emitNodeUpdate(nodeNum, { keyMismatchDetected: false, keySecurityIssueDetails: undefined });
+      dataEventEmitter.emitNodeUpdate(nodeNum, { keyMismatchDetected: false, keySecurityIssueDetails: undefined }, this.sourceId);
     }
 
     if (existingNode && existingNode.longName && existingNode.longName !== 'Local Device') {
@@ -4069,7 +4069,7 @@ class MeshtasticManager implements ISourceManager {
 
         if (wasInserted) {
           // Emit WebSocket event for real-time updates
-          dataEventEmitter.emitNewMessage(message as any);
+          dataEventEmitter.emitNewMessage(message as any, this.sourceId);
 
           if (isDirectMessage) {
             logger.debug(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
@@ -4091,7 +4091,7 @@ class MeshtasticManager implements ISourceManager {
               };
               const dbInserted = await databaseService.messages.insertMessage(dbCopy);
               if (dbInserted) {
-                dataEventEmitter.emitNewMessage(dbCopy as any);
+                dataEventEmitter.emitNewMessage(dbCopy as any, this.sourceId);
                 logger.debug(`💾 Also saved to database channel ${dbChannelIndex}`);
               }
             } else if (meshPacket.channel !== undefined) {
@@ -4107,7 +4107,7 @@ class MeshtasticManager implements ISourceManager {
                 };
                 const radioInserted = await databaseService.messages.insertMessage(radioCopy);
                 if (radioInserted) {
-                  dataEventEmitter.emitNewMessage(radioCopy as any);
+                  dataEventEmitter.emitNewMessage(radioCopy as any, this.sourceId);
                   logger.debug(`💾 Also saved to radio channel ${radioChannelIndex} ("${radioChannel.name}")`);
                 }
               }
@@ -4362,7 +4362,7 @@ class MeshtasticManager implements ISourceManager {
           await databaseService.nodes.upsertNode(nodeData);
 
           // Emit node update event to notify frontend via WebSocket
-          dataEventEmitter.emitNodeUpdate(fromNum, nodeData);
+          dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
 
           // Update mobility detection for this node (fire and forget)
           databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
@@ -4487,7 +4487,7 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, {
               keyMismatchDetected: true,
               keySecurityIssueDetails: nodeData.keySecurityIssueDetails
-            });
+            }, this.sourceId);
 
             // Immediate purge if enabled
             if (this.keyRepairEnabled && this.keyRepairImmediatePurge) {
@@ -4547,7 +4547,7 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, {
               keyMismatchDetected: false,
               keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
-            });
+            }, this.sourceId);
           }
         }
       }
@@ -5239,7 +5239,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Emit WebSocket event for traceroute message only if actually new
       if (wasInserted) {
-        dataEventEmitter.emitNewMessage(message as any);
+        dataEventEmitter.emitNewMessage(message as any, this.sourceId);
       }
 
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
@@ -5302,7 +5302,7 @@ class MeshtasticManager implements ISourceManager {
       });
 
       // Emit WebSocket event for traceroute completion
-      dataEventEmitter.emitTracerouteComplete(tracerouteRecord as any);
+      dataEventEmitter.emitTracerouteComplete(tracerouteRecord as any, this.sourceId);
 
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
@@ -5466,7 +5466,7 @@ class MeshtasticManager implements ISourceManager {
                 logger.debug(`🕐 Updated message ${requestId} timestamps to node time: ${ackRxTime}`);
               }
               // Emit WebSocket event for real-time delivery status update
-              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
+              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' }, this.sourceId);
             }
             return;
           }
@@ -5478,7 +5478,7 @@ class MeshtasticManager implements ISourceManager {
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
               // Emit WebSocket event for real-time delivery status update
-              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
+              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' }, this.sourceId);
             }
             // Notify message queue service of successful ACK
             messageQueueService.handleAck(requestId);
@@ -5530,7 +5530,7 @@ class MeshtasticManager implements ISourceManager {
               keyMismatchDetected: true,
               keySecurityIssueDetails: errorDescription
             });
-            dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
             this.handlePkiError(toNum);
           }
 
@@ -5550,7 +5550,7 @@ class MeshtasticManager implements ISourceManager {
                 keyMismatchDetected: true,
                 keySecurityIssueDetails: errorDescription
               });
-              dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+              dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
             }
           }
         }
@@ -5583,7 +5583,7 @@ class MeshtasticManager implements ISourceManager {
             keySecurityIssueDetails: errorDescription
           });
 
-          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+          dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
           this.handlePkiError(targetNodeNum);
         }
       }
@@ -5610,7 +5610,7 @@ class MeshtasticManager implements ISourceManager {
             });
 
             // Emit event to notify UI of the key issue
-            dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription });
+            dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
           }
         }
       }
@@ -5627,7 +5627,7 @@ class MeshtasticManager implements ISourceManager {
       logger.info(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
       await databaseService.messages.updateMessageDeliveryState(requestId, 'failed');
       // Emit WebSocket event for real-time delivery failure update
-      dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName });
+      dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName }, this.sourceId);
       // Notify message queue service of failure
       messageQueueService.handleFailure(requestId, errorName);
     } catch (error) {
@@ -6021,7 +6021,7 @@ class MeshtasticManager implements ISourceManager {
               dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), {
                 keyMismatchDetected: false,
                 keySecurityIssueDetails: undefined
-              });
+              }, this.sourceId);
             }
           }
 
@@ -6166,7 +6166,7 @@ class MeshtasticManager implements ISourceManager {
       await databaseService.nodes.upsertNode(nodeData);
 
       // Emit WebSocket event for node update
-      dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), nodeData);
+      dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), nodeData, this.sourceId);
 
       logger.debug(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
 
@@ -6519,7 +6519,7 @@ class MeshtasticManager implements ISourceManager {
         await databaseService.messages.insertMessage(message);
 
         // Emit WebSocket event for real-time updates (sent message)
-        dataEventEmitter.emitNewMessage(message as any);
+        dataEventEmitter.emitNewMessage(message as any, this.sourceId);
 
         logger.debug(`💾 Saved sent message to database: "${text.substring(0, 30)}..."`);
 
@@ -7716,7 +7716,7 @@ class MeshtasticManager implements ISourceManager {
       startTime: session.startTime,
       status,
       results: session.results,
-    });
+    }, this.sourceId);
   }
 
   private async checkAutoResponder(message: TextMessage, isDirectMessage: boolean, packetId?: number): Promise<void> {
@@ -11813,4 +11813,9 @@ class MeshtasticManager implements ISourceManager {
 // Export the class for testing purposes (allows creating isolated test instances)
 export { MeshtasticManager };
 
+/**
+ * @deprecated Use sourceManagerRegistry to manage MeshtasticManager instances.
+ * This singleton is kept for backward compatibility with single-source deployments
+ * and env-var-only configurations where no source record exists in the database.
+ */
 export default new MeshtasticManager();

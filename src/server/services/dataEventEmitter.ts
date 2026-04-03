@@ -24,6 +24,7 @@ export interface DataEvent {
   type: DataEventType;
   data: unknown;
   timestamp: number;
+  sourceId?: string;
 }
 
 export interface NodeUpdateData {
@@ -62,7 +63,8 @@ export interface TelemetryBatchData {
 }
 
 class DataEventEmitter extends EventEmitter {
-  private telemetryBuffer: Map<number, DbTelemetry[]> = new Map();
+  // Keyed by sourceId (or '__default__') → nodeNum → telemetry list
+  private telemetryBuffer: Map<string, Map<number, DbTelemetry[]>> = new Map();
   private batchTimeout: NodeJS.Timeout | null = null;
   private batchIntervalMs: number = 1000; // 1 second batching window
 
@@ -75,11 +77,12 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a node update event
    */
-  emitNodeUpdate(nodeNum: number, node: Partial<DbNode>): void {
+  emitNodeUpdate(nodeNum: number, node: Partial<DbNode>, sourceId?: string): void {
     const event: DataEvent = {
       type: 'node:updated',
       data: { nodeNum, node } as NodeUpdateData,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node updated: ${nodeNum}`);
@@ -88,11 +91,12 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a new message event
    */
-  emitNewMessage(message: DbMessage): void {
+  emitNewMessage(message: DbMessage, sourceId?: string): void {
     const event: DataEvent = {
       type: 'message:new',
       data: message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] New message from ${message.fromNodeNum}`);
@@ -101,11 +105,16 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Buffer telemetry for batched emission (reduces WebSocket traffic)
    */
-  emitTelemetry(nodeNum: number, telemetry: DbTelemetry): void {
-    if (!this.telemetryBuffer.has(nodeNum)) {
-      this.telemetryBuffer.set(nodeNum, []);
+  emitTelemetry(nodeNum: number, telemetry: DbTelemetry, sourceId?: string): void {
+    const key = sourceId ?? '__default__';
+    if (!this.telemetryBuffer.has(key)) {
+      this.telemetryBuffer.set(key, new Map());
     }
-    this.telemetryBuffer.get(nodeNum)!.push(telemetry);
+    const sourceBuffer = this.telemetryBuffer.get(key)!;
+    if (!sourceBuffer.has(nodeNum)) {
+      sourceBuffer.set(nodeNum, []);
+    }
+    sourceBuffer.get(nodeNum)!.push(telemetry);
 
     // Start batch timer if not already running
     if (!this.batchTimeout) {
@@ -114,7 +123,7 @@ class DataEventEmitter extends EventEmitter {
   }
 
   /**
-   * Flush batched telemetry as a single event
+   * Flush batched telemetry as a single event per source
    */
   private flushTelemetry(): void {
     if (this.telemetryBuffer.size === 0) {
@@ -122,31 +131,34 @@ class DataEventEmitter extends EventEmitter {
       return;
     }
 
-    const batch: TelemetryBatchData = {};
-    for (const [nodeNum, telemetryList] of this.telemetryBuffer) {
-      batch[nodeNum] = telemetryList;
+    for (const [key, sourceBuffer] of this.telemetryBuffer) {
+      const batch: TelemetryBatchData = {};
+      for (const [nodeNum, telemetryList] of sourceBuffer) {
+        batch[nodeNum] = telemetryList;
+      }
+      const event: DataEvent = {
+        type: 'telemetry:batch',
+        data: batch,
+        timestamp: Date.now(),
+        sourceId: key === '__default__' ? undefined : key,
+      };
+      this.emit('data', event);
+      logger.debug(`[DataEventEmitter] Telemetry batch: ${Object.keys(batch).length} nodes (source: ${key})`);
     }
 
     this.telemetryBuffer.clear();
     this.batchTimeout = null;
-
-    const event: DataEvent = {
-      type: 'telemetry:batch',
-      data: batch,
-      timestamp: Date.now()
-    };
-    this.emit('data', event);
-    logger.debug(`[DataEventEmitter] Telemetry batch: ${Object.keys(batch).length} nodes`);
   }
 
   /**
    * Emit a channel update event
    */
-  emitChannelUpdate(channel: DbChannel): void {
+  emitChannelUpdate(channel: DbChannel, sourceId?: string): void {
     const event: DataEvent = {
       type: 'channel:updated',
       data: channel,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Channel updated: ${channel.id}`);
@@ -155,11 +167,12 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a connection status change event
    */
-  emitConnectionStatus(status: ConnectionStatusData): void {
+  emitConnectionStatus(status: ConnectionStatusData, sourceId?: string): void {
     const event: DataEvent = {
       type: 'connection:status',
       data: status,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.info(`[DataEventEmitter] Connection status: ${status.connected ? 'connected' : 'disconnected'}`);
@@ -168,11 +181,12 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a traceroute completion event
    */
-  emitTracerouteComplete(traceroute: DbTraceroute): void {
+  emitTracerouteComplete(traceroute: DbTraceroute, sourceId?: string): void {
     const event: DataEvent = {
       type: 'traceroute:complete',
       data: traceroute,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Traceroute complete: ${traceroute.fromNodeNum} -> ${traceroute.toNodeNum}`);
@@ -181,11 +195,12 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a routing update event (ACK/NAK for sent messages)
    */
-  emitRoutingUpdate(update: RoutingUpdateData): void {
+  emitRoutingUpdate(update: RoutingUpdateData, sourceId?: string): void {
     const event: DataEvent = {
       type: 'routing:update',
       data: update,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Routing update: ${update.requestId} - ${update.status}`);
@@ -194,11 +209,12 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit an auto-ping session update event
    */
-  emitAutoPingUpdate(update: AutoPingUpdateData): void {
+  emitAutoPingUpdate(update: AutoPingUpdateData, sourceId?: string): void {
     const event: DataEvent = {
       type: 'auto-ping:update',
       data: update,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Auto-ping update: ${update.requestedBy} - ${update.status} (${update.completedPings}/${update.totalPings})`);

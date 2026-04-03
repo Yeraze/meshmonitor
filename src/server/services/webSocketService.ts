@@ -164,6 +164,15 @@ export function initializeWebSocket(
 
     // Subscribe to data events
     const handler = (event: DataEvent) => {
+      // Source-aware filtering: if the client has joined source rooms, only forward
+      // events that match one of those rooms. Legacy clients (no rooms) get all events.
+      const sourceRooms = Array.from(socket.rooms).filter(r => r.startsWith('source:'));
+      if (sourceRooms.length > 0 && event.sourceId) {
+        if (!sourceRooms.includes(`source:${event.sourceId}`)) {
+          return; // Skip — event is from a source this client didn't join
+        }
+      }
+
       // Transform message data to client format before emitting
       if (event.type === 'message:new') {
         const transformedMessage = transformMessageForClient(event.data as DbMessage);
@@ -183,6 +192,21 @@ export function initializeWebSocket(
     // Handle client ping (for connection health monitoring)
     socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
+    });
+
+    // Room management — clients join a source room to receive only that source's events
+    socket.on('join-source', (sourceId: string) => {
+      if (typeof sourceId === 'string' && sourceId.length > 0) {
+        socket.join(`source:${sourceId}`);
+        logger.debug(`[WebSocket] Socket ${socket.id} joined room source:${sourceId}`);
+      }
+    });
+
+    socket.on('leave-source', (sourceId: string) => {
+      if (typeof sourceId === 'string' && sourceId.length > 0) {
+        socket.leave(`source:${sourceId}`);
+        logger.debug(`[WebSocket] Socket ${socket.id} left room source:${sourceId}`);
+      }
     });
 
     // Handle disconnect
