@@ -36,6 +36,8 @@ interface AutomationContextType {
   setAutoAckMultihopTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckMultihopReplyEnabled: boolean;
   setAutoAckMultihopReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckCooldownSeconds: number;
+  setAutoAckCooldownSeconds: React.Dispatch<React.SetStateAction<number>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceEnabled: boolean;
@@ -125,6 +127,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckMultihopEnabled, setAutoAckMultihopEnabled] = useState<boolean>(true);
   const [autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled] = useState<boolean>(true);
   const [autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled] = useState<boolean>(true);
+  const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
@@ -177,6 +180,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoAckMultihopEnabled, setAutoAckMultihopEnabled,
         autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled,
         autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled,
+        autoAckCooldownSeconds, setAutoAckCooldownSeconds,
         autoAckTestMessages, setAutoAckTestMessages,
         autoAnnounceEnabled, setAutoAnnounceEnabled,
         autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,

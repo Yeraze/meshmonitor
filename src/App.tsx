@@ -546,6 +546,7 @@ function App() {
     autoAckMultihopEnabled, setAutoAckMultihopEnabled,
     autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled,
     autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled,
+    autoAckCooldownSeconds, setAutoAckCooldownSeconds,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
@@ -1011,6 +1012,10 @@ function App() {
           }
           if (settings.autoAckMultihopReplyEnabled !== undefined) {
             setAutoAckMultihopReplyEnabled(settings.autoAckMultihopReplyEnabled !== 'false');
+          }
+
+          if (settings.autoAckCooldownSeconds !== undefined) {
+            setAutoAckCooldownSeconds(parseInt(settings.autoAckCooldownSeconds) || 60);
           }
 
           if (settings.autoAckTestMessages) {
@@ -4946,6 +4951,8 @@ function App() {
                   multihopTapbackEnabled={autoAckMultihopTapbackEnabled}
                   multihopReplyEnabled={autoAckMultihopReplyEnabled}
                   testMessages={autoAckTestMessages}
+                  cooldownSeconds={autoAckCooldownSeconds}
+                  onCooldownSecondsChange={setAutoAckCooldownSeconds}
                   baseUrl={baseUrl}
                   onEnabledChange={setAutoAckEnabled}
                   onRegexChange={setAutoAckRegex}

@@ -234,6 +234,7 @@ interface AutoResponderTrigger {
   verifyResponse?: boolean;
   multiline?: boolean;
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
+  cooldownSeconds?: number; // Per-node cooldown in seconds (0 = disabled, default)
 }
 
 /**
@@ -358,6 +359,9 @@ class MeshtasticManager {
   private remoteNodeDeviceMetadata: Map<number, any> = new Map();
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
+
+  private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp
+  private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
 
   // Auto-ping session tracking
   private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
@@ -7117,6 +7121,17 @@ class MeshtasticManager {
         }
       }
 
+      // Per-node cooldown rate limiting
+      const cooldownSetting = await databaseService.settings.getSetting('autoAckCooldownSeconds');
+      const cooldownSeconds = cooldownSetting ? parseInt(cooldownSetting, 10) : 60;
+      if (cooldownSeconds > 0) {
+        const lastResponse = this.autoAckCooldowns.get(fromNum);
+        if (lastResponse && Date.now() - lastResponse < cooldownSeconds * 1000) {
+          logger.debug(`⏭️  Skipping auto-acknowledge for node ${fromNum}: cooldown active (${cooldownSeconds}s)`);
+          return;
+        }
+      }
+
       // Use default regex if not set
       const regexPattern = autoAckRegex || '^(test|ping)';
 
@@ -7261,6 +7276,9 @@ class MeshtasticManager {
           (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
         );
       }
+
+      // Record cooldown timestamp after successful response
+      this.autoAckCooldowns.set(fromNum, Date.now());
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }
@@ -7726,7 +7744,8 @@ class MeshtasticManager {
       logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}: "${message.text}"`);
 
       // Try to match message against triggers
-      for (const trigger of triggers) {
+      for (let triggerIdx = 0; triggerIdx < triggers.length; triggerIdx++) {
+        const trigger = triggers[triggerIdx];
         // Normalize trigger channels (handles legacy single channel and new multi-channel array format)
         const triggerChannels = normalizeTriggerChannels(trigger);
 
@@ -7886,6 +7905,17 @@ class MeshtasticManager {
         }
 
         if (matchedPattern) {
+          // Per-node cooldown rate limiting
+          const cooldownSeconds = trigger.cooldownSeconds || 0;
+          if (cooldownSeconds > 0) {
+            const cooldownKey = `${triggerIdx}:${message.fromNodeNum}`;
+            const lastResponse = this.autoResponderCooldowns.get(cooldownKey);
+            if (lastResponse && Date.now() - lastResponse < cooldownSeconds * 1000) {
+              logger.debug(`⏭️  Skipping auto-responder trigger ${triggerIdx} for node ${message.fromNodeNum}: cooldown active (${cooldownSeconds}s)`);
+              continue; // Try next trigger
+            }
+          }
+
           logger.debug(`🤖 Auto-responder triggered by: "${message.text}" matching pattern: "${matchedPattern}" (from trigger: "${trigger.trigger}")`);
 
           let responseText: string;
@@ -8079,6 +8109,13 @@ class MeshtasticManager {
               if (scriptTriggerChannels.includes('none')) {
                 const scriptDuration = Date.now() - scriptStartTime;
                 logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms (channel=none, no mesh output)`);
+
+                // Record cooldown timestamp
+                const triggerCooldownNone = trigger.cooldownSeconds || 0;
+                if (triggerCooldownNone > 0) {
+                  this.autoResponderCooldowns.set(`${triggerIdx}:${message.fromNodeNum}`, Date.now());
+                }
+
                 return;
               }
 
@@ -8111,6 +8148,13 @@ class MeshtasticManager {
               // Script responses queued
               const scriptDuration = Date.now() - scriptStartTime;
               logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms, ${scriptResponses.length} response(s) queued to ${target}`);
+
+              // Record cooldown timestamp
+              const triggerCooldownScript = trigger.cooldownSeconds || 0;
+              if (triggerCooldownScript > 0) {
+                this.autoResponderCooldowns.set(`${triggerIdx}:${message.fromNodeNum}`, Date.now());
+              }
+
               return;
 
             } catch (error: any) {
@@ -8223,6 +8267,12 @@ class MeshtasticManager {
               const channel = targetNode.channel ?? 0;
               await this.sendTraceroute(targetNodeNum, channel);
               logger.info(`🔍 Auto-responder traceroute to ${targetName} (${targetNode.nodeId}) initiated by ${nodeId}`);
+
+              // Record cooldown timestamp
+              const triggerCooldownTrace = trigger.cooldownSeconds || 0;
+              if (triggerCooldownTrace > 0) {
+                this.autoResponderCooldowns.set(`${triggerIdx}:${message.fromNodeNum}`, Date.now());
+              }
             } catch (error: any) {
               logger.error(`❌ Auto-responder traceroute to ${targetName} failed: ${error.message}`);
               clearTimeout(timeoutHandle);
@@ -8296,6 +8346,12 @@ class MeshtasticManager {
               maxAttempts
             );
           });
+
+          // Record cooldown timestamp
+          const triggerCooldownText = trigger.cooldownSeconds || 0;
+          if (triggerCooldownText > 0) {
+            this.autoResponderCooldowns.set(`${triggerIdx}:${message.fromNodeNum}`, Date.now());
+          }
 
           // Only respond to first matching trigger
           return;

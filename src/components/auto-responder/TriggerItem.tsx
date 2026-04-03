@@ -48,6 +48,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editVerifyResponse, setEditVerifyResponse] = useState(trigger.verifyResponse || false);
   const [editChannels, setEditChannels] = useState<Array<number | 'dm' | 'none'>>(normalizeTriggerChannels(trigger));
   const [editScriptArgs, setEditScriptArgs] = useState(trigger.scriptArgs || '');
+  const [editCooldownSeconds, setEditCooldownSeconds] = useState(trigger.cooldownSeconds || 0);
   const [triggerValidation, setTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
 
   // Validate trigger in realtime
@@ -101,9 +102,10 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       setEditVerifyResponse(trigger.verifyResponse || false);
       setEditChannels(normalizeTriggerChannels(trigger));
       setEditScriptArgs(trigger.scriptArgs || '');
+      setEditCooldownSeconds(trigger.cooldownSeconds || 0);
       setTriggerValidation({ valid: true });
     }
-  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channels, trigger.channel, trigger.scriptArgs]);
+  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channels, trigger.channel, trigger.scriptArgs, trigger.cooldownSeconds]);
 
   // Validate trigger on change
   useEffect(() => {
@@ -133,7 +135,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
     }
     // Only pass scriptArgs if responseType is script and args are not empty
     const scriptArgsToSave = editResponseType === 'script' && editScriptArgs.trim() ? editScriptArgs.trim() : undefined;
-    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannels, scriptArgsToSave);
+    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannels, scriptArgsToSave, editCooldownSeconds || undefined);
   };
 
   return (
@@ -430,6 +432,26 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <span style={{ verticalAlign: 'middle' }}>Verify Response (enable 3-retry delivery confirmation - DM only)</span>
               </label>
             </div>
+            {/* Cooldown */}
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label', 'Cooldown:')}</label>
+                <input
+                  type="number"
+                  value={editCooldownSeconds}
+                  onChange={(e) => setEditCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
+                  min={0}
+                  className="setting-input"
+                  style={{ width: '80px' }}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  {t('auto_responder.cooldown_help', 'seconds per node (0 = disabled)')}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem', marginLeft: '85px' }}>
+                {t('auto_responder.cooldown_description', 'After this trigger responds to a node, ignore further matches from that node for this duration.')}
+              </div>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <button
@@ -722,6 +744,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     </span>
                   );
                 })()}
+                {trigger.cooldownSeconds != null && trigger.cooldownSeconds > 0 && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    ⏱ {trigger.cooldownSeconds}s {t('auto_responder.cooldown_badge', 'cooldown')}
+                  </span>
+                )}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
