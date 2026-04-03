@@ -4,9 +4,12 @@ import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 import databaseService, { DbMessage } from '../services/database.js';
 import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
+import { MeshtasticManager } from './meshtasticManager.js';
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { VirtualNodeServer } from './virtualNodeServer.js';
@@ -493,8 +496,43 @@ setTimeout(async () => {
     await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
     await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
 
-    await meshtasticManager.connect();
-    logger.debug('Meshtastic manager connected successfully');
+    // Auto-create default source if none exist
+    const sourceCount = await databaseService.sources.getSourceCount();
+    if (sourceCount === 0) {
+      const env = getEnvironmentConfig();
+      if (env.meshtasticNodeIp) {
+        await databaseService.sources.createSource({
+          id: uuidv4(),
+          name: 'Default',
+          type: 'meshtastic_tcp',
+          config: { host: env.meshtasticNodeIp, port: env.meshtasticTcpPort },
+          enabled: true,
+        });
+        logger.info(`📡 Auto-created default source from environment config`);
+      }
+    }
+
+    // Start all enabled sources via the registry
+    const enabledSources = await databaseService.sources.getEnabledSources();
+    for (const source of enabledSources) {
+      if (source.type === 'meshtastic_tcp') {
+        const manager = new MeshtasticManager(source.id);
+        await sourceManagerRegistry.addManager(manager);
+      }
+    }
+
+    if (enabledSources.length > 0) {
+      // Set global reference to first source's manager for backward compat
+      const firstManager = sourceManagerRegistry.getManager(enabledSources[0].id);
+      if (firstManager) {
+        (global as any).meshtasticManager = firstManager;
+      }
+      logger.debug(`Started ${enabledSources.length} source manager(s) via registry`);
+    } else {
+      // No sources configured — use legacy singleton
+      await meshtasticManager.connect();
+      logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
+    }
 
     // Auto-connect MeshCore if enabled via environment variables
     if (process.env.MESHCORE_ENABLED === 'true') {

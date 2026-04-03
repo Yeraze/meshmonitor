@@ -4,6 +4,7 @@ import protobufService, { convertIpv4ConfigToStrings } from './protobufService.j
 import { getProtobufRoot } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
 import type { ITransport } from './transports/transport.js';
+import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
@@ -278,7 +279,8 @@ interface AutoPingSession {
   results: Array<{ pingNum: number; status: 'ack' | 'nak' | 'timeout'; durationMs?: number; sentAt: number }>;
 }
 
-class MeshtasticManager {
+class MeshtasticManager implements ISourceManager {
+  public readonly sourceId: string;
   private transport: ITransport | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
@@ -384,7 +386,31 @@ class MeshtasticManager {
   private channel0Exists = false;  // Cache for channel 0 existence check to avoid repeated DB queries
   private preConfigChannelSnapshot: { id: number; psk?: string | null; name?: string | null }[] = [];  // Channel state before config sync
 
-  constructor() {
+  get sourceType(): 'meshtastic_tcp' {
+    return 'meshtastic_tcp';
+  }
+
+  async start(): Promise<void> {
+    await this.connect();
+  }
+
+  async stop(): Promise<void> {
+    this.disconnect();
+  }
+
+  getStatus(): SourceStatus {
+    return {
+      sourceId: this.sourceId,
+      sourceName: this.sourceId,
+      sourceType: this.sourceType,
+      connected: this.isConnected,
+      nodeNum: this.localNodeInfo?.nodeNum,
+      nodeId: this.localNodeInfo?.nodeId,
+    };
+  }
+
+  constructor(sourceId: string = 'default') {
+    this.sourceId = sourceId;
     // Initialize message queue service with send callback
     messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => {
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
@@ -567,7 +593,7 @@ class MeshtasticManager {
     }
   }
 
-  async connect(): Promise<boolean> {
+  async connect(injectedTransport?: ITransport): Promise<boolean> {
     try {
       const config = await this.getConfig();
       logger.debug(`Connecting to Meshtastic node at ${config.nodeIp}:${config.tcpPort}...`);
@@ -575,13 +601,17 @@ class MeshtasticManager {
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
 
-      // Create TCP transport and configure connection timing from environment
-      const tcpTransport = new TcpTransport();
-      const env = getEnvironmentConfig();
-      tcpTransport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
-      tcpTransport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
-      tcpTransport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
-      this.transport = tcpTransport;
+      // Use injected transport or create a new TcpTransport with environment config
+      if (injectedTransport) {
+        this.transport = injectedTransport;
+      } else {
+        const tcpTransport = new TcpTransport();
+        const env = getEnvironmentConfig();
+        tcpTransport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
+        tcpTransport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
+        tcpTransport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
+        this.transport = tcpTransport;
+      }
 
       // Setup event handlers
       this.transport.on('connect', () => {
