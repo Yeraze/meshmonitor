@@ -32,6 +32,7 @@ import { migration as apiTokensNameMigration, runMigration017Postgres, runMigrat
 import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_mute_columns.js';
 import { migration as addChannelToTraceroutesMigration, runMigration019Postgres, runMigration019Mysql } from '../server/migrations/019_add_channel_to_traceroutes.js';
 import { migration as createSourcesMigration, runMigration020Postgres, runMigration020Mysql } from '../server/migrations/020_create_sources.js';
+import { migration as addSourceIdColumnsMigration, runMigration021Postgres, runMigration021Mysql } from '../server/migrations/021_add_source_id_columns.js';
 
 // ============================================================================
 // Registry
@@ -276,4 +277,17 @@ registry.register({
   sqlite: (db) => createSourcesMigration.up(db),
   postgres: (client) => runMigration020Postgres(client),
   mysql: (pool) => runMigration020Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 021: Add sourceId columns to all data tables (Phase 2)
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 21,
+  name: 'add_source_id_columns',
+  settingsKey: 'migration_021_add_source_id_columns',
+  sqlite: (db) => addSourceIdColumnsMigration.up(db),
+  postgres: (client) => runMigration021Postgres(client),
+  mysql: (pool) => runMigration021Mysql(pool),
 });
