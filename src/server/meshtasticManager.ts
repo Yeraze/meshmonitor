@@ -47,6 +47,19 @@ export interface ProcessingContext {
 export { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
 /**
+ * Convert an rxTime value to milliseconds, auto-detecting whether it's in seconds or milliseconds.
+ * Meshtastic protocol specifies rxTime as seconds (fixed32), but some firmware versions or
+ * code paths may provide milliseconds. Values > 1e12 are treated as already in milliseconds
+ * (any Unix seconds value before year 33658 is < 1e12).
+ */
+function rxTimeToMs(rxTime: number | undefined | null): number {
+  if (!rxTime) return Date.now();
+  const value = Number(rxTime);
+  if (value > 1e12) return value; // Already in milliseconds
+  return value * 1000; // Convert seconds to milliseconds
+}
+
+/**
  * Link Quality scoring constants.
  * Link Quality is a 0-10 score tracking the reliability of message routing to a node.
  */
@@ -4015,8 +4028,8 @@ class MeshtasticManager {
           text: messageText,
           channel: channelIndex,
           portnum: PortNum.TEXT_MESSAGE_APP,
-          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
-          rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          timestamp: rxTimeToMs(meshPacket.rxTime),
+          rxTime: rxTimeToMs(meshPacket.rxTime),
           hopStart: hopStart,
           hopLimit: hopLimit,
           relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message
@@ -5183,7 +5196,7 @@ class MeshtasticManager {
       // Traceroute responses are direct messages, not channel messages
       const isDirectMessage = toNum !== 4294967295;
       const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
-      const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
+      const timestamp = rxTimeToMs(meshPacket.rxTime);
 
       // Save as a special message in the database
       // Use meshPacket.id for deduplication (same as text messages)
