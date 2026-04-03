@@ -24,6 +24,7 @@ export interface AutoResponderTrigger {
   /** @deprecated Use channels instead. Kept for backward compatibility during migration. */
   channel?: number | 'dm' | 'none';
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
+  cooldownSeconds?: number; // Per-node cooldown in seconds (0 = disabled, default)
 }
 
 export type TimerResponseType = 'script' | 'text';
