@@ -60,7 +60,8 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     // Start manager if source is enabled
     if (source.enabled && source.type === 'meshtastic_tcp') {
       try {
-        const manager = new MeshtasticManager(source.id);
+        const cfg = source.config as any;
+        const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
         logger.warn(`Could not start manager for new source ${source.id}:`, err);
@@ -101,7 +102,8 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       // Newly enabled: start manager if not already running
       if (!sourceManagerRegistry.getManager(source.id)) {
         try {
-          const manager = new MeshtasticManager(source.id);
+          const cfg = source.config as any;
+          const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
           logger.warn(`Could not start manager for source ${source.id}:`, err);
@@ -154,6 +156,68 @@ router.get('/:id/status', requirePermission('sources', 'read'), async (req: Requ
   } catch (error) {
     logger.error('Error fetching source status:', error);
     res.status(500).json({ error: 'Failed to fetch source status' });
+  }
+});
+
+// ============ PER-SOURCE DATA ENDPOINTS ============
+// These scope all queries to the given source, forming the backend for Phase 4 frontend.
+
+// GET /api/sources/:id/nodes — all nodes for a source
+router.get('/:id/nodes', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+
+    const nodes = await databaseService.nodes.getAllNodes(source.id);
+    res.json(nodes);
+  } catch (error) {
+    logger.error('Error fetching nodes for source:', error);
+    res.status(500).json({ error: 'Failed to fetch nodes' });
+  }
+});
+
+// GET /api/sources/:id/messages?limit=100&offset=0 — messages for a source
+router.get('/:id/messages', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const messages = await databaseService.messages.getMessages(limit, offset, source.id);
+    res.json(messages);
+  } catch (error) {
+    logger.error('Error fetching messages for source:', error);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// GET /api/sources/:id/channels — channels for a source
+router.get('/:id/channels', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+
+    const channels = await databaseService.channels.getAllChannels(source.id);
+    res.json(channels);
+  } catch (error) {
+    logger.error('Error fetching channels for source:', error);
+    res.status(500).json({ error: 'Failed to fetch channels' });
+  }
+});
+
+// GET /api/sources/:id/traceroutes?limit=50 — traceroutes for a source
+router.get('/:id/traceroutes', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, source.id);
+    res.json(traceroutes);
+  } catch (error) {
+    logger.error('Error fetching traceroutes for source:', error);
+    res.status(500).json({ error: 'Failed to fetch traceroutes' });
   }
 });
 

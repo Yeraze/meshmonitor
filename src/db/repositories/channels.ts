@@ -53,11 +53,12 @@ export class ChannelsRepository extends BaseRepository {
   /**
    * Get all channels ordered by ID
    */
-  async getAllChannels(): Promise<DbChannel[]> {
+  async getAllChannels(sourceId?: string): Promise<DbChannel[]> {
     const { channels } = this.tables;
     const result = await this.db
       .select()
       .from(channels)
+      .where(this.withSourceScope(channels, sourceId))
       .orderBy(channels.id);
 
     return this.normalizeBigInts(result) as DbChannel[];

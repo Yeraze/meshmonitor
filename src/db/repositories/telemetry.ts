@@ -549,13 +549,14 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get all nodes with their telemetry types
    */
-  async getAllNodesTelemetryTypes(): Promise<Map<string, string[]>> {
+  async getAllNodesTelemetryTypes(sourceId?: string): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>();
     const { telemetry } = this.tables;
 
     const result = await this.db
       .selectDistinct({ nodeId: telemetry.nodeId, type: telemetry.telemetryType })
-      .from(telemetry);
+      .from(telemetry)
+      .where(this.withSourceScope(telemetry, sourceId));
 
     for (const r of result) {
       const types = map.get(r.nodeId) || [];

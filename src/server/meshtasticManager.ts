@@ -281,6 +281,7 @@ interface AutoPingSession {
 
 class MeshtasticManager implements ISourceManager {
   public readonly sourceId: string;
+  private sourceConfigOverride: { host?: string; port?: number } | null = null;
   private transport: ITransport | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
@@ -409,8 +410,11 @@ class MeshtasticManager implements ISourceManager {
     };
   }
 
-  constructor(sourceId: string = 'default') {
+  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number }) {
     this.sourceId = sourceId;
+    if (sourceConfig) {
+      this.sourceConfigOverride = sourceConfig;
+    }
     // Initialize message queue service with send callback
     messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => {
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
@@ -489,12 +493,21 @@ class MeshtasticManager implements ISourceManager {
 
   /**
    * Get environment configuration (always uses fresh values from getEnvironmentConfig)
-   * This ensures .env values are respected even if the manager is instantiated before dotenv loads
+   * This ensures .env values are respected even if the manager is instantiated before dotenv loads.
+   * Per-source config (set via source record) takes priority over env vars and DB overrides.
    */
   private async getConfig(): Promise<MeshtasticConfig> {
+    // Per-source config takes priority (set when this manager was created from a source record)
+    if (this.sourceConfigOverride?.host) {
+      return {
+        nodeIp: this.sourceConfigOverride.host,
+        tcpPort: this.sourceConfigOverride.port ?? 4403,
+      };
+    }
+
     const env = getEnvironmentConfig();
 
-    // Check for runtime override in settings (set via UI)
+    // Check for runtime override in settings (set via UI) — only for the default/legacy manager
     const overrideIp = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const overridePortStr = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
     const overridePort = overridePortStr ? parseInt(overridePortStr, 10) : null;

@@ -524,7 +524,8 @@ setTimeout(async () => {
     const enabledSources = await databaseService.sources.getEnabledSources();
     for (const source of enabledSources) {
       if (source.type === 'meshtastic_tcp') {
-        const manager = new MeshtasticManager(source.id);
+        const cfg = source.config as any;
+        const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
         await sourceManagerRegistry.addManager(manager);
       }
     }

@@ -79,11 +79,12 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get all nodes ordered by update time
    */
-  async getAllNodes(): Promise<DbNode[]> {
+  async getAllNodes(sourceId?: string): Promise<DbNode[]> {
     const { nodes } = this.tables;
     const result = await this.db
       .select()
       .from(nodes)
+      .where(this.withSourceScope(nodes, sourceId))
       .orderBy(desc(nodes.updatedAt));
 
     return this.normalizeBigInts(result) as DbNode[];
@@ -92,7 +93,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get active nodes (heard within sinceDays)
    */
-  async getActiveNodes(sinceDays: number = 7): Promise<DbNode[]> {
+  async getActiveNodes(sinceDays: number = 7, sourceId?: string): Promise<DbNode[]> {
     // lastHeard is stored in seconds (Unix timestamp)
     const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const { nodes } = this.tables;
@@ -100,7 +101,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(nodes)
-      .where(gt(nodes.lastHeard, cutoff))
+      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)))
       .orderBy(desc(nodes.lastHeard));
 
     return this.normalizeBigInts(result) as DbNode[];

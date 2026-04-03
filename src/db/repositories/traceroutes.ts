@@ -106,11 +106,12 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Get all traceroutes with pagination
    */
-  async getAllTraceroutes(limit: number = 100): Promise<DbTraceroute[]> {
+  async getAllTraceroutes(limit: number = 100, sourceId?: string): Promise<DbTraceroute[]> {
     const { traceroutes } = this.tables;
     const result = await this.db
       .select()
       .from(traceroutes)
+      .where(this.withSourceScope(traceroutes, sourceId))
       .orderBy(desc(traceroutes.timestamp))
       .limit(limit);
 

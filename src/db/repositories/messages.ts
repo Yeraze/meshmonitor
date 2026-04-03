@@ -92,11 +92,12 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages with pagination, ordered by rxTime/timestamp desc
    */
-  async getMessages(limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+  async getMessages(limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
       .from(messages)
+      .where(this.withSourceScope(messages, sourceId))
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
       .limit(limit)
       .offset(offset);
@@ -107,12 +108,12 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages by channel
    */
-  async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+  async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
       .from(messages)
-      .where(eq(messages.channel, channel))
+      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
       .limit(limit)
       .offset(offset);
@@ -123,7 +124,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get direct messages between two nodes
    */
-  async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+  async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
@@ -135,7 +136,8 @@ export class MessagesRepository extends BaseRepository {
           or(
             and(eq(messages.fromNodeId, nodeId1), eq(messages.toNodeId, nodeId2)),
             and(eq(messages.fromNodeId, nodeId2), eq(messages.toNodeId, nodeId1))
-          )
+          ),
+          this.withSourceScope(messages, sourceId)
         )
       )
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
@@ -148,12 +150,12 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages after a timestamp
    */
-  async getMessagesAfterTimestamp(timestamp: number): Promise<DbMessage[]> {
+  async getMessagesAfterTimestamp(timestamp: number, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
       .from(messages)
-      .where(gt(messages.timestamp, timestamp))
+      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId)))
       .orderBy(messages.timestamp);
 
     return this.normalizeBigInts(result) as DbMessage[];

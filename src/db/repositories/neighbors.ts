@@ -98,11 +98,12 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get all neighbor info
    */
-  async getAllNeighborInfo(): Promise<DbNeighborInfo[]> {
+  async getAllNeighborInfo(sourceId?: string): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select()
       .from(neighborInfo)
+      .where(this.withSourceScope(neighborInfo, sourceId))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];
