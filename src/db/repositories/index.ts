@@ -35,3 +35,5 @@ export { MeshCoreRepository } from './meshcore.js';
 export type { DbMeshCoreNode, DbMeshCoreMessage } from './meshcore.js';
 export { EmbedProfileRepository } from './embedProfiles.js';
 export type { EmbedProfile, EmbedProfileInput } from './embedProfiles.js';
+export { SourcesRepository } from './sources.js';
+export type { Source, CreateSourceInput } from './sources.js';

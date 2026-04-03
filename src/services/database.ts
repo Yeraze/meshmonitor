@@ -32,6 +32,7 @@ import {
   ChannelDatabaseRepository,
   IgnoredNodesRepository,
   EmbedProfileRepository,
+  SourcesRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
@@ -380,6 +381,7 @@ class DatabaseService {
   public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
+  public sourcesRepo: SourcesRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -448,6 +450,11 @@ class DatabaseService {
   get embedProfiles(): EmbedProfileRepository {
     if (!this.embedProfileRepo) throw new Error('Database not initialized');
     return this.embedProfileRepo;
+  }
+
+  get sources(): SourcesRepository {
+    if (!this.sourcesRepo) throw new Error('Database not initialized');
+    return this.sourcesRepo;
   }
 
   constructor() {
@@ -678,6 +685,7 @@ class DatabaseService {
       this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
       this.ignoredNodesRepo = new IgnoredNodesRepository(drizzleDb, this.drizzleDbType);
       this.embedProfileRepo = new EmbedProfileRepository(drizzleDb, this.drizzleDbType);
+      this.sourcesRepo = new SourcesRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
