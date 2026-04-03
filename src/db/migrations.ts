@@ -31,6 +31,7 @@ import { migration as renameSystemBackupColumnsMigration, runMigration016Postgre
 import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
 import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_mute_columns.js';
 import { migration as addChannelToTraceroutesMigration, runMigration019Postgres, runMigration019Mysql } from '../server/migrations/019_add_channel_to_traceroutes.js';
+import { migration as createSourcesMigration, runMigration020Postgres, runMigration020Mysql } from '../server/migrations/020_create_sources.js';
 
 // ============================================================================
 // Registry
@@ -262,4 +263,17 @@ registry.register({
   sqlite: (db) => addChannelToTraceroutesMigration.up(db),
   postgres: (client) => runMigration019Postgres(client),
   mysql: (pool) => runMigration019Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 020: Create sources table for multi-source support (4.0 Phase 1)
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 20,
+  name: 'create_sources',
+  settingsKey: 'migration_020_create_sources',
+  sqlite: (db) => createSourcesMigration.up(db),
+  postgres: (client) => runMigration020Postgres(client),
+  mysql: (pool) => runMigration020Mysql(pool),
 });

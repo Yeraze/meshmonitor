@@ -98,6 +98,11 @@ import {
   embedProfilesSqlite, embedProfilesPostgres, embedProfilesMysql,
 } from './schema/embedProfiles.js';
 
+// Sources table
+import {
+  sourcesSqlite, sourcesPostgres, sourcesMysql,
+} from './schema/sources.js';
+
 /**
  * Runtime table map interface.
  *
@@ -162,6 +167,9 @@ export interface ActiveSchema {
   // Embed Profiles
   embedProfiles: any;
 
+  // Sources
+  sources: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -209,6 +217,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesSqlite,
     meshcoreMessages: meshcoreMessagesSqlite,
     embedProfiles: embedProfilesSqlite,
+    sources: sourcesSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -249,6 +258,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesPostgres,
     meshcoreMessages: meshcoreMessagesPostgres,
     embedProfiles: embedProfilesPostgres,
+    sources: sourcesPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -289,6 +299,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesMysql,
     meshcoreMessages: meshcoreMessagesMysql,
     embedProfiles: embedProfilesMysql,
+    sources: sourcesMysql,
   },
 };
 
