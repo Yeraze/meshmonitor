@@ -359,6 +359,8 @@ class MeshtasticManager {
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
+  private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp
+
   // Auto-ping session tracking
   private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
 
@@ -7117,6 +7119,17 @@ class MeshtasticManager {
         }
       }
 
+      // Per-node cooldown rate limiting
+      const cooldownSetting = await databaseService.settings.getSetting('autoAckCooldownSeconds');
+      const cooldownSeconds = cooldownSetting ? parseInt(cooldownSetting, 10) : 60;
+      if (cooldownSeconds > 0) {
+        const lastResponse = this.autoAckCooldowns.get(fromNum);
+        if (lastResponse && Date.now() - lastResponse < cooldownSeconds * 1000) {
+          logger.debug(`⏭️  Skipping auto-acknowledge for node ${fromNum}: cooldown active (${cooldownSeconds}s)`);
+          return;
+        }
+      }
+
       // Use default regex if not set
       const regexPattern = autoAckRegex || '^(test|ping)';
 
@@ -7261,6 +7274,9 @@ class MeshtasticManager {
           (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
         );
       }
+
+      // Record cooldown timestamp after successful response
+      this.autoAckCooldowns.set(fromNum, Date.now());
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }

@@ -35,6 +35,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoAckMultihopTapbackEnabled',
   'autoAckMultihopReplyEnabled',
   'autoAckTestMessages',
+  'autoAckCooldownSeconds',
   'customTapbackEmojis',
   'autoAnnounceEnabled',
   'autoAnnounceIntervalHours',
