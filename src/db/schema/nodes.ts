@@ -73,6 +73,8 @@ export const nodesSqlite = sqliteTable('nodes', {
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // PostgreSQL schema
@@ -143,6 +145,8 @@ export const nodesPostgres = pgTable('nodes', {
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
@@ -212,6 +216,8 @@ export const nodesMysql = mysqlTable('nodes', {
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

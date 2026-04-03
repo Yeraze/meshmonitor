@@ -45,7 +45,8 @@ describe('TelemetryRepository - SQLite Backend', () => {
         packetId INTEGER,
         channel INTEGER,
         precisionBits INTEGER,
-        gpsAccuracy INTEGER
+        gpsAccuracy INTEGER,
+        sourceId TEXT
       )
     `);
     drizzleDb = drizzleSqlite(db, { schema });
@@ -146,7 +147,8 @@ describe('TelemetryRepository - PostgreSQL Backend', () => {
           "packetId" INTEGER,
           channel INTEGER,
           "precisionBits" INTEGER,
-          "gpsAccuracy" INTEGER
+          "gpsAccuracy" INTEGER,
+          "sourceId" TEXT
         )
       `);
       console.log('✓ PostgreSQL connection established');

@@ -85,7 +85,8 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
         remoteAdminMetadata TEXT,
         lastTimeSync INTEGER,
         createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
+        updatedAt INTEGER NOT NULL,
+        sourceId TEXT
       )
     `);
 
@@ -118,6 +119,7 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
         ackFromNode INTEGER,
         createdAt INTEGER NOT NULL,
         decrypted_by TEXT,
+        sourceId TEXT,
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE,
         FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE
       )

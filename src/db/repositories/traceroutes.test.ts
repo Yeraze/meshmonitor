@@ -35,7 +35,8 @@ const SQLITE_CREATE = `
     routePositions TEXT,
     channel INTEGER,
     timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    sourceId TEXT
   );
 
   CREATE TABLE IF NOT EXISTS route_segments (
@@ -71,7 +72,8 @@ const POSTGRES_CREATE = `
     "routePositions" TEXT,
     channel INTEGER,
     timestamp BIGINT NOT NULL,
-    "createdAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   );
 
   CREATE TABLE route_segments (
@@ -107,7 +109,8 @@ const MYSQL_CREATE = `
     routePositions TEXT,
     channel INT,
     timestamp BIGINT NOT NULL,
-    createdAt BIGINT NOT NULL
+    createdAt BIGINT NOT NULL,
+    sourceId VARCHAR(36)
   );
   CREATE TABLE route_segments (
     id INT AUTO_INCREMENT PRIMARY KEY,

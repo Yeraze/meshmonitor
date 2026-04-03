@@ -30,7 +30,8 @@ const SQLITE_CREATE = `
     downlinkEnabled INTEGER DEFAULT 0,
     positionPrecision INTEGER DEFAULT 0,
     createdAt INTEGER,
-    updatedAt INTEGER
+    updatedAt INTEGER,
+    sourceId TEXT
   )
 `;
 
@@ -45,7 +46,8 @@ const POSTGRES_CREATE = `
     "downlinkEnabled" BOOLEAN DEFAULT false,
     "positionPrecision" INTEGER DEFAULT 0,
     "createdAt" BIGINT,
-    "updatedAt" BIGINT
+    "updatedAt" BIGINT,
+    "sourceId" TEXT
   )
 `;
 
@@ -60,7 +62,8 @@ const MYSQL_CREATE = `
     downlinkEnabled BOOLEAN DEFAULT false,
     positionPrecision INTEGER DEFAULT 0,
     createdAt BIGINT,
-    updatedAt BIGINT
+    updatedAt BIGINT,
+    sourceId VARCHAR(36)
   )
 `;
 

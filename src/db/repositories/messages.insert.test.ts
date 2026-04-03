@@ -66,7 +66,8 @@ describe('MessagesRepository.insertMessage duplicate detection', () => {
         wantAck INTEGER,
         ackFromNode INTEGER,
         createdAt INTEGER NOT NULL,
-        decrypted_by TEXT
+        decrypted_by TEXT,
+        sourceId TEXT
       )
     `);
 

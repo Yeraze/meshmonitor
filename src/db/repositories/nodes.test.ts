@@ -79,7 +79,8 @@ const SQLITE_CREATE = `
     remoteAdminMetadata TEXT,
     lastTimeSync INTEGER,
     createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL
+    updatedAt INTEGER NOT NULL,
+    sourceId TEXT
   )
 `;
 
@@ -143,7 +144,8 @@ const POSTGRES_CREATE = `
     "remoteAdminMetadata" TEXT,
     "lastTimeSync" BIGINT,
     "createdAt" BIGINT NOT NULL,
-    "updatedAt" BIGINT NOT NULL
+    "updatedAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   )
 `;
 
@@ -207,7 +209,8 @@ const MYSQL_CREATE = `
     remoteAdminMetadata TEXT,
     lastTimeSync BIGINT,
     createdAt BIGINT NOT NULL,
-    updatedAt BIGINT NOT NULL
+    updatedAt BIGINT NOT NULL,
+    sourceId VARCHAR(36)
   )
 `;
 

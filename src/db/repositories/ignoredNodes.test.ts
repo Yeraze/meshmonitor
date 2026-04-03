@@ -27,7 +27,8 @@ const SQLITE_CREATE = `
     longName TEXT,
     shortName TEXT,
     ignoredBy TEXT,
-    ignoredAt INTEGER NOT NULL
+    ignoredAt INTEGER NOT NULL,
+    sourceId TEXT
   )
 `;
 
@@ -39,7 +40,8 @@ const POSTGRES_CREATE = `
     "longName" TEXT,
     "shortName" TEXT,
     "ignoredBy" TEXT,
-    "ignoredAt" BIGINT NOT NULL
+    "ignoredAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   )
 `;
 
@@ -51,7 +53,8 @@ const MYSQL_CREATE = `
     \`longName\` TEXT,
     \`shortName\` TEXT,
     \`ignoredBy\` TEXT,
-    \`ignoredAt\` BIGINT NOT NULL
+    \`ignoredAt\` BIGINT NOT NULL,
+    \`sourceId\` VARCHAR(36)
   )
 `;
 

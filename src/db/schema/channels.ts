@@ -17,6 +17,8 @@ export const channelsSqlite = sqliteTable('channels', {
   positionPrecision: integer('positionPrecision'), // Location precision bits (0-32)
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // PostgreSQL schema
@@ -30,6 +32,8 @@ export const channelsPostgres = pgTable('channels', {
   positionPrecision: pgInteger('positionPrecision'), // Location precision bits (0-32)
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
@@ -43,6 +47,8 @@ export const channelsMysql = mysqlTable('channels', {
   positionPrecision: myInt('positionPrecision'), // Location precision bits (0-32)
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

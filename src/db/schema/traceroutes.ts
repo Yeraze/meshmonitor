@@ -22,6 +22,8 @@ export const traceroutesSqlite = sqliteTable('traceroutes', {
   channel: integer('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   timestamp: integer('timestamp').notNull(),
   createdAt: integer('createdAt').notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 export const routeSegmentsSqlite = sqliteTable('route_segments', {
@@ -55,6 +57,8 @@ export const traceroutesPostgres = pgTable('traceroutes', {
   channel: pgInteger('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 export const routeSegmentsPostgres = pgTable('route_segments', {
@@ -88,6 +92,8 @@ export const traceroutesMysql = mysqlTable('traceroutes', {
   channel: myInt('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 export const routeSegmentsMysql = mysqlTable('route_segments', {

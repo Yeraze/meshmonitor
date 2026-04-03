@@ -29,7 +29,8 @@ const SQLITE_CREATE = `
     snr REAL,
     lastRxTime INTEGER,
     timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    sourceId TEXT
   )
 `;
 
@@ -42,7 +43,8 @@ const POSTGRES_CREATE = `
     snr DOUBLE PRECISION,
     "lastRxTime" BIGINT,
     timestamp BIGINT NOT NULL,
-    "createdAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   )
 `;
 
@@ -55,7 +57,8 @@ const MYSQL_CREATE = `
     snr DOUBLE,
     \`lastRxTime\` BIGINT,
     \`timestamp\` BIGINT NOT NULL,
-    \`createdAt\` BIGINT NOT NULL
+    \`createdAt\` BIGINT NOT NULL,
+    \`sourceId\` VARCHAR(36)
   )
 `;
 

@@ -2,9 +2,9 @@
  * Drizzle schema definition for the neighbor_info table
  * Supports SQLite, PostgreSQL, and MySQL
  */
-import { sqliteTable, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { mysqlTable, double as myDouble, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, double as myDouble, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
 import { nodesSqlite, nodesPostgres, nodesMysql } from './nodes.js';
 
 // SQLite schema
@@ -16,6 +16,8 @@ export const neighborInfoSqlite = sqliteTable('neighbor_info', {
   lastRxTime: integer('lastRxTime'),
   timestamp: integer('timestamp').notNull(),
   createdAt: integer('createdAt').notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // PostgreSQL schema
@@ -27,6 +29,8 @@ export const neighborInfoPostgres = pgTable('neighbor_info', {
   lastRxTime: pgBigint('lastRxTime', { mode: 'number' }),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
@@ -38,6 +42,8 @@ export const neighborInfoMysql = mysqlTable('neighbor_info', {
   lastRxTime: myBigint('lastRxTime', { mode: 'number' }),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

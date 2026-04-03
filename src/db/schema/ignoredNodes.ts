@@ -27,6 +27,8 @@ export const ignoredNodesSqlite = sqliteTable('ignored_nodes', {
   shortName: text('shortName'),
   ignoredAt: integer('ignoredAt').notNull(),
   ignoredBy: text('ignoredBy'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // ============ IGNORED NODES (PostgreSQL) ============
@@ -38,6 +40,8 @@ export const ignoredNodesPostgres = pgTable('ignored_nodes', {
   shortName: pgText('shortName'),
   ignoredAt: pgBigint('ignoredAt', { mode: 'number' }).notNull(),
   ignoredBy: pgText('ignoredBy'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // ============ IGNORED NODES (MySQL) ============
@@ -49,6 +53,8 @@ export const ignoredNodesMysql = mysqlTable('ignored_nodes', {
   shortName: myVarchar('shortName', { length: 255 }),
   ignoredAt: myBigint('ignoredAt', { mode: 'number' }).notNull(),
   ignoredBy: myVarchar('ignoredBy', { length: 255 }),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // ============ TYPE INFERENCE ============
