@@ -5098,7 +5098,9 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
     const {
       enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
-      expirationHours, sortByHops
+      expirationHours, sortByHops,
+      filterLastHeardEnabled, filterLastHeardHours,
+      filterHopsEnabled, filterHopsMin, filterHopsMax,
     } = req.body;
 
     // Validate input
@@ -5192,6 +5194,50 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       validatedExpirationHours = expirationHours;
     }
 
+    // Validate filterLastHeardEnabled (optional boolean)
+    let validatedFilterLastHeardEnabled: boolean | undefined;
+    try {
+      validatedFilterLastHeardEnabled = validateOptionalBoolean(filterLastHeardEnabled, 'filterLastHeardEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate filterLastHeardHours (optional, must be integer >= 1)
+    let validatedFilterLastHeardHours: number | undefined;
+    if (filterLastHeardHours !== undefined) {
+      if (!Number.isInteger(filterLastHeardHours) || filterLastHeardHours < 1) {
+        return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
+      }
+      validatedFilterLastHeardHours = filterLastHeardHours;
+    }
+
+    // Validate filterHopsEnabled (optional boolean)
+    let validatedFilterHopsEnabled: boolean | undefined;
+    try {
+      validatedFilterHopsEnabled = validateOptionalBoolean(filterHopsEnabled, 'filterHopsEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate filterHopsMin/Max (optional, must be integers >= 0, min <= max)
+    let validatedFilterHopsMin: number | undefined;
+    let validatedFilterHopsMax: number | undefined;
+    if (filterHopsMin !== undefined) {
+      if (!Number.isInteger(filterHopsMin) || filterHopsMin < 0) {
+        return res.status(400).json({ error: 'Invalid filterHopsMin value. Must be a non-negative integer.' });
+      }
+      validatedFilterHopsMin = filterHopsMin;
+    }
+    if (filterHopsMax !== undefined) {
+      if (!Number.isInteger(filterHopsMax) || filterHopsMax < 0) {
+        return res.status(400).json({ error: 'Invalid filterHopsMax value. Must be a non-negative integer.' });
+      }
+      validatedFilterHopsMax = filterHopsMax;
+    }
+    if (validatedFilterHopsMin !== undefined && validatedFilterHopsMax !== undefined && validatedFilterHopsMin > validatedFilterHopsMax) {
+      return res.status(400).json({ error: 'filterHopsMin cannot be greater than filterHopsMax.' });
+    }
+
     // Update all settings
     await databaseService.setTracerouteFilterSettingsAsync({
       enabled,
@@ -5207,6 +5253,11 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       filterRegexEnabled: validatedFilterRegexEnabled,
       expirationHours: validatedExpirationHours,
       sortByHops: validatedSortByHops,
+      filterLastHeardEnabled: validatedFilterLastHeardEnabled,
+      filterLastHeardHours: validatedFilterLastHeardHours,
+      filterHopsEnabled: validatedFilterHopsEnabled,
+      filterHopsMin: validatedFilterHopsMin,
+      filterHopsMax: validatedFilterHopsMax,
     });
 
     // Get the updated settings to return (includes resolved default values)

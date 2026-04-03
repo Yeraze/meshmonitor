@@ -41,6 +41,11 @@ interface FilterSettings {
   filterRolesEnabled: boolean;
   filterHwModelsEnabled: boolean;
   filterRegexEnabled: boolean;
+  filterLastHeardEnabled: boolean;
+  filterLastHeardHours: number;
+  filterHopsEnabled: boolean;
+  filterHopsMin: number;
+  filterHopsMax: number;
   expirationHours: number;
   sortByHops: boolean;
   scheduleEnabled: boolean;
@@ -84,6 +89,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const [filterHwModelsEnabled, setFilterHwModelsEnabled] = useState(true);
   const [filterRegexEnabled, setFilterRegexEnabled] = useState(true);
 
+  // Last heard filter
+  const [filterLastHeardEnabled, setFilterLastHeardEnabled] = useState(true);
+  const [filterLastHeardHours, setFilterLastHeardHours] = useState(168);
+
+  // Hop range filter
+  const [filterHopsEnabled, setFilterHopsEnabled] = useState(false);
+  const [filterHopsMin, setFilterHopsMin] = useState(0);
+  const [filterHopsMax, setFilterHopsMax] = useState(10);
+
   // Expiration hours - how long before re-tracerouting a node
   const [expirationHours, setExpirationHours] = useState(24);
 
@@ -111,6 +125,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     roles: false,
     hwModels: false,
     regex: false,
+    lastHeard: false,
+    hops: false,
   });
 
   // Update local state when props change
@@ -158,6 +174,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           setFilterRolesEnabled(data.filterRolesEnabled !== false);
           setFilterHwModelsEnabled(data.filterHwModelsEnabled !== false);
           setFilterRegexEnabled(data.filterRegexEnabled !== false);
+          setFilterLastHeardEnabled(data.filterLastHeardEnabled !== false);
+          setFilterLastHeardHours(data.filterLastHeardHours || 168);
+          setFilterHopsEnabled(data.filterHopsEnabled || false);
+          setFilterHopsMin(data.filterHopsMin ?? 0);
+          setFilterHopsMax(data.filterHopsMax ?? 10);
           // Load expiration hours (default to 24 if not set)
           setExpirationHours(data.expirationHours || 24);
           // Load sort by hops setting (default to false)
@@ -238,6 +259,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     const filterRolesEnabledChanged = filterRolesEnabled !== (initialSettings.filterRolesEnabled !== false);
     const filterHwModelsEnabledChanged = filterHwModelsEnabled !== (initialSettings.filterHwModelsEnabled !== false);
     const filterRegexEnabledChanged = filterRegexEnabled !== (initialSettings.filterRegexEnabled !== false);
+    const filterLastHeardEnabledChanged = filterLastHeardEnabled !== (initialSettings.filterLastHeardEnabled !== false);
+    const filterLastHeardHoursChanged = filterLastHeardHours !== (initialSettings.filterLastHeardHours || 168);
+    const filterHopsEnabledChanged = filterHopsEnabled !== (initialSettings.filterHopsEnabled || false);
+    const filterHopsMinChanged = filterHopsMin !== (initialSettings.filterHopsMin ?? 0);
+    const filterHopsMaxChanged = filterHopsMax !== (initialSettings.filterHopsMax ?? 10);
 
     // Check expiration hours change
     const expirationHoursChanged = expirationHours !== (initialSettings.expirationHours || 24);
@@ -252,10 +278,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
     const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged ||
       filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged ||
+      filterLastHeardEnabledChanged || filterLastHeardHoursChanged || filterHopsEnabledChanged || filterHopsMinChanged || filterHopsMaxChanged ||
       expirationHoursChanged || sortByHopsChanged || scheduleEnabledChanged || scheduleStartChanged || scheduleEndChanged;
     setHasChanges(changed);
   }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
-      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours, sortByHops,
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax,
+      expirationHours, sortByHops,
       scheduleEnabled, scheduleStart, scheduleEnd]);
 
   // Reset local state to initial settings (used by SaveBar dismiss)
@@ -274,6 +303,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       setFilterRolesEnabled(initialSettings.filterRolesEnabled !== false);
       setFilterHwModelsEnabled(initialSettings.filterHwModelsEnabled !== false);
       setFilterRegexEnabled(initialSettings.filterRegexEnabled !== false);
+      setFilterLastHeardEnabled(initialSettings.filterLastHeardEnabled !== false);
+      setFilterLastHeardHours(initialSettings.filterLastHeardHours || 168);
+      setFilterHopsEnabled(initialSettings.filterHopsEnabled || false);
+      setFilterHopsMin(initialSettings.filterHopsMin ?? 0);
+      setFilterHopsMax(initialSettings.filterHopsMax ?? 10);
       setExpirationHours(initialSettings.expirationHours || 24);
       setSortByHops(initialSettings.sortByHops || false);
       setScheduleEnabled(initialSettings.scheduleEnabled || false);
@@ -459,6 +493,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           filterRolesEnabled,
           filterHwModelsEnabled,
           filterRegexEnabled,
+          filterLastHeardEnabled,
+          filterLastHeardHours,
+          filterHopsEnabled,
+          filterHopsMin,
+          filterHopsMax,
           expirationHours,
           sortByHops,
         })
@@ -486,6 +525,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         filterRolesEnabled,
         filterHwModelsEnabled,
         filterRegexEnabled,
+        filterLastHeardEnabled,
+        filterLastHeardHours,
+        filterHopsEnabled,
+        filterHopsMin,
+        filterHopsMax,
         expirationHours,
         sortByHops,
         scheduleEnabled,
@@ -501,7 +545,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange]);
+  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -1029,6 +1073,99 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     <div style={{ fontSize: '11px', color: 'var(--ctp-subtext0)' }}>
                       {t('automation.auto_traceroute.regex_help')}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Last Heard Filter */}
+              <div style={{ marginBottom: '0.5rem', opacity: filterLastHeardEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('lastHeard')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterLastHeardEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterLastHeardEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
+                    <span>{expandedSections.lastHeard ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.filter_by_last_heard')}
+                    {filterLastHeardEnabled && (
+                      <span style={badgeStyle}>{filterLastHeardHours}h</span>
+                    )}
+                  </span>
+                </div>
+                {expandedSections.lastHeard && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
+                      {t('automation.auto_traceroute.last_heard_within')}
+                      <input
+                        type="number"
+                        value={filterLastHeardHours}
+                        onChange={(e) => setFilterLastHeardHours(Math.max(1, parseInt(e.target.value) || 1))}
+                        min={1}
+                        style={{ width: '80px', padding: '2px 4px' }}
+                      />
+                      {t('automation.auto_traceroute.hours')}
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Hop Range Filter */}
+              <div style={{ marginBottom: '0.5rem', opacity: filterHopsEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('hops')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterHopsEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterHopsEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
+                    <span>{expandedSections.hops ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.filter_by_hops')}
+                    {filterHopsEnabled && (
+                      <span style={badgeStyle}>{filterHopsMin}-{filterHopsMax}</span>
+                    )}
+                  </span>
+                </div>
+                {expandedSections.hops && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      {t('automation.auto_traceroute.min_hops')}
+                      <input
+                        type="number"
+                        value={filterHopsMin}
+                        onChange={(e) => setFilterHopsMin(Math.max(0, parseInt(e.target.value) || 0))}
+                        min={0}
+                        max={filterHopsMax}
+                        style={{ width: '60px', padding: '2px 4px' }}
+                      />
+                    </label>
+                    <span>—</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      {t('automation.auto_traceroute.max_hops')}
+                      <input
+                        type="number"
+                        value={filterHopsMax}
+                        onChange={(e) => setFilterHopsMax(Math.max(filterHopsMin, parseInt(e.target.value) || 0))}
+                        min={filterHopsMin}
+                        style={{ width: '60px', padding: '2px 4px' }}
+                      />
+                    </label>
                   </div>
                 )}
               </div>
