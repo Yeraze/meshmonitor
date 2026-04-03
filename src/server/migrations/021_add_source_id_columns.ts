@@ -55,12 +55,7 @@ export const migration = {
 export async function runMigration021Postgres(client: any): Promise<void> {
   logger.info('Running migration 021 (PostgreSQL): Adding sourceId column to data tables...');
 
-  const pgTables = [
-    'nodes', 'messages', 'telemetry', 'traceroutes',
-    'channels', 'neighbor_info', 'packet_log', 'ignored_nodes', 'channel_database',
-  ];
-
-  for (const table of pgTables) {
+  for (const table of DATA_TABLES) {
     await client.query(
       `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS "sourceId" TEXT`
     );
@@ -85,21 +80,16 @@ export async function runMigration021Postgres(client: any): Promise<void> {
 export async function runMigration021Mysql(pool: any): Promise<void> {
   logger.info('Running migration 021 (MySQL): Adding sourceId column to data tables...');
 
-  const mysqlTables = [
-    'nodes', 'messages', 'telemetry', 'traceroutes',
-    'channels', 'neighbor_info', 'packet_log', 'ignored_nodes', 'channel_database',
-  ];
-
   const conn = await pool.getConnection();
   try {
-    for (const table of mysqlTables) {
+    for (const table of DATA_TABLES) {
       const [rows] = await conn.query(
         `SELECT COLUMN_NAME FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'sourceId'`,
         [table]
       );
       if (!Array.isArray(rows) || rows.length === 0) {
-        await conn.query(`ALTER TABLE ${table} ADD COLUMN sourceId VARCHAR(36)`);
+        await conn.query(`ALTER TABLE ${table} ADD COLUMN sourceId TEXT`);
         logger.debug(`Added sourceId to ${table}`);
       } else {
         logger.debug(`${table}.sourceId already exists, skipping`);
