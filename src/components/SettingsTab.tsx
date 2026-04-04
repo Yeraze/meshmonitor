@@ -212,6 +212,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
+  const [sourceCount, setSourceCount] = useState(0);
   const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
@@ -237,6 +238,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       }
     };
     fetchSystemStatus();
+  }, [baseUrl]);
+
+  // Fetch source count so we can conditionally show the Source Overrides nav item
+  useEffect(() => {
+    fetch(`${baseUrl}/api/sources`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: any[]) => setSourceCount(Array.isArray(data) ? data.length : 0))
+      .catch(() => {});
   }, [baseUrl]);
 
   // Fetch database type from health endpoint (public, no auth required)
@@ -906,7 +915,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
         { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
         ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
-        { id: 'settings-source-overrides', label: t('settings.source_overrides', 'Source Overrides') },
+        ...(sourceCount >= 2 ? [{ id: 'settings-source-overrides', label: t('settings.source_overrides', 'Source Overrides') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />

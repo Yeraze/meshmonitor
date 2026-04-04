@@ -2,12 +2,13 @@
  * Unified Telemetry Page
  *
  * Shows the latest telemetry readings per node across all accessible sources.
- * Grouped by source, with color-coded source tags. Useful as a fleet overview.
+ * Grouped by source, with color-coded source tags. Fleet overview.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { appBasename } from '../init';
+import '../styles/unified.css';
 
 interface TelemetryEntry {
   nodeId: string;
@@ -23,7 +24,8 @@ interface TelemetryEntry {
 }
 
 const SOURCE_COLORS = [
-  '#2563eb', '#7c3aed', '#059669', '#dc2626', '#d97706', '#0891b2',
+  'var(--ctp-blue)', 'var(--ctp-mauve)', 'var(--ctp-green)',
+  'var(--ctp-red)', 'var(--ctp-yellow)', 'var(--ctp-teal)',
 ];
 
 function getSourceColor(sourceId: string, sourceIds: string[]): string {
@@ -62,7 +64,7 @@ const TYPE_UNITS: Record<string, string> = {
   air_util_tx: '%',
   snr: 'dB',
   rssi: 'dBm',
-  uptime_seconds: 's',
+  uptime_seconds: '',
   temperature: '°C',
   relative_humidity: '%',
   barometric_pressure: 'hPa',
@@ -77,30 +79,25 @@ function formatValue(type: string, value: number): string {
   if (type === 'uptime_seconds') {
     const h = Math.floor(value / 3600);
     const m = Math.floor((value % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
   }
   if (type === 'voltage') return value.toFixed(2);
-  if (type === 'barometric_pressure') return value.toFixed(1);
-  if (type === 'temperature') return value.toFixed(1);
-  if (type === 'relative_humidity') return value.toFixed(0);
-  if (type === 'snr' || type === 'rssi') return value.toFixed(1);
+  if (type === 'barometric_pressure' || type === 'temperature') return value.toFixed(1);
+  if (type === 'relative_humidity' || type === 'snr' || type === 'rssi') return value.toFixed(1);
   return String(Math.round(value * 10) / 10);
 }
 
 function formatAge(timestamp: number): string {
-  const ageS = Math.floor(Date.now() / 1000) - timestamp;
-  if (ageS < 60) return `${ageS}s ago`;
-  if (ageS < 3600) return `${Math.floor(ageS / 60)}m ago`;
-  if (ageS < 86400) return `${Math.floor(ageS / 3600)}h ago`;
-  return `${Math.floor(ageS / 86400)}d ago`;
+  const s = Math.floor(Date.now() / 1000) - timestamp;
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 type HoursOption = 1 | 6 | 24 | 72 | 168;
 const HOURS_OPTIONS: HoursOption[] = [1, 6, 24, 72, 168];
-const HOURS_LABELS: Record<HoursOption, string> = {
-  1: '1h', 6: '6h', 24: '24h', 72: '3d', 168: '7d',
-};
+const HOURS_LABELS: Record<HoursOption, string> = { 1: '1h', 6: '6h', 24: '24h', 72: '3d', 168: '7d' };
 
 export default function UnifiedTelemetryPage() {
   const navigate = useNavigate();
@@ -108,19 +105,15 @@ export default function UnifiedTelemetryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [hours, setHours] = useState<HoursOption>(24);
-  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   const fetchTelemetry = useCallback(async () => {
     try {
       const res = await fetch(`${appBasename}/api/unified/telemetry?hours=${hours}`, {
         credentials: 'include',
       });
-      if (!res.ok) {
-        setError('Failed to load telemetry');
-        return;
-      }
-      const data: TelemetryEntry[] = await res.json();
-      setEntries(data);
+      if (!res.ok) { setError('Failed to load telemetry'); return; }
+      setEntries(await res.json());
       setError('');
     } catch {
       setError('Network error');
@@ -132,89 +125,68 @@ export default function UnifiedTelemetryPage() {
   useEffect(() => {
     setLoading(true);
     fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 15000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchTelemetry, 15000);
+    return () => clearInterval(iv);
   }, [fetchTelemetry]);
 
   const sourceIds = Array.from(new Set(entries.map(e => e.sourceId)));
   const allTypes = Array.from(new Set(entries.map(e => e.telemetryType))).sort();
 
-  // Group: sourceId → nodeId → telemetryType → entry (latest only)
+  // Group: sourceId → nodeId → telemetryType → latest entry
   const bySource: Record<string, Record<string, Record<string, TelemetryEntry>>> = {};
   for (const e of entries) {
     if (typeFilter && e.telemetryType !== typeFilter) continue;
     if (!bySource[e.sourceId]) bySource[e.sourceId] = {};
     if (!bySource[e.sourceId][e.nodeId]) bySource[e.sourceId][e.nodeId] = {};
-    const existing = bySource[e.sourceId][e.nodeId][e.telemetryType];
-    if (!existing || e.timestamp > existing.timestamp) {
-      bySource[e.sourceId][e.nodeId][e.telemetryType] = e;
-    }
+    const cur = bySource[e.sourceId][e.nodeId][e.telemetryType];
+    if (!cur || e.timestamp > cur.timestamp) bySource[e.sourceId][e.nodeId][e.telemetryType] = e;
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#111', color: '#eee', fontFamily: 'sans-serif' }}>
-      {/* Header */}
-      <div style={{
-        background: '#1a1a1a', borderBottom: '1px solid #333',
-        padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-      }}>
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            background: '#333', color: '#aaa', border: 'none', borderRadius: 8,
-            padding: '8px 16px', fontSize: 13, cursor: 'pointer',
-          }}
-        >
-          ← Sources
-        </button>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#fff' }}>Unified Telemetry</h1>
-          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>Latest readings · all sources</p>
+    <div className="unified-page">
+      <div className="unified-header">
+        <button className="unified-header__back" onClick={() => navigate('/')}>← Sources</button>
+
+        <div className="unified-header__title">
+          <h1>Unified Telemetry</h1>
+          <p>Latest readings · all sources</p>
         </div>
 
-        {/* Time range */}
-        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-          {HOURS_OPTIONS.map(h => (
-            <button
-              key={h}
-              onClick={() => setHours(h)}
-              style={{
-                background: hours === h ? '#2563eb' : '#2a2a2a',
-                color: hours === h ? '#fff' : '#888',
-                border: 'none', borderRadius: 6,
-                padding: '5px 10px', fontSize: 12, cursor: 'pointer',
-              }}
-            >
-              {HOURS_LABELS[h]}
-            </button>
-          ))}
+        <div className="unified-controls">
+          <div className="unified-btn-group">
+            {HOURS_OPTIONS.map(h => (
+              <button
+                key={h}
+                className={hours === h ? 'active' : ''}
+                onClick={() => setHours(h)}
+              >
+                {HOURS_LABELS[h]}
+              </button>
+            ))}
+          </div>
+
+          <select
+            className="unified-select"
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+          >
+            <option value="">All types</option>
+            {allTypes.map(t => (
+              <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
+            ))}
+          </select>
         </div>
 
-        {/* Type filter */}
-        <select
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          style={{
-            background: '#2a2a2a', color: '#ccc', border: '1px solid #444',
-            borderRadius: 6, padding: '5px 10px', fontSize: 12,
-          }}
-        >
-          <option value="">All types</option>
-          {allTypes.map(t => (
-            <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
-          ))}
-        </select>
-
-        {/* Source legend */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="unified-source-legend">
           {sourceIds.map(sid => {
             const name = entries.find(e => e.sourceId === sid)?.sourceName ?? sid;
             const color = getSourceColor(sid, sourceIds);
             return (
-              <span key={sid} style={{
-                background: color + '22', border: `1px solid ${color}44`,
-                color, borderRadius: 99, padding: '3px 10px', fontSize: 12, fontWeight: 600,
-              }}>
+              <span
+                key={sid}
+                className="unified-source-pill"
+                style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color, border: `1px solid color-mix(in srgb, ${color} 35%, transparent)` }}
+              >
                 {name}
               </span>
             );
@@ -222,18 +194,12 @@ export default function UnifiedTelemetryPage() {
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
-        {loading && (
-          <div style={{ textAlign: 'center', padding: 64, color: '#666' }}>Loading telemetry…</div>
-        )}
-        {error && (
-          <div style={{ textAlign: 'center', padding: 32, color: '#ef4444' }}>{error}</div>
-        )}
+      <div className="unified-body unified-body--wide">
+        {loading && <div className="unified-empty">Loading telemetry…</div>}
+        {error && <div className="unified-error">{error}</div>}
+
         {!loading && !error && Object.keys(bySource).length === 0 && (
-          <div style={{ textAlign: 'center', padding: 64, color: '#666' }}>
-            No telemetry found in the selected time range.
-          </div>
+          <div className="unified-empty">No telemetry found in the selected time range.</div>
         )}
 
         {Object.entries(bySource).map(([sourceId, nodeMap]) => {
@@ -242,58 +208,43 @@ export default function UnifiedTelemetryPage() {
           const nodeEntries = Object.entries(nodeMap);
 
           return (
-            <div key={sourceId} style={{ marginBottom: 32 }}>
-              {/* Source header */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
-              }}>
-                <div style={{
-                  width: 4, height: 20, borderRadius: 2, background: color, flexShrink: 0,
-                }} />
-                <span style={{ fontSize: 16, fontWeight: 700, color }}>{sourceName}</span>
-                <span style={{ fontSize: 12, color: '#555' }}>
+            <div key={sourceId} className="unified-telem-source">
+              <div className="unified-telem-source__header">
+                <div className="unified-telem-source__bar" style={{ background: color }} />
+                <span className="unified-telem-source__name" style={{ color }}>{sourceName}</span>
+                <span className="unified-telem-source__count">
                   {nodeEntries.length} node{nodeEntries.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
-              {/* Node cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+              <div className="unified-telem-grid">
                 {nodeEntries.map(([nodeId, typeMap]) => {
-                  const firstEntry = Object.values(typeMap)[0];
-                  const nodeName = firstEntry?.nodeLongName || firstEntry?.nodeShortName || nodeId;
-                  const readings = Object.values(typeMap).sort((a, b) => a.telemetryType.localeCompare(b.telemetryType));
+                  const first = Object.values(typeMap)[0];
+                  const nodeName = first?.nodeLongName || first?.nodeShortName || nodeId;
+                  const readings = Object.values(typeMap).sort((a, b) =>
+                    a.telemetryType.localeCompare(b.telemetryType)
+                  );
                   const latestTs = Math.max(...readings.map(r => r.timestamp));
 
                   return (
                     <div
                       key={nodeId}
-                      style={{
-                        background: '#1a1a1a',
-                        border: `1px solid ${color}33`,
-                        borderTop: `2px solid ${color}`,
-                        borderRadius: 8, padding: 14,
-                      }}
+                      className="unified-node-card"
+                      style={{ borderTopColor: color }}
                     >
-                      {/* Node name + age */}
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-                        <span style={{ fontWeight: 600, fontSize: 14, color: '#ddd', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {nodeName}
-                        </span>
-                        <span style={{ fontSize: 11, color: '#555', flexShrink: 0 }}>
-                          {formatAge(latestTs)}
-                        </span>
+                      <div className="unified-node-card__header">
+                        <span className="unified-node-card__name">{nodeName}</span>
+                        <span className="unified-node-card__age">{formatAge(latestTs)}</span>
                       </div>
-
-                      {/* Telemetry readings */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px' }}>
+                      <div className="unified-node-card__readings">
                         {readings.map(r => (
-                          <div key={r.telemetryType} style={{ minWidth: 70 }}>
-                            <div style={{ fontSize: 10, color: '#666', marginBottom: 1 }}>
+                          <div key={r.telemetryType} className="unified-reading">
+                            <div className="unified-reading__label">
                               {TYPE_LABELS[r.telemetryType] ?? r.telemetryType}
                             </div>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>
+                            <div className="unified-reading__value">
                               {formatValue(r.telemetryType, r.value)}
-                              <span style={{ fontSize: 10, color: '#888', marginLeft: 2 }}>
+                              <span className="unified-reading__unit">
                                 {r.unit ?? TYPE_UNITS[r.telemetryType] ?? ''}
                               </span>
                             </div>

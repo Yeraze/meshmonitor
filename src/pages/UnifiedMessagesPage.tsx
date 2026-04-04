@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
+import '../styles/unified.css';
 
 interface UnifiedMessage {
   id: string;
@@ -23,7 +24,8 @@ interface UnifiedMessage {
 }
 
 const SOURCE_COLORS = [
-  '#2563eb', '#7c3aed', '#059669', '#dc2626', '#d97706', '#0891b2',
+  'var(--ctp-blue)', 'var(--ctp-mauve)', 'var(--ctp-green)',
+  'var(--ctp-red)', 'var(--ctp-yellow)', 'var(--ctp-teal)',
 ];
 
 function getSourceColor(sourceId: string, sourceIds: string[]): string {
@@ -32,8 +34,7 @@ function getSourceColor(sourceId: string, sourceIds: string[]): string {
 }
 
 function formatTime(timestamp: number): string {
-  const d = new Date(timestamp * 1000);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDate(timestamp: number): string {
@@ -60,10 +61,7 @@ export default function UnifiedMessagesPage() {
       const res = await fetch(`${appBasename}/api/unified/messages?limit=100`, {
         credentials: 'include',
       });
-      if (!res.ok) {
-        setError('Failed to load messages');
-        return;
-      }
+      if (!res.ok) { setError('Failed to load messages'); return; }
       const data: UnifiedMessage[] = await res.json();
       setMessages(data);
       setError('');
@@ -81,42 +79,25 @@ export default function UnifiedMessagesPage() {
   }, [fetchMessages]);
 
   const sourceIds = Array.from(new Set(messages.map(m => m.sourceId)));
-
-  // Group messages by date
   let lastDate = '';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#111', color: '#eee', fontFamily: 'sans-serif' }}>
-      {/* Header */}
-      <div style={{
-        background: '#1a1a1a', borderBottom: '1px solid #333',
-        padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16,
-      }}>
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            background: '#333', color: '#aaa', border: 'none', borderRadius: 8,
-            padding: '8px 16px', fontSize: 13, cursor: 'pointer',
-          }}
-        >
-          ← Sources
-        </button>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#fff' }}>Unified Messages</h1>
-          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>All sources combined · newest first</p>
+    <div className="unified-page">
+      <div className="unified-header">
+        <button className="unified-header__back" onClick={() => navigate('/')}>← Sources</button>
+        <div className="unified-header__title">
+          <h1>Unified Messages</h1>
+          <p>All sources combined · newest first</p>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="unified-source-legend">
           {sourceIds.map(sid => {
             const name = messages.find(m => m.sourceId === sid)?.sourceName ?? sid;
+            const color = getSourceColor(sid, sourceIds);
             return (
               <span
                 key={sid}
-                style={{
-                  background: getSourceColor(sid, sourceIds) + '22',
-                  border: `1px solid ${getSourceColor(sid, sourceIds)}44`,
-                  color: getSourceColor(sid, sourceIds),
-                  borderRadius: 99, padding: '3px 10px', fontSize: 12, fontWeight: 600,
-                }}
+                className="unified-source-pill"
+                style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color, border: `1px solid color-mix(in srgb, ${color} 35%, transparent)` }}
               >
                 {name}
               </span>
@@ -125,18 +106,12 @@ export default function UnifiedMessagesPage() {
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: 24 }}>
-        {loading && (
-          <div style={{ textAlign: 'center', padding: 64, color: '#666' }}>Loading messages…</div>
-        )}
-
-        {error && (
-          <div style={{ textAlign: 'center', padding: 32, color: '#ef4444' }}>{error}</div>
-        )}
+      <div className="unified-body">
+        {loading && <div className="unified-empty">Loading messages…</div>}
+        {error && <div className="unified-error">{error}</div>}
 
         {!loading && !error && messages.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 64, color: '#666' }}>
+          <div className="unified-empty">
             {isAuthenticated
               ? 'No messages found across your accessible sources.'
               : 'Sign in to view messages.'}
@@ -145,48 +120,36 @@ export default function UnifiedMessagesPage() {
 
         {messages.map((msg) => {
           const dateLabel = formatDate(msg.timestamp);
-          const showDateDivider = dateLabel !== lastDate;
-          if (showDateDivider) lastDate = dateLabel;
+          const showDivider = dateLabel !== lastDate;
+          if (showDivider) lastDate = dateLabel;
           const color = getSourceColor(msg.sourceId, sourceIds);
           const sender = msg.fromLongName || msg.fromShortName || msg.fromId || 'Unknown';
           const channelLabel = msg.channel === -1 ? 'DM' : `Ch${msg.channel}`;
 
           return (
             <div key={msg.id}>
-              {showDateDivider && (
-                <div style={{
-                  textAlign: 'center', margin: '24px 0 12px',
-                  fontSize: 12, color: '#555', position: 'relative',
-                }}>
-                  <span style={{ background: '#111', padding: '0 12px', position: 'relative', zIndex: 1 }}>
-                    {dateLabel}
-                  </span>
-                  <div style={{
-                    position: 'absolute', top: '50%', left: 0, right: 0,
-                    height: 1, background: '#333', zIndex: 0,
-                  }} />
+              {showDivider && (
+                <div className="unified-date-divider">
+                  <span>{dateLabel}</span>
                 </div>
               )}
-              <div style={{
-                background: '#1a1a1a', border: '1px solid #2a2a2a',
-                borderLeft: `3px solid ${color}`,
-                borderRadius: 8, padding: '12px 16px', marginBottom: 8,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{
-                    background: color + '22', color, borderRadius: 4,
-                    padding: '2px 6px', fontSize: 11, fontWeight: 600,
-                  }}>
+              <div
+                className="unified-msg-card"
+                style={{ borderLeftColor: color }}
+              >
+                <div className="unified-msg-card__meta">
+                  <span
+                    className="unified-msg-card__source-tag"
+                    style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color }}
+                  >
                     {msg.sourceName}
                   </span>
-                  <span style={{ color: '#888', fontSize: 12 }}>{channelLabel}</span>
-                  <span style={{ color: '#555', fontSize: 12 }}>{sender}</span>
-                  <span style={{ marginLeft: 'auto', color: '#555', fontSize: 11 }}>
-                    {formatTime(msg.timestamp)}
-                  </span>
+                  <span className="unified-msg-card__channel">{channelLabel}</span>
+                  <span className="unified-msg-card__sender">{sender}</span>
+                  <span className="unified-msg-card__time">{formatTime(msg.timestamp)}</span>
                 </div>
-                <div style={{ color: '#ddd', fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word' }}>
-                  {msg.text || <em style={{ color: '#555' }}>(no text)</em>}
+                <div className="unified-msg-card__text">
+                  {msg.text || <em style={{ opacity: 0.4 }}>(no text)</em>}
                 </div>
               </div>
             </div>

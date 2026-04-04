@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import '../styles/sources.css';
 
 interface SourceRecord {
   id: string;
@@ -192,65 +193,35 @@ export default function SourceListPage() {
   };
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#111' }}>
-        <span style={{ color: '#aaa', fontSize: 16 }}>Loading sources…</span>
-      </div>
-    );
+    return <div className="sources-page__loading">Loading sources…</div>;
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#111', color: '#eee', fontFamily: 'sans-serif', padding: 32 }}>
+    <div className="sources-page">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: '#fff' }}>MeshMonitor</h1>
-          <p style={{ margin: '4px 0 0', color: '#888', fontSize: 14 }}>Select a source to monitor</p>
+      <div className="sources-header">
+        <div className="sources-header__title">
+          <h1>MeshMonitor</h1>
+          <p>Select a source to monitor</p>
         </div>
         {isAdmin && (
-          <button
-            onClick={openAdd}
-            style={{
-              background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8,
-              padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontWeight: 600,
-            }}
-          >
-            + Add Source
-          </button>
+          <button className="sources-header__add-btn" onClick={openAdd}>+ Add Source</button>
         )}
       </div>
 
       {/* Cross-source quick links (only when multiple sources) */}
       {sources.length > 1 && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
-          <button
-            onClick={() => navigate('/unified/messages')}
-            style={{
-              background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
-              padding: '12px 20px', color: '#93c5fd', fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
-            }}
-          >
+        <div className="sources-quick-links">
+          <button className="sources-quick-link" onClick={() => navigate('/unified/messages')}
+            style={{ color: 'var(--ctp-blue)' }}>
             <span>💬</span> Unified Messages
           </button>
-          <button
-            onClick={() => navigate('/unified/telemetry')}
-            style={{
-              background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
-              padding: '12px 20px', color: '#86efac', fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
-            }}
-          >
+          <button className="sources-quick-link" onClick={() => navigate('/unified/telemetry')}
+            style={{ color: 'var(--ctp-green)' }}>
             <span>📡</span> Unified Telemetry
           </button>
-          <button
-            onClick={() => navigate('/analysis')}
-            style={{
-              background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
-              padding: '12px 20px', color: '#a78bfa', fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
-            }}
-          >
+          <button className="sources-quick-link" onClick={() => navigate('/analysis')}
+            style={{ color: 'var(--ctp-mauve)' }}>
             <span>📊</span> Analysis
           </button>
         </div>
@@ -258,114 +229,64 @@ export default function SourceListPage() {
 
       {/* Source cards */}
       {sources.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '80px 0', color: '#666' }}>
-          <p style={{ fontSize: 18 }}>No sources configured.</p>
-          {isAdmin && (
-            <p style={{ fontSize: 14 }}>
-              Click <strong style={{ color: '#2563eb' }}>+ Add Source</strong> to connect a Meshtastic node.
-            </p>
-          )}
+        <div className="sources-empty">
+          <p>No sources configured.</p>
+          {isAdmin && <p>Click <strong>+ Add Source</strong> to connect a Meshtastic node.</p>}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
+        <div className="sources-grid">
           {sources.map(source => {
             const status = statuses[source.id];
             const count = nodeCounts[source.id] ?? 0;
             const connected = status?.connected ?? false;
             const cfg = source.config as any;
+            const statusKey = connected ? 'connected' : source.enabled ? 'connecting' : 'disabled';
+            const statusLabel = connected ? 'Connected' : source.enabled ? 'Connecting' : 'Disabled';
 
             return (
               <div
                 key={source.id}
-                style={{
-                  background: '#1a1a1a', border: `1px solid ${connected ? '#22c55e33' : '#333'}`,
-                  borderRadius: 12, padding: 24, display: 'flex', flexDirection: 'column', gap: 16,
-                }}
+                className={`source-card${connected ? ' source-card--connected' : ''}`}
               >
-                {/* Card header */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div className="source-card__header">
                   <div>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#fff' }}>{source.name}</h2>
-                    <p style={{ margin: '4px 0 0', color: '#666', fontSize: 12 }}>
-                      {source.type} · {cfg.host}:{cfg.port ?? 4403}
-                    </p>
+                    <h2 className="source-card__name">{source.name}</h2>
+                    <p className="source-card__meta">{source.type} · {cfg.host}:{cfg.port ?? 4403}</p>
                   </div>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '4px 10px', borderRadius: 99, fontSize: 12, fontWeight: 600,
-                    background: connected ? '#14532d' : source.enabled ? '#451a03' : '#1c1c1c',
-                    color: connected ? '#4ade80' : source.enabled ? '#fb923c' : '#555',
-                  }}>
-                    <span style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: connected ? '#4ade80' : source.enabled ? '#fb923c' : '#555',
-                    }} />
-                    {connected ? 'Connected' : source.enabled ? 'Connecting' : 'Disabled'}
+                  <span className={`source-card__status source-card__status--${statusKey}`}>
+                    <span className={`source-card__status-dot source-card__status-dot--${statusKey}`} />
+                    {statusLabel}
                   </span>
                 </div>
 
-                {/* Mini stats */}
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <div style={{ flex: 1, background: '#222', borderRadius: 8, padding: '10px 14px' }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>{count}</div>
-                    <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>Nodes</div>
+                <div className="source-card__stats">
+                  <div className="source-card__stat">
+                    <div className="source-card__stat-value">{count}</div>
+                    <div className="source-card__stat-label">Nodes</div>
                   </div>
                   {status?.nodeId && (
-                    <div style={{ flex: 2, background: '#222', borderRadius: 8, padding: '10px 14px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#93c5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {status.nodeId}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>Local node</div>
+                    <div className="source-card__stat" style={{ flex: 2 }}>
+                      <div className="source-card__node-id">{status.nodeId}</div>
+                      <div className="source-card__stat-label">Local node</div>
                     </div>
                   )}
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                <div className="source-card__actions">
                   <button
                     onClick={() => navigate(`/source/${source.id}`)}
                     disabled={!source.enabled}
-                    style={{
-                      flex: 1, background: source.enabled ? '#2563eb' : '#333',
-                      color: source.enabled ? '#fff' : '#555', border: 'none',
-                      borderRadius: 8, padding: '10px 0', fontSize: 14, fontWeight: 600,
-                      cursor: source.enabled ? 'pointer' : 'not-allowed',
-                    }}
+                    className={`source-card__open-btn source-card__open-btn--${source.enabled ? 'enabled' : 'disabled'}`}
                   >
                     Open
                   </button>
                   {isAdmin && (
                     <>
-                      <button
-                        onClick={() => openEdit(source)}
-                        style={{
-                          background: '#333', color: '#aaa', border: 'none', borderRadius: 8,
-                          padding: '10px 14px', fontSize: 13, cursor: 'pointer',
-                        }}
-                        title="Edit"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        onClick={() => handleToggleEnabled(source)}
-                        style={{
-                          background: '#333', color: '#aaa', border: 'none', borderRadius: 8,
-                          padding: '10px 14px', fontSize: 13, cursor: 'pointer',
-                        }}
-                        title={source.enabled ? 'Disable' : 'Enable'}
-                      >
+                      <button className="source-card__icon-btn" onClick={() => openEdit(source)} title="Edit">✎</button>
+                      <button className="source-card__icon-btn" onClick={() => handleToggleEnabled(source)} title={source.enabled ? 'Disable' : 'Enable'}>
                         {source.enabled ? '⏸' : '▶'}
                       </button>
-                      <button
-                        onClick={() => handleDelete(source)}
-                        style={{
-                          background: '#333', color: '#ef4444', border: 'none', borderRadius: 8,
-                          padding: '10px 14px', fontSize: 13, cursor: 'pointer',
-                        }}
-                        title="Delete"
-                      >
-                        ✕
-                      </button>
+                      <button className="source-card__icon-btn source-card__icon-btn--danger" onClick={() => handleDelete(source)} title="Delete">✕</button>
                     </>
                   )}
                 </div>
@@ -377,80 +298,48 @@ export default function SourceListPage() {
 
       {/* Add/Edit modal */}
       {showAddModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{ background: '#1a1a1a', borderRadius: 12, padding: 32, width: 400, border: '1px solid #333' }}>
-            <h2 style={{ margin: '0 0 24px', fontSize: 20, fontWeight: 700, color: '#fff' }}>
-              {editingSource ? 'Edit Source' : 'Add Source'}
-            </h2>
+        <div className="sources-modal-overlay">
+          <div className="sources-modal">
+            <h2>{editingSource ? 'Edit Source' : 'Add Source'}</h2>
 
-            <label style={{ display: 'block', marginBottom: 16 }}>
-              <span style={{ display: 'block', fontSize: 13, color: '#999', marginBottom: 6 }}>Name</span>
+            <label className="sources-modal__field">
+              <span className="sources-modal__label">Name</span>
               <input
                 type="text"
+                className="sources-modal__input"
                 value={formData.name}
                 onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
                 placeholder="Home Node"
-                style={{
-                  width: '100%', padding: '10px 12px', background: '#222', border: '1px solid #444',
-                  borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box',
-                }}
               />
             </label>
 
-            <label style={{ display: 'block', marginBottom: 16 }}>
-              <span style={{ display: 'block', fontSize: 13, color: '#999', marginBottom: 6 }}>Host / IP</span>
+            <label className="sources-modal__field">
+              <span className="sources-modal__label">Host / IP</span>
               <input
                 type="text"
+                className="sources-modal__input"
                 value={formData.host}
                 onChange={e => setFormData(f => ({ ...f, host: e.target.value }))}
                 placeholder="192.168.1.100"
-                style={{
-                  width: '100%', padding: '10px 12px', background: '#222', border: '1px solid #444',
-                  borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box',
-                }}
               />
             </label>
 
-            <label style={{ display: 'block', marginBottom: 24 }}>
-              <span style={{ display: 'block', fontSize: 13, color: '#999', marginBottom: 6 }}>TCP Port</span>
+            <label className="sources-modal__field" style={{ marginBottom: 22 }}>
+              <span className="sources-modal__label">TCP Port</span>
               <input
                 type="number"
+                className="sources-modal__input"
                 value={formData.port}
                 onChange={e => setFormData(f => ({ ...f, port: e.target.value }))}
                 placeholder="4403"
-                style={{
-                  width: '100%', padding: '10px 12px', background: '#222', border: '1px solid #444',
-                  borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box',
-                }}
               />
             </label>
 
-            {formError && (
-              <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 16 }}>{formError}</p>
-            )}
+            {formError && <p className="sources-modal__error">{formError}</p>}
 
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowAddModal(false)}
-                style={{
-                  background: 'transparent', color: '#aaa', border: '1px solid #444',
-                  borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                style={{
-                  background: saving ? '#1d4ed8' : '#2563eb', color: '#fff', border: 'none',
-                  borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600,
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                }}
-              >
+            <div className="sources-modal__actions">
+              <button className="sources-modal__cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
+              <button className="sources-modal__save" onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
