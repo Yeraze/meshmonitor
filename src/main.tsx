@@ -11,7 +11,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from './config/queryClient.ts';
 import App from './App.tsx';
 import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
-import SourceListPage from './pages/SourceListPage.tsx';
+import DashboardPage from './pages/DashboardPage.tsx';
 import AnalysisPage from './pages/AnalysisPage.tsx';
 import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
@@ -73,10 +73,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               element={sharedProviders(<AnalysisPage />)}
             />
 
-            {/* Source list / landing page */}
+            {/* Dashboard / landing page */}
             <Route
               path="*"
-              element={sharedProviders(<SourceListPage />)}
+              element={sharedProviders(<DashboardPage />)}
             />
           </Routes>
         </BrowserRouter>
