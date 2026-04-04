@@ -4166,11 +4166,17 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       deviceNodeNums?: number[];
     } = {};
 
+    // Optional sourceId scoping — when provided, use the matching manager and filter DB queries
+    const pollSourceId = (req.query.sourceId as string | undefined) || undefined;
+    const activeManager = (pollSourceId
+      ? (sourceManagerRegistry.getManager(pollSourceId) ?? meshtasticManager)
+      : meshtasticManager) as typeof meshtasticManager;
+
     // Pre-compute shared values used across multiple sections
     const user = (req as any).user;
     const userId = req.user?.id ?? null;
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    const allMemoryNodes = await meshtasticManager.getAllNodesAsync();
+    const localNodeInfo = activeManager.getLocalNodeInfo();
+    const allMemoryNodes = await activeManager.getAllNodesAsync(pollSourceId);
     const filteredMemoryNodes = await filterNodesByChannelPermission(allMemoryNodes, user);
     const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
     const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
@@ -4179,7 +4185,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 1. Connection status (always available)
     try {
-      const connectionStatus = await meshtasticManager.getConnectionStatus();
+      const connectionStatus = await activeManager.getConnectionStatus();
       // Hide nodeIp from anonymous users
       if (!req.session.userId) {
         const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
@@ -4204,7 +4210,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // 3. Messages (requires any channel permission OR messages permission)
     try {
       if (hasChannelsRead || hasMessagesRead) {
-        let messages = await meshtasticManager.getRecentMessages(100);
+        let messages = await activeManager.getRecentMessages(100, pollSourceId);
 
         // Filter messages based on permissions
         if (hasChannelsRead && !hasMessagesRead) {
@@ -4263,7 +4269,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 5. Channels (filtered based on per-channel read permissions)
     try {
-      const allChannels = await databaseService.channels.getAllChannels();
+      const allChannels = await databaseService.channels.getAllChannels(pollSourceId);
 
       // Filter channels async
       const filteredChannels: typeof allChannels = [];
@@ -4315,7 +4321,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       if (hasInfoRead) {
         // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
-        const allDbNodes = await databaseService.nodes.getAllNodes();
+        const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId);
         const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user);
 
         const nodesWithTelemetry: string[] = [];
@@ -4325,7 +4331,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
         const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
-        const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync();
+        // Use scoped repo call when sourceId provided (bypasses shared cache)
+        const nodeTelemetryTypes = pollSourceId
+          ? await databaseService.telemetry.getAllNodesTelemetryTypes(pollSourceId)
+          : await databaseService.getAllNodesTelemetryTypesAsync();
 
         dbNodes.forEach(node => {
           const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -4410,7 +4419,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       const hasConfigRead = req.user?.isAdmin || await hasPermission(req.user!, 'configuration', 'read');
       if (hasConfigRead) {
-        const config = await meshtasticManager.getDeviceConfig();
+        const config = await activeManager.getDeviceConfig();
         if (config) {
           // Hide node address from anonymous users
           if (!req.session.userId && config.basic) {
@@ -4440,7 +4449,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
 
-      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit);
+      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId);
       const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
       // Add hopCount for each traceroute
@@ -4467,7 +4476,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     }
 
     // 10. Device node numbers (nodes in the connected radio's local database)
-    result.deviceNodeNums = meshtasticManager.getDeviceNodeNums();
+    result.deviceNodeNums = activeManager.getDeviceNodeNums();
 
     res.json(result);
   } catch (error) {

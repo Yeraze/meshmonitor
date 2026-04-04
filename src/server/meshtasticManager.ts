@@ -11388,9 +11388,9 @@ class MeshtasticManager implements ISourceManager {
   }
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
-  async getAllNodesAsync(): Promise<DeviceInfo[]> {
+  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
     const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds');
-    const dbNodes = await databaseService.nodes.getAllNodes();
+    const dbNodes = await databaseService.nodes.getAllNodes(sourceId);
     return dbNodes.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
   }
 
@@ -11524,8 +11524,8 @@ class MeshtasticManager implements ISourceManager {
       return deviceInfo;
   }
 
-  async getRecentMessages(limit: number = 50): Promise<MeshMessage[]> {
-    const dbMessages = await databaseService.messages.getMessages(limit);
+  async getRecentMessages(limit: number = 50, sourceId?: string): Promise<MeshMessage[]> {
+    const dbMessages = await databaseService.messages.getMessages(limit, 0, sourceId);
     return dbMessages.map(msg => ({
       id: msg.id,
       from: msg.fromNodeId,
