@@ -520,27 +520,39 @@ setTimeout(async () => {
       logger.debug(`Assigned NULL sourceId rows to default source ${allSources[0].id}`);
     }
 
-    // Start all enabled sources via the registry
+    // Start all enabled sources via the registry.
+    // The first TCP source also configures the legacy singleton so that all
+    // existing non-poll endpoints (which import meshtasticManager directly)
+    // continue to work without modification.
     const enabledSources = await databaseService.sources.getEnabledSources();
+    let firstTcpSourceConfigured = false;
+
     for (const source of enabledSources) {
       if (source.type === 'meshtastic_tcp') {
         const cfg = source.config as any;
-        const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
-        await sourceManagerRegistry.addManager(manager);
+
+        if (!firstTcpSourceConfigured) {
+          // Configure the legacy singleton for the first source, then let the
+          // registry start it (addManager calls start() → connect()).
+          // All legacy API routes use this singleton directly.
+          meshtasticManager.configureSource({ host: cfg.host, port: cfg.port }, source.id);
+          await sourceManagerRegistry.addManager(meshtasticManager);
+          firstTcpSourceConfigured = true;
+          logger.debug(`Started primary source manager via singleton: ${source.id}`);
+        } else {
+          // Additional sources get their own manager instances
+          const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
+          await sourceManagerRegistry.addManager(manager);
+        }
       }
     }
 
-    if (enabledSources.length > 0) {
-      // Set global reference to first source's manager for backward compat
-      const firstManager = sourceManagerRegistry.getManager(enabledSources[0].id);
-      if (firstManager) {
-        (global as any).meshtasticManager = firstManager;
-      }
-      logger.debug(`Started ${enabledSources.length} source manager(s) via registry`);
-    } else {
-      // No sources configured — use legacy singleton
+    if (!firstTcpSourceConfigured) {
+      // No sources configured — use legacy singleton with env-var config
       await meshtasticManager.connect();
       logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
+    } else {
+      logger.debug(`Started ${enabledSources.length} source manager(s)`);
     }
 
     // Auto-connect MeshCore if enabled via environment variables

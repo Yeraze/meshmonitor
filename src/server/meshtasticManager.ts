@@ -280,7 +280,7 @@ interface AutoPingSession {
 }
 
 class MeshtasticManager implements ISourceManager {
-  public readonly sourceId: string;
+  public sourceId: string;
   private sourceConfigOverride: { host?: string; port?: number } | null = null;
   private transport: ITransport | null = null;
   private isConnected = false;
@@ -389,6 +389,15 @@ class MeshtasticManager implements ISourceManager {
 
   get sourceType(): 'meshtastic_tcp' {
     return 'meshtastic_tcp';
+  }
+
+  /**
+   * Apply a source config after construction.
+   * Used to configure the legacy singleton when sources are loaded from DB at startup.
+   */
+  configureSource(config: { host?: string; port?: number }, sourceId?: string): void {
+    this.sourceConfigOverride = config;
+    if (sourceId) this.sourceId = sourceId;
   }
 
   async start(): Promise<void> {

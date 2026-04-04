@@ -89,7 +89,8 @@ export async function runMigration021Mysql(pool: any): Promise<void> {
         [table]
       );
       if (!Array.isArray(rows) || rows.length === 0) {
-        await conn.query(`ALTER TABLE ${table} ADD COLUMN sourceId TEXT`);
+        // Use VARCHAR(36) for MySQL — UUIDs are always 36 chars and TEXT can't be indexed
+        await conn.query(`ALTER TABLE ${table} ADD COLUMN sourceId VARCHAR(36)`);
         logger.debug(`Added sourceId to ${table}`);
       } else {
         logger.debug(`${table}.sourceId already exists, skipping`);
