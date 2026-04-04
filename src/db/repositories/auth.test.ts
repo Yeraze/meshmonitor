@@ -50,7 +50,8 @@ const SQLITE_CREATE = `
     can_read INTEGER NOT NULL DEFAULT 0,
     can_write INTEGER NOT NULL DEFAULT 0,
     granted_at INTEGER NOT NULL,
-    granted_by INTEGER
+    granted_by INTEGER,
+    sourceId TEXT
   );
   CREATE TABLE IF NOT EXISTS sessions (
     sid TEXT PRIMARY KEY,
@@ -117,7 +118,8 @@ const POSTGRES_CREATE = `
     "canWrite" BOOLEAN NOT NULL DEFAULT false,
     "canDelete" BOOLEAN NOT NULL DEFAULT false,
     "grantedAt" BIGINT,
-    "grantedBy" INTEGER
+    "grantedBy" INTEGER,
+    "sourceId" TEXT
   );
   CREATE TABLE sessions (
     sid TEXT PRIMARY KEY,
@@ -186,7 +188,8 @@ const MYSQL_CREATE = `
     canWrite BOOLEAN NOT NULL DEFAULT false,
     canDelete BOOLEAN NOT NULL DEFAULT false,
     grantedAt BIGINT,
-    grantedBy INT
+    grantedBy INT,
+    sourceId VARCHAR(36)
   );
   CREATE TABLE sessions (
     sid VARCHAR(255) PRIMARY KEY,

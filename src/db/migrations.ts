@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 21 migrations in sequential order for use by the migration runner.
+ * Registers all 22 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -33,6 +33,7 @@ import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigra
 import { migration as addChannelToTraceroutesMigration, runMigration019Postgres, runMigration019Mysql } from '../server/migrations/019_add_channel_to_traceroutes.js';
 import { migration as createSourcesMigration, runMigration020Postgres, runMigration020Mysql } from '../server/migrations/020_create_sources.js';
 import { migration as addSourceIdColumnsMigration, runMigration021Postgres, runMigration021Mysql } from '../server/migrations/021_add_source_id_columns.js';
+import { migration as addSourceIdToPermissionsMigration, runMigration022Postgres, runMigration022Mysql } from '../server/migrations/022_add_source_id_to_permissions.js';
 
 // ============================================================================
 // Registry
@@ -290,4 +291,16 @@ registry.register({
   sqlite: (db) => addSourceIdColumnsMigration.up(db),
   postgres: (client) => runMigration021Postgres(client),
   mysql: (pool) => runMigration021Mysql(pool),
+});
+
+// Migration 022: Add sourceId to permissions table (Phase 3)
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 22,
+  name: 'add_source_id_to_permissions',
+  settingsKey: 'migration_022_add_source_id_to_permissions',
+  sqlite: (db) => addSourceIdToPermissionsMigration.up(db),
+  postgres: (client) => runMigration022Postgres(client),
+  mysql: (pool) => runMigration022Mysql(pool),
 });

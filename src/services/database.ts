@@ -9800,15 +9800,32 @@ class DatabaseService {
    * Async method to check user permission.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
-  async checkPermissionAsync(userId: number, resource: string, action: string): Promise<boolean> {
+  async checkPermissionAsync(userId: number, resource: string, action: string, sourceId?: string): Promise<boolean> {
     const permissions = await this.auth.getPermissionsForUser(userId);
-    for (const perm of permissions) {
-      if (perm.resource === resource) {
-        if (action === 'viewOnMap') return perm.canViewOnMap;
-        if (action === 'read') return perm.canRead;
-        if (action === 'write') return perm.canWrite;
+
+    const check = (perm: (typeof permissions)[0]): boolean => {
+      if (action === 'viewOnMap') return !!(perm as any).canViewOnMap;
+      if (action === 'read') return !!(perm as any).canRead;
+      if (action === 'write') return !!(perm as any).canWrite;
+      return false;
+    };
+
+    // Source-specific permission takes precedence when sourceId is provided
+    if (sourceId) {
+      for (const perm of permissions) {
+        if (perm.resource === resource && (perm as any).sourceId === sourceId) {
+          return check(perm);
+        }
       }
     }
+
+    // Fall back to global permission (null/undefined sourceId)
+    for (const perm of permissions) {
+      if (perm.resource === resource && !(perm as any).sourceId) {
+        return check(perm);
+      }
+    }
+
     return false;
   }
 
@@ -9816,16 +9833,34 @@ class DatabaseService {
    * Async method to get user permission set.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
-  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
+  async getUserPermissionSetAsync(userId: number, sourceId?: string): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
     const permissions = await this.auth.getPermissionsForUser(userId);
     const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
+
+    // First apply global permissions (null sourceId)
     for (const perm of permissions) {
-      permissionSet[perm.resource] = {
-        viewOnMap: perm.canViewOnMap ?? false,
-        read: perm.canRead,
-        write: perm.canWrite,
-      };
+      if (!(perm as any).sourceId) {
+        permissionSet[perm.resource] = {
+          viewOnMap: (perm as any).canViewOnMap ?? false,
+          read: perm.canRead,
+          write: perm.canWrite,
+        };
+      }
     }
+
+    // Then override with source-specific permissions when sourceId is provided
+    if (sourceId) {
+      for (const perm of permissions) {
+        if ((perm as any).sourceId === sourceId) {
+          permissionSet[perm.resource] = {
+            viewOnMap: (perm as any).canViewOnMap ?? false,
+            read: perm.canRead,
+            write: perm.canWrite,
+          };
+        }
+      }
+    }
+
     return permissionSet;
   }
 

@@ -51,6 +51,7 @@ describe('AuthRepository.migratePermissionsForChannelMoves', () => {
         can_write INTEGER NOT NULL DEFAULT 0,
         granted_at INTEGER,
         granted_by INTEGER,
+        sourceId TEXT,
         UNIQUE(user_id, resource),
         CHECK (resource IN (
           'dashboard', 'nodes', 'messages', 'settings',
