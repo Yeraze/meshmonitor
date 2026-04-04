@@ -6,7 +6,7 @@
  * per-source data fetched via the useDashboardData hooks.
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCsrf } from '../contexts/CsrfContext';
