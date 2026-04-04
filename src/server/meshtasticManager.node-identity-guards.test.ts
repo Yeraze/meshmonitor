@@ -256,7 +256,8 @@ describe('MeshtasticManager - Node Identity Guards', () => {
 
       // Should upsert the remote node
       expect(mockUpsertNode).toHaveBeenCalledWith(
-        expect.objectContaining({ nodeNum: REMOTE_NODE_NUM })
+        expect.objectContaining({ nodeNum: REMOTE_NODE_NUM }),
+        expect.anything()
       );
     });
 

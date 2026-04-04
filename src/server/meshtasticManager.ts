@@ -2828,7 +2828,7 @@ class MeshtasticManager implements ISourceManager {
                     updateData.keySecurityIssueDetails = null;
                   }
 
-                  await databaseService.nodes.upsertNode(updateData);
+                  await databaseService.nodes.upsertNode(updateData, this.sourceId);
                   logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
                 }).catch(async (err) => {
                   // If low entropy check fails, still save the key
@@ -2837,7 +2837,7 @@ class MeshtasticManager implements ISourceManager {
                     nodeId: localNodeId,
                     publicKey: publicKeyBase64,
                     hasPKC: true
-                  });
+                  }, this.sourceId);
                   logger.warn(`⚠️ Could not check low-entropy key status:`, err);
                   logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
                 });
@@ -3059,7 +3059,7 @@ class MeshtasticManager implements ISourceManager {
             isIgnored: newNode?.isIgnored || oldNode?.isIgnored || false,
             hasRemoteAdmin: true, // Local node always has admin
             rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
-          });
+          }, this.sourceId);
 
           // Delete old ghost node (cascades messages, traceroutes, neighbors, telemetry)
           await databaseService.deleteNodeAsync(prevNum);
@@ -3144,7 +3144,7 @@ class MeshtasticManager implements ISourceManager {
         nodeId,
         keyMismatchDetected: false,
         keySecurityIssueDetails: null,
-      });
+      }, this.sourceId);
       dataEventEmitter.emitNodeUpdate(nodeNum, { keyMismatchDetected: false, keySecurityIssueDetails: undefined }, this.sourceId);
     }
 
@@ -3167,7 +3167,7 @@ class MeshtasticManager implements ISourceManager {
         nodeId: nodeId,
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         hasRemoteAdmin: true  // Local node always has remote admin access
-      });
+      }, this.sourceId);
       logger.debug(`📱 Updated local device: ${existingNode.longName} (${nodeId}), rebootCount: ${myNodeInfo.rebootCount}, hasRemoteAdmin: true`);
 
       logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED, rebootCount: ${myNodeInfo.rebootCount}`);
@@ -3196,7 +3196,7 @@ class MeshtasticManager implements ISourceManager {
         isLocked: false  // Not locked yet, waiting for complete info
       } as any;
 
-      await databaseService.nodes.upsertNode(nodeData);
+      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
       logger.debug(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
     }
     // Note: Local node's public key is extracted from security config when received
@@ -3517,7 +3517,7 @@ class MeshtasticManager implements ISourceManager {
           nodeId: this.localNodeInfo.nodeId,
           firmwareVersion: metadata.firmwareVersion
         };
-        await databaseService.nodes.upsertNode(nodeData);
+        await databaseService.nodes.upsertNode(nodeData, this.sourceId);
         logger.debug(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
       }
     } else {
@@ -3851,7 +3851,7 @@ class MeshtasticManager implements ISourceManager {
       if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
       }
-      await databaseService.nodes.upsertNode(nodeData);
+      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
 
       // Capture server-vs-node clock offset for time-offset telemetry
       if (meshPacket.rxTime && Number(meshPacket.rxTime) > 1600000000) {
@@ -3979,7 +3979,7 @@ class MeshtasticManager implements ISourceManager {
             createdAt: Date.now(),
             updatedAt: Date.now()
           };
-          await databaseService.nodes.upsertNode(basicNodeData);
+          await databaseService.nodes.upsertNode(basicNodeData, this.sourceId);
           logger.debug(`📝 Created basic node entry for ${fromNodeId}`);
         }
 
@@ -4001,7 +4001,7 @@ class MeshtasticManager implements ISourceManager {
               createdAt: Date.now(),
               updatedAt: Date.now()
             };
-            await databaseService.nodes.upsertNode(broadcastNodeData);
+            await databaseService.nodes.upsertNode(broadcastNodeData, this.sourceId);
             logger.debug(`📝 Created broadcast node entry`);
           }
         }
@@ -4355,7 +4355,7 @@ class MeshtasticManager implements ISourceManager {
           if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
             technicalData.rssi = meshPacket.rxRssi;
           }
-          await databaseService.nodes.upsertNode(technicalData);
+          await databaseService.nodes.upsertNode(technicalData, this.sourceId);
         } else if (shouldUpdatePosition) {
           const nodeData: any = {
             nodeNum: fromNum,
@@ -4381,7 +4381,7 @@ class MeshtasticManager implements ISourceManager {
           }
 
           // Save position to nodes table (current position)
-          await databaseService.nodes.upsertNode(nodeData);
+          await databaseService.nodes.upsertNode(nodeData, this.sourceId);
 
           // Emit node update event to notify frontend via WebSocket
           dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
@@ -4416,7 +4416,7 @@ class MeshtasticManager implements ISourceManager {
         nodeNum,
         nodeId,
         lastPKIPacket: Date.now()
-      });
+      }, this.sourceId);
       logger.debug(`🔐 PKI-encrypted packet received from ${nodeId}`);
     }
   }
@@ -4634,7 +4634,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
-      await databaseService.nodes.upsertNode(nodeData);
+      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
       logger.debug(`👤 Updated user info: ${user.longName || nodeId}`);
 
       // Check if we should send auto-welcome message
@@ -4866,7 +4866,7 @@ class MeshtasticManager implements ISourceManager {
         ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
       }
 
-      await databaseService.nodes.upsertNode(nodeData);
+      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
       logger.debug(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
     } catch (error) {
       logger.error('❌ Error processing telemetry message:', error);
@@ -4928,7 +4928,7 @@ class MeshtasticManager implements ISourceManager {
         });
       }
 
-      await databaseService.nodes.upsertNode(nodeData);
+      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
       logger.debug(`📡 Updated node with paxcounter data: ${nodeId}`);
     } catch (error) {
       logger.error('❌ Error processing paxcounter message:', error);
@@ -4965,14 +4965,14 @@ class MeshtasticManager implements ISourceManager {
           longName: `Node ${fromNodeId}`,
           shortName: fromNodeId.slice(-4),
           lastHeard: Date.now() / 1000
-        });
+        }, this.sourceId);
       } else {
         // Just update lastHeard, don't touch the name
         await databaseService.nodes.upsertNode({
           nodeNum: fromNum,
           nodeId: fromNodeId,
           lastHeard: Date.now() / 1000
-        });
+        }, this.sourceId);
       }
 
       // Ensure to node exists in database (don't overwrite existing names)
@@ -4984,14 +4984,14 @@ class MeshtasticManager implements ISourceManager {
           longName: `Node ${toNodeId}`,
           shortName: toNodeId.slice(-4),
           lastHeard: Date.now() / 1000
-        });
+        }, this.sourceId);
       } else {
         // Just update lastHeard, don't touch the name
         await databaseService.nodes.upsertNode({
           nodeNum: toNum,
           nodeId: toNodeId,
           lastHeard: Date.now() / 1000
-        });
+        }, this.sourceId);
       }
 
       // Build the route string
@@ -5551,7 +5551,7 @@ class MeshtasticManager implements ISourceManager {
               nodeId: toNodeId,
               keyMismatchDetected: true,
               keySecurityIssueDetails: errorDescription
-            });
+            }, this.sourceId);
             dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
             this.handlePkiError(toNum);
           }
@@ -5571,7 +5571,7 @@ class MeshtasticManager implements ISourceManager {
                 nodeId: toNodeId,
                 keyMismatchDetected: true,
                 keySecurityIssueDetails: errorDescription
-              });
+              }, this.sourceId);
               dataEventEmitter.emitNodeUpdate(toNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
             }
           }
@@ -5603,7 +5603,7 @@ class MeshtasticManager implements ISourceManager {
             nodeId: targetNodeId,
             keyMismatchDetected: true,
             keySecurityIssueDetails: errorDescription
-          });
+          }, this.sourceId);
 
           dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
           this.handlePkiError(targetNodeNum);
@@ -5629,7 +5629,7 @@ class MeshtasticManager implements ISourceManager {
               nodeId: targetNodeId,
               keyMismatchDetected: true,
               keySecurityIssueDetails: errorDescription
-            });
+            }, this.sourceId);
 
             // Emit event to notify UI of the key issue
             dataEventEmitter.emitNodeUpdate(targetNodeNum, { keyMismatchDetected: true, keySecurityIssueDetails: errorDescription }, this.sourceId);
@@ -5702,7 +5702,7 @@ class MeshtasticManager implements ISourceManager {
             longName: `Node ${nodeId}`,
             shortName: nodeId.slice(-4),
             lastHeard: Date.now() / 1000
-          });
+          }, this.sourceId);
           node = await databaseService.nodes.getNode(nodeNum);
         }
 
@@ -5854,7 +5854,7 @@ class MeshtasticManager implements ISourceManager {
           longName: `Node ${fromNodeId}`,
           shortName: fromNodeId.slice(-4),
           lastHeard: Date.now() / 1000
-        });
+        }, this.sourceId);
         senderNode = await databaseService.nodes.getNode(fromNum);
       }
 
@@ -5898,7 +5898,7 @@ class MeshtasticManager implements ISourceManager {
               shortName: neighborNodeId.slice(-4),
               hopsAway: senderHopsAway + 1,
               lastHeard: nowSeconds
-            });
+            }, this.sourceId);
             logger.info(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
           }
         }
@@ -6185,7 +6185,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Upsert node first to ensure it exists before inserting telemetry
-      await databaseService.nodes.upsertNode(nodeData);
+      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
 
       // Emit WebSocket event for node update
       dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), nodeData, this.sourceId);
@@ -11042,7 +11042,7 @@ class MeshtasticManager implements ISourceManager {
             longitude,
             altitude: altitude || 0,
             positionTimestamp: Date.now(),
-          });
+          }, this.sourceId);
           logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
         }
       }
