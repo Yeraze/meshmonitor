@@ -1,18 +1,35 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 
 const router = Router();
 
-// List all sources
-router.get('/', requirePermission('sources', 'read'), async (_req: Request, res: Response) => {
+// List all sources — public so the landing page can redirect unauthenticated users
+// to the single-source view (or show the login button on the source list page).
+// Sensitive config fields are not exposed.
+router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
   try {
     const sources = await databaseService.sources.getAllSources();
-    res.json(sources);
+    // Strip sensitive config (passwords, keys) before sending to unauthenticated callers
+    // Strip password/key fields from config before sending to clients
+    const safeSources = sources.map(s => {
+      const { password, apiKey, ...safeConfig } = (s.config as any) ?? {};
+      void password; void apiKey; // intentionally stripped
+      return {
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        enabled: s.enabled,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        config: safeConfig,
+      };
+    });
+    res.json(safeSources);
   } catch (error) {
     logger.error('Error listing sources:', error);
     res.status(500).json({ error: 'Failed to list sources' });

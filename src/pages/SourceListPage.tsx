@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import LoginModal from '../components/LoginModal';
 import '../styles/sources.css';
 
 interface SourceRecord {
@@ -48,6 +49,7 @@ export default function SourceListPage() {
   const navigate = useNavigate();
   const { authStatus } = useAuth();
   const isAdmin = authStatus?.user?.isAdmin ?? false;
+  const isAuthenticated = authStatus?.authenticated ?? false;
   const csrfFetch = useCsrfFetch();
 
   const [sources, setSources] = useState<SourceRecord[]>([]);
@@ -55,6 +57,7 @@ export default function SourceListPage() {
   const [nodeCounts, setNodeCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [editingSource, setEditingSource] = useState<SourceRecord | null>(null);
   const [formData, setFormData] = useState<SourceFormData>(DEFAULT_FORM);
   const [formError, setFormError] = useState('');
@@ -204,9 +207,16 @@ export default function SourceListPage() {
           <h1>MeshMonitor</h1>
           <p>Select a source to monitor</p>
         </div>
-        {isAdmin && (
-          <button className="sources-header__add-btn" onClick={openAdd}>+ Add Source</button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!isAuthenticated && (
+            <button className="sources-header__add-btn" style={{ background: 'var(--ctp-surface1)', color: 'var(--ctp-text)' }} onClick={() => setShowLoginModal(true)}>
+              Sign In
+            </button>
+          )}
+          {isAdmin && (
+            <button className="sources-header__add-btn" onClick={openAdd}>+ Add Source</button>
+          )}
+        </div>
       </div>
 
       {/* Cross-source quick links (only when multiple sources) */}
@@ -295,6 +305,8 @@ export default function SourceListPage() {
           })}
         </div>
       )}
+
+      <LoginModal isOpen={showLoginModal} onClose={() => { setShowLoginModal(false); fetchSources(); }} />
 
       {/* Add/Edit modal */}
       {showAddModal && (
