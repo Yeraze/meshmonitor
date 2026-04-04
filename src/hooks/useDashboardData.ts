@@ -36,16 +36,13 @@ export interface SourceStatus {
 export const DASHBOARD_POLL_INTERVAL = 15_000;
 
 /**
- * Fetch helper that returns null on error (graceful degradation)
+ * Fetch helper that throws on non-ok so TanStack Query marks it as an error
+ * and retries on the next poll interval (important for post-login refetch).
  */
-async function fetchOrNull<T>(url: string): Promise<T | null> {
-  try {
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) return null;
-    return res.json() as Promise<T>;
-  } catch {
-    return null;
-  }
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
 }
 
 /**
@@ -77,8 +74,9 @@ export function useSourceStatuses(sourceIds: string[]): Map<string, SourceStatus
   const results = useQueries({
     queries: sourceIds.map((id) => ({
       queryKey: ['dashboard', 'status', id],
-      queryFn: () => fetchOrNull<SourceStatus>(`${appBasename}/api/sources/${id}/status`),
+      queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${id}/status`),
       refetchInterval: DASHBOARD_POLL_INTERVAL,
+      retry: false,
     })),
   });
 
@@ -116,36 +114,41 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
 
   const nodesQuery = useQuery({
     queryKey: ['dashboard', 'nodes', sourceId],
-    queryFn: () => fetchOrNull<unknown[]>(`${appBasename}/api/sources/${sourceId}/nodes`),
+    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/nodes`),
     enabled,
+    retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 
   const traceroutesQuery = useQuery({
     queryKey: ['dashboard', 'traceroutes', sourceId],
-    queryFn: () => fetchOrNull<unknown[]>(`${appBasename}/api/sources/${sourceId}/traceroutes`),
+    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/traceroutes`),
     enabled,
+    retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 
   const neighborInfoQuery = useQuery({
     queryKey: ['dashboard', 'neighborInfo', sourceId],
-    queryFn: () => fetchOrNull<unknown[]>(`${appBasename}/api/sources/${sourceId}/neighbor-info`),
+    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/neighbor-info`),
     enabled,
+    retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 
   const statusQuery = useQuery({
     queryKey: ['dashboard', 'status', sourceId],
-    queryFn: () => fetchOrNull<SourceStatus>(`${appBasename}/api/sources/${sourceId}/status`),
+    queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${sourceId}/status`),
     enabled,
+    retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 
   const channelsQuery = useQuery({
     queryKey: ['dashboard', 'channels', sourceId],
-    queryFn: () => fetchOrNull<unknown[]>(`${appBasename}/api/sources/${sourceId}/channels`),
+    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/channels`),
     enabled,
+    retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 

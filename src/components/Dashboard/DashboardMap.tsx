@@ -7,6 +7,7 @@
  */
 
 import { useEffect } from 'react';
+import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
@@ -23,13 +24,15 @@ export interface DashboardMapProps {
   defaultCenter: { lat: number; lng: number };
 }
 
-/** Returns true when the position is usable (non-null, non-zero lat and lng). */
-function hasValidPosition(node: any): boolean {
-  const pos = node?.position;
-  if (!pos) return false;
-  const lat = pos.latitude;
-  const lng = pos.longitude;
-  return lat != null && lng != null && (lat !== 0 || lng !== 0);
+/** Extract lat/lng from a node — handles both flat (API) and nested (position) shapes. */
+function getNodeLatLng(node: any): { lat: number; lng: number } | null {
+  // Flat shape from API: node.latitude, node.longitude
+  let lat = node?.latitude ?? node?.position?.latitude;
+  let lng = node?.longitude ?? node?.position?.longitude;
+  if (lat != null && lng != null && (lat !== 0 || lng !== 0)) {
+    return { lat, lng };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,12 +70,12 @@ export default function DashboardMap({
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
 
-  const nodesWithPosition = nodes.filter(hasValidPosition);
+  // Build array of nodes that have valid positions, with their resolved lat/lng
+  const nodesWithPosition = nodes
+    .map((n) => ({ node: n, pos: getNodeLatLng(n) }))
+    .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
-  const nodePositions: [number, number][] = nodesWithPosition.map((n) => [
-    n.position.latitude,
-    n.position.longitude,
-  ]);
+  const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
 
   const hasNodes = nodesWithPosition.length > 0;
 
@@ -92,11 +95,11 @@ export default function DashboardMap({
 
         {hasNodes && <MapBoundsUpdater positions={nodePositions} />}
 
-        {nodesWithPosition.map((node) => {
-          const lat = node.position.latitude;
-          const lng = node.position.longitude;
+        {nodesWithPosition.map(({ node, pos }) => {
           const hops = node.hopsAway ?? 999;
-          const shortName = node.user?.shortName;
+          const shortName = node.shortName ?? node.user?.shortName;
+          const longName = node.longName ?? node.user?.longName ?? 'Unknown';
+          const nodeId = node.nodeId ?? node.user?.id;
           const isRouter = node.role === 2;
           const icon = createNodeIcon({
             hops,
@@ -108,17 +111,17 @@ export default function DashboardMap({
 
           return (
             <Marker
-              key={node.user?.id}
-              position={[lat, lng]}
+              key={nodeId}
+              position={[pos.lat, pos.lng]}
               icon={icon}
             >
               <Popup>
                 <div>
-                  <strong>{node.user?.longName ?? 'Unknown'}</strong>
+                  <strong>{longName}</strong>
                   {shortName && <span> ({shortName})</span>}
                   <br />
                   <span>
-                    {lat.toFixed(5)}, {lng.toFixed(5)}
+                    {pos.lat.toFixed(5)}, {pos.lng.toFixed(5)}
                   </span>
                   {hops !== 999 && (
                     <>

@@ -44,6 +44,15 @@ function DashboardInner() {
   const [showLogin, setShowLogin] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  // Source add/edit modal state
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formHost, setFormHost] = useState('');
+  const [formPort, setFormPort] = useState('4403');
+  const [formError, setFormError] = useState('');
+  const [formSaving, setFormSaving] = useState(false);
+
   // ----- data -----
   const { data: sources = [], isSuccess } = useDashboardSources();
   const sourceIds = sources.map((s) => s.id);
@@ -67,11 +76,67 @@ function DashboardInner() {
 
   // ----- admin actions -----
   const onAddSource = () => {
-    // TODO: wire up to existing source add modal
+    setEditingSourceId(null);
+    setFormName('');
+    setFormHost('');
+    setFormPort('4403');
+    setFormError('');
+    setShowSourceModal(true);
   };
 
-  const onEditSource = (_id: string) => {
-    // TODO: wire up to existing source edit modal
+  const onEditSource = (id: string) => {
+    const source = sources.find((s) => s.id === id);
+    if (!source) return;
+    const cfg = source.config as Record<string, any> | undefined;
+    setEditingSourceId(id);
+    setFormName(source.name);
+    setFormHost(cfg?.host ?? '');
+    setFormPort(String(cfg?.port ?? 4403));
+    setFormError('');
+    setShowSourceModal(true);
+  };
+
+  const onSaveSource = async () => {
+    if (!formName.trim()) { setFormError('Name is required'); return; }
+    if (!formHost.trim()) { setFormError('Host is required'); return; }
+    const port = parseInt(formPort, 10);
+    if (isNaN(port) || port < 1 || port > 65535) { setFormError('Port must be 1–65535'); return; }
+
+    setFormSaving(true);
+    setFormError('');
+    try {
+      const csrfToken = getToken();
+      const body = {
+        name: formName.trim(),
+        type: 'meshtastic_tcp',
+        config: { host: formHost.trim(), port },
+        enabled: true,
+      };
+      const url = editingSourceId
+        ? `${appBasename}/api/sources/${editingSourceId}`
+        : `${appBasename}/api/sources`;
+      const method = editingSourceId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken || '',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setFormError((err as any).error ?? 'Save failed');
+        return;
+      }
+      setShowSourceModal(false);
+    } catch {
+      setFormError('Network error');
+    } finally {
+      setFormSaving(false);
+    }
   };
 
   const onToggleSource = async (id: string, enabled: boolean) => {
@@ -110,20 +175,20 @@ function DashboardInner() {
 
   // ----- render -----
   return (
-    <div className="dashboard-root">
+    <div className="dashboard-page">
       {/* Top bar */}
       <header className="dashboard-topbar">
-        <div className="dashboard-topbar-left">
-          <span className="dashboard-logo-text">MeshMonitor</span>
+        <div className="dashboard-topbar-logo">
+          MeshMonitor
         </div>
-        <div className="dashboard-topbar-right">
+        <div className="dashboard-topbar-actions">
           {isAdmin && (
             <button className="dashboard-add-source-btn" onClick={onAddSource}>
-              Add Source
+              + Add Source
             </button>
           )}
           {isAuthenticated ? (
-            <span className="dashboard-username">{username}</span>
+            <span style={{ fontSize: 12, color: 'var(--ctp-subtext1)' }}>{username}</span>
           ) : (
             <button
               className="dashboard-signin-btn"
@@ -151,17 +216,15 @@ function DashboardInner() {
           onDeleteSource={onDeleteSource}
         />
 
-        <main className="dashboard-main">
-          <DashboardMap
-            nodes={sourceData.nodes}
-            traceroutes={sourceData.traceroutes}
-            neighborInfo={sourceData.neighborInfo}
-            channels={sourceData.channels}
-            tilesetId={mapTileset}
-            customTilesets={customTilesets}
-            defaultCenter={defaultCenter}
-          />
-        </main>
+        <DashboardMap
+          nodes={sourceData.nodes}
+          traceroutes={sourceData.traceroutes}
+          neighborInfo={sourceData.neighborInfo}
+          channels={sourceData.channels}
+          tilesetId={mapTileset}
+          customTilesets={customTilesets}
+          defaultCenter={defaultCenter}
+        />
       </div>
 
       {/* Login modal */}
@@ -169,14 +232,67 @@ function DashboardInner() {
 
       {/* Delete confirmation dialog */}
       {deleteConfirm && (
-        <div className="dashboard-overlay">
-          <div className="dashboard-dialog">
-            <p>Are you sure you want to delete this source?</p>
-            <div className="dashboard-dialog-actions">
-              <button onClick={confirmDelete} className="dashboard-btn-danger">
-                Delete
-              </button>
+        <div className="dashboard-confirm-overlay">
+          <div className="dashboard-confirm-dialog">
+            <h3>Delete Source</h3>
+            <p>Are you sure you want to delete this source? This will remove the source and all its data.</p>
+            <div className="dashboard-confirm-actions">
               <button onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button onClick={confirmDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit source modal */}
+      {showSourceModal && (
+        <div className="dashboard-confirm-overlay" onClick={() => setShowSourceModal(false)}>
+          <div className="dashboard-confirm-dialog" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+            <h3>{editingSourceId ? 'Edit Source' : 'Add Source'}</h3>
+
+            <label className="dashboard-form-field">
+              <span className="dashboard-form-label">Name</span>
+              <input
+                className="dashboard-form-input"
+                type="text"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Home Node"
+                autoFocus
+              />
+            </label>
+
+            <label className="dashboard-form-field">
+              <span className="dashboard-form-label">Host / IP</span>
+              <input
+                className="dashboard-form-input"
+                type="text"
+                value={formHost}
+                onChange={(e) => setFormHost(e.target.value)}
+                placeholder="192.168.1.100"
+              />
+            </label>
+
+            <label className="dashboard-form-field">
+              <span className="dashboard-form-label">TCP Port</span>
+              <input
+                className="dashboard-form-input"
+                type="number"
+                value={formPort}
+                onChange={(e) => setFormPort(e.target.value)}
+                placeholder="4403"
+              />
+            </label>
+
+            {formError && (
+              <p style={{ color: 'var(--ctp-red)', fontSize: 12, margin: '8px 0 0' }}>{formError}</p>
+            )}
+
+            <div className="dashboard-confirm-actions" style={{ marginTop: 16 }}>
+              <button onClick={() => setShowSourceModal(false)}>Cancel</button>
+              <button onClick={onSaveSource} disabled={formSaving} style={{ background: 'var(--ctp-blue)', color: 'var(--ctp-base)' }}>
+                {formSaving ? 'Saving...' : 'Save'}
+              </button>
             </div>
           </div>
         </div>

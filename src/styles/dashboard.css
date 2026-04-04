@@ -222,12 +222,14 @@
 
 .dashboard-kebab-menu {
   position: absolute;
+  right: 0;
+  top: 100%;
   background: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   min-width: 120px;
-  z-index: 20;
+  z-index: 10000;
   overflow: hidden;
 }
 
@@ -277,6 +279,8 @@
   flex: 1;
   position: relative;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 
 .dashboard-map-container .leaflet-container {
@@ -416,4 +420,40 @@
 
 .dashboard-confirm-actions button:last-child:hover {
   opacity: 0.88;
+}
+
+/* ── Form fields (add/edit source modal) ───────────────────────────────── */
+
+.dashboard-form-field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.dashboard-form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+  margin-bottom: 4px;
+}
+
+.dashboard-form-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 4px;
+  color: var(--ctp-text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.dashboard-form-input:focus {
+  border-color: var(--ctp-blue);
+}
+
+.dashboard-form-input::placeholder {
+  color: var(--ctp-overlay0);
 }
