@@ -142,6 +142,7 @@ const MYSQL_CREATE = `
     createdBy INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
+    sourceId VARCHAR(36),
     FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
   );
 
