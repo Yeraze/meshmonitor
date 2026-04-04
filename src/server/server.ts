@@ -802,6 +802,7 @@ import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
+import unifiedRoutes from './routes/unifiedRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
 import { GeoJsonService } from './services/geojsonService.js';
@@ -912,6 +913,9 @@ apiRouter.use('/firmware', firmwareUpdateRoutes);
 
 // Sources management routes
 apiRouter.use('/sources', sourceRoutes);
+
+// Unified cross-source views
+apiRouter.use('/unified', unifiedRoutes);
 
 // GeoJSON overlay layer routes
 const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');

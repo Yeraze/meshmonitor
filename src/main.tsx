@@ -13,6 +13,7 @@ import App from './App.tsx';
 import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
 import SourceListPage from './pages/SourceListPage.tsx';
 import AnalysisPage from './pages/AnalysisPage.tsx';
+import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
@@ -53,6 +54,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route
               path="source/:sourceId/*"
               element={sharedProviders(<SourceApp />)}
+            />
+
+            {/* Unified cross-source views */}
+            <Route
+              path="unified/messages"
+              element={sharedProviders(<UnifiedMessagesPage />)}
             />
 
             {/* Analysis workspace — coming soon */}

@@ -220,6 +220,32 @@ export default function SourceListPage() {
         )}
       </div>
 
+      {/* Cross-source quick links (only when multiple sources) */}
+      {sources.length > 1 && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
+          <button
+            onClick={() => navigate('/unified/messages')}
+            style={{
+              background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
+              padding: '12px 20px', color: '#93c5fd', fontSize: 14, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
+            }}
+          >
+            <span>💬</span> Unified Messages
+          </button>
+          <button
+            onClick={() => navigate('/analysis')}
+            style={{
+              background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
+              padding: '12px 20px', color: '#86efac', fontSize: 14, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
+            }}
+          >
+            <span>📊</span> Analysis
+          </button>
+        </div>
+      )}
+
       {/* Source cards */}
       {sources.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 0', color: '#666' }}>
