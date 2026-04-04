@@ -28,6 +28,7 @@ import { DefaultMapCenterPicker } from './configuration/DefaultMapCenterPicker';
 import { useAuth } from '../contexts/AuthContext';
 import GeoJsonLayerManager from './GeoJsonLayerManager';
 import MapStyleManager from './MapStyleManager';
+import SourceSettingsPanel from './settings/SourceSettingsPanel';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -905,6 +906,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
         { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
         ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
+        { id: 'settings-source-overrides', label: t('settings.source_overrides', 'Source Overrides') },
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ]} />
@@ -1754,6 +1756,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>
         )}
+
+        <SourceSettingsPanel
+          baseUrl={baseUrl}
+          globalMaxNodeAgeHours={maxNodeAgeHours}
+          globalTracerouteIntervalMinutes={60}
+        />
 
         <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>

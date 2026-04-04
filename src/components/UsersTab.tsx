@@ -4,7 +4,7 @@
  * Admin-only interface for managing users and permissions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import '../styles/users.css';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,12 @@ import api from '../services/api';
 import { logger } from '../utils/logger';
 import type { PermissionSet } from '../types/permission';
 import { useToast } from './ToastContainer';
+
+interface Source {
+  id: string;
+  name: string;
+  type: string;
+}
 
 interface User {
   id: number;
@@ -79,10 +85,24 @@ const UsersTab: React.FC = () => {
   const [channelDatabaseEntries, setChannelDatabaseEntries] = useState<ChannelDatabaseEntry[]>([]);
   const [channelDbPermissions, setChannelDbPermissions] = useState<ChannelDatabasePermission[]>([]);
 
+  // Source scope for permissions (null = global, string = sourceId)
+  const [sources, setSources] = useState<Source[]>([]);
+  const [permissionScope, setPermissionScope] = useState<string | null>(null);
+
   useEffect(() => {
     fetchUsers();
     fetchChannelDatabaseEntries();
+    fetchSources();
   }, []);
+
+  const fetchSources = async () => {
+    try {
+      const response = await api.get<{ sources: Source[] }>('/api/sources');
+      setSources(response.sources || []);
+    } catch (err) {
+      logger.debug('Failed to fetch sources:', err);
+    }
+  };
 
   // Fetch channel database entries (virtual channels) - admin only
   const fetchChannelDatabaseEntries = async () => {
@@ -121,10 +141,12 @@ const UsersTab: React.FC = () => {
     }
   };
 
-  const handleSelectUser = async (user: User) => {
+  const loadPermissionsForUser = useCallback(async (user: User, scopeId: string | null) => {
     try {
-      setSelectedUser(user);
-      const response = await api.get<{ permissions: PermissionSet }>(`/api/users/${user.id}/permissions`);
+      const url = scopeId
+        ? `/api/users/${user.id}/permissions?sourceId=${scopeId}`
+        : `/api/users/${user.id}/permissions`;
+      const response = await api.get<{ permissions: PermissionSet }>(url);
 
       // If user is admin and no permissions returned, set all permissions
       if (user.isAdmin && Object.keys(response.permissions).length === 0) {
@@ -140,12 +162,23 @@ const UsersTab: React.FC = () => {
       } else {
         setPermissions(response.permissions);
       }
-
-      // Also fetch channel database permissions
-      await fetchChannelDbPermissions(user.id);
     } catch (err) {
       logger.error('Failed to fetch user permissions:', err);
       setError(t('users.failed_load_permissions'));
+    }
+  }, [t]);
+
+  const handleSelectUser = async (user: User) => {
+    setSelectedUser(user);
+    await loadPermissionsForUser(user, permissionScope);
+    // Also fetch channel database permissions
+    await fetchChannelDbPermissions(user.id);
+  };
+
+  const handlePermissionScopeChange = async (scopeId: string | null) => {
+    setPermissionScope(scopeId);
+    if (selectedUser) {
+      await loadPermissionsForUser(selectedUser, scopeId);
     }
   };
 
@@ -172,7 +205,10 @@ const UsersTab: React.FC = () => {
         }
       });
 
-      await api.put(`/api/users/${selectedUser.id}/permissions`, { permissions: validPermissions });
+      await api.put(`/api/users/${selectedUser.id}/permissions`, {
+        permissions: validPermissions,
+        ...(permissionScope !== null ? { sourceId: permissionScope } : {})
+      });
       setError(null);
       showToast(t('users.permissions_updated'), 'success');
     } catch (err) {
@@ -630,6 +666,24 @@ const UsersTab: React.FC = () => {
             </div>
 
             <h3>{t('users.permissions')}</h3>
+
+            {sources.length > 0 && (
+              <div className="permission-scope-selector">
+                <label htmlFor="permission-scope-select">{t('users.permission_scope')}:</label>
+                <select
+                  id="permission-scope-select"
+                  value={permissionScope ?? ''}
+                  onChange={e => handlePermissionScopeChange(e.target.value || null)}
+                  className="permission-scope-select"
+                >
+                  <option value="">{t('users.scope_global')}</option>
+                  {sources.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="permissions-grid">
               {PERMISSION_KEYS.map(resource => {
                 // Get label from translated map or format it

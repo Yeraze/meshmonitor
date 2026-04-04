@@ -354,6 +354,7 @@ router.post('/:id/set-password', async (req: Request, res: Response) => {
 });
 
 // Get user permissions
+// Optional ?sourceId= query param scopes results to that source (null = global)
 router.get('/:id/permissions', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
@@ -362,8 +363,8 @@ router.get('/:id/permissions', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Use async method that works with both SQLite and PostgreSQL
-    const permissions = await databaseService.getUserPermissionSetAsync(userId);
+    const sourceId = (req.query.sourceId as string | undefined) || undefined;
+    const permissions = await databaseService.getUserPermissionSetAsync(userId, sourceId);
 
     return res.json({ permissions });
   } catch (error) {
@@ -373,6 +374,7 @@ router.get('/:id/permissions', async (req: Request, res: Response) => {
 });
 
 // Update user permissions
+// Optional sourceId in body scopes the update to that source (null/absent = global)
 router.put('/:id/permissions', async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
@@ -381,7 +383,7 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    const { permissions } = req.body as { permissions: PermissionSet };
+    const { permissions, sourceId } = req.body as { permissions: PermissionSet; sourceId?: string | null };
 
     if (!permissions || typeof permissions !== 'object') {
       return res.status(400).json({
@@ -398,8 +400,8 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       }
     }
 
-    // Update permissions - delete existing and create new ones
-    await databaseService.auth.deletePermissionsForUser(userId);
+    // Delete only permissions in the given scope, then recreate
+    await databaseService.auth.deletePermissionsForUserByScope(userId, sourceId ?? null);
     for (const [resource, perms] of Object.entries(permissions)) {
       await databaseService.auth.createPermission({
         userId,
@@ -408,7 +410,8 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
         canRead: perms.read,
         canWrite: perms.write,
         grantedBy: req.user!.id,
-        grantedAt: Date.now()
+        grantedAt: Date.now(),
+        sourceId: sourceId ?? null,
       });
     }
 
@@ -417,7 +420,7 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       req.user!.id,
       'permissions_updated',
       'permissions',
-      JSON.stringify({ userId, permissions }),
+      JSON.stringify({ userId, permissions, sourceId: sourceId ?? null }),
       req.ip || null
     );
 

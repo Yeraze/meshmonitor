@@ -102,6 +102,10 @@ describe('User Management Routes', () => {
         permissionModel.revokeAll(userId);
         return 0;
       },
+      deletePermissionsForUserByScope: async (userId: number, _sourceId: string | null) => {
+        permissionModel.revokeAll(userId);
+        return 0;
+      },
       createPermission: async (input: any) => {
         const perm = permissionModel.grant({
           userId: input.userId,
