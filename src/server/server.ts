@@ -3014,7 +3014,8 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
       logger.info(`✅ Edit settings transaction started`);
     } catch (error) {
       logger.error(`❌ Failed to begin edit settings transaction:`, error);
-      throw new Error('Failed to start configuration transaction');
+      const errMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to start configuration transaction: ${errMsg}`);
     }
 
     // Snapshot channels before change for message migration
@@ -3131,7 +3132,8 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     });
   } catch (error) {
     logger.error('Error importing configuration:', error);
-    res.status(500).json({ error: 'Failed to import configuration' });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: `Failed to import configuration: ${errMsg}` });
   }
 });
 
