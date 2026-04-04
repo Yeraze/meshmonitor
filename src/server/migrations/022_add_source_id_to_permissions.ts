@@ -63,7 +63,8 @@ export async function runMigration022Mysql(pool: any): Promise<void> {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'permissions' AND COLUMN_NAME = 'sourceId'`
     );
     if (!Array.isArray(rows) || rows.length === 0) {
-      await conn.query(`ALTER TABLE permissions ADD COLUMN sourceId TEXT`);
+      // Use VARCHAR(36) — UUIDs are 36 chars and MySQL cannot index TEXT columns
+      await conn.query(`ALTER TABLE permissions ADD COLUMN sourceId VARCHAR(36)`);
       logger.debug('Added sourceId to permissions');
     } else {
       logger.debug('permissions.sourceId already exists, skipping');
