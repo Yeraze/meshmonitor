@@ -238,4 +238,66 @@ router.get('/:id/traceroutes', requirePermission('sources', 'read'), async (req:
   }
 });
 
+// GET /api/sources/:id/neighbor-info — enriched neighbor info scoped to a source
+router.get('/:id/neighbor-info', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+
+    const neighborInfo = await databaseService.neighbors.getAllNeighborInfo(source.id);
+
+    // Get max node age setting (default 24 hours)
+    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
+    const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
+    const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
+
+    // Build a set of all link keys for bidirectionality detection
+    const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
+
+    const getEffectivePosition = (node: any) => {
+      if (!node) return { latitude: undefined, longitude: undefined };
+      if (node.positionOverrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null) {
+        return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
+      }
+      return { latitude: node.latitude, longitude: node.longitude };
+    };
+
+    // Enrich each record with node names, positions, and bidirectionality flag
+    const enrichedNeighborInfo = (await Promise.all(neighborInfo.map(async ni => {
+      const node = await databaseService.nodes.getNode(ni.nodeNum);
+      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
+      const nodePos = getEffectivePosition(node);
+      const neighborPos = getEffectivePosition(neighbor);
+
+      return {
+        ...ni,
+        nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
+        nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
+        neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+        neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+        bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
+        nodeLatitude: nodePos.latitude,
+        nodeLongitude: nodePos.longitude,
+        neighborLatitude: neighborPos.latitude,
+        neighborLongitude: neighborPos.longitude,
+        node,
+        neighbor,
+      };
+    })))
+      .filter(ni => {
+        // Filter out connections where either node is too old or missing lastHeard
+        if (!ni.node?.lastHeard || !ni.neighbor?.lastHeard) {
+          return false;
+        }
+        return ni.node.lastHeard >= cutoffTime && ni.neighbor.lastHeard >= cutoffTime;
+      })
+      .map(({ node, neighbor, ...rest }) => rest);
+
+    res.json(enrichedNeighborInfo);
+  } catch (error) {
+    logger.error('Error fetching neighbor info for source:', error);
+    res.status(500).json({ error: 'Failed to fetch neighbor info' });
+  }
+});
+
 export default router;
