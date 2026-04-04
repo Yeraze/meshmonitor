@@ -8,6 +8,15 @@ import { MeshtasticManager } from '../meshtasticManager.js';
 
 const router = Router();
 
+// Pure utility — no request-specific state
+const getEffectivePosition = (node: any) => {
+  if (!node) return { latitude: undefined, longitude: undefined };
+  if (node.positionOverrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null) {
+    return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
+  }
+  return { latitude: node.latitude, longitude: node.longitude };
+};
+
 // List all sources — public so the landing page can redirect unauthenticated users
 // to the single-source view (or show the login button on the source list page).
 // Sensitive config fields are not exposed.
@@ -247,25 +256,24 @@ router.get('/:id/neighbor-info', requirePermission('sources', 'read'), async (re
     const neighborInfo = await databaseService.neighbors.getAllNeighborInfo(source.id);
 
     // Get max node age setting (default 24 hours)
-    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
-    const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
+    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAgeHours');
+    const maxNodeAgeHours = maxNodeAgeStr ? (parseInt(maxNodeAgeStr, 10) || 24) : 24;
     const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
 
     // Build a set of all link keys for bidirectionality detection
     const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 
-    const getEffectivePosition = (node: any) => {
-      if (!node) return { latitude: undefined, longitude: undefined };
-      if (node.positionOverrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null) {
-        return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
-      }
-      return { latitude: node.latitude, longitude: node.longitude };
-    };
+    // Batch-fetch all nodes referenced in neighbor info
+    const allNodeNums = [...new Set([
+      ...neighborInfo.map(ni => ni.nodeNum),
+      ...neighborInfo.map(ni => ni.neighborNodeNum),
+    ])];
+    const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums);
 
     // Enrich each record with node names, positions, and bidirectionality flag
-    const enrichedNeighborInfo = (await Promise.all(neighborInfo.map(async ni => {
-      const node = await databaseService.nodes.getNode(ni.nodeNum);
-      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
+    const enrichedNeighborInfo = neighborInfo.map(ni => {
+      const node = nodeMap.get(ni.nodeNum) ?? null;
+      const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
       const nodePos = getEffectivePosition(node);
       const neighborPos = getEffectivePosition(neighbor);
 
@@ -283,7 +291,7 @@ router.get('/:id/neighbor-info', requirePermission('sources', 'read'), async (re
         node,
         neighbor,
       };
-    })))
+    })
       .filter(ni => {
         // Filter out connections where either node is too old or missing lastHeard
         if (!ni.node?.lastHeard || !ni.neighbor?.lastHeard) {

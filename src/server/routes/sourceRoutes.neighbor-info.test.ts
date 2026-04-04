@@ -22,6 +22,7 @@ vi.mock('../../services/database.js', () => ({
     },
     nodes: {
       getNode: vi.fn(),
+      getNodesByNums: vi.fn(),
     },
     settings: {
       getSetting: vi.fn(),
@@ -125,6 +126,7 @@ describe('GET /:id/neighbor-info', () => {
   it('returns empty array when no neighbor records exist', async () => {
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
+    mockDb.nodes.getNodesByNums.mockResolvedValue(new Map());
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -139,7 +141,9 @@ describe('GET /:id/neighbor-info', () => {
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni1, ni2]);
-    mockDb.nodes.getNode.mockImplementation(async (num: number) => makeNode(num));
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, makeNode(n)]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -166,7 +170,9 @@ describe('GET /:id/neighbor-info', () => {
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    mockDb.nodes.getNode.mockImplementation(async (num: number) => makeNode(num));
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, makeNode(n)]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -181,10 +187,9 @@ describe('GET /:id/neighbor-info', () => {
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
     // node 111 is fresh, node 222 is stale
-    mockDb.nodes.getNode.mockImplementation(async (num: number) => {
-      if (num === 222) return makeNode(num, { lastHeard: staleTime });
-      return makeNode(num);
-    });
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, n === 222 ? makeNode(n, { lastHeard: staleTime }) : makeNode(n)]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -197,10 +202,9 @@ describe('GET /:id/neighbor-info', () => {
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    mockDb.nodes.getNode.mockImplementation(async (num: number) => {
-      if (num === 222) return makeNode(num, { lastHeard: null });
-      return makeNode(num);
-    });
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, n === 222 ? makeNode(n, { lastHeard: null }) : makeNode(n)]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -213,16 +217,14 @@ describe('GET /:id/neighbor-info', () => {
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    mockDb.nodes.getNode.mockImplementation(async (num: number) => {
-      if (num === 111) {
-        return makeNode(num, {
-          positionOverrideEnabled: true,
-          latitudeOverride: 99.5,
-          longitudeOverride: -88.5,
-        });
-      }
-      return makeNode(num);
-    });
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [
+        n,
+        n === 111
+          ? makeNode(n, { positionOverrideEnabled: true, latitudeOverride: 99.5, longitudeOverride: -88.5 })
+          : makeNode(n),
+      ]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -239,10 +241,9 @@ describe('GET /:id/neighbor-info', () => {
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
     mockDb.settings.getSetting.mockResolvedValue('1'); // 1-hour window
-    mockDb.nodes.getNode.mockImplementation(async (num: number) => {
-      if (num === 222) return makeNode(num, { lastHeard: staleTime });
-      return makeNode(num);
-    });
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, n === 222 ? makeNode(n, { lastHeard: staleTime }) : makeNode(n)]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
@@ -250,19 +251,24 @@ describe('GET /:id/neighbor-info', () => {
     expect(res.body).toEqual([]);
   });
 
-  it('falls back to hex node ID when node is not found', async () => {
+  it('falls back to hex node ID when node has no nodeId or longName', async () => {
     const ni = makeNeighborRecord({ nodeNum: 0xabcdef01, neighborNodeNum: 0x12345678 });
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    // Return nodes with valid lastHeard so they pass the age filter
-    mockDb.nodes.getNode.mockResolvedValue(null);
+    // Return nodes that pass the age filter but have no nodeId/longName
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, makeNode(n, { nodeId: null, longName: null })]))
+    );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
-    // Both nodes are null → filtered out (no lastHeard)
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].nodeId).toBe('!abcdef01');
+    expect(res.body[0].nodeName).toBe('Node !abcdef01');
+    expect(res.body[0].neighborNodeId).toBe('!12345678');
+    expect(res.body[0].neighborName).toBe('Node !12345678');
   });
 
   it('returns 403 for unauthenticated requests', async () => {
