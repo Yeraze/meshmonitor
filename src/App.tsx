@@ -72,6 +72,8 @@ import { UIProvider, useUI } from './contexts/UIContext';
 import { AutomationProvider, useAutomation } from './contexts/AutomationContext';
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
+import { useSource } from './contexts/SourceContext';
+import { useNavigate } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
@@ -111,6 +113,8 @@ function App() {
   const { t } = useTranslation();
   const { authStatus, hasPermission, loading: authLoading } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
+  const { sourceId, sourceName } = useSource();
+  const navigate = useNavigate();
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -4468,6 +4472,8 @@ function App() {
         onShowLoginModal={() => setShowLoginModal(true)}
         onLogout={() => setActiveTab('nodes')}
         onNodeClick={handleNodeClick}
+        sourceName={sourceName}
+        onBackToSources={sourceId ? () => navigate('/') : undefined}
       />
 
       <AppBanners

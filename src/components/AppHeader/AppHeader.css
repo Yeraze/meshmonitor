@@ -48,6 +48,36 @@
   font-weight: 700;
 }
 
+/* Back to sources button */
+.back-to-sources-btn {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-subtext1);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.75rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.back-to-sources-btn:hover {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-overlay1);
+  color: var(--ctp-text);
+}
+
+/* Source name badge shown beside the title */
+.header-source-name {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-subtext1);
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+}
+
 /* Node info */
 .node-info {
   display: flex;
