@@ -236,7 +236,7 @@ function App() {
 
     if (pathParts.length > 0) {
       // Remove any trailing segments that look like app routes
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
       const baseSegments = [];
 
       for (const segment of pathParts) {
@@ -4473,7 +4473,7 @@ function App() {
         onLogout={() => setActiveTab('nodes')}
         onNodeClick={handleNodeClick}
         sourceName={sourceName}
-        onBackToSources={sourceId ? () => navigate('/') : undefined}
+        onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
       />
 
       <AppBanners
@@ -5192,7 +5192,7 @@ const AppWithToast = () => {
     const pathParts = pathname.split('/').filter(Boolean);
 
     if (pathParts.length > 0) {
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
       const baseSegments = [];
 
       for (const segment of pathParts) {

@@ -39,8 +39,8 @@ Each card displays:
 
 At the bottom of the sidebar, always visible regardless of auth state:
 
-- 💬 Unified Messages → `/unified/messages`
-- 📡 Unified Telemetry → `/unified/telemetry`
+- 💬 Unified Messages — **Coming soon** (link disabled, greyed out)
+- 📡 Unified Telemetry — **Coming soon** (link disabled, greyed out)
 
 ---
 
