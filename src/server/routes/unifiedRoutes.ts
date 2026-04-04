@@ -13,7 +13,7 @@ import { logger } from '../../utils/logger.js';
 const router = Router();
 
 // All unified routes allow optional auth (some data may be public)
-router.use(optionalAuth);
+router.use(optionalAuth());
 
 /**
  * GET /api/unified/messages?limit=50
@@ -67,6 +67,66 @@ router.get('/messages', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching unified messages:', error);
     res.status(500).json({ error: 'Failed to fetch unified messages' });
+  }
+});
+
+/**
+ * GET /api/unified/telemetry?hours=24
+ *
+ * Returns the latest telemetry reading per node per type across all accessible
+ * sources, sorted by timestamp descending. Each entry includes `sourceId` and
+ * `sourceName`. Useful for a cross-source "fleet overview" dashboard.
+ *
+ * ?hours=N  → only include readings from the past N hours (default 24)
+ */
+router.get('/telemetry', async (req: Request, res: Response) => {
+  try {
+    const hours = Math.min(parseInt(req.query.hours as string || '24', 10), 168);
+    const cutoff = Math.floor(Date.now() / 1000) - hours * 3600;
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+
+    const sources = await databaseService.sources.getAllSources();
+
+    const sourceResults = await Promise.allSettled(
+      sources.map(async (source) => {
+        const canRead = isAdmin || (user
+          ? await databaseService.checkPermissionAsync(user.id, 'telemetry', 'read', source.id)
+          : false);
+        if (!canRead) return [];
+
+        const nodes = await databaseService.nodes.getAllNodes(source.id);
+        const entries: Array<Record<string, unknown>> = [];
+
+        for (const node of nodes) {
+          const latest = await databaseService.telemetry.getLatestTelemetryByNode(node.nodeId);
+          for (const t of latest) {
+            if (t.timestamp >= cutoff) {
+              entries.push({
+                ...t,
+                sourceId: source.id,
+                sourceName: source.name,
+                nodeLongName: node.longName,
+                nodeShortName: node.shortName,
+              });
+            }
+          }
+        }
+        return entries;
+      })
+    );
+
+    const allEntries: Array<Record<string, unknown>> = [];
+    for (const result of sourceResults) {
+      if (result.status === 'fulfilled') allEntries.push(...result.value);
+    }
+
+    allEntries.sort((a, b) => ((b.timestamp as number) ?? 0) - ((a.timestamp as number) ?? 0));
+
+    res.json(allEntries);
+  } catch (error) {
+    logger.error('Error fetching unified telemetry:', error);
+    res.status(500).json({ error: 'Failed to fetch unified telemetry' });
   }
 });
 

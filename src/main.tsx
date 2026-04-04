@@ -14,6 +14,7 @@ import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
 import SourceListPage from './pages/SourceListPage.tsx';
 import AnalysisPage from './pages/AnalysisPage.tsx';
 import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
+import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
@@ -60,6 +61,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route
               path="unified/messages"
               element={sharedProviders(<UnifiedMessagesPage />)}
+            />
+            <Route
+              path="unified/telemetry"
+              element={sharedProviders(<UnifiedTelemetryPage />)}
             />
 
             {/* Analysis workspace — coming soon */}

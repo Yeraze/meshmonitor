@@ -234,10 +234,20 @@ export default function SourceListPage() {
             <span>💬</span> Unified Messages
           </button>
           <button
-            onClick={() => navigate('/analysis')}
+            onClick={() => navigate('/unified/telemetry')}
             style={{
               background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
               padding: '12px 20px', color: '#86efac', fontSize: 14, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
+            }}
+          >
+            <span>📡</span> Unified Telemetry
+          </button>
+          <button
+            onClick={() => navigate('/analysis')}
+            style={{
+              background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
+              padding: '12px 20px', color: '#a78bfa', fontSize: 14, cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500,
             }}
           >
