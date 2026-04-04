@@ -6,6 +6,13 @@
 - Only the backend talks to the Node. the Frontend never talks directly to the node.
 
 
+## Git Worktree Policy
+
+- **Core application changes** (anything affecting the running app): work directly on the live checkout at `/home/yeraze/Development/meshmonitor`
+- **Documentation-only changes** (content for [https://meshmonitor.org](https://meshmonitor.org)) or **CI/CD pipeline-only changes**: may be done in a worktree
+- When using a worktree, always start from the latest `origin/main` unless a specific branch or commit is required
+- When working in a worktree, **deployment for user review is NOT required** before creating a PR — that requirement applies only to core application features on the main checkout
+
 ## Code Modification Rules
 
 - After bulk find-and-replace or sed operations, always verify that modified functions have correct async/await signatures before running tests. Check that route handlers and callbacks are marked async if await was added inside them.
