@@ -5,6 +5,7 @@ import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
+import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../utils/nodeEnhancer.js';
 
 const router = Router();
 
@@ -189,13 +190,20 @@ router.get('/:id/status', requirePermission('sources', 'read'), async (req: Requ
 // These scope all queries to the given source, forming the backend for Phase 4 frontend.
 
 // GET /api/sources/:id/nodes — all nodes for a source
-router.get('/:id/nodes', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+// Uses nodes:read permission (not sources:read) so anonymous users with channel viewOnMap
+// permissions can access node data for map display, filtered by their channel permissions.
+router.get('/:id/nodes', requirePermission('nodes', 'read'), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
     const nodes = await databaseService.nodes.getAllNodes(source.id);
-    res.json(nodes);
+    const user = (req as any).user ?? null;
+
+    // Filter by channel viewOnMap permissions and mask private position channels
+    const filtered = await filterNodesByChannelPermission(nodes, user);
+    const masked = await maskNodeLocationByChannel(filtered, user);
+    res.json(masked);
   } catch (error) {
     logger.error('Error fetching nodes for source:', error);
     res.status(500).json({ error: 'Failed to fetch nodes' });
