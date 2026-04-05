@@ -45,8 +45,8 @@ class AutoDeleteByDistanceService {
   /**
    * Run now (manual trigger from API)
    */
-  public async runNow(): Promise<{ deletedCount: number }> {
-    return this.runDeleteCycle();
+  public async runNow(sourceId?: string): Promise<{ deletedCount: number }> {
+    return this.runDeleteCycle(sourceId);
   }
 
   /**
@@ -62,7 +62,7 @@ class AutoDeleteByDistanceService {
   /**
    * Core deletion logic
    */
-  private async runDeleteCycle(): Promise<{ deletedCount: number }> {
+  private async runDeleteCycle(sourceId?: string): Promise<{ deletedCount: number }> {
     if (this.isRunning) {
       logger.debug('⏭️ Auto-delete-by-distance: skipping, already running');
       return { deletedCount: 0 };
@@ -87,7 +87,8 @@ class AutoDeleteByDistanceService {
       const localNodeNum = localNodeNumStr ? Number(localNodeNumStr) : null;
 
       // Get all nodes (must use async for PostgreSQL/MySQL)
-      const allNodes = await databaseService.nodes.getAllNodes();
+      // If sourceId provided, scope to that source; otherwise scan all sources
+      const allNodes = await databaseService.nodes.getAllNodes(sourceId);
 
       for (const node of allNodes) {
         // Protect local node

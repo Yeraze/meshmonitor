@@ -10404,7 +10404,11 @@ class DatabaseService {
   }
 
   // Group 5: Neighbors/Telemetry
-  async getNeighborsForNodeAsync(nodeNum: number): Promise<DbNeighborInfo[]> {
+  async getNeighborsForNodeAsync(nodeNum: number, sourceId?: string): Promise<DbNeighborInfo[]> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.neighborsRepo) {
+      const results = await this.neighborsRepo.getNeighborsForNode(nodeNum, sourceId);
+      return results.map(n => this.convertRepoNeighborInfo(n));
+    }
     return this.getNeighborsForNode(nodeNum);
   }
 

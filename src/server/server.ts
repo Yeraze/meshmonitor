@@ -3836,7 +3836,8 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, 
 apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum);
-    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum);
+    const neighborSourceId = req.query.sourceId as string | undefined;
+    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId);
 
     // Enrich with node names
     const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {
@@ -3896,6 +3897,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    const telSourceId = req.query.sourceId as string | undefined;
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
@@ -3910,7 +3912,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     // For PostgreSQL/MySQL, use async repo directly
     if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
       const limit = Math.min(hoursParam * 60, 5000);
-      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime);
+      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime, undefined, 0, undefined, telSourceId);
     } else {
       // Use averaged query for graph data to reduce data points
       // Dynamic bucketing automatically adjusts interval based on time range:
@@ -5511,12 +5513,14 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
     });
 
     // Update the meshtastic manager interval if connected
+    const { sourceId: timeSyncSourceId } = req.body;
+    const timeSyncManager = timeSyncSourceId ? (sourceManagerRegistry.getManager(timeSyncSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     if (intervalMinutes !== undefined) {
-      meshtasticManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
+      timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
     } else if (enabled !== undefined) {
       // If only enabled/disabled changed, use existing interval
       const currentInterval = await databaseService.getAutoTimeSyncIntervalMinutesAsync();
-      meshtasticManager.setTimeSyncInterval(enabled ? currentInterval : 0);
+      timeSyncManager.setTimeSyncInterval(enabled ? currentInterval : 0);
     }
 
     // Get the updated settings to return
@@ -5533,15 +5537,17 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
 });
 
 // Get auto-ping settings and active sessions
-apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
   try {
+    const autoPingSourceId = req.query.sourceId as string | undefined;
+    const autoPingManager = autoPingSourceId ? (sourceManagerRegistry.getManager(autoPingSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     const settings = {
       autoPingEnabled: await databaseService.settings.getSetting('autoPingEnabled') === 'true',
       autoPingIntervalSeconds: parseInt(await databaseService.settings.getSetting('autoPingIntervalSeconds') || '30', 10),
       autoPingMaxPings: parseInt(await databaseService.settings.getSetting('autoPingMaxPings') || '20', 10),
       autoPingTimeoutSeconds: parseInt(await databaseService.settings.getSetting('autoPingTimeoutSeconds') || '60', 10),
     };
-    const sessions = await meshtasticManager.getAutoPingSessions();
+    const sessions = await autoPingManager.getAutoPingSessions();
     res.json({ settings, sessions });
   } catch (error) {
     logger.error('Error fetching auto-ping settings:', error);
@@ -5600,7 +5606,9 @@ apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'
     if (isNaN(nodeNum)) {
       return res.status(400).json({ error: 'Invalid node number.' });
     }
-    meshtasticManager.stopAutoPingSession(nodeNum, 'force_stopped');
+    const { sourceId: stopPingSourceId } = req.body || {};
+    const stopPingManager = stopPingSourceId ? (sourceManagerRegistry.getManager(stopPingSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    stopPingManager.stopAutoPingSession(nodeNum, 'force_stopped');
     res.json({ success: true });
   } catch (error) {
     logger.error('Error stopping auto-ping session:', error);
@@ -5634,9 +5642,10 @@ apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 're
 });
 
 // Auto-delete-by-distance run now
-apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings', 'write'), async (_req, res) => {
+apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings', 'write'), async (req, res) => {
   try {
-    const result = await autoDeleteByDistanceService.runNow();
+    const { sourceId: distDelSourceId } = req.body || {};
+    const result = await autoDeleteByDistanceService.runNow(distDelSourceId);
     res.json(result);
   } catch (error) {
     logger.error('Error running distance-delete:', error);

@@ -264,7 +264,7 @@ function App() {
   useHealth({ baseUrl, reloadOnVersionChange: true });
 
   // Monitor device TX status to show warning banner when TX is disabled
-  const { isTxDisabled } = useTxStatus({ baseUrl });
+  const { isTxDisabled } = useTxStatus({ baseUrl, sourceId });
 
   // Settings from context
   const {

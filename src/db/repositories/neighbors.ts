@@ -84,12 +84,12 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get neighbors for a node
    */
-  async getNeighborsForNode(nodeNum: number): Promise<DbNeighborInfo[]> {
+  async getNeighborsForNode(nodeNum: number, sourceId?: string): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select()
       .from(neighborInfo)
-      .where(eq(neighborInfo.nodeNum, nodeNum))
+      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId)))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];

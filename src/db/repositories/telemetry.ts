@@ -58,10 +58,14 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     sinceTimestamp?: number,
     beforeTimestamp?: number,
-    telemetryType?: string
+    telemetryType?: string,
+    sourceId?: string
   ): Promise<number> {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));
@@ -90,10 +94,14 @@ export class TelemetryRepository extends BaseRepository {
     sinceTimestamp?: number,
     beforeTimestamp?: number,
     offset: number = 0,
-    telemetryType?: string
+    telemetryType?: string,
+    sourceId?: string
   ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));
@@ -122,7 +130,8 @@ export class TelemetryRepository extends BaseRepository {
   async getPositionTelemetryByNode(
     nodeId: string,
     limit: number = 1500,
-    sinceTimestamp?: number
+    sinceTimestamp?: number,
+    sourceId?: string
   ): Promise<DbTelemetry[]> {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
     const { telemetry } = this.tables;
@@ -131,6 +140,9 @@ export class TelemetryRepository extends BaseRepository {
       eq(telemetry.nodeId, nodeId),
       inArray(telemetry.telemetryType, positionTypes),
     ];
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));

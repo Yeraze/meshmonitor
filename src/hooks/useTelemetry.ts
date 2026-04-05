@@ -58,6 +58,8 @@ interface UseTelemetryOptions {
   hours?: number;
   /** Base URL for API requests (default: '') */
   baseUrl?: string;
+  /** Source ID for multi-source deployments */
+  sourceId?: string | null;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
 }
@@ -82,11 +84,14 @@ interface UseTelemetryOptions {
  * });
  * ```
  */
-export function useTelemetry({ nodeId, hours = 24, baseUrl = '', enabled = true }: UseTelemetryOptions) {
+export function useTelemetry({ nodeId, hours = 24, baseUrl = '', sourceId, enabled = true }: UseTelemetryOptions) {
   return useQuery({
-    queryKey: ['telemetry', nodeId, hours],
+    queryKey: ['telemetry', nodeId, hours, sourceId],
     queryFn: async (): Promise<TelemetryData[]> => {
-      const response = await fetch(`${baseUrl}/api/telemetry/${nodeId}?hours=${hours}`);
+      const url = sourceId
+        ? `${baseUrl}/api/telemetry/${nodeId}?hours=${hours}&sourceId=${encodeURIComponent(sourceId)}`
+        : `${baseUrl}/api/telemetry/${nodeId}?hours=${hours}`;
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch telemetry: ${response.status} ${response.statusText}`);
