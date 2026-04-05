@@ -40,6 +40,7 @@ import statusRouter from './status.js';
 import sourcesRouter from './sources.js';
 import { attachSource } from './sourceParam.js';
 import { deprecationShim } from './deprecatedShim.js';
+import actionsRouter from './actions.js';
 
 const router = express.Router();
 
@@ -69,6 +70,7 @@ router.get('/', (_req, res) => {
       status: '/api/v1/sources/{sourceId}/status',
       channelDatabase: '/api/v1/channel-database',
       solar: '/api/v1/solar',
+      actions: '/api/v1/actions',
     },
     note:
       'Per-source paths are canonical. Legacy root paths (e.g. /api/v1/nodes?sourceId=...) ' +
@@ -80,6 +82,7 @@ router.get('/', (_req, res) => {
 router.use('/sources', sourcesRouter);
 router.use('/solar', solarRouter);
 router.use('/channel-database', channelDatabaseRouter);
+router.use('/actions', actionsRouter);
 
 // Per-source canonical routes. `attachSource(resource, action)` resolves the
 // :sourceId param (including the `default` alias) and enforces the
