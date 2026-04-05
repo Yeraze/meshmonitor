@@ -5065,6 +5065,7 @@ function App() {
         {activeTab === 'configuration' && (
           <ErrorBoundary fallbackTitle="Configuration failed to load">
           <ConfigurationTab
+            key={sourceId || 'default'}
             baseUrl={baseUrl}
             nodes={nodes}
             channels={channels}
@@ -5081,6 +5082,7 @@ function App() {
         {activeTab === 'admin' && authStatus?.user?.isAdmin && (
           <ErrorBoundary fallbackTitle="Admin Commands failed to load">
           <AdminCommandsTab
+            key={sourceId || 'default'}
             nodes={nodes}
             currentNodeId={currentNodeId}
             channels={channels}
