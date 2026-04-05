@@ -4450,27 +4450,19 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 7. Config (always available with optionalAuth)
     try {
-      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+      // Use the active manager's local node info — source-scoped, not the global settings key
+      const managerNodeInfo = activeManager.getLocalNodeInfo();
 
-      let deviceMetadata = undefined;
-      let localNodeInfo = undefined;
-      if (localNodeNumStr) {
-        const localNodeNum = parseInt(localNodeNumStr, 10);
-        const currentNode = await databaseService.nodes.getNode(localNodeNum);
+      const deviceMetadata = managerNodeInfo ? {
+        firmwareVersion: managerNodeInfo.firmwareVersion,
+        rebootCount: managerNodeInfo.rebootCount,
+      } : undefined;
 
-        if (currentNode) {
-          deviceMetadata = {
-            firmwareVersion: currentNode.firmwareVersion,
-            rebootCount: currentNode.rebootCount,
-          };
-
-          localNodeInfo = {
-            nodeId: currentNode.nodeId,
-            longName: currentNode.longName,
-            shortName: currentNode.shortName,
-          };
-        }
-      }
+      const pollLocalNodeInfo = managerNodeInfo ? {
+        nodeId: managerNodeInfo.nodeId,
+        longName: managerNodeInfo.longName,
+        shortName: managerNodeInfo.shortName,
+      } : undefined;
 
       result.config = {
         ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
@@ -4478,7 +4470,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         meshtasticUseTls: false,
         baseUrl: BASE_URL,
         deviceMetadata: deviceMetadata,
-        localNodeInfo: localNodeInfo,
+        localNodeInfo: pollLocalNodeInfo,
       };
     } catch (error) {
       logger.error('Error in config section of poll:', error);
