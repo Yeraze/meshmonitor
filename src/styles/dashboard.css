@@ -19,33 +19,38 @@
   flex-direction: row;
   align-items: center;
   gap: 12px;
-  padding: 0 16px;
-  height: 48px;
+  padding: 0 24px;
+  height: var(--header-height, 64px);
   flex-shrink: 0;
-  background: var(--ctp-crust);
+  background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
 }
 
 .dashboard-topbar-logo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--ctp-blue);
-  font-size: 14px;
-  font-weight: 600;
+  gap: 12px;
   text-decoration: none;
 }
 
-.dashboard-topbar-logo img {
-  width: 28px;
-  height: 28px;
+.dashboard-topbar-logo-img {
+  height: 2rem;
+  width: auto;
+  object-fit: contain;
+}
+
+.dashboard-topbar-title {
+  color: var(--ctp-lavender);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .dashboard-topbar-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .dashboard-body {
@@ -271,6 +276,21 @@
   opacity: 0.5;
   cursor: default;
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+.dashboard-sidebar-link--active {
+  opacity: 1;
+  color: var(--ctp-blue);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.dashboard-sidebar-link--active:hover {
+  color: var(--ctp-sapphire);
 }
 
 /* ── Map panel ───────────────────────────────────────────────────────────── */
@@ -321,19 +341,24 @@
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
 .dashboard-signin-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: var(--ctp-blue);
   color: var(--ctp-base);
   border: none;
-  border-radius: 4px;
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 700;
+  border-radius: var(--radius-lg, 8px);
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .dashboard-signin-btn:hover {
-  opacity: 0.88;
+  background: var(--ctp-sapphire);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(137, 180, 250, 0.3);
 }
 
 .dashboard-add-source-btn {

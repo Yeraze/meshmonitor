@@ -208,9 +208,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         <span className="dashboard-sidebar-link coming-soon">
           💬 Unified Messages (coming soon)
         </span>
-        <span className="dashboard-sidebar-link coming-soon">
-          📡 Unified Telemetry (coming soon)
-        </span>
+        <button
+          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          onClick={() => navigate('/unified/telemetry')}
+        >
+          📡 Unified Telemetry
+        </button>
       </div>
     </aside>
   );

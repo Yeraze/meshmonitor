@@ -118,7 +118,6 @@ function App() {
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
   const [configIssues, setConfigIssues] = useState<
     Array<{
       type: 'cookie_secure' | 'allowed_origins';
@@ -1195,22 +1194,6 @@ function App() {
   }, []);
 
   // Check for default admin password
-  useEffect(() => {
-    const checkDefaultPassword = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/auth/check-default-password`);
-        if (response.ok) {
-          const data = await response.json();
-          setIsDefaultPassword(data.isDefaultPassword);
-        }
-      } catch (error) {
-        logger.error('Error checking default password:', error);
-      }
-    };
-
-    checkDefaultPassword();
-  }, [baseUrl]);
-
   // Check for configuration issues
   useEffect(() => {
     const checkConfigIssues = async () => {
@@ -4477,7 +4460,6 @@ function App() {
       />
 
       <AppBanners
-        isDefaultPassword={isDefaultPassword}
         isTxDisabled={isTxDisabled}
         configIssues={configIssues}
         updateAvailable={updateAvailable}

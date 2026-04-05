@@ -100,10 +100,10 @@ describe('DashboardSidebar', () => {
     expect(screen.queryByRole('button', { name: 'Source options' })).not.toBeInTheDocument();
   });
 
-  it('shows coming soon links', () => {
+  it('shows sidebar navigation links', () => {
     renderSidebar();
     expect(screen.getByText(/Unified Messages.*coming soon/)).toBeInTheDocument();
-    expect(screen.getByText(/Unified Telemetry.*coming soon/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /📡 Unified Telemetry/ })).toBeInTheDocument();
   });
 
   it('disables Open button for disabled sources', () => {

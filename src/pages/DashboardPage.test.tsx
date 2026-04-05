@@ -153,7 +153,7 @@ describe('DashboardPage', () => {
     });
 
     renderPage();
-    expect(screen.getByText('testuser')).toBeInTheDocument();
+    expect(screen.getByText(/testuser/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument();
   });
 });

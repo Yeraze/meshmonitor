@@ -4,7 +4,6 @@ import type { ConfigIssue } from '../../hooks/useSecurityCheck';
 import './AppBanners.css';
 
 interface AppBannersProps {
-  isDefaultPassword: boolean;
   isTxDisabled: boolean;
   configIssues: ConfigIssue[];
   updateAvailable: boolean;
@@ -19,7 +18,6 @@ interface AppBannersProps {
 }
 
 export const AppBanners: React.FC<AppBannersProps> = ({
-  isDefaultPassword,
   isTxDisabled,
   configIssues,
   updateAvailable,
@@ -52,20 +50,11 @@ export const AppBanners: React.FC<AppBannersProps> = ({
 
   return (
     <>
-      {/* Default Password Warning Banner */}
-      {isDefaultPassword && (
-        <div className="warning-banner">
-          ⚠️ {t('banners.default_password_warning')}
-        </div>
-      )}
-
       {/* TX Disabled Warning Banner */}
       {isTxDisabled && (
         <div
           className="warning-banner"
-          style={{
-            top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)',
-          }}
+          style={{ top: 'var(--header-height)' }}
         >
           ⚠️ {t('banners.tx_disabled')}
         </div>
@@ -74,7 +63,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
       {/* Configuration Issue Warning Banners */}
       {configIssues.map((issue, index) => {
         // Calculate how many banners are above this one
-        const bannersAbove = [isDefaultPassword, isTxDisabled].filter(Boolean).length + index;
+        const bannersAbove = [isTxDisabled].filter(Boolean).length + index;
         const topOffset =
           bannersAbove === 0
             ? 'var(--header-height)'
@@ -99,7 +88,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
       {updateAvailable &&
         (() => {
           // Calculate total warning banners above the update banner
-          const warningBannersCount = [isDefaultPassword, isTxDisabled].filter(Boolean).length + configIssues.length;
+          const warningBannersCount = [isTxDisabled].filter(Boolean).length + configIssues.length;
           const topOffset =
             warningBannersCount === 0
               ? 'var(--header-height)'

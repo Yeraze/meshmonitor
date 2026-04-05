@@ -179,7 +179,8 @@ function DashboardInner() {
       {/* Top bar */}
       <header className="dashboard-topbar">
         <div className="dashboard-topbar-logo">
-          MeshMonitor
+          <img src={`${appBasename}/logo.png`} alt="MeshMonitor Logo" className="dashboard-topbar-logo-img" />
+          <span className="dashboard-topbar-title">MeshMonitor</span>
         </div>
         <div className="dashboard-topbar-actions">
           {isAdmin && (
@@ -188,13 +189,13 @@ function DashboardInner() {
             </button>
           )}
           {isAuthenticated ? (
-            <span style={{ fontSize: 12, color: 'var(--ctp-subtext1)' }}>{username}</span>
+            <span style={{ fontSize: 13, color: 'var(--ctp-subtext1)', fontWeight: 500 }}>👤 {username}</span>
           ) : (
             <button
               className="dashboard-signin-btn"
               onClick={() => setShowLogin(true)}
             >
-              Sign In
+              🔒 Sign In
             </button>
           )}
         </div>
