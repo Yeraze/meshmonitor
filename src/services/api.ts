@@ -300,7 +300,7 @@ class ApiService {
     return response.json();
   }
 
-  async getDeviceConfig(sourceId?: string) {
+  async getDeviceConfig(sourceId?: string | null) {
     await this.ensureBaseUrl();
     const params = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
     const response = await fetch(`${this.baseUrl}/api/device-config${params}`);
@@ -308,7 +308,7 @@ class ApiService {
     return response.json();
   }
 
-  async getConnectionStatus(sourceId?: string) {
+  async getConnectionStatus(sourceId?: string | null) {
     await this.ensureBaseUrl();
     const params = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
     const response = await fetch(`${this.baseUrl}/api/connection${params}`);
@@ -866,7 +866,7 @@ class ApiService {
   }
 
   // Configuration methods
-  async getCurrentConfig(sourceId?: string) {
+  async getCurrentConfig(sourceId?: string | null) {
     await this.ensureBaseUrl();
     // Add cache-busting parameter to ensure fresh data after device reboot
     const timestamp = Date.now();
@@ -880,7 +880,7 @@ class ApiService {
     return config;
   }
 
-  async setDeviceConfig(config: any, sourceId?: string) {
+  async setDeviceConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/device`, {
       method: 'POST',
@@ -897,7 +897,7 @@ class ApiService {
     return response.json();
   }
 
-  async setNetworkConfig(config: any, sourceId?: string) {
+  async setNetworkConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/network`, {
       method: 'POST',
@@ -914,7 +914,7 @@ class ApiService {
     return response.json();
   }
 
-  async setLoRaConfig(config: any, sourceId?: string) {
+  async setLoRaConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/lora`, {
       method: 'POST',
@@ -931,7 +931,7 @@ class ApiService {
     return response.json();
   }
 
-  async setPositionConfig(config: any, sourceId?: string) {
+  async setPositionConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/position`, {
       method: 'POST',
@@ -948,7 +948,7 @@ class ApiService {
     return response.json();
   }
 
-  async setMQTTConfig(config: any, sourceId?: string) {
+  async setMQTTConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/mqtt`, {
       method: 'POST',
@@ -965,7 +965,7 @@ class ApiService {
     return response.json();
   }
 
-  async setNeighborInfoConfig(config: any, sourceId?: string) {
+  async setNeighborInfoConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/neighborinfo`, {
       method: 'POST',
@@ -982,7 +982,7 @@ class ApiService {
     return response.json();
   }
 
-  async setPowerConfig(config: any, sourceId?: string) {
+  async setPowerConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/power`, {
       method: 'POST',
@@ -999,7 +999,7 @@ class ApiService {
     return response.json();
   }
 
-  async setDisplayConfig(config: any, sourceId?: string) {
+  async setDisplayConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/display`, {
       method: 'POST',
@@ -1016,7 +1016,7 @@ class ApiService {
     return response.json();
   }
 
-  async setTelemetryConfig(config: any, sourceId?: string) {
+  async setTelemetryConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/telemetry`, {
       method: 'POST',
@@ -1036,7 +1036,7 @@ class ApiService {
   // Generic method to set any module configuration
   // moduleType should be one of: extnotif, storeforward, rangetest, cannedmsg, audio,
   // remotehardware, detectionsensor, paxcounter, serial, ambientlighting
-  async setModuleConfig(moduleType: string, config: any, sourceId?: string) {
+  async setModuleConfig(moduleType: string, config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/${moduleType}`, {
       method: 'POST',
@@ -1053,7 +1053,7 @@ class ApiService {
     return response.json();
   }
 
-  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean, sourceId?: string) {
+  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {
       method: 'POST',
@@ -1070,7 +1070,7 @@ class ApiService {
     return response.json();
   }
 
-  async requestConfig(configType: number, sourceId?: string) {
+  async requestConfig(configType: number, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/request`, {
       method: 'POST',
@@ -1087,7 +1087,7 @@ class ApiService {
     return response.json();
   }
 
-  async requestModuleConfig(configType: number, sourceId?: string) {
+  async requestModuleConfig(configType: number, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/request`, {
       method: 'POST',
@@ -1104,7 +1104,7 @@ class ApiService {
     return response.json();
   }
 
-  async rebootDevice(seconds: number = 5, sourceId?: string) {
+  async rebootDevice(seconds: number = 5, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/device/reboot`, {
       method: 'POST',
@@ -1121,7 +1121,7 @@ class ApiService {
     return response.json();
   }
 
-  async purgeNodeDb(seconds: number = 0, sourceId?: string) {
+  async purgeNodeDb(seconds: number = 0, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/device/purge-nodedb`, {
       method: 'POST',
@@ -1273,7 +1273,7 @@ class ApiService {
     serialEnabled: boolean;
     debugLogApiEnabled: boolean;
     adminChannelEnabled: boolean;
-  }, sourceId?: string): Promise<{ success: boolean }> {
+  }, sourceId?: string | null): Promise<{ success: boolean }> {
     return this.post('/api/admin/commands', {
       command: 'setSecurityConfig',
       config,
