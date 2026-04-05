@@ -4171,7 +4171,9 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
 // Connection status endpoint
 apiRouter.get('/connection', optionalAuth(), async (req, res) => {
   try {
-    const status = await meshtasticManager.getConnectionStatus();
+    const connSourceId = req.query.sourceId as string | undefined;
+    const connManager = (connSourceId ? (sourceManagerRegistry.getManager(connSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const status = await connManager.getConnectionStatus();
     // Hide nodeIp from anonymous users
     if (!req.session.userId) {
       const { nodeIp, ...statusWithoutNodeIp } = status;
@@ -4186,9 +4188,11 @@ apiRouter.get('/connection', optionalAuth(), async (req, res) => {
 });
 
 // Check if TX is disabled
-apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
+apiRouter.get('/device/tx-status', optionalAuth(), async (req, res) => {
   try {
-    const deviceConfig = await meshtasticManager.getDeviceConfig();
+    const txSourceId = req.query.sourceId as string | undefined;
+    const txManager = (txSourceId ? (sourceManagerRegistry.getManager(txSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const deviceConfig = await txManager.getDeviceConfig();
     const txEnabled = deviceConfig?.lora?.txEnabled !== false; // Default to true if undefined
     res.json({ txEnabled });
   } catch (error) {
@@ -4199,9 +4203,11 @@ apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
 
 // Get security keys (public and private) for the local node
 // Private key is sensitive - requires authentication
-apiRouter.get('/device/security-keys', requireAuth(), async (_req, res) => {
+apiRouter.get('/device/security-keys', requireAuth(), async (req, res) => {
   try {
-    const keys = meshtasticManager.getSecurityKeys();
+    const skSourceId = req.query.sourceId as string | undefined;
+    const skManager = (skSourceId ? (sourceManagerRegistry.getManager(skSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const keys = skManager.getSecurityKeys();
     res.json(keys);
   } catch (error) {
     logger.error('Error getting security keys:', error);
@@ -4599,9 +4605,11 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 });
 
 // Get detailed connection info (authenticated users only)
-apiRouter.get('/connection/info', requireAuth(), async (_req, res) => {
+apiRouter.get('/connection/info', requireAuth(), async (req, res) => {
   try {
-    const status = await meshtasticManager.getConnectionStatus();
+    const ciSourceId = req.query.sourceId as string | undefined;
+    const ciManager = (ciSourceId ? (sourceManagerRegistry.getManager(ciSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const status = await ciManager.getConnectionStatus();
     const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
@@ -4714,9 +4722,11 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
 });
 
 // Device configuration endpoint
-apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (_req, res) => {
+apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (req, res) => {
   try {
-    const config = await meshtasticManager.getDeviceConfig();
+    const dcSourceId = req.query.sourceId as string | undefined;
+    const dcManager = (dcSourceId ? (sourceManagerRegistry.getManager(dcSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const config = await dcManager.getDeviceConfig();
     if (config) {
       res.json(config);
     } else {
@@ -6031,9 +6041,11 @@ apiRouter.post('/purge/traceroutes', requireAdmin(), async (req, res) => {
 
 // Configuration endpoints
 // GET current configuration
-apiRouter.get('/config/current', requirePermission('configuration', 'read'), (_req, res) => {
+apiRouter.get('/config/current', requirePermission('configuration', 'read'), (req, res) => {
   try {
-    const config = meshtasticManager.getCurrentConfig();
+    const ccSourceId = req.query.sourceId as string | undefined;
+    const ccManager = (ccSourceId ? (sourceManagerRegistry.getManager(ccSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const config = ccManager.getCurrentConfig();
     res.json(config);
   } catch (error) {
     logger.error('Error getting current config:', error);
