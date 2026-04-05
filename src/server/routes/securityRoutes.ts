@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import meshtasticManager from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { logger } from '../../utils/logger.js';
@@ -384,8 +385,9 @@ router.get('/dead-nodes', async (_req: Request, res: Response) => {
  */
 router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), async (req: Request, res: Response) => {
   try {
-    const { nodeNums } = req.body;
+    const { nodeNums, sourceId: bulkDeleteSourceId } = req.body;
     const user = (req as any).user;
+    const bulkDeleteManager = (bulkDeleteSourceId ? (sourceManagerRegistry.getManager(bulkDeleteSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
 
     if (!Array.isArray(nodeNums) || nodeNums.length === 0) {
       return res.status(400).json({ error: 'nodeNums must be a non-empty array' });
@@ -399,9 +401,9 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
         let removedFromDevice = false;
 
         // Remove from device NodeDB if present
-        if (meshtasticManager.isNodeInDeviceDb(num)) {
+        if (bulkDeleteManager.isNodeInDeviceDb(num)) {
           try {
-            await meshtasticManager.sendRemoveNode(num);
+            await bulkDeleteManager.sendRemoveNode(num);
             removedFromDevice = true;
           } catch (deviceErr) {
             logger.warn(`⚠️ Failed to remove node ${num} from device:`, deviceErr);

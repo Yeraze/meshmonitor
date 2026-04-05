@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import meshcoreManager from '../meshcoreManager.js';
+import meshtasticManagerDefault from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { ResourceType } from '../../types/permission.js';
@@ -649,8 +651,11 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Get the meshtasticManager instance
-    const meshtasticManager = (global as any).meshtasticManager;
+    // Get the meshtasticManager instance (source-aware)
+    const { sourceId: purgeSourceId } = req.body || {};
+    const meshtasticManager = purgeSourceId
+      ? (sourceManagerRegistry.getManager(purgeSourceId) as typeof meshtasticManagerDefault ?? (global as any).meshtasticManager)
+      : (global as any).meshtasticManager;
     if (!meshtasticManager) {
       return res.status(500).json({
         error: 'Internal server error',
