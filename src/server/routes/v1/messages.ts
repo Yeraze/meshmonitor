@@ -9,6 +9,7 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import meshtasticManager from '../../meshtasticManager.js';
 import meshcoreManager from '../../meshcoreManager.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -332,7 +333,10 @@ router.get('/:messageId', async (req: Request, res: Response) => {
  */
 router.post('/', messageLimiter, async (req: Request, res: Response) => {
   try {
-    const { text, channel, toNodeId, replyId } = req.body;
+    const { text, channel, toNodeId, replyId, sourceId: msgSourceId } = req.body;
+    const activeManager = (msgSourceId
+      ? (sourceManagerRegistry.getManager(msgSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
 
     // Validate text is provided
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -436,7 +440,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
 
     if (messageBytes.length > MAX_MESSAGE_BYTES) {
       // Split the message into chunks
-      const messageParts = meshtasticManager.splitMessageForMeshtastic(trimmedText, MAX_MESSAGE_BYTES);
+      const messageParts = activeManager.splitMessageForMeshtastic(trimmedText, MAX_MESSAGE_BYTES);
 
       // Reject messages that would split into too many parts
       if (messageParts.length > MAX_MESSAGE_PARTS) {
@@ -489,7 +493,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       });
     } else {
       // Message fits in one packet - send directly
-      const requestId = await meshtasticManager.sendTextMessage(
+      const requestId = await activeManager.sendTextMessage(
         trimmedText,
         meshChannel,
         destinationNum,
