@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
 import { useAuth } from '../contexts/AuthContext';
+import { useSource } from '../contexts/SourceContext';
 import type { DeviceInfo, Channel } from '../types/device';
 import { logger } from '../utils/logger';
 import NodeIdentitySection from './configuration/NodeIdentitySection';
@@ -51,6 +52,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { authStatus } = useAuth();
+  const { sourceId } = useSource();
 
   // Device Config State
   const [longName, setLongName] = useState('');
@@ -312,7 +314,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       try {
         setIsLoading(true);
         console.log('[ConfigurationTab] Fetching config from API...');
-        const config = await apiService.getCurrentConfig();
+        const config = await apiService.getCurrentConfig(sourceId);
         console.log('[ConfigurationTab] Received config:', config);
 
         // Populate node info from localNodeInfo
@@ -751,7 +753,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     };
 
     fetchConfig();
-  }, [refreshTrigger]); // Re-run when refreshTrigger changes
+  }, [refreshTrigger, sourceId]); // Re-run when refreshTrigger or sourceId changes
 
   // Separate effect to load position data when nodes become available
   // This runs independently of config loading to avoid re-fetching config
@@ -763,7 +765,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       if (fixedLatitude !== 0 || fixedLongitude !== 0) return;
 
       try {
-        const config = await apiService.getCurrentConfig();
+        const config = await apiService.getCurrentConfig(sourceId);
         if (config.localNodeInfo?.nodeNum) {
           const localNode = nodes.find((n: any) => n.nodeNum === config.localNodeInfo.nodeNum);
           logger.debug('🔍 Loading position from nodes:', config.localNodeInfo.nodeNum, 'found:', !!localNode);
@@ -811,7 +813,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         buzzerMode,
         buttonGpio,
         buzzerGpio
-      });
+      }, sourceId);
       setStatusMessage(t('config.device_config_saved'));
       showToast(t('config.device_config_saved_toast'), 'success');
       // Device config changes don't require reboot
@@ -829,7 +831,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      await apiService.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
+      await apiService.setNodeOwner(longName, shortName, isUnmessagable, isLicensed, sourceId);
       setStatusMessage(t('config.node_names_saved'));
       showToast(t('config.node_names_saved_toast'), 'success');
       // Node owner changes don't require reboot
@@ -874,7 +876,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         txEnabled,
         overrideDutyCycle,
         paFanDisabled
-      });
+      }, sourceId);
       setStatusMessage(t('config.lora_saved'));
       showToast(t('config.lora_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
@@ -930,7 +932,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         rxGpio,
         txGpio,
         gpsEnGpio
-      });
+      }, sourceId);
       setStatusMessage(t('config.position_saved'));
       showToast(t('config.position_saved_toast'), 'success');
       // Position config changes don't require reboot
@@ -963,7 +965,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           publishIntervalSecs: mqttMapPublishIntervalSecs,
           positionPrecision: mqttMapPositionPrecision
         } : undefined
-      });
+      }, sourceId);
       setStatusMessage(t('config.mqtt_saved'));
       showToast(t('config.mqtt_saved_toast'), 'success');
       // MQTT config changes don't require reboot
@@ -992,7 +994,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         enabled: neighborInfoEnabled,
         updateInterval: validInterval,
         transmitOverLora: neighborInfoTransmitOverLora
-      });
+      }, sourceId);
       setStatusMessage(t('config.neighbor_saved'));
       showToast(t('config.neighbor_saved_toast'), 'success');
       // NeighborInfo config changes don't require reboot
@@ -1027,7 +1029,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           dns: ipv4Dns
         } : fullNetworkConfig?.ipv4Config
       };
-      await apiService.setNetworkConfig(updatedConfig);
+      await apiService.setNetworkConfig(updatedConfig, sourceId);
       // Update stored full config with the new values
       setFullNetworkConfig(updatedConfig);
       setStatusMessage(t('config.network_saved'));
@@ -1056,7 +1058,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         lsSecs,
         minWakeSecs,
         deviceBatteryInaAddress
-      });
+      }, sourceId);
       setStatusMessage(t('config.power_saved'));
       showToast(t('config.power_saved_toast'), 'success');
       // Power config changes don't require reboot
@@ -1084,7 +1086,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         headingBold,
         wakeOnTapOrMotion,
         compassOrientation
-      });
+      }, sourceId);
       setStatusMessage(t('config.display_saved'));
       showToast(t('config.display_saved_toast'), 'success');
       // Display config changes don't require reboot
@@ -1117,7 +1119,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         healthMeasurementEnabled,
         healthUpdateInterval,
         healthScreenEnabled
-      });
+      }, sourceId);
       setStatusMessage(t('config.telemetry_saved'));
       showToast(t('config.telemetry_saved_toast'), 'success');
       // Telemetry config changes don't require reboot
@@ -1151,7 +1153,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         useI2sAsBuzzer: extNotifUseI2sAsBuzzer,
         outputVibra: extNotifOutputVibra,
         outputBuzzer: extNotifOutputBuzzer
-      });
+      }, sourceId);
       setStatusMessage(t('config.extnotif_saved'));
       showToast(t('config.extnotif_saved_toast'), 'success');
     } catch (error) {
@@ -1175,7 +1177,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         historyReturnMax: storeForwardHistoryReturnMax,
         historyReturnWindow: storeForwardHistoryReturnWindow,
         isServer: storeForwardIsServer
-      });
+      }, sourceId);
       setStatusMessage(t('config.storeforward_saved'));
       showToast(t('config.storeforward_saved_toast'), 'success');
     } catch (error) {
@@ -1196,7 +1198,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         enabled: rangeTestEnabled,
         sender: rangeTestSender,
         save: rangeTestSave
-      });
+      }, sourceId);
       setStatusMessage(t('config.rangetest_saved'));
       showToast(t('config.rangetest_saved_toast'), 'success');
     } catch (error) {
@@ -1225,7 +1227,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         updown1Enabled: cannedMsgUpdown1Enabled,
         sendBell: cannedMsgSendBell,
         allowInputSource: cannedMsgAllowInputSource
-      });
+      }, sourceId);
       setStatusMessage(t('config.cannedmsg_saved'));
       showToast(t('config.cannedmsg_saved_toast'), 'success');
     } catch (error) {
@@ -1250,7 +1252,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         i2sSd: audioI2sSd,
         i2sDin: audioI2sDin,
         i2sSck: audioI2sSck
-      });
+      }, sourceId);
       setStatusMessage(t('config.audio_saved'));
       showToast(t('config.audio_saved_toast'), 'success');
     } catch (error) {
@@ -1270,7 +1272,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       await apiService.setModuleConfig('remotehardware', {
         enabled: remoteHardwareEnabled,
         allowUndefinedPinAccess: remoteHardwareAllowUndefinedPinAccess
-      });
+      }, sourceId);
       setStatusMessage(t('config.remotehardware_saved'));
       showToast(t('config.remotehardware_saved_toast'), 'success');
     } catch (error) {
@@ -1296,7 +1298,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         monitorPin: detectionSensorMonitorPin,
         detectionTriggerType: detectionSensorDetectionTriggerType,
         usePullup: detectionSensorUsePullup
-      });
+      }, sourceId);
       setStatusMessage(t('config.detectionsensor_saved'));
       showToast(t('config.detectionsensor_saved_toast'), 'success');
     } catch (error) {
@@ -1318,7 +1320,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         paxcounterUpdateInterval: paxcounterUpdateInterval,
         wifiThreshold: paxcounterWifiThreshold,
         bleThreshold: paxcounterBleThreshold
-      });
+      }, sourceId);
       setStatusMessage(t('config.paxcounter_saved'));
       showToast(t('config.paxcounter_saved_toast'), 'success');
     } catch (error) {
@@ -1337,7 +1339,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     try {
       await apiService.setModuleConfig('statusmessage', {
         nodeStatus: statusMessageNodeStatus
-      });
+      }, sourceId);
       setStatusMessage(t('config.statusmessage_saved', 'Status Message config saved'));
       showToast(t('config.statusmessage_saved_toast', 'Status Message config saved successfully'), 'success');
     } catch (error) {
@@ -1369,7 +1371,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         hopExhaustionEnabled: trafficManagementHopExhaustionEnabled,
         hopExhaustionMinHops: trafficManagementHopExhaustionMinHops,
         hopExhaustionMaxHops: trafficManagementHopExhaustionMaxHops
-      });
+      }, sourceId);
       setStatusMessage(t('config.trafficmanagement_saved', 'Traffic Management config saved'));
       showToast(t('config.trafficmanagement_saved_toast', 'Traffic Management config saved successfully'), 'success');
     } catch (error) {
@@ -1395,7 +1397,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         timeout: serialTimeout,
         mode: serialMode,
         overrideConsoleSerialPort: serialOverrideConsoleSerialPort
-      });
+      }, sourceId);
       setStatusMessage(t('config.serial_saved'));
       showToast(t('config.serial_saved_toast'), 'success');
     } catch (error) {
@@ -1418,7 +1420,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         red: ambientRed,
         green: ambientGreen,
         blue: ambientBlue
-      });
+      }, sourceId);
       setStatusMessage(t('config.ambientlighting_saved'));
       showToast(t('config.ambientlighting_saved_toast'), 'success');
     } catch (error) {
@@ -1444,7 +1446,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         serialEnabled: securitySerialEnabled,
         debugLogApiEnabled: securityDebugLogApiEnabled,
         adminChannelEnabled: securityAdminChannelEnabled
-      });
+      }, sourceId);
       setStatusMessage(t('config.security_saved'));
       showToast(t('config.security_saved_toast'), 'success');
       // Security config changes may require reboot for some settings
@@ -1482,7 +1484,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         }
       } else {
         // Fallback to direct API call if handler not provided
-        await apiService.rebootDevice(5);
+        await apiService.rebootDevice(5, sourceId);
         setStatusMessage(t('config.reboot_sent'));
         showToast(t('config.reboot_sent_toast'), 'success');
       }
@@ -1506,7 +1508,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      await apiService.purgeNodeDb(0);
+      await apiService.purgeNodeDb(0, sourceId);
       setStatusMessage(t('config.purge_success'));
       showToast(t('config.purge_success'), 'success');
     } catch (error) {
@@ -1541,7 +1543,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Fetch updated config
-      const config = await apiService.getCurrentConfig();
+      const config = await apiService.getCurrentConfig(sourceId);
 
       const changes: { field: string; oldValue: string; newValue: string }[] = [];
 

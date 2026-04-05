@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
+import { useSource } from '../contexts/SourceContext';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -26,6 +27,7 @@ interface AdminCommandsTabProps {
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { sourceId } = useSource();
 
   // Use consolidated state hook for config-related state
   const {
@@ -414,7 +416,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         try {
           const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
             nodeNum: selectedNodeNum,
-            configType
+            configType,
+            ...(sourceId ? { sourceId } : {})
           });
           if (result?.config) {
             loadFn(result);
@@ -998,7 +1001,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
           const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
             nodeNum: selectedNodeNum,
-            configType
+            configType,
+            ...(sourceId ? { sourceId } : {})
           });
 
           if (result?.config) {
@@ -1389,6 +1393,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       const result = await apiService.post<{ success: boolean; message: string }>('/api/admin/commands', {
         command,
         nodeNum: selectedNodeNum,
+        ...(sourceId ? { sourceId } : {}),
         ...params
       });
       showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
@@ -1400,7 +1405,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedNodeNum, showToast, t]);
+  }, [selectedNodeNum, sourceId, showToast, t]);
 
   const handleReboot = useCallback(async () => {
     if (!confirm(t('admin_commands.reboot_confirmation', { seconds: rebootSeconds }))) {

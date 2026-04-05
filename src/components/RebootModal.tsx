@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
+import { useSource } from '../contexts/SourceContext';
 
 interface RebootModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface RebootModalProps {
 
 export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
   const [statusKey, setStatusKey] = useState<string>('reboot.rebooting');
   const [statusParams, setStatusParams] = useState<Record<string, string | number>>({});
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
@@ -109,7 +111,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       // Get initial reboot count to compare against
       let initialRebootCount: number | undefined;
       try {
-        const initialConfig = await apiService.getCurrentConfig();
+        const initialConfig = await apiService.getCurrentConfig(sourceId);
         initialRebootCount = initialConfig?.localNodeInfo?.rebootCount;
         console.log('[RebootModal] Initial rebootCount:', initialRebootCount);
       } catch (err) {
@@ -135,7 +137,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
           if (aborted) return;
 
           // Check if reboot count has been updated (increments on each reboot)
-          const currentConfig = await apiService.getCurrentConfig();
+          const currentConfig = await apiService.getCurrentConfig(sourceId);
           const currentRebootCount = currentConfig?.localNodeInfo?.rebootCount;
 
           console.log(`[RebootModal] Poll ${pollAttempt}: rebootCount=${currentRebootCount} (initial was ${initialRebootCount})`);
