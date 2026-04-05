@@ -7,6 +7,7 @@
 
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * A data source configured in MeshMonitor
@@ -71,9 +72,11 @@ export function useDashboardSources() {
  * @returns Map from source ID to SourceStatus (or null on error)
  */
 export function useSourceStatuses(sourceIds: string[]): Map<string, SourceStatus | null> {
+  const { authStatus } = useAuth();
+  const isAuthenticated = authStatus?.authenticated ?? false;
   const results = useQueries({
     queries: sourceIds.map((id) => ({
-      queryKey: ['dashboard', 'status', id],
+      queryKey: ['dashboard', 'status', id, isAuthenticated],
       queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${id}/status`),
       refetchInterval: DASHBOARD_POLL_INTERVAL,
       retry: false,
@@ -110,10 +113,12 @@ export interface DashboardSourceData {
  * @returns Combined data object with loading/error state
  */
 export function useDashboardSourceData(sourceId: string | null): DashboardSourceData {
+  const { authStatus } = useAuth();
+  const isAuthenticated = authStatus?.authenticated ?? false;
   const enabled = sourceId !== null;
 
   const nodesQuery = useQuery({
-    queryKey: ['dashboard', 'nodes', sourceId],
+    queryKey: ['dashboard', 'nodes', sourceId, isAuthenticated],
     queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/nodes`),
     enabled,
     retry: false,
@@ -121,7 +126,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   });
 
   const traceroutesQuery = useQuery({
-    queryKey: ['dashboard', 'traceroutes', sourceId],
+    queryKey: ['dashboard', 'traceroutes', sourceId, isAuthenticated],
     queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/traceroutes`),
     enabled,
     retry: false,
@@ -129,7 +134,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   });
 
   const neighborInfoQuery = useQuery({
-    queryKey: ['dashboard', 'neighborInfo', sourceId],
+    queryKey: ['dashboard', 'neighborInfo', sourceId, isAuthenticated],
     queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/neighbor-info`),
     enabled,
     retry: false,
@@ -137,7 +142,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   });
 
   const statusQuery = useQuery({
-    queryKey: ['dashboard', 'status', sourceId],
+    queryKey: ['dashboard', 'status', sourceId, isAuthenticated],
     queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${sourceId}/status`),
     enabled,
     retry: false,
@@ -145,7 +150,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   });
 
   const channelsQuery = useQuery({
-    queryKey: ['dashboard', 'channels', sourceId],
+    queryKey: ['dashboard', 'channels', sourceId, isAuthenticated],
     queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/channels`),
     enabled,
     retry: false,

@@ -20,6 +20,11 @@ vi.mock('../init', () => ({
   appBasename: '/meshmonitor',
 }));
 
+// Mock AuthContext so the hook doesn't require an AuthProvider in tests
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ authStatus: { authenticated: true, user: { isAdmin: true } } }),
+}));
+
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
