@@ -238,7 +238,7 @@ router.post('/request-neighbors', async (req: Request, res: Response) => {
     }
 
     const channel = node?.channel ?? 0;
-    const { packetId, requestId } = await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
+    await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
     neighborInfoRequestTimestamps.set(Number(destinationNum), now);
 
     res.json({
