@@ -20,50 +20,57 @@ import {
 } from './test-utils.js';
 
 // SQL for creating the channels table per backend
+// Matches the schema after migration 023: surrogate pk + UNIQUE(sourceId, id)
 const SQLITE_CREATE = `
   CREATE TABLE IF NOT EXISTS channels (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
+    pk INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER NOT NULL,
+    name TEXT NOT NULL,
     psk TEXT,
     role INTEGER DEFAULT 0,
     uplinkEnabled INTEGER DEFAULT 0,
     downlinkEnabled INTEGER DEFAULT 0,
     positionPrecision INTEGER DEFAULT 0,
-    createdAt INTEGER,
-    updatedAt INTEGER,
-    sourceId TEXT
+    createdAt INTEGER NOT NULL DEFAULT 0,
+    updatedAt INTEGER NOT NULL DEFAULT 0,
+    sourceId TEXT,
+    UNIQUE(sourceId, id)
   )
 `;
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS channels CASCADE;
   CREATE TABLE channels (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
+    pk SERIAL PRIMARY KEY,
+    id INTEGER NOT NULL,
+    name TEXT NOT NULL,
     psk TEXT,
     role INTEGER DEFAULT 0,
     "uplinkEnabled" BOOLEAN DEFAULT false,
     "downlinkEnabled" BOOLEAN DEFAULT false,
     "positionPrecision" INTEGER DEFAULT 0,
-    "createdAt" BIGINT,
-    "updatedAt" BIGINT,
-    "sourceId" TEXT
+    "createdAt" BIGINT NOT NULL DEFAULT 0,
+    "updatedAt" BIGINT NOT NULL DEFAULT 0,
+    "sourceId" TEXT,
+    UNIQUE ("sourceId", id)
   )
 `;
 
 const MYSQL_CREATE = `
   DROP TABLE IF EXISTS channels;
   CREATE TABLE channels (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    psk TEXT,
+    pk INT AUTO_INCREMENT PRIMARY KEY,
+    id INTEGER NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    psk VARCHAR(64),
     role INTEGER DEFAULT 0,
     uplinkEnabled BOOLEAN DEFAULT false,
     downlinkEnabled BOOLEAN DEFAULT false,
     positionPrecision INTEGER DEFAULT 0,
-    createdAt BIGINT,
-    updatedAt BIGINT,
-    sourceId VARCHAR(36)
+    createdAt BIGINT NOT NULL DEFAULT 0,
+    updatedAt BIGINT NOT NULL DEFAULT 0,
+    sourceId VARCHAR(36),
+    UNIQUE KEY channels_source_id_uniq (sourceId, id)
   )
 `;
 

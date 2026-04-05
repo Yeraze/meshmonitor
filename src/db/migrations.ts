@@ -34,6 +34,7 @@ import { migration as addChannelToTraceroutesMigration, runMigration019Postgres,
 import { migration as createSourcesMigration, runMigration020Postgres, runMigration020Mysql } from '../server/migrations/020_create_sources.js';
 import { migration as addSourceIdColumnsMigration, runMigration021Postgres, runMigration021Mysql } from '../server/migrations/021_add_source_id_columns.js';
 import { migration as addSourceIdToPermissionsMigration, runMigration022Postgres, runMigration022Mysql } from '../server/migrations/022_add_source_id_to_permissions.js';
+import { migration as multiSourceChannelsMigration, runMigration023Postgres, runMigration023Mysql } from '../server/migrations/023_multi_source_channels.js';
 
 // ============================================================================
 // Registry
@@ -303,4 +304,19 @@ registry.register({
   sqlite: (db) => addSourceIdToPermissionsMigration.up(db),
   postgres: (client) => runMigration022Postgres(client),
   mysql: (pool) => runMigration022Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 023: Multi-source channels table rebuild
+// Changes channels table PK to surrogate key + UNIQUE(sourceId, id) so each
+// source has its own independent set of channel slots (0-7).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 23,
+  name: 'multi_source_channels',
+  settingsKey: 'migration_023_multi_source_channels',
+  sqlite: (db) => multiSourceChannelsMigration.up(db),
+  postgres: (client) => runMigration023Postgres(client),
+  mysql: (pool) => runMigration023Mysql(pool),
 });

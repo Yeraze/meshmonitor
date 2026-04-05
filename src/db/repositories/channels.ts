@@ -31,14 +31,21 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Get a channel by ID
+   * Get a channel by slot number, optionally scoped to a source.
+   * When sourceId is provided, only returns the channel belonging to that source.
+   * Without sourceId, returns the first matching row (legacy single-source behaviour).
    */
-  async getChannelById(id: number): Promise<DbChannel | null> {
+  async getChannelById(id: number, sourceId?: string): Promise<DbChannel | null> {
     const { channels } = this.tables;
+
+    const whereClause = sourceId
+      ? and(eq(channels.id, id), eq(channels.sourceId, sourceId))
+      : eq(channels.id, id);
+
     const result = await this.db
       .select()
       .from(channels)
-      .where(eq(channels.id, id))
+      .where(whereClause)
       .limit(1);
 
     if (result.length === 0) return null;
@@ -51,7 +58,7 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Get all channels ordered by ID
+   * Get all channels ordered by ID, optionally scoped to a source.
    */
   async getAllChannels(sourceId?: string): Promise<DbChannel[]> {
     const { channels } = this.tables;
@@ -65,19 +72,25 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Get the total number of channels
+   * Get the total number of channels, optionally scoped to a source.
    */
-  async getChannelCount(): Promise<number> {
+  async getChannelCount(sourceId?: string): Promise<number> {
     const { channels } = this.tables;
-    const result = await this.db.select({ count: count() }).from(channels);
+    const whereClause = this.withSourceScope(channels, sourceId);
+    const result = whereClause
+      ? await this.db.select({ count: count() }).from(channels).where(whereClause)
+      : await this.db.select({ count: count() }).from(channels);
     return Number(result[0].count);
   }
 
   /**
-   * Insert or update a channel
+   * Insert or update a channel.
    * Enforces channel role rules:
    * - Channel 0 must always be PRIMARY (role=1)
    * - Other channels cannot be PRIMARY (will be forced to SECONDARY)
+   *
+   * When sourceId is provided the lookup uses (id, sourceId) so each source
+   * manages its own independent set of channel slots.
    */
   async upsertChannel(channelData: ChannelInput, sourceId?: string): Promise<void> {
     const now = this.now();
@@ -98,9 +111,9 @@ export class ChannelsRepository extends BaseRepository {
 
     logger.info(`upsertChannel called with ID: ${data.id}, name: "${data.name}" (length: ${data.name.length})`);
 
-    // Check if channel exists
-    const existingChannel = await this.getChannelById(data.id);
-    logger.info(`getChannelById(${data.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
+    // Look up existing channel using composite key when sourceId is available
+    const existingChannel = await this.getChannelById(data.id, sourceId);
+    logger.info(`getChannelById(${data.id}, sourceId=${sourceId ?? 'none'}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
 
     if (existingChannel) {
       // Update existing channel
@@ -109,18 +122,34 @@ export class ChannelsRepository extends BaseRepository {
       const effectiveName = data.name || existingChannel.name;
       logger.info(`Updating channel ${existingChannel.id}: name "${existingChannel.name}" -> "${effectiveName}" (incoming: "${data.name}")`);
 
-      await this.db
-        .update(channels)
-        .set({
-          name: effectiveName,
-          psk: (data.psk !== undefined && data.psk !== '') ? data.psk : existingChannel.psk,
-          role: data.role ?? existingChannel.role,
-          uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
-          downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,
-          positionPrecision: data.positionPrecision ?? existingChannel.positionPrecision,
-          updatedAt: now,
-        })
-        .where(eq(channels.id, existingChannel.id));
+      const updateSet: any = {
+        name: effectiveName,
+        psk: (data.psk !== undefined && data.psk !== '') ? data.psk : existingChannel.psk,
+        role: data.role ?? existingChannel.role,
+        uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
+        downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,
+        positionPrecision: data.positionPrecision ?? existingChannel.positionPrecision,
+        updatedAt: now,
+      };
+      // Stamp sourceId on existing rows that were created without it (legacy migration)
+      if (sourceId && !(existingChannel as any).sourceId) {
+        updateSet.sourceId = sourceId;
+      }
+
+      // Update by pk (surrogate PK) so we target exactly this source's row
+      const existingPk = (existingChannel as any).pk;
+      if (existingPk !== undefined) {
+        await this.db
+          .update(channels)
+          .set(updateSet)
+          .where(eq((channels as any).pk, existingPk));
+      } else {
+        // Fallback: update by (id, sourceId) if pk not present (pre-migration safety)
+        const updateWhere = sourceId
+          ? and(eq(channels.id, existingChannel.id), eq(channels.sourceId, sourceId))
+          : eq(channels.id, existingChannel.id);
+        await this.db.update(channels).set(updateSet).where(updateWhere);
+      }
 
       logger.info(`Updated channel ${existingChannel.id}`);
     } else {
@@ -148,11 +177,14 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Delete a channel by ID
+   * Delete a channel by slot ID, optionally scoped to a source.
    */
-  async deleteChannel(id: number): Promise<void> {
+  async deleteChannel(id: number, sourceId?: string): Promise<void> {
     const { channels } = this.tables;
-    await this.db.delete(channels).where(eq(channels.id, id));
+    const whereClause = sourceId
+      ? and(eq(channels.id, id), eq(channels.sourceId, sourceId))
+      : eq(channels.id, id);
+    await this.db.delete(channels).where(whereClause);
   }
 
   /**

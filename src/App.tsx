@@ -2974,6 +2974,7 @@ function App() {
           channel: 0, // Backend may expect channel 0 for DMs
           destination: destinationNodeId,
           replyId: replyId,
+          sourceId: sourceId || undefined,
         }),
       });
 
@@ -3033,6 +3034,7 @@ function App() {
           destination: toNodeId, // Server expects 'destination' not 'toNodeId'
           replyId: replyId,
           emoji: EMOJI_FLAG,
+          sourceId: sourceId || undefined,
         };
       } else {
         // For channel messages: use channel
@@ -3041,6 +3043,7 @@ function App() {
           channel: originalMessage.channel,
           replyId: replyId,
           emoji: EMOJI_FLAG,
+          sourceId: sourceId || undefined,
         };
       }
 
@@ -3501,6 +3504,7 @@ function App() {
           text: messageText,
           channel: messageChannel,
           replyId: replyId,
+          sourceId: sourceId || undefined,
         }),
       });
 
@@ -3554,7 +3558,7 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bellText, channel }),
+        body: JSON.stringify({ text: bellText, channel, sourceId: sourceId || undefined }),
       });
 
       if (response.ok) {
@@ -3579,7 +3583,7 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bellText, channel: 0, destination: destinationNodeId }),
+        body: JSON.stringify({ text: bellText, channel: 0, destination: destinationNodeId, sourceId: sourceId || undefined }),
       });
 
       if (response.ok) {
@@ -3679,8 +3683,8 @@ function App() {
       // DMs include a destination parameter, channel messages include a channel parameter
       const endpoint = `${baseUrl}/api/messages/send`;
       const body = isDM
-        ? { text: message.text, destination: destinationNodeId }
-        : { text: message.text, channel: messageChannel };
+        ? { text: message.text, destination: destinationNodeId, sourceId: sourceId || undefined }
+        : { text: message.text, channel: messageChannel, sourceId: sourceId || undefined };
 
       const response = await authFetch(endpoint, {
         method: 'POST',

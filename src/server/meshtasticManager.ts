@@ -696,7 +696,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Snapshot channel state before config sync for migration detection (#2425)
       try {
-        this.preConfigChannelSnapshot = (await databaseService.channels.getAllChannels())
+        this.preConfigChannelSnapshot = (await databaseService.channels.getAllChannels(this.sourceId))
           .map(ch => ({ id: ch.id, psk: ch.psk, name: ch.name }));
         logger.debug(`📸 Snapshotted ${this.preConfigChannelSnapshot.length} channels before config sync`);
       } catch {
@@ -864,7 +864,7 @@ class MeshtasticManager implements ISourceManager {
     // Create default channel with ID 0 for messages that use channel 0
     // This is Meshtastic's default channel when no specific channel is configured
     try {
-      const existingChannel0 = await databaseService.channels.getChannelById(0);
+      const existingChannel0 = await databaseService.channels.getChannelById(0, this.sourceId);
       if (!existingChannel0) {
         // Manually insert channel with ID 0 since it might not come from device
         // Use upsertChannel to properly set role=PRIMARY (1)
@@ -872,7 +872,7 @@ class MeshtasticManager implements ISourceManager {
           id: 0,
           name: 'Primary',
           role: 1  // PRIMARY
-        });
+        }, this.sourceId);
         logger.debug('📡 Created Primary channel with ID 0 and role PRIMARY');
       }
     } catch (error) {
@@ -884,7 +884,7 @@ class MeshtasticManager implements ISourceManager {
     logger.debug('🔧 Ensuring basic setup is complete...');
 
     // Ensure we have at least a Primary channel
-    const channelCount = await databaseService.channels.getChannelCount();
+    const channelCount = await databaseService.channels.getChannelCount(this.sourceId);
     if (channelCount === 0) {
       await this.createDefaultChannels();
     }
@@ -3595,7 +3595,7 @@ class MeshtasticManager implements ISourceManager {
             uplinkEnabled: channel.settings.uplinkEnabled ?? true,
             downlinkEnabled: channel.settings.downlinkEnabled ?? true,
             positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
-          });
+          }, this.sourceId);
           logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
         } catch (error) {
           logger.error('❌ Failed to save channel:', error);
@@ -4018,7 +4018,7 @@ class MeshtasticManager implements ISourceManager {
           // Check if the database channel's PSK matches a device channel — if so, prefer the device channel
           // This prevents database channels from "shadowing" device channels with the same key (#2375, #2413)
           const dbChannel = await databaseService.channelDatabase.getByIdAsync(context.decryptedChannelId);
-          const deviceChannels = await databaseService.channels.getAllChannels();
+          const deviceChannels = await databaseService.channels.getAllChannels(this.sourceId);
           const matchingDeviceChannel = dbChannel?.psk
             ? deviceChannels.find(dc => dc.psk === dbChannel.psk && dc.role !== 0)
             : null;
@@ -4038,11 +4038,11 @@ class MeshtasticManager implements ISourceManager {
         // Ensure channel 0 exists if this message uses it (cached to avoid
         // repeated DB queries during config capture — up to 241 messages) (#2474)
         if (!isDirectMessage && channelIndex === 0 && !this.channel0Exists) {
-          const channel0 = await databaseService.channels.getChannelById(0);
+          const channel0 = await databaseService.channels.getChannelById(0, this.sourceId);
           if (!channel0) {
             logger.debug('📡 Creating channel 0 for message (name will be set when device config syncs)');
             // Create with role=1 (Primary) as channel 0 is always the primary channel in Meshtastic
-            await databaseService.channels.upsertChannel({ id: 0, name: '', role: 1 });
+            await databaseService.channels.upsertChannel({ id: 0, name: '', role: 1 }, this.sourceId);
           }
           this.channel0Exists = true;
         }
@@ -4119,7 +4119,7 @@ class MeshtasticManager implements ISourceManager {
             } else if (meshPacket.channel !== undefined) {
               // Primary went to database channel — also insert into radio channel if it exists
               const radioChannelIndex = meshPacket.channel;
-              const radioChannel = await databaseService.channels.getChannelById(radioChannelIndex);
+              const radioChannel = await databaseService.channels.getChannelById(radioChannelIndex, this.sourceId);
               if (radioChannel) {
                 const radioCopy: TextMessage = {
                   ...message,
@@ -4218,7 +4218,7 @@ class MeshtasticManager implements ISourceManager {
         // Also fall back if precisionBits is 0 (which means no precision was set)
         let precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
         if (precisionBits === undefined || precisionBits === 0) {
-          const channel = await databaseService.channels.getChannelById(channelIndex);
+          const channel = await databaseService.channels.getChannelById(channelIndex, this.sourceId);
           if (channel && channel.positionPrecision !== undefined && channel.positionPrecision !== null && channel.positionPrecision > 0) {
             precisionBits = channel.positionPrecision;
             logger.debug(`🗺️ Using channel ${channelIndex} positionPrecision (${precisionBits}) for position from ${nodeId}`);
@@ -6113,7 +6113,7 @@ class MeshtasticManager implements ISourceManager {
           // Fall back to channel's positionPrecision if not in position data
           // Also fall back if precisionBits is 0 (which means no precision was set)
           if (precisionBits === undefined || precisionBits === 0) {
-            const channel = await databaseService.channels.getChannelById(channelIndex);
+            const channel = await databaseService.channels.getChannelById(channelIndex, this.sourceId);
             if (channel && channel.positionPrecision !== undefined && channel.positionPrecision !== null && channel.positionPrecision > 0) {
               precisionBits = channel.positionPrecision;
               logger.debug(`🗺️ NodeInfo for ${nodeId}: using channel ${channelIndex} positionPrecision (${precisionBits}) as fallback`);
@@ -6336,7 +6336,7 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async buildDeviceConfigFromActual(): Promise<any> {
-    const dbChannels = await databaseService.channels.getAllChannels();
+    const dbChannels = await databaseService.channels.getAllChannels(this.sourceId);
     const channels = dbChannels.map(ch => ({
       index: ch.id,
       name: ch.name,
@@ -7055,7 +7055,7 @@ class MeshtasticManager implements ISourceManager {
         body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
       } else {
         // Get channel name
-        const channel = await databaseService.channels.getChannelById(message.channel);
+        const channel = await databaseService.channels.getChannelById(message.channel, this.sourceId);
         const channelName = channel?.name || `Channel ${message.channel}`;
         title = `${senderName} in ${channelName}`;
         body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
@@ -9547,7 +9547,7 @@ class MeshtasticManager implements ISourceManager {
       if (isDirectMessage) {
         channelName = 'DM';
       } else {
-        const channel = await databaseService.channels.getChannelById(channelIndex);
+        const channel = await databaseService.channels.getChannelById(channelIndex, this.sourceId);
         // Use channel name if available and not empty, otherwise fall back to channel number
         channelName = (channel?.name && channel.name.trim()) ? channel.name.trim() : channelIndex.toString();
       }
@@ -11293,7 +11293,7 @@ class MeshtasticManager implements ISourceManager {
     if (this.preConfigChannelSnapshot.length === 0) return;
 
     try {
-      const afterSnapshot = (await databaseService.channels.getAllChannels())
+      const afterSnapshot = (await databaseService.channels.getAllChannels(this.sourceId))
         .map(ch => ({ id: ch.id, psk: ch.psk, name: ch.name }));
 
       // Detect moves by comparing PSK + name (both must match to confirm identity)

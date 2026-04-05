@@ -3212,7 +3212,7 @@ apiRouter.post('/cleanup/channels', requireAdmin(), async (_req, res) => {
 // Send message endpoint
 apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
   try {
-    const { text, channel, destination, replyId, emoji } = req.body;
+    const { text, channel, destination, replyId, emoji, sourceId: reqSourceId } = req.body;
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'Message text is required' });
     }
@@ -3279,10 +3279,15 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
       }
     }
 
+    // Route to the correct source manager when sourceId is provided
+    const activeManager = (reqSourceId
+      ? (sourceManagerRegistry.getManager(reqSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
     // Pass userId so sent messages are automatically marked as read for the sender
-    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id);
+    await activeManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id);
 
     res.json({ success: true });
   } catch (error) {
