@@ -381,7 +381,8 @@ describe('GET /api/v1/', () => {
         packets: '/api/v1/packets',
         solar: '/api/v1/solar',
         positionHistory: '/api/v1/nodes/{nodeId}/position-history',
-        status: '/api/v1/status'
+        status: '/api/v1/status',
+        actions: '/api/v1/actions'
       }
     });
   });
