@@ -1367,13 +1367,15 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 });
 
 // Get auto-favorite status (local role, firmware, managed nodes)
-apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (_req, res) => {
+apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (req, res) => {
   try {
+    const afSourceId = req.query.sourceId as string | undefined;
+    const afManager = afSourceId ? (sourceManagerRegistry.getManager(afSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
-    const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : meshtasticManager.getLocalNodeInfo()?.nodeNum;
+    const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : afManager.getLocalNodeInfo()?.nodeNum;
     const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt) : null;
-    const firmwareVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion || null;
-    const supportsFavorites = meshtasticManager.supportsFavorites();
+    const firmwareVersion = afManager.getLocalNodeInfo()?.firmwareVersion || null;
+    const supportsFavorites = afManager.supportsFavorites();
 
     const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
     const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
@@ -2082,7 +2084,8 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
     }
 
     const limit = parseInt(req.query.limit as string) || 100;
-    let messages = await meshtasticManager.getRecentMessages(limit);
+    const messagesSourceId = req.query.sourceId as string | undefined;
+    let messages = await meshtasticManager.getRecentMessages(limit, messagesSourceId);
 
     // Filter messages based on permissions
     // If user only has channels permission, exclude direct messages (channel -1)
@@ -2198,7 +2201,8 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
 // Mark messages as read
 apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
   try {
-    const { messageIds, channelId, nodeId, beforeTimestamp, allDMs } = req.body;
+    const { messageIds, channelId, nodeId, beforeTimestamp, allDMs, sourceId: markReadSourceId } = req.body;
+    const markReadManager = markReadSourceId ? (sourceManagerRegistry.getManager(markReadSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
 
     // If marking by channelId, check per-channel read permission
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
@@ -2233,7 +2237,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
       markedCount = messageIds.length;
     } else if (allDMs) {
       // Mark ALL DMs as read
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = markReadManager.getLocalNodeInfo();
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
       }
@@ -2243,7 +2247,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
       markedCount = await databaseService.markChannelMessagesAsReadAsync(channelId, userId, beforeTimestamp);
     } else if (nodeId) {
       // Mark all DMs with a node as read (permission already checked above)
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = markReadManager.getLocalNodeInfo();
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
       }
@@ -2383,9 +2387,10 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), async (_
 });
 
 // Get all channels (unfiltered, for export/config purposes)
-apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (_req, res) => {
+apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (req, res) => {
   try {
-    const allChannels = await databaseService.channels.getAllChannels();
+    const allChannelsSourceId = req.query.sourceId as string | undefined;
+    const allChannels = await databaseService.channels.getAllChannels(allChannelsSourceId);
     logger.debug(`📡 Serving all ${allChannels.length} channels (unfiltered)`);
     res.json(allChannels);
   } catch (error) {
@@ -2394,9 +2399,10 @@ apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (_r
   }
 });
 
-apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (_req, res) => {
+apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (req, res) => {
   try {
-    const allChannels = await databaseService.channels.getAllChannels();
+    const channelsSourceId = req.query.sourceId as string | undefined;
+    const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
 
     // Channel 0 will be created automatically when device config syncs
     // It should have an empty name as per Meshtastic protocol
@@ -2926,7 +2932,8 @@ apiRouter.post('/channels/decode-url', requirePermission('configuration', 'read'
 // Encode current configuration to Meshtastic URL
 apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'), async (req, res) => {
   try {
-    const { channelIds, includeLoraConfig } = req.body;
+    const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
+    const encodeUrlManager = encodeUrlSourceId ? (sourceManagerRegistry.getManager(encodeUrlSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
@@ -2959,7 +2966,7 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
     let loraConfig = undefined;
     if (includeLoraConfig) {
       logger.info('📡 includeLoraConfig is TRUE, fetching device config...');
-      const deviceConfig = await meshtasticManager.getDeviceConfig();
+      const deviceConfig = await encodeUrlManager.getDeviceConfig();
       logger.info('📡 Device config lora:', JSON.stringify(deviceConfig?.lora, null, 2));
       if (deviceConfig?.lora) {
         loraConfig = {
@@ -4744,13 +4751,15 @@ apiRouter.get('/device-config', requirePermission('configuration', 'read'), asyn
 apiRouter.get('/device/backup', requirePermission('configuration', 'read'), async (req, res) => {
   try {
     const saveToFile = req.query.save === 'true';
+    const backupSourceId = req.query.sourceId as string | undefined;
+    const backupManager = backupSourceId ? (sourceManagerRegistry.getManager(backupSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     logger.info(`📦 Device backup requested (save=${saveToFile})...`);
 
     // Generate YAML backup using the device backup service
-    const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
+    const yamlBackup = await deviceBackupService.generateBackup(backupManager);
 
     // Get node ID for filename
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = backupManager.getLocalNodeInfo();
     const nodeId = localNodeInfo?.nodeId || '!unknown';
 
     if (saveToFile) {
@@ -5943,7 +5952,9 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
     if (!message) {
       return res.status(400).json({ error: 'Missing message parameter' });
     }
-    const preview = await meshtasticManager.previewAnnouncementMessage(message);
+    const previewSourceId = req.query.sourceId as string | undefined;
+    const previewManager = previewSourceId ? (sourceManagerRegistry.getManager(previewSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const preview = await previewManager.previewAnnouncementMessage(message);
     res.json({ preview });
   } catch (error) {
     logger.error('Error generating announcement preview:', error);

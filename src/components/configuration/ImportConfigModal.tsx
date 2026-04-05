@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
+import { useSource } from '../../contexts/SourceContext';
 
 interface ImportConfigModalProps {
   isOpen: boolean;
@@ -57,6 +58,7 @@ const regionNames: { [key: number]: string } = {
 
 export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess, nodeNum }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
   const [url, setUrl] = useState('');
   const [decoded, setDecoded] = useState<DecodedConfig | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
@@ -104,7 +106,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
       // - Write selected channels to the device
       // - Write LoRa config to the device if selected
       setImportStatus(t('import_config.status_sending'));
-      const result = await apiService.importConfig(url, nodeNum);
+      const result = await apiService.importConfig(url, nodeNum, sourceId);
 
       console.log('Import result:', result);
 
@@ -145,7 +147,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
         const statusData = await apiService.getConnectionStatus();
         if (statusData.connected === true) {
           // Device is back online - request fresh config from device
-          await apiService.refreshNodes();
+          await apiService.refreshNodes(sourceId);
           return;
         }
       } catch (err) {

@@ -2204,7 +2204,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           uplinkEnabled: normalizeBoolean(channelData.uplinkEnabled, true),
           downlinkEnabled: normalizeBoolean(channelData.downlinkEnabled, true)
         };
-        await apiService.importChannel(importSlotId, normalizedChannelData);
+        await apiService.importChannel(importSlotId, normalizedChannelData, sourceId);
         showToast(t('admin_commands.channel_imported_successfully', { importSlotId }), 'success');
         // Refresh channels
         if (_onChannelsUpdated) {
@@ -3886,7 +3886,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             
             if (isLocalNode) {
               // For local nodes, fetch from API
-              const allChannels = await apiService.getAllChannels();
+              const allChannels = await apiService.getAllChannels(sourceId);
               setRemoteNodeChannels(allChannels);
             } else {
               // For remote nodes, only load channels (not all configs)

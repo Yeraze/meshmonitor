@@ -1537,7 +1537,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
     try {
       // Request fresh config from device
-      await apiService.refreshNodes();
+      await apiService.refreshNodes(sourceId);
 
       // Wait a moment for device to respond
       await new Promise(resolve => setTimeout(resolve, 2000));

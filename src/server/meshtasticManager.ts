@@ -4087,7 +4087,7 @@ class MeshtasticManager implements ISourceManager {
           createdAt: Date.now(),
           decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
         };
-        const wasInserted = await databaseService.messages.insertMessage(message);
+        const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
         if (wasInserted) {
           // Emit WebSocket event for real-time updates
@@ -4111,7 +4111,7 @@ class MeshtasticManager implements ISourceManager {
                 channel: dbChannelIndex,
                 decryptedBy: 'server',
               };
-              const dbInserted = await databaseService.messages.insertMessage(dbCopy);
+              const dbInserted = await databaseService.messages.insertMessage(dbCopy, this.sourceId);
               if (dbInserted) {
                 dataEventEmitter.emitNewMessage(dbCopy as any, this.sourceId);
                 logger.debug(`💾 Also saved to database channel ${dbChannelIndex}`);
@@ -4127,7 +4127,7 @@ class MeshtasticManager implements ISourceManager {
                   channel: radioChannelIndex,
                   decryptedBy: 'server',
                 };
-                const radioInserted = await databaseService.messages.insertMessage(radioCopy);
+                const radioInserted = await databaseService.messages.insertMessage(radioCopy, this.sourceId);
                 if (radioInserted) {
                   dataEventEmitter.emitNewMessage(radioCopy as any, this.sourceId);
                   logger.debug(`💾 Also saved to radio channel ${radioChannelIndex} ("${radioChannel.name}")`);
@@ -5257,7 +5257,7 @@ class MeshtasticManager implements ISourceManager {
         createdAt: Date.now()
       };
 
-      const wasInserted = await databaseService.messages.insertMessage(message);
+      const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
       // Emit WebSocket event for traceroute message only if actually new
       if (wasInserted) {
@@ -6538,7 +6538,7 @@ class MeshtasticManager implements ISourceManager {
           createdAt: Date.now()
         };
 
-        await databaseService.messages.insertMessage(message);
+        await databaseService.messages.insertMessage(message, this.sourceId);
 
         // Emit WebSocket event for real-time updates (sent message)
         dataEventEmitter.emitNewMessage(message as any, this.sourceId);

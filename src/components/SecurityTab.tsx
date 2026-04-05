@@ -5,6 +5,7 @@ import api from '../services/api';
 import { TabType } from '../types/ui';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { logger } from '../utils/logger';
+import { useSource } from '../contexts/SourceContext';
 import '../styles/SecurityTab.css';
 
 interface SecurityNode {
@@ -78,6 +79,7 @@ interface SecurityTabProps {
 export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, setNewMessage }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const { sourceId } = useSource();
   const [issues, setIssues] = useState<SecurityIssuesResponse | null>(null);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,11 +107,12 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
 
   const fetchSecurityData = async () => {
     try {
+      const srcParam = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
       const [issuesData, statusData, mismatchData, deadNodesData] = await Promise.all([
-        api.get<SecurityIssuesResponse>('/api/security/issues'),
+        api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
         api.get<ScannerStatus>('/api/security/scanner/status'),
         api.get<{ events: any[] }>('/api/security/key-mismatches'),
-        api.get<DeadNodesResponse>('/api/security/dead-nodes')
+        api.get<DeadNodesResponse>(`/api/security/dead-nodes${srcParam}`)
       ]);
 
       setIssues(issuesData);
@@ -130,7 +133,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     // Refresh every 30 seconds
     const interval = setInterval(fetchSecurityData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [sourceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load digest settings
   useEffect(() => {
@@ -366,7 +369,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
 
     setIsDeletingNodes(true);
     try {
-      await api.post('/api/security/dead-nodes/bulk-delete', { nodeNums: Array.from(selectedDeadNodes) });
+      await api.post('/api/security/dead-nodes/bulk-delete', { nodeNums: Array.from(selectedDeadNodes), ...(sourceId ? { sourceId } : {}) });
       setSelectedDeadNodes(new Set());
       await fetchSecurityData();
     } catch (err) {

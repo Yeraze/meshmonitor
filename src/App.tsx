@@ -2258,7 +2258,8 @@ function App() {
       // Use the provided baseUrl or fall back to the state value
       const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
       try {
-        const channelsResponse = await authFetch(`${urlBase}/api/channels`);
+        const channelsUrl = sourceId ? `${urlBase}/api/channels?sourceId=${encodeURIComponent(sourceId)}` : `${urlBase}/api/channels`;
+        const channelsResponse = await authFetch(channelsUrl);
         if (channelsResponse.ok) {
           const channelsData = await channelsResponse.json();
 
@@ -2306,7 +2307,7 @@ function App() {
         logger.error('Error fetching channels:', error);
       }
     },
-    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels]
+    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels, sourceId]
   );
 
   // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint

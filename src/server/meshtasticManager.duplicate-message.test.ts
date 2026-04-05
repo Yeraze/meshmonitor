@@ -271,7 +271,8 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
           text: 'Test message',
           fromNodeNum: 0x11223344,
           toNodeNum: 0xffffffff,
-        })
+        }),
+        expect.anything()
       );
     });
 

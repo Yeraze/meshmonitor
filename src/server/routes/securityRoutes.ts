@@ -341,8 +341,10 @@ router.get('/key-mismatches', async (_req: Request, res: Response) => {
  * GET /api/security/dead-nodes
  * Returns nodes not heard from in 7+ days
  */
-router.get('/dead-nodes', async (_req: Request, res: Response) => {
+router.get('/dead-nodes', async (req: Request, res: Response) => {
   try {
+    const deadNodesSourceId = req.query.sourceId as string | undefined;
+    const deadNodesManager = deadNodesSourceId ? (sourceManagerRegistry.getManager(deadNodesSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     const DEAD_NODE_DAYS = 7;
     const cutoffSeconds = Math.floor(Date.now() / 1000) - (DEAD_NODE_DAYS * 24 * 60 * 60);
 
@@ -368,7 +370,7 @@ router.get('/dead-nodes', async (_req: Request, res: Response) => {
         shortName: node.shortName,
         hwModel: node.hwModel,
         lastHeard: node.lastHeard ? Number(node.lastHeard) : null,
-        inDeviceDb: meshtasticManager.isNodeInDeviceDb(Number(node.nodeNum)),
+        inDeviceDb: deadNodesManager.isNodeInDeviceDb(Number(node.nodeNum)),
       }))
       .sort((a, b) => (a.lastHeard ?? 0) - (b.lastHeard ?? 0)); // Oldest first
 
