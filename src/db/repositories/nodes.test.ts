@@ -463,13 +463,13 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(800));
+    await repo.upsertNode(makeNode(800), 'default');
 
-    await repo.setNodeFavorite(800, true);
+    await repo.setNodeFavorite(800, true, 'default');
     let node = await repo.getNode(800);
     expect(node!.isFavorite).toBe(true);
 
-    await repo.setNodeFavorite(800, false);
+    await repo.setNodeFavorite(800, false, 'default');
     node = await repo.getNode(800);
     expect(node!.isFavorite).toBe(false);
   });
@@ -481,8 +481,8 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(801));
-    await repo.setNodeFavorite(801, true, true);
+    await repo.upsertNode(makeNode(801), 'default');
+    await repo.setNodeFavorite(801, true, 'default', true);
 
     const node = await repo.getNode(801);
     expect(node!.isFavorite).toBe(true);
@@ -498,13 +498,13 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(900));
+    await repo.upsertNode(makeNode(900), 'default');
 
-    await repo.setNodeIgnored(900, true);
+    await repo.setNodeIgnored(900, true, 'default');
     let node = await repo.getNode(900);
     expect(node!.isIgnored).toBe(true);
 
-    await repo.setNodeIgnored(900, false);
+    await repo.setNodeIgnored(900, false, 'default');
     node = await repo.getNode(900);
     expect(node!.isIgnored).toBe(false);
   });
@@ -518,8 +518,8 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(1000));
-    const deleted = await repo.deleteNodeRecord(1000);
+    await repo.upsertNode(makeNode(1000), 'default');
+    const deleted = await repo.deleteNodeRecord(1000, 'default');
     expect(deleted).toBe(true);
     expect(await repo.getNode(1000)).toBeNull();
   });
@@ -531,7 +531,7 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    const deleted = await repo.deleteNodeRecord(99999);
+    const deleted = await repo.deleteNodeRecord(99999, 'default');
     expect(deleted).toBe(false);
   });
 
@@ -547,18 +547,18 @@ function runNodesTests(getBackend: () => TestBackend) {
     const now = Date.now();
     // Old node (lastHeard far in the past - cleanupInactiveNodes uses millisecond cutoff via this.now())
     const oldTime = now - (60 * 24 * 60 * 60 * 1000); // 60 days ago in ms
-    await repo.upsertNode(makeNode(1100, { lastHeard: oldTime }));
+    await repo.upsertNode(makeNode(1100, { lastHeard: oldTime }), 'default');
 
     // Recent node
     const recentTime = now - (1 * 24 * 60 * 60 * 1000); // 1 day ago in ms
-    await repo.upsertNode(makeNode(1101, { lastHeard: recentTime }));
+    await repo.upsertNode(makeNode(1101, { lastHeard: recentTime }), 'default');
 
     // Old but ignored node (should NOT be deleted)
-    await repo.upsertNode(makeNode(1102, { lastHeard: oldTime }));
-    await repo.setNodeIgnored(1102, true);
+    await repo.upsertNode(makeNode(1102, { lastHeard: oldTime }), 'default');
+    await repo.setNodeIgnored(1102, true, 'default');
 
     // Node with null lastHeard (should be deleted)
-    await repo.upsertNode(makeNode(1103));
+    await repo.upsertNode(makeNode(1103), 'default');
 
     const deletedCount = await repo.cleanupInactiveNodes(30);
     // Should delete node 1100 (old) and 1103 (null lastHeard), keep 1101 (recent) and 1102 (ignored)

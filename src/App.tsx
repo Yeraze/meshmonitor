@@ -3412,7 +3412,7 @@ function App() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, sourceId }),
     });
 
     if (!response.ok) {
@@ -4057,6 +4057,7 @@ function App() {
         body: JSON.stringify({
           isFavorite: newFavoriteStatus,
           syncToDevice: true, // Enable two-way sync to Meshtastic device
+          sourceId,
         }),
       });
 
@@ -4124,7 +4125,7 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite-lock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locked: newLocked }),
+        body: JSON.stringify({ locked: newLocked, sourceId }),
       });
 
       if (!response.ok) {
@@ -4184,6 +4185,7 @@ function App() {
         body: JSON.stringify({
           isIgnored: newIgnoredStatus,
           syncToDevice: true, // Enable two-way sync to Meshtastic device
+          sourceId,
         }),
       });
 

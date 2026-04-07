@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
+import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { ROLE_NAMES, DeviceRole } from '../constants';
@@ -32,6 +33,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const sourceQuery = useSourceQuery();
+  const { sourceId } = useSource();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(false);
   const [localStaleHours, setLocalStaleHours] = useState(72);
@@ -302,7 +304,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                               const resp = await csrfFetch(`${baseUrl}/api/nodes/${nodeId}/favorite-lock`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ locked: true }),
+                                body: JSON.stringify({ locked: true, sourceId }),
                               });
                               if (resp.ok) {
                                 showToast(t('automation.auto_favorite.node_locked', 'Node locked from automation'), 'success');

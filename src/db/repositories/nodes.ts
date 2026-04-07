@@ -488,18 +488,20 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Delete a node by nodeNum
+   * Delete a node by nodeNum scoped to sourceId
    */
-  async deleteNodeRecord(nodeNum: number): Promise<boolean> {
+  async deleteNodeRecord(nodeNum: number, sourceId: string): Promise<boolean> {
     const { nodes } = this.tables;
     const existing = await this.db
       .select({ nodeNum: nodes.nodeNum })
       .from(nodes)
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
 
     if (existing.length === 0) return false;
 
-    await this.db.delete(nodes).where(eq(nodes.nodeNum, nodeNum));
+    await this.db
+      .delete(nodes)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
     return true;
   }
 
@@ -533,9 +535,9 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Set node favorite status
+   * Set node favorite status (scoped to sourceId)
    */
-  async setNodeFavorite(nodeNum: number, isFavorite: boolean, favoriteLocked?: boolean): Promise<void> {
+  async setNodeFavorite(nodeNum: number, isFavorite: boolean, sourceId: string, favoriteLocked?: boolean): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
@@ -547,33 +549,33 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .update(nodes)
       .set(setData)
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Set only the favoriteLocked flag (without changing isFavorite)
+   * Set only the favoriteLocked flag (without changing isFavorite), scoped to sourceId
    */
-  async setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean): Promise<void> {
+  async setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
     await this.db
       .update(nodes)
       .set({ favoriteLocked, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Set node ignored status
+   * Set node ignored status (scoped to sourceId)
    */
-  async setNodeIgnored(nodeNum: number, isIgnored: boolean): Promise<void> {
+  async setNodeIgnored(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
     await this.db
       .update(nodes)
       .set({ isIgnored, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**

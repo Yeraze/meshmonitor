@@ -1999,7 +1999,7 @@ class DatabaseService {
                 updatedNode.isIgnored = true;
                 this.nodesCache.set(this.cacheKey(nodeData.nodeNum!, upsertSourceId), updatedNode);
                 if (this.nodesRepo) {
-                  this.nodesRepo.setNodeIgnored(nodeData.nodeNum!, true).catch(err => {
+                  this.nodesRepo.setNodeIgnored(nodeData.nodeNum!, true, upsertSourceId).catch(err => {
                     logger.error('Failed to restore ignored status:', err);
                   });
                 }
@@ -3754,7 +3754,7 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  deleteNode(nodeNum: number): {
+  deleteNode(nodeNum: number, sourceId: string): {
     messagesDeleted: number;
     traceroutesDeleted: number;
     telemetryDeleted: number;
@@ -3762,19 +3762,16 @@ class DatabaseService {
   } {
     // For PostgreSQL/MySQL, update cache and fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Remove from cache immediately
-      // TODO Phase 3C: sourceId needed here — deleteNode signature is nodeNum-only.
-      let existed = false;
-      for (const [key, node] of this.nodesCache.entries()) {
-        if (node.nodeNum === nodeNum) {
-          existed = true;
-          this.nodesCache.delete(key);
-        }
+      // Remove from cache immediately (scoped lookup)
+      const key = this.cacheKey(nodeNum, sourceId);
+      const existed = this.nodesCache.has(key);
+      if (existed) {
+        this.nodesCache.delete(key);
       }
 
       // Fire-and-forget async deletion of all associated data
-      this.deleteNodeAsync(nodeNum).catch(err => {
-        logger.error(`Failed to delete node ${nodeNum} from database:`, err);
+      this.deleteNodeAsync(nodeNum, sourceId).catch(err => {
+        logger.error(`Failed to delete node ${nodeNum}@${sourceId} from database:`, err);
       });
 
       // Return immediately with cache-based result
@@ -3821,9 +3818,9 @@ class DatabaseService {
     `);
     neighborInfoStmt.run(nodeNum, nodeNum);
 
-    // Delete the node from the nodes table
-    const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ?');
-    const nodeResult = nodeStmt.run(nodeNum);
+    // Delete the node from the nodes table (scoped to sourceId)
+    const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ? AND sourceId = ?');
+    const nodeResult = nodeStmt.run(nodeNum, sourceId);
     const nodeDeleted = Number(nodeResult.changes) > 0;
 
     return {
@@ -7632,9 +7629,9 @@ class DatabaseService {
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
 
   /**
-   * Delete a node and all associated data (async version for PostgreSQL)
+   * Delete a node and all associated data (scoped to sourceId — Phase 3C2)
    */
-  async deleteNodeAsync(nodeNum: number): Promise<{
+  async deleteNodeAsync(nodeNum: number, sourceId: string): Promise<{
     messagesDeleted: number;
     traceroutesDeleted: number;
     telemetryDeleted: number;
@@ -7668,20 +7665,17 @@ class DatabaseService {
         await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum);
       }
 
-      // Delete the node itself
+      // Delete the node itself (scoped to sourceId)
       if (this.nodesRepo) {
-        nodeDeleted = await this.nodesRepo.deleteNodeRecord(nodeNum);
+        nodeDeleted = await this.nodesRepo.deleteNodeRecord(nodeNum, sourceId);
       }
 
-      // Also remove from cache
-      // TODO Phase 3C: sourceId needed here — deleteNodeAsync signature is nodeNum-only.
-      for (const [key, node] of this.nodesCache.entries()) {
-        if (node.nodeNum === nodeNum) this.nodesCache.delete(key);
-      }
+      // Also remove from cache (scoped lookup)
+      this.nodesCache.delete(this.cacheKey(nodeNum, sourceId));
 
-      logger.debug(`Deleted node ${nodeNum}: messages=${messagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
+      logger.debug(`Deleted node ${nodeNum}@${sourceId}: messages=${messagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
     } catch (error) {
-      logger.error(`Error deleting node ${nodeNum}:`, error);
+      logger.error(`Error deleting node ${nodeNum}@${sourceId}:`, error);
       throw error;
     }
 
@@ -8152,13 +8146,12 @@ class DatabaseService {
     return count;
   }
 
-  // Favorite operations
-  setNodeFavorite(nodeNum: number, isFavorite: boolean, favoriteLocked?: boolean): void {
+  // Favorite operations (scoped to sourceId — Phase 3C2)
+  setNodeFavorite(nodeNum: number, isFavorite: boolean, sourceId: string, favoriteLocked?: boolean): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — setNodeFavorite signature is nodeNum-only.
-      for (const cachedNode of this.nodesCache.values()) {
-        if (cachedNode.nodeNum !== nodeNum) continue;
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (cachedNode) {
         cachedNode.isFavorite = isFavorite;
         if (favoriteLocked !== undefined) {
           cachedNode.favoriteLocked = favoriteLocked;
@@ -8167,12 +8160,12 @@ class DatabaseService {
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeFavorite(nodeNum, isFavorite, favoriteLocked).catch(err => {
+        this.nodesRepo.setNodeFavorite(nodeNum, isFavorite, sourceId, favoriteLocked).catch(err => {
           logger.error(`Failed to set node favorite in database:`, err);
         });
       }
 
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}, locked: ${favoriteLocked}`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite}, locked: ${favoriteLocked}`);
       return;
     }
 
@@ -8184,49 +8177,48 @@ class DatabaseService {
           isFavorite = ?,
           favoriteLocked = ?,
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ? AND sourceId = ?
       `);
-      const result = stmt.run(isFavorite ? 1 : 0, favoriteLocked ? 1 : 0, now, nodeNum);
+      const result = stmt.run(isFavorite ? 1 : 0, favoriteLocked ? 1 : 0, now, nodeNum, sourceId);
       if (result.changes === 0) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
         throw new Error(`Node ${nodeId} not found`);
       }
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}, locked: ${favoriteLocked} (${result.changes} row updated)`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite}, locked: ${favoriteLocked} (${result.changes} row updated)`);
     } else {
       const stmt = this.db.prepare(`
         UPDATE nodes SET
           isFavorite = ?,
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ? AND sourceId = ?
       `);
-      const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+      const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum, sourceId);
       if (result.changes === 0) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
         throw new Error(`Node ${nodeId} not found`);
       }
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
     }
   }
 
-  setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean): void {
+  setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean, sourceId: string): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — setNodeFavoriteLocked signature is nodeNum-only.
-      for (const cachedNode of this.nodesCache.values()) {
-        if (cachedNode.nodeNum !== nodeNum) continue;
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (cachedNode) {
         cachedNode.favoriteLocked = favoriteLocked;
         cachedNode.updatedAt = Date.now();
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeFavoriteLocked(nodeNum, favoriteLocked).catch(err => {
+        this.nodesRepo.setNodeFavoriteLocked(nodeNum, favoriteLocked, sourceId).catch(err => {
           logger.error(`Failed to set node favoriteLocked in database:`, err);
         });
       }
 
-      logger.debug(`Node ${nodeNum} favoriteLocked set to: ${favoriteLocked}`);
+      logger.debug(`Node ${nodeNum}@${sourceId} favoriteLocked set to: ${favoriteLocked}`);
       return;
     }
 
@@ -8236,23 +8228,23 @@ class DatabaseService {
       UPDATE nodes SET
         favoriteLocked = ?,
         updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const result = stmt.run(favoriteLocked ? 1 : 0, now, nodeNum);
+    const result = stmt.run(favoriteLocked ? 1 : 0, now, nodeNum, sourceId);
 
     if (result.changes === 0) {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update favoriteLocked for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`⚠️ Failed to update favoriteLocked for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`Node ${nodeNum} favoriteLocked set to: ${favoriteLocked} (${result.changes} row updated)`);
+    logger.debug(`Node ${nodeNum}@${sourceId} favoriteLocked set to: ${favoriteLocked} (${result.changes} row updated)`);
   }
 
-  // Ignored operations
-  setNodeIgnored(nodeNum: number, isIgnored: boolean): void {
+  // Ignored operations (scoped to sourceId — Phase 3C2)
+  setNodeIgnored(nodeNum: number, isIgnored: boolean, sourceId: string): void {
     // Get the node info for the persistent ignore list
-    const node = this.getNode(nodeNum);
+    const node = this.getNode(nodeNum, sourceId);
     const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
 
     // Persist to/remove from the ignored_nodes table
@@ -8270,20 +8262,19 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — setNodeIgnored signature is nodeNum-only.
-      for (const cachedNode of this.nodesCache.values()) {
-        if (cachedNode.nodeNum !== nodeNum) continue;
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (cachedNode) {
         cachedNode.isIgnored = isIgnored;
         cachedNode.updatedAt = Date.now();
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeIgnored(nodeNum, isIgnored).catch(err => {
+        this.nodesRepo.setNodeIgnored(nodeNum, isIgnored, sourceId).catch(err => {
           logger.error(`Failed to set node ignored status in database:`, err);
         });
       }
 
-      logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored}`);
+      logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored}`);
       return;
     }
 
@@ -8293,16 +8284,16 @@ class DatabaseService {
       UPDATE nodes SET
         isIgnored = ?,
         updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum);
+    const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum, sourceId);
 
     if (result.changes === 0) {
-      logger.warn(`Failed to update ignored status for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`Failed to update ignored status for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
+    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
   }
 
   // Persistent ignored nodes operations — use databaseService.ignoredNodes.xxxAsync() directly
@@ -8380,10 +8371,11 @@ class DatabaseService {
     }
   }
 
-  // Position override operations
+  // Position override operations (scoped to sourceId — Phase 3C2)
   setNodePositionOverride(
     nodeNum: number,
     enabled: boolean,
+    sourceId: string,
     latitude?: number,
     longitude?: number,
     altitude?: number,
@@ -8393,14 +8385,10 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, use cache and async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — setNodePositionOverride signature is nodeNum-only.
-      let existingNode: DbNode | undefined;
-      for (const node of this.nodesCache.values()) {
-        if (node.nodeNum === nodeNum) { existingNode = node; break; }
-      }
+      const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (!existingNode) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in cache`);
+        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
         throw new Error(`Node ${nodeId} not found`);
       }
 
@@ -8419,7 +8407,7 @@ class DatabaseService {
         });
       }
 
-      logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+      logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
       return;
     }
 
@@ -8432,7 +8420,7 @@ class DatabaseService {
         altitudeOverride = ?,
         positionOverrideIsPrivate = ?,
         updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
     const result = stmt.run(
       enabled ? 1 : 0,
@@ -8441,19 +8429,20 @@ class DatabaseService {
       enabled && altitude !== undefined ? altitude : null,
       enabled && isPrivate ? 1 : 0,
       now,
-      nodeNum
+      nodeNum,
+      sourceId
     );
 
     if (result.changes === 0) {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+    logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
   }
 
-  getNodePositionOverride(nodeNum: number): {
+  getNodePositionOverride(nodeNum: number, sourceId: string): {
     enabled: boolean;
     latitude?: number;
     longitude?: number;
@@ -8462,11 +8451,7 @@ class DatabaseService {
   } | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — getNodePositionOverride signature is nodeNum-only.
-      let node: DbNode | undefined;
-      for (const n of this.nodesCache.values()) {
-        if (n.nodeNum === nodeNum) { node = n; break; }
-      }
+      const node = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (!node) {
         return null;
       }
@@ -8484,9 +8469,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
       FROM nodes
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const row = stmt.get(nodeNum) as {
+    const row = stmt.get(nodeNum, sourceId) as {
       positionOverrideEnabled: number | boolean | null;
       latitudeOverride: number | null;
       longitudeOverride: number | null;
@@ -8507,8 +8492,8 @@ class DatabaseService {
     };
   }
 
-  clearNodePositionOverride(nodeNum: number): void {
-    this.setNodePositionOverride(nodeNum, false);
+  clearNodePositionOverride(nodeNum: number, sourceId: string): void {
+    this.setNodePositionOverride(nodeNum, false, sourceId);
   }
 
   // Authentication and Authorization
@@ -10726,33 +10711,34 @@ class DatabaseService {
     return this.getNodesWithPublicKeys();
   }
 
-  async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean): Promise<void> {
-    this.setNodeIgnored(nodeNum, isIgnored);
+  async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {
+    this.setNodeIgnored(nodeNum, isIgnored, sourceId);
   }
 
-  async getNodePositionOverrideAsync(nodeNum: number): Promise<{
+  async getNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<{
     enabled: boolean;
     latitude?: number;
     longitude?: number;
     altitude?: number;
     isPrivate?: boolean;
   } | null> {
-    return this.getNodePositionOverride(nodeNum);
+    return this.getNodePositionOverride(nodeNum, sourceId);
   }
 
   async setNodePositionOverrideAsync(
     nodeNum: number,
     enabled: boolean,
+    sourceId: string,
     latitude?: number,
     longitude?: number,
     altitude?: number,
     isPrivate: boolean = false
   ): Promise<void> {
-    this.setNodePositionOverride(nodeNum, enabled, latitude, longitude, altitude, isPrivate);
+    this.setNodePositionOverride(nodeNum, enabled, sourceId, latitude, longitude, altitude, isPrivate);
   }
 
-  async clearNodePositionOverrideAsync(nodeNum: number): Promise<void> {
-    this.clearNodePositionOverride(nodeNum);
+  async clearNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<void> {
+    this.clearNodePositionOverride(nodeNum, sourceId);
   }
 
   async handleAutoWelcomeEnabledAsync(): Promise<number> {

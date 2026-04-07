@@ -598,12 +598,23 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, async (req, res) => {
       });
     }
 
+    // Phase 3C2: require sourceId in body (query fallback for DELETE) to scope the delete
+    const delSourceId = (req.body && typeof req.body.sourceId === 'string' && req.body.sourceId.length > 0
+      ? req.body.sourceId
+      : (typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0 ? req.query.sourceId as string : null));
+    if (!delSourceId) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'sourceId is required (body or query)'
+      });
+    }
+
     // Get node name for logging (async for multi-database support)
-    const nodes = await databaseService.nodes.getAllNodes();
+    const nodes = await databaseService.nodes.getAllNodes(delSourceId);
     const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
-    const result = await databaseService.deleteNodeAsync(nodeNum);
+    const result = await databaseService.deleteNodeAsync(nodeNum, delSourceId);
 
     if (!result.nodeDeleted) {
       return res.status(404).json({
@@ -704,7 +715,13 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     }
 
     // Also delete from local database (async for multi-database support)
-    const result = await databaseService.deleteNodeAsync(nodeNum);
+    if (!purgeSourceId) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'sourceId is required in body'
+      });
+    }
+    const result = await databaseService.deleteNodeAsync(nodeNum, purgeSourceId);
 
     if (!result.nodeDeleted) {
       logger.warn(`⚠️ Node ${nodeNum} was removed from device but not found in local database`);

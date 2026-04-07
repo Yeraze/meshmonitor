@@ -3143,7 +3143,7 @@ class MeshtasticManager implements ISourceManager {
           }, this.sourceId);
 
           // Delete old ghost node (cascades messages, traceroutes, neighbors, telemetry)
-          await databaseService.deleteNodeAsync(prevNum);
+          await databaseService.deleteNodeAsync(prevNum, this.sourceId);
           logger.info(`🗑️ Deleted old ghost node ${previousNodeId} (${prevNum})`);
 
           // Suppress ghost resurrection — incoming mesh traffic may still reference the old nodeNum
@@ -8947,7 +8947,7 @@ class MeshtasticManager implements ISourceManager {
       this.autoFavoritingNodes.add(nodeNum);
       try {
         // Mark in DB — favoriteLocked=false since this is auto-managed
-        await databaseService.nodes.setNodeFavorite(nodeNum, true, false);
+        await databaseService.nodes.setNodeFavorite(nodeNum, true, this.sourceId, false);
 
         // Sync to device
         try {
@@ -8990,7 +8990,7 @@ class MeshtasticManager implements ISourceManager {
               logger.debug(`Skipping locked node ${nodeNum} during auto-favorite cleanup`);
               continue;
             }
-            await databaseService.nodes.setNodeFavorite(nodeNum, false, false);
+            await databaseService.nodes.setNodeFavorite(nodeNum, false, this.sourceId, false);
             if (this.supportsFavorites() && this.isConnected) {
               await this.sendRemoveFavoriteNode(nodeNum);
             }
@@ -9058,7 +9058,7 @@ class MeshtasticManager implements ISourceManager {
         if (shouldRemove) {
           nodesToRemove.push(nodeNum);
           try {
-            await databaseService.nodes.setNodeFavorite(nodeNum, false, false);
+            await databaseService.nodes.setNodeFavorite(nodeNum, false, this.sourceId, false);
             if (this.isConnected) {
               await this.sendRemoveFavoriteNode(nodeNum);
             }

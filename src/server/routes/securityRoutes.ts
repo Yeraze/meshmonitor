@@ -443,7 +443,7 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
         }
 
         // Delete from local database
-        await databaseService.deleteNodeAsync(num);
+        await databaseService.deleteNodeAsync(num, bulkDeleteSourceId);
         results.push({ nodeNum: num, deleted: true, removedFromDevice });
 
         logger.info(`🗑️ Dead node cleanup: deleted node ${num}${removedFromDevice ? ' (+ device)' : ''}`);

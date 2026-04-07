@@ -391,8 +391,8 @@ export class VirtualNodeServer extends EventEmitter {
                     const targetNodeNum = Number(adminMsg.setFavoriteNode);
                     logger.info(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
-                    // Update database
-                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true);
+                    // Update database (virtual node server has no source context — default)
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true, 'default');
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is now favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -403,8 +403,8 @@ export class VirtualNodeServer extends EventEmitter {
                     const targetNodeNum = Number(adminMsg.removeFavoriteNode);
                     logger.info(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
-                    // Update database
-                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false);
+                    // Update database (virtual node server has no source context — default)
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false, 'default');
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is no longer favorite`);
 
                     // Don't block - let the command through to the physical node

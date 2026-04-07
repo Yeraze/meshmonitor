@@ -104,8 +104,8 @@ const databaseMock = {
     }
     return null;
   }),
-  setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean, _favoriteLocked?: boolean) => undefined),
-  setNodeFavoriteLocked: vi.fn((_nodeNum: number, _favoriteLocked: boolean) => undefined),
+  setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean, _sourceId: string, _favoriteLocked?: boolean) => undefined),
+  setNodeFavoriteLocked: vi.fn((_nodeNum: number, _favoriteLocked: boolean, _sourceId: string) => undefined),
   purgeAllNodes: vi.fn(),
   purgeAllTelemetry: vi.fn(),
   purgeAllMessages: vi.fn(),
@@ -178,10 +178,15 @@ describe('Server API Endpoints', () => {
     app.post('/api/nodes/:nodeId/favorite', (req, res) => {
       try {
         const { nodeId } = req.params;
-        const { isFavorite } = req.body;
+        const { isFavorite, sourceId } = req.body;
 
         if (typeof isFavorite !== 'boolean') {
           res.status(400).json({ error: 'isFavorite must be a boolean' });
+          return;
+        }
+
+        if (typeof sourceId !== 'string' || sourceId.length === 0) {
+          res.status(400).json({ error: 'sourceId is required' });
           return;
         }
 
@@ -193,7 +198,7 @@ describe('Server API Endpoints', () => {
         const nodeNum = parseInt(nodeNumStr, 16);
 
         // Manual action always locks (favoriteLocked = true)
-        databaseMock.setNodeFavorite(nodeNum, isFavorite, true);
+        databaseMock.setNodeFavorite(nodeNum, isFavorite, sourceId, true);
         res.json({ success: true, nodeNum, isFavorite });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set node favorite' });
@@ -203,10 +208,15 @@ describe('Server API Endpoints', () => {
     app.post('/api/nodes/:nodeId/favorite-lock', (req, res) => {
       try {
         const { nodeId } = req.params;
-        const { locked } = req.body;
+        const { locked, sourceId } = req.body;
 
         if (typeof locked !== 'boolean') {
           res.status(400).json({ error: 'locked must be a boolean' });
+          return;
+        }
+
+        if (typeof sourceId !== 'string' || sourceId.length === 0) {
+          res.status(400).json({ error: 'sourceId is required' });
           return;
         }
 
@@ -217,7 +227,7 @@ describe('Server API Endpoints', () => {
         }
         const nodeNum = parseInt(nodeNumStr, 16);
 
-        databaseMock.setNodeFavoriteLocked(nodeNum, locked);
+        databaseMock.setNodeFavoriteLocked(nodeNum, locked, sourceId);
         res.json({ success: true, nodeNum, locked });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set node favorite lock' });
@@ -493,30 +503,30 @@ describe('Server API Endpoints', () => {
     it('POST /api/nodes/:nodeId/favorite should set node as favorite with favoriteLocked=true', async () => {
       const response = await request(app)
         .post('/api/nodes/!00000001/favorite')
-        .send({ isFavorite: true })
+        .send({ isFavorite: true, sourceId: 'default' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.nodeNum).toBe(1);
       expect(response.body.isFavorite).toBe(true);
-      expect(databaseMock.setNodeFavorite).toHaveBeenCalledWith(1, true, true);
+      expect(databaseMock.setNodeFavorite).toHaveBeenCalledWith(1, true, 'default', true);
     });
 
     it('POST /api/nodes/:nodeId/favorite should remove favorite with favoriteLocked=true', async () => {
       const response = await request(app)
         .post('/api/nodes/!00000001/favorite')
-        .send({ isFavorite: false })
+        .send({ isFavorite: false, sourceId: 'default' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.isFavorite).toBe(false);
-      expect(databaseMock.setNodeFavorite).toHaveBeenCalledWith(1, false, true);
+      expect(databaseMock.setNodeFavorite).toHaveBeenCalledWith(1, false, 'default', true);
     });
 
     it('POST /api/nodes/:nodeId/favorite should reject non-boolean isFavorite', async () => {
       const response = await request(app)
         .post('/api/nodes/!00000001/favorite')
-        .send({ isFavorite: 'yes' })
+        .send({ isFavorite: 'yes', sourceId: 'default' })
         .expect(400);
 
       expect(response.body.error).toBe('isFavorite must be a boolean');
@@ -525,7 +535,7 @@ describe('Server API Endpoints', () => {
     it('POST /api/nodes/:nodeId/favorite should reject invalid nodeId format', async () => {
       const response = await request(app)
         .post('/api/nodes/invalid/favorite')
-        .send({ isFavorite: true })
+        .send({ isFavorite: true, sourceId: 'default' })
         .expect(400);
 
       expect(response.body.error).toBe('Invalid nodeId format');
@@ -534,30 +544,30 @@ describe('Server API Endpoints', () => {
     it('POST /api/nodes/:nodeId/favorite-lock should lock a node', async () => {
       const response = await request(app)
         .post('/api/nodes/!00000001/favorite-lock')
-        .send({ locked: true })
+        .send({ locked: true, sourceId: 'default' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.nodeNum).toBe(1);
       expect(response.body.locked).toBe(true);
-      expect(databaseMock.setNodeFavoriteLocked).toHaveBeenCalledWith(1, true);
+      expect(databaseMock.setNodeFavoriteLocked).toHaveBeenCalledWith(1, true, 'default');
     });
 
     it('POST /api/nodes/:nodeId/favorite-lock should unlock a node', async () => {
       const response = await request(app)
         .post('/api/nodes/!00000001/favorite-lock')
-        .send({ locked: false })
+        .send({ locked: false, sourceId: 'default' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.locked).toBe(false);
-      expect(databaseMock.setNodeFavoriteLocked).toHaveBeenCalledWith(1, false);
+      expect(databaseMock.setNodeFavoriteLocked).toHaveBeenCalledWith(1, false, 'default');
     });
 
     it('POST /api/nodes/:nodeId/favorite-lock should reject non-boolean locked', async () => {
       const response = await request(app)
         .post('/api/nodes/!00000001/favorite-lock')
-        .send({ locked: 'yes' })
+        .send({ locked: 'yes', sourceId: 'default' })
         .expect(400);
 
       expect(response.body.error).toBe('locked must be a boolean');
@@ -566,7 +576,7 @@ describe('Server API Endpoints', () => {
     it('POST /api/nodes/:nodeId/favorite-lock should reject invalid nodeId', async () => {
       const response = await request(app)
         .post('/api/nodes/invalid/favorite-lock')
-        .send({ locked: true })
+        .send({ locked: true, sourceId: 'default' })
         .expect(400);
 
       expect(response.body.error).toBe('Invalid nodeId format');

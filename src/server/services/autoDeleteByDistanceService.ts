@@ -111,7 +111,8 @@ class AutoDeleteByDistanceService {
 
         if (distance > thresholdKm) {
           try {
-            await databaseService.deleteNodeAsync(Number(node.nodeNum));
+            const nodeSourceId = (node as any).sourceId || sourceId || 'default';
+            await databaseService.deleteNodeAsync(Number(node.nodeNum), nodeSourceId);
             deletedNodes.push({
               nodeId: node.nodeId || `!${Number(node.nodeNum).toString(16)}`,
               nodeName: node.longName || node.shortName || `Node ${node.nodeNum}`,

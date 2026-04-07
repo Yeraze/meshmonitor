@@ -519,7 +519,7 @@ describe('Message Deletion Routes', () => {
         telemetryDeleted: 0
       } as any);
 
-      const response = await request(app).delete('/api/messages/nodes/999999');
+      const response = await request(app).delete('/api/messages/nodes/999999?sourceId=default');
 
       expect(response.status).toBe(404);
     });
@@ -539,7 +539,7 @@ describe('Message Deletion Routes', () => {
       } as any);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456');
+      const response = await request(app).delete('/api/messages/nodes/123456?sourceId=default');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message', 'Node deleted successfully');

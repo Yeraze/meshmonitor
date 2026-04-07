@@ -1144,7 +1144,7 @@ interface ApiErrorResponse {
 }
 
 // Set node favorite status (with optional device sync)
-apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const { isFavorite, syncToDevice = true, destinationNodeNum, sourceId: favSourceId } = req.body;
@@ -1154,6 +1154,16 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
         error: 'isFavorite must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for isFavorite parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof favSourceId !== 'string' || favSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1176,7 +1186,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update favorite status in database — manual action always locks
-    await databaseService.nodes.setNodeFavorite(nodeNum, isFavorite, true);
+    await databaseService.nodes.setNodeFavorite(nodeNum, isFavorite, favSourceId, true);
 
     // If manually unfavoriting, remove from auto-favorite tracking list
     if (!isFavorite) {
@@ -1296,16 +1306,26 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 });
 
 // Toggle favorite lock status (lock/unlock a node from auto-favorite automation)
-apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { locked } = req.body;
+    const { locked, sourceId: lockSourceId } = req.body;
 
     if (typeof locked !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
         error: 'locked must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for locked parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof lockSourceId !== 'string' || lockSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1326,7 +1346,7 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked);
+    await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked, lockSourceId);
 
     // If unlocking, also add to auto-favorite tracking list if node is currently favorited
     // so that automation can manage it going forward
@@ -1410,7 +1430,7 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async
 });
 
 // Set node ignored status (with optional device sync)
-apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const { isIgnored, syncToDevice = true, destinationNodeNum, sourceId: ignoreSourceId } = req.body;
@@ -1420,6 +1440,16 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
         error: 'isIgnored must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for isIgnored parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof ignoreSourceId !== 'string' || ignoreSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1442,7 +1472,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update ignored status in database
-    await databaseService.setNodeIgnoredAsync(nodeNum, isIgnored);
+    await databaseService.setNodeIgnoredAsync(nodeNum, isIgnored, ignoreSourceId);
 
     // Broadcast updated NodeInfo to virtual node clients
     const virtualNodeServer = (global as any).virtualNodeServer;
@@ -1591,9 +1621,19 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
     // Remove from persistent ignore list
     await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum);
 
-    // Also un-ignore the node record if it still exists
+    // Also un-ignore the node record if it still exists across all sources
+    // (the persistent ignore table is not source-scoped, so we sweep every source)
     try {
-      await databaseService.setNodeIgnoredAsync(nodeNum, false);
+      const allNodes = await databaseService.nodes.getAllNodes();
+      for (const n of allNodes) {
+        if (Number(n.nodeNum) !== nodeNum) continue;
+        const sId = (n as any).sourceId || 'default';
+        try {
+          await databaseService.setNodeIgnoredAsync(nodeNum, false, sId);
+        } catch {
+          // Node may not exist in nodes table for this source — OK
+        }
+      }
     } catch {
       // Node may not exist in nodes table - that's OK
     }
@@ -1635,7 +1675,10 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
     }
 
     const nodeNum = parseInt(nodeNumStr, 16);
-    const override = await databaseService.getNodePositionOverrideAsync(nodeNum);
+    const poGetSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : 'default';
+    const override = await databaseService.getNodePositionOverrideAsync(nodeNum, poGetSourceId);
 
     if (!override) {
       const errorResponse: ApiErrorResponse = {
@@ -1671,10 +1714,20 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
 });
 
 // Set node position override
-apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { enabled, latitude, longitude, altitude, isPrivate } = req.body;
+    const { enabled, latitude, longitude, altitude, isPrivate, sourceId: poSourceId } = req.body;
+
+    if (typeof poSourceId !== 'string' || poSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
 
     // Validate enabled parameter
     if (typeof enabled !== 'boolean') {
@@ -1751,6 +1804,7 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
     await databaseService.setNodePositionOverrideAsync(
       nodeNum,
       enabled,
+      poSourceId,
       enabled ? latitude : undefined,
       enabled ? longitude : undefined,
       enabled ? altitude : undefined,
@@ -1778,9 +1832,20 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
 });
 
 // Delete node position override
-apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write', { sourceIdFrom: 'query' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
+    const poDelSourceId = req.query.sourceId as string | undefined;
+
+    if (typeof poDelSourceId !== 'string' || poDelSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request must include sourceId as a query parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
 
     // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
     const nodeNumStr = nodeId.replace('!', '');
@@ -1799,7 +1864,7 @@ apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Clear position override in database
-    await databaseService.clearNodePositionOverrideAsync(nodeNum);
+    await databaseService.clearNodePositionOverrideAsync(nodeNum, poDelSourceId);
 
     res.json({
       success: true,
