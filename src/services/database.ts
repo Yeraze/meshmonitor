@@ -2037,7 +2037,13 @@ class DatabaseService {
     }
 
     const now = Date.now();
-    const existingNode = this.getNode(nodeData.nodeNum);
+    // Post-migration 029: existence check and UPDATE must be scoped per-source
+    // when a sourceId is supplied. Omitting the scope would cause an upsert on
+    // source A to overwrite source B's row for the same nodeNum.
+    const upsertSourceIdSqlite = (nodeData as any).sourceId as string | undefined;
+    const existingNode = upsertSourceIdSqlite
+      ? this.getNode(nodeData.nodeNum, upsertSourceIdSqlite)
+      : this.getNode(nodeData.nodeNum);
 
     if (existingNode) {
       const stmt = this.db.prepare(`
@@ -2076,7 +2082,7 @@ class DatabaseService {
           positionPrecisionBits = COALESCE(?, positionPrecisionBits),
           positionTimestamp = COALESCE(?, positionTimestamp),
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ?${upsertSourceIdSqlite ? ' AND sourceId = ?' : ''}
       `);
 
       stmt.run(
@@ -2116,7 +2122,8 @@ class DatabaseService {
         nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
         nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         now,
-        nodeData.nodeNum
+        nodeData.nodeNum,
+        ...(upsertSourceIdSqlite ? [upsertSourceIdSqlite] : [])
       );
     } else {
       // Check if this node was previously ignored (persistent ignore list)
@@ -2255,14 +2262,20 @@ class DatabaseService {
     return node ? this.normalizeBigInts(node) : null;
   }
 
-  getAllNodes(): DbNode[] {
+  getAllNodes(sourceId?: string): DbNode[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
         logger.debug('getAllNodes() called before cache initialized');
         return [];
       }
-      return Array.from(this.iterateCache());
+      return Array.from(this.iterateCache(sourceId));
+    }
+    // Post-migration 029: when sourceId is provided, scope the query per-source.
+    if (sourceId) {
+      const stmt = this.db.prepare('SELECT * FROM nodes WHERE sourceId = ? ORDER BY updatedAt DESC');
+      const nodes = stmt.all(sourceId) as DbNode[];
+      return nodes.map(node => this.normalizeBigInts(node));
     }
     const stmt = this.db.prepare('SELECT * FROM nodes ORDER BY updatedAt DESC');
     const nodes = stmt.all() as DbNode[];
