@@ -323,9 +323,12 @@ class ApiService {
     return response.json();
   }
 
-  async getNodes(): Promise<DeviceInfo[]> {
+  async getNodes(sourceId?: string): Promise<DeviceInfo[]> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/nodes`);
+    const url = sourceId
+      ? `${this.baseUrl}/api/nodes?sourceId=${encodeURIComponent(sourceId)}`
+      : `${this.baseUrl}/api/nodes`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch nodes');
     const data = await response.json();
     return data.nodes || [];

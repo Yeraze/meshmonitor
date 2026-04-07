@@ -33,8 +33,7 @@ export class NodesRepository extends BaseRepository {
    * When sourceId is provided, the WHERE clause is scoped per-source — required
    * after migration 029 made (nodeNum, sourceId) the composite PK. When omitted,
    * returns the first matching row across any source (legacy / cross-source
-   * lookups). TODO Phase 3: make sourceId required once all call sites are
-   * updated.
+   * lookups retained for back-compat with non-threaded callers).
    */
   async getNode(nodeNum: number, sourceId?: string): Promise<DbNode | null> {
     const { nodes } = this.tables;
@@ -75,8 +74,7 @@ export class NodesRepository extends BaseRepository {
    *
    * After migration 029, (nodeId, sourceId) is the composite unique key. When
    * sourceId is provided, the lookup is scoped per-source. When omitted,
-   * returns the first matching row across any source.
-   * TODO Phase 3: make sourceId required once all call sites are updated.
+   * returns the first matching row across any source (back-compat fallback).
    */
   async getNodeByNodeId(nodeId: string, sourceId?: string): Promise<DbNode | null> {
     const { nodes } = this.tables;

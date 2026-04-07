@@ -2128,6 +2128,10 @@ class DatabaseService {
         // Table may not exist yet during initial setup
       }
 
+      // Post-migration 029: (nodeNum, sourceId) is the composite PK and sourceId is NOT NULL.
+      // Default to 'default' for callers that haven't been threaded through yet, matching
+      // the PG/MySQL cache path at upsertSourceId above.
+      const insertSourceId = (nodeData as any).sourceId ?? 'default';
       const stmt = this.db.prepare(`
         INSERT INTO nodes (
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
@@ -2137,8 +2141,8 @@ class DatabaseService {
           keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, keySecurityIssueDetails,
           positionChannel, positionPrecisionBits, positionTimestamp,
           isIgnored,
-          createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          createdAt, updatedAt, sourceId
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -2178,7 +2182,8 @@ class DatabaseService {
         nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         wasIgnored ? 1 : 0,
         now,
-        now
+        now,
+        insertSourceId
       );
 
       if (wasIgnored) {
