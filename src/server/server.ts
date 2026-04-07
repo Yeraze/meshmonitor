@@ -7097,7 +7097,8 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
           await databaseService.updateNodeRemoteAdminStatusAsync(
             destinationNodeNum,
             true,
-            JSON.stringify(metadata)
+            JSON.stringify(metadata),
+            gdmManager.sourceId
           );
           logger.info(`✅ Updated hasRemoteAdmin=true and saved metadata for node ${destinationNodeNum}`);
         } catch (dbError) {
@@ -7742,7 +7743,8 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         await databaseService.updateNodeRemoteAdminStatusAsync(
           destinationNodeNum,
           true,
-          null  // Don't overwrite existing metadata, just set the flag
+          null,  // Don't overwrite existing metadata, just set the flag
+          acManager.sourceId
         );
         logger.info(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
       } catch (dbError) {

@@ -265,7 +265,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       // Welcome now goes through message queue
       expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
       // markNodeAsWelcomedIfNotAlready is called immediately after enqueue (not in callback)
-      expect(databaseService.nodes.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
+      expect(databaseService.nodes.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f', 'default');
       // maxAttemptsOverride=1 to prevent DM retries on missing remote ACK
       const enqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
       expect(enqueueCall[6]).toBe(1);
@@ -437,7 +437,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
       // Should enqueue the message and call markNodeAsWelcomedIfNotAlready immediately after
       expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
-      expect(databaseService.nodes.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
+      expect(databaseService.nodes.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f', 'default');
     });
   });
 

@@ -433,10 +433,10 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(710));
-    await repo.updateNodeLowEntropyFlag(710, true, 'Known low-entropy key');
+    await repo.upsertNode(makeNode(710), 'test-src');
+    await repo.updateNodeLowEntropyFlag(710, true, 'Known low-entropy key', 'test-src');
 
-    const node = await repo.getNode(710);
+    const node = await repo.getNode(710, 'test-src');
     expect(node!.keyIsLowEntropy).toBe(true);
     expect(node!.keySecurityIssueDetails).toBe('Known low-entropy key');
   });
@@ -449,8 +449,8 @@ function runNodesTests(getBackend: () => TestBackend) {
     }
 
     // Should not throw
-    await repo.updateNodeLowEntropyFlag(99999, true, 'details');
-    const node = await repo.getNode(99999);
+    await repo.updateNodeLowEntropyFlag(99999, true, 'details', 'test-src');
+    const node = await repo.getNode(99999, 'test-src');
     expect(node).toBeNull();
   });
 
@@ -603,12 +603,12 @@ function runNodesTests(getBackend: () => TestBackend) {
     }
 
     const nodeId = '!00001300';
-    await repo.upsertNode(makeNode(1300, { nodeId }));
+    await repo.upsertNode(makeNode(1300, { nodeId }), 'test-src');
 
-    const result = await repo.markNodeAsWelcomedIfNotAlready(1300, nodeId);
+    const result = await repo.markNodeAsWelcomedIfNotAlready(1300, nodeId, 'test-src');
     expect(result).toBe(true);
 
-    const node = await repo.getNode(1300);
+    const node = await repo.getNode(1300, 'test-src');
     expect(node!.welcomedAt).not.toBeNull();
   });
 
@@ -620,9 +620,9 @@ function runNodesTests(getBackend: () => TestBackend) {
     }
 
     const nodeId = '!00001301';
-    await repo.upsertNode(makeNode(1301, { nodeId, welcomedAt: Date.now() }));
+    await repo.upsertNode(makeNode(1301, { nodeId, welcomedAt: Date.now() }), 'test-src');
 
-    const result = await repo.markNodeAsWelcomedIfNotAlready(1301, nodeId);
+    const result = await repo.markNodeAsWelcomedIfNotAlready(1301, nodeId, 'test-src');
     expect(result).toBe(false);
   });
 
@@ -653,10 +653,10 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(1500));
-    await repo.updateNodeMessageHops(1500, 3);
+    await repo.upsertNode(makeNode(1500), 'test-src');
+    await repo.updateNodeMessageHops(1500, 3, 'test-src');
 
-    const node = await repo.getNode(1500);
+    const node = await repo.getNode(1500, 'test-src');
     expect(node!.lastMessageHops).toBe(3);
   });
 

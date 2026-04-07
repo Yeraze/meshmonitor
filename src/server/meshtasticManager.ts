@@ -1344,7 +1344,7 @@ class MeshtasticManager implements ISourceManager {
 
     try {
       await this.sendSetTimeCommand(targetNode.nodeNum);
-      await databaseService.nodes.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now());
+      await databaseService.nodes.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now(), this.sourceId);
       logger.info(`🕐 Time sync: Successfully synced time to ${targetName}`);
     } catch (error) {
       logger.error(`🕐 Time sync: Failed to sync time to ${targetName}:`, error);
@@ -1396,19 +1396,19 @@ class MeshtasticManager implements ISourceManager {
       if (metadata) {
         // Success - node has remote admin capability
         logger.info(`🔑 Remote admin scan: Node ${nodeNum} has remote admin access`);
-        await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, true, JSON.stringify(metadata));
+        await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, true, JSON.stringify(metadata), this.sourceId);
         return { hasRemoteAdmin: true, metadata };
       } else {
         // Timeout or failure - node doesn't have admin access (or is unreachable)
         logger.debug(`🔑 Remote admin scan: Node ${nodeNum} does not have remote admin access`);
-        await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null);
+        await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null, this.sourceId);
         return { hasRemoteAdmin: false, metadata: null };
       }
     } catch (error) {
       // Error - likely no admin access
       logger.info(`🔑 Remote admin scan: Node ${nodeNum} scan failed - no admin access`);
       logger.debug(`🔑 Remote admin scan error details:`, error);
-      await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null);
+      await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null, this.sourceId);
       return { hasRemoteAdmin: false, metadata: null };
     } finally {
       this.pendingRemoteAdminScans.delete(nodeNum);
@@ -3956,7 +3956,7 @@ class MeshtasticManager implements ISourceManager {
           hopLimit !== undefined && hopLimit !== null &&
           hopStart >= hopLimit) {
         const messageHops = hopStart - hopLimit;
-        await databaseService.nodes.updateNodeMessageHops(fromNum, messageHops);
+        await databaseService.nodes.updateNodeMessageHops(fromNum, messageHops, this.sourceId);
 
         // Store hop count as telemetry for Smart Hops tracking
         await databaseService.telemetry.insertTelemetry({
@@ -8878,7 +8878,7 @@ class MeshtasticManager implements ISourceManager {
         // sufficient confirmation that the message was transmitted to the mesh.
         // Previously this was inside the onSuccess callback which only fires on remote
         // ACK, causing welcomedAt to never be set and the node to be re-welcomed repeatedly.
-        const wasMarked = await databaseService.nodes.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
+        const wasMarked = await databaseService.nodes.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, this.sourceId);
         if (wasMarked) {
           logger.info(`✅ Node ${nodeId} welcomed and marked in database`);
         } else {

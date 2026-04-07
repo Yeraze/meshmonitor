@@ -137,12 +137,12 @@ class DuplicateKeySchedulerService {
         const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
 
         if (isLowEntropy && !node.keyIsLowEntropy) {
-          await databaseService.nodes.updateNodeLowEntropyFlag(Number(nodeData.nodeNum), true, 'Known low-entropy key detected');
+          await databaseService.nodes.updateNodeLowEntropyFlag(Number(nodeData.nodeNum), true, 'Known low-entropy key detected', sourceId);
           node.keyIsLowEntropy = true;
           lowEntropyCount++;
           logger.warn(`🔐 [${sourceId}] Low-entropy key detected on node ${nodeData.nodeNum}`);
         } else if (!isLowEntropy && node.keyIsLowEntropy) {
-          await databaseService.nodes.updateNodeLowEntropyFlag(Number(nodeData.nodeNum), false, undefined);
+          await databaseService.nodes.updateNodeLowEntropyFlag(Number(nodeData.nodeNum), false, undefined, sourceId);
           node.keyIsLowEntropy = false;
         }
       }
@@ -152,7 +152,7 @@ class DuplicateKeySchedulerService {
         if (nodesWithKeysSet.has(Number(node.nodeNum))) continue;
         if (node.keyIsLowEntropy) {
           logger.info(`🔐 [${sourceId}] Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
-          await databaseService.nodes.updateNodeLowEntropyFlag(Number(node.nodeNum), false, undefined);
+          await databaseService.nodes.updateNodeLowEntropyFlag(Number(node.nodeNum), false, undefined, sourceId);
           node.keyIsLowEntropy = false;
         }
       }
@@ -270,7 +270,7 @@ class DuplicateKeySchedulerService {
         const stateChanged = isExcessive !== !!wasExcessive;
 
         if (stateChanged) {
-          await databaseService.updateNodeSpamFlagsAsync(Number(nodeNum), isExcessive, packetCount, now);
+          await databaseService.updateNodeSpamFlagsAsync(Number(nodeNum), isExcessive, packetCount, now, sourceId);
           if (isExcessive) {
             flaggedCount++;
             logger.warn(`🚨 [${sourceId}] Excessive packets: Node ${nodeNum} sent ${packetCount} pkt/hr`);
@@ -285,10 +285,10 @@ class DuplicateKeySchedulerService {
 
         if (node.isExcessivePackets) {
           if (isLocalNode) {
-            await databaseService.updateNodeSpamFlagsAsync(Number(node.nodeNum), false, 0, now);
+            await databaseService.updateNodeSpamFlagsAsync(Number(node.nodeNum), false, 0, now, sourceId);
             clearedCount++;
           } else if (!nodesWithCurrentPackets.has(Number(node.nodeNum))) {
-            await databaseService.updateNodeSpamFlagsAsync(Number(node.nodeNum), false, 0, now);
+            await databaseService.updateNodeSpamFlagsAsync(Number(node.nodeNum), false, 0, now, sourceId);
             clearedCount++;
           }
         }

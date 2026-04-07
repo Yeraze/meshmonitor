@@ -298,15 +298,19 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Update the lastMessageHops for a node
+   * Update the lastMessageHops for a node, scoped per-source.
+   *
+   * After migration 029 (nodeNum, sourceId) is the composite PK, so packet
+   * handlers must always supply the sourceId of the manager that received
+   * the packet.
    */
-  async updateNodeMessageHops(nodeNum: number, hops: number): Promise<void> {
+  async updateNodeMessageHops(nodeNum: number, hops: number, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
     await this.db
       .update(nodes)
       .set({ lastMessageHops: hops, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -337,9 +341,11 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Atomically mark a specific node as welcomed if not already welcomed
+   * Atomically mark a specific node as welcomed if not already welcomed,
+   * scoped per-source. After migration 029 (nodeNum, sourceId) is the
+   * composite PK so the auto-welcome path must always pass a real sourceId.
    */
-  async markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string): Promise<boolean> {
+  async markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string, sourceId: string): Promise<boolean> {
     const now = this.now();
     const { nodes } = this.tables;
 
@@ -350,6 +356,7 @@ export class NodesRepository extends BaseRepository {
         and(
           eq(nodes.nodeNum, nodeNum),
           eq(nodes.nodeId, nodeId),
+          eq(nodes.sourceId, sourceId),
           isNull(nodes.welcomedAt)
         )
       );
@@ -358,7 +365,7 @@ export class NodesRepository extends BaseRepository {
       await this.db
         .update(nodes)
         .set({ welcomedAt: now, updatedAt: now })
-        .where(eq(nodes.nodeNum, nodeNum));
+        .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
       return true;
     }
     return false;
@@ -431,14 +438,18 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Update low entropy flag for a node
+   * Update low entropy flag for a node, scoped per-source.
+   *
+   * After migration 029 (nodeNum, sourceId) is the composite PK so the
+   * scanner must always pass a real sourceId.
    */
   async updateNodeLowEntropyFlag(
     nodeNum: number,
     keyIsLowEntropy: boolean,
-    details?: string
+    details: string | undefined,
+    sourceId: string
   ): Promise<void> {
-    const node = await this.getNode(nodeNum);
+    const node = await this.getNode(nodeNum, sourceId);
     if (!node) return;
 
     let combinedDetails = details || '';
@@ -473,7 +484,7 @@ export class NodesRepository extends BaseRepository {
         keySecurityIssueDetails: combinedDetails || null,
         updatedAt: now,
       })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -623,14 +634,14 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Update node's last traceroute request timestamp
+   * Update node's last traceroute request timestamp, scoped per-source.
    */
-  async updateNodeLastTracerouteRequest(nodeNum: number, timestamp: number): Promise<void> {
+  async updateNodeLastTracerouteRequest(nodeNum: number, timestamp: number, sourceId: string): Promise<void> {
     const { nodes } = this.tables;
     await this.db
       .update(nodes)
       .set({ lastTracerouteRequest: timestamp })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -808,7 +819,8 @@ export class NodesRepository extends BaseRepository {
   async updateNodeRemoteAdminStatusAsync(
     nodeNum: number,
     hasRemoteAdmin: boolean,
-    metadata: string | null
+    metadata: string | null,
+    sourceId: string
   ): Promise<void> {
     const now = Date.now();
     const { nodes } = this.tables;
@@ -827,7 +839,7 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .update(nodes)
       .set(updateData as any)
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -877,14 +889,14 @@ export class NodesRepository extends BaseRepository {
    * @param nodeNum The node number to update
    * @param timestamp The timestamp to set
    */
-  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
+  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
     await this.db
       .update(nodes)
       .set({ lastTimeSync: timestamp, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**

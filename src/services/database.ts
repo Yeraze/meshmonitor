@@ -2222,19 +2222,28 @@ class DatabaseService {
     }
   }
 
-  getNode(nodeNum: number): DbNode | null {
+  getNode(nodeNum: number, sourceId?: string): DbNode | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
         logger.debug(`getNode(${nodeNum}) called before cache initialized`);
         return null;
       }
-      // TODO Phase 3C: sourceId needed here — getNode signature is nodeNum-only.
-      // Iterate cache to find first match by nodeNum (legacy behavior).
+      // When sourceId is provided, use the composite cache key directly.
+      if (sourceId) {
+        return this.nodesCache.get(this.cacheKey(nodeNum, sourceId)) ?? null;
+      }
+      // Legacy fallback: iterate cache to find first match by nodeNum
+      // (used by callers that haven't been threaded through Phase 3 yet).
       for (const node of this.nodesCache.values()) {
         if (node.nodeNum === nodeNum) return node;
       }
       return null;
+    }
+    if (sourceId) {
+      const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ? AND sourceId = ?');
+      const node = stmt.get(nodeNum, sourceId) as DbNode | null;
+      return node ? this.normalizeBigInts(node) : null;
     }
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ?');
     const node = stmt.get(nodeNum) as DbNode | null;
@@ -2283,28 +2292,28 @@ class DatabaseService {
   }
 
   /**
-   * Update the lastMessageHops for a node (calculated from hopStart - hopLimit of received packets)
+   * Update the lastMessageHops for a node (calculated from hopStart - hopLimit of received packets).
+   * Phase 3C: scoped per-source — sourceId is required.
    */
-  updateNodeMessageHops(nodeNum: number, hops: number): void {
+  updateNodeMessageHops(nodeNum: number, hops: number, sourceId: string): void {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — updateNodeMessageHops signature is nodeNum-only.
-      for (const cachedNode of this.nodesCache.values()) {
-        if (cachedNode.nodeNum !== nodeNum) continue;
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (cachedNode) {
         cachedNode.lastMessageHops = hops;
         cachedNode.updatedAt = now;
       }
       // Fire and forget async update
       if (this.nodesRepo) {
-        this.nodesRepo.updateNode(nodeNum, { lastMessageHops: hops, updatedAt: now }).catch((err: Error) => {
+        this.nodesRepo.updateNodeMessageHops(nodeNum, hops, sourceId).catch((err: Error) => {
           logger.error('Failed to update node message hops:', err);
         });
       }
       return;
     }
-    const stmt = this.db.prepare('UPDATE nodes SET lastMessageHops = ?, updatedAt = ? WHERE nodeNum = ?');
-    stmt.run(hops, now, nodeNum);
+    const stmt = this.db.prepare('UPDATE nodes SET lastMessageHops = ?, updatedAt = ? WHERE nodeNum = ? AND sourceId = ?');
+    stmt.run(hops, now, nodeNum, sourceId);
   }
 
   /**
@@ -2346,23 +2355,21 @@ class DatabaseService {
    * This prevents race conditions where multiple processes try to welcome the same node.
    * Returns true if the node was marked, false if already welcomed.
    */
-  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string): boolean {
+  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string, sourceId: string): boolean {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — markNodeAsWelcomedIfNotAlready signature is nodeNum/nodeId only.
-      let cachedNode: DbNode | undefined;
-      for (const node of this.nodesCache.values()) {
-        if (node.nodeNum === nodeNum) { cachedNode = node; break; }
-      }
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode && cachedNode.nodeId === nodeId && (cachedNode.welcomedAt === undefined || cachedNode.welcomedAt === null)) {
         cachedNode.welcomedAt = now;
         cachedNode.updatedAt = now;
         // Persist to database and log result
         if (this.nodesRepo) {
-          this.nodesRepo.updateNode(nodeNum, { welcomedAt: now, updatedAt: now })
-            .then(() => {
-              logger.info(`✅ Persisted welcomedAt=${now} to database for node ${nodeId}`);
+          this.nodesRepo.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, sourceId)
+            .then((marked) => {
+              if (marked) {
+                logger.info(`✅ Persisted welcomedAt=${now} to database for node ${nodeId}`);
+              }
             })
             .catch((err: Error) => {
               logger.error(`❌ Failed to persist welcomedAt for node ${nodeId}:`, err);
@@ -2375,9 +2382,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET welcomedAt = ?, updatedAt = ?
-      WHERE nodeNum = ? AND nodeId = ? AND welcomedAt IS NULL
+      WHERE nodeNum = ? AND nodeId = ? AND sourceId = ? AND welcomedAt IS NULL
     `);
-    const result = stmt.run(now, now, nodeNum, nodeId);
+    const result = stmt.run(now, now, nodeNum, nodeId, sourceId);
     return result.changes > 0;
   }
 
@@ -2499,8 +2506,8 @@ class DatabaseService {
     stmt.run(duplicateKeyDetected ? 1 : 0, keySecurityIssueDetails ?? null, now, nodeNum, sourceId);
   }
 
-  updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details?: string): void {
-    const node = this.getNode(nodeNum);
+  updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details: string | undefined, sourceId: string): void {
+    const node = this.getNode(nodeNum, sourceId);
     if (!node) return;
 
     // Combine low-entropy details with existing duplicate details if needed
@@ -2535,32 +2542,31 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — updateNodeLowEntropyFlag signature is nodeNum-only.
-      for (const cachedNode of this.nodesCache.values()) {
-        if (cachedNode.nodeNum !== nodeNum) continue;
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (cachedNode) {
         cachedNode.keyIsLowEntropy = keyIsLowEntropy;
         cachedNode.keySecurityIssueDetails = combinedDetails || undefined;
         cachedNode.updatedAt = Date.now();
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.updateNodeLowEntropyFlag(nodeNum, keyIsLowEntropy, combinedDetails || undefined).catch(err => {
+        this.nodesRepo.updateNodeLowEntropyFlag(nodeNum, keyIsLowEntropy, combinedDetails || undefined, sourceId).catch(err => {
           logger.error(`Failed to update node low entropy flag in database:`, err);
         });
       }
       return;
     }
 
-    // SQLite: synchronous update
+    // SQLite: synchronous update, scoped per-source.
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET keyIsLowEntropy = ?,
           keySecurityIssueDetails = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
     const now = Date.now();
-    stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum);
+    stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum, sourceId);
   }
 
   /**
@@ -2761,16 +2767,15 @@ class DatabaseService {
   }
 
   /**
-   * Update the spam detection flags for a node
+   * Update the spam detection flags for a node, scoped per-source.
    */
-  updateNodeSpamFlags(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number): void {
+  updateNodeSpamFlags(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, sourceId: string): void {
     const now = Math.floor(Date.now() / 1000);
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO Phase 3C: sourceId needed here — updateNodeSpamFlags signature is nodeNum-only.
-      for (const cachedNode of this.nodesCache.values()) {
-        if (cachedNode.nodeNum !== nodeNum) continue;
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (cachedNode) {
         (cachedNode as any).isExcessivePackets = isExcessivePackets;
         (cachedNode as any).packetRatePerHour = packetRatePerHour;
         (cachedNode as any).packetRateLastChecked = now;
@@ -2778,7 +2783,7 @@ class DatabaseService {
       }
 
       // Fire-and-forget database update
-      this.updateNodeSpamFlagsAsync(nodeNum, isExcessivePackets, packetRatePerHour, now).catch(err => {
+      this.updateNodeSpamFlagsAsync(nodeNum, isExcessivePackets, packetRatePerHour, now, sourceId).catch(err => {
         logger.error(`Failed to update node spam flags in database:`, err);
       });
       return;
@@ -2791,15 +2796,15 @@ class DatabaseService {
           packetRatePerHour = ?,
           packetRateLastChecked = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, now, Date.now(), nodeNum);
+    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, now, Date.now(), nodeNum, sourceId);
   }
 
   /**
-   * Update the spam detection flags for a node (async)
+   * Update the spam detection flags for a node (async), scoped per-source.
    */
-  async updateNodeSpamFlagsAsync(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, lastChecked: number): Promise<void> {
+  async updateNodeSpamFlagsAsync(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, lastChecked: number, sourceId: string): Promise<void> {
     const now = Date.now();
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -2809,8 +2814,8 @@ class DatabaseService {
             "packetRatePerHour" = $2,
             "packetRateLastChecked" = $3,
             "updatedAt" = $4
-        WHERE "nodeNum" = $5
-      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
+        WHERE "nodeNum" = $5 AND "sourceId" = $6
+      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum, sourceId]);
       return;
     }
 
@@ -2821,8 +2826,8 @@ class DatabaseService {
             packetRatePerHour = ?,
             packetRateLastChecked = ?,
             updatedAt = ?
-        WHERE nodeNum = ?
-      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
+        WHERE nodeNum = ? AND sourceId = ?
+      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum, sourceId]);
       return;
     }
 
@@ -2833,9 +2838,9 @@ class DatabaseService {
           packetRatePerHour = ?,
           packetRateLastChecked = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, lastChecked, now, nodeNum);
+    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, lastChecked, now, nodeNum, sourceId);
   }
 
   /**
@@ -5591,18 +5596,18 @@ class DatabaseService {
   async updateNodeRemoteAdminStatusAsync(
     nodeNum: number,
     hasRemoteAdmin: boolean,
-    metadata: string | null
+    metadata: string | null,
+    sourceId: string
   ): Promise<void> {
     try {
       if (this.nodesRepo) {
-        await this.nodesRepo.updateNodeRemoteAdminStatusAsync(nodeNum, hasRemoteAdmin, metadata);
+        await this.nodesRepo.updateNodeRemoteAdminStatusAsync(nodeNum, hasRemoteAdmin, metadata, sourceId);
       }
 
       // Update cache for PostgreSQL/MySQL
       if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-        // TODO Phase 3C: sourceId needed here — updateNodeRemoteAdminStatusAsync signature is nodeNum-only.
-        for (const existingNode of this.nodesCache.values()) {
-          if (existingNode.nodeNum !== nodeNum) continue;
+        const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+        if (existingNode) {
           existingNode.hasRemoteAdmin = hasRemoteAdmin;
           existingNode.lastRemoteAdminCheck = Date.now();
           existingNode.remoteAdminMetadata = metadata ?? undefined;
@@ -5620,9 +5625,9 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       try {
-        // Update the nodes table with last request time
-        if (this.nodesRepo) {
-          await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
+        // Update the nodes table with last request time (Phase 3C: scoped per-source).
+        if (this.nodesRepo && sourceId) {
+          await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now, sourceId);
         }
 
         // Insert a pending traceroute record
@@ -5658,11 +5663,18 @@ class DatabaseService {
     }
 
     // SQLite path
-    // Update the nodes table with last request time
-    const updateStmt = this.db.prepare(`
-      UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
-    `);
-    updateStmt.run(now, toNodeNum);
+    // Update the nodes table with last request time (Phase 3C: scoped per-source when available).
+    if (sourceId) {
+      const updateStmt = this.db.prepare(`
+        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ? AND sourceId = ?
+      `);
+      updateStmt.run(now, toNodeNum, sourceId);
+    } else {
+      const updateStmt = this.db.prepare(`
+        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
+      `);
+      updateStmt.run(now, toNodeNum);
+    }
 
     // Insert a traceroute record for the attempt (with null routes indicating pending)
     const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
