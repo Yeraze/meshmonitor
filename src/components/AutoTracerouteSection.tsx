@@ -141,7 +141,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   useEffect(() => {
     const fetchNodes = async () => {
       try {
-        const response = await csrfFetch(`${baseUrl}/api/nodes`);
+        const response = await csrfFetch(`${baseUrl}/api/nodes${sourceQuery}`);
         if (response.ok) {
           const data = await response.json();
           setAvailableNodes(data);
@@ -151,7 +151,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       }
     };
     fetchNodes();
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Fetch current filter settings and schedule settings together to avoid race conditions
   useEffect(() => {

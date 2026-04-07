@@ -1485,7 +1485,8 @@ function App() {
     const fetchPositionHistory = async () => {
       try {
         // Fetch all position history (no time limit) to show complete movement trail
-        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history`);
+        const phQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history${phQuery}`);
         if (response.ok) {
           const history = await response.json();
           setPositionHistory(history);
@@ -1496,7 +1497,7 @@ function App() {
     };
 
     fetchPositionHistory();
-  }, [selectedNodeId, nodes, baseUrl]);
+  }, [selectedNodeId, nodes, baseUrl, sourceId]);
 
   // Open popup for selected node
   useEffect(() => {
@@ -2021,7 +2022,8 @@ function App() {
   const requestFullNodeDatabase = async () => {
     try {
       logger.debug('📡 Requesting full node database refresh...');
-      const response = await authFetch(`${baseUrl}/api/nodes/refresh`, {
+      const refreshQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+      const response = await authFetch(`${baseUrl}/api/nodes/refresh${refreshQuery}`, {
         method: 'POST',
       });
 

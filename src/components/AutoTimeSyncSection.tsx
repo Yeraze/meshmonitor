@@ -61,7 +61,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
   useEffect(() => {
     const fetchNodes = async () => {
       try {
-        const response = await csrfFetch(`${baseUrl}/api/nodes`);
+        const response = await csrfFetch(`${baseUrl}/api/nodes${sourceQuery}`);
         if (response.ok) {
           const data = await response.json();
           // Filter to only nodes with remote admin capability, always include local node
@@ -75,7 +75,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
       }
     };
     fetchNodes();
-  }, [baseUrl, csrfFetch, currentNodeId]);
+  }, [baseUrl, csrfFetch, currentNodeId, sourceQuery]);
 
   // Fetch current settings
   useEffect(() => {

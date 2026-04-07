@@ -102,7 +102,7 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
   const nodesQuery = useQuery({
     queryKey: dashboardQueryKeys.nodes(sourceId),
     queryFn: async (): Promise<Map<string, NodeInfo>> => {
-      const nodesData = await api.get<NodeInfo[]>('/api/nodes');
+      const nodesData = await api.get<NodeInfo[]>(`/api/nodes${sourceQuery}`);
       const nodesMap = new Map<string, NodeInfo>();
       nodesData.forEach((node: NodeInfo) => {
         if (node.user?.id) {

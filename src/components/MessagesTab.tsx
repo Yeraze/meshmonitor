@@ -46,6 +46,7 @@ import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
 import { useToast } from './ToastContainer';
 import apiService from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSource } from '../contexts/SourceContext';
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -402,6 +403,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [adminScanLoading, setAdminScanLoading] = useState<string | null>(null);
   const { showToast } = useToast();
   const csrfFetch = useCsrfFetch();
+  const { sourceId } = useSource();
 
   // Purge neighbors state
   const [purgingNeighbors, setPurgingNeighbors] = useState(false);
@@ -510,7 +512,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
       setAdminScanLoading(nodeId);
       try {
-        const response = await csrfFetch(`${baseUrl}/api/nodes/${node.nodeNum}/scan-remote-admin`, {
+        const scanQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+        const response = await csrfFetch(`${baseUrl}/api/nodes/${node.nodeNum}/scan-remote-admin${scanQuery}`, {
           method: 'POST',
         });
 
@@ -536,7 +539,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
         setAdminScanLoading(null);
       }
     },
-    [nodes, baseUrl, csrfFetch, showToast, t]
+    [nodes, baseUrl, csrfFetch, showToast, t, sourceId]
   );
 
   // Packet type distribution for selected node (last 24h)

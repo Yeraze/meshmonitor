@@ -104,7 +104,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // Fetch available nodes
   const loadNodes = async () => {
     try {
-      const response = await api.get('/api/nodes');
+      const nodesQs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
+      const response = await api.get(`/api/nodes${nodesQs}`);
       const nodeList = Array.isArray(response) ? response : [];
       setAvailableNodes(nodeList);
     } catch (error) {
