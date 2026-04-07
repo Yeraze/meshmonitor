@@ -359,9 +359,14 @@ router.get('/key-mismatches', async (_req: Request, res: Response) => {
  */
 router.get('/dead-nodes', async (req: Request, res: Response) => {
   try {
-    const deadNodesSourceId = req.query.sourceId as string | undefined;
+    let deadNodesSourceId = req.query.sourceId as string | undefined;
+    // Fall back to first registered manager for legacy single-source callers
     if (!deadNodesSourceId) {
-      return res.status(400).json({ error: 'sourceId is required' });
+      const managers = sourceManagerRegistry.getAllManagers();
+      if (managers.length === 0) {
+        return res.status(400).json({ error: 'No source managers available' });
+      }
+      deadNodesSourceId = managers[0].sourceId;
     }
     const deadNodesManagerBase = sourceManagerRegistry.getManager(deadNodesSourceId);
     if (!deadNodesManagerBase) {

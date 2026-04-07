@@ -9936,6 +9936,16 @@ let server: ReturnType<typeof app.listen>;
     process.exit(1);
   }
 
+  // Eagerly load Meshtastic protobuf definitions so source-independent routes
+  // (e.g. /api/channels/decode-url) work even before any source manager has started.
+  try {
+    const { loadProtobufDefinitions } = await import('./protobufLoader.js');
+    await loadProtobufDefinitions();
+    logger.info('✅ Protobuf definitions loaded');
+  } catch (error) {
+    logger.error('❌ Failed to load protobuf definitions:', error);
+  }
+
   // Eagerly populate embed origins cache so first CORS check works
   refreshEmbedOriginsCache();
 

@@ -143,6 +143,10 @@ export class NodesRepository extends BaseRepository {
       logger.error('Cannot upsert node: missing nodeNum or nodeId');
       return;
     }
+    if (!sourceId) {
+      logger.error(`Cannot upsert node ${nodeData.nodeNum}: sourceId is required after migration 029`);
+      return;
+    }
 
     const now = this.now();
     const { nodes } = this.tables;
@@ -190,7 +194,7 @@ export class NodesRepository extends BaseRepository {
           positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
           updatedAt: now,
         })
-        .where(eq(nodes.nodeNum, nodeData.nodeNum));
+        .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, sourceId)));
     } else {
       // Insert new node - coerce BIGINT fields for PostgreSQL
       const newNode = {
@@ -280,7 +284,7 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       };
 
-      await this.upsert(nodes, newNode, nodes.nodeNum, upsertSet);
+      await this.upsert(nodes, newNode, [nodes.nodeNum, nodes.sourceId], upsertSet);
     }
   }
 

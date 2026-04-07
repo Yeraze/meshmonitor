@@ -63,10 +63,16 @@ class AppriseNotificationService {
    */
   private async resolveAppriseConfig(sourceId: string): Promise<AppriseConfig | null> {
     try {
-      const url = await databaseService.settings.getSettingForSource(sourceId, 'apprise_url');
+      const perSourceUrl = await databaseService.settings.getSettingForSource(sourceId, 'apprise_url');
       const enabledSetting = await databaseService.settings.getSettingForSource(sourceId, 'apprise_enabled');
+      // Fall back to APPRISE_URL env var if no per-source setting exists.
+      // This preserves zero-config quick-start deployments while still allowing
+      // per-source overrides via the settings UI.
+      // Bundled Apprise server runs on localhost:8000 by default in the
+      // meshmonitor container; preserves zero-config quick-start behavior.
+      const url = perSourceUrl || process.env.APPRISE_URL || 'http://localhost:8000';
       if (!url) {
-        logger.debug(`ℹ️ No apprise_url configured for source ${sourceId}`);
+        logger.debug(`ℹ️ No apprise_url configured for source ${sourceId} (and no APPRISE_URL env)`);
         return null;
       }
       // Default to enabled unless explicitly 'false'
