@@ -3,6 +3,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
+import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.js';
 import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
@@ -283,6 +284,7 @@ interface AutoPingSession {
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
   private sourceConfigOverride: { host?: string; port?: number } | null = null;
+  private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
@@ -423,10 +425,46 @@ class MeshtasticManager implements ISourceManager {
 
   async start(): Promise<void> {
     await this.connect();
+    try {
+      await this.virtualNodeServer?.start();
+    } catch (err) {
+      logger.error(`Failed to start VirtualNodeServer for source ${this.sourceId}:`, err);
+    }
   }
 
   async stop(): Promise<void> {
+    try {
+      await this.virtualNodeServer?.stop();
+    } catch (err) {
+      logger.error(`Failed to stop VirtualNodeServer for source ${this.sourceId}:`, err);
+    }
     this.disconnect();
+  }
+
+  async reconfigureVirtualNode(config: VirtualNodeConfig | undefined): Promise<void> {
+    if (this.virtualNodeServer) {
+      try {
+        await this.virtualNodeServer.stop();
+      } catch (err) {
+        logger.error(`Failed to stop VirtualNodeServer during reconfigure for ${this.sourceId}:`, err);
+      }
+      this.virtualNodeServer = undefined;
+    }
+    if (config?.enabled) {
+      this.virtualNodeServer = new VirtualNodeServer({
+        port: config.port,
+        allowAdminCommands: config.allowAdminCommands,
+        meshtasticManager: this,
+      });
+      try {
+        await this.virtualNodeServer.start();
+      } catch (err) {
+        logger.error(`Failed to start VirtualNodeServer during reconfigure for ${this.sourceId}:`, err);
+      }
+    }
+    if (this.sourceConfigOverride) {
+      (this.sourceConfigOverride as any).virtualNode = config;
+    }
   }
 
   getStatus(): SourceStatus {
@@ -440,10 +478,17 @@ class MeshtasticManager implements ISourceManager {
     };
   }
 
-  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number }) {
+  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; virtualNode?: VirtualNodeConfig }) {
     this.sourceId = sourceId;
     if (sourceConfig) {
-      this.sourceConfigOverride = sourceConfig;
+      this.sourceConfigOverride = { host: sourceConfig.host, port: sourceConfig.port };
+    }
+    if (sourceConfig?.virtualNode?.enabled) {
+      this.virtualNodeServer = new VirtualNodeServer({
+        port: sourceConfig.virtualNode.port,
+        allowAdminCommands: sourceConfig.virtualNode.allowAdminCommands,
+        meshtasticManager: this,
+      });
     }
     // Initialize message queue service with send callback
     messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => {
