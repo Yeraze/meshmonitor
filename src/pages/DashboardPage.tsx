@@ -50,6 +50,9 @@ function DashboardInner() {
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
   const [formPort, setFormPort] = useState('4403');
+  const [formVnEnabled, setFormVnEnabled] = useState(false);
+  const [formVnPort, setFormVnPort] = useState('');
+  const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -80,6 +83,9 @@ function DashboardInner() {
     setFormName('');
     setFormHost('');
     setFormPort('4403');
+    setFormVnEnabled(false);
+    setFormVnPort('');
+    setFormVnAllowAdmin(false);
     setFormError('');
     setShowSourceModal(true);
   };
@@ -92,6 +98,10 @@ function DashboardInner() {
     setFormName(source.name);
     setFormHost(cfg?.host ?? '');
     setFormPort(String(cfg?.port ?? 4403));
+    const vn = cfg?.virtualNode as { enabled?: boolean; port?: number; allowAdminCommands?: boolean } | undefined;
+    setFormVnEnabled(vn?.enabled === true);
+    setFormVnPort(vn?.port != null ? String(vn.port) : '');
+    setFormVnAllowAdmin(vn?.allowAdminCommands === true);
     setFormError('');
     setShowSourceModal(true);
   };
@@ -102,14 +112,30 @@ function DashboardInner() {
     const port = parseInt(formPort, 10);
     if (isNaN(port) || port < 1 || port > 65535) { setFormError('Port must be 1–65535'); return; }
 
+    let vnConfig: { enabled: boolean; port: number; allowAdminCommands: boolean } | undefined;
+    if (formVnEnabled) {
+      const vnPort = parseInt(formVnPort, 10);
+      if (isNaN(vnPort) || vnPort < 1 || vnPort > 65535) {
+        setFormError('Virtual Node port must be 1–65535');
+        return;
+      }
+      if (vnPort === port) {
+        setFormError('Virtual Node port cannot equal the source TCP port');
+        return;
+      }
+      vnConfig = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
+    }
+
     setFormSaving(true);
     setFormError('');
     try {
       const csrfToken = getToken();
+      const cfg: Record<string, any> = { host: formHost.trim(), port };
+      if (vnConfig) cfg.virtualNode = vnConfig;
       const body = {
         name: formName.trim(),
         type: 'meshtastic_tcp',
-        config: { host: formHost.trim(), port },
+        config: cfg,
         enabled: true,
       };
       const url = editingSourceId
@@ -284,6 +310,43 @@ function DashboardInner() {
                 placeholder="4403"
               />
             </label>
+
+            <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+              <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>Virtual Node</legend>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={formVnEnabled}
+                  onChange={(e) => setFormVnEnabled(e.target.checked)}
+                />
+                Enable Virtual Node
+              </label>
+              {formVnEnabled && (
+                <>
+                  <label className="dashboard-form-field" style={{ marginTop: 8 }}>
+                    <span className="dashboard-form-label">Virtual Node Port</span>
+                    <input
+                      className="dashboard-form-input"
+                      type="number"
+                      value={formVnPort}
+                      onChange={(e) => setFormVnPort(e.target.value)}
+                      placeholder="4403"
+                    />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={formVnAllowAdmin}
+                      onChange={(e) => setFormVnAllowAdmin(e.target.checked)}
+                    />
+                    Allow admin commands
+                  </label>
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    Third-party clients connected to the virtual node can send admin commands to your Meshtastic node. Leave off unless you trust the clients.
+                  </p>
+                </>
+              )}
+            </fieldset>
 
             {formError && (
               <p style={{ color: 'var(--ctp-red)', fontSize: 12, margin: '8px 0 0' }}>{formError}</p>

@@ -167,6 +167,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 {source.name}
               </span>
               <span className="dashboard-source-card-badge">{source.type}</span>
+              {(() => {
+                const vn = (source.config as any)?.virtualNode;
+                return vn?.enabled ? (
+                  <span className="dashboard-source-card-badge" title="Virtual Node">
+                    VN:{vn.port}
+                  </span>
+                ) : null;
+              })()}
               {isAdmin && (
                 <KebabMenu
                   sourceId={source.id}
