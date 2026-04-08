@@ -9,6 +9,37 @@ import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../ut
 
 const router = Router();
 
+// Validate virtualNode config nested inside a source config blob.
+// Returns null on success, or { status, error } on failure.
+async function validateVirtualNodeConfig(
+  type: string,
+  config: any,
+  excludeSourceId?: string
+): Promise<{ status: number; error: string } | null> {
+  const vn = config?.virtualNode;
+  if (vn === undefined || vn === null) return null;
+  if (type !== 'meshtastic_tcp') {
+    return { status: 400, error: 'virtualNode config is only supported on meshtastic_tcp sources' };
+  }
+  if (vn.enabled !== true) return null;
+  const port = vn.port;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return { status: 400, error: 'virtualNode.port must be an integer between 1 and 65535' };
+  }
+  if (typeof config.port === 'number' && port === config.port) {
+    return { status: 400, error: 'virtualNode.port cannot equal the source TCP port' };
+  }
+  const all = await databaseService.sources.getAllSources();
+  for (const s of all) {
+    if (s.id === excludeSourceId) continue;
+    const otherVn = (s.config as any)?.virtualNode;
+    if (otherVn?.enabled === true && otherVn.port === port) {
+      return { status: 409, error: `virtualNode.port ${port} is already in use by source "${s.name}"` };
+    }
+  }
+  return null;
+}
+
 // Pure utility — no request-specific state
 const getEffectivePosition = (node: any) => {
   if (!node) return { latitude: undefined, longitude: undefined };
@@ -75,6 +106,11 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       return res.status(400).json({ error: 'config is required and must be an object' });
     }
 
+    const vnErr = await validateVirtualNodeConfig(type, config);
+    if (vnErr) {
+      return res.status(vnErr.status).json({ error: vnErr.error });
+    }
+
     const source = await databaseService.sources.createSource({
       id: uuidv4(),
       name: name.trim(),
@@ -115,6 +151,14 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     if (name !== undefined) updates.name = name.trim();
     if (config !== undefined) updates.config = config;
     if (enabled !== undefined) updates.enabled = enabled;
+
+    // Validate VN config if config is being updated
+    if (config !== undefined) {
+      const vnErr = await validateVirtualNodeConfig(existing.type, config, existing.id);
+      if (vnErr) {
+        return res.status(vnErr.status).json({ error: vnErr.error });
+      }
+    }
 
     const source = await databaseService.sources.updateSource(req.params.id, updates);
     if (!source) {
