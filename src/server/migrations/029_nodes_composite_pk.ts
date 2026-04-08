@@ -19,7 +19,28 @@
  * rename) because SQLite cannot ALTER an existing PRIMARY KEY in place.
  */
 import type { Database } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import { logger } from '../../utils/logger.js';
+
+/**
+ * Build a default source config from env vars. Used by migration 029 when an
+ * upgrade finds legacy nodes with NULL sourceId but no sources row to backfill
+ * from. We synthesize a `meshtastic_tcp` source so the upgrade can proceed;
+ * the app will reconnect on next boot using whatever env vars are present.
+ */
+function buildLegacyDefaultSource(): { id: string; name: string; type: string; config: string; createdAt: number; updatedAt: number } {
+  const now = Date.now();
+  const host = process.env.MESHTASTIC_NODE_IP || 'meshtastic.local';
+  const port = parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10) || 4403;
+  return {
+    id: randomUUID(),
+    name: 'Default',
+    type: 'meshtastic_tcp',
+    config: JSON.stringify({ host, port }),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 // Columns in the nodes table, in stable order. Used for the SQLite rebuild
 // INSERT and CREATE TABLE statements.
@@ -141,11 +162,19 @@ export const migration = {
       const srcCount = srcCountRow?.c ?? 0;
 
       if (srcCount === 0 && nullNodes > 0) {
-        // Real upgrade path with legacy data but no sources — cannot safely backfill.
-        throw new Error('Migration 029 aborted: sources table is empty. Cannot determine a default sourceId for legacy nodes. Create at least one source before upgrading.');
+        // Legacy v3 data with no sources yet — synthesize a default source so the
+        // upgrade can proceed. The app will reuse/update it on next boot.
+        const legacy = buildLegacyDefaultSource();
+        logger.info(`Migration 029 (SQLite): sources table empty with ${nullNodes} legacy nodes; creating default source '${legacy.id}'`);
+        db.prepare(`
+          INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, 1, ?, ?)
+        `).run(legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt);
       }
 
-      if (srcCount > 0 && nullNodes > 0) {
+      // Re-count sources now that we may have inserted one.
+      const srcCountAfter = (db.prepare(`SELECT COUNT(*) as c FROM sources`).get() as { c: number }).c;
+      if (srcCountAfter > 0 && nullNodes > 0) {
         // Determine default sourceId = first source by createdAt then rowid.
         const defaultSrcRow = db.prepare(`
           SELECT id FROM sources ORDER BY createdAt ASC, rowid ASC LIMIT 1
@@ -237,10 +266,19 @@ export async function runMigration029Postgres(client: any): Promise<void> {
     const srcCount = srcCountRes.rows[0]?.c ?? 0;
 
     if (srcCount === 0 && nullNodes > 0) {
-      throw new Error('Migration 029 aborted: sources table is empty. Cannot backfill NULL sourceId on nodes.');
+      const legacy = buildLegacyDefaultSource();
+      logger.info(`Migration 029 (PostgreSQL): sources table empty with ${nullNodes} legacy nodes; creating default source '${legacy.id}'`);
+      await client.query(
+        `INSERT INTO sources (id, name, type, config, enabled, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, true, $5, $6)`,
+        [legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt],
+      );
     }
 
-    if (srcCount > 0 && nullNodes > 0) {
+    const srcCountAfterRes = await client.query(`SELECT COUNT(*)::int AS c FROM sources`);
+    const srcCountAfter = srcCountAfterRes.rows[0]?.c ?? 0;
+
+    if (srcCountAfter > 0 && nullNodes > 0) {
       // Backfill NULL sourceIds from the oldest source.
       await client.query(`
         UPDATE "nodes"
@@ -312,10 +350,19 @@ export async function runMigration029Mysql(pool: any): Promise<void> {
       const srcCount = Number((srcRows as any[])[0]?.c ?? 0);
 
       if (srcCount === 0 && nullNodes > 0) {
-        throw new Error('Migration 029 aborted: sources table is empty. Cannot backfill NULL sourceId on nodes.');
+        const legacy = buildLegacyDefaultSource();
+        logger.info(`Migration 029 (MySQL): sources table empty with ${nullNodes} legacy nodes; creating default source '${legacy.id}'`);
+        await conn.query(
+          `INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, 1, ?, ?)`,
+          [legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt],
+        );
       }
 
-      if (srcCount > 0 && nullNodes > 0) {
+      const [srcAfterRows] = await conn.query(`SELECT COUNT(*) AS c FROM sources`);
+      const srcCountAfter = Number((srcAfterRows as any[])[0]?.c ?? 0);
+
+      if (srcCountAfter > 0 && nullNodes > 0) {
         // Backfill NULLs from oldest source.
         await conn.query(`
           UPDATE nodes
