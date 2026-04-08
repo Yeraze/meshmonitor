@@ -268,7 +268,7 @@ check_json "GET /api/config/current" "GET" "/api/config/current" "isinstance(dat
 check_json "GET /api/connection" "GET" "/api/connection" "'connected' in data"
 check_json "GET /api/connection/info" "GET" "/api/connection/info" "isinstance(data, dict)"
 check "GET /api/version/check" "$(api GET /api/version/check)" 200
-check_json "GET /api/virtual-node/status" "GET" "/api/virtual-node/status" "'enabled' in data"
+check_json "GET /api/virtual-node/status" "GET" "/api/virtual-node/status" "'sources' in data"
 check_json "GET /api/nodes" "GET" "/api/nodes" "isinstance(data, list)"
 check_json "GET /api/nodes/active" "GET" "/api/nodes/active" "isinstance(data, list)"
 check_json "GET /api/nodes/security-issues" "GET" "/api/nodes/security-issues" "isinstance(data, list)"
