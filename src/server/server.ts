@@ -10,7 +10,6 @@ import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
-import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { VirtualNodeServer } from './virtualNodeServer.js';
 
@@ -1204,60 +1203,22 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write', { 
       }
     }
 
-    // Broadcast updated NodeInfo to virtual node clients
-    const virtualNodeServer = (global as any).virtualNodeServer;
-    if (virtualNodeServer) {
-      try {
-        // Fetch the updated node from database
-        const node = await databaseService.nodes.getNode(nodeNum);
-        if (node) {
-          // Create NodeInfo message with updated favorite status
-          const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
-            nodeNum: node.nodeNum,
-            user: {
-              id: node.nodeId,
-              longName: node.longName || 'Unknown',
-              shortName: node.shortName || '????',
-              hwModel: node.hwModel || 0,
-              role: node.role ?? undefined,
-              publicKey: node.publicKey ?? undefined,
-            },
-            position:
-              node.latitude && node.longitude
-                ? {
-                    latitude: node.latitude,
-                    longitude: node.longitude,
-                    altitude: node.altitude || 0,
-                    time: node.lastHeard || Math.floor(Date.now() / 1000),
-                  }
-                : undefined,
-            deviceMetrics:
-              node.batteryLevel != null ||
-              node.voltage != null ||
-              node.channelUtilization != null ||
-              node.airUtilTx != null
-                ? {
-                    batteryLevel: node.batteryLevel ?? undefined,
-                    voltage: node.voltage ?? undefined,
-                    channelUtilization: node.channelUtilization ?? undefined,
-                    airUtilTx: node.airUtilTx ?? undefined,
-                  }
-                : undefined,
-            snr: node.snr ?? undefined,
-            lastHeard: node.lastHeard ?? undefined,
-            hopsAway: node.hopsAway ?? undefined,
-            isFavorite: isFavorite,
-          });
-
-          if (nodeInfoMessage) {
-            await virtualNodeServer.broadcastToClients(nodeInfoMessage);
-            logger.debug(`✅ Broadcasted favorite status update to virtual node clients for node ${nodeNum}`);
+    // Phase 7: broadcast via the owning source manager's per-source virtual node.
+    try {
+      if (favSourceId) {
+        const mgr = sourceManagerRegistry.getManager(favSourceId) as any;
+        if (mgr && typeof mgr.broadcastNodeInfoUpdate === 'function') {
+          await mgr.broadcastNodeInfoUpdate(nodeNum);
+        }
+      } else {
+        for (const mgr of sourceManagerRegistry.getAllManagers() as any[]) {
+          if (typeof mgr.broadcastNodeInfoUpdate === 'function') {
+            await mgr.broadcastNodeInfoUpdate(nodeNum);
           }
         }
-      } catch (error) {
-        logger.error(`⚠️ Failed to broadcast favorite update to virtual node clients for node ${nodeNum}:`, error);
-        // Don't fail the request if broadcast fails
       }
+    } catch (error) {
+      logger.error(`⚠️ Failed to broadcast favorite update to virtual node clients for node ${nodeNum}:`, error);
     }
 
     // Sync to device if requested
@@ -1480,60 +1441,22 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { s
     // Update ignored status in database
     await databaseService.setNodeIgnoredAsync(nodeNum, isIgnored, ignoreSourceId);
 
-    // Broadcast updated NodeInfo to virtual node clients
-    const virtualNodeServer = (global as any).virtualNodeServer;
-    if (virtualNodeServer) {
-      try {
-        // Fetch the updated node from database
-        const node = await databaseService.nodes.getNode(nodeNum);
-        if (node) {
-          // Create NodeInfo message with updated ignored status
-          const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
-            nodeNum: node.nodeNum,
-            user: {
-              id: node.nodeId,
-              longName: node.longName || 'Unknown',
-              shortName: node.shortName || '????',
-              hwModel: node.hwModel || 0,
-              role: node.role ?? undefined,
-              publicKey: node.publicKey ?? undefined,
-            },
-            position:
-              node.latitude && node.longitude
-                ? {
-                    latitude: node.latitude,
-                    longitude: node.longitude,
-                    altitude: node.altitude || 0,
-                    time: node.lastHeard || Math.floor(Date.now() / 1000),
-                  }
-                : undefined,
-            deviceMetrics:
-              node.batteryLevel != null ||
-              node.voltage != null ||
-              node.channelUtilization != null ||
-              node.airUtilTx != null
-                ? {
-                    batteryLevel: node.batteryLevel ?? undefined,
-                    voltage: node.voltage ?? undefined,
-                    channelUtilization: node.channelUtilization ?? undefined,
-                    airUtilTx: node.airUtilTx ?? undefined,
-                  }
-                : undefined,
-            snr: node.snr ?? undefined,
-            lastHeard: node.lastHeard ?? undefined,
-            hopsAway: node.hopsAway ?? undefined,
-            isIgnored: isIgnored,
-          });
-
-          if (nodeInfoMessage) {
-            await virtualNodeServer.broadcastToClients(nodeInfoMessage);
-            logger.debug(`✅ Broadcasted ignored status update to virtual node clients for node ${nodeNum}`);
+    // Phase 7: broadcast via the owning source manager's per-source virtual node.
+    try {
+      if (ignoreSourceId) {
+        const mgr = sourceManagerRegistry.getManager(ignoreSourceId) as any;
+        if (mgr && typeof mgr.broadcastNodeInfoUpdate === 'function') {
+          await mgr.broadcastNodeInfoUpdate(nodeNum);
+        }
+      } else {
+        for (const mgr of sourceManagerRegistry.getAllManagers() as any[]) {
+          if (typeof mgr.broadcastNodeInfoUpdate === 'function') {
+            await mgr.broadcastNodeInfoUpdate(nodeNum);
           }
         }
-      } catch (error) {
-        logger.error(`⚠️ Failed to broadcast ignored update to virtual node clients for node ${nodeNum}:`, error);
-        // Don't fail the request if broadcast fails
       }
+    } catch (error) {
+      logger.error(`⚠️ Failed to broadcast ignored update to virtual node clients for node ${nodeNum}:`, error);
     }
 
     // Sync to device if requested

@@ -34,8 +34,17 @@ vi.mock('./tcpTransport.js', () => ({
 }));
 
 // Prevent the constructor's async position-recalc path from touching the DB
-vi.mock('../services/database.js', () => ({
-  default: {
+const { getNodeMock } = vi.hoisted(() => ({
+  getNodeMock: vi.fn().mockResolvedValue({
+    nodeNum: 123,
+    nodeId: '!0000007b',
+    longName: 'Test Node',
+    shortName: 'TN',
+    hwModel: 1,
+  }),
+}));
+vi.mock('../services/database.js', () => {
+  const shared = {
     waitForReady: vi.fn().mockResolvedValue(undefined),
     settings: {
       getSetting: vi.fn().mockResolvedValue(null),
@@ -45,18 +54,41 @@ vi.mock('../services/database.js', () => ({
     sources: {
       getSource: vi.fn().mockResolvedValue(null),
     },
-  },
-  databaseService: {
-    waitForReady: vi.fn().mockResolvedValue(undefined),
-    settings: {
-      getSetting: vi.fn().mockResolvedValue(null),
-      setSetting: vi.fn().mockResolvedValue(undefined),
+    nodes: {
+      getNode: getNodeMock,
+      upsertNode: vi.fn().mockResolvedValue(undefined),
+      getActiveNodes: vi.fn().mockResolvedValue([]),
+      getAllNodes: vi.fn().mockResolvedValue([]),
     },
-    getAllTraceroutesForRecalculationAsync: vi.fn().mockResolvedValue([]),
-    sources: {
-      getSource: vi.fn().mockResolvedValue(null),
-    },
-  },
+    recordTracerouteRequestAsync: vi.fn().mockResolvedValue(undefined),
+  };
+  return { default: shared, databaseService: shared };
+});
+
+// Mock the protobuf service so we can assert on encoded outputs without
+// touching the real protobuf root.
+const { createNodeInfoMock, createFromRadioWithPacketMock } = vi.hoisted(() => ({
+  createNodeInfoMock: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+  createFromRadioWithPacketMock: vi.fn().mockResolvedValue(new Uint8Array([4, 5, 6])),
+}));
+vi.mock('./meshtasticProtobufService.js', () => {
+  const svc = {
+    createNodeInfo: createNodeInfoMock,
+    createFromRadioWithPacket: createFromRadioWithPacketMock,
+    getPortNumName: (n: number) => `PORT_${n}`,
+    normalizePortNum: (n: any) => (typeof n === 'number' ? n : 0),
+    processPayload: vi.fn(),
+  };
+  return { default: svc, meshtasticProtobufService: svc };
+});
+
+// Stub packet-log service so processMeshPacket's logging branch stays quiet
+vi.mock('./services/packetLogService.js', () => {
+  const svc = { isEnabled: vi.fn().mockResolvedValue(false), logPacket: vi.fn() };
+  return { default: svc, packetLogService: svc };
+});
+vi.mock('./services/channelDecryptionService.js', () => ({
+  channelDecryptionService: { isEnabled: () => false, tryDecrypt: vi.fn() },
 }));
 
 import { MeshtasticManager } from './meshtasticManager.js';
@@ -110,6 +142,58 @@ describe('MeshtasticManager — Virtual Node wiring', () => {
     expect(VNConstructor).toHaveBeenCalledWith(
       expect.objectContaining({ port: 4504, allowAdminCommands: true })
     );
+  });
+
+  it('broadcastNodeInfoUpdate broadcasts when VN is enabled', async () => {
+    const mgr = new MeshtasticManager('src-1', {
+      host: '127.0.0.1',
+      port: 4403,
+      virtualNode: { enabled: true, port: 4503, allowAdminCommands: false },
+    });
+    broadcastMock.mockClear();
+    createNodeInfoMock.mockClear();
+
+    await mgr.broadcastNodeInfoUpdate(123);
+
+    expect(createNodeInfoMock).toHaveBeenCalled();
+    expect(broadcastMock).toHaveBeenCalledWith(expect.any(Uint8Array));
+  });
+
+  it('broadcastNodeInfoUpdate is a no-op when VN is disabled', async () => {
+    const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403 });
+    broadcastMock.mockClear();
+    createNodeInfoMock.mockClear();
+
+    await mgr.broadcastNodeInfoUpdate(123);
+
+    expect(createNodeInfoMock).not.toHaveBeenCalled();
+    expect(broadcastMock).not.toHaveBeenCalled();
+  });
+
+  it('processMeshPacket broadcasts inbound packets when VN is enabled', async () => {
+    const mgr = new MeshtasticManager('src-1', {
+      host: '127.0.0.1',
+      port: 4403,
+      virtualNode: { enabled: true, port: 4503, allowAdminCommands: false },
+    });
+    broadcastMock.mockClear();
+    createFromRadioWithPacketMock.mockClear();
+
+    const pkt = { id: 1, from: 2, to: 0xffffffff, channel: 0, decoded: { portnum: 1, payload: new Uint8Array() } };
+    await (mgr as any).processMeshPacket(pkt);
+
+    expect(createFromRadioWithPacketMock).toHaveBeenCalledWith(pkt);
+    expect(broadcastMock).toHaveBeenCalledWith(expect.any(Uint8Array));
+  });
+
+  it('processMeshPacket does not throw when VN is disabled', async () => {
+    const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403 });
+    broadcastMock.mockClear();
+    createFromRadioWithPacketMock.mockClear();
+
+    const pkt = { id: 1, from: 2, to: 0xffffffff, channel: 0, decoded: { portnum: 1, payload: new Uint8Array() } };
+    await expect((mgr as any).processMeshPacket(pkt)).resolves.toBeUndefined();
+    expect(broadcastMock).not.toHaveBeenCalled();
   });
 
   it('reconfigureVirtualNode(undefined) stops and clears the server', async () => {

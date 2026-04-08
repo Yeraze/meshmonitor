@@ -4085,6 +4085,77 @@ class MeshtasticManager implements ISourceManager {
         }
       }
     }
+
+    // Phase 7: Mirror every accepted inbound MeshPacket to this source's
+    // virtual-node clients so VN consumers see live mesh traffic. Broadcast all
+    // PortNums — the whole point of a virtual node is to reflect the mesh.
+    if (this.virtualNodeServer) {
+      try {
+        const fromRadioData = await meshtasticProtobufService.createFromRadioWithPacket(meshPacket);
+        if (fromRadioData) {
+          await this.virtualNodeServer.broadcastToClients(fromRadioData);
+        }
+      } catch (error) {
+        logger.error(`Virtual node: Failed to broadcast inbound packet for source ${this.sourceId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Rebuild a NodeInfo FromRadio message for `nodeNum` from the database and
+   * broadcast it to this source's virtual-node clients. Used by REST handlers
+   * (favorite/ignore toggles) so VN clients see updated node metadata
+   * immediately. No-op if VN is not enabled for this source.
+   */
+  async broadcastNodeInfoUpdate(nodeNum: number): Promise<void> {
+    if (!this.virtualNodeServer) return;
+    try {
+      const node = await databaseService.nodes.getNode(nodeNum);
+      if (!node) return;
+      const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
+        nodeNum: node.nodeNum,
+        user: {
+          id: node.nodeId,
+          longName: node.longName || 'Unknown',
+          shortName: node.shortName || '????',
+          hwModel: node.hwModel || 0,
+          role: node.role ?? undefined,
+          publicKey: node.publicKey ?? undefined,
+        },
+        position:
+          node.latitude && node.longitude
+            ? {
+                latitude: node.latitude,
+                longitude: node.longitude,
+                altitude: node.altitude || 0,
+                time: node.lastHeard || Math.floor(Date.now() / 1000),
+              }
+            : undefined,
+        deviceMetrics:
+          node.batteryLevel != null ||
+          node.voltage != null ||
+          node.channelUtilization != null ||
+          node.airUtilTx != null
+            ? {
+                batteryLevel: node.batteryLevel ?? undefined,
+                voltage: node.voltage ?? undefined,
+                channelUtilization: node.channelUtilization ?? undefined,
+                airUtilTx: node.airUtilTx ?? undefined,
+              }
+            : undefined,
+        snr: node.snr ?? undefined,
+        lastHeard: node.lastHeard ?? undefined,
+        hopsAway: node.hopsAway ?? undefined,
+        isFavorite: (node as any).isFavorite ?? undefined,
+        isIgnored: (node as any).isIgnored ?? undefined,
+      });
+      if (nodeInfoMessage) {
+        await this.virtualNodeServer.broadcastToClients(nodeInfoMessage);
+        logger.debug(`✅ Broadcasted NodeInfo update to virtual-node clients for node ${nodeNum} (source ${this.sourceId})`);
+      }
+    } catch (error) {
+      logger.error(`⚠️ Failed to broadcast NodeInfo update for node ${nodeNum} (source ${this.sourceId}):`, error);
+    }
   }
 
   /**
