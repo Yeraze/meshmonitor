@@ -217,14 +217,6 @@ export interface EnvironmentConfig {
   timezone: string;
   timezoneProvided: boolean;
 
-  // Virtual Node
-  enableVirtualNode: boolean;
-  enableVirtualNodeProvided: boolean;
-  virtualNodePort: number;
-  virtualNodePortProvided: boolean;
-  virtualNodeAllowAdminCommands: boolean;
-  virtualNodeAllowAdminCommandsProvided: boolean;
-
   // OIDC
   oidcIssuer: string | undefined;
   oidcIssuerProvided: boolean;
@@ -506,9 +498,6 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   }
 
   // Virtual Node
-  const enableVirtualNode = parseBoolean('ENABLE_VIRTUAL_NODE', process.env.ENABLE_VIRTUAL_NODE, false);
-  const virtualNodePort = parseInt32('VIRTUAL_NODE_PORT', process.env.VIRTUAL_NODE_PORT, 4404);
-  const virtualNodeAllowAdminCommands = parseBoolean('VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS', process.env.VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS, false);
 
   // OIDC
   const oidcIssuer = {
@@ -678,12 +667,6 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.info(`   MESHTASTIC_RECONNECT_INITIAL_DELAY_MS: ${meshtasticReconnectInitialDelayMs.value}ms (${src(meshtasticReconnectInitialDelayMs.wasProvided)})`);
   logger.info(`   MESHTASTIC_RECONNECT_MAX_DELAY_MS: ${meshtasticReconnectMaxDelayMs.value}ms (${src(meshtasticReconnectMaxDelayMs.wasProvided)})`);
   logger.info(`   MESHTASTIC_MODULE_CONFIG_DELAY_MS: ${meshtasticModuleConfigDelayMs.value}ms (${src(meshtasticModuleConfigDelayMs.wasProvided)})`);
-  if (enableVirtualNode.value) {
-    logger.info('   --- Virtual Node ---');
-    logger.info(`   ENABLE_VIRTUAL_NODE: ${enableVirtualNode.value} (${src(enableVirtualNode.wasProvided)})`);
-    logger.info(`   VIRTUAL_NODE_PORT: ${virtualNodePort.value} (${src(virtualNodePort.wasProvided)})`);
-    logger.info(`   VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS: ${virtualNodeAllowAdminCommands.value} (${src(virtualNodeAllowAdminCommands.wasProvided)})`);
-  }
   if (oidcEnabled) {
     logger.info('   --- OIDC ---');
     logger.info(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
@@ -780,14 +763,6 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     meshtasticModuleConfigDelayMsProvided: meshtasticModuleConfigDelayMs.wasProvided,
     timezone: timezone.value,
     timezoneProvided: timezone.wasProvided,
-
-    // Virtual Node
-    enableVirtualNode: enableVirtualNode.value,
-    enableVirtualNodeProvided: enableVirtualNode.wasProvided,
-    virtualNodePort: virtualNodePort.value,
-    virtualNodePortProvided: virtualNodePort.wasProvided,
-    virtualNodeAllowAdminCommands: virtualNodeAllowAdminCommands.value,
-    virtualNodeAllowAdminCommandsProvided: virtualNodeAllowAdminCommands.wasProvided,
 
     // OIDC
     oidcIssuer: oidcIssuer.value,

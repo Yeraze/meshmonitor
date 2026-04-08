@@ -11,7 +11,6 @@ import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import protobufService from './protobufService.js';
-import { VirtualNodeServer } from './virtualNodeServer.js';
 
 // Make meshtasticManager available globally for routes that need it
 (global as any).meshtasticManager = meshtasticManager;
@@ -315,48 +314,6 @@ initializeOIDC()
   .catch(error => {
     logger.error('Failed to initialize OIDC:', error);
   });
-
-// Function to initialize virtual node server after config capture is complete
-async function initializeOrRefreshVirtualNodeServer(): Promise<void> {
-  // If already initialized, refresh all connected clients with fresh config
-  // This handles physical node reconnection: clients get updated channel/config data
-  // through the proper sendInitialConfig() flow (fixes #1567)
-  if ((global as any).virtualNodeServer) {
-    logger.info('Virtual node server already initialized, refreshing connected clients with fresh config');
-    try {
-      await ((global as any).virtualNodeServer as VirtualNodeServer).refreshAllClients();
-    } catch (error) {
-      logger.error('❌ Failed to refresh virtual node clients:', error);
-    }
-    return;
-  }
-
-  if (env.enableVirtualNode) {
-    try {
-      const virtualNodeServer = new VirtualNodeServer({
-        port: env.virtualNodePort,
-        meshtasticManager: meshtasticManager,
-        allowAdminCommands: env.virtualNodeAllowAdminCommands,
-      });
-
-      await virtualNodeServer.start();
-      logger.info(`🌐 Virtual node server started on port ${env.virtualNodePort}`);
-
-      // Store reference for cleanup
-      (global as any).virtualNodeServer = virtualNodeServer;
-    } catch (error) {
-      logger.error('❌ Failed to start virtual node server:', error);
-      logger.warn('⚠️  Continuing without virtual node server');
-    }
-  } else {
-    logger.debug('Virtual node server disabled (ENABLE_VIRTUAL_NODE=false)');
-  }
-}
-
-// Register callback to initialize virtual node server when config capture completes
-// On first connection: starts the virtual node server
-// On reconnection: refreshes all connected clients with fresh config data
-meshtasticManager.registerConfigCaptureCompleteCallback(initializeOrRefreshVirtualNodeServer);
 
 // ========== Bootstrap Restore Logic ==========
 // Check for RESTORE_FROM_BACKUP environment variable and restore if set
@@ -2333,30 +2290,36 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
   }
 });
 
-// Get Virtual Node server status (requires authentication)
+// Get Virtual Node server status per source (requires authentication)
 apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
   try {
-    const virtualNodeServer = (global as any).virtualNodeServer;
-
-    if (!virtualNodeServer) {
-      return res.json({
-        enabled: false,
-        isRunning: false,
-        clientCount: 0,
-        clients: [],
-      });
-    }
-
-    const isRunning = virtualNodeServer.isRunning();
-    const clientCount = virtualNodeServer.getClientCount();
-    const clients = virtualNodeServer.getClientDetails();
-
-    res.json({
-      enabled: true,
-      isRunning,
-      clientCount,
-      clients,
+    const managers = sourceManagerRegistry.getAllManagers() as any[];
+    const sources = managers.map((mgr) => {
+      const vn = mgr.virtualNodeServer;
+      const status = mgr.getStatus?.();
+      const sourceId = status?.sourceId ?? mgr.sourceId;
+      const sourceName = status?.sourceName ?? sourceId;
+      if (!vn) {
+        return {
+          sourceId,
+          sourceName,
+          enabled: false,
+          isRunning: false,
+          clientCount: 0,
+          clients: [],
+        };
+      }
+      return {
+        sourceId,
+        sourceName,
+        enabled: true,
+        isRunning: vn.isRunning(),
+        clientCount: vn.getClientCount(),
+        clients: vn.getClientDetails(),
+      };
     });
+
+    res.json({ sources });
   } catch (error) {
     logger.error('Error getting virtual node status:', error);
     res.status(500).json({ error: 'Failed to get virtual node status' });
@@ -9196,17 +9159,8 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     }
 
     // Common environment variables for all trigger types
-    // When Virtual Node is enabled, route scripts through it to avoid opening a
-    // second TCP connection to the physical node (which kills MeshMonitor's connection)
-    let meshtasticIp: string;
-    let meshtasticPort: string;
-    if (env.enableVirtualNode) {
-      meshtasticIp = '127.0.0.1';
-      meshtasticPort = String(env.virtualNodePort);
-    } else {
-      meshtasticIp = process.env.MESHTASTIC_NODE_IP || process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
-      meshtasticPort = process.env.MESHTASTIC_NODE_PORT || process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
-    }
+    const meshtasticIp = process.env.MESHTASTIC_NODE_IP || process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
+    const meshtasticPort = process.env.MESHTASTIC_NODE_PORT || process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
     scriptEnv.IP = meshtasticIp;
     scriptEnv.PORT = meshtasticPort;
     scriptEnv.MESHTASTIC_IP = meshtasticIp;
@@ -9781,17 +9735,6 @@ function gracefulShutdown(reason: string): void {
       logger.error('Error disconnecting from Meshtastic:', error);
     }
 
-    // Stop virtual node server
-    const virtualNodeServer = (global as any).virtualNodeServer;
-    if (virtualNodeServer) {
-      try {
-        virtualNodeServer.stop();
-        logger.debug('✅ Virtual node server stopped');
-      } catch (error) {
-        logger.error('Error stopping virtual node server:', error);
-      }
-    }
-
     // Close database connections
     try {
       databaseService.close();
@@ -9893,7 +9836,6 @@ let server: ReturnType<typeof app.listen>;
       try {
         const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
       if (env.oidcEnabled) enabledFeatures.push('OIDC');
-      if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
       if (env.accessLogEnabled) enabledFeatures.push('Access Logging');
       if (pushNotificationService.isAvailable()) enabledFeatures.push('Web Push');
       if (appriseNotificationService.isAvailable()) enabledFeatures.push('Apprise');

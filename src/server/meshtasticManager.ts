@@ -601,13 +601,6 @@ class MeshtasticManager implements ISourceManager {
    * is disabled.
    */
   private async getScriptConnectionConfig(): Promise<MeshtasticConfig> {
-    const env = getEnvironmentConfig();
-    if (env.enableVirtualNode) {
-      return {
-        nodeIp: '127.0.0.1',
-        tcpPort: env.virtualNodePort,
-      };
-    }
     return await this.getConfig();
   }
 
@@ -2764,7 +2757,7 @@ class MeshtasticManager implements ISourceManager {
       const shouldBroadcast = !context?.skipVirtualNodeBroadcast &&
         (!parsed || (parsed.type !== 'channel' && parsed.type !== 'configComplete'));
       if (shouldBroadcast) {
-        const virtualNodeServer = (global as any).virtualNodeServer;
+        const virtualNodeServer = this.virtualNodeServer;
         if (virtualNodeServer) {
           try {
             await virtualNodeServer.broadcastToClients(data);
@@ -6769,7 +6762,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Broadcast outgoing text message to virtual node clients as a proper FromRadio
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer && localNodeNum) {
         try {
           const fromRadioData = await meshtasticProtobufService.createFromRadioTextMessage({
@@ -6815,7 +6808,7 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(tracerouteData);
 
       // Broadcast the outgoing traceroute packet to virtual node clients (including packet monitor)
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(tracerouteData);
@@ -6888,7 +6881,7 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(positionRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(positionRequestData);
@@ -6957,7 +6950,7 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(nodeInfoRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(nodeInfoRequestData);
@@ -7010,7 +7003,7 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(neighborInfoRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(neighborInfoRequestData);
@@ -7068,7 +7061,7 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(telemetryRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(telemetryRequestData);
@@ -7174,7 +7167,7 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(telemetryRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
-      const virtualNodeServer = (global as any).virtualNodeServer;
+      const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(telemetryRequestData);
