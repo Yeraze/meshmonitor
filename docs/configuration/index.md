@@ -79,15 +79,11 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `MESHTASTIC_RECONNECT_MAX_DELAY_MS` | Maximum delay between reconnect attempts (backoff cap) | `60000` (60 seconds) |
 | `MESHTASTIC_MODULE_CONFIG_DELAY_MS` | Delay between consecutive module config requests to avoid overwhelming the device | `100` (100ms) |
 
-### Virtual Node Variables
+### Virtual Node
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ENABLE_VIRTUAL_NODE` | Enable Virtual Node Server for multiple mobile app connections | `false` |
-| `VIRTUAL_NODE_PORT` | TCP port for Virtual Node Server (mobile apps connect to this) | `4404` |
-| `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` | Allow admin commands (position, waypoint, trace route) through Virtual Node | `false` |
+> **Breaking change in 4.0:** The `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, and `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables have been **removed**. Virtual Node is now configured **per source** through the Dashboard UI — each `meshtastic_tcp` source owns its own VN endpoint.
 
-See the [Virtual Node Server guide](/configuration/virtual-node) for detailed configuration and usage.
+See the [Virtual Node Server guide](/configuration/virtual-node) for details.
 
 ### Security & Reverse Proxy Variables
 

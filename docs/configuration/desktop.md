@@ -222,8 +222,8 @@ You can set these environment variables before launching MeshMonitor to override
 | `ALLOWED_ORIGINS` | Comma-separated allowed origins | `http://localhost:8080` |
 | `DATABASE_PATH` | Custom database location | `/path/to/meshmonitor.db` |
 | `SESSION_SECRET` | Custom session secret | `your-secret-key` |
-| `ENABLE_VIRTUAL_NODE` | Enable virtual node server | `true` |
-| `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` | Allow admin commands via virtual node | `true` |
+
+> **4.0 note:** Virtual Node is now configured per source through the Dashboard UI. The `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` / `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables have been removed.
 
 ### Virtual Node Server
 
