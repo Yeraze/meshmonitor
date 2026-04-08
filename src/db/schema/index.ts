@@ -36,3 +36,6 @@ export * from './meshcoreMessages.js';
 
 // Embed Profiles table
 export * from './embedProfiles.js';
+
+// Node Admin Permissions table
+export * from './nodeAdminPermissions.js';

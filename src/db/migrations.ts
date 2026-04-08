@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 19 migrations in sequential order for use by the migration runner.
+ * Registers all 20 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -31,6 +31,7 @@ import { migration as renameSystemBackupColumnsMigration, runMigration016Postgre
 import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
 import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_mute_columns.js';
 import { migration as addChannelToTraceroutesMigration, runMigration019Postgres, runMigration019Mysql } from '../server/migrations/019_add_channel_to_traceroutes.js';
+import { migration as createNodeAdminPermissionsMigration, runMigration020Postgres, runMigration020Mysql } from '../server/migrations/020_create_node_admin_permissions.js';
 
 // ============================================================================
 // Registry
@@ -262,4 +263,18 @@ registry.register({
   sqlite: (db) => addChannelToTraceroutesMigration.up(db),
   postgres: (client) => runMigration019Postgres(client),
   mysql: (pool) => runMigration019Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 020: Create node_admin_permissions table
+// Enables per-node delegated admin access for non-admin users.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 20,
+  name: 'create_node_admin_permissions',
+  settingsKey: 'migration_020_create_node_admin_permissions',
+  sqlite: (db) => createNodeAdminPermissionsMigration.up(db),
+  postgres: (client) => runMigration020Postgres(client),
+  mysql: (pool) => runMigration020Mysql(pool),
 });

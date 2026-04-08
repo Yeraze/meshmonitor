@@ -571,6 +571,101 @@ router.put('/:id/channel-database-permissions', async (req: Request, res: Respon
   }
 });
 
+// Get node admin permissions for a user
+router.get('/:id/node-admin-permissions', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const user = await databaseService.findUserByIdAsync(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const permissions = await databaseService.getNodeAdminPermissionsForUserAsync(userId);
+    return res.json({ permissions });
+  } catch (error) {
+    logger.error('Error getting node admin permissions:', error);
+    return res.status(500).json({ error: 'Failed to get node admin permissions' });
+  }
+});
+
+// Set node admin permissions for a user (replaces all existing)
+router.put('/:id/node-admin-permissions', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const { nodeNums } = req.body;
+    if (!Array.isArray(nodeNums) || !nodeNums.every((n: any) => typeof n === 'number')) {
+      return res.status(400).json({ error: 'nodeNums must be an array of numbers' });
+    }
+
+    const user = await databaseService.findUserByIdAsync(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const grantedBy = req.user!.id;
+
+    // Revoke all existing, then grant the new set
+    await databaseService.revokeAllNodeAdminPermissionsAsync(userId);
+    for (const nodeNum of nodeNums) {
+      await databaseService.grantNodeAdminPermissionAsync(userId, Number(nodeNum), grantedBy);
+    }
+
+    logger.info(`Node admin permissions updated for user ${userId} by ${req.user?.username ?? 'unknown'}: [${nodeNums.join(', ')}]`);
+
+    return res.json({
+      success: true,
+      message: 'Node admin permissions updated successfully'
+    });
+  } catch (error) {
+    logger.error('Error updating node admin permissions:', error);
+    return res.status(500).json({ error: 'Failed to update node admin permissions' });
+  }
+});
+
+// Revoke a single node admin permission
+router.delete('/:id/node-admin-permissions/:nodeNum', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const nodeNum = parseInt(req.params.nodeNum);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'Invalid node number' });
+    }
+
+    const user = await databaseService.findUserByIdAsync(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const revoked = await databaseService.revokeNodeAdminPermissionAsync(userId, nodeNum);
+
+    if (!revoked) {
+      return res.status(404).json({ error: 'Permission not found' });
+    }
+
+    logger.info(`Node admin permission revoked for user ${userId}, node ${nodeNum} by ${req.user?.username ?? 'unknown'}`);
+
+    return res.json({
+      success: true,
+      message: 'Node admin permission revoked successfully'
+    });
+  } catch (error) {
+    logger.error('Error revoking node admin permission:', error);
+    return res.status(500).json({ error: 'Failed to revoke node admin permission' });
+  }
+});
+
 // Force-disable MFA for a user (admin only)
 router.delete('/:id/mfa', async (req: Request, res: Response) => {
   try {

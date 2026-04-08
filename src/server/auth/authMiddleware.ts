@@ -394,6 +394,83 @@ export function requireAdmin() {
 }
 
 /**
+ * Require admin role OR per-node admin permission for a specific node.
+ * Full admins pass through unconditionally.
+ * Non-admin users are checked against node_admin_permissions for the
+ * requested nodeNum. Local node operations remain admin-only.
+ */
+export function requireAdminOrNodeAdmin() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.session.userId) {
+        return res.status(401).json({
+          error: 'Authentication required',
+          code: 'UNAUTHORIZED'
+        });
+      }
+
+      const user = await databaseService.findUserByIdAsync(req.session.userId);
+
+      if (!user || !user.isActive) {
+        req.session.userId = undefined;
+        req.session.username = undefined;
+        req.session.authProvider = undefined;
+        req.session.isAdmin = undefined;
+
+        return res.status(401).json({
+          error: 'Authentication required',
+          code: 'UNAUTHORIZED'
+        });
+      }
+
+      if (user.isAdmin) {
+        req.user = user;
+        return next();
+      }
+
+      const nodeNum = req.body?.nodeNum ?? req.params?.nodeNum;
+
+      if (nodeNum === undefined || nodeNum === null) {
+        return res.status(403).json({
+          error: 'Admin access required (no node specified — defaults to local node)',
+          code: 'FORBIDDEN_ADMIN'
+        });
+      }
+
+      const destinationNodeNum = Number(nodeNum);
+      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
+
+      if (destinationNodeNum === 0 || (localNodeNum !== null && destinationNodeNum === localNodeNum)) {
+        return res.status(403).json({
+          error: 'Admin access required for local node operations',
+          code: 'FORBIDDEN_ADMIN'
+        });
+      }
+
+      const hasPermission = await databaseService.hasNodeAdminPermissionAsync(user.id, destinationNodeNum);
+
+      if (!hasPermission) {
+        logger.debug(`❌ User ${user.username} denied node admin access to node ${destinationNodeNum}`);
+        return res.status(403).json({
+          error: 'Admin access required',
+          code: 'FORBIDDEN_ADMIN'
+        });
+      }
+
+      req.user = user;
+      next();
+    } catch (error) {
+      logger.error('Error in requireAdminOrNodeAdmin middleware:', error);
+      return res.status(500).json({
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
+    }
+  };
+}
+
+/**
  * Check if user has a specific permission (async version)
  */
 export async function hasPermission(user: User, resource: ResourceType, action: PermissionAction): Promise<boolean> {

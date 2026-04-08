@@ -19,7 +19,7 @@ import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
-import { optionalAuth, requireAuth, requirePermission, requireAdmin, hasPermission } from './auth/authMiddleware.js';
+import { optionalAuth, requireAuth, requirePermission, requireAdmin, requireAdminOrNodeAdmin, hasPermission } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig, resetEnvironmentConfig } from './config/environment.js';
@@ -6083,7 +6083,7 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
 
 // Admin commands endpoint - requires admin role
 // Admin load config endpoint - requires admin role
-apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/load-config', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum, configType, channelIndex } = req.body;
 
@@ -6565,7 +6565,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
 
 // Admin ensure session passkey endpoint - requires admin role
 // This ensures we have a valid session passkey before making multiple requests
-apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/ensure-session-passkey', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum } = req.body;
 
@@ -6603,7 +6603,7 @@ apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res)
 
 // Admin get session passkey status - requires admin role
 // This just checks the status without triggering a new request
-apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/session-passkey-status', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum } = req.body;
 
@@ -6630,7 +6630,7 @@ apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res)
 });
 
 // Admin get channel endpoint - requires admin role
-apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/get-channel', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum, channelIndex } = req.body;
 
@@ -6721,7 +6721,7 @@ apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
 });
 
 // Admin load owner endpoint - requires admin role
-apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/load-owner', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum } = req.body;
 
@@ -6770,7 +6770,7 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
 });
 
 // Admin get device metadata endpoint - requires admin role
-apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/get-device-metadata', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum } = req.body;
 
@@ -6843,7 +6843,7 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
 });
 
 // Admin reboot endpoint - sends reboot command to a node
-apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/reboot', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum, seconds = 10 } = req.body;
 
@@ -6886,7 +6886,7 @@ apiRouter.delete('/admin/suppressed-ghosts/:nodeNum', requireAdmin(), async (req
 });
 
 // Admin set-time endpoint - sets time on a node to current server time
-apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/set-time', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum } = req.body;
 
@@ -6904,7 +6904,7 @@ apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
 
 // Admin commands endpoint - requires admin role
 // Admin endpoint: Export configuration for remote nodes
-apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/export-config', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum, channelIds, includeLoraConfig } = req.body;
 
@@ -7033,7 +7033,7 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
 });
 
 // Admin endpoint: Import configuration for remote nodes
-apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/import-config', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { nodeNum, url: configUrl } = req.body;
 
@@ -7181,7 +7181,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
   }
 });
 
-apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
+apiRouter.post('/admin/commands', requireAdminOrNodeAdmin(), async (req, res) => {
   try {
     const { command, nodeNum, ...params } = req.body;
 

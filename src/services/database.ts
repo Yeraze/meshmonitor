@@ -9852,6 +9852,28 @@ class DatabaseService {
     }
   }
 
+  // ============ NODE ADMIN PERMISSION METHODS ============
+
+  async hasNodeAdminPermissionAsync(userId: number, nodeNum: number): Promise<boolean> {
+    return this.auth.hasNodeAdminPermission(userId, nodeNum);
+  }
+
+  async getNodeAdminPermissionsForUserAsync(userId: number): Promise<{ nodeNum: number; grantedAt: number; grantedBy: number | null }[]> {
+    return this.auth.getNodeAdminPermissionsForUser(userId);
+  }
+
+  async grantNodeAdminPermissionAsync(userId: number, nodeNum: number, grantedBy: number): Promise<void> {
+    return this.auth.grantNodeAdminPermission(userId, nodeNum, grantedBy);
+  }
+
+  async revokeNodeAdminPermissionAsync(userId: number, nodeNum: number): Promise<boolean> {
+    return this.auth.revokeNodeAdminPermission(userId, nodeNum);
+  }
+
+  async revokeAllNodeAdminPermissionsAsync(userId: number): Promise<number> {
+    return this.auth.revokeAllNodeAdminPermissions(userId);
+  }
+
   // ============ ASYNC MESSAGE METHODS ============
   // These methods provide async access to message operations for multi-database support
 

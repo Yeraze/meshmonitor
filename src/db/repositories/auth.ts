@@ -834,4 +834,61 @@ export class AuthRepository extends BaseRepository {
       }
     }
   }
+
+  // ============ NODE ADMIN PERMISSIONS ============
+
+  async hasNodeAdminPermission(userId: number, nodeNum: number): Promise<boolean> {
+    const { nodeAdminPermissions } = this.tables;
+    const result = await this.db
+      .select()
+      .from(nodeAdminPermissions)
+      .where(and(
+        eq(nodeAdminPermissions.userId, userId),
+        eq(nodeAdminPermissions.nodeNum, nodeNum)
+      ))
+      .limit(1);
+    return result.length > 0;
+  }
+
+  async getNodeAdminPermissionsForUser(userId: number): Promise<{ nodeNum: number; grantedAt: number; grantedBy: number | null }[]> {
+    const { nodeAdminPermissions } = this.tables;
+    const result = await this.db
+      .select({
+        nodeNum: nodeAdminPermissions.nodeNum,
+        grantedAt: nodeAdminPermissions.grantedAt,
+        grantedBy: nodeAdminPermissions.grantedBy,
+      })
+      .from(nodeAdminPermissions)
+      .where(eq(nodeAdminPermissions.userId, userId));
+    return this.normalizeBigInts(result) as { nodeNum: number; grantedAt: number; grantedBy: number | null }[];
+  }
+
+  async grantNodeAdminPermission(userId: number, nodeNum: number, grantedBy: number): Promise<void> {
+    const { nodeAdminPermissions } = this.tables;
+    await this.insertIgnore(nodeAdminPermissions, {
+      userId,
+      nodeNum,
+      grantedBy,
+      grantedAt: Date.now(),
+    });
+  }
+
+  async revokeNodeAdminPermission(userId: number, nodeNum: number): Promise<boolean> {
+    const { nodeAdminPermissions } = this.tables;
+    const result = await this.db
+      .delete(nodeAdminPermissions)
+      .where(and(
+        eq(nodeAdminPermissions.userId, userId),
+        eq(nodeAdminPermissions.nodeNum, nodeNum)
+      ));
+    return this.getAffectedRows(result) > 0;
+  }
+
+  async revokeAllNodeAdminPermissions(userId: number): Promise<number> {
+    const { nodeAdminPermissions } = this.tables;
+    const result = await this.db
+      .delete(nodeAdminPermissions)
+      .where(eq(nodeAdminPermissions.userId, userId));
+    return this.getAffectedRows(result);
+  }
 }

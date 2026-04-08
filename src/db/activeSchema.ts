@@ -98,6 +98,11 @@ import {
   embedProfilesSqlite, embedProfilesPostgres, embedProfilesMysql,
 } from './schema/embedProfiles.js';
 
+// Node Admin Permissions table
+import {
+  nodeAdminPermissionsSqlite, nodeAdminPermissionsPostgres, nodeAdminPermissionsMysql,
+} from './schema/nodeAdminPermissions.js';
+
 /**
  * Runtime table map interface.
  *
@@ -162,6 +167,9 @@ export interface ActiveSchema {
   // Embed Profiles
   embedProfiles: any;
 
+  // Node Admin Permissions
+  nodeAdminPermissions: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -209,6 +217,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesSqlite,
     meshcoreMessages: meshcoreMessagesSqlite,
     embedProfiles: embedProfilesSqlite,
+    nodeAdminPermissions: nodeAdminPermissionsSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -249,6 +258,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesPostgres,
     meshcoreMessages: meshcoreMessagesPostgres,
     embedProfiles: embedProfilesPostgres,
+    nodeAdminPermissions: nodeAdminPermissionsPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -289,6 +299,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesMysql,
     meshcoreMessages: meshcoreMessagesMysql,
     embedProfiles: embedProfilesMysql,
+    nodeAdminPermissions: nodeAdminPermissionsMysql,
   },
 };
 
