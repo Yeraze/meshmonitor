@@ -64,6 +64,26 @@ export class SourceManagerRegistry extends EventEmitter {
     return this.managers.get(sourceId);
   }
 
+  /**
+   * Hot-swap the virtual node configuration of a meshtastic_tcp manager without
+   * restarting its upstream transport. Returns true if a swap happened, false
+   * if the manager does not exist or does not support VN reconfiguration.
+   */
+  async reconfigureVirtualNode(sourceId: string, vnConfig: any): Promise<boolean> {
+    const manager = this.managers.get(sourceId) as any;
+    if (!manager || typeof manager.reconfigureVirtualNode !== 'function') {
+      return false;
+    }
+    try {
+      await manager.reconfigureVirtualNode(vnConfig);
+      logger.info(`Hot-swapped virtual node config for source ${sourceId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to reconfigure virtual node for source ${sourceId}:`, error);
+      throw error;
+    }
+  }
+
   getAllManagers(): ISourceManager[] {
     return Array.from(this.managers.values());
   }

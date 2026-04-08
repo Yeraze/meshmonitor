@@ -124,7 +124,7 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (source.enabled && source.type === 'meshtastic_tcp') {
       try {
         const cfg = source.config as any;
-        const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
+        const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port, virtualNode: cfg.virtualNode });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
         logger.warn(`Could not start manager for new source ${source.id}:`, err);
@@ -174,7 +174,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       if (!sourceManagerRegistry.getManager(source.id)) {
         try {
           const cfg = source.config as any;
-          const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
+          const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port, virtualNode: cfg.virtualNode });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
           logger.warn(`Could not start manager for source ${source.id}:`, err);
@@ -183,6 +183,32 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     } else if (wasEnabled && !isNowEnabled) {
       // Newly disabled: stop manager
       await sourceManagerRegistry.removeManager(source.id);
+    } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && config !== undefined) {
+      // Still enabled, config possibly changed. Detect what changed and act.
+      const oldCfg = (existing.config as any) || {};
+      const newCfg = (source.config as any) || {};
+      const transportChanged = oldCfg.host !== newCfg.host || oldCfg.port !== newCfg.port;
+      const oldVn = JSON.stringify(oldCfg.virtualNode ?? null);
+      const newVn = JSON.stringify(newCfg.virtualNode ?? null);
+      const vnChanged = oldVn !== newVn;
+
+      if (transportChanged) {
+        // Full restart — upstream TCP target changed.
+        try {
+          await sourceManagerRegistry.removeManager(source.id);
+          const manager = new MeshtasticManager(source.id, { host: newCfg.host, port: newCfg.port, virtualNode: newCfg.virtualNode });
+          await sourceManagerRegistry.addManager(manager);
+        } catch (err) {
+          logger.warn(`Could not restart manager for source ${source.id}:`, err);
+        }
+      } else if (vnChanged) {
+        // Hot-swap only the virtual node sub-feature.
+        try {
+          await sourceManagerRegistry.reconfigureVirtualNode(source.id, newCfg.virtualNode);
+        } catch (err) {
+          logger.warn(`Could not hot-swap virtual node for source ${source.id}:`, err);
+        }
+      }
     }
 
     res.json(source);
