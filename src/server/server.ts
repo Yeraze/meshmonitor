@@ -523,18 +523,24 @@ setTimeout(async () => {
       if (source.type === 'meshtastic_tcp') {
         const cfg = source.config as any;
 
-        if (!firstTcpSourceConfigured) {
-          // Configure the legacy singleton for the first source, then let the
-          // registry start it (addManager calls start() → connect()).
-          // All legacy API routes use this singleton directly.
-          meshtasticManager.configureSource({ host: cfg.host, port: cfg.port }, source.id);
-          await sourceManagerRegistry.addManager(meshtasticManager);
-          firstTcpSourceConfigured = true;
-          logger.debug(`Started primary source manager via singleton: ${source.id}`);
-        } else {
-          // Additional sources get their own manager instances
-          const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
-          await sourceManagerRegistry.addManager(manager);
+        try {
+          if (!firstTcpSourceConfigured) {
+            // Configure the legacy singleton for the first source, then let the
+            // registry start it (addManager calls start() → connect()).
+            // All legacy API routes use this singleton directly.
+            meshtasticManager.configureSource({ host: cfg.host, port: cfg.port }, source.id);
+            await sourceManagerRegistry.addManager(meshtasticManager);
+            firstTcpSourceConfigured = true;
+            logger.debug(`Started primary source manager via singleton: ${source.id}`);
+          } else {
+            // Additional sources get their own manager instances
+            const manager = new MeshtasticManager(source.id, { host: cfg.host, port: cfg.port });
+            await sourceManagerRegistry.addManager(manager);
+          }
+        } catch (err) {
+          // Don't let one failed source block others from registering.
+          // The manager's internal retry logic will reconnect when reachable.
+          logger.error(`Failed to start source ${source.id} (${source.name}); continuing with other sources:`, err);
         }
       }
     }
