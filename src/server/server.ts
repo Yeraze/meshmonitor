@@ -4210,11 +4210,11 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     const user = (req as any).user;
     const userId = req.user?.id ?? null;
     const localNodeInfo = activeManager.getLocalNodeInfo();
-    // Nodes are globally unique by nodeId (DB constraint) — don't filter by sourceId.
-    // A node first seen by Source 1 has sourceId='source1' but is still visible on Source 2's mesh.
-    // Messages and channels are source-scoped; the node registry is shared.
-    // NOTE: Cross-source message visibility requires a schema change (composite PK) — see MES-15.
-    const allMemoryNodes = await activeManager.getAllNodesAsync();
+    // Nodes are stored per-source (composite PK (nodeNum, sourceId) since migration
+    // 029). Scope strictly to this source so two sources with overlapping meshes
+    // each show only what they have actually heard. When no sourceId is given
+    // (legacy/no-source callers), fall back to the global unscoped query.
+    const allMemoryNodes = await activeManager.getAllNodesAsync(pollSourceId);
     const filteredMemoryNodes = await filterNodesByChannelPermission(allMemoryNodes, user);
 
     // Load full permission set once to avoid N sequential DB queries per permission check
