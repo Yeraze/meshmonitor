@@ -22,8 +22,8 @@ import {
 // SQL for creating the nodes table per backend
 const SQLITE_CREATE = `
   CREATE TABLE IF NOT EXISTS nodes (
-    nodeNum INTEGER PRIMARY KEY,
-    nodeId TEXT NOT NULL UNIQUE,
+    nodeNum INTEGER NOT NULL,
+    nodeId TEXT NOT NULL,
     longName TEXT,
     shortName TEXT,
     hwModel INTEGER,
@@ -80,15 +80,16 @@ const SQLITE_CREATE = `
     lastTimeSync INTEGER,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
-    sourceId TEXT
+    sourceId TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (nodeNum, sourceId)
   )
 `;
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS nodes CASCADE;
   CREATE TABLE nodes (
-    "nodeNum" BIGINT PRIMARY KEY,
-    "nodeId" TEXT NOT NULL UNIQUE,
+    "nodeNum" BIGINT NOT NULL,
+    "nodeId" TEXT NOT NULL,
     "longName" TEXT,
     "shortName" TEXT,
     "hwModel" INTEGER,
@@ -145,15 +146,16 @@ const POSTGRES_CREATE = `
     "lastTimeSync" BIGINT,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
-    "sourceId" TEXT
+    "sourceId" TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY ("nodeNum", "sourceId")
   )
 `;
 
 const MYSQL_CREATE = `
   DROP TABLE IF EXISTS nodes;
   CREATE TABLE nodes (
-    nodeNum BIGINT PRIMARY KEY,
-    nodeId VARCHAR(255) NOT NULL UNIQUE,
+    nodeNum BIGINT NOT NULL,
+    nodeId VARCHAR(255) NOT NULL,
     longName VARCHAR(255),
     shortName VARCHAR(255),
     hwModel INTEGER,
@@ -210,7 +212,8 @@ const MYSQL_CREATE = `
     lastTimeSync BIGINT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
-    sourceId VARCHAR(36)
+    sourceId VARCHAR(36) NOT NULL DEFAULT 'default',
+    PRIMARY KEY (nodeNum, sourceId)
   )
 `;
 

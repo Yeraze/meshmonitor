@@ -143,14 +143,13 @@ export class NodesRepository extends BaseRepository {
       logger.error('Cannot upsert node: missing nodeNum or nodeId');
       return;
     }
-    if (!sourceId) {
-      logger.error(`Cannot upsert node ${nodeData.nodeNum}: sourceId is required after migration 029`);
-      return;
-    }
+    // Fall back to 'default' source for callers that predate multi-source.
+    // After migration 029 the primary key is (nodeNum, sourceId) so a value is always needed.
+    const effectiveSourceId = sourceId ?? 'default';
 
     const now = this.now();
     const { nodes } = this.tables;
-    const existingNode = await this.getNode(nodeData.nodeNum, sourceId);
+    const existingNode = await this.getNode(nodeData.nodeNum, effectiveSourceId);
 
     if (existingNode) {
       // Update existing node - coerceBigintField is safe for all dialects (just Math.floor)
@@ -194,7 +193,7 @@ export class NodesRepository extends BaseRepository {
           positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
           updatedAt: now,
         })
-        .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, sourceId)));
+        .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
     } else {
       // Insert new node - coerce BIGINT fields for PostgreSQL
       const newNode = {
@@ -239,9 +238,7 @@ export class NodesRepository extends BaseRepository {
 
       // Only set sourceId on INSERT — once a node is associated with a source,
       // that association must not be overwritten by subsequent upserts.
-      if (sourceId) {
-        newNode.sourceId = sourceId;
-      }
+      newNode.sourceId = effectiveSourceId;
 
       // All databases use atomic upsert to prevent race conditions where
       // concurrent getNode() calls both return null and then both try to INSERT
