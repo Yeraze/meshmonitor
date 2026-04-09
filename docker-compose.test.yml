@@ -1,0 +1,46 @@
+# Test database containers for the multi-backend repository test suites.
+#
+# Brings up PostgreSQL on 5433 and MySQL on 3307 with credentials that match
+# src/db/repositories/test-utils.ts. Data is stored in tmpfs so the containers
+# start from a clean state on every run and tear down instantly.
+#
+# Usage:
+#   npm run test:db:up       # start both containers
+#   npm run test:multidb     # start containers, run full vitest suite, stop containers
+#   npm run test:db:down     # stop containers
+
+services:
+  meshmonitor-test-postgres:
+    image: postgres:16-alpine
+    container_name: meshmonitor-test-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=test
+      - POSTGRES_PASSWORD=test
+      - POSTGRES_DB=meshmonitor_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d meshmonitor_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  meshmonitor-test-mysql:
+    image: mysql:8
+    container_name: meshmonitor-test-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=test
+      - MYSQL_USER=test
+      - MYSQL_PASSWORD=test
+      - MYSQL_DATABASE=meshmonitor_test
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-utest", "-ptest"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
