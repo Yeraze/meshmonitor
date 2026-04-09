@@ -4,8 +4,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import enTranslations from '../../public/locales/en.json';
 import AutoAnnounceSection from './AutoAnnounceSection';
 import { Channel } from '../types/device';
+
+// Override the global i18n mock (from src/test/setup.ts) with real translations
+// from en.json so text-based assertions like `getByText('Auto Announce')` work.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      const translations = enTranslations as unknown as Record<string, string>;
+      let result = translations[key] ?? key;
+      if (options) {
+        Object.entries(options).forEach(([k, v]) => {
+          result = result.replace(`{{${k}}}`, String(v));
+        });
+      }
+      return result;
+    },
+    i18n: { changeLanguage: vi.fn(), language: 'en' },
+  }),
+  Trans: ({ children }: { children: React.ReactNode }) => children,
+  initReactI18next: { type: '3rdParty', init: vi.fn() },
+}));
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
@@ -19,11 +40,26 @@ vi.mock('./ToastContainer', () => ({
   useToast: () => ({ showToast: mockShowToast })
 }));
 
+// Mock useSaveBar — component registers with SaveBar context which isn't
+// mounted in isolation. Tests can assert on the registered handler via mockUseSaveBar.
+const mockUseSaveBar = vi.fn();
+vi.mock('../hooks/useSaveBar', () => ({
+  useSaveBar: (opts: unknown) => mockUseSaveBar(opts)
+}));
+
+// Mock useSourceQuery — hook depends on React Query context
+vi.mock('../hooks/useSourceQuery', () => ({
+  useSourceQuery: () => ({ sourceId: null, baseUrl: '' })
+}));
+
 // Mock fetch for last announcement time
 global.fetch = vi.fn();
 
-// Skip component tests in CI - jsdom has compatibility issues with webidl-conversions
-// Tests work locally but fail in some CI environments
+// Skip the full suite until tests are updated to match the component's current
+// structure. Initial un-skip work got past the prior i18n/SaveBar/useSourceQuery
+// blockers, but the tests still expect an older DOM (different label
+// associations, buttons, form layout). A targeted rewrite is needed — tracked
+// as Tier 2 follow-up.
 describe.skip('AutoAnnounceSection Component', () => {
   const mockChannels: Channel[] = [
     { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },

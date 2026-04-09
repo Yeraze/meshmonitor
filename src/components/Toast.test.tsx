@@ -2,17 +2,22 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Toast, { ToastProps } from './Toast';
 
-// Skip Toast tests in CI - they have timing issues with fake timers
-// Tests work locally but timeout in CI environment
-describe.skip('Toast Component', () => {
-  let mockOnClose = vi.fn() as unknown as (id: string) => void;
+describe('Toast Component', () => {
+  let mockOnClose: ReturnType<typeof vi.fn>;
+  let defaultProps: ToastProps;
 
   beforeEach(() => {
-    mockOnClose = vi.fn() as unknown as (id: string) => void;
+    mockOnClose = vi.fn();
+    defaultProps = {
+      id: 'test-toast-1',
+      message: 'Test message',
+      type: 'info',
+      onClose: mockOnClose as unknown as (id: string) => void,
+    };
     vi.useFakeTimers();
   });
 
@@ -20,13 +25,6 @@ describe.skip('Toast Component', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
-
-  const defaultProps: ToastProps = {
-    id: 'test-toast-1',
-    message: 'Test message',
-    type: 'info',
-    onClose: mockOnClose,
-  };
 
   describe('Rendering', () => {
     it('should render toast with message', () => {
@@ -66,11 +64,8 @@ describe.skip('Toast Component', () => {
 
       expect(mockOnClose).not.toHaveBeenCalled();
 
-      // Fast-forward 5 seconds
-      vi.advanceTimersByTime(5000);
-
-      // Give time for effect cleanup
-      await new Promise(resolve => setTimeout(resolve, 0));
+      // Fast-forward 5 seconds — async variant flushes microtasks so effects resolve
+      await vi.advanceTimersByTimeAsync(5000);
 
       expect(mockOnClose).toHaveBeenCalledWith('test-toast-1');
       expect(mockOnClose).toHaveBeenCalledTimes(1);
@@ -82,10 +77,7 @@ describe.skip('Toast Component', () => {
       expect(mockOnClose).not.toHaveBeenCalled();
 
       // Fast-forward 3 seconds
-      vi.advanceTimersByTime(3000);
-
-      // Give time for effect cleanup
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await vi.advanceTimersByTimeAsync(3000);
 
       expect(mockOnClose).toHaveBeenCalledWith('test-toast-1');
     });
@@ -112,30 +104,34 @@ describe.skip('Toast Component', () => {
   });
 
   describe('Manual Close', () => {
-    it('should call onClose when close button is clicked', async () => {
-      const user = userEvent.setup({ delay: null });
+    it('should call onClose when close button is clicked', () => {
       render(<Toast {...defaultProps} />);
 
       const closeButton = screen.getByText('×');
-      await user.click(closeButton);
+      // fireEvent is synchronous and plays nicely with fake timers
+      fireEvent.click(closeButton);
 
       expect(mockOnClose).toHaveBeenCalledWith('test-toast-1');
       expect(mockOnClose).toHaveBeenCalledTimes(1);
     });
 
-    it('should not auto-dismiss after manual close', async () => {
-      const user = userEvent.setup({ delay: null });
-      render(<Toast {...defaultProps} duration={5000} />);
+    it('should not auto-dismiss after manual close + unmount', () => {
+      // The Toast itself doesn't manage its own visibility - the parent
+      // unmounts it in response to onClose. Verify the unmount cleans up
+      // the auto-dismiss timer so it doesn't fire a second onClose.
+      const { unmount } = render(<Toast {...defaultProps} duration={5000} />);
 
       const closeButton = screen.getByText('×');
-      await user.click(closeButton);
+      fireEvent.click(closeButton);
 
       expect(mockOnClose).toHaveBeenCalledTimes(1);
 
-      // Fast-forward past duration
+      // Parent would unmount in response to onClose
+      unmount();
+
+      // Fast-forward past duration — timer should have been cleared on unmount
       vi.advanceTimersByTime(6000);
 
-      // Should still only be called once (from manual close)
       expect(mockOnClose).toHaveBeenCalledTimes(1);
     });
   });
@@ -144,26 +140,26 @@ describe.skip('Toast Component', () => {
     it('should apply success background color', () => {
       const { container } = render(<Toast {...defaultProps} type="success" />);
       const toastDiv = container.firstChild as HTMLElement;
-      // Browser returns RGB, not hex
-      expect(toastDiv.style.backgroundColor).toMatch(/#4caf50|rgb\(76, 175, 80\)/);
+      // Component uses Catppuccin CSS variables
+      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-green)');
     });
 
     it('should apply error background color', () => {
       const { container } = render(<Toast {...defaultProps} type="error" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toMatch(/#f44336|rgb\(244, 67, 54\)/);
+      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-red)');
     });
 
     it('should apply warning background color', () => {
       const { container } = render(<Toast {...defaultProps} type="warning" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toMatch(/#ff9800|rgb\(255, 152, 0\)/);
+      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-peach)');
     });
 
     it('should apply info background color', () => {
       const { container } = render(<Toast {...defaultProps} type="info" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toMatch(/#2196f3|rgb\(33, 150, 243\)/);
+      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-blue)');
     });
 
     it('should have slideIn animation', () => {
@@ -177,7 +173,8 @@ describe.skip('Toast Component', () => {
     it('should render long messages', () => {
       const longMessage = 'This is a very long message '.repeat(10);
       render(<Toast {...defaultProps} message={longMessage} />);
-      expect(screen.getByText(longMessage)).toBeInTheDocument();
+      // Testing-library normalizes whitespace — use trimmed version for exact match
+      expect(screen.getByText(longMessage.trim())).toBeInTheDocument();
     });
 
     it('should render messages with special characters', () => {
@@ -211,13 +208,16 @@ describe.skip('Toast Component', () => {
 
   describe('Accessibility', () => {
     it('should have close button accessible via keyboard', async () => {
-      const user = userEvent.setup({ delay: null });
+      // userEvent.keyboard() with fake timers deadlocks; use real timers for this test
+      vi.useRealTimers();
+      const user = userEvent.setup();
       render(<Toast {...defaultProps} />);
 
       const closeButton = screen.getByText('×');
 
       // Tab to button and press Enter
       closeButton.focus();
+      expect(closeButton).toHaveFocus();
       await user.keyboard('{Enter}');
 
       expect(mockOnClose).toHaveBeenCalledWith('test-toast-1');
