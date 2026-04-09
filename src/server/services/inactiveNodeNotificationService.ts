@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 
 interface InactiveNodeCheck {
   nodeId: string;
@@ -9,12 +10,14 @@ interface InactiveNodeCheck {
   shortName: string;
   lastHeard: number;
   inactiveHours: number;
+  sourceId: string;
+  sourceName: string;
 }
 
 class InactiveNodeNotificationService {
   private checkInterval: NodeJS.Timeout | null = null;
   private initialCheckTimeout: NodeJS.Timeout | null = null;
-  private lastNotifiedNodes: Map<string, number> = new Map(); // "userId:nodeId" -> last notification timestamp
+  private lastNotifiedNodes: Map<string, number> = new Map(); // "userId:sourceId:nodeId" -> last notification timestamp
   private currentThresholdHours: number = 24;
   private currentCooldownHours: number = 24;
   private readonly DEFAULT_CHECK_INTERVAL_MINUTES = 60; // Check every hour
@@ -100,65 +103,91 @@ class InactiveNodeNotificationService {
 
       logger.debug(`🔍 Checking inactive nodes for ${users.length} user(s)`);
 
-      // Process each user's monitored nodes
-      for (const user of users) {
-        let monitoredNodeIds: string[] = [];
+      // Phase C: iterate every active source and run the inactivity check per source
+      const managers = sourceManagerRegistry.getAllManagers();
+      if (managers.length === 0) {
+        logger.debug('No source managers registered — skipping inactive node check');
+        return;
+      }
 
-        // Parse monitored nodes list
-        if (user.monitoredNodes) {
+      for (const manager of managers) {
+        const sourceId = manager.sourceId;
+        // Resolve sourceName once per source per scan
+        let sourceName: string = sourceId;
+        try {
+          const source = await databaseService.sources.getSource(sourceId);
+          if (source?.name) sourceName = source.name;
+        } catch (err) {
+          logger.debug(`Could not resolve source name for ${sourceId}:`, err);
+        }
+
+        // Process each user's monitored nodes (scoped to this source)
+        for (const user of users) {
+          let monitoredNodeIds: string[] = [];
+
+          if (user.monitoredNodes) {
+            try {
+              monitoredNodeIds = JSON.parse(user.monitoredNodes);
+            } catch (error) {
+              logger.warn(`Failed to parse monitored_nodes for user ${user.userId}:`, error);
+              continue;
+            }
+          }
+
+          if (monitoredNodeIds.length === 0) {
+            continue;
+          }
+
+          // Phase C: permission check — skip user if they lack nodes:read on this source
           try {
-            monitoredNodeIds = JSON.parse(user.monitoredNodes);
-          } catch (error) {
-            logger.warn(`Failed to parse monitored_nodes for user ${user.userId}:`, error);
-            continue;
-          }
-        }
-
-        // If user has no monitored nodes, skip (they need to select nodes first)
-        if (monitoredNodeIds.length === 0) {
-          logger.debug(`⏭️  User ${user.userId} has no monitored nodes, skipping`);
-          continue;
-        }
-
-        // Get inactive nodes that are in this user's monitored list (database-agnostic via Drizzle ORM)
-        const inactiveNodes = await databaseService.nodes.getInactiveMonitoredNodes(monitoredNodeIds, cutoffSeconds);
-
-        if (inactiveNodes.length === 0) {
-          continue; // No inactive nodes for this user
-        }
-
-        logger.debug(`🔍 Found ${inactiveNodes.length} inactive monitored node(s) for user ${user.userId}`);
-
-        // Check each inactive node and send notification if needed
-        for (const node of inactiveNodes) {
-          if (node.lastHeard == null) continue;
-          const lastHeardMs = node.lastHeard * 1000;
-          const inactiveHours = Math.floor((now - lastHeardMs) / (60 * 60 * 1000));
-
-          // Check if we've already notified this user about this node recently
-          const notificationKey = `${user.userId}:${node.nodeId}`;
-          const lastNotification = this.lastNotifiedNodes.get(notificationKey);
-          const cooldownMs = cooldownHours * 60 * 60 * 1000;
-
-          if (lastNotification && now - lastNotification < cooldownMs) {
-            logger.debug(
-              `⏭️  Skipping notification for user ${user.userId}, node ${node.nodeId} (already notified recently)`
-            );
+            const allowed = await databaseService.checkPermissionAsync(user.userId, 'nodes', 'read', sourceId);
+            if (!allowed) continue;
+          } catch (err) {
+            logger.error(`Permission check failed for user ${user.userId} on source ${sourceId}:`, err);
             continue;
           }
 
-          // Send notification to this specific user
-          await this.sendInactiveNodeNotification(user.userId, {
-            nodeId: node.nodeId,
-            nodeNum: node.nodeNum,
-            longName: node.longName || node.shortName || `Node ${node.nodeNum}`,
-            shortName: node.shortName || '????',
-            lastHeard: node.lastHeard,
-            inactiveHours,
-          });
+          // Get inactive nodes for this source that are in the user's monitored list
+          const inactiveNodes = await databaseService.nodes.getInactiveMonitoredNodes(
+            monitoredNodeIds,
+            cutoffSeconds,
+            sourceId
+          );
 
-          // Record that we've notified this user about this node
-          this.lastNotifiedNodes.set(notificationKey, now);
+          if (inactiveNodes.length === 0) continue;
+
+          logger.debug(`🔍 Found ${inactiveNodes.length} inactive monitored node(s) for user ${user.userId} on source ${sourceId}`);
+
+          for (const node of inactiveNodes) {
+            if (node.lastHeard == null) continue;
+            const lastHeardMs = node.lastHeard * 1000;
+            const inactiveHours = Math.floor((now - lastHeardMs) / (60 * 60 * 1000));
+
+            // Source-scoped cooldown key prevents collisions across sources
+            const notificationKey = `${user.userId}:${sourceId}:${node.nodeId}`;
+            const lastNotification = this.lastNotifiedNodes.get(notificationKey);
+            const cooldownMs = cooldownHours * 60 * 60 * 1000;
+
+            if (lastNotification && now - lastNotification < cooldownMs) {
+              logger.debug(
+                `⏭️  Skipping notification for user ${user.userId}, node ${node.nodeId} on ${sourceId} (already notified recently)`
+              );
+              continue;
+            }
+
+            await this.sendInactiveNodeNotification(user.userId, {
+              nodeId: node.nodeId,
+              nodeNum: node.nodeNum,
+              longName: node.longName || node.shortName || `Node ${node.nodeNum}`,
+              shortName: node.shortName || '????',
+              lastHeard: node.lastHeard,
+              inactiveHours,
+              sourceId,
+              sourceName,
+            });
+
+            this.lastNotifiedNodes.set(notificationKey, now);
+          }
         }
       }
 
@@ -181,9 +210,11 @@ class InactiveNodeNotificationService {
     try {
       const hoursText = node.inactiveHours === 1 ? 'hour' : 'hours';
       const payload = {
-        title: `⚠️ Node Inactive: ${node.longName}`,
-        body: `${node.shortName} (${node.nodeId}) has been inactive for ${node.inactiveHours} ${hoursText}`,
+        title: `[${node.sourceName}] ⚠️ Node Inactive: ${node.longName}`,
+        body: `[${node.sourceName}] ${node.shortName} (${node.nodeId}) has been inactive for ${node.inactiveHours} ${hoursText}`,
         type: 'warning' as const,
+        sourceId: node.sourceId,
+        sourceName: node.sourceName,
       };
 
       // Send to this specific user (they have the preference enabled and node is in their list)

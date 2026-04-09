@@ -220,11 +220,9 @@ describe('Message Deletion Routes', () => {
   describe('DELETE /api/messages/channels/:channelId - Channel purge', () => {
     it('should return 403 for users without channel_5:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        channel_0: { read: false, write: false }
-      });
+      vi.spyOn(databaseService, 'checkPermissionAsync').mockResolvedValue(false);
 
-      const response = await request(app).delete('/api/messages/channels/5');
+      const response = await request(app).delete('/api/messages/channels/5?sourceId=test');
 
       expect(response.status).toBe(403);
       expect(response.body.message).toContain('channel_5:write');
@@ -232,7 +230,7 @@ describe('Message Deletion Routes', () => {
 
     it('should return 400 for invalid channel ID', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      const response = await request(app).delete('/api/messages/channels/invalid');
+      const response = await request(app).delete('/api/messages/channels/invalid?sourceId=test');
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('message', 'Invalid channel ID');
@@ -243,12 +241,13 @@ describe('Message Deletion Routes', () => {
       mockMessagesRepo.purgeChannelMessages.mockResolvedValue(15);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/channels/5');
+      const response = await request(app).delete('/api/messages/channels/5?sourceId=test');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 15);
       expect(response.body).toHaveProperty('channelId', 5);
-      expect(mockMessagesRepo.purgeChannelMessages).toHaveBeenCalledWith(5);
+      expect(response.body).toHaveProperty('sourceId', 'test');
+      expect(mockMessagesRepo.purgeChannelMessages).toHaveBeenCalledWith(5, 'test');
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
         'channel_messages_purged',
@@ -260,16 +259,14 @@ describe('Message Deletion Routes', () => {
 
     it('should allow user with channel_3:write to purge channel messages', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        channel_3: { read: true, write: true }
-      });
+      vi.spyOn(databaseService, 'checkPermissionAsync').mockResolvedValue(true);
       mockMessagesRepo.purgeChannelMessages.mockResolvedValue(10);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/channels/3');
+      const response = await request(app).delete('/api/messages/channels/3?sourceId=test');
 
       expect(response.status).toBe(200);
-      expect(mockMessagesRepo.purgeChannelMessages).toHaveBeenCalledWith(3);
+      expect(mockMessagesRepo.purgeChannelMessages).toHaveBeenCalledWith(3, 'test');
       expect(auditLogSpy).toHaveBeenCalledWith(
         2,
         'channel_messages_purged',
@@ -284,7 +281,7 @@ describe('Message Deletion Routes', () => {
       mockMessagesRepo.purgeChannelMessages.mockResolvedValue(20);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      await request(app).delete('/api/messages/channels/7');
+      await request(app).delete('/api/messages/channels/7?sourceId=test');
 
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
@@ -317,17 +314,27 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('message', 'Invalid node number');
     });
 
+    it('should return 400 when sourceId is missing', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+
+      const response = await request(app).delete('/api/messages/direct-messages/123456');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message', 'sourceId is required');
+    });
+
     it('should allow admin to purge direct messages', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       mockMessagesRepo.purgeDirectMessages.mockResolvedValue(25);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/direct-messages/999999999');
+      const response = await request(app).delete('/api/messages/direct-messages/999999999?sourceId=test');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 25);
       expect(response.body).toHaveProperty('nodeNum', 999999999);
-      expect(mockMessagesRepo.purgeDirectMessages).toHaveBeenCalledWith(999999999);
+      expect(response.body).toHaveProperty('sourceId', 'test');
+      expect(mockMessagesRepo.purgeDirectMessages).toHaveBeenCalledWith(999999999, 'test');
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
         'dm_messages_purged',
@@ -345,10 +352,10 @@ describe('Message Deletion Routes', () => {
       mockMessagesRepo.purgeDirectMessages.mockResolvedValue(12);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/direct-messages/123456');
+      const response = await request(app).delete('/api/messages/direct-messages/123456?sourceId=test');
 
       expect(response.status).toBe(200);
-      expect(mockMessagesRepo.purgeDirectMessages).toHaveBeenCalledWith(123456);
+      expect(mockMessagesRepo.purgeDirectMessages).toHaveBeenCalledWith(123456, 'test');
       expect(auditLogSpy).toHaveBeenCalledWith(
         2,
         'dm_messages_purged',
@@ -363,7 +370,7 @@ describe('Message Deletion Routes', () => {
       mockMessagesRepo.purgeDirectMessages.mockResolvedValue(30);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      await request(app).delete('/api/messages/direct-messages/123456');
+      await request(app).delete('/api/messages/direct-messages/123456?sourceId=test');
 
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
@@ -523,7 +530,7 @@ describe('Message Deletion Routes', () => {
         telemetryDeleted: 0
       } as any);
 
-      const response = await request(app).delete('/api/messages/nodes/999999');
+      const response = await request(app).delete('/api/messages/nodes/999999?sourceId=default');
 
       expect(response.status).toBe(404);
     });
@@ -543,7 +550,7 @@ describe('Message Deletion Routes', () => {
       } as any);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456');
+      const response = await request(app).delete('/api/messages/nodes/123456?sourceId=default');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message', 'Node deleted successfully');

@@ -1,48 +1,69 @@
 /**
  * Drizzle schema definition for the channels table
  * Supports SQLite, PostgreSQL, and MySQL
+ *
+ * Each source has its own independent channel slots (0-7).
+ * The composite unique key (sourceId, id) ensures per-source isolation.
+ * A surrogate `pk` column is the actual primary key so Drizzle can do
+ * ON CONFLICT upserts on the composite key.
  */
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, boolean as myBoolean, bigint as myBigint } from 'drizzle-orm/mysql-core';
+import {
+  sqliteTable, text, integer, uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
+import {
+  pgTable, text as pgText, integer as pgInteger,
+  boolean as pgBoolean, bigint as pgBigint, serial as pgSerial,
+} from 'drizzle-orm/pg-core';
+import {
+  mysqlTable, varchar as myVarchar, int as myInt,
+  boolean as myBoolean, bigint as myBigint,
+} from 'drizzle-orm/mysql-core';
 
 // SQLite schema
 export const channelsSqlite = sqliteTable('channels', {
-  id: integer('id').primaryKey(),
+  pk: integer('pk').primaryKey({ autoIncrement: true }),
+  id: integer('id').notNull(),
   name: text('name').notNull(),
   psk: text('psk'),
-  role: integer('role'), // 0=Disabled, 1=Primary, 2=Secondary
+  role: integer('role'),
   uplinkEnabled: integer('uplinkEnabled', { mode: 'boolean' }).notNull().default(true),
   downlinkEnabled: integer('downlinkEnabled', { mode: 'boolean' }).notNull().default(true),
-  positionPrecision: integer('positionPrecision'), // Location precision bits (0-32)
+  positionPrecision: integer('positionPrecision'),
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
-});
+  sourceId: text('sourceId'),
+}, (t) => ({
+  sourceChannelUniq: uniqueIndex('channels_source_id_idx').on(t.sourceId, t.id),
+}));
 
 // PostgreSQL schema
 export const channelsPostgres = pgTable('channels', {
-  id: pgInteger('id').primaryKey(),
+  pk: pgSerial('pk').primaryKey(),
+  id: pgInteger('id').notNull(),
   name: pgText('name').notNull(),
   psk: pgText('psk'),
-  role: pgInteger('role'), // 0=Disabled, 1=Primary, 2=Secondary
+  role: pgInteger('role'),
   uplinkEnabled: pgBoolean('uplinkEnabled').notNull().default(true),
   downlinkEnabled: pgBoolean('downlinkEnabled').notNull().default(true),
-  positionPrecision: pgInteger('positionPrecision'), // Location precision bits (0-32)
+  positionPrecision: pgInteger('positionPrecision'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
 export const channelsMysql = mysqlTable('channels', {
-  id: myInt('id').primaryKey(),
+  pk: myInt('pk').autoincrement().primaryKey(),
+  id: myInt('id').notNull(),
   name: myVarchar('name', { length: 64 }).notNull(),
   psk: myVarchar('psk', { length: 64 }),
-  role: myInt('role'), // 0=Disabled, 1=Primary, 2=Secondary
+  role: myInt('role'),
   uplinkEnabled: myBoolean('uplinkEnabled').notNull().default(true),
   downlinkEnabled: myBoolean('downlinkEnabled').notNull().default(true),
-  positionPrecision: myInt('positionPrecision'), // Location precision bits (0-32)
+  positionPrecision: myInt('positionPrecision'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

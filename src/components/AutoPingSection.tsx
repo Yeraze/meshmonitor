@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { useSourceQuery } from '../hooks/useSourceQuery';
+import { useSource } from '../contexts/SourceContext';
 
 interface AutoPingSectionProps {
   baseUrl: string;
@@ -36,6 +38,8 @@ interface AutoPingSessionInfo {
 const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
+  const { sourceId } = useSource();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(false);
   const [localInterval, setLocalInterval] = useState(30);
@@ -50,7 +54,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
   // Fetch current settings and sessions
   const fetchData = useCallback(async () => {
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings/auto-ping`);
+      const response = await csrfFetch(`${baseUrl}/api/settings/auto-ping${sourceQuery}`);
       if (response.ok) {
         const data = await response.json();
         const s = data.settings as AutoPingSettings;
@@ -66,11 +70,17 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
     } catch (error) {
       console.error('Failed to fetch auto-ping settings:', error);
     }
-  }, [baseUrl, csrfFetch, initialSettings]);
+  }, [baseUrl, csrfFetch, initialSettings, sourceQuery]);
+
+  // Refetch when source changes — discard prior settings so the new
+  // source's values are loaded fresh.
+  useEffect(() => {
+    setInitialSettings(null);
+  }, [sourceId]);
 
   useEffect(() => {
     fetchData();
-  }, [baseUrl, csrfFetch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [baseUrl, csrfFetch, sourceQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for active sessions
   useEffect(() => {
@@ -115,7 +125,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings/auto-ping`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings/auto-ping${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -148,7 +158,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localInterval, localMaxPings, localTimeout, baseUrl, csrfFetch, showToast, t]);
+  }, [localEnabled, localInterval, localMaxPings, localTimeout, baseUrl, csrfFetch, sourceQuery, showToast, t]);
 
   useSaveBar({
     id: 'auto-ping',
@@ -163,6 +173,8 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
     try {
       const response = await csrfFetch(`${baseUrl}/api/auto-ping/stop/${nodeNum}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId }),
       });
       if (response.ok) {
         showToast(t('automation.auto_ping.session_stopped', 'Ping session stopped'), 'success');

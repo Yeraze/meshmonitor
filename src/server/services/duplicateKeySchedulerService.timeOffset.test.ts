@@ -19,7 +19,16 @@ vi.mock('../../services/database.js', () => ({
     },
     settings: {
       getSetting: vi.fn().mockResolvedValue(null),
+      getSettingForSource: vi.fn().mockResolvedValue(null),
     },
+  }
+}));
+
+// Scheduler now uses the source registry; provide a stub with one source.
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {
+    getAllManagers: vi.fn(() => [{ sourceId: 'src-1', sourceType: 'meshtastic' }]),
+    getManager: vi.fn((id: string) => id === 'src-1' ? { sourceId: 'src-1' } : undefined),
   }
 }));
 
@@ -54,6 +63,7 @@ describe('Time Offset Detection', () => {
     (databaseService.nodes.updateNodeSecurityFlags as any).mockResolvedValue(undefined);
     (databaseService.nodes.updateNodeLowEntropyFlag as any).mockResolvedValue(undefined);
     (databaseService.settings.getSetting as any).mockResolvedValue(null);
+    (databaseService.settings.getSettingForSource as any).mockResolvedValue(null);
     // Default: getAllNodes returns the dummy node used by the public key check
     (databaseService.nodes.getAllNodes as any).mockResolvedValue([
       { nodeNum: 1, shortName: 'Dummy', keyIsLowEntropy: false, duplicateKeyDetected: false, isTimeOffsetIssue: false, isExcessivePackets: false }
@@ -67,8 +77,9 @@ describe('Time Offset Detection', () => {
       duplicateKeyDetected: false,
       isTimeOffsetIssue: false
     });
-    // Reset the scanning flag on the singleton (it's private, but we need to clear it between tests)
-    (duplicateKeySchedulerService as any).isScanning = false;
+    // Reset the per-source scanning map on the singleton
+    (duplicateKeySchedulerService as any).isScanning = new Map();
+    (duplicateKeySchedulerService as any).lastScanTime = new Map();
   });
 
   it('should flag nodes with time offset exceeding threshold', async () => {
@@ -84,10 +95,11 @@ describe('Time Offset Detection', () => {
       { nodeNum: 100, shortName: 'Test', isTimeOffsetIssue: false, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
     ]);
 
-    await duplicateKeySchedulerService.runScan();
+    (duplicateKeySchedulerService as any).isScanning = new Map();
+    await duplicateKeySchedulerService.runScan('src-1');
 
     expect(databaseService.updateNodeTimeOffsetFlagsAsync).toHaveBeenCalledWith(
-      100, true, expect.any(Number)
+      100, true, expect.any(Number), 'src-1'
     );
     // Offset should be ~1860 seconds (31 minutes)
     const call = (databaseService.updateNodeTimeOffsetFlagsAsync as any).mock.calls.find(
@@ -111,10 +123,11 @@ describe('Time Offset Detection', () => {
       { nodeNum: 200, shortName: 'Test2', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
     ]);
 
-    await duplicateKeySchedulerService.runScan();
+    (duplicateKeySchedulerService as any).isScanning = new Map();
+    await duplicateKeySchedulerService.runScan('src-1');
 
     expect(databaseService.updateNodeTimeOffsetFlagsAsync).toHaveBeenCalledWith(
-      200, false, expect.any(Number)
+      200, false, expect.any(Number), 'src-1'
     );
   });
 
@@ -125,10 +138,11 @@ describe('Time Offset Detection', () => {
       { nodeNum: 300, shortName: 'Old', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
     ]);
 
-    await duplicateKeySchedulerService.runScan();
+    (duplicateKeySchedulerService as any).isScanning = new Map();
+    await duplicateKeySchedulerService.runScan('src-1');
 
     expect(databaseService.updateNodeTimeOffsetFlagsAsync).toHaveBeenCalledWith(
-      300, false, null
+      300, false, null, 'src-1'
     );
   });
 
@@ -145,10 +159,11 @@ describe('Time Offset Detection', () => {
       { nodeNum: 400, shortName: 'Recovered', isTimeOffsetIssue: true, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false }
     ]);
 
-    await duplicateKeySchedulerService.runScan();
+    (duplicateKeySchedulerService as any).isScanning = new Map();
+    await duplicateKeySchedulerService.runScan('src-1');
 
     expect(databaseService.updateNodeTimeOffsetFlagsAsync).toHaveBeenCalledWith(
-      400, false, expect.any(Number)
+      400, false, expect.any(Number), 'src-1'
     );
   });
 });

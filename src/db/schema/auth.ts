@@ -59,6 +59,7 @@ export const permissionsSqlite = sqliteTable('permissions', {
   // Note: SQLite doesn't have can_delete column
   grantedAt: integer('granted_at').notNull(),
   grantedBy: integer('granted_by'),
+  sourceId: text('sourceId'),
 });
 
 export const permissionsPostgres = pgTable('permissions', {
@@ -71,6 +72,7 @@ export const permissionsPostgres = pgTable('permissions', {
   canDelete: pgBoolean('canDelete').notNull().default(false),
   grantedAt: pgBigint('grantedAt', { mode: 'number' }),
   grantedBy: pgInteger('grantedBy').references(() => usersPostgres.id, { onDelete: 'set null' }),
+  sourceId: pgText('sourceId'),
 });
 
 // ============ SESSIONS ============
@@ -176,6 +178,7 @@ export const permissionsMysql = mysqlTable('permissions', {
   canDelete: myBoolean('canDelete').notNull().default(false),
   grantedAt: myBigint('grantedAt', { mode: 'number' }),
   grantedBy: myInt('grantedBy').references(() => usersMysql.id, { onDelete: 'set null' }),
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 export const sessionsMysql = mysqlTable('sessions', {

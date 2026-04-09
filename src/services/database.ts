@@ -32,6 +32,7 @@ import {
   ChannelDatabaseRepository,
   IgnoredNodesRepository,
   EmbedProfileRepository,
+  SourcesRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
@@ -93,6 +94,7 @@ export interface DbNode {
   hasRemoteAdmin?: boolean; // Has remote admin access
   lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
   remoteAdminMetadata?: string; // JSON string of metadata response
+  sourceId?: string; // Composite key component (Phase 3)
   createdAt: number;
   updatedAt: number;
 }
@@ -194,6 +196,8 @@ export interface DbNeighborInfo {
 export interface DbPushSubscription {
   id?: number;
   userId?: number;
+  /** TODO Phase B: required — source this subscription is scoped to */
+  sourceId?: string;
   endpoint: string;
   p256dhKey: string;
   authKey: string;
@@ -280,7 +284,25 @@ class DatabaseService {
   // These caches allow sync methods like getSetting() and getNode() to work
   // with async databases by caching data loaded at startup
   private settingsCache: Map<string, string> = new Map();
-  private nodesCache: Map<number, DbNode> = new Map();
+  private nodesCache: Map<string, DbNode> = new Map();
+
+  /**
+   * Phase 3B: Build composite cache key from nodeNum + sourceId.
+   * The nodes table PK is (nodeNum, sourceId) post-migration 029.
+   */
+  private cacheKey(nodeNum: number, sourceId: string): string {
+    return `${nodeNum}:${sourceId}`;
+  }
+
+  /**
+   * Phase 3B: Iterate cache, optionally filtered by sourceId.
+   */
+  private *iterateCache(sourceId?: string): IterableIterator<DbNode> {
+    for (const node of this.nodesCache.values()) {
+      if (sourceId && node.sourceId !== sourceId) continue;
+      yield node;
+    }
+  }
   private channelsCache: Map<number, DbChannel> = new Map();
   private _traceroutesCache: DbTraceroute[] = [];
   private _traceroutesByNodesCache: Map<string, DbTraceroute[]> = new Map();
@@ -380,6 +402,7 @@ class DatabaseService {
   public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
+  public sourcesRepo: SourcesRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -448,6 +471,11 @@ class DatabaseService {
   get embedProfiles(): EmbedProfileRepository {
     if (!this.embedProfileRepo) throw new Error('Database not initialized');
     return this.embedProfileRepo;
+  }
+
+  get sources(): SourcesRepository {
+    if (!this.sourcesRepo) throw new Error('Database not initialized');
+    return this.sourcesRepo;
   }
 
   constructor() {
@@ -678,6 +706,7 @@ class DatabaseService {
       this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
       this.ignoredNodesRepo = new IgnoredNodesRepository(drizzleDb, this.drizzleDbType);
       this.embedProfileRepo = new EmbedProfileRepository(drizzleDb, this.drizzleDbType);
+      this.sourcesRepo = new SourcesRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -768,10 +797,11 @@ class DatabaseService {
             hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
             lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
             remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
+            sourceId: (node as any).sourceId ?? 'default',
             createdAt: node.createdAt,
             updatedAt: node.updatedAt,
           };
-          this.nodesCache.set(node.nodeNum, localNode);
+          this.nodesCache.set(this.cacheKey(localNode.nodeNum, localNode.sourceId ?? 'default'), localNode);
         }
         // Count nodes with welcomedAt set for auto-welcome diagnostics
         const nodesWithWelcome = Array.from(this.nodesCache.values()).filter(n => n.welcomedAt !== null && n.welcomedAt !== undefined);
@@ -1502,7 +1532,8 @@ class DatabaseService {
         nodeName TEXT,
         action TEXT NOT NULL,
         success INTEGER,
-        created_at INTEGER
+        created_at INTEGER,
+        sourceId TEXT
       );
     `);
 
@@ -1755,8 +1786,8 @@ class DatabaseService {
                 createdAt: Date.now()
               };
 
-              this.insertRouteSegment(segment);
-              this.updateRecordHolderSegment(segment);
+              this.insertRouteSegment(segment, (traceroute as any).sourceId ?? undefined);
+              this.updateRecordHolderSegment(segment, (traceroute as any).sourceId ?? undefined);
               segmentsCreated++;
             }
           }
@@ -1789,8 +1820,8 @@ class DatabaseService {
                 createdAt: Date.now()
               };
 
-              this.insertRouteSegment(segment);
-              this.updateRecordHolderSegment(segment);
+              this.insertRouteSegment(segment, (traceroute as any).sourceId ?? undefined);
+              this.updateRecordHolderSegment(segment, (traceroute as any).sourceId ?? undefined);
               segmentsCreated++;
             }
           }
@@ -1875,8 +1906,9 @@ class DatabaseService {
     // Ghost suppression: block creation of suppressed nodes but allow updates to existing ones
     if (this.isNodeSuppressed(nodeData.nodeNum)) {
       // Check if this node already exists (in cache for Postgres/MySQL, in DB for SQLite)
+      const suppressedSourceId = (nodeData as any).sourceId ?? 'default';
       const existsInCache = (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql')
-        ? this.nodesCache.has(nodeData.nodeNum)
+        ? this.nodesCache.has(this.cacheKey(nodeData.nodeNum, suppressedSourceId))
         : !!this.getNode(nodeData.nodeNum);
       if (!existsInCache) {
         logger.debug(`👻 Suppressed ghost node creation for !${nodeData.nodeNum.toString(16).padStart(8, '0')}`);
@@ -1888,7 +1920,8 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.nodesRepo) {
         // Update cache optimistically
-        const existingNode = this.nodesCache.get(nodeData.nodeNum);
+        const upsertSourceId = (nodeData as any).sourceId ?? 'default';
+        const existingNode = this.nodesCache.get(this.cacheKey(nodeData.nodeNum, upsertSourceId));
         const now = Date.now();
         const updatedNode: DbNode = {
           nodeNum: nodeData.nodeNum,
@@ -1944,10 +1977,11 @@ class DatabaseService {
           hasRemoteAdmin: existingNode?.hasRemoteAdmin,
           lastRemoteAdminCheck: existingNode?.lastRemoteAdminCheck,
           remoteAdminMetadata: existingNode?.remoteAdminMetadata,
+          sourceId: upsertSourceId,
           createdAt: existingNode?.createdAt ?? now,
           updatedAt: now,
         };
-        this.nodesCache.set(nodeData.nodeNum, updatedNode);
+        this.nodesCache.set(this.cacheKey(nodeData.nodeNum, upsertSourceId), updatedNode);
 
         // Fire and forget async version - pass the full merged node to avoid race conditions
         // where a subsequent update (like welcomedAt) could be overwritten
@@ -1963,9 +1997,9 @@ class DatabaseService {
               if (wasIgnored) {
                 logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum}`);
                 updatedNode.isIgnored = true;
-                this.nodesCache.set(nodeData.nodeNum!, updatedNode);
+                this.nodesCache.set(this.cacheKey(nodeData.nodeNum!, upsertSourceId), updatedNode);
                 if (this.nodesRepo) {
-                  this.nodesRepo.setNodeIgnored(nodeData.nodeNum!, true).catch(err => {
+                  this.nodesRepo.setNodeIgnored(nodeData.nodeNum!, true, upsertSourceId).catch(err => {
                     logger.error('Failed to restore ignored status:', err);
                   });
                 }
@@ -1980,22 +2014,36 @@ class DatabaseService {
         if (nodeData.nodeNum !== 4294967295 && !wasComplete &&
             !this.newNodeNotifiedSet.has(nodeData.nodeNum) && isNodeComplete(updatedNode)) {
           this.newNodeNotifiedSet.add(nodeData.nodeNum);
-          import('../server/services/notificationService.js').then(({ notificationService }) => {
-            notificationService.notifyNewNode(
+          const newNodeSourceId = (updatedNode as any).sourceId ?? (nodeData as any).sourceId ?? 'default';
+          import('../server/services/notificationService.js').then(async ({ notificationService }) => {
+            let sourceName = newNodeSourceId;
+            try {
+              const src = await this.sources.getSource(newNodeSourceId);
+              if (src?.name) sourceName = src.name;
+            } catch { /* fall back to id */ }
+            await notificationService.notifyNewNode(
               updatedNode.nodeId!,
               updatedNode.longName!,
               updatedNode.shortName!,
               updatedNode.hwModel ?? undefined,
-              updatedNode.hopsAway
-            ).catch(err => logger.error('Failed to send new node notification:', err));
-          }).catch(err => logger.error('Failed to import notification service:', err));
+              updatedNode.hopsAway,
+              newNodeSourceId,
+              sourceName
+            );
+          }).catch(err => logger.error('Failed to send new node notification:', err));
         }
       }
       return;
     }
 
     const now = Date.now();
-    const existingNode = this.getNode(nodeData.nodeNum);
+    // Post-migration 029: existence check and UPDATE must be scoped per-source
+    // when a sourceId is supplied. Omitting the scope would cause an upsert on
+    // source A to overwrite source B's row for the same nodeNum.
+    const upsertSourceIdSqlite = (nodeData as any).sourceId as string | undefined;
+    const existingNode = upsertSourceIdSqlite
+      ? this.getNode(nodeData.nodeNum, upsertSourceIdSqlite)
+      : this.getNode(nodeData.nodeNum);
 
     if (existingNode) {
       const stmt = this.db.prepare(`
@@ -2034,7 +2082,7 @@ class DatabaseService {
           positionPrecisionBits = COALESCE(?, positionPrecisionBits),
           positionTimestamp = COALESCE(?, positionTimestamp),
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ?${upsertSourceIdSqlite ? ' AND sourceId = ?' : ''}
       `);
 
       stmt.run(
@@ -2074,7 +2122,8 @@ class DatabaseService {
         nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
         nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         now,
-        nodeData.nodeNum
+        nodeData.nodeNum,
+        ...(upsertSourceIdSqlite ? [upsertSourceIdSqlite] : [])
       );
     } else {
       // Check if this node was previously ignored (persistent ignore list)
@@ -2086,6 +2135,10 @@ class DatabaseService {
         // Table may not exist yet during initial setup
       }
 
+      // Post-migration 029: (nodeNum, sourceId) is the composite PK and sourceId is NOT NULL.
+      // Default to 'default' for callers that haven't been threaded through yet, matching
+      // the PG/MySQL cache path at upsertSourceId above.
+      const insertSourceId = (nodeData as any).sourceId ?? 'default';
       const stmt = this.db.prepare(`
         INSERT INTO nodes (
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
@@ -2095,8 +2148,8 @@ class DatabaseService {
           keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, keySecurityIssueDetails,
           positionChannel, positionPrecisionBits, positionTimestamp,
           isIgnored,
-          createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          createdAt, updatedAt, sourceId
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -2136,7 +2189,8 @@ class DatabaseService {
         nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         wasIgnored ? 1 : 0,
         now,
-        now
+        now,
+        insertSourceId
       );
 
       if (wasIgnored) {
@@ -2158,42 +2212,70 @@ class DatabaseService {
         };
         if (isNodeComplete(mergedNode)) {
           this.newNodeNotifiedSet.add(nodeData.nodeNum);
-          import('../server/services/notificationService.js').then(({ notificationService }) => {
-            notificationService.notifyNewNode(
+          const newNodeSourceId = (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
+          import('../server/services/notificationService.js').then(async ({ notificationService }) => {
+            let sourceName = newNodeSourceId;
+            try {
+              const src = await this.sources.getSource(newNodeSourceId);
+              if (src?.name) sourceName = src.name;
+            } catch { /* fall back to id */ }
+            await notificationService.notifyNewNode(
               mergedNode.nodeId!,
               mergedNode.longName!,
               mergedNode.shortName!,
               mergedNode.hwModel ?? undefined,
-              nodeData.hopsAway ?? existingNode?.hopsAway
-            ).catch(err => logger.error('Failed to send new node notification:', err));
-          }).catch(err => logger.error('Failed to import notification service:', err));
+              nodeData.hopsAway ?? existingNode?.hopsAway,
+              newNodeSourceId,
+              sourceName
+            );
+          }).catch(err => logger.error('Failed to send new node notification:', err));
         }
       }
     }
   }
 
-  getNode(nodeNum: number): DbNode | null {
+  getNode(nodeNum: number, sourceId?: string): DbNode | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
         logger.debug(`getNode(${nodeNum}) called before cache initialized`);
         return null;
       }
-      return this.nodesCache.get(nodeNum) ?? null;
+      // When sourceId is provided, use the composite cache key directly.
+      if (sourceId) {
+        return this.nodesCache.get(this.cacheKey(nodeNum, sourceId)) ?? null;
+      }
+      // Legacy fallback: iterate cache to find first match by nodeNum
+      // (used by callers that haven't been threaded through Phase 3 yet).
+      for (const node of this.nodesCache.values()) {
+        if (node.nodeNum === nodeNum) return node;
+      }
+      return null;
+    }
+    if (sourceId) {
+      const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ? AND sourceId = ?');
+      const node = stmt.get(nodeNum, sourceId) as DbNode | null;
+      return node ? this.normalizeBigInts(node) : null;
     }
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ?');
     const node = stmt.get(nodeNum) as DbNode | null;
     return node ? this.normalizeBigInts(node) : null;
   }
 
-  getAllNodes(): DbNode[] {
+  getAllNodes(sourceId?: string): DbNode[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
         logger.debug('getAllNodes() called before cache initialized');
         return [];
       }
-      return Array.from(this.nodesCache.values());
+      return Array.from(this.iterateCache(sourceId));
+    }
+    // Post-migration 029: when sourceId is provided, scope the query per-source.
+    if (sourceId) {
+      const stmt = this.db.prepare('SELECT * FROM nodes WHERE sourceId = ? ORDER BY updatedAt DESC');
+      const nodes = stmt.all(sourceId) as DbNode[];
+      return nodes.map(node => this.normalizeBigInts(node));
     }
     const stmt = this.db.prepare('SELECT * FROM nodes ORDER BY updatedAt DESC');
     const nodes = stmt.all() as DbNode[];
@@ -2215,7 +2297,7 @@ class DatabaseService {
         return [];
       }
       const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
-      return Array.from(this.nodesCache.values())
+      return Array.from(this.iterateCache())
         .filter(node => node.lastHeard !== undefined && node.lastHeard !== null && node.lastHeard > cutoff)
         .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
     }
@@ -2228,39 +2310,40 @@ class DatabaseService {
   }
 
   /**
-   * Update the lastMessageHops for a node (calculated from hopStart - hopLimit of received packets)
+   * Update the lastMessageHops for a node (calculated from hopStart - hopLimit of received packets).
+   * Phase 3C: scoped per-source — sourceId is required.
    */
-  updateNodeMessageHops(nodeNum: number, hops: number): void {
+  updateNodeMessageHops(nodeNum: number, hops: number, sourceId: string): void {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         cachedNode.lastMessageHops = hops;
         cachedNode.updatedAt = now;
       }
       // Fire and forget async update
       if (this.nodesRepo) {
-        this.nodesRepo.updateNode(nodeNum, { lastMessageHops: hops, updatedAt: now }).catch((err: Error) => {
+        this.nodesRepo.updateNodeMessageHops(nodeNum, hops, sourceId).catch((err: Error) => {
           logger.error('Failed to update node message hops:', err);
         });
       }
       return;
     }
-    const stmt = this.db.prepare('UPDATE nodes SET lastMessageHops = ?, updatedAt = ? WHERE nodeNum = ?');
-    stmt.run(hops, now, nodeNum);
+    const stmt = this.db.prepare('UPDATE nodes SET lastMessageHops = ?, updatedAt = ? WHERE nodeNum = ? AND sourceId = ?');
+    stmt.run(hops, now, nodeNum, sourceId);
   }
 
   /**
    * Mark all existing nodes as welcomed to prevent thundering herd on startup
    * Should be called when Auto-Welcome is enabled during server initialization
    */
-  markAllNodesAsWelcomed(): number {
+  markAllNodesAsWelcomed(sourceId?: string | null): number {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       let count = 0;
-      for (const node of this.nodesCache.values()) {
+      for (const node of this.iterateCache(sourceId ?? undefined)) {
         if (node.welcomedAt === undefined || node.welcomedAt === null) {
           node.welcomedAt = now;
           node.updatedAt = now;
@@ -2269,11 +2352,16 @@ class DatabaseService {
       }
       // Fire and forget async update
       if (this.nodesRepo) {
-        this.nodesRepo.markAllNodesAsWelcomed().catch((err: Error) => {
+        this.nodesRepo.markAllNodesAsWelcomed(sourceId ?? null).catch((err: Error) => {
           logger.error('Failed to mark all nodes as welcomed:', err);
         });
       }
       return count;
+    }
+    if (sourceId) {
+      const stmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE welcomedAt IS NULL AND sourceId = ?');
+      const result = stmt.run(now, sourceId);
+      return result.changes;
     }
     const stmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE welcomedAt IS NULL');
     const result = stmt.run(now);
@@ -2285,19 +2373,21 @@ class DatabaseService {
    * This prevents race conditions where multiple processes try to welcome the same node.
    * Returns true if the node was marked, false if already welcomed.
    */
-  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string): boolean {
+  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string, sourceId: string): boolean {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode && cachedNode.nodeId === nodeId && (cachedNode.welcomedAt === undefined || cachedNode.welcomedAt === null)) {
         cachedNode.welcomedAt = now;
         cachedNode.updatedAt = now;
         // Persist to database and log result
         if (this.nodesRepo) {
-          this.nodesRepo.updateNode(nodeNum, { welcomedAt: now, updatedAt: now })
-            .then(() => {
-              logger.info(`✅ Persisted welcomedAt=${now} to database for node ${nodeId}`);
+          this.nodesRepo.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, sourceId)
+            .then((marked) => {
+              if (marked) {
+                logger.info(`✅ Persisted welcomedAt=${now} to database for node ${nodeId}`);
+              }
             })
             .catch((err: Error) => {
               logger.error(`❌ Failed to persist welcomedAt for node ${nodeId}:`, err);
@@ -2310,9 +2400,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET welcomedAt = ?, updatedAt = ?
-      WHERE nodeNum = ? AND nodeId = ? AND welcomedAt IS NULL
+      WHERE nodeNum = ? AND nodeId = ? AND sourceId = ? AND welcomedAt IS NULL
     `);
-    const result = stmt.run(now, now, nodeNum, nodeId);
+    const result = stmt.run(now, now, nodeNum, nodeId, sourceId);
     return result.changes > 0;
   }
 
@@ -2352,12 +2442,21 @@ class DatabaseService {
    * Get nodes with key security issues (low-entropy or duplicate keys) - async version
    * Works with PostgreSQL, MySQL, and SQLite through the repository pattern
    */
-  async getNodesWithKeySecurityIssuesAsync(): Promise<DbNode[]> {
+  async getNodesWithKeySecurityIssuesAsync(sourceId?: string): Promise<DbNode[]> {
     if (this.drizzleDbType !== 'sqlite') {
-      const nodes = await this.nodes.getNodesWithKeySecurityIssues();
+      const nodes = await this.nodes.getNodesWithKeySecurityIssues(sourceId);
       return nodes as unknown as DbNode[];
     }
     // SQLite fallback using raw SQL on main connection
+    if (sourceId) {
+      const stmt = this.db.prepare(`
+        SELECT * FROM nodes
+        WHERE (keyIsLowEntropy = 1 OR duplicateKeyDetected = 1) AND sourceId = ?
+        ORDER BY lastHeard DESC
+      `);
+      const nodes = stmt.all(sourceId) as DbNode[];
+      return nodes.map(node => this.normalizeBigInts(node));
+    }
     const stmt = this.db.prepare(`
       SELECT * FROM nodes
       WHERE keyIsLowEntropy = 1 OR duplicateKeyDetected = 1
@@ -2374,7 +2473,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: Array<{ nodeNum: number; publicKey: string | null }> = [];
-      for (const node of this.nodesCache.values()) {
+      for (const node of this.iterateCache()) {
         if (node.publicKey && node.publicKey !== '') {
           result.push({ nodeNum: node.nodeNum, publicKey: node.publicKey });
         }
@@ -2393,10 +2492,12 @@ class DatabaseService {
    * Update security flags for a node by nodeNum (doesn't require nodeId)
    * Used by duplicate key scanner which needs to update nodes that may not have nodeIds yet
    */
-  updateNodeSecurityFlags(nodeNum: number, duplicateKeyDetected: boolean, keySecurityIssueDetails?: string): void {
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
+  /**
+   * Update security flags for a node, scoped per-source (post-migration 029).
+   */
+  updateNodeSecurityFlags(nodeNum: number, duplicateKeyDetected: boolean, keySecurityIssueDetails: string | undefined, sourceId: string): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         cachedNode.duplicateKeyDetected = duplicateKeyDetected;
         cachedNode.keySecurityIssueDetails = keySecurityIssueDetails;
@@ -2404,27 +2505,27 @@ class DatabaseService {
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.updateNodeSecurityFlags(nodeNum, duplicateKeyDetected, keySecurityIssueDetails).catch(err => {
+        this.nodesRepo.updateNodeSecurityFlags(nodeNum, duplicateKeyDetected, keySecurityIssueDetails, sourceId).catch(err => {
           logger.error(`Failed to update node security flags in database:`, err);
         });
       }
       return;
     }
 
-    // SQLite: synchronous update
+    // SQLite: synchronous update, always scoped by sourceId per migration 029.
+    const now = Date.now();
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET duplicateKeyDetected = ?,
           keySecurityIssueDetails = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const now = Date.now();
-    stmt.run(duplicateKeyDetected ? 1 : 0, keySecurityIssueDetails ?? null, now, nodeNum);
+    stmt.run(duplicateKeyDetected ? 1 : 0, keySecurityIssueDetails ?? null, now, nodeNum, sourceId);
   }
 
-  updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details?: string): void {
-    const node = this.getNode(nodeNum);
+  updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details: string | undefined, sourceId: string): void {
+    const node = this.getNode(nodeNum, sourceId);
     if (!node) return;
 
     // Combine low-entropy details with existing duplicate details if needed
@@ -2459,7 +2560,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         cachedNode.keyIsLowEntropy = keyIsLowEntropy;
         cachedNode.keySecurityIssueDetails = combinedDetails || undefined;
@@ -2467,23 +2568,23 @@ class DatabaseService {
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.updateNodeLowEntropyFlag(nodeNum, keyIsLowEntropy, combinedDetails || undefined).catch(err => {
+        this.nodesRepo.updateNodeLowEntropyFlag(nodeNum, keyIsLowEntropy, combinedDetails || undefined, sourceId).catch(err => {
           logger.error(`Failed to update node low entropy flag in database:`, err);
         });
       }
       return;
     }
 
-    // SQLite: synchronous update
+    // SQLite: synchronous update, scoped per-source.
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET keyIsLowEntropy = ?,
           keySecurityIssueDetails = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
     const now = Date.now();
-    stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum);
+    stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum, sourceId);
   }
 
   /**
@@ -2520,22 +2621,27 @@ class DatabaseService {
    * Get packet counts per node for the last hour (async version)
    * Excludes internal traffic (packets where both from and to are the local node)
    */
-  async getPacketCountsPerNodeLastHourAsync(): Promise<Array<{ nodeNum: number; packetCount: number }>> {
+  async getPacketCountsPerNodeLastHourAsync(sourceId?: string): Promise<Array<{ nodeNum: number; packetCount: number }>> {
     const oneHourAgo = Date.now() - 3600000;
 
-    // Get local node number to exclude internal traffic
-    const localNodeNumStr = this.getSetting('localNodeNum');
+    // Get local node number (per-source if provided) to exclude internal traffic
+    const localNodeNumStr = sourceId
+      ? await this.settings.getSettingForSource(sourceId, 'localNodeNum')
+      : this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
       try {
+        const sourceFilter = sourceId ? ' AND "sourceId" = $3' : '';
+        const params: any[] = [oneHourAgo, localNodeNum || -1];
+        if (sourceId) params.push(sourceId);
         const result = await this.postgresPool.query(`
           SELECT from_node as "nodeNum", COUNT(*)::int as "packetCount"
           FROM packet_log
           WHERE timestamp >= $1
-            AND NOT (from_node = $2 AND to_node = $2)
+            AND NOT (from_node = $2 AND to_node = $2)${sourceFilter}
           GROUP BY from_node
-        `, [oneHourAgo, localNodeNum || -1]);
+        `, params);
 
         return result.rows;
       } catch (error) {
@@ -2546,13 +2652,16 @@ class DatabaseService {
 
     if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
       try {
+        const sourceFilter = sourceId ? ' AND sourceId = ?' : '';
+        const params: any[] = [oneHourAgo, localNodeNum || -1, localNodeNum || -1];
+        if (sourceId) params.push(sourceId);
         const [rows] = await this.mysqlPool.query(`
           SELECT from_node as nodeNum, COUNT(*) as packetCount
           FROM packet_log
           WHERE timestamp >= ?
-            AND NOT (from_node = ? AND to_node = ?)
+            AND NOT (from_node = ? AND to_node = ?)${sourceFilter}
           GROUP BY from_node
-        `, [oneHourAgo, localNodeNum || -1, localNodeNum || -1]) as any;
+        `, params) as any;
 
         return rows.map((row: any) => ({
           nodeNum: Number(row.nodeNum),
@@ -2565,6 +2674,17 @@ class DatabaseService {
     }
 
     // SQLite fallback
+    if (sourceId) {
+      const stmt = this.db.prepare(`
+        SELECT from_node as nodeNum, COUNT(*) as packetCount
+        FROM packet_log
+        WHERE timestamp >= ?
+          AND NOT (from_node = ? AND to_node = ?)
+          AND sourceId = ?
+        GROUP BY from_node
+      `);
+      return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1, sourceId) as Array<{ nodeNum: number; packetCount: number }>;
+    }
     return this.getPacketCountsPerNodeLastHour();
   }
 
@@ -2573,7 +2693,7 @@ class DatabaseService {
    * Returns node info with packet counts, sorted by count descending
    * Excludes internal traffic (packets where both from and to are the local node)
    */
-  async getTopBroadcastersAsync(limit: number = 5): Promise<Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>> {
+  async getTopBroadcastersAsync(limit: number = 5, sourceId?: string): Promise<Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>> {
     const oneHourAgo = Date.now() - 3600000;
 
     // Get local node number to exclude internal traffic
@@ -2582,17 +2702,20 @@ class DatabaseService {
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
       try {
-        // Exclude packets where both from_node and to_node are the local node (internal traffic)
+        const sourceClause = sourceId ? `AND p."sourceId" = $4` : '';
+        const params: any[] = [oneHourAgo, limit, localNodeNum || -1];
+        if (sourceId) params.push(sourceId);
         const result = await this.postgresPool.query(`
           SELECT p.from_node as "nodeNum", n."shortName", n."longName", COUNT(*)::int as "packetCount"
           FROM packet_log p
           LEFT JOIN nodes n ON p.from_node = n."nodeNum"
           WHERE p.timestamp >= $1
             AND NOT (p.from_node = $3 AND p.to_node = $3)
+            ${sourceClause}
           GROUP BY p.from_node, n."shortName", n."longName"
           ORDER BY "packetCount" DESC
           LIMIT $2
-        `, [oneHourAgo, limit, localNodeNum || -1]);
+        `, params);
 
         return result.rows;
       } catch (error) {
@@ -2603,16 +2726,21 @@ class DatabaseService {
 
     if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
       try {
+        const sourceClause = sourceId ? `AND p.sourceId = ?` : '';
+        const params: any[] = [oneHourAgo, localNodeNum || -1, localNodeNum || -1];
+        if (sourceId) params.push(sourceId);
+        params.push(limit);
         const [rows] = await this.mysqlPool.query(`
           SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
           FROM packet_log p
           LEFT JOIN nodes n ON p.from_node = n.nodeNum
           WHERE p.timestamp >= ?
             AND NOT (p.from_node = ? AND p.to_node = ?)
+            ${sourceClause}
           GROUP BY p.from_node, n.shortName, n.longName
           ORDER BY packetCount DESC
           LIMIT ?
-        `, [oneHourAgo, localNodeNum || -1, localNodeNum || -1, limit]) as any;
+        `, params) as any;
 
         return rows.map((row: any) => ({
           nodeNum: Number(row.nodeNum),
@@ -2627,6 +2755,21 @@ class DatabaseService {
     }
 
     // SQLite - exclude packets where both from_node and to_node are the local node
+    if (sourceId) {
+      const stmt = this.db.prepare(`
+        SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
+        FROM packet_log p
+        LEFT JOIN nodes n ON p.from_node = n.nodeNum
+        WHERE p.timestamp >= ?
+          AND NOT (p.from_node = ? AND p.to_node = ?)
+          AND p.sourceId = ?
+        GROUP BY p.from_node
+        ORDER BY packetCount DESC
+        LIMIT ?
+      `);
+      return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1, sourceId, limit) as Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>;
+    }
+
     const stmt = this.db.prepare(`
       SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
       FROM packet_log p
@@ -2642,14 +2785,14 @@ class DatabaseService {
   }
 
   /**
-   * Update the spam detection flags for a node
+   * Update the spam detection flags for a node, scoped per-source.
    */
-  updateNodeSpamFlags(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number): void {
+  updateNodeSpamFlags(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, sourceId: string): void {
     const now = Math.floor(Date.now() / 1000);
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         (cachedNode as any).isExcessivePackets = isExcessivePackets;
         (cachedNode as any).packetRatePerHour = packetRatePerHour;
@@ -2658,7 +2801,7 @@ class DatabaseService {
       }
 
       // Fire-and-forget database update
-      this.updateNodeSpamFlagsAsync(nodeNum, isExcessivePackets, packetRatePerHour, now).catch(err => {
+      this.updateNodeSpamFlagsAsync(nodeNum, isExcessivePackets, packetRatePerHour, now, sourceId).catch(err => {
         logger.error(`Failed to update node spam flags in database:`, err);
       });
       return;
@@ -2671,15 +2814,15 @@ class DatabaseService {
           packetRatePerHour = ?,
           packetRateLastChecked = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, now, Date.now(), nodeNum);
+    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, now, Date.now(), nodeNum, sourceId);
   }
 
   /**
-   * Update the spam detection flags for a node (async)
+   * Update the spam detection flags for a node (async), scoped per-source.
    */
-  async updateNodeSpamFlagsAsync(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, lastChecked: number): Promise<void> {
+  async updateNodeSpamFlagsAsync(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, lastChecked: number, sourceId: string): Promise<void> {
     const now = Date.now();
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -2689,8 +2832,8 @@ class DatabaseService {
             "packetRatePerHour" = $2,
             "packetRateLastChecked" = $3,
             "updatedAt" = $4
-        WHERE "nodeNum" = $5
-      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
+        WHERE "nodeNum" = $5 AND "sourceId" = $6
+      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum, sourceId]);
       return;
     }
 
@@ -2701,8 +2844,8 @@ class DatabaseService {
             packetRatePerHour = ?,
             packetRateLastChecked = ?,
             updatedAt = ?
-        WHERE nodeNum = ?
-      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum]);
+        WHERE nodeNum = ? AND sourceId = ?
+      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum, sourceId]);
       return;
     }
 
@@ -2713,9 +2856,9 @@ class DatabaseService {
           packetRatePerHour = ?,
           packetRateLastChecked = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, lastChecked, now, nodeNum);
+    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, lastChecked, now, nodeNum, sourceId);
   }
 
   /**
@@ -2725,7 +2868,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: DbNode[] = [];
-      for (const node of this.nodesCache.values()) {
+      for (const node of this.iterateCache()) {
         if ((node as any).isExcessivePackets) {
           result.push(node);
         }
@@ -2742,18 +2885,32 @@ class DatabaseService {
   /**
    * Get all nodes with excessive packet rates (async)
    */
-  async getNodesWithExcessivePacketsAsync(): Promise<DbNode[]> {
-    // Uses cache-based method (no dedicated repo method yet)
+  async getNodesWithExcessivePacketsAsync(sourceId?: string): Promise<DbNode[]> {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const result: DbNode[] = [];
+      for (const node of this.iterateCache(sourceId)) {
+        if ((node as any).isExcessivePackets) {
+          result.push(node);
+        }
+      }
+      return result;
+    }
+
+    if (sourceId) {
+      const stmt = this.db.prepare(`SELECT * FROM nodes WHERE isExcessivePackets = 1 AND sourceId = ?`);
+      return stmt.all(sourceId) as DbNode[];
+    }
     return this.getNodesWithExcessivePackets();
   }
 
   /**
-   * Update the time offset detection flags for a node
+   * Update the time offset detection flags for a node (sync facade).
+   * sourceId is required post-migration 029 since (nodeNum, sourceId) is the PK.
    */
-  updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): void {
+  updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null, sourceId: string): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         (cachedNode as any).isTimeOffsetIssue = isTimeOffsetIssue;
         (cachedNode as any).timeOffsetSeconds = timeOffsetSeconds;
@@ -2761,27 +2918,28 @@ class DatabaseService {
       }
 
       // Fire-and-forget database update
-      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds).catch(err => {
+      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId).catch(err => {
         logger.error(`Failed to update node time offset flags in database:`, err);
       });
       return;
     }
 
-    // SQLite: synchronous update
+    // SQLite: synchronous update, scoped by sourceId
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET isTimeOffsetIssue = ?,
           timeOffsetSeconds = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, Date.now(), nodeNum);
+    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, Date.now(), nodeNum, sourceId);
   }
 
   /**
-   * Update the time offset detection flags for a node (async)
+   * Update the time offset detection flags for a node (async).
+   * sourceId is required post-migration 029.
    */
-  async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null): Promise<void> {
+  async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null, sourceId: string): Promise<void> {
     const now = Date.now();
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
@@ -2790,8 +2948,8 @@ class DatabaseService {
         SET "isTimeOffsetIssue" = $1,
             "timeOffsetSeconds" = $2,
             "updatedAt" = $3
-        WHERE "nodeNum" = $4
-      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
+        WHERE "nodeNum" = $4 AND "sourceId" = $5
+      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum, sourceId]);
       return;
     }
 
@@ -2801,20 +2959,20 @@ class DatabaseService {
         SET isTimeOffsetIssue = ?,
             timeOffsetSeconds = ?,
             updatedAt = ?
-        WHERE nodeNum = ?
-      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum]);
+        WHERE nodeNum = ? AND sourceId = ?
+      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum, sourceId]);
       return;
     }
 
-    // SQLite: synchronous update
+    // SQLite
     const stmt = this.db.prepare(`
       UPDATE nodes
       SET isTimeOffsetIssue = ?,
           timeOffsetSeconds = ?,
           updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, now, nodeNum);
+    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, now, nodeNum, sourceId);
   }
 
   /**
@@ -2824,7 +2982,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: DbNode[] = [];
-      for (const node of this.nodesCache.values()) {
+      for (const node of this.iterateCache()) {
         if ((node as any).isTimeOffsetIssue) {
           result.push(node);
         }
@@ -2841,26 +2999,42 @@ class DatabaseService {
   /**
    * Get all nodes with time offset issues (async)
    */
-  async getNodesWithTimeOffsetIssuesAsync(): Promise<DbNode[]> {
-    // Uses cache-based method (no dedicated repo method yet)
+  async getNodesWithTimeOffsetIssuesAsync(sourceId?: string): Promise<DbNode[]> {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const result: DbNode[] = [];
+      for (const node of this.iterateCache(sourceId)) {
+        if ((node as any).isTimeOffsetIssue) {
+          result.push(node);
+        }
+      }
+      return result;
+    }
+
+    if (sourceId) {
+      const stmt = this.db.prepare(`SELECT * FROM nodes WHERE isTimeOffsetIssue = 1 AND sourceId = ?`);
+      return stmt.all(sourceId) as DbNode[];
+    }
     return this.getNodesWithTimeOffsetIssues();
   }
 
   /**
    * Get the latest telemetry record with non-null packetTimestamp per node
    */
-  async getLatestPacketTimestampsPerNodeAsync(): Promise<Array<{ nodeNum: number; timestamp: number; packetTimestamp: number }>> {
+  async getLatestPacketTimestampsPerNodeAsync(sourceId?: string): Promise<Array<{ nodeNum: number; timestamp: number; packetTimestamp: number }>> {
     // Jan 1 2020 in ms — anything earlier is not a valid Meshtastic timestamp
     // (nodes without GPS/NTP often report 0 or boot-relative seconds)
     const MIN_VALID_TIMESTAMP_MS = 1577836800000;
 
     if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+      const sourceFilter = sourceId ? ' AND "sourceId" = $2' : '';
+      const params: any[] = [MIN_VALID_TIMESTAMP_MS];
+      if (sourceId) params.push(sourceId);
       const result = await this.postgresPool.query(`
         SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
         FROM telemetry
-        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1
+        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1${sourceFilter}
         ORDER BY "nodeNum", "timestamp" DESC
-      `, [MIN_VALID_TIMESTAMP_MS]);
+      `, params);
       return result.rows.map((r: any) => ({
         nodeNum: Number(r.nodeNum),
         timestamp: Number(r.timestamp),
@@ -2869,17 +3043,23 @@ class DatabaseService {
     }
 
     if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+      const sourceFilter = sourceId ? ' AND t.sourceId = ?' : '';
+      const innerFilter = sourceId ? ' AND sourceId = ?' : '';
+      const params: any[] = [MIN_VALID_TIMESTAMP_MS];
+      if (sourceId) params.push(sourceId);
+      params.push(MIN_VALID_TIMESTAMP_MS);
+      if (sourceId) params.push(sourceId);
       const [rows] = await this.mysqlPool.query(`
         SELECT t.nodeNum, t.timestamp, t.packetTimestamp
         FROM telemetry t
         INNER JOIN (
           SELECT nodeNum, MAX(timestamp) as maxTs
           FROM telemetry
-          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
+          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?${innerFilter}
           GROUP BY nodeNum
         ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
-      `, [MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS]) as any;
+        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?${sourceFilter}
+      `, params) as any;
       return (rows as any[]).map((r: any) => ({
         nodeNum: Number(r.nodeNum),
         timestamp: Number(r.timestamp),
@@ -2888,18 +3068,24 @@ class DatabaseService {
     }
 
     // SQLite
+    const sourceFilter = sourceId ? ' AND t.sourceId = ?' : '';
+    const innerFilter = sourceId ? ' AND sourceId = ?' : '';
+    const params: any[] = [MIN_VALID_TIMESTAMP_MS];
+    if (sourceId) params.push(sourceId);
+    params.push(MIN_VALID_TIMESTAMP_MS);
+    if (sourceId) params.push(sourceId);
     const stmt = this.db.prepare(`
       SELECT t.nodeNum, t.timestamp, t.packetTimestamp
       FROM telemetry t
       INNER JOIN (
         SELECT nodeNum, MAX(timestamp) as maxTs
         FROM telemetry
-        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?
+        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?${innerFilter}
         GROUP BY nodeNum
       ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?
+      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?${sourceFilter}
     `);
-    return (stmt.all(MIN_VALID_TIMESTAMP_MS, MIN_VALID_TIMESTAMP_MS) as any[]).map((r: any) => ({
+    return (stmt.all(...params) as any[]).map((r: any) => ({
       nodeNum: Number(r.nodeNum),
       timestamp: Number(r.timestamp),
       packetTimestamp: Number(r.packetTimestamp)
@@ -3369,10 +3555,10 @@ class DatabaseService {
       }
 
       // Also update the cache so getAllNodes() returns the updated value
-      for (const [nodeNum, cachedNode] of this.nodesCache.entries()) {
+      for (const [key, cachedNode] of this.nodesCache.entries()) {
         if (cachedNode.nodeId === nodeId) {
           cachedNode.mobile = isMobile;
-          this.nodesCache.set(nodeNum, cachedNode);
+          this.nodesCache.set(key, cachedNode);
           break;
         }
       }
@@ -3408,18 +3594,23 @@ class DatabaseService {
     }));
   }
 
-  async getMessagesByDayAsync(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+  async getMessagesByDayAsync(days: number = 7, sourceId?: string): Promise<Array<{ date: string; count: number }>> {
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const pgSourceClause = sourceId ? ` AND "sourceId" = $2` : '';
+    const mysqlSourceClause = sourceId ? ` AND sourceId = ?` : '';
+    const sqliteSourceClause = sourceId ? ` AND sourceId = ?` : '';
 
     if (this.drizzleDbType === 'postgres') {
       const client = await this.postgresPool!.connect();
       try {
+        const params: any[] = [cutoff];
+        if (sourceId) params.push(sourceId);
         const result = await client.query(
           `SELECT to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD') as date, COUNT(*) as count
-           FROM messages WHERE timestamp > $1
+           FROM messages WHERE timestamp > $1${pgSourceClause}
            GROUP BY to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD')
            ORDER BY date`,
-          [cutoff]
+          params
         );
         return result.rows.map((row: any) => ({ date: row.date, count: Number(row.count) }));
       } finally {
@@ -3427,14 +3618,27 @@ class DatabaseService {
       }
     } else if (this.drizzleDbType === 'mysql') {
       const pool = this.mysqlPool!;
+      const params: any[] = [cutoff];
+      if (sourceId) params.push(sourceId);
       const [rows] = await pool.query(
         `SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d') as date, COUNT(*) as count
-         FROM messages WHERE timestamp > ?
+         FROM messages WHERE timestamp > ?${mysqlSourceClause}
          GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d')
          ORDER BY date`,
-        [cutoff]
+        params
       );
       return (rows as any[]).map((row: any) => ({ date: row.date, count: Number(row.count) }));
+    }
+
+    // SQLite
+    if (sourceId) {
+      const stmt = this.db.prepare(`
+        SELECT date(timestamp/1000, 'unixepoch') as date, COUNT(*) as count
+        FROM messages WHERE timestamp > ?${sqliteSourceClause}
+        GROUP BY date(timestamp/1000, 'unixepoch') ORDER BY date
+      `);
+      const results = stmt.all(cutoff, sourceId) as Array<{ date: string; count: number }>;
+      return results.map(row => ({ date: row.date, count: Number(row.count) }));
     }
     return this.getMessagesByDay(days);
   }
@@ -3493,15 +3697,22 @@ class DatabaseService {
     return Number(result.changes) > 0;
   }
 
-  purgeChannelMessages(channel: number): number {
+  purgeChannelMessages(channel: number, sourceId?: string): number {
     // For PostgreSQL/MySQL, fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
-        this.messagesRepo.purgeChannelMessages(channel).catch(err => {
+        this.messagesRepo.purgeChannelMessages(channel, sourceId).catch(err => {
           logger.debug('Failed to purge channel messages:', err);
         });
       }
       return 0;
+    }
+
+    // When sourceId is provided, restrict deletion to that source
+    if (sourceId) {
+      const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ? AND source_id = ?');
+      const result = stmt.run(channel, sourceId);
+      return Number(result.changes);
     }
 
     const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ?');
@@ -3509,11 +3720,11 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  purgeDirectMessages(nodeNum: number): number {
+  purgeDirectMessages(nodeNum: number, sourceId?: string): number {
     // For PostgreSQL/MySQL, fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
-        this.messagesRepo.purgeDirectMessages(nodeNum).catch(err => {
+        this.messagesRepo.purgeDirectMessages(nodeNum, sourceId).catch(err => {
           logger.debug('Failed to purge direct messages:', err);
         });
       }
@@ -3521,7 +3732,19 @@ class DatabaseService {
     }
 
     // Delete all DMs to/from this node
-    // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel
+    // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel.
+    // When sourceId is provided, restrict deletion to that source.
+    if (sourceId) {
+      const stmt = this.db.prepare(`
+        DELETE FROM messages
+        WHERE (fromNodeNum = ? OR toNodeNum = ?)
+        AND toNodeId != '!ffffffff'
+        AND source_id = ?
+      `);
+      const result = stmt.run(nodeNum, nodeNum, sourceId);
+      return Number(result.changes);
+    }
+
     const stmt = this.db.prepare(`
       DELETE FROM messages
       WHERE (fromNodeNum = ? OR toNodeNum = ?)
@@ -3568,7 +3791,7 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  deleteNode(nodeNum: number): {
+  deleteNode(nodeNum: number, sourceId: string): {
     messagesDeleted: number;
     traceroutesDeleted: number;
     telemetryDeleted: number;
@@ -3576,13 +3799,16 @@ class DatabaseService {
   } {
     // For PostgreSQL/MySQL, update cache and fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Remove from cache immediately
-      const existed = this.nodesCache.has(nodeNum);
-      this.nodesCache.delete(nodeNum);
+      // Remove from cache immediately (scoped lookup)
+      const key = this.cacheKey(nodeNum, sourceId);
+      const existed = this.nodesCache.has(key);
+      if (existed) {
+        this.nodesCache.delete(key);
+      }
 
       // Fire-and-forget async deletion of all associated data
-      this.deleteNodeAsync(nodeNum).catch(err => {
-        logger.error(`Failed to delete node ${nodeNum} from database:`, err);
+      this.deleteNodeAsync(nodeNum, sourceId).catch(err => {
+        logger.error(`Failed to delete node ${nodeNum}@${sourceId} from database:`, err);
       });
 
       // Return immediately with cache-based result
@@ -3629,9 +3855,9 @@ class DatabaseService {
     `);
     neighborInfoStmt.run(nodeNum, nodeNum);
 
-    // Delete the node from the nodes table
-    const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ?');
-    const nodeResult = nodeStmt.run(nodeNum);
+    // Delete the node from the nodes table (scoped to sourceId)
+    const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ? AND sourceId = ?');
+    const nodeResult = nodeStmt.run(nodeNum, sourceId);
     const nodeDeleted = Number(nodeResult.changes) > 0;
 
     return {
@@ -4407,14 +4633,14 @@ class DatabaseService {
   // Cache for PostgreSQL telemetry data
   private _telemetryCache: Map<string, DbTelemetry[]> = new Map();
 
-  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
+  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): DbTelemetry[] {
     // For PostgreSQL/MySQL, use async repo and cache (no averaging yet)
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cacheKey = `${nodeId}-${sinceTimestamp || 0}-${maxHours || 24}`;
+      const cacheKey = `${nodeId}-${sinceTimestamp || 0}-${maxHours || 24}-${sourceId || 'all'}`;
       if (this.telemetryRepo) {
         // Calculate limit based on maxHours
         const limit = Math.min((maxHours || 24) * 60, 5000); // ~1 per minute, max 5000
-        this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp).then(telemetry => {
+        this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp, undefined, 0, undefined, sourceId).then(telemetry => {
           // Convert to local DbTelemetry type
           this._telemetryCache.set(cacheKey, telemetry.map(t => ({
             id: t.id,
@@ -4489,6 +4715,12 @@ class DatabaseService {
     `;
     const params: any[] = [intervalMs, intervalMs, nodeId, ...rawValueTypes];
 
+    // Scope to this source so nodes that exist in multiple sources don't mix telemetry
+    if (sourceId !== undefined) {
+      query += ` AND source_id = ?`;
+      params.push(sourceId);
+    }
+
     if (sinceTimestamp !== undefined) {
       query += ` AND timestamp >= ?`;
       params.push(sinceTimestamp);
@@ -4518,6 +4750,10 @@ class DatabaseService {
         WHERE nodeId = ?
       `;
       const countParams: any[] = [nodeId];
+      if (sourceId !== undefined) {
+        countQuery += ` AND source_id = ?`;
+        countParams.push(sourceId);
+      }
       if (sinceTimestamp !== undefined) {
         countQuery += ` AND timestamp >= ?`;
         countParams.push(sinceTimestamp);
@@ -4554,6 +4790,11 @@ class DatabaseService {
         AND telemetryType IN (${rawValueTypes.map(() => '?').join(', ')})
     `;
     const rawParams: any[] = [nodeId, ...rawValueTypes];
+
+    if (sourceId !== undefined) {
+      rawQuery += ` AND source_id = ?`;
+      rawParams.push(sourceId);
+    }
 
     if (sinceTimestamp !== undefined) {
       rawQuery += ` AND timestamp >= ?`;
@@ -4770,7 +5011,7 @@ class DatabaseService {
     return result;
   }
 
-  insertTraceroute(tracerouteData: DbTraceroute): void {
+  insertTraceroute(tracerouteData: DbTraceroute, sourceId?: string): void {
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
@@ -4786,7 +5027,8 @@ class DatabaseService {
             const pendingRecord = await this.traceroutesRepo!.findPendingTraceroute(
               tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
               tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
-              pendingTimeoutAgo
+              pendingTimeoutAgo,
+              sourceId
             );
 
             if (pendingRecord) {
@@ -4801,14 +5043,15 @@ class DatabaseService {
               );
             } else {
               // Insert new traceroute
-              await this.traceroutesRepo!.insertTraceroute(tracerouteData);
+              await this.traceroutesRepo!.insertTraceroute(tracerouteData, sourceId);
             }
 
             // Cleanup old traceroutes
             await this.traceroutesRepo!.cleanupOldTraceroutesForPair(
               tracerouteData.fromNodeNum,
               tracerouteData.toNodeNum,
-              TRACEROUTE_HISTORY_LIMIT
+              TRACEROUTE_HISTORY_LIMIT,
+              sourceId
             );
           } catch (error) {
             logger.error('[DatabaseService] Failed to insert traceroute:', error);
@@ -4827,20 +5070,35 @@ class DatabaseService {
       // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
       // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
       // So we need to check the REVERSE direction (toNum -> fromNum instead of fromNum -> toNum)
-      const findPendingStmt = this.db.prepare(`
-        SELECT id FROM traceroutes
-        WHERE fromNodeNum = ? AND toNodeNum = ?
-        AND route IS NULL
-        AND timestamp >= ?
-        ORDER BY timestamp DESC
-        LIMIT 1
-      `);
+      const findPendingStmt = this.db.prepare(
+        sourceId !== undefined
+          ? `SELECT id FROM traceroutes
+             WHERE fromNodeNum = ? AND toNodeNum = ?
+             AND route IS NULL
+             AND timestamp >= ?
+             AND sourceId = ?
+             ORDER BY timestamp DESC
+             LIMIT 1`
+          : `SELECT id FROM traceroutes
+             WHERE fromNodeNum = ? AND toNodeNum = ?
+             AND route IS NULL
+             AND timestamp >= ?
+             ORDER BY timestamp DESC
+             LIMIT 1`
+      );
 
-      const pendingRecord = findPendingStmt.get(
-        tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
-        tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
-        pendingTimeoutAgo
-      ) as { id: number } | undefined;
+      const pendingRecord = (sourceId !== undefined
+        ? findPendingStmt.get(
+            tracerouteData.toNodeNum,
+            tracerouteData.fromNodeNum,
+            pendingTimeoutAgo,
+            sourceId
+          )
+        : findPendingStmt.get(
+            tracerouteData.toNodeNum,
+            tracerouteData.fromNodeNum,
+            pendingTimeoutAgo
+          )) as { id: number } | undefined;
 
       if (pendingRecord) {
         // Update the existing pending record with the response data
@@ -4862,8 +5120,8 @@ class DatabaseService {
         // No pending request found, insert a new traceroute record
         const insertStmt = this.db.prepare(`
           INSERT INTO traceroutes (
-            fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt, sourceId
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         insertStmt.run(
@@ -4876,29 +5134,51 @@ class DatabaseService {
           tracerouteData.snrTowards || null,
           tracerouteData.snrBack || null,
           tracerouteData.timestamp,
-          tracerouteData.createdAt
+          tracerouteData.createdAt,
+          sourceId ?? null
         );
       }
 
       // Keep only the last N traceroutes for this source-destination pair
       // Delete older traceroutes beyond the limit
-      const deleteOldStmt = this.db.prepare(`
-        DELETE FROM traceroutes
-        WHERE fromNodeNum = ? AND toNodeNum = ?
-        AND id NOT IN (
-          SELECT id FROM traceroutes
-          WHERE fromNodeNum = ? AND toNodeNum = ?
-          ORDER BY timestamp DESC
-          LIMIT ?
-        )
-      `);
-      deleteOldStmt.run(
-        tracerouteData.fromNodeNum,
-        tracerouteData.toNodeNum,
-        tracerouteData.fromNodeNum,
-        tracerouteData.toNodeNum,
-        TRACEROUTE_HISTORY_LIMIT
+      const deleteOldStmt = this.db.prepare(
+        sourceId !== undefined
+          ? `DELETE FROM traceroutes
+             WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
+             AND id NOT IN (
+               SELECT id FROM traceroutes
+               WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
+               ORDER BY timestamp DESC
+               LIMIT ?
+             )`
+          : `DELETE FROM traceroutes
+             WHERE fromNodeNum = ? AND toNodeNum = ?
+             AND id NOT IN (
+               SELECT id FROM traceroutes
+               WHERE fromNodeNum = ? AND toNodeNum = ?
+               ORDER BY timestamp DESC
+               LIMIT ?
+             )`
       );
+      if (sourceId !== undefined) {
+        deleteOldStmt.run(
+          tracerouteData.fromNodeNum,
+          tracerouteData.toNodeNum,
+          sourceId,
+          tracerouteData.fromNodeNum,
+          tracerouteData.toNodeNum,
+          sourceId,
+          TRACEROUTE_HISTORY_LIMIT
+        );
+      } else {
+        deleteOldStmt.run(
+          tracerouteData.fromNodeNum,
+          tracerouteData.toNodeNum,
+          tracerouteData.fromNodeNum,
+          tracerouteData.toNodeNum,
+          TRACEROUTE_HISTORY_LIMIT
+        );
+      }
     });
 
     transaction();
@@ -5164,7 +5444,7 @@ class DatabaseService {
    * Async version of getNodeNeedingTraceroute - works with all database backends
    * Returns a node that needs a traceroute based on configured filters and timing
    */
-  async getNodeNeedingTracerouteAsync(localNodeNum: number): Promise<DbNode | null> {
+  async getNodeNeedingTracerouteAsync(localNodeNum: number, sourceId?: string): Promise<DbNode | null> {
     const now = Date.now();
     const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
     const expirationHours = this.getTracerouteExpirationHours();
@@ -5175,18 +5455,20 @@ class DatabaseService {
     const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
     const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
 
-    // For SQLite, fallback to sync method
+    // For SQLite, use repository (which now supports sourceId)
     if (this.drizzleDbType === 'sqlite' || !this.nodesRepo) {
-      return this.getNodeNeedingTraceroute(localNodeNum);
+      if (!sourceId) return this.getNodeNeedingTraceroute(localNodeNum);
+      // Use repo path for SQLite when sourceId is needed
     }
 
     try {
       // Get eligible nodes from repository
-      let eligibleNodes = await this.nodesRepo.getEligibleNodesForTraceroute(
+      let eligibleNodes = await this.nodesRepo!.getEligibleNodesForTraceroute(
         localNodeNum,
         activeNodeCutoff,
         now - THREE_HOURS_MS,
-        now - EXPIRATION_MS
+        now - EXPIRATION_MS,
+        sourceId
       );
 
       // Last heard and hop range filters (AND logic, applied before OR union filters)
@@ -5218,8 +5500,8 @@ class DatabaseService {
       const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
 
       if (filterEnabled) {
-        // Get all filter settings (use async for specificNodes)
-        const specificNodes = await this.misc.getAutoTracerouteNodes();
+        // Get all filter settings (use async for specificNodes; scope to source)
+        const specificNodes = await this.misc.getAutoTracerouteNodes(sourceId);
         const filterChannels = this.getTracerouteFilterChannels();
         const filterRoles = this.getTracerouteFilterRoles();
         const filterHwModels = this.getTracerouteFilterHwModels();
@@ -5328,7 +5610,7 @@ class DatabaseService {
    * Get a node that needs remote admin checking.
    * Returns null if no nodes need checking.
    */
-  async getNodeNeedingRemoteAdminCheckAsync(localNodeNum: number): Promise<DbNode | null> {
+  async getNodeNeedingRemoteAdminCheckAsync(localNodeNum: number, sourceId?: string): Promise<DbNode | null> {
     try {
       // Get maxNodeAgeHours setting to filter only active nodes
       // lastHeard is stored in SECONDS (Unix timestamp)
@@ -5344,7 +5626,8 @@ class DatabaseService {
         const node = await this.nodesRepo.getNodeNeedingRemoteAdminCheckAsync(
           localNodeNum,
           activeNodeCutoffSeconds,
-          expirationMsAgo
+          expirationMsAgo,
+          sourceId
         );
         return node as DbNode | null;
       }
@@ -5362,22 +5645,22 @@ class DatabaseService {
   async updateNodeRemoteAdminStatusAsync(
     nodeNum: number,
     hasRemoteAdmin: boolean,
-    metadata: string | null
+    metadata: string | null,
+    sourceId: string
   ): Promise<void> {
     try {
       if (this.nodesRepo) {
-        await this.nodesRepo.updateNodeRemoteAdminStatusAsync(nodeNum, hasRemoteAdmin, metadata);
+        await this.nodesRepo.updateNodeRemoteAdminStatusAsync(nodeNum, hasRemoteAdmin, metadata, sourceId);
       }
 
       // Update cache for PostgreSQL/MySQL
       if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-        const existingNode = this.nodesCache.get(nodeNum);
+        const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
         if (existingNode) {
           existingNode.hasRemoteAdmin = hasRemoteAdmin;
           existingNode.lastRemoteAdminCheck = Date.now();
           existingNode.remoteAdminMetadata = metadata ?? undefined;
           existingNode.updatedAt = Date.now();
-          this.nodesCache.set(nodeNum, existingNode);
         }
       }
     } catch (error) {
@@ -5385,15 +5668,15 @@ class DatabaseService {
     }
   }
 
-  async recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): Promise<void> {
+  async recordTracerouteRequest(fromNodeNum: number, toNodeNum: number, sourceId?: string): Promise<void> {
     const now = Date.now();
 
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       try {
-        // Update the nodes table with last request time
-        if (this.nodesRepo) {
-          await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now);
+        // Update the nodes table with last request time (Phase 3C: scoped per-source).
+        if (this.nodesRepo && sourceId) {
+          await this.nodesRepo.updateNodeLastTracerouteRequest(toNodeNum, now, sourceId);
         }
 
         // Insert a pending traceroute record
@@ -5412,13 +5695,14 @@ class DatabaseService {
             snrBack: null,
             timestamp: now,
             createdAt: now,
-          });
+          }, sourceId);
 
           // Cleanup old traceroutes
           await this.traceroutesRepo.cleanupOldTraceroutesForPair(
             fromNodeNum,
             toNodeNum,
-            TRACEROUTE_HISTORY_LIMIT
+            TRACEROUTE_HISTORY_LIMIT,
+            sourceId
           );
         }
       } catch (error) {
@@ -5428,11 +5712,18 @@ class DatabaseService {
     }
 
     // SQLite path
-    // Update the nodes table with last request time
-    const updateStmt = this.db.prepare(`
-      UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
-    `);
-    updateStmt.run(now, toNodeNum);
+    // Update the nodes table with last request time (Phase 3C: scoped per-source when available).
+    if (sourceId) {
+      const updateStmt = this.db.prepare(`
+        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ? AND sourceId = ?
+      `);
+      updateStmt.run(now, toNodeNum, sourceId);
+    } else {
+      const updateStmt = this.db.prepare(`
+        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
+      `);
+      updateStmt.run(now, toNodeNum);
+    }
 
     // Insert a traceroute record for the attempt (with null routes indicating pending)
     const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
@@ -5440,8 +5731,8 @@ class DatabaseService {
 
     const insertStmt = this.db.prepare(`
       INSERT INTO traceroutes (
-        fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt, sourceId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     insertStmt.run(
@@ -5454,21 +5745,35 @@ class DatabaseService {
       null, // snrTowards will be null until response received
       null, // snrBack will be null until response received
       now,
-      now
+      now,
+      sourceId ?? null
     );
 
     // Keep only the last N traceroutes for this source-destination pair
-    const deleteOldStmt = this.db.prepare(`
-      DELETE FROM traceroutes
-      WHERE fromNodeNum = ? AND toNodeNum = ?
-      AND id NOT IN (
-        SELECT id FROM traceroutes
-        WHERE fromNodeNum = ? AND toNodeNum = ?
-        ORDER BY timestamp DESC
-        LIMIT ?
-      )
-    `);
-    deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum, TRACEROUTE_HISTORY_LIMIT);
+    const deleteOldStmt = this.db.prepare(
+      sourceId !== undefined
+        ? `DELETE FROM traceroutes
+           WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
+           AND id NOT IN (
+             SELECT id FROM traceroutes
+             WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
+             ORDER BY timestamp DESC
+             LIMIT ?
+           )`
+        : `DELETE FROM traceroutes
+           WHERE fromNodeNum = ? AND toNodeNum = ?
+           AND id NOT IN (
+             SELECT id FROM traceroutes
+             WHERE fromNodeNum = ? AND toNodeNum = ?
+             ORDER BY timestamp DESC
+             LIMIT ?
+           )`
+    );
+    if (sourceId !== undefined) {
+      deleteOldStmt.run(fromNodeNum, toNodeNum, sourceId, fromNodeNum, toNodeNum, sourceId, TRACEROUTE_HISTORY_LIMIT);
+    } else {
+      deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum, TRACEROUTE_HISTORY_LIMIT);
+    }
   }
 
   // Auto-traceroute node filter methods
@@ -5861,7 +6166,7 @@ class DatabaseService {
   }
 
   // Async versions of traceroute filter settings methods
-  async getTracerouteFilterSettingsAsync(): Promise<{
+  async getTracerouteFilterSettingsAsync(sourceId?: string): Promise<{
     enabled: boolean;
     nodeNums: number[];
     filterChannels: number[];
@@ -5881,7 +6186,7 @@ class DatabaseService {
     filterHopsMin: number;
     filterHopsMax: number;
   }> {
-    const nodeNums = await this.misc.getAutoTracerouteNodes();
+    const nodeNums = await this.misc.getAutoTracerouteNodes(sourceId);
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
       nodeNums,
@@ -5923,9 +6228,9 @@ class DatabaseService {
     filterHopsEnabled?: boolean;
     filterHopsMin?: number;
     filterHopsMax?: number;
-  }): Promise<void> {
+  }, sourceId?: string): Promise<void> {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
-    await this.misc.setAutoTracerouteNodes(settings.nodeNums);
+    await this.misc.setAutoTracerouteNodes(settings.nodeNums, sourceId);
     this.setTracerouteFilterChannels(settings.filterChannels);
     this.setTracerouteFilterRoles(settings.filterRoles);
     this.setTracerouteFilterHwModels(settings.filterHwModels);
@@ -5970,13 +6275,13 @@ class DatabaseService {
   }
 
   // Auto-traceroute log methods
-  logAutoTracerouteAttempt(toNodeNum: number, toNodeName: string | null): number {
+  logAutoTracerouteAttempt(toNodeNum: number, toNodeName: string | null, sourceId?: string): number {
     const now = Date.now();
     const stmt = this.db.prepare(`
-      INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at)
-      VALUES (?, ?, ?, NULL, ?)
+      INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at, sourceId)
+      VALUES (?, ?, ?, NULL, ?, ?)
     `);
-    const result = stmt.run(now, toNodeNum, toNodeName, now);
+    const result = stmt.run(now, toNodeNum, toNodeName, now, sourceId ?? null);
 
     // Clean up old entries (keep last 100)
     const cleanupStmt = this.db.prepare(`
@@ -6014,7 +6319,7 @@ class DatabaseService {
     stmt.run(success ? 1 : 0, toNodeNum);
   }
 
-  getAutoTracerouteLog(limit: number = 10): {
+  getAutoTracerouteLog(limit: number = 10, sourceId?: string): {
     id: number;
     timestamp: number;
     toNodeNum: number;
@@ -6026,13 +6331,21 @@ class DatabaseService {
       return [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
-      FROM auto_traceroute_log
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    const results = stmt.all(limit) as {
+    const stmt = sourceId
+      ? this.db.prepare(`
+          SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
+          FROM auto_traceroute_log
+          WHERE sourceId = ?
+          ORDER BY timestamp DESC
+          LIMIT ?
+        `)
+      : this.db.prepare(`
+          SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
+          FROM auto_traceroute_log
+          ORDER BY timestamp DESC
+          LIMIT ?
+        `);
+    const results = (sourceId ? stmt.all(sourceId, limit) : stmt.all(limit)) as {
       id: number;
       timestamp: number;
       toNodeNum: number;
@@ -6049,7 +6362,7 @@ class DatabaseService {
   /**
    * Async version of getAutoTracerouteLog - works with all database backends
    */
-  async getAutoTracerouteLogAsync(limit: number = 10): Promise<{
+  async getAutoTracerouteLogAsync(limit: number = 10, sourceId?: string): Promise<{
     id: number;
     timestamp: number;
     toNodeNum: number;
@@ -6058,23 +6371,33 @@ class DatabaseService {
   }[]> {
     if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
       // Fallback to sync for SQLite
-      return this.getAutoTracerouteLog(limit);
+      return this.getAutoTracerouteLog(limit, sourceId);
     }
 
     try {
       let results: any[] = [];
 
       if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = await this.postgresPool.query(
-          `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT $1`,
-          [limit]
-        );
+        const result = sourceId
+          ? await this.postgresPool.query(
+              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log WHERE "sourceId" = $1 ORDER BY timestamp DESC LIMIT $2`,
+              [sourceId, limit]
+            )
+          : await this.postgresPool.query(
+              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT $1`,
+              [limit]
+            );
         results = result.rows || [];
       } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [rows] = await this.mysqlPool.query(
-          `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT ?`,
-          [limit]
-        );
+        const [rows] = sourceId
+          ? await this.mysqlPool.query(
+              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log WHERE sourceId = ? ORDER BY timestamp DESC LIMIT ?`,
+              [sourceId, limit]
+            )
+          : await this.mysqlPool.query(
+              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT ?`,
+              [limit]
+            );
         results = rows as any[] || [];
       }
 
@@ -6094,10 +6417,10 @@ class DatabaseService {
   /**
    * Async version of logAutoTracerouteAttempt - works with all database backends
    */
-  async logAutoTracerouteAttemptAsync(toNodeNum: number, toNodeName: string | null): Promise<number> {
+  async logAutoTracerouteAttemptAsync(toNodeNum: number, toNodeName: string | null, sourceId?: string): Promise<number> {
     if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
       // Fallback to sync for SQLite
-      return this.logAutoTracerouteAttempt(toNodeNum, toNodeName);
+      return this.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
     }
 
     const now = Date.now();
@@ -6107,9 +6430,9 @@ class DatabaseService {
 
       if (this.drizzleDbType === 'postgres' && this.postgresPool) {
         const result = await this.postgresPool.query(
-          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at)
-           VALUES ($1, $2, $3, NULL, $4) RETURNING id`,
-          [now, toNodeNum, toNodeName, now]
+          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at, "sourceId")
+           VALUES ($1, $2, $3, NULL, $4, $5) RETURNING id`,
+          [now, toNodeNum, toNodeName, now, sourceId ?? null]
         );
         insertedId = result.rows[0]?.id || 0;
 
@@ -6124,9 +6447,9 @@ class DatabaseService {
         `);
       } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
         const [result] = await this.mysqlPool.query(
-          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at)
-           VALUES (?, ?, ?, NULL, ?)`,
-          [now, toNodeNum, toNodeName, now]
+          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at, sourceId)
+           VALUES (?, ?, ?, NULL, ?, ?)`,
+          [now, toNodeNum, toNodeName, now, sourceId ?? null]
         ) as any;
         insertedId = result.insertId || 0;
 
@@ -6589,15 +6912,16 @@ class DatabaseService {
     action: string,
     success: boolean | null = null,
     oldKeyFragment: string | null = null,
-    newKeyFragment: string | null = null
+    newKeyFragment: string | null = null,
+    sourceId: string | null = null
   ): Promise<number> {
     if (this.drizzleDbType === 'postgres') {
       const client = await this.postgresPool!.connect();
       try {
         const result = await client.query(
-          `INSERT INTO auto_key_repair_log (timestamp, "nodeNum", "nodeName", action, success, created_at, "oldKeyFragment", "newKeyFragment")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-          [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment]
+          `INSERT INTO auto_key_repair_log (timestamp, "nodeNum", "nodeName", action, success, created_at, "oldKeyFragment", "newKeyFragment", "sourceId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment, sourceId]
         );
         await client.query(
           `DELETE FROM auto_key_repair_log WHERE id NOT IN (
@@ -6611,9 +6935,9 @@ class DatabaseService {
     } else if (this.drizzleDbType === 'mysql') {
       const pool = this.mysqlPool!;
       const [result] = await pool.query(
-        `INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment]
+        `INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment, sourceId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment, sourceId]
       );
       await pool.query(
         `DELETE FROM auto_key_repair_log WHERE id NOT IN (
@@ -6624,15 +6948,15 @@ class DatabaseService {
     }
     // SQLite fallback - use existing sync method plus new columns
     const stmt = this.db.prepare(`
-      INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment, sourceId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const info = stmt.run(Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment);
+    const info = stmt.run(Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment, sourceId);
     this.db.prepare('DELETE FROM auto_key_repair_log WHERE id NOT IN (SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100)').run();
     return Number(info.lastInsertRowid);
   }
 
-  async getKeyRepairLogAsync(limit: number = 50): Promise<{
+  async getKeyRepairLogAsync(limit: number = 50, sourceId?: string): Promise<{
     id: number;
     timestamp: number;
     nodeNum: number;
@@ -6661,9 +6985,17 @@ class DatabaseService {
           ? 'id, timestamp, "nodeNum", "nodeName", action, success, "oldKeyFragment", "newKeyFragment"'
           : 'id, timestamp, "nodeNum", "nodeName", action, success';
 
+        // Check if sourceId column exists (migration 027)
+        const sourceColCheck = await client.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'sourceId'"
+        );
+        const hasSourceId = sourceColCheck.rows.length > 0;
+        const whereClause = sourceId && hasSourceId ? `WHERE "sourceId" = $2` : '';
+        const params: any[] = sourceId && hasSourceId ? [limit, sourceId] : [limit];
+
         const result = await client.query(
-          `SELECT ${selectCols} FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT $1`,
-          [limit]
+          `SELECT ${selectCols} FROM auto_key_repair_log ${whereClause} ORDER BY timestamp DESC LIMIT $1`,
+          params
         );
         return result.rows.map((row: any) => ({
           id: row.id,
@@ -6697,9 +7029,17 @@ class DatabaseService {
         ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
         : 'id, timestamp, nodeNum, nodeName, action, success';
 
+      // Check if sourceId column exists (migration 027)
+      const [sourceColRows] = await pool.query(
+        "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'sourceId'"
+      );
+      const hasSourceIdMy = (sourceColRows as any[]).length > 0;
+      const whereClauseMy = sourceId && hasSourceIdMy ? 'WHERE sourceId = ?' : '';
+      const paramsMy: any[] = sourceId && hasSourceIdMy ? [sourceId, limit] : [limit];
+
       const [rows] = await pool.query(
-        `SELECT ${selectCols} FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?`,
-        [limit]
+        `SELECT ${selectCols} FROM auto_key_repair_log ${whereClauseMy} ORDER BY timestamp DESC LIMIT ?`,
+        paramsMy
       );
       return (rows as any[]).map((row: any) => ({
         id: row.id,
@@ -6728,10 +7068,18 @@ class DatabaseService {
       ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
       : 'id, timestamp, nodeNum, nodeName, action, success';
 
+    // Check if sourceId column exists (migration 027)
+    const hasSourceIdColSqlite = this.db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='sourceId'"
+    ).get() as { count: number };
+    const useSourceFilter = !!sourceId && hasSourceIdColSqlite.count > 0;
+    const whereClauseSqlite = useSourceFilter ? 'WHERE sourceId = ?' : '';
+    const paramsSqlite: any[] = useSourceFilter ? [sourceId, limit] : [limit];
+
     const rows = this.db.prepare(`
       SELECT ${selectCols}
-      FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT ?
-    `).all(limit) as any[];
+      FROM auto_key_repair_log ${whereClauseSqlite} ORDER BY timestamp DESC LIMIT ?
+    `).all(...paramsSqlite) as any[];
     return rows.map((row: any) => ({
       id: row.id,
       timestamp: Number(row.timestamp),
@@ -7333,9 +7681,9 @@ class DatabaseService {
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
 
   /**
-   * Delete a node and all associated data (async version for PostgreSQL)
+   * Delete a node and all associated data (scoped to sourceId — Phase 3C2)
    */
-  async deleteNodeAsync(nodeNum: number): Promise<{
+  async deleteNodeAsync(nodeNum: number, sourceId: string): Promise<{
     messagesDeleted: number;
     traceroutesDeleted: number;
     telemetryDeleted: number;
@@ -7347,39 +7695,39 @@ class DatabaseService {
     let nodeDeleted = false;
 
     try {
-      // Delete DMs to/from this node
+      // Delete DMs to/from this node (scoped to this source)
       if (this.messagesRepo) {
-        messagesDeleted = await this.messagesRepo.purgeDirectMessages(nodeNum);
+        messagesDeleted = await this.messagesRepo.purgeDirectMessages(nodeNum, sourceId);
       }
 
-      // Delete traceroutes for this node
+      // Delete traceroutes for this node (scoped to this source)
       if (this.traceroutesRepo) {
-        traceroutesDeleted = await this.traceroutesRepo.deleteTraceroutesForNode(nodeNum);
-        // Also delete route segments
-        await this.traceroutesRepo.deleteRouteSegmentsForNode(nodeNum);
+        traceroutesDeleted = await this.traceroutesRepo.deleteTraceroutesForNode(nodeNum, sourceId);
+        // Also delete route segments (no-op when scoped — route_segments lacks sourceId column)
+        await this.traceroutesRepo.deleteRouteSegmentsForNode(nodeNum, sourceId);
       }
 
-      // Delete telemetry for this node
+      // Delete telemetry for this node (scoped to this source)
       if (this.telemetryRepo) {
-        telemetryDeleted = await this.telemetryRepo.purgeNodeTelemetry(nodeNum);
+        telemetryDeleted = await this.telemetryRepo.purgeNodeTelemetry(nodeNum, sourceId);
       }
 
-      // Delete neighbor info for this node
+      // Delete neighbor info for this node (scoped to this source)
       if (this.neighborsRepo) {
-        await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum);
+        await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum, sourceId);
       }
 
-      // Delete the node itself
+      // Delete the node itself (scoped to sourceId)
       if (this.nodesRepo) {
-        nodeDeleted = await this.nodesRepo.deleteNodeRecord(nodeNum);
+        nodeDeleted = await this.nodesRepo.deleteNodeRecord(nodeNum, sourceId);
       }
 
-      // Also remove from cache
-      this.nodesCache.delete(nodeNum);
+      // Also remove from cache (scoped lookup)
+      this.nodesCache.delete(this.cacheKey(nodeNum, sourceId));
 
-      logger.debug(`Deleted node ${nodeNum}: messages=${messagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
+      logger.debug(`Deleted node ${nodeNum}@${sourceId}: messages=${messagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
     } catch (error) {
-      logger.error(`Error deleting node ${nodeNum}:`, error);
+      logger.error(`Error deleting node ${nodeNum}@${sourceId}:`, error);
       throw error;
     }
 
@@ -7424,11 +7772,11 @@ class DatabaseService {
   }
 
   // Route segment operations
-  insertRouteSegment(segmentData: DbRouteSegment): void {
+  insertRouteSegment(segmentData: DbRouteSegment, sourceId?: string): void {
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.insertRouteSegment(segmentData).catch((error) => {
+        this.traceroutesRepo.insertRouteSegment(segmentData, sourceId).catch((error) => {
           logger.error('[DatabaseService] Failed to insert route segment:', error);
         });
       }
@@ -7438,8 +7786,8 @@ class DatabaseService {
     // SQLite path
     const stmt = this.db.prepare(`
       INSERT INTO route_segments (
-        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt, sourceId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -7450,54 +7798,75 @@ class DatabaseService {
       segmentData.distanceKm,
       segmentData.isRecordHolder ? 1 : 0,
       segmentData.timestamp,
-      segmentData.createdAt
+      segmentData.createdAt,
+      sourceId ?? null,
     );
   }
 
-  getLongestActiveRouteSegment(): DbRouteSegment | null {
+  getLongestActiveRouteSegment(sourceId?: string): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
     // Get the longest segment from recent traceroutes (within last 7 days)
     const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    const stmt = this.db.prepare(`
-      SELECT * FROM route_segments
-      WHERE timestamp > ?
-      ORDER BY distanceKm DESC
-      LIMIT 1
-    `);
-    const segment = stmt.get(cutoff) as DbRouteSegment | null;
+    const stmt = sourceId !== undefined
+      ? this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE timestamp > ? AND sourceId IS ?
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `)
+      : this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE timestamp > ?
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `);
+    const segment = (sourceId !== undefined
+      ? stmt.get(cutoff, sourceId)
+      : stmt.get(cutoff)) as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  getRecordHolderRouteSegment(): DbRouteSegment | null {
+  getRecordHolderRouteSegment(sourceId?: string): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM route_segments
-      WHERE isRecordHolder = 1
-      ORDER BY distanceKm DESC
-      LIMIT 1
-    `);
-    const segment = stmt.get() as DbRouteSegment | null;
+    const stmt = sourceId !== undefined
+      ? this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE isRecordHolder = 1 AND sourceId IS ?
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `)
+      : this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE isRecordHolder = 1
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `);
+    const segment = (sourceId !== undefined
+      ? stmt.get(sourceId)
+      : stmt.get()) as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  updateRecordHolderSegment(newSegment: DbRouteSegment): void {
+  updateRecordHolderSegment(newSegment: DbRouteSegment, sourceId?: string): void {
     // For PostgreSQL/MySQL, use async approach
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.getRecordHolderRouteSegment().then(currentRecord => {
+        this.traceroutesRepo.getRecordHolderRouteSegment(sourceId).then(currentRecord => {
           if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-            this.traceroutesRepo!.clearAllRecordHolders().then(() => {
+            // Clear existing record holder flag (per-source so one source's
+            // new record doesn't unseat another source's record holder).
+            this.traceroutesRepo!.clearRecordHolderBySource(sourceId).then(() => {
               this.traceroutesRepo!.insertRouteSegment({
                 ...newSegment,
                 isRecordHolder: true
-              }).catch(err => logger.debug('Failed to insert record holder segment:', err));
-            }).catch(err => logger.debug('Failed to clear record holder segments:', err));
+              }, sourceId).catch((err: unknown) => logger.debug('Failed to insert record holder segment:', err));
+            }).catch((err: unknown) => logger.debug('Failed to clear record holder segments:', err));
             logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
           }
         }).catch(err => logger.debug('Failed to get record holder segment:', err));
@@ -7505,28 +7874,33 @@ class DatabaseService {
       return;
     }
 
-    const currentRecord = this.getRecordHolderRouteSegment();
+    const currentRecord = this.getRecordHolderRouteSegment(sourceId);
 
     // If no current record or new segment is longer, update
     if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-      // Clear all existing record holders
-      this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+      // Clear existing record holders for this source (IS NULL when scope is
+      // global, exact match when scoped — keeps per-source records independent).
+      if (sourceId !== undefined) {
+        this.db.prepare('UPDATE route_segments SET isRecordHolder = 0 WHERE sourceId IS ?').run(sourceId);
+      } else {
+        this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+      }
 
       // Insert new record holder
       this.insertRouteSegment({
         ...newSegment,
         isRecordHolder: true
-      });
+      }, sourceId);
 
       logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
     }
   }
 
-  clearRecordHolderSegment(): void {
+  clearRecordHolderSegment(sourceId?: string): void {
     // For PostgreSQL/MySQL, use async approach
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.clearAllRecordHolders().catch(err =>
+        this.traceroutesRepo.clearRecordHolderBySource(sourceId).catch((err: unknown) =>
           logger.debug('Failed to clear record holder segments:', err)
         );
       }
@@ -7534,15 +7908,19 @@ class DatabaseService {
       return;
     }
 
-    this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+    if (sourceId !== undefined) {
+      this.db.prepare('UPDATE route_segments SET isRecordHolder = 0 WHERE sourceId IS ?').run(sourceId);
+    } else {
+      this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+    }
     logger.debug('🗑️ Cleared record holder route segment');
   }
 
-  cleanupOldRouteSegments(days: number = 30): number {
+  cleanupOldRouteSegments(days: number = 30, sourceId?: string): number {
     // For PostgreSQL/MySQL, fire-and-forget async cleanup
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.cleanupOldRouteSegments(days).catch(err => {
+        this.traceroutesRepo.cleanupOldRouteSegments(days, sourceId).catch((err: unknown) => {
           logger.debug('Failed to cleanup old route segments:', err);
         });
       }
@@ -7550,6 +7928,15 @@ class DatabaseService {
     }
 
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    if (sourceId !== undefined) {
+      const stmt = this.db.prepare(`
+        DELETE FROM route_segments
+        WHERE timestamp < ? AND isRecordHolder = 0 AND sourceId IS ?
+      `);
+      const result = stmt.run(cutoff, sourceId);
+      return Number(result.changes);
+    }
+
     const stmt = this.db.prepare(`
       DELETE FROM route_segments
       WHERE timestamp < ? AND isRecordHolder = 0
@@ -7783,6 +8170,31 @@ class DatabaseService {
     return stmt.all() as DbNeighborInfo[];
   }
 
+  getLatestNeighborInfoPerNodeScoped(sourceId?: string): DbNeighborInfo[] {
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (!sourceId) return this._neighborsCache;
+      return this._neighborsCache.filter((ni: any) => ni.sourceId === sourceId);
+    }
+
+    if (!sourceId) return this.getLatestNeighborInfoPerNode();
+
+    const stmt = this.db.prepare(`
+      SELECT ni.*
+      FROM neighbor_info ni
+      INNER JOIN (
+        SELECT nodeNum, neighborNodeNum, MAX(timestamp) as maxTimestamp
+        FROM neighbor_info
+        WHERE sourceId = ?
+        GROUP BY nodeNum, neighborNodeNum
+      ) latest
+      ON ni.nodeNum = latest.nodeNum
+        AND ni.neighborNodeNum = latest.neighborNodeNum
+        AND ni.timestamp = latest.maxTimestamp
+      WHERE ni.sourceId = ?
+    `);
+    return stmt.all(sourceId, sourceId) as DbNeighborInfo[];
+  }
+
   /**
    * Get direct neighbor RSSI statistics from zero-hop packets
    *
@@ -7825,11 +8237,11 @@ class DatabaseService {
     return count;
   }
 
-  // Favorite operations
-  setNodeFavorite(nodeNum: number, isFavorite: boolean, favoriteLocked?: boolean): void {
+  // Favorite operations (scoped to sourceId — Phase 3C2)
+  setNodeFavorite(nodeNum: number, isFavorite: boolean, sourceId: string, favoriteLocked?: boolean): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         cachedNode.isFavorite = isFavorite;
         if (favoriteLocked !== undefined) {
@@ -7839,12 +8251,12 @@ class DatabaseService {
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeFavorite(nodeNum, isFavorite, favoriteLocked).catch(err => {
+        this.nodesRepo.setNodeFavorite(nodeNum, isFavorite, sourceId, favoriteLocked).catch(err => {
           logger.error(`Failed to set node favorite in database:`, err);
         });
       }
 
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}, locked: ${favoriteLocked}`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite}, locked: ${favoriteLocked}`);
       return;
     }
 
@@ -7856,48 +8268,48 @@ class DatabaseService {
           isFavorite = ?,
           favoriteLocked = ?,
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ? AND sourceId = ?
       `);
-      const result = stmt.run(isFavorite ? 1 : 0, favoriteLocked ? 1 : 0, now, nodeNum);
+      const result = stmt.run(isFavorite ? 1 : 0, favoriteLocked ? 1 : 0, now, nodeNum, sourceId);
       if (result.changes === 0) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
         throw new Error(`Node ${nodeId} not found`);
       }
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}, locked: ${favoriteLocked} (${result.changes} row updated)`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite}, locked: ${favoriteLocked} (${result.changes} row updated)`);
     } else {
       const stmt = this.db.prepare(`
         UPDATE nodes SET
           isFavorite = ?,
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ? AND sourceId = ?
       `);
-      const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+      const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum, sourceId);
       if (result.changes === 0) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+        logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
         throw new Error(`Node ${nodeId} not found`);
       }
-      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
+      logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
     }
   }
 
-  setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean): void {
+  setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean, sourceId: string): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         cachedNode.favoriteLocked = favoriteLocked;
         cachedNode.updatedAt = Date.now();
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeFavoriteLocked(nodeNum, favoriteLocked).catch(err => {
+        this.nodesRepo.setNodeFavoriteLocked(nodeNum, favoriteLocked, sourceId).catch(err => {
           logger.error(`Failed to set node favoriteLocked in database:`, err);
         });
       }
 
-      logger.debug(`Node ${nodeNum} favoriteLocked set to: ${favoriteLocked}`);
+      logger.debug(`Node ${nodeNum}@${sourceId} favoriteLocked set to: ${favoriteLocked}`);
       return;
     }
 
@@ -7907,23 +8319,23 @@ class DatabaseService {
       UPDATE nodes SET
         favoriteLocked = ?,
         updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const result = stmt.run(favoriteLocked ? 1 : 0, now, nodeNum);
+    const result = stmt.run(favoriteLocked ? 1 : 0, now, nodeNum, sourceId);
 
     if (result.changes === 0) {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update favoriteLocked for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`⚠️ Failed to update favoriteLocked for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`Node ${nodeNum} favoriteLocked set to: ${favoriteLocked} (${result.changes} row updated)`);
+    logger.debug(`Node ${nodeNum}@${sourceId} favoriteLocked set to: ${favoriteLocked} (${result.changes} row updated)`);
   }
 
-  // Ignored operations
-  setNodeIgnored(nodeNum: number, isIgnored: boolean): void {
+  // Ignored operations (scoped to sourceId — Phase 3C2)
+  setNodeIgnored(nodeNum: number, isIgnored: boolean, sourceId: string): void {
     // Get the node info for the persistent ignore list
-    const node = this.getNode(nodeNum);
+    const node = this.getNode(nodeNum, sourceId);
     const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
 
     // Persist to/remove from the ignored_nodes table
@@ -7941,19 +8353,19 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(nodeNum);
+      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (cachedNode) {
         cachedNode.isIgnored = isIgnored;
         cachedNode.updatedAt = Date.now();
       }
 
       if (this.nodesRepo) {
-        this.nodesRepo.setNodeIgnored(nodeNum, isIgnored).catch(err => {
+        this.nodesRepo.setNodeIgnored(nodeNum, isIgnored, sourceId).catch(err => {
           logger.error(`Failed to set node ignored status in database:`, err);
         });
       }
 
-      logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored}`);
+      logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored}`);
       return;
     }
 
@@ -7963,16 +8375,16 @@ class DatabaseService {
       UPDATE nodes SET
         isIgnored = ?,
         updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum);
+    const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum, sourceId);
 
     if (result.changes === 0) {
-      logger.warn(`Failed to update ignored status for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`Failed to update ignored status for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
+    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
   }
 
   // Persistent ignored nodes operations — use databaseService.ignoredNodes.xxxAsync() directly
@@ -8050,10 +8462,11 @@ class DatabaseService {
     }
   }
 
-  // Position override operations
+  // Position override operations (scoped to sourceId — Phase 3C2)
   setNodePositionOverride(
     nodeNum: number,
     enabled: boolean,
+    sourceId: string,
     latitude?: number,
     longitude?: number,
     altitude?: number,
@@ -8063,21 +8476,20 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, use cache and async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const existingNode = this.nodesCache.get(nodeNum);
+      const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (!existingNode) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in cache`);
+        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
         throw new Error(`Node ${nodeId} not found`);
       }
 
-      // Update cache
+      // Update cache (in-place)
       existingNode.positionOverrideEnabled = enabled;
       existingNode.latitudeOverride = enabled && latitude !== undefined ? latitude : undefined;
       existingNode.longitudeOverride = enabled && longitude !== undefined ? longitude : undefined;
       existingNode.altitudeOverride = enabled && altitude !== undefined ? altitude : undefined;
       existingNode.positionOverrideIsPrivate = enabled && isPrivate;
       existingNode.updatedAt = now;
-      this.nodesCache.set(nodeNum, existingNode);
 
       // Fire and forget async update
       if (this.nodesRepo) {
@@ -8086,7 +8498,7 @@ class DatabaseService {
         });
       }
 
-      logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+      logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
       return;
     }
 
@@ -8099,7 +8511,7 @@ class DatabaseService {
         altitudeOverride = ?,
         positionOverrideIsPrivate = ?,
         updatedAt = ?
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
     const result = stmt.run(
       enabled ? 1 : 0,
@@ -8108,19 +8520,20 @@ class DatabaseService {
       enabled && altitude !== undefined ? altitude : null,
       enabled && isPrivate ? 1 : 0,
       now,
-      nodeNum
+      nodeNum,
+      sourceId
     );
 
     if (result.changes === 0) {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in database`);
+      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+    logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
   }
 
-  getNodePositionOverride(nodeNum: number): {
+  getNodePositionOverride(nodeNum: number, sourceId: string): {
     enabled: boolean;
     latitude?: number;
     longitude?: number;
@@ -8129,7 +8542,7 @@ class DatabaseService {
   } | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const node = this.nodesCache.get(nodeNum);
+      const node = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
       if (!node) {
         return null;
       }
@@ -8147,9 +8560,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
       FROM nodes
-      WHERE nodeNum = ?
+      WHERE nodeNum = ? AND sourceId = ?
     `);
-    const row = stmt.get(nodeNum) as {
+    const row = stmt.get(nodeNum, sourceId) as {
       positionOverrideEnabled: number | boolean | null;
       latitudeOverride: number | null;
       longitudeOverride: number | null;
@@ -8170,8 +8583,8 @@ class DatabaseService {
     };
   }
 
-  clearNodePositionOverride(nodeNum: number): void {
-    this.setNodePositionOverride(nodeNum, false);
+  clearNodePositionOverride(nodeNum: number, sourceId: string): void {
+    this.setNodePositionOverride(nodeNum, false, sourceId);
   }
 
   // Authentication and Authorization
@@ -9792,15 +10205,32 @@ class DatabaseService {
    * Async method to check user permission.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
-  async checkPermissionAsync(userId: number, resource: string, action: string): Promise<boolean> {
+  async checkPermissionAsync(userId: number, resource: string, action: string, sourceId?: string): Promise<boolean> {
     const permissions = await this.auth.getPermissionsForUser(userId);
-    for (const perm of permissions) {
-      if (perm.resource === resource) {
-        if (action === 'viewOnMap') return perm.canViewOnMap;
-        if (action === 'read') return perm.canRead;
-        if (action === 'write') return perm.canWrite;
+
+    const check = (perm: (typeof permissions)[0]): boolean => {
+      if (action === 'viewOnMap') return !!(perm as any).canViewOnMap;
+      if (action === 'read') return !!(perm as any).canRead;
+      if (action === 'write') return !!(perm as any).canWrite;
+      return false;
+    };
+
+    // Source-specific permission takes precedence when sourceId is provided
+    if (sourceId) {
+      for (const perm of permissions) {
+        if (perm.resource === resource && (perm as any).sourceId === sourceId) {
+          return check(perm);
+        }
       }
     }
+
+    // Fall back to global permission (null/undefined sourceId)
+    for (const perm of permissions) {
+      if (perm.resource === resource && !(perm as any).sourceId) {
+        return check(perm);
+      }
+    }
+
     return false;
   }
 
@@ -9808,16 +10238,34 @@ class DatabaseService {
    * Async method to get user permission set.
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
-  async getUserPermissionSetAsync(userId: number): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
+  async getUserPermissionSetAsync(userId: number, sourceId?: string): Promise<Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> {
     const permissions = await this.auth.getPermissionsForUser(userId);
     const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
+
+    // First apply global permissions (null sourceId)
     for (const perm of permissions) {
-      permissionSet[perm.resource] = {
-        viewOnMap: perm.canViewOnMap ?? false,
-        read: perm.canRead,
-        write: perm.canWrite,
-      };
+      if (!(perm as any).sourceId) {
+        permissionSet[perm.resource] = {
+          viewOnMap: (perm as any).canViewOnMap ?? false,
+          read: perm.canRead,
+          write: perm.canWrite,
+        };
+      }
     }
+
+    // Then override with source-specific permissions when sourceId is provided
+    if (sourceId) {
+      for (const perm of permissions) {
+        if ((perm as any).sourceId === sourceId) {
+          permissionSet[perm.resource] = {
+            viewOnMap: (perm as any).canViewOnMap ?? false,
+            read: perm.canRead,
+            write: perm.canWrite,
+          };
+        }
+      }
+    }
+
     return permissionSet;
   }
 
@@ -10111,14 +10559,14 @@ class DatabaseService {
   /**
    * Get time sync filter settings
    */
-  async getTimeSyncFilterSettingsAsync(): Promise<{
+  async getTimeSyncFilterSettingsAsync(sourceId?: string): Promise<{
     enabled: boolean;
     nodeNums: number[];
     filterEnabled: boolean;
     expirationHours: number;
     intervalMinutes: number;
   }> {
-    const nodeNums = await this.misc.getAutoTimeSyncNodes();
+    const nodeNums = await this.misc.getAutoTimeSyncNodes(sourceId);
     return {
       enabled: this.isAutoTimeSyncEnabled(),
       nodeNums,
@@ -10137,12 +10585,12 @@ class DatabaseService {
     filterEnabled?: boolean;
     expirationHours?: number;
     intervalMinutes?: number;
-  }): Promise<void> {
+  }, sourceId?: string): Promise<void> {
     if (settings.enabled !== undefined) {
       this.setAutoTimeSyncEnabled(settings.enabled);
     }
     if (settings.nodeNums !== undefined) {
-      await this.misc.setAutoTimeSyncNodes(settings.nodeNums);
+      await this.misc.setAutoTimeSyncNodes(settings.nodeNums, sourceId);
     }
     if (settings.filterEnabled !== undefined) {
       this.setAutoTimeSyncNodeFilterEnabled(settings.filterEnabled);
@@ -10159,7 +10607,7 @@ class DatabaseService {
   /**
    * Get a node that needs time sync
    */
-  async getNodeNeedingTimeSyncAsync(): Promise<DbNode | null> {
+  async getNodeNeedingTimeSyncAsync(sourceId?: string): Promise<DbNode | null> {
     const activeHours = 48; // Only consider nodes heard in last 48 hours
     // lastHeard is stored in seconds, so convert cutoff to seconds
     const activeNodeCutoff = Math.floor((Date.now() - (activeHours * 60 * 60 * 1000)) / 1000);
@@ -10170,7 +10618,7 @@ class DatabaseService {
     // Get filter settings
     let filterNodeNums: number[] | undefined;
     if (this.isAutoTimeSyncNodeFilterEnabled()) {
-      filterNodeNums = await this.misc.getAutoTimeSyncNodes();
+      filterNodeNums = await this.misc.getAutoTimeSyncNodes(sourceId);
       if (filterNodeNums.length === 0) {
         // Filter is enabled but no nodes selected - skip
         return null;
@@ -10180,7 +10628,8 @@ class DatabaseService {
     const node = await this.nodes.getNodeNeedingTimeSyncAsync(
       activeNodeCutoff,
       expirationMsAgo,
-      filterNodeNums
+      filterNodeNums,
+      sourceId
     );
     return node as DbNode | null;
   }
@@ -10218,7 +10667,22 @@ class DatabaseService {
   // ============================================================
 
   // Group 1: Cleanup/Maintenance
-  async cleanupOldMessagesAsync(days: number = 30): Promise<number> {
+  async cleanupOldMessagesAsync(days: number = 30, sourceId?: string): Promise<number> {
+    if (sourceId) {
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+        const result = await this.postgresPool.query(`DELETE FROM messages WHERE timestamp < $1 AND "sourceId" = $2`, [cutoff, sourceId]);
+        return result.rowCount ?? 0;
+      }
+      if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+        const [result] = await this.mysqlPool.query(`DELETE FROM messages WHERE timestamp < ? AND sourceId = ?`, [cutoff, sourceId]) as any;
+        return result.affectedRows ?? 0;
+      }
+      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+      const stmt = this.db.prepare('DELETE FROM messages WHERE timestamp < ? AND sourceId = ?');
+      return Number(stmt.run(cutoff, sourceId).changes);
+    }
     return this.cleanupOldMessages(days);
   }
 
@@ -10243,11 +10707,43 @@ class DatabaseService {
     return this.cleanupOldNeighborInfo(days);
   }
 
-  async cleanupInactiveNodesAsync(days: number = 30): Promise<number> {
+  async cleanupInactiveNodesAsync(days: number = 30, sourceId?: string): Promise<number> {
+    if (sourceId) {
+      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query(`DELETE FROM nodes WHERE "lastHeard" < $1 AND "sourceId" = $2`, [cutoff, sourceId]);
+        return result.rowCount ?? 0;
+      }
+      if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [result] = await this.mysqlPool.query(`DELETE FROM nodes WHERE lastHeard < ? AND sourceId = ?`, [cutoff, sourceId]) as any;
+        return result.affectedRows ?? 0;
+      }
+      const stmt = this.db.prepare('DELETE FROM nodes WHERE lastHeard < ? AND sourceId = ?');
+      return Number(stmt.run(cutoff, sourceId).changes);
+    }
     return this.cleanupInactiveNodes(days);
   }
 
-  async cleanupInvalidChannelsAsync(): Promise<number> {
+  async cleanupInvalidChannelsAsync(sourceId?: string): Promise<number> {
+    if (sourceId) {
+      // Channels with no name and no PSK scoped to a source
+      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        const result = await this.postgresPool.query(
+          `DELETE FROM channels WHERE ("name" IS NULL OR "name" = '') AND ("psk" IS NULL OR "psk" = '') AND "sourceId" = $1`,
+          [sourceId]
+        );
+        return result.rowCount ?? 0;
+      }
+      if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        const [result] = await this.mysqlPool.query(
+          `DELETE FROM channels WHERE (name IS NULL OR name = '') AND (psk IS NULL OR psk = '') AND sourceId = ?`,
+          [sourceId]
+        ) as any;
+        return result.affectedRows ?? 0;
+      }
+      const stmt = this.db.prepare(`DELETE FROM channels WHERE (name IS NULL OR name = '') AND (psk IS NULL OR psk = '') AND sourceId = ?`);
+      return Number(stmt.run(sourceId).changes);
+    }
     return this.cleanupInvalidChannels();
   }
 
@@ -10306,67 +10802,72 @@ class DatabaseService {
     return this.getNodesWithPublicKeys();
   }
 
-  async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean): Promise<void> {
-    this.setNodeIgnored(nodeNum, isIgnored);
+  async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {
+    this.setNodeIgnored(nodeNum, isIgnored, sourceId);
   }
 
-  async getNodePositionOverrideAsync(nodeNum: number): Promise<{
+  async getNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<{
     enabled: boolean;
     latitude?: number;
     longitude?: number;
     altitude?: number;
     isPrivate?: boolean;
   } | null> {
-    return this.getNodePositionOverride(nodeNum);
+    return this.getNodePositionOverride(nodeNum, sourceId);
   }
 
   async setNodePositionOverrideAsync(
     nodeNum: number,
     enabled: boolean,
+    sourceId: string,
     latitude?: number,
     longitude?: number,
     altitude?: number,
     isPrivate: boolean = false
   ): Promise<void> {
-    this.setNodePositionOverride(nodeNum, enabled, latitude, longitude, altitude, isPrivate);
+    this.setNodePositionOverride(nodeNum, enabled, sourceId, latitude, longitude, altitude, isPrivate);
   }
 
-  async clearNodePositionOverrideAsync(nodeNum: number): Promise<void> {
-    this.clearNodePositionOverride(nodeNum);
+  async clearNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<void> {
+    this.clearNodePositionOverride(nodeNum, sourceId);
   }
 
   async handleAutoWelcomeEnabledAsync(): Promise<number> {
     return this.handleAutoWelcomeEnabled();
   }
 
-  async markAllNodesAsWelcomedAsync(): Promise<number> {
-    return this.markAllNodesAsWelcomed();
+  async markAllNodesAsWelcomedAsync(sourceId?: string | null): Promise<number> {
+    return this.markAllNodesAsWelcomed(sourceId ?? null);
   }
 
   // Group 4: Traceroutes
-  async recordTracerouteRequestAsync(fromNodeNum: number, toNodeNum: number): Promise<void> {
-    await this.recordTracerouteRequest(fromNodeNum, toNodeNum);
+  async recordTracerouteRequestAsync(fromNodeNum: number, toNodeNum: number, sourceId?: string): Promise<void> {
+    await this.recordTracerouteRequest(fromNodeNum, toNodeNum, sourceId);
   }
 
   async getAllTraceroutesForRecalculationAsync(): Promise<any[]> {
     return this.getAllTraceroutesForRecalculation();
   }
 
-  async clearRecordHolderSegmentAsync(): Promise<void> {
-    this.clearRecordHolderSegment();
+  async clearRecordHolderSegmentAsync(sourceId?: string): Promise<void> {
+    this.clearRecordHolderSegment(sourceId);
   }
 
-  async updateRecordHolderSegmentAsync(segment: DbRouteSegment): Promise<void> {
-    this.updateRecordHolderSegment(segment);
+  async updateRecordHolderSegmentAsync(segment: DbRouteSegment, sourceId?: string): Promise<void> {
+    this.updateRecordHolderSegment(segment, sourceId);
   }
 
   // Group 5: Neighbors/Telemetry
-  async getNeighborsForNodeAsync(nodeNum: number): Promise<DbNeighborInfo[]> {
+  async getNeighborsForNodeAsync(nodeNum: number, sourceId?: string): Promise<DbNeighborInfo[]> {
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.neighborsRepo) {
+      const results = await this.neighborsRepo.getNeighborsForNode(nodeNum, sourceId);
+      return results.map(n => this.convertRepoNeighborInfo(n));
+    }
     return this.getNeighborsForNode(nodeNum);
   }
 
-  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): Promise<DbTelemetry[]> {
-    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours);
+  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): Promise<DbTelemetry[]> {
+    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours, sourceId);
   }
 
   // Group 6: Ghost Nodes (in-memory, but async-compatible wrappers)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { useData } from '../contexts/DataContext';
@@ -12,6 +13,7 @@ interface AutoHeapManagementSectionProps {
 const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ baseUrl }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const { currentNodeId } = useData();
 
@@ -24,7 +26,7 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await csrfFetch(`${baseUrl}/api/settings`);
+      const res = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`);
       if (res.ok) {
         const settings = await res.json();
         const enabled = settings.autoHeapManagementEnabled === 'true';
@@ -71,7 +73,7 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

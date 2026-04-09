@@ -1,62 +1,59 @@
 #!/bin/bash
-# Automated test for Virtual Node Server using Meshtastic CLI
-# Tests that a real Meshtastic client can connect, download data, and send messages
+# Automated test for the per-source Virtual Node Server (Phase 7, 4.0+).
+#
+# Creates a meshmonitor container pointed at a real Meshtastic node, then
+# uses the per-source API to enable Virtual Node on the auto-created default
+# source and verifies that a TCP client can connect to the VN endpoint.
 
-set -e  # Exit on any error
+set -e
 
 echo "=========================================="
-echo "Virtual Node Server CLI Test"
+echo "Virtual Node Server CLI Test (per-source)"
 echo "=========================================="
 echo ""
 
-# Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 COMPOSE_FILE="docker-compose.virtual-node-cli-test.yml"
 CONTAINER_NAME="meshmonitor-virtual-node-cli-test"
-TEST_MESSAGE="VN_CLI_TEST_$(date +%s)"
+WEB_PORT=8086
+VN_PORT=4405          # host-side mapped port
+VN_INTERNAL_PORT=4404 # port inside the container / configured on the source
 
-# Cleanup function
 cleanup() {
     echo ""
     echo "Cleaning up..."
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
-    rm -f /tmp/vn-test-client.py
+    rm -f /tmp/vn-test-connect.py
     rm -f /tmp/meshmonitor-cookies.txt
 
-    # Verify container stopped
     if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "Warning: Container ${CONTAINER_NAME} still running, forcing stop..."
         docker stop "$CONTAINER_NAME" 2>/dev/null || true
         docker rm "$CONTAINER_NAME" 2>/dev/null || true
     fi
-
     return 0
 }
 
-# Set trap to cleanup on exit
 trap cleanup EXIT
 
-# Create test docker-compose file with Virtual Node Server enabled
-echo "Creating test docker-compose.yml with Virtual Node Server..."
-cat > "$COMPOSE_FILE" <<'EOF'
+echo "Creating test docker-compose.yml..."
+cat > "$COMPOSE_FILE" <<EOF
 services:
   meshmonitor:
     image: meshmonitor:test
-    container_name: meshmonitor-virtual-node-cli-test
+    container_name: ${CONTAINER_NAME}
     ports:
-      - "8086:3001"
-      - "4405:4404"  # Virtual Node Server port
+      - "${WEB_PORT}:3001"
+      - "${VN_PORT}:${VN_INTERNAL_PORT}"
     volumes:
       - meshmonitor-virtual-node-cli-test-data:/data
     environment:
       - MESHTASTIC_NODE_IP=192.168.5.106
-      - ENABLE_VIRTUAL_NODE=true
-      - VIRTUAL_NODE_PORT=4404
     restart: unless-stopped
 
 volumes:
@@ -66,15 +63,11 @@ EOF
 echo -e "${GREEN}✓${NC} Test config created"
 echo ""
 
-# Start container
 echo "Starting container..."
 docker compose -f "$COMPOSE_FILE" up -d
-
 echo -e "${GREEN}✓${NC} Container started"
 echo ""
 
-# Wait for container to be ready
-echo "Waiting for container to be ready..."
 echo "Test 1: Container is running"
 for i in {1..30}; do
     if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
@@ -89,15 +82,12 @@ for i in {1..30}; do
 done
 echo ""
 
-# Wait for server to be listening and Virtual Node Server to start
-echo "Test 2: Wait for Meshtastic node connection and Virtual Node Server startup"
-echo "Waiting up to 90 seconds for Virtual Node Server to be ready..."
+echo "Test 2: Wait for server, admin user, and default source"
+set +e
 
-# First wait for server to be up with health check
-set +e  # Temporarily disable exit on error for readiness check
 echo "  Waiting for server health check..."
 for i in {1..30}; do
-    HEALTH=$(curl -s http://localhost:8086/api/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
+    HEALTH=$(curl -s http://localhost:${WEB_PORT}/api/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
     if [ "$HEALTH" = "ok" ]; then
         echo "  Server health check passed"
         break
@@ -109,7 +99,6 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Wait for admin user to be created before attempting login
 echo "  Waiting for admin user creation..."
 for i in {1..30}; do
     if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
@@ -124,111 +113,108 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Authenticate as admin to get session cookie (required for channel permission filtering)
-echo "  Authenticating as admin..."
 COOKIE_JAR="/tmp/meshmonitor-cookies.txt"
 
-# First get CSRF token
-CSRF_RESPONSE=$(curl -s -c "$COOKIE_JAR" http://localhost:8086/api/csrf-token 2>/dev/null)
+echo "  Authenticating as admin..."
+CSRF_RESPONSE=$(curl -s -c "$COOKIE_JAR" http://localhost:${WEB_PORT}/api/csrf-token 2>/dev/null)
 CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | jq -r '.csrfToken // empty' 2>/dev/null)
 if [ -z "$CSRF_TOKEN" ]; then
-    echo "  Failed to get CSRF token, response: $CSRF_RESPONSE"
     echo -e "${RED}✗ FAIL${NC}: Could not get CSRF token"
     exit 1
 fi
-echo "  Got CSRF token"
 
-# Now login with CSRF token
-LOGIN_RESPONSE=$(curl -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST http://localhost:8086/api/auth/login \
+LOGIN_RESPONSE=$(curl -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST http://localhost:${WEB_PORT}/api/auth/login \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
     -d '{"username":"admin","password":"changeme"}' 2>/dev/null)
 LOGIN_SUCCESS=$(echo "$LOGIN_RESPONSE" | jq -r '.user.username // empty' 2>/dev/null)
 if [ "$LOGIN_SUCCESS" != "admin" ]; then
-    echo "  Login failed, response: $LOGIN_RESPONSE"
     echo -e "${RED}✗ FAIL${NC}: Could not authenticate as admin"
     exit 1
 fi
 echo "  Authenticated as admin"
 
-# Now wait for nodes with authenticated session
-for i in {1..90}; do
-    # Check that we have nodes synced (indicating server connected to Meshtastic node)
-    POLL_RESPONSE=$(curl -s -b "$COOKIE_JAR" http://localhost:8086/api/poll 2>/dev/null)
-    NODE_COUNT=$(echo "$POLL_RESPONSE" | jq -r '.nodes | length' 2>/dev/null || echo "0")
+# The default source is auto-created from MESHTASTIC_NODE_IP on first boot.
+# Refresh the CSRF token after login (sessions rotate it).
+CSRF_TOKEN=$(curl -s -b "$COOKIE_JAR" http://localhost:${WEB_PORT}/api/csrf-token 2>/dev/null | jq -r '.csrfToken // empty')
 
-    # Check if environment variable is set correctly
-    ENABLE_VN=$(docker exec "$CONTAINER_NAME" printenv ENABLE_VIRTUAL_NODE 2>/dev/null || echo "")
-
-    # Print progress every 10 seconds
-    if [ $((i % 10)) -eq 0 ]; then
-        echo "  [$i/90] Nodes: $NODE_COUNT, ENABLE_VIRTUAL_NODE: $ENABLE_VN"
-    fi
-
-    # Just need basic connectivity - at least 1 node to prove Meshtastic connection
-    # Default to 0 if NODE_COUNT is empty
-    NODE_COUNT="${NODE_COUNT:-0}"
-    if [ "$NODE_COUNT" -ge 1 ] && [ "$ENABLE_VN" = "true" ]; then
-        echo -e "${GREEN}✓ PASS${NC}: Server ready with Virtual Node enabled (nodes: $NODE_COUNT)"
+echo "  Waiting for default source to appear..."
+SOURCE_ID=""
+for i in {1..30}; do
+    SOURCES_JSON=$(curl -s -b "$COOKIE_JAR" http://localhost:${WEB_PORT}/api/sources 2>/dev/null)
+    SOURCE_ID=$(echo "$SOURCES_JSON" | jq -r '.[] | select(.type=="meshtastic_tcp") | .id' 2>/dev/null | head -1)
+    if [ -n "$SOURCE_ID" ] && [ "$SOURCE_ID" != "null" ]; then
+        echo "  Default source id: $SOURCE_ID"
         break
     fi
+    if [ $i -eq 30 ]; then
+        echo -e "${RED}✗ FAIL${NC}: No meshtastic_tcp source appeared within 30 seconds"
+        echo "$SOURCES_JSON"
+        exit 1
+    fi
+    sleep 1
+done
 
-    if [ $i -eq 90 ]; then
-        echo -e "${RED}✗ FAIL${NC}: Server did not become ready after 90 seconds"
-        echo "Final status: Nodes: $NODE_COUNT, ENABLE_VIRTUAL_NODE: $ENABLE_VN"
-        echo ""
-        echo "Container logs (last 30 lines):"
+# Read the existing config so we can preserve host/port while adding virtualNode.
+SOURCE_CFG=$(echo "$SOURCES_JSON" | jq -c --arg id "$SOURCE_ID" '.[] | select(.id==$id) | .config')
+
+echo "Test 3: Enable Virtual Node on the default source via API"
+NEW_CFG=$(echo "$SOURCE_CFG" | jq --argjson port "$VN_INTERNAL_PORT" \
+    '. + {virtualNode: {enabled: true, port: $port, allowAdminCommands: false}}')
+
+PUT_BODY=$(jq -n --argjson cfg "$NEW_CFG" '{config: $cfg}')
+PUT_RESP=$(curl -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
+    -X PUT "http://localhost:${WEB_PORT}/api/sources/${SOURCE_ID}" \
+    -H "Content-Type: application/json" \
+    -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "$PUT_BODY" 2>/dev/null)
+
+RESULT_VN_ENABLED=$(echo "$PUT_RESP" | jq -r '.config.virtualNode.enabled // empty' 2>/dev/null)
+if [ "$RESULT_VN_ENABLED" != "true" ]; then
+    echo -e "${RED}✗ FAIL${NC}: Virtual Node did not come back enabled in PUT response"
+    echo "$PUT_RESP"
+    exit 1
+fi
+echo -e "${GREEN}✓ PASS${NC}: Virtual Node enabled on source $SOURCE_ID (port $VN_INTERNAL_PORT)"
+echo ""
+
+echo "Test 4: Wait for Virtual Node TCP port to open"
+for i in {1..30}; do
+    if nc -zv localhost ${VN_PORT} 2>&1 | grep -q "succeeded"; then
+        echo -e "${GREEN}✓ PASS${NC}: Virtual Node port ${VN_PORT} is accessible"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e "${RED}✗ FAIL${NC}: Virtual Node port ${VN_PORT} did not open within 30 seconds"
         docker logs "$CONTAINER_NAME" 2>&1 | tail -30
         exit 1
     fi
     sleep 1
 done
-set -e  # Re-enable exit on error
+set -e
 echo ""
 
-# Create basic TCP connectivity test
-echo "Test 3: Test basic TCP connectivity"
-if nc -zv localhost 4405 2>&1 | grep -q "succeeded"; then
-    echo -e "${GREEN}✓ PASS${NC}: Virtual Node Server port 4405 is accessible"
-else
-    echo -e "${RED}✗ FAIL${NC}: Cannot connect to Virtual Node Server port 4405"
-    exit 1
-fi
-echo ""
-
-# Create simple Python TCP client to verify server accepts connections
-echo "Test 4: Verify server accepts TCP connections"
-cat > /tmp/vn-test-connect.py <<'PYTHON_SCRIPT'
+echo "Test 5: Python TCP client connects successfully"
+cat > /tmp/vn-test-connect.py <<PYTHON_SCRIPT
 #!/usr/bin/env python3
-"""
-Simple TCP client to verify Virtual Node Server accepts connections
-"""
 import socket
+import sys
 import time
 
-def main():
-    try:
-        print("Connecting to Virtual Node Server...")
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5)
-        sock.connect(("localhost", 4405))
-        print("✓ Successfully connected to Virtual Node Server")
-
-        # Keep connection open briefly
-        time.sleep(2)
-
-        sock.close()
-        print("✓ Connection closed gracefully")
-        return 0
-    except Exception as e:
-        print(f"✗ Connection failed: {e}")
-        return 1
-
-if __name__ == "__main__":
-    exit(main())
+try:
+    print("Connecting to Virtual Node Server...")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5)
+    sock.connect(("localhost", ${VN_PORT}))
+    print("✓ Successfully connected")
+    time.sleep(2)
+    sock.close()
+    print("✓ Connection closed gracefully")
+    sys.exit(0)
+except Exception as e:
+    print(f"✗ Connection failed: {e}")
+    sys.exit(1)
 PYTHON_SCRIPT
-
-chmod +x /tmp/vn-test-connect.py
 
 if python3 /tmp/vn-test-connect.py; then
     echo -e "${GREEN}✓ PASS${NC}: Server accepts TCP connections"
@@ -238,25 +224,22 @@ else
 fi
 echo ""
 
-# Verify Virtual Node Server is broadcasting messages
-echo "Test 5: Verify Virtual Node Server is broadcasting mesh data"
-MESSAGES=$(curl -s http://localhost:8086/api/messages)
-MESSAGE_COUNT=$(echo "$MESSAGES" | jq 'length' 2>/dev/null || echo "0")
-
-if [ "$MESSAGE_COUNT" -ge 1 ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Web UI API has $MESSAGE_COUNT messages from mesh network"
+echo "Test 6: /api/virtual-node/status reports the source as enabled"
+STATUS_JSON=$(curl -s -b "$COOKIE_JAR" http://localhost:${WEB_PORT}/api/virtual-node/status 2>/dev/null)
+ENABLED_COUNT=$(echo "$STATUS_JSON" | jq '[.sources[] | select(.enabled==true)] | length' 2>/dev/null || echo "0")
+if [ "$ENABLED_COUNT" -ge 1 ]; then
+    echo -e "${GREEN}✓ PASS${NC}: Virtual node status reports $ENABLED_COUNT enabled source(s)"
 else
-    echo -e "${YELLOW}⚠ WARN${NC}: No messages found in Web UI API (this may be normal for a test network)"
+    echo -e "${RED}✗ FAIL${NC}: Virtual node status did not report any enabled sources"
+    echo "$STATUS_JSON"
+    exit 1
 fi
 echo ""
 
-# Verify Virtual Node Server logged the client connection
-echo "Test 6: Verify Virtual Node Server logs show client connection"
+echo "Test 7: Virtual Node logs show client connection"
 if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Virtual node client connected"; then
     echo -e "${GREEN}✓ PASS${NC}: Virtual Node Server logged client connection"
-    CLIENT_LOG=$(docker logs "$CONTAINER_NAME" 2>&1 | grep "Virtual node client" | tail -5)
-    echo "Connection logs:"
-    echo "$CLIENT_LOG"
+    docker logs "$CONTAINER_NAME" 2>&1 | grep "Virtual node client" | tail -5
 else
     echo -e "${YELLOW}⚠ WARN${NC}: No client connection log found"
 fi
@@ -266,13 +249,11 @@ echo "=========================================="
 echo -e "${GREEN}All tests passed!${NC}"
 echo "=========================================="
 echo ""
-echo "The Virtual Node Server test completed successfully:"
-echo "  • Container started with Virtual Node Server enabled"
-echo "  • Server listens on port 4404"
-echo "  • TCP connections are accepted"
-echo "  • Web UI API is accessible and serving data"
-echo "  • Virtual Node Server is operational"
-echo ""
-echo "Note: Full Meshtastic Python library compatibility testing requires"
-echo "additional investigation and is tracked separately."
+echo "The per-source Virtual Node test completed successfully:"
+echo "  • Container started without legacy VN env vars"
+echo "  • Default source auto-created from MESHTASTIC_NODE_IP"
+echo "  • Virtual Node enabled per-source via PUT /api/sources/:id"
+echo "  • TCP endpoint opened on port ${VN_INTERNAL_PORT} (host ${VN_PORT})"
+echo "  • Python TCP client connected successfully"
+echo "  • /api/virtual-node/status reports the enabled source"
 echo ""

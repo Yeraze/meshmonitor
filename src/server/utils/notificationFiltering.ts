@@ -8,6 +8,10 @@ export interface NotificationFilterContext {
   viaMqtt?: boolean;
   /** For DMs: the UUID of the remote node. Used for per-DM mute checks. */
   nodeUuid?: string;
+  /** Phase B: source this notification originated from (required). */
+  sourceId: string;
+  /** Phase B: human-readable source name for body/title prefixing. */
+  sourceName: string;
 }
 
 export interface MutedChannel {
@@ -79,7 +83,7 @@ function isEmojiOnlyMessage(text: string): boolean {
  * Load notification preferences for a user from the database
  * Uses the notifications repository for database-agnostic queries
  */
-export async function getUserNotificationPreferencesAsync(userId: number): Promise<NotificationPreferences | null> {
+export async function getUserNotificationPreferencesAsync(userId: number, sourceId?: string): Promise<NotificationPreferences | null> {
   // Validate userId
   if (!Number.isInteger(userId) || userId <= 0) {
     logger.error(`❌ Invalid userId: ${userId}`);
@@ -87,7 +91,7 @@ export async function getUserNotificationPreferencesAsync(userId: number): Promi
   }
 
   try {
-    const prefs = await databaseService.notifications.getUserPreferences(userId);
+    const prefs = await databaseService.notifications.getUserPreferences(userId, sourceId);
     if (prefs) {
       return prefs;
     }
@@ -133,7 +137,8 @@ export async function getUserNotificationPreferencesAsync(userId: number): Promi
  */
 export async function saveUserNotificationPreferencesAsync(
   userId: number,
-  preferences: NotificationPreferences
+  preferences: NotificationPreferences,
+  sourceId?: string
 ): Promise<boolean> {
   // Validate userId
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -142,7 +147,7 @@ export async function saveUserNotificationPreferencesAsync(
   }
 
   try {
-    return await databaseService.notifications.saveUserPreferences(userId, preferences);
+    return await databaseService.notifications.saveUserPreferences(userId, preferences, sourceId);
   } catch (error) {
     logger.error(`Failed to save preferences for user ${userId}:`, error);
     return false;
@@ -182,10 +187,22 @@ export async function shouldFilterNotificationAsync(
     return false; // Allow on validation error (fail-open for UX)
   }
 
-  // Load user preferences
-  const prefs = await getUserNotificationPreferencesAsync(userId);
+  // Phase B: permission check — user must have messages:read on this source
+  try {
+    const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', filterContext.sourceId);
+    if (!allowed) {
+      logger.debug(`🔒 User ${userId} lacks messages:read on source ${filterContext.sourceId}, filtering`);
+      return true;
+    }
+  } catch (error) {
+    logger.error(`Failed permission check for user ${userId} on source ${filterContext.sourceId}:`, error);
+    return true; // Fail-closed on permission errors to avoid leaking cross-source data
+  }
+
+  // Load user preferences (per-source)
+  const prefs = await getUserNotificationPreferencesAsync(userId, filterContext.sourceId);
   if (!prefs) {
-    logger.debug(`No preferences for user ${userId}, allowing notification`);
+    logger.debug(`No preferences for user ${userId} on source ${filterContext.sourceId}, allowing notification`);
     return false; // Allow if no preferences found
   }
 
@@ -260,15 +277,16 @@ export async function shouldFilterNotificationAsync(
 export async function applyNodeNamePrefixAsync(
   userId: number | null | undefined,
   body: string,
-  nodeName: string | null | undefined
+  nodeName: string | null | undefined,
+  sourceId?: string
 ): Promise<string> {
   // No prefix if no user ID or node name
   if (!userId || !nodeName) {
     return body;
   }
 
-  // Check user preferences
-  const prefs = await getUserNotificationPreferencesAsync(userId);
+  // Check user preferences (per-source if provided)
+  const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
   if (!prefs || !prefs.prefixWithNodeName) {
     return body;
   }

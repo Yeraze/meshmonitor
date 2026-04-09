@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoKeyManagementSectionProps {
@@ -44,6 +45,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localInterval, setLocalInterval] = useState(intervalMinutes || 5);
@@ -83,11 +85,17 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     setLocalImmediatePurge(immediatePurge);
   }, [enabled, intervalMinutes, maxExchanges, autoPurge, immediatePurge]);
 
+  // Reset log when the selected source changes so stale per-source
+  // history doesn't briefly flash before the new fetch lands.
+  useEffect(() => {
+    setRepairLog([]);
+  }, [sourceQuery]);
+
   // Fetch repair log
   useEffect(() => {
     const fetchLog = async () => {
       try {
-        const response = await csrfFetch(`${baseUrl}/api/settings/key-repair-log`);
+        const response = await csrfFetch(`${baseUrl}/api/settings/key-repair-log${sourceQuery}`);
         if (response.ok) {
           const data = await response.json();
           setRepairLog(data.log || []);
@@ -101,12 +109,12 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     // Refresh log every 30 seconds
     const interval = setInterval(fetchLog, 30000);
     return () => clearInterval(interval);
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
 
   const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

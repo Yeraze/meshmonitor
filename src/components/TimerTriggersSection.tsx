@@ -4,6 +4,7 @@ import { isValidCron } from 'cron-validator';
 import { TimerTrigger, TimerResponseType, ScriptMetadata } from './auto-responder/types';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { Channel } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
 import ScriptTestModal from './ScriptTestModal';
@@ -58,6 +59,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
 
   const [localTriggers, setLocalTriggers] = useState<TimerTrigger[]>(triggers);
@@ -152,7 +154,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   const handleSaveForSaveBar = useCallback(async () => {
     setIsSaving(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -300,16 +300,18 @@ class ApiService {
     return response.json();
   }
 
-  async getDeviceConfig() {
+  async getDeviceConfig(sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/device-config`);
+    const params = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/device-config${params}`);
     if (!response.ok) throw new Error('Failed to fetch device config');
     return response.json();
   }
 
-  async getConnectionStatus() {
+  async getConnectionStatus(sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/connection`);
+    const params = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/connection${params}`);
     if (!response.ok) throw new Error('Failed to fetch connection status');
     return response.json();
   }
@@ -321,20 +323,24 @@ class ApiService {
     return response.json();
   }
 
-  async getNodes(): Promise<DeviceInfo[]> {
+  async getNodes(sourceId?: string): Promise<DeviceInfo[]> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/nodes`);
+    const url = sourceId
+      ? `${this.baseUrl}/api/nodes?sourceId=${encodeURIComponent(sourceId)}`
+      : `${this.baseUrl}/api/nodes`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch nodes');
     const data = await response.json();
     return data.nodes || [];
   }
 
-  async refreshNodes() {
+  async refreshNodes(sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/nodes/refresh`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
+      body: sourceId ? JSON.stringify({ sourceId }) : undefined,
     });
     if (!response.ok) throw new Error('Failed to refresh nodes');
     return response.json();
@@ -348,9 +354,10 @@ class ApiService {
     return data.channels || [];
   }
 
-  async getAllChannels(): Promise<Channel[]> {
+  async getAllChannels(sourceId?: string | null): Promise<Channel[]> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/channels/all`);
+    const url = sourceId ? `${this.baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}` : `${this.baseUrl}/api/channels/all`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch all channels');
     return response.json();
   }
@@ -362,13 +369,13 @@ class ApiService {
     uplinkEnabled?: boolean;
     downlinkEnabled?: boolean;
     positionPrecision?: number;
-  }): Promise<Channel> {
+  }, sourceId?: string | null): Promise<Channel> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/channels/${channelId}`, {
       method: 'PUT',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(channelData),
+      body: JSON.stringify(sourceId ? { ...channelData, sourceId } : channelData),
     });
 
     if (!response.ok) {
@@ -385,13 +392,13 @@ class ApiService {
    * where the index is the new slot and the value is the old slot index.
    * E.g., [0, 2, 1, 3, 4, 5, 6, 7] swaps slots 1 and 2.
    */
-  async reorderDeviceChannels(newOrder: number[]): Promise<{ success: boolean; requiresReboot: boolean }> {
+  async reorderDeviceChannels(newOrder: number[], sourceId?: string | null): Promise<{ success: boolean; requiresReboot: boolean }> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/channels/reorder`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ newOrder }),
+      body: JSON.stringify(sourceId ? { newOrder, sourceId } : { newOrder }),
     });
 
     if (!response.ok) {
@@ -435,13 +442,13 @@ class ApiService {
     document.body.removeChild(a);
   }
 
-  async importChannel(slotId: number, channelData: any): Promise<Channel> {
+  async importChannel(slotId: number, channelData: any, sourceId?: string | null): Promise<Channel> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/channels/${slotId}/import`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ channel: channelData }),
+      body: JSON.stringify(sourceId ? { channel: channelData, sourceId } : { channel: channelData }),
     });
 
     if (!response.ok) {
@@ -470,11 +477,11 @@ class ApiService {
   }
 
 
-  async importConfig(url: string, nodeNum?: number): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
+  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
     await this.ensureBaseUrl();
     // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
     const endpoint = nodeNum !== undefined ? '/api/admin/import-config' : '/api/channels/import-config';
-    const body = nodeNum !== undefined ? { url, nodeNum } : { url };
+    const body = nodeNum !== undefined ? { url, nodeNum } : { url, ...(sourceId ? { sourceId } : {}) };
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
@@ -490,11 +497,11 @@ class ApiService {
     return response.json();
   }
 
-  async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean, nodeNum?: number): Promise<string> {
+  async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean, nodeNum?: number, sourceId?: string | null): Promise<string> {
     await this.ensureBaseUrl();
     // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
     const endpoint = nodeNum !== undefined ? '/api/admin/export-config' : '/api/channels/encode-url';
-    const body = nodeNum !== undefined ? { channelIds, includeLoraConfig, nodeNum } : { channelIds, includeLoraConfig };
+    const body = nodeNum !== undefined ? { channelIds, includeLoraConfig, nodeNum } : { channelIds, includeLoraConfig, ...(sourceId ? { sourceId } : {}) };
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
@@ -511,9 +518,11 @@ class ApiService {
     return result.url;
   }
 
-  async getMessages(limit: number = 100): Promise<MeshMessage[]> {
+  async getMessages(limit: number = 100, sourceId?: string | null): Promise<MeshMessage[]> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/messages?limit=${limit}`);
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (sourceId) params.set('sourceId', sourceId);
+    const response = await fetch(`${this.baseUrl}/api/messages?${params}`);
     if (!response.ok) throw new Error('Failed to fetch messages');
     const data = await response.json();
     return data.messages || [];
@@ -629,7 +638,7 @@ class ApiService {
     return response.json();
   }
 
-  async sendTraceroute(nodeId: string) {
+  async sendTraceroute(nodeId: string, sourceId?: string) {
     // Validate node ID format
     const validatedNodeId = validateNodeId(nodeId);
     if (!validatedNodeId) {
@@ -641,7 +650,7 @@ class ApiService {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ destination: validatedNodeId }),
+      body: JSON.stringify({ destination: validatedNodeId, sourceId }),
     });
 
     if (!response.ok) {
@@ -864,25 +873,27 @@ class ApiService {
   }
 
   // Configuration methods
-  async getCurrentConfig() {
+  async getCurrentConfig(sourceId?: string | null) {
     await this.ensureBaseUrl();
     // Add cache-busting parameter to ensure fresh data after device reboot
     const timestamp = Date.now();
     console.log(`[API] Fetching config with timestamp: ${timestamp}`);
-    const response = await fetch(`${this.baseUrl}/api/config/current?t=${timestamp}`);
+    const params = new URLSearchParams({ t: String(timestamp) });
+    if (sourceId) params.set('sourceId', sourceId);
+    const response = await fetch(`${this.baseUrl}/api/config/current?${params}`);
     if (!response.ok) throw new Error('Failed to fetch current configuration');
     const config = await response.json();
     console.log(`[API] Received config - hopLimit: ${config?.deviceConfig?.lora?.hopLimit}`);
     return config;
   }
 
-  async setDeviceConfig(config: any) {
+  async setDeviceConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/device`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -893,13 +904,13 @@ class ApiService {
     return response.json();
   }
 
-  async setNetworkConfig(config: any) {
+  async setNetworkConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/network`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -910,13 +921,13 @@ class ApiService {
     return response.json();
   }
 
-  async setLoRaConfig(config: any) {
+  async setLoRaConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/lora`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -927,13 +938,13 @@ class ApiService {
     return response.json();
   }
 
-  async setPositionConfig(config: any) {
+  async setPositionConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/position`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -944,13 +955,13 @@ class ApiService {
     return response.json();
   }
 
-  async setMQTTConfig(config: any) {
+  async setMQTTConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/mqtt`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -961,13 +972,13 @@ class ApiService {
     return response.json();
   }
 
-  async setNeighborInfoConfig(config: any) {
+  async setNeighborInfoConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/neighborinfo`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -978,13 +989,13 @@ class ApiService {
     return response.json();
   }
 
-  async setPowerConfig(config: any) {
+  async setPowerConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/power`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -995,13 +1006,13 @@ class ApiService {
     return response.json();
   }
 
-  async setDisplayConfig(config: any) {
+  async setDisplayConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/display`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -1012,13 +1023,13 @@ class ApiService {
     return response.json();
   }
 
-  async setTelemetryConfig(config: any) {
+  async setTelemetryConfig(config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/telemetry`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -1032,13 +1043,13 @@ class ApiService {
   // Generic method to set any module configuration
   // moduleType should be one of: extnotif, storeforward, rangetest, cannedmsg, audio,
   // remotehardware, detectionsensor, paxcounter, serial, ambientlighting
-  async setModuleConfig(moduleType: string, config: any) {
+  async setModuleConfig(moduleType: string, config: any, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/${moduleType}`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify(config),
+      body: JSON.stringify(sourceId ? { ...config, sourceId } : config),
     });
 
     if (!response.ok) {
@@ -1049,13 +1060,13 @@ class ApiService {
     return response.json();
   }
 
-  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean) {
+  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ longName, shortName, isUnmessagable, isLicensed }),
+      body: JSON.stringify({ longName, shortName, isUnmessagable, isLicensed, ...(sourceId ? { sourceId } : {}) }),
     });
 
     if (!response.ok) {
@@ -1066,13 +1077,13 @@ class ApiService {
     return response.json();
   }
 
-  async requestConfig(configType: number) {
+  async requestConfig(configType: number, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/request`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ configType }),
+      body: JSON.stringify(sourceId ? { configType, sourceId } : { configType }),
     });
 
     if (!response.ok) {
@@ -1083,13 +1094,13 @@ class ApiService {
     return response.json();
   }
 
-  async requestModuleConfig(configType: number) {
+  async requestModuleConfig(configType: number, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/request`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ configType }),
+      body: JSON.stringify(sourceId ? { configType, sourceId } : { configType }),
     });
 
     if (!response.ok) {
@@ -1100,13 +1111,13 @@ class ApiService {
     return response.json();
   }
 
-  async rebootDevice(seconds: number = 5) {
+  async rebootDevice(seconds: number = 5, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/device/reboot`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ seconds }),
+      body: JSON.stringify(sourceId ? { seconds, sourceId } : { seconds }),
     });
 
     if (!response.ok) {
@@ -1117,13 +1128,13 @@ class ApiService {
     return response.json();
   }
 
-  async purgeNodeDb(seconds: number = 0) {
+  async purgeNodeDb(seconds: number = 0, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/device/purge-nodedb`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ seconds }),
+      body: JSON.stringify(sourceId ? { seconds, sourceId } : { seconds }),
     });
 
     if (!response.ok) {
@@ -1151,12 +1162,13 @@ class ApiService {
   }
 
   // Connection control methods
-  async disconnectFromNode() {
+  async disconnectFromNode(sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/connection/disconnect`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
-      credentials: 'include'
+      credentials: 'include',
+      body: sourceId ? JSON.stringify({ sourceId }) : undefined,
     });
 
     if (!response.ok) {
@@ -1167,12 +1179,13 @@ class ApiService {
     return response.json();
   }
 
-  async reconnectToNode() {
+  async reconnectToNode(sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/connection/reconnect`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
-      credentials: 'include'
+      credentials: 'include',
+      body: sourceId ? JSON.stringify({ sourceId }) : undefined,
     });
 
     if (!response.ok) {
@@ -1183,7 +1196,7 @@ class ApiService {
     return response.json();
   }
 
-  async getConnectionInfo(): Promise<{
+  async getConnectionInfo(sourceId?: string | null): Promise<{
     connected: boolean;
     nodeResponsive: boolean;
     configuring: boolean;
@@ -1195,7 +1208,10 @@ class ApiService {
     userDisconnected?: boolean;
   }> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/connection/info`, {
+    const url = sourceId
+      ? `${this.baseUrl}/api/connection/info?sourceId=${encodeURIComponent(sourceId)}`
+      : `${this.baseUrl}/api/connection/info`;
+    const response = await fetch(url, {
       credentials: 'include'
     });
 
@@ -1269,10 +1285,11 @@ class ApiService {
     serialEnabled: boolean;
     debugLogApiEnabled: boolean;
     adminChannelEnabled: boolean;
-  }): Promise<{ success: boolean }> {
+  }, sourceId?: string | null): Promise<{ success: boolean }> {
     return this.post('/api/admin/commands', {
       command: 'setSecurityConfig',
-      config
+      config,
+      ...(sourceId ? { sourceId } : {})
     });
   }
 

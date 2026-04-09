@@ -274,10 +274,41 @@ export function requireAuth() {
  * Require specific permission
  * Works with both authenticated and anonymous users
  */
-export function requirePermission(resource: ResourceType, action: PermissionAction) {
+export interface RequirePermissionOptions {
+  sourceIdFrom?: 'params.id' | 'query' | 'body';
+}
+
+export function requirePermission(
+  resource: ResourceType,
+  action: PermissionAction,
+  options?: RequirePermissionOptions
+) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       let user;
+
+      // Resolve scoped sourceId if requested
+      let scopedSourceId: string | undefined;
+      if (options?.sourceIdFrom) {
+        let raw: unknown;
+        if (options.sourceIdFrom === 'params.id') {
+          raw = req.params?.id;
+        } else if (options.sourceIdFrom === 'query') {
+          raw = req.query?.sourceId;
+        } else if (options.sourceIdFrom === 'body') {
+          raw = req.body?.sourceId;
+        }
+        if (raw !== undefined && raw !== null && raw !== '') {
+          if (typeof raw !== 'string') {
+            return res.status(400).json({
+              error: 'Invalid sourceId',
+              code: 'BAD_REQUEST'
+            });
+          }
+          scopedSourceId = raw;
+        }
+      }
+      (req as any).scopedSourceId = scopedSourceId;
 
       // Get authenticated user or anonymous user
       if (req.session.userId) {
@@ -315,11 +346,12 @@ export function requirePermission(resource: ResourceType, action: PermissionActi
         return next();
       }
 
-      // Check permission
+      // Check permission (scoped to source if provided)
       const hasPermission = await databaseService.checkPermissionAsync(
         user.id,
         resource,
-        action
+        action,
+        scopedSourceId
       );
 
       if (!hasPermission) {
@@ -396,14 +428,14 @@ export function requireAdmin() {
 /**
  * Check if user has a specific permission (async version)
  */
-export async function hasPermission(user: User, resource: ResourceType, action: PermissionAction): Promise<boolean> {
+export async function hasPermission(user: User, resource: ResourceType, action: PermissionAction, sourceId?: string): Promise<boolean> {
   // Admins have all permissions
   if (user.isAdmin) {
     return true;
   }
 
   // Check permission via database (async for PostgreSQL support)
-  return databaseService.checkPermissionAsync(user.id, resource, action);
+  return databaseService.checkPermissionAsync(user.id, resource, action, sourceId);
 }
 
 /**

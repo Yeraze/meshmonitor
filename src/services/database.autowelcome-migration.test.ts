@@ -4,6 +4,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+// Post-migration 029: the `nodes` table has composite PK (nodeNum, sourceId) and
+// sourceId is NOT NULL. Tests that use raw INSERTs must supply a sourceId and a
+// matching row in the `sources` table must exist.
+const TEST_SOURCE_ID = 'default';
+
 describe('DatabaseService - Auto Welcome Migration', () => {
   let dbService: DatabaseService;
   let testDbPath: string;
@@ -17,6 +22,16 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     process.env.DATABASE_PATH = testDbPath;
 
     dbService = new DatabaseService();
+
+    // Seed a default source row so raw INSERTs below satisfy the post-029
+    // composite PK and NOT NULL constraint on nodes.sourceId.
+    const now = Date.now();
+    dbService.db
+      .prepare(
+        `INSERT OR IGNORE INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(TEST_SOURCE_ID, 'Default', 'meshtastic', '{}', 1, now, now);
   });
 
   afterEach(() => {
@@ -46,12 +61,12 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     it('should allow NULL values for welcomedAt', () => {
       // Insert a node without welcomedAt
       const insertStmt = dbService.db.prepare(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const now = Date.now();
-      insertStmt.run(777777, '!000bdc89', 'Test Node', 'TEST', 0, now, now);
+      insertStmt.run(777777, '!000bdc89', 'Test Node', 'TEST', 0, now, now, TEST_SOURCE_ID);
 
       // Verify welcomedAt is NULL
       const selectStmt = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');
@@ -69,14 +84,16 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         nodeId: '!000d8f4c',
         longName: 'Update Test',
         shortName: 'UPD',
-      });
+        sourceId: TEST_SOURCE_ID,
+      } as any);
 
       // Update welcomedAt
       dbService.upsertNode({
         nodeNum: 888888,
         nodeId: '!000d8f4c',
         welcomedAt: now,
-      });
+        sourceId: TEST_SOURCE_ID,
+      } as any);
 
       // Verify update
       const stmt = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');
@@ -90,14 +107,14 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     it('should mark all nodes without welcomedAt', () => {
       // Insert some test nodes without welcomedAt
       const insertStmt = dbService.db.prepare(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const now = Date.now();
-      insertStmt.run(111111, '!0001b207', 'Node One', 'ONE', 0, now, now);
-      insertStmt.run(222222, '!000363de', 'Node Two', 'TWO', 0, now, now);
-      insertStmt.run(333333, '!000516f5', 'Node Three', 'THR', 0, now, now);
+      insertStmt.run(111111, '!0001b207', 'Node One', 'ONE', 0, now, now, TEST_SOURCE_ID);
+      insertStmt.run(222222, '!000363de', 'Node Two', 'TWO', 0, now, now, TEST_SOURCE_ID);
+      insertStmt.run(333333, '!000516f5', 'Node Three', 'THR', 0, now, now, TEST_SOURCE_ID);
 
       // Verify nodes don't have welcomedAt (excluding broadcast node)
       const beforeStmt = dbService.db.prepare(
@@ -124,8 +141,8 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Insert a node with welcomedAt already set
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt)
-        VALUES (444444, '!0006c9c0', 'Node Four', 'FOR', 0, ${originalWelcomedAt}, ${Date.now()}, ${Date.now()})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt, sourceId)
+        VALUES (444444, '!0006c9c0', 'Node Four', 'FOR', 0, ${originalWelcomedAt}, ${Date.now()}, ${Date.now()}, '${TEST_SOURCE_ID}')
       `);
 
       // Mark all nodes
@@ -152,18 +169,18 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Insert mix of nodes - some with welcomedAt, some without
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt)
-        VALUES (555555, '!00087a63', 'Node Five', 'FIV', 0, ${oldWelcomedAt}, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt, sourceId)
+        VALUES (555555, '!00087a63', 'Node Five', 'FIV', 0, ${oldWelcomedAt}, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (666666, '!000a2d26', 'Node Six', 'SIX', 0, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (666666, '!000a2d26', 'Node Six', 'SIX', 0, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (777777, '!000bdc89', 'Node Seven', 'SEV', 0, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (777777, '!000bdc89', 'Node Seven', 'SEV', 0, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       // Should only mark the 2 nodes without welcomedAt (666666 and 777777)
@@ -193,17 +210,18 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         nodeId: '!0001e240',
         longName: 'Test Node',
         shortName: 'TEST',
-      });
+        sourceId: TEST_SOURCE_ID,
+      } as any);
 
       // Mark the node as welcomed
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(123456, '!0001e240');
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(123456, '!0001e240', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(true);
 
       // Verify the node has welcomedAt set
-      const node = dbService.getNode(123456);
+      const node = dbService.getNode(123456, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBeDefined();
-      expect(node?.welcomedAt).toBeGreaterThan(now - 1000);
+      expect(node?.welcomedAt!).toBeGreaterThan(now - 1000);
     });
 
     it('should not mark node when already welcomed (atomic protection)', () => {
@@ -216,15 +234,16 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         longName: 'Already Welcomed',
         shortName: 'WLCM',
         welcomedAt: now - 10000, // Welcomed 10 seconds ago
-      });
+        sourceId: TEST_SOURCE_ID,
+      } as any);
 
       // Try to mark the node as welcomed again
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(234567, '!000393e7');
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(234567, '!000393e7', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(false);
 
       // Verify the welcomedAt timestamp didn't change
-      const node = dbService.getNode(234567);
+      const node = dbService.getNode(234567, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBe(now - 10000);
     });
 
@@ -235,18 +254,19 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         nodeId: '!00054686',
         longName: 'Concurrent Test',
         shortName: 'CONC',
-      });
+        sourceId: TEST_SOURCE_ID,
+      } as any);
 
       // Simulate two processes trying to mark the node simultaneously
-      const result1 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686');
-      const result2 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686');
+      const result1 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686', TEST_SOURCE_ID);
+      const result2 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686', TEST_SOURCE_ID);
 
       // Only the first one should succeed
       expect(result1).toBe(true);
       expect(result2).toBe(false);
 
       // Node should be marked exactly once
-      const node = dbService.getNode(345678);
+      const node = dbService.getNode(345678, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBeDefined();
     });
 
@@ -257,21 +277,22 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         nodeId: '!0006f855',
         longName: 'ID Test',
         shortName: 'IDT',
-      });
+        sourceId: TEST_SOURCE_ID,
+      } as any);
 
       // Try to mark with wrong nodeId
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(456789, '!wrongid');
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(456789, '!wrongid', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(false);
 
       // Node should not be marked
-      const node = dbService.getNode(456789);
+      const node = dbService.getNode(456789, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBeNull();
     });
 
     it('should return false for non-existent node', () => {
       // Try to mark a node that doesn't exist
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(999999, '!000f423f');
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(999999, '!000f423f', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(false);
     });
@@ -281,14 +302,14 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     it('should mark all existing nodes as welcomed on first enable', () => {
       // Insert some test nodes without welcomedAt
       const insertStmt = dbService.db.prepare(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const now = Date.now();
-      insertStmt.run(111111, '!0001b207', 'Node One', 'ONE', 0, now, now);
-      insertStmt.run(222222, '!000363de', 'Node Two', 'TWO', 0, now, now);
-      insertStmt.run(333333, '!000516f5', 'Node Three', 'THR', 0, now, now);
+      insertStmt.run(111111, '!0001b207', 'Node One', 'ONE', 0, now, now, TEST_SOURCE_ID);
+      insertStmt.run(222222, '!000363de', 'Node Two', 'TWO', 0, now, now, TEST_SOURCE_ID);
+      insertStmt.run(333333, '!000516f5', 'Node Three', 'THR', 0, now, now, TEST_SOURCE_ID);
 
       // Verify nodes don't have welcomedAt
       const beforeStmt = dbService.db.prepare(
@@ -319,8 +340,8 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       // Insert test node
       const now = Date.now();
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (444444, '!0006c9c0', 'Node Four', 'FOR', 0, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (444444, '!0006c9c0', 'Node Four', 'FOR', 0, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       // Run first time
@@ -329,8 +350,8 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Insert another node
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (555555, '!00087a63', 'Node Five', 'FIV', 0, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (555555, '!00087a63', 'Node Five', 'FIV', 0, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       // Run second time - should not mark any nodes (migration already completed)
@@ -363,14 +384,14 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Insert node that was already welcomed
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt)
-        VALUES (666666, '!000a2d26', 'Node Six', 'SIX', 0, ${oldWelcomedAt}, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt, sourceId)
+        VALUES (666666, '!000a2d26', 'Node Six', 'SIX', 0, ${oldWelcomedAt}, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       // Insert node without welcomedAt
       dbService.db.exec(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
-        VALUES (777777, '!000bdc89', 'Node Seven', 'SEV', 0, ${now}, ${now})
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
+        VALUES (777777, '!000bdc89', 'Node Seven', 'SEV', 0, ${now}, ${now}, '${TEST_SOURCE_ID}')
       `);
 
       // Run the handler

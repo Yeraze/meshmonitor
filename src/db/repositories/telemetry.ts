@@ -19,9 +19,9 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Insert a telemetry record
    */
-  async insertTelemetry(telemetryData: DbTelemetry): Promise<void> {
+  async insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): Promise<void> {
     const { telemetry } = this.tables;
-    const values = {
+    const values: any = {
       nodeId: telemetryData.nodeId,
       nodeNum: telemetryData.nodeNum,
       telemetryType: telemetryData.telemetryType,
@@ -35,6 +35,9 @@ export class TelemetryRepository extends BaseRepository {
       precisionBits: telemetryData.precisionBits ?? null,
       gpsAccuracy: telemetryData.gpsAccuracy ?? null,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     await this.db.insert(telemetry).values(values);
   }
@@ -55,10 +58,14 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     sinceTimestamp?: number,
     beforeTimestamp?: number,
-    telemetryType?: string
+    telemetryType?: string,
+    sourceId?: string
   ): Promise<number> {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));
@@ -87,10 +94,14 @@ export class TelemetryRepository extends BaseRepository {
     sinceTimestamp?: number,
     beforeTimestamp?: number,
     offset: number = 0,
-    telemetryType?: string
+    telemetryType?: string,
+    sourceId?: string
   ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));
@@ -119,7 +130,8 @@ export class TelemetryRepository extends BaseRepository {
   async getPositionTelemetryByNode(
     nodeId: string,
     limit: number = 1500,
-    sinceTimestamp?: number
+    sinceTimestamp?: number,
+    sourceId?: string
   ): Promise<DbTelemetry[]> {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
     const { telemetry } = this.tables;
@@ -128,6 +140,9 @@ export class TelemetryRepository extends BaseRepository {
       eq(telemetry.nodeId, nodeId),
       inArray(telemetry.telemetryType, positionTypes),
     ];
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));
@@ -290,11 +305,11 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Purge telemetry for a node.
+   * Purge telemetry for a node, optionally scoped to a source.
    * Delegates to deleteTelemetryByNode.
    */
-  async purgeNodeTelemetry(nodeNum: number): Promise<number> {
-    return this.deleteTelemetryByNode(nodeNum);
+  async purgeNodeTelemetry(nodeNum: number, sourceId?: string): Promise<number> {
+    return this.deleteTelemetryByNode(nodeNum, sourceId);
   }
 
   /**
@@ -447,24 +462,28 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Delete all telemetry for a specific node.
+   * Delete all telemetry for a specific node, optionally scoped to a source.
+   * When sourceId is provided, only rows for that source are removed so
+   * deleting a node from one source does not wipe telemetry for the same
+   * nodeNum on other sources.
    * Keeps branching: MySQL doesn't support .returning().
    */
-  async deleteTelemetryByNode(nodeNum: number): Promise<number> {
+  async deleteTelemetryByNode(nodeNum: number, sourceId?: string): Promise<number> {
     const { telemetry } = this.tables;
+    const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId));
 
     if (this.isMySQL()) {
       const countResult = await this.db
         .select({ id: telemetry.id })
         .from(telemetry)
-        .where(eq(telemetry.nodeNum, nodeNum));
+        .where(condition);
       const cnt = countResult.length;
-      await this.db.delete(telemetry).where(eq(telemetry.nodeNum, nodeNum));
+      await this.db.delete(telemetry).where(condition);
       return cnt;
     } else {
       const deleted = await (this.db as any)
         .delete(telemetry)
-        .where(eq(telemetry.nodeNum, nodeNum))
+        .where(condition)
         .returning({ id: telemetry.id });
       return deleted.length;
     }
@@ -546,13 +565,14 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get all nodes with their telemetry types
    */
-  async getAllNodesTelemetryTypes(): Promise<Map<string, string[]>> {
+  async getAllNodesTelemetryTypes(sourceId?: string): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>();
     const { telemetry } = this.tables;
 
     const result = await this.db
       .selectDistinct({ nodeId: telemetry.nodeId, type: telemetry.telemetryType })
-      .from(telemetry);
+      .from(telemetry)
+      .where(this.withSourceScope(telemetry, sourceId));
 
     for (const r of result) {
       const types = map.get(r.nodeId) || [];

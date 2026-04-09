@@ -9,6 +9,7 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import meshtasticManager from '../../meshtasticManager.js';
 import meshcoreManager from '../../meshcoreManager.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -22,19 +23,34 @@ const MAX_MESSAGE_PARTS = 3;
 /**
  * Get set of channel IDs the user has read access to
  */
-async function getAccessibleChannels(userId: number | null, isAdmin: boolean): Promise<Set<number> | null> {
+async function getAccessibleChannels(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<Set<number> | null> {
   // Admins can access all channels
   if (isAdmin) {
     return null; // null means all channels
   }
 
-  // Get user permissions
+  // When a sourceId is given, check each channel/messages permission scoped to source
+  const accessibleChannels = new Set<number>();
+  if (sourceId) {
+    if (userId === null) return accessibleChannels;
+    for (let i = 0; i <= 7; i++) {
+      const channelResource = `channel_${i}` as ResourceType;
+      if (await databaseService.checkPermissionAsync(userId, channelResource, 'read', sourceId)) {
+        accessibleChannels.add(i);
+      }
+    }
+    if (await databaseService.checkPermissionAsync(userId, 'messages', 'read', sourceId)) {
+      accessibleChannels.add(-1);
+    }
+    return accessibleChannels;
+  }
+
+  // Get user permissions (global)
   const permissions = userId !== null
     ? await databaseService.getUserPermissionSetAsync(userId)
     : {};
 
   // Build set of accessible channel IDs
-  const accessibleChannels = new Set<number>();
   for (let i = 0; i <= 7; i++) {
     const channelResource = `channel_${i}` as ResourceType;
     if (permissions[channelResource]?.read === true) {
@@ -71,14 +87,15 @@ router.get('/', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    const { channel, fromNodeId, toNodeId, since, limit } = req.query;
+    const { channel, fromNodeId, toNodeId, since, limit, sourceId } = req.query;
+    const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
 
     const maxLimit = parseInt(limit as string) || 100;
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
     const channelNum = channel ? parseInt(channel as string) : undefined;
 
-    // Get accessible channels for this user
-    const accessibleChannels = await getAccessibleChannels(userId, isAdmin);
+    // Get accessible channels for this user (scoped to source if provided)
+    const accessibleChannels = await getAccessibleChannels(userId, isAdmin, sourceIdStr);
 
     // If requesting a specific channel, check permission first
     if (channelNum !== undefined && accessibleChannels !== null) {
@@ -96,11 +113,13 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (channelNum !== undefined) {
       messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit);
+      if (sourceIdStr) messages = messages.filter((m: any) => m.sourceId === sourceIdStr);
     } else if (sinceTimestamp) {
       messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp);
+      if (sourceIdStr) messages = messages.filter((m: any) => m.sourceId === sourceIdStr);
       messages = messages.slice(0, maxLimit);
     } else {
-      messages = await databaseService.messages.getMessages(maxLimit);
+      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr);
     }
 
     // Filter messages by accessible channels (unless admin)
@@ -332,7 +351,10 @@ router.get('/:messageId', async (req: Request, res: Response) => {
  */
 router.post('/', messageLimiter, async (req: Request, res: Response) => {
   try {
-    const { text, channel, toNodeId, replyId } = req.body;
+    const { text, channel, toNodeId, replyId, sourceId: msgSourceId } = req.body;
+    const activeManager = (msgSourceId
+      ? (sourceManagerRegistry.getManager(msgSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
 
     // Validate text is provided
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -405,7 +427,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
     // Permission checks
     if (destinationNum) {
       // Direct message - check messages:write permission
-      if (!req.user?.isAdmin && !await hasPermission(req.user!, 'messages', 'write')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, 'messages', 'write', msgSourceId)) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',
@@ -417,7 +439,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       // Channel message - check per-channel write permission
       const channelNum = parseInt(channel);
       const channelResource = `channel_${channelNum}` as ResourceType;
-      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'write')) {
+      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'write', msgSourceId)) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',
@@ -436,7 +458,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
 
     if (messageBytes.length > MAX_MESSAGE_BYTES) {
       // Split the message into chunks
-      const messageParts = meshtasticManager.splitMessageForMeshtastic(trimmedText, MAX_MESSAGE_BYTES);
+      const messageParts = activeManager.splitMessageForMeshtastic(trimmedText, MAX_MESSAGE_BYTES);
 
       // Reject messages that would split into too many parts
       if (messageParts.length > MAX_MESSAGE_PARTS) {
@@ -489,7 +511,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       });
     } else {
       // Message fits in one packet - send directly
-      const requestId = await meshtasticManager.sendTextMessage(
+      const requestId = await activeManager.sendTextMessage(
         trimmedText,
         meshChannel,
         destinationNum,

@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { logger } from '../../utils/logger.js';
@@ -18,10 +18,11 @@ const router = Router();
 router.use(requirePermission('security', 'read'));
 
 // Get all nodes with security issues
-router.get('/issues', async (_req: Request, res: Response) => {
+router.get('/issues', async (req: Request, res: Response) => {
   try {
-    const nodesWithKeyIssues = await databaseService.getNodesWithKeySecurityIssuesAsync();
-    const nodesWithExcessivePackets = await databaseService.getNodesWithExcessivePacketsAsync();
+    const secSourceId = req.query.sourceId as string | undefined;
+    const nodesWithKeyIssues = await databaseService.getNodesWithKeySecurityIssuesAsync(secSourceId);
+    const nodesWithExcessivePackets = await databaseService.getNodesWithExcessivePacketsAsync(secSourceId);
 
     // Combine and deduplicate
     const allIssueNodes = new Map<number, any>();
@@ -73,7 +74,7 @@ router.get('/issues', async (_req: Request, res: Response) => {
     }
 
     // Add time offset nodes
-    const nodesWithTimeOffset = await databaseService.getNodesWithTimeOffsetIssuesAsync();
+    const nodesWithTimeOffset = await databaseService.getNodesWithTimeOffsetIssuesAsync(secSourceId);
 
     for (const node of nodesWithTimeOffset) {
       if (!allIssueNodes.has(node.nodeNum)) {
@@ -109,7 +110,7 @@ router.get('/issues', async (_req: Request, res: Response) => {
     const timeOffsetNodes = nodesWithIssues.filter(node => node.isTimeOffsetIssue);
 
     // Get top 5 broadcasters for spam analysis
-    const topBroadcasters = await databaseService.getTopBroadcastersAsync(5);
+    const topBroadcasters = await databaseService.getTopBroadcastersAsync(5, secSourceId);
 
     return res.json({
       total: nodesWithIssues.length,
@@ -126,11 +127,12 @@ router.get('/issues', async (_req: Request, res: Response) => {
   }
 });
 
-// Get scanner status
-router.get('/scanner/status', (_req: Request, res: Response) => {
+// Get scanner status. Accepts optional ?sourceId for single-source view;
+// omitting it returns the full per-source map.
+router.get('/scanner/status', (req: Request, res: Response) => {
   try {
-    const status = duplicateKeySchedulerService.getStatus();
-
+    const sourceId = req.query.sourceId as string | undefined;
+    const status = duplicateKeySchedulerService.getStatus(sourceId);
     return res.json(status);
   } catch (error) {
     logger.error('Error getting scanner status:', error);
@@ -138,47 +140,62 @@ router.get('/scanner/status', (_req: Request, res: Response) => {
   }
 });
 
-// Trigger manual scan (requires write permission)
-router.post('/scanner/scan', requirePermission('security', 'write'), async (req: Request, res: Response) => {
-  try {
-    const status = duplicateKeySchedulerService.getStatus();
+// Trigger manual scan for a specific source. sourceId is required in the body
+// and used both for permission scoping and scan targeting.
+router.post(
+  '/scanner/scan',
+  requirePermission('security', 'write', { sourceIdFrom: 'body' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = req.body?.sourceId;
+      if (!sourceId || typeof sourceId !== 'string') {
+        return res.status(400).json({ error: 'sourceId is required' });
+      }
 
-    if (status.scanningNow) {
-      return res.status(409).json({
-        error: 'A scan is already in progress'
+      // Require the source to be registered — no fallback to a default manager.
+      const manager = sourceManagerRegistry.getManager(sourceId);
+      if (!manager) {
+        return res.status(400).json({ error: `Unknown sourceId: ${sourceId}` });
+      }
+
+      const status = duplicateKeySchedulerService.getStatus(sourceId);
+      if (status.scanningNow) {
+        return res.status(409).json({
+          error: `A scan is already in progress for source ${sourceId}`
+        });
+      }
+
+      databaseService.auditLogAsync(
+        req.user!.id,
+        'security_scan_triggered',
+        'security',
+        `Manual security scan initiated for source ${sourceId}`,
+        req.ip || null
+      );
+
+      duplicateKeySchedulerService.runScan(sourceId).catch(err => {
+        logger.error(`Error during manual security scan for ${sourceId}:`, err);
       });
+
+      return res.json({
+        success: true,
+        message: `Security scan initiated for source ${sourceId}`,
+        sourceId,
+      });
+    } catch (error) {
+      logger.error('Error triggering security scan:', error);
+      return res.status(500).json({ error: 'Failed to trigger security scan' });
     }
-
-    // Log the manual scan trigger
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'security_scan_triggered',
-      'security',
-      'Manual security scan initiated',
-      req.ip || null
-    );
-
-    // Run scan asynchronously
-    duplicateKeySchedulerService.runScan().catch(err => {
-      logger.error('Error during manual security scan:', err);
-    });
-
-    return res.json({
-      success: true,
-      message: 'Security scan initiated'
-    });
-  } catch (error) {
-    logger.error('Error triggering security scan:', error);
-    return res.status(500).json({ error: 'Failed to trigger security scan' });
   }
-});
+);
 
 // Export security issues
 router.get('/export', async (req: Request, res: Response) => {
   try {
     const format = req.query.format as string || 'csv';
+    const exportSourceId = req.query.sourceId as string | undefined;
 
-    const nodesWithIssues = await databaseService.getNodesWithKeySecurityIssuesAsync();
+    const nodesWithIssues = await databaseService.getNodesWithKeySecurityIssuesAsync(exportSourceId);
     const timestamp = new Date().toISOString();
 
     // Log the export action
@@ -280,8 +297,8 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
       keySecurityIssueDetails: null, // null explicitly clears the field (undefined would preserve existing value)
     });
 
-    // Clear time offset flags
-    await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null);
+    // Clear time offset flags (scoped to the node's source per migration 029)
+    await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null, (node as any).sourceId);
 
     // Log the action
     databaseService.auditLogAsync(
@@ -340,8 +357,22 @@ router.get('/key-mismatches', async (_req: Request, res: Response) => {
  * GET /api/security/dead-nodes
  * Returns nodes not heard from in 7+ days
  */
-router.get('/dead-nodes', async (_req: Request, res: Response) => {
+router.get('/dead-nodes', async (req: Request, res: Response) => {
   try {
+    let deadNodesSourceId = req.query.sourceId as string | undefined;
+    // Fall back to first registered manager for legacy single-source callers
+    if (!deadNodesSourceId) {
+      const managers = sourceManagerRegistry.getAllManagers();
+      if (managers.length === 0) {
+        return res.status(400).json({ error: 'No source managers available' });
+      }
+      deadNodesSourceId = managers[0].sourceId;
+    }
+    const deadNodesManagerBase = sourceManagerRegistry.getManager(deadNodesSourceId);
+    if (!deadNodesManagerBase) {
+      return res.status(400).json({ error: `Unknown sourceId: ${deadNodesSourceId}` });
+    }
+    const deadNodesManager = deadNodesManagerBase as any;
     const DEAD_NODE_DAYS = 7;
     const cutoffSeconds = Math.floor(Date.now() / 1000) - (DEAD_NODE_DAYS * 24 * 60 * 60);
 
@@ -367,7 +398,7 @@ router.get('/dead-nodes', async (_req: Request, res: Response) => {
         shortName: node.shortName,
         hwModel: node.hwModel,
         lastHeard: node.lastHeard ? Number(node.lastHeard) : null,
-        inDeviceDb: meshtasticManager.isNodeInDeviceDb(Number(node.nodeNum)),
+        inDeviceDb: deadNodesManager.isNodeInDeviceDb(Number(node.nodeNum)),
       }))
       .sort((a, b) => (a.lastHeard ?? 0) - (b.lastHeard ?? 0)); // Oldest first
 
@@ -384,8 +415,16 @@ router.get('/dead-nodes', async (_req: Request, res: Response) => {
  */
 router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), async (req: Request, res: Response) => {
   try {
-    const { nodeNums } = req.body;
+    const { nodeNums, sourceId: bulkDeleteSourceId } = req.body;
     const user = (req as any).user;
+    if (!bulkDeleteSourceId || typeof bulkDeleteSourceId !== 'string') {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+    const bulkDeleteManagerBase = sourceManagerRegistry.getManager(bulkDeleteSourceId);
+    if (!bulkDeleteManagerBase) {
+      return res.status(400).json({ error: `Unknown sourceId: ${bulkDeleteSourceId}` });
+    }
+    const bulkDeleteManager = bulkDeleteManagerBase as any;
 
     if (!Array.isArray(nodeNums) || nodeNums.length === 0) {
       return res.status(400).json({ error: 'nodeNums must be a non-empty array' });
@@ -399,9 +438,9 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
         let removedFromDevice = false;
 
         // Remove from device NodeDB if present
-        if (meshtasticManager.isNodeInDeviceDb(num)) {
+        if (bulkDeleteManager.isNodeInDeviceDb(num)) {
           try {
-            await meshtasticManager.sendRemoveNode(num);
+            await bulkDeleteManager.sendRemoveNode(num);
             removedFromDevice = true;
           } catch (deviceErr) {
             logger.warn(`⚠️ Failed to remove node ${num} from device:`, deviceErr);
@@ -409,7 +448,7 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
         }
 
         // Delete from local database
-        await databaseService.deleteNodeAsync(num);
+        await databaseService.deleteNodeAsync(num, bulkDeleteSourceId);
         results.push({ nodeNum: num, deleted: true, removedFromDevice });
 
         logger.info(`🗑️ Dead node cleanup: deleted node ${num}${removedFromDevice ? ' (+ device)' : ''}`);
@@ -443,9 +482,10 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
  * POST /api/security/digest/send
  * Manually trigger a security digest (admin only)
  */
-router.post('/digest/send', requirePermission('security', 'write'), async (_req: Request, res: Response) => {
+router.post('/digest/send', requirePermission('security', 'write'), async (req: Request, res: Response) => {
   try {
-    const result = await securityDigestService.sendDigest();
+    const digestSourceId = (req.body?.sourceId as string | undefined) || undefined;
+    const result = await securityDigestService.sendDigest(digestSourceId);
     res.json(result);
   } catch (error) {
     logger.error('Error sending security digest:', error);

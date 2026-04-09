@@ -17,13 +17,15 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating the nodes table per backend
 const SQLITE_CREATE = `
   CREATE TABLE IF NOT EXISTS nodes (
-    nodeNum INTEGER PRIMARY KEY,
-    nodeId TEXT NOT NULL UNIQUE,
+    nodeNum INTEGER NOT NULL,
+    nodeId TEXT NOT NULL,
     longName TEXT,
     shortName TEXT,
     hwModel INTEGER,
@@ -79,15 +81,17 @@ const SQLITE_CREATE = `
     remoteAdminMetadata TEXT,
     lastTimeSync INTEGER,
     createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL
+    updatedAt INTEGER NOT NULL,
+    sourceId TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (nodeNum, sourceId)
   )
 `;
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS nodes CASCADE;
   CREATE TABLE nodes (
-    "nodeNum" BIGINT PRIMARY KEY,
-    "nodeId" TEXT NOT NULL UNIQUE,
+    "nodeNum" BIGINT NOT NULL,
+    "nodeId" TEXT NOT NULL,
     "longName" TEXT,
     "shortName" TEXT,
     "hwModel" INTEGER,
@@ -143,15 +147,17 @@ const POSTGRES_CREATE = `
     "remoteAdminMetadata" TEXT,
     "lastTimeSync" BIGINT,
     "createdAt" BIGINT NOT NULL,
-    "updatedAt" BIGINT NOT NULL
+    "updatedAt" BIGINT NOT NULL,
+    "sourceId" TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY ("nodeNum", "sourceId")
   )
 `;
 
 const MYSQL_CREATE = `
   DROP TABLE IF EXISTS nodes;
   CREATE TABLE nodes (
-    nodeNum BIGINT PRIMARY KEY,
-    nodeId VARCHAR(255) NOT NULL UNIQUE,
+    nodeNum BIGINT NOT NULL,
+    nodeId VARCHAR(255) NOT NULL,
     longName VARCHAR(255),
     shortName VARCHAR(255),
     hwModel INTEGER,
@@ -207,7 +213,9 @@ const MYSQL_CREATE = `
     remoteAdminMetadata TEXT,
     lastTimeSync BIGINT,
     createdAt BIGINT NOT NULL,
-    updatedAt BIGINT NOT NULL
+    updatedAt BIGINT NOT NULL,
+    sourceId VARCHAR(36) NOT NULL DEFAULT 'default',
+    PRIMARY KEY (nodeNum, sourceId)
   )
 `;
 
@@ -396,10 +404,10 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(700));
-    await repo.updateNodeSecurityFlags(700, true, 'Key shared with Node 701');
+    await repo.upsertNode(makeNode(700), 'test-src');
+    await repo.updateNodeSecurityFlags(700, true, 'Key shared with Node 701', 'test-src');
 
-    const node = await repo.getNode(700);
+    const node = await repo.getNode(700, 'test-src');
     expect(node).not.toBeNull();
     expect(node!.duplicateKeyDetected).toBe(true);
     expect(node!.keySecurityIssueDetails).toBe('Key shared with Node 701');
@@ -412,11 +420,11 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(701));
-    await repo.updateNodeSecurityFlags(701, true, 'Some details');
-    await repo.updateNodeSecurityFlags(701, false);
+    await repo.upsertNode(makeNode(701), 'test-src');
+    await repo.updateNodeSecurityFlags(701, true, 'Some details', 'test-src');
+    await repo.updateNodeSecurityFlags(701, false, undefined, 'test-src');
 
-    const node = await repo.getNode(701);
+    const node = await repo.getNode(701, 'test-src');
     expect(node!.duplicateKeyDetected).toBe(false);
     expect(node!.keySecurityIssueDetails).toBeNull();
   });
@@ -430,10 +438,10 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(710));
-    await repo.updateNodeLowEntropyFlag(710, true, 'Known low-entropy key');
+    await repo.upsertNode(makeNode(710), 'test-src');
+    await repo.updateNodeLowEntropyFlag(710, true, 'Known low-entropy key', 'test-src');
 
-    const node = await repo.getNode(710);
+    const node = await repo.getNode(710, 'test-src');
     expect(node!.keyIsLowEntropy).toBe(true);
     expect(node!.keySecurityIssueDetails).toBe('Known low-entropy key');
   });
@@ -446,8 +454,8 @@ function runNodesTests(getBackend: () => TestBackend) {
     }
 
     // Should not throw
-    await repo.updateNodeLowEntropyFlag(99999, true, 'details');
-    const node = await repo.getNode(99999);
+    await repo.updateNodeLowEntropyFlag(99999, true, 'details', 'test-src');
+    const node = await repo.getNode(99999, 'test-src');
     expect(node).toBeNull();
   });
 
@@ -460,13 +468,13 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(800));
+    await repo.upsertNode(makeNode(800), 'default');
 
-    await repo.setNodeFavorite(800, true);
+    await repo.setNodeFavorite(800, true, 'default');
     let node = await repo.getNode(800);
     expect(node!.isFavorite).toBe(true);
 
-    await repo.setNodeFavorite(800, false);
+    await repo.setNodeFavorite(800, false, 'default');
     node = await repo.getNode(800);
     expect(node!.isFavorite).toBe(false);
   });
@@ -478,8 +486,8 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(801));
-    await repo.setNodeFavorite(801, true, true);
+    await repo.upsertNode(makeNode(801), 'default');
+    await repo.setNodeFavorite(801, true, 'default', true);
 
     const node = await repo.getNode(801);
     expect(node!.isFavorite).toBe(true);
@@ -495,13 +503,13 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(900));
+    await repo.upsertNode(makeNode(900), 'default');
 
-    await repo.setNodeIgnored(900, true);
+    await repo.setNodeIgnored(900, true, 'default');
     let node = await repo.getNode(900);
     expect(node!.isIgnored).toBe(true);
 
-    await repo.setNodeIgnored(900, false);
+    await repo.setNodeIgnored(900, false, 'default');
     node = await repo.getNode(900);
     expect(node!.isIgnored).toBe(false);
   });
@@ -515,8 +523,8 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(1000));
-    const deleted = await repo.deleteNodeRecord(1000);
+    await repo.upsertNode(makeNode(1000), 'default');
+    const deleted = await repo.deleteNodeRecord(1000, 'default');
     expect(deleted).toBe(true);
     expect(await repo.getNode(1000)).toBeNull();
   });
@@ -528,7 +536,7 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    const deleted = await repo.deleteNodeRecord(99999);
+    const deleted = await repo.deleteNodeRecord(99999, 'default');
     expect(deleted).toBe(false);
   });
 
@@ -544,18 +552,18 @@ function runNodesTests(getBackend: () => TestBackend) {
     const now = Date.now();
     // Old node (lastHeard far in the past - cleanupInactiveNodes uses millisecond cutoff via this.now())
     const oldTime = now - (60 * 24 * 60 * 60 * 1000); // 60 days ago in ms
-    await repo.upsertNode(makeNode(1100, { lastHeard: oldTime }));
+    await repo.upsertNode(makeNode(1100, { lastHeard: oldTime }), 'default');
 
     // Recent node
     const recentTime = now - (1 * 24 * 60 * 60 * 1000); // 1 day ago in ms
-    await repo.upsertNode(makeNode(1101, { lastHeard: recentTime }));
+    await repo.upsertNode(makeNode(1101, { lastHeard: recentTime }), 'default');
 
     // Old but ignored node (should NOT be deleted)
-    await repo.upsertNode(makeNode(1102, { lastHeard: oldTime }));
-    await repo.setNodeIgnored(1102, true);
+    await repo.upsertNode(makeNode(1102, { lastHeard: oldTime }), 'default');
+    await repo.setNodeIgnored(1102, true, 'default');
 
     // Node with null lastHeard (should be deleted)
-    await repo.upsertNode(makeNode(1103));
+    await repo.upsertNode(makeNode(1103), 'default');
 
     const deletedCount = await repo.cleanupInactiveNodes(30);
     // Should delete node 1100 (old) and 1103 (null lastHeard), keep 1101 (recent) and 1102 (ignored)
@@ -600,12 +608,12 @@ function runNodesTests(getBackend: () => TestBackend) {
     }
 
     const nodeId = '!00001300';
-    await repo.upsertNode(makeNode(1300, { nodeId }));
+    await repo.upsertNode(makeNode(1300, { nodeId }), 'test-src');
 
-    const result = await repo.markNodeAsWelcomedIfNotAlready(1300, nodeId);
+    const result = await repo.markNodeAsWelcomedIfNotAlready(1300, nodeId, 'test-src');
     expect(result).toBe(true);
 
-    const node = await repo.getNode(1300);
+    const node = await repo.getNode(1300, 'test-src');
     expect(node!.welcomedAt).not.toBeNull();
   });
 
@@ -617,9 +625,9 @@ function runNodesTests(getBackend: () => TestBackend) {
     }
 
     const nodeId = '!00001301';
-    await repo.upsertNode(makeNode(1301, { nodeId, welcomedAt: Date.now() }));
+    await repo.upsertNode(makeNode(1301, { nodeId, welcomedAt: Date.now() }), 'test-src');
 
-    const result = await repo.markNodeAsWelcomedIfNotAlready(1301, nodeId);
+    const result = await repo.markNodeAsWelcomedIfNotAlready(1301, nodeId, 'test-src');
     expect(result).toBe(false);
   });
 
@@ -650,10 +658,10 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    await repo.upsertNode(makeNode(1500));
-    await repo.updateNodeMessageHops(1500, 3);
+    await repo.upsertNode(makeNode(1500), 'test-src');
+    await repo.updateNodeMessageHops(1500, 3, 'test-src');
 
-    const node = await repo.getNode(1500);
+    const node = await repo.getNode(1500, 'test-src');
     expect(node!.lastMessageHops).toBe(3);
   });
 
@@ -732,7 +740,7 @@ describe('NodesRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('NodesRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('NodesRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -759,7 +767,7 @@ describe('NodesRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('NodesRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('NodesRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

@@ -1,5 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import { scheduleCron } from '../utils/cronScheduler.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import type { Cron as CronJob } from 'croner';
 
 interface SecurityIssuesData {
@@ -290,28 +291,63 @@ class SecurityDigestService {
     logger.info(`Security digest scheduled at ${time} daily`);
   }
 
-  async sendDigest(): Promise<{ success: boolean; message: string }> {
+  async sendDigest(sourceIdOverride?: string): Promise<{ success: boolean; message: string }> {
     if (!this.databaseService) {
       return { success: false, message: 'Service not initialized' };
     }
 
-    const appriseUrl = this.databaseService.getSetting('securityDigestAppriseUrl');
-    if (!appriseUrl) {
-      return { success: false, message: 'No Apprise URL configured' };
+    // When a specific sourceId is requested, dispatch only that one; otherwise
+    // iterate every registered source and build a per-source digest.
+    const targetSourceIds = sourceIdOverride
+      ? [sourceIdOverride]
+      : sourceManagerRegistry.getAllManagers().map(m => m.sourceId);
+
+    if (targetSourceIds.length === 0) {
+      return { success: false, message: 'No sources available' };
     }
 
-    const reportType = this.databaseService.getSetting('securityDigestReportType') || 'summary';
-    const suppressEmpty = this.databaseService.getSetting('securityDigestSuppressEmpty') !== 'false';
-    const format = (this.databaseService.getSetting('securityDigestFormat') || 'text') as DigestFormat;
-    const baseUrl = this.databaseService.getSetting('externalUrl') || '';
+    const results: Array<{ sourceId: string; success: boolean; message: string }> = [];
+    for (const sid of targetSourceIds) {
+      results.push(await this.sendDigestForSource(sid));
+    }
+
+    const anyFailure = results.some(r => !r.success);
+    const summary = results.map(r => `${r.sourceId}:${r.success ? 'ok' : r.message}`).join(', ');
+    return { success: !anyFailure, message: summary || 'No digests sent' };
+  }
+
+  private async sendDigestForSource(sourceId: string): Promise<{ sourceId: string; success: boolean; message: string }> {
+    // Apprise URL is per-source (falls back to global via getSettingForSource)
+    const appriseUrl = this.databaseService.settings
+      ? await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestAppriseUrl')
+      : null;
+    if (!appriseUrl) {
+      return { sourceId, success: false, message: 'No Apprise URL configured' };
+    }
+
+    const reportType = (await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestReportType')) || 'summary';
+    const suppressEmptyRaw = await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestSuppressEmpty');
+    const suppressEmpty = suppressEmptyRaw !== 'false';
+    const format = ((await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestFormat')) || 'text') as DigestFormat;
+    const baseUrl = (await this.databaseService.settings.getSettingForSource(sourceId, 'externalUrl')) || '';
+
+    // Resolve source name for the title/body prefix
+    let sourceName = sourceId;
+    try {
+      const source = this.databaseService.sources
+        ? await this.databaseService.sources.getSource(sourceId)
+        : null;
+      if (source?.name) sourceName = source.name;
+    } catch {
+      // fall back to sourceId
+    }
 
     try {
-      // Gather security data using existing functions
       const [keyIssueNodes, excessiveNodes, timeOffsetNodes, topBroadcasters] = await Promise.all([
-        this.databaseService.getNodesWithKeySecurityIssuesAsync(),
-        this.databaseService.getNodesWithExcessivePacketsAsync(),
-        this.databaseService.getNodesWithTimeOffsetIssuesAsync(),
-        this.databaseService.getTopBroadcastersAsync(10),
+        this.databaseService.getNodesWithKeySecurityIssuesAsync(sourceId),
+        this.databaseService.getNodesWithExcessivePacketsAsync(sourceId),
+        this.databaseService.getNodesWithTimeOffsetIssuesAsync(sourceId),
+        this.databaseService.getTopBroadcastersAsync(10, sourceId),
       ]);
 
       // Merge and deduplicate (same pattern as securityRoutes.ts)
@@ -349,22 +385,25 @@ class SecurityDigestService {
         topBroadcasters,
       };
 
-      const body = reportType === 'detailed'
+      const rawBody = reportType === 'detailed'
         ? formatDigestDetailed(issues, baseUrl, suppressEmpty, format)
         : formatDigestSummary(issues, baseUrl, suppressEmpty, format);
 
-      if (body === null) {
-        logger.info('Security digest suppressed — no issues found');
-        return { success: true, message: 'No issues found, digest suppressed' };
+      if (rawBody === null) {
+        logger.info(`[${sourceId}] Security digest suppressed — no issues found`);
+        return { sourceId, success: true, message: 'No issues found, digest suppressed' };
       }
 
-      // Send via Apprise API directly
+      // Prefix every digest body with the source name so operators can tell
+      // which mesh it came from when they run several.
+      const body = `[${sourceName}]\n${rawBody}`;
+
       const response = await fetch('http://localhost:8000/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           urls: [appriseUrl],
-          title: 'MeshMonitor Security Digest',
+          title: `[${sourceName}] MeshMonitor Security Digest`,
           body,
           type: issues.total > 0 ? 'warning' : 'info',
           format: format === 'markdown' ? 'markdown' : 'text',
@@ -374,15 +413,15 @@ class SecurityDigestService {
 
       if (!response.ok) {
         const text = await response.text();
-        logger.error(`Security digest delivery failed: ${response.status} ${text}`);
-        return { success: false, message: `Apprise returned ${response.status}` };
+        logger.error(`[${sourceId}] Security digest delivery failed: ${response.status} ${text}`);
+        return { sourceId, success: false, message: `Apprise returned ${response.status}` };
       }
 
-      logger.info(`Security digest sent (${reportType}, ${issues.total} issues)`);
-      return { success: true, message: `Digest sent with ${issues.total} issue(s)` };
+      logger.info(`[${sourceId}] Security digest sent (${reportType}, ${issues.total} issues)`);
+      return { sourceId, success: true, message: `Digest sent with ${issues.total} issue(s)` };
     } catch (error) {
-      logger.error('Error sending security digest:', error);
-      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+      logger.error(`[${sourceId}] Error sending security digest:`, error);
+      return { sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 

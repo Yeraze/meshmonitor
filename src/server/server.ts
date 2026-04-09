@@ -4,12 +4,13 @@ import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 import databaseService, { DbMessage } from '../services/database.js';
 import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
-import meshtasticProtobufService from './meshtasticProtobufService.js';
+import { MeshtasticManager } from './meshtasticManager.js';
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import protobufService from './protobufService.js';
-import { VirtualNodeServer } from './virtualNodeServer.js';
 
 // Make meshtasticManager available globally for routes that need it
 (global as any).meshtasticManager = meshtasticManager;
@@ -43,6 +44,7 @@ import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
+import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
@@ -314,48 +316,6 @@ initializeOIDC()
     logger.error('Failed to initialize OIDC:', error);
   });
 
-// Function to initialize virtual node server after config capture is complete
-async function initializeOrRefreshVirtualNodeServer(): Promise<void> {
-  // If already initialized, refresh all connected clients with fresh config
-  // This handles physical node reconnection: clients get updated channel/config data
-  // through the proper sendInitialConfig() flow (fixes #1567)
-  if ((global as any).virtualNodeServer) {
-    logger.info('Virtual node server already initialized, refreshing connected clients with fresh config');
-    try {
-      await ((global as any).virtualNodeServer as VirtualNodeServer).refreshAllClients();
-    } catch (error) {
-      logger.error('❌ Failed to refresh virtual node clients:', error);
-    }
-    return;
-  }
-
-  if (env.enableVirtualNode) {
-    try {
-      const virtualNodeServer = new VirtualNodeServer({
-        port: env.virtualNodePort,
-        meshtasticManager: meshtasticManager,
-        allowAdminCommands: env.virtualNodeAllowAdminCommands,
-      });
-
-      await virtualNodeServer.start();
-      logger.info(`🌐 Virtual node server started on port ${env.virtualNodePort}`);
-
-      // Store reference for cleanup
-      (global as any).virtualNodeServer = virtualNodeServer;
-    } catch (error) {
-      logger.error('❌ Failed to start virtual node server:', error);
-      logger.warn('⚠️  Continuing without virtual node server');
-    }
-  } else {
-    logger.debug('Virtual node server disabled (ENABLE_VIRTUAL_NODE=false)');
-  }
-}
-
-// Register callback to initialize virtual node server when config capture completes
-// On first connection: starts the virtual node server
-// On reconnection: refreshes all connected clients with fresh config data
-meshtasticManager.registerConfigCaptureCompleteCallback(initializeOrRefreshVirtualNodeServer);
-
 // ========== Bootstrap Restore Logic ==========
 // Check for RESTORE_FROM_BACKUP environment variable and restore if set
 // This MUST happen before services start (per ARCHITECTURE_LESSONS.md)
@@ -459,17 +419,9 @@ setTimeout(async () => {
     });
     logger.debug('✅ Loaded auto key repair settings');
 
-    // Load remote admin scanner interval
-    const remoteAdminScannerInterval = await databaseService.settings.getSetting('remoteAdminScannerIntervalMinutes');
-    if (remoteAdminScannerInterval !== null) {
-      const intervalMinutes = parseInt(remoteAdminScannerInterval);
-      if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
-        meshtasticManager.setRemoteAdminScannerInterval(intervalMinutes);
-        logger.debug(
-          `✅ Loaded saved remote admin scanner interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`
-        );
-      }
-    }
+    // Remote admin scanner: per-source managers bootstrap themselves via
+    // startRemoteAdminScanner() on connect (reads remoteAdminScannerIntervalMinutes
+    // via getSettingForSource). No global init required.
 
     // Load LocalStats collection interval
     const localStatsInterval = await databaseService.settings.getSetting('localStatsIntervalMinutes');
@@ -493,8 +445,78 @@ setTimeout(async () => {
     await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
     await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
 
-    await meshtasticManager.connect();
-    logger.debug('Meshtastic manager connected successfully');
+    // Auto-create default source if none exist
+    const sourceCount = await databaseService.sources.getSourceCount();
+    if (sourceCount === 0) {
+      const env = getEnvironmentConfig();
+      if (env.meshtasticNodeIp) {
+        await databaseService.sources.createSource({
+          id: uuidv4(),
+          name: 'Default',
+          type: 'meshtastic_tcp',
+          config: { host: env.meshtasticNodeIp, port: env.meshtasticTcpPort },
+          enabled: true,
+        });
+        logger.info(`📡 Auto-created default source from environment config`);
+      }
+    }
+
+    // Assign legacy NULL sourceId rows to the default source (Phase 2 data migration).
+    // Safe to run every startup — updates 0 rows after the first run.
+    const allSources = await databaseService.sources.getAllSources();
+    if (allSources.length > 0) {
+      await databaseService.sources.assignNullSourceIds(allSources[0].id);
+      logger.debug(`Assigned NULL sourceId rows to default source ${allSources[0].id}`);
+    }
+
+    // Start all enabled sources via the registry.
+    // The first TCP source also configures the legacy singleton so that all
+    // existing non-poll endpoints (which import meshtasticManager directly)
+    // continue to work without modification.
+    const enabledSources = await databaseService.sources.getEnabledSources();
+    let firstTcpSourceConfigured = false;
+
+    for (const source of enabledSources) {
+      if (source.type === 'meshtastic_tcp') {
+        const cfg = source.config as any;
+
+        try {
+          if (!firstTcpSourceConfigured) {
+            // Configure the legacy singleton for the first source, then let the
+            // registry start it (addManager calls start() → connect()).
+            // All legacy API routes use this singleton directly.
+            meshtasticManager.configureSource({
+              host: cfg.host,
+              port: cfg.port,
+              heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+            }, source.id);
+            await sourceManagerRegistry.addManager(meshtasticManager);
+            firstTcpSourceConfigured = true;
+            logger.debug(`Started primary source manager via singleton: ${source.id}`);
+          } else {
+            // Additional sources get their own manager instances
+            const manager = new MeshtasticManager(source.id, {
+              host: cfg.host,
+              port: cfg.port,
+              heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+            });
+            await sourceManagerRegistry.addManager(manager);
+          }
+        } catch (err) {
+          // Don't let one failed source block others from registering.
+          // The manager's internal retry logic will reconnect when reachable.
+          logger.error(`Failed to start source ${source.id} (${source.name}); continuing with other sources:`, err);
+        }
+      }
+    }
+
+    if (!firstTcpSourceConfigured) {
+      // No sources configured — use legacy singleton with env-var config
+      await meshtasticManager.connect();
+      logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
+    } else {
+      logger.debug(`Started ${enabledSources.length} source manager(s)`);
+    }
 
     // Auto-connect MeshCore if enabled via environment variables
     if (process.env.MESHCORE_ENABLED === 'true') {
@@ -574,12 +596,9 @@ setTimeout(async () => {
     inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
     logger.info('✅ Inactive node notification service started');
 
-    // Start auto-delete-by-distance service if enabled
-    const autoDeleteByDistanceEnabled = await databaseService.settings.getSetting('autoDeleteByDistanceEnabled');
-    if (autoDeleteByDistanceEnabled === 'true') {
-      const intervalHours = parseInt(await databaseService.settings.getSetting('autoDeleteByDistanceIntervalHours') || '24', 10);
-      autoDeleteByDistanceService.start(intervalHours);
-    }
+    // Auto-delete-by-distance scheduler is now started per-source inside
+    // MeshtasticManager.startDistanceDeleteScheduler() as part of the normal
+    // scheduler stagger after configComplete.
 
     // Note: Virtual node server initialization has been moved to a callback
     // that triggers when config capture completes (see registerConfigCaptureCompleteCallback above)
@@ -754,6 +773,8 @@ import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
+import sourceRoutes from './routes/sourceRoutes.js';
+import unifiedRoutes from './routes/unifiedRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
 import { GeoJsonService } from './services/geojsonService.js';
@@ -862,6 +883,12 @@ apiRouter.use('/embed-profiles', embedProfileRoutes);
 // Firmware OTA update routes (admin only)
 apiRouter.use('/firmware', firmwareUpdateRoutes);
 
+// Sources management routes
+apiRouter.use('/sources', sourceRoutes);
+
+// Unified cross-source views
+apiRouter.use('/unified', unifiedRoutes);
+
 // GeoJSON overlay layer routes
 const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');
 const geojsonService = new GeoJsonService(geojsonDataDir);
@@ -878,7 +905,12 @@ apiRouter.use('/map-styles', mapStyleRouter);
 setSettingsCallbacks({
   refreshTileHostnameCache,
   setTracerouteInterval: (interval) => meshtasticManager.setTracerouteInterval(interval),
-  setRemoteAdminScannerInterval: (interval) => meshtasticManager.setRemoteAdminScannerInterval(interval),
+  setRemoteAdminScannerInterval: (interval, sourceId) => {
+    const mgr = sourceId
+      ? (sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager;
+    mgr.setRemoteAdminScannerInterval(interval);
+  },
   setLocalStatsInterval: (interval) => meshtasticManager.setLocalStatsInterval(interval),
   setKeyRepairSettings: (settings) => meshtasticManager.setKeyRepairSettings(settings),
   restartInactiveNodeService: (threshold, check, cooldown) =>
@@ -901,7 +933,10 @@ setSettingsCallbacks({
  */
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
-    const allNodes = await meshtasticManager.getAllNodesAsync();
+    const nodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
+    const allNodes = await meshtasticManager.getAllNodesAsync(nodesSourceId);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions
@@ -917,7 +952,10 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
 apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
-    const allDbNodes = await databaseService.nodes.getActiveNodes(days);
+    const activeNodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
+    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId);
 
     // Filter nodes based on channel read permissions
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user);
@@ -969,9 +1007,14 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
       : null;
     const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
 
-    // Check privacy for position history
+    // Check privacy for position history — scope to caller's source so the
+    // privacy setting reflects this source's node (same nodeNum may exist in
+    // multiple sources with different privacy flags).
+    const posHistSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum, posHistSourceId);
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
     if (isPrivate && !canViewPrivate) {
@@ -1083,16 +1126,26 @@ interface ApiErrorResponse {
 }
 
 // Set node favorite status (with optional device sync)
-apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { isFavorite, syncToDevice = true, destinationNodeNum } = req.body;
+    const { isFavorite, syncToDevice = true, destinationNodeNum, sourceId: favSourceId } = req.body;
 
     if (typeof isFavorite !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
         error: 'isFavorite must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for isFavorite parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof favSourceId !== 'string' || favSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1115,7 +1168,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update favorite status in database — manual action always locks
-    await databaseService.nodes.setNodeFavorite(nodeNum, isFavorite, true);
+    await databaseService.nodes.setNodeFavorite(nodeNum, isFavorite, favSourceId, true);
 
     // If manually unfavoriting, remove from auto-favorite tracking list
     if (!isFavorite) {
@@ -1127,60 +1180,22 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
       }
     }
 
-    // Broadcast updated NodeInfo to virtual node clients
-    const virtualNodeServer = (global as any).virtualNodeServer;
-    if (virtualNodeServer) {
-      try {
-        // Fetch the updated node from database
-        const node = await databaseService.nodes.getNode(nodeNum);
-        if (node) {
-          // Create NodeInfo message with updated favorite status
-          const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
-            nodeNum: node.nodeNum,
-            user: {
-              id: node.nodeId,
-              longName: node.longName || 'Unknown',
-              shortName: node.shortName || '????',
-              hwModel: node.hwModel || 0,
-              role: node.role ?? undefined,
-              publicKey: node.publicKey ?? undefined,
-            },
-            position:
-              node.latitude && node.longitude
-                ? {
-                    latitude: node.latitude,
-                    longitude: node.longitude,
-                    altitude: node.altitude || 0,
-                    time: node.lastHeard || Math.floor(Date.now() / 1000),
-                  }
-                : undefined,
-            deviceMetrics:
-              node.batteryLevel != null ||
-              node.voltage != null ||
-              node.channelUtilization != null ||
-              node.airUtilTx != null
-                ? {
-                    batteryLevel: node.batteryLevel ?? undefined,
-                    voltage: node.voltage ?? undefined,
-                    channelUtilization: node.channelUtilization ?? undefined,
-                    airUtilTx: node.airUtilTx ?? undefined,
-                  }
-                : undefined,
-            snr: node.snr ?? undefined,
-            lastHeard: node.lastHeard ?? undefined,
-            hopsAway: node.hopsAway ?? undefined,
-            isFavorite: isFavorite,
-          });
-
-          if (nodeInfoMessage) {
-            await virtualNodeServer.broadcastToClients(nodeInfoMessage);
-            logger.debug(`✅ Broadcasted favorite status update to virtual node clients for node ${nodeNum}`);
+    // Phase 7: broadcast via the owning source manager's per-source virtual node.
+    try {
+      if (favSourceId) {
+        const mgr = sourceManagerRegistry.getManager(favSourceId) as any;
+        if (mgr && typeof mgr.broadcastNodeInfoUpdate === 'function') {
+          await mgr.broadcastNodeInfoUpdate(nodeNum);
+        }
+      } else {
+        for (const mgr of sourceManagerRegistry.getAllManagers() as any[]) {
+          if (typeof mgr.broadcastNodeInfoUpdate === 'function') {
+            await mgr.broadcastNodeInfoUpdate(nodeNum);
           }
         }
-      } catch (error) {
-        logger.error(`⚠️ Failed to broadcast favorite update to virtual node clients for node ${nodeNum}:`, error);
-        // Don't fail the request if broadcast fails
       }
+    } catch (error) {
+      logger.error(`⚠️ Failed to broadcast favorite update to virtual node clients for node ${nodeNum}:`, error);
     }
 
     // Sync to device if requested
@@ -1188,11 +1203,12 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     let deviceSyncError: string | undefined;
 
     if (syncToDevice) {
+      const favManager = (favSourceId ? (sourceManagerRegistry.getManager(favSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
       try {
         if (isFavorite) {
-          await meshtasticManager.sendFavoriteNode(nodeNum, destinationNodeNum);
+          await favManager.sendFavoriteNode(nodeNum, destinationNodeNum);
         } else {
-          await meshtasticManager.sendRemoveFavoriteNode(nodeNum, destinationNodeNum);
+          await favManager.sendRemoveFavoriteNode(nodeNum, destinationNodeNum);
         }
         deviceSyncStatus = 'success';
         logger.debug(`✅ Synced favorite status to device for node ${nodeNum}`);
@@ -1234,16 +1250,26 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 });
 
 // Toggle favorite lock status (lock/unlock a node from auto-favorite automation)
-apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { locked } = req.body;
+    const { locked, sourceId: lockSourceId } = req.body;
 
     if (typeof locked !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
         error: 'locked must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for locked parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof lockSourceId !== 'string' || lockSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1264,12 +1290,13 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked);
+    await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked, lockSourceId);
 
     // If unlocking, also add to auto-favorite tracking list if node is currently favorited
-    // so that automation can manage it going forward
+    // so that automation can manage it going forward (scoped to the same source that owns
+    // the lock flag — same nodeNum may have different favorite state on other sources).
     if (!locked) {
-      const node = await databaseService.nodes.getNode(nodeNum);
+      const node = await databaseService.nodes.getNode(nodeNum, lockSourceId);
       if (node?.isFavorite) {
         const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
         const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
@@ -1299,21 +1326,24 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 });
 
 // Get auto-favorite status (local role, firmware, managed nodes)
-apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (_req, res) => {
+apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (req, res) => {
   try {
+    const afSourceId = req.query.sourceId as string | undefined;
+    const afManager = afSourceId ? (sourceManagerRegistry.getManager(afSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
-    const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : meshtasticManager.getLocalNodeInfo()?.nodeNum;
-    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt) : null;
-    const firmwareVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion || null;
-    const supportsFavorites = meshtasticManager.supportsFavorites();
+    const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : afManager.getLocalNodeInfo()?.nodeNum;
+    // Scope node lookups to afSourceId so auto-favorite status reflects the caller's source
+    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, afSourceId) : null;
+    const firmwareVersion = afManager.getLocalNodeInfo()?.firmwareVersion || null;
+    const supportsFavorites = afManager.supportsFavorites();
 
     const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
     const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
 
-    // Get node details for each auto-favorited node
+    // Get node details for each auto-favorited node (scoped to this source)
     const autoFavoriteNodes = (await Promise.all(autoFavoriteNodeNums
       .map(async nodeNum => {
-        const node = await databaseService.nodes.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum, afSourceId);
         if (!node) return null;
         return {
           nodeNum: node.nodeNum,
@@ -1346,16 +1376,26 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async
 });
 
 // Set node ignored status (with optional device sync)
-apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { isIgnored, syncToDevice = true, destinationNodeNum } = req.body;
+    const { isIgnored, syncToDevice = true, destinationNodeNum, sourceId: ignoreSourceId } = req.body;
 
     if (typeof isIgnored !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
         error: 'isIgnored must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for isIgnored parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof ignoreSourceId !== 'string' || ignoreSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1378,62 +1418,24 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update ignored status in database
-    await databaseService.setNodeIgnoredAsync(nodeNum, isIgnored);
+    await databaseService.setNodeIgnoredAsync(nodeNum, isIgnored, ignoreSourceId);
 
-    // Broadcast updated NodeInfo to virtual node clients
-    const virtualNodeServer = (global as any).virtualNodeServer;
-    if (virtualNodeServer) {
-      try {
-        // Fetch the updated node from database
-        const node = await databaseService.nodes.getNode(nodeNum);
-        if (node) {
-          // Create NodeInfo message with updated ignored status
-          const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
-            nodeNum: node.nodeNum,
-            user: {
-              id: node.nodeId,
-              longName: node.longName || 'Unknown',
-              shortName: node.shortName || '????',
-              hwModel: node.hwModel || 0,
-              role: node.role ?? undefined,
-              publicKey: node.publicKey ?? undefined,
-            },
-            position:
-              node.latitude && node.longitude
-                ? {
-                    latitude: node.latitude,
-                    longitude: node.longitude,
-                    altitude: node.altitude || 0,
-                    time: node.lastHeard || Math.floor(Date.now() / 1000),
-                  }
-                : undefined,
-            deviceMetrics:
-              node.batteryLevel != null ||
-              node.voltage != null ||
-              node.channelUtilization != null ||
-              node.airUtilTx != null
-                ? {
-                    batteryLevel: node.batteryLevel ?? undefined,
-                    voltage: node.voltage ?? undefined,
-                    channelUtilization: node.channelUtilization ?? undefined,
-                    airUtilTx: node.airUtilTx ?? undefined,
-                  }
-                : undefined,
-            snr: node.snr ?? undefined,
-            lastHeard: node.lastHeard ?? undefined,
-            hopsAway: node.hopsAway ?? undefined,
-            isIgnored: isIgnored,
-          });
-
-          if (nodeInfoMessage) {
-            await virtualNodeServer.broadcastToClients(nodeInfoMessage);
-            logger.debug(`✅ Broadcasted ignored status update to virtual node clients for node ${nodeNum}`);
+    // Phase 7: broadcast via the owning source manager's per-source virtual node.
+    try {
+      if (ignoreSourceId) {
+        const mgr = sourceManagerRegistry.getManager(ignoreSourceId) as any;
+        if (mgr && typeof mgr.broadcastNodeInfoUpdate === 'function') {
+          await mgr.broadcastNodeInfoUpdate(nodeNum);
+        }
+      } else {
+        for (const mgr of sourceManagerRegistry.getAllManagers() as any[]) {
+          if (typeof mgr.broadcastNodeInfoUpdate === 'function') {
+            await mgr.broadcastNodeInfoUpdate(nodeNum);
           }
         }
-      } catch (error) {
-        logger.error(`⚠️ Failed to broadcast ignored update to virtual node clients for node ${nodeNum}:`, error);
-        // Don't fail the request if broadcast fails
       }
+    } catch (error) {
+      logger.error(`⚠️ Failed to broadcast ignored update to virtual node clients for node ${nodeNum}:`, error);
     }
 
     // Sync to device if requested
@@ -1441,11 +1443,12 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     let deviceSyncError: string | undefined;
 
     if (syncToDevice) {
+      const ignoreManager = (ignoreSourceId ? (sourceManagerRegistry.getManager(ignoreSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
       try {
         if (isIgnored) {
-          await meshtasticManager.sendIgnoredNode(nodeNum, destinationNodeNum);
+          await ignoreManager.sendIgnoredNode(nodeNum, destinationNodeNum);
         } else {
-          await meshtasticManager.sendRemoveIgnoredNode(nodeNum, destinationNodeNum);
+          await ignoreManager.sendRemoveIgnoredNode(nodeNum, destinationNodeNum);
         }
         deviceSyncStatus = 'success';
         logger.debug(`✅ Synced ignored status to device for node ${nodeNum}`);
@@ -1526,9 +1529,19 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
     // Remove from persistent ignore list
     await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum);
 
-    // Also un-ignore the node record if it still exists
+    // Also un-ignore the node record if it still exists across all sources
+    // (the persistent ignore table is not source-scoped, so we sweep every source)
     try {
-      await databaseService.setNodeIgnoredAsync(nodeNum, false);
+      const allNodes = await databaseService.nodes.getAllNodes();
+      for (const n of allNodes) {
+        if (Number(n.nodeNum) !== nodeNum) continue;
+        const sId = (n as any).sourceId || 'default';
+        try {
+          await databaseService.setNodeIgnoredAsync(nodeNum, false, sId);
+        } catch {
+          // Node may not exist in nodes table for this source — OK
+        }
+      }
     } catch {
       // Node may not exist in nodes table - that's OK
     }
@@ -1570,7 +1583,10 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
     }
 
     const nodeNum = parseInt(nodeNumStr, 16);
-    const override = await databaseService.getNodePositionOverrideAsync(nodeNum);
+    const poGetSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : 'default';
+    const override = await databaseService.getNodePositionOverrideAsync(nodeNum, poGetSourceId);
 
     if (!override) {
       const errorResponse: ApiErrorResponse = {
@@ -1606,10 +1622,20 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
 });
 
 // Set node position override
-apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { enabled, latitude, longitude, altitude, isPrivate } = req.body;
+    const { enabled, latitude, longitude, altitude, isPrivate, sourceId: poSourceId } = req.body;
+
+    if (typeof poSourceId !== 'string' || poSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
 
     // Validate enabled parameter
     if (typeof enabled !== 'boolean') {
@@ -1686,6 +1712,7 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
     await databaseService.setNodePositionOverrideAsync(
       nodeNum,
       enabled,
+      poSourceId,
       enabled ? latitude : undefined,
       enabled ? longitude : undefined,
       enabled ? altitude : undefined,
@@ -1713,9 +1740,20 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
 });
 
 // Delete node position override
-apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write', { sourceIdFrom: 'query' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
+    const poDelSourceId = req.query.sourceId as string | undefined;
+
+    if (typeof poDelSourceId !== 'string' || poDelSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request must include sourceId as a query parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
 
     // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
     const nodeNumStr = nodeId.replace('!', '');
@@ -1734,7 +1772,7 @@ apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // Clear position override in database
-    await databaseService.clearNodePositionOverrideAsync(nodeNum);
+    await databaseService.clearNodePositionOverrideAsync(nodeNum, poDelSourceId);
 
     res.json({
       success: true,
@@ -1809,8 +1847,14 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
       return;
     }
 
-    // Check if the node exists
-    const node = await databaseService.nodes.getNode(parsedNodeNum);
+    const { sourceId: scanSourceId } = req.body;
+    const scanManager = (scanSourceId
+      ? (sourceManagerRegistry.getManager(scanSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+
+    // Check if the node exists on the scoped source (same nodeNum may exist
+    // on other sources that aren't the scan target).
+    const node = await databaseService.nodes.getNode(parsedNodeNum, scanSourceId);
     if (!node) {
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
@@ -1824,7 +1868,7 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
     logger.info(`Manual remote admin scan requested for node ${parsedNodeNum}`);
 
     // Perform the scan
-    const result = await meshtasticManager.scanNodeForRemoteAdmin(parsedNodeNum);
+    const result = await scanManager.scanNodeForRemoteAdmin(parsedNodeNum);
 
     res.json({
       success: true,
@@ -1880,8 +1924,12 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Verify the node actually has a security issue
-    const node = await databaseService.nodes.getNode(nodeNum);
+    const { sourceId: warnSourceId } = req.body || {};
+    const warnManager = (warnSourceId ? (sourceManagerRegistry.getManager(warnSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+
+    // Verify the node actually has a security issue on the target source
+    // (security flags are per-source — the same nodeNum may be safe on another source).
+    const node = await databaseService.nodes.getNode(nodeNum, warnSourceId);
     if (!node) {
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
@@ -1906,8 +1954,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
     const warningMessage = `⚠️ SECURITY WARNING: Your encryption key has been identified as compromised (${
       node.keyIsLowEntropy ? 'low-entropy' : 'duplicate'
     }). Your direct messages may not be private. Please regenerate your key in Settings > Security.`;
-
-    const messageId = await meshtasticManager.sendTextMessage(
+    const messageId = await warnManager.sendTextMessage(
       warningMessage,
       0, // Channel 0
       nodeNum // Destination
@@ -1936,49 +1983,75 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
 // Scan all nodes for duplicate keys and update database
 apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), async (_req, res) => {
   try {
+    // Duplicate detection is scoped per-source — a node on source A sharing a
+    // public key with a node on source B is NOT treated as a duplicate, because
+    // they may legitimately be the same physical device surfaced by two
+    // transports. This matches the background scheduler in
+    // duplicateKeySchedulerService which also iterates per-source, and the
+    // updateNodeSecurityFlags helper requires a sourceId for correctness under
+    // the composite (nodeNum, sourceId) primary key.
     const { detectDuplicateKeys } = await import('../services/lowEntropyKeyService.js');
-    const nodesWithKeys = await databaseService.getNodesWithPublicKeysAsync();
-    const duplicates = detectDuplicateKeys(nodesWithKeys);
 
-    // Clear existing duplicate flags first
-    const allNodes = await databaseService.nodes.getAllNodes();
-    for (const node of allNodes) {
-      if (node.duplicateKeyDetected) {
-        await databaseService.nodes.upsertNode({
-          nodeNum: node.nodeNum,
-          nodeId: node.nodeId,
-          duplicateKeyDetected: false,
-          keySecurityIssueDetails: node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined,
-        });
+    const managers = sourceManagerRegistry.getAllManagers() as any[];
+    const sourceIds: string[] = managers.length > 0 ? managers.map(m => m.sourceId) : ['default'];
+
+    let totalScanned = 0;
+    let totalDuplicateGroups = 0;
+    const affectedNodes: number[] = [];
+
+    for (const sourceId of sourceIds) {
+      const nodesWithKeys = await databaseService.nodes.getNodesWithPublicKeys(sourceId);
+      totalScanned += nodesWithKeys.length;
+
+      const allSourceNodes = await databaseService.nodes.getAllNodes(sourceId);
+
+      // Clear existing duplicate flags for this source
+      for (const node of allSourceNodes) {
+        if (node.duplicateKeyDetected) {
+          const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
+          await databaseService.nodes.updateNodeSecurityFlags(
+            Number(node.nodeNum),
+            false,
+            details,
+            sourceId,
+          );
+        }
       }
-    }
 
-    // Update database with new duplicate flags
-    for (const [keyHash, nodeNums] of duplicates) {
-      for (const nodeNum of nodeNums) {
-        const node = await databaseService.nodes.getNode(nodeNum);
-        if (!node) continue;
+      const duplicates = detectDuplicateKeys(nodesWithKeys);
+      totalDuplicateGroups += duplicates.size;
 
-        const otherNodes = nodeNums.filter(n => n !== nodeNum);
-        const details = node.keyIsLowEntropy
-          ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
-          : `Key shared with nodes: ${otherNodes.join(', ')}`;
+      const sourceNodeMap = new Map<number, typeof allSourceNodes[0]>(
+        allSourceNodes.map(n => [Number(n.nodeNum), n])
+      );
 
-        await databaseService.nodes.upsertNode({
-          nodeNum,
-          nodeId: node.nodeId,
-          duplicateKeyDetected: true,
-          keySecurityIssueDetails: details,
-        });
+      for (const [keyHash, nodeNums] of duplicates) {
+        for (const nodeNum of nodeNums) {
+          const node = sourceNodeMap.get(Number(nodeNum));
+          if (!node) continue;
+
+          const otherNodes = nodeNums.filter(n => n !== nodeNum);
+          const details = node.keyIsLowEntropy
+            ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
+            : `Key shared with nodes: ${otherNodes.join(', ')}`;
+
+          await databaseService.nodes.updateNodeSecurityFlags(
+            Number(nodeNum),
+            true,
+            details,
+            sourceId,
+          );
+          affectedNodes.push(Number(nodeNum));
+        }
+        logger.info(`🔐 [${sourceId}] Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
       }
-      logger.info(`🔐 Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
     }
 
     res.json({
       success: true,
-      duplicatesFound: duplicates.size,
-      affectedNodes: Array.from(duplicates.values()).flat(),
-      totalNodesScanned: nodesWithKeys.length,
+      duplicatesFound: totalDuplicateGroups,
+      affectedNodes,
+      totalNodesScanned: totalScanned,
     });
   } catch (error) {
     logger.error('Error scanning for duplicate keys:', error);
@@ -2006,7 +2079,8 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
     }
 
     const limit = parseInt(req.query.limit as string) || 100;
-    let messages = await meshtasticManager.getRecentMessages(limit);
+    const messagesSourceId = req.query.sourceId as string | undefined;
+    let messages = await meshtasticManager.getRecentMessages(limit, messagesSourceId);
 
     // Filter messages based on permissions
     // If user only has channels permission, exclude direct messages (channel -1)
@@ -2045,6 +2119,7 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     relayNode: msg.relayNode ?? undefined,
     replyId: msg.replyId ?? undefined,
     emoji: msg.emoji ?? undefined,
+    viaMqtt: Boolean((msg as any).viaMqtt),
     rxSnr: msg.rxSnr ?? undefined,
     rxRssi: msg.rxRssi ?? undefined,
     requestId: (msg as any).requestId,
@@ -2122,7 +2197,8 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
 // Mark messages as read
 apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
   try {
-    const { messageIds, channelId, nodeId, beforeTimestamp, allDMs } = req.body;
+    const { messageIds, channelId, nodeId, beforeTimestamp, allDMs, sourceId: markReadSourceId } = req.body;
+    const markReadManager = markReadSourceId ? (sourceManagerRegistry.getManager(markReadSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
 
     // If marking by channelId, check per-channel read permission
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
@@ -2157,7 +2233,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
       markedCount = messageIds.length;
     } else if (allDMs) {
       // Mark ALL DMs as read
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = markReadManager.getLocalNodeInfo();
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
       }
@@ -2167,7 +2243,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
       markedCount = await databaseService.markChannelMessagesAsReadAsync(channelId, userId, beforeTimestamp);
     } else if (nodeId) {
       // Mark all DMs with a node as read (permission already checked above)
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = markReadManager.getLocalNodeInfo();
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
       }
@@ -2264,30 +2340,36 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
   }
 });
 
-// Get Virtual Node server status (requires authentication)
+// Get Virtual Node server status per source (requires authentication)
 apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
   try {
-    const virtualNodeServer = (global as any).virtualNodeServer;
-
-    if (!virtualNodeServer) {
-      return res.json({
-        enabled: false,
-        isRunning: false,
-        clientCount: 0,
-        clients: [],
-      });
-    }
-
-    const isRunning = virtualNodeServer.isRunning();
-    const clientCount = virtualNodeServer.getClientCount();
-    const clients = virtualNodeServer.getClientDetails();
-
-    res.json({
-      enabled: true,
-      isRunning,
-      clientCount,
-      clients,
+    const managers = sourceManagerRegistry.getAllManagers() as any[];
+    const sources = managers.map((mgr) => {
+      const vn = mgr.virtualNodeServer;
+      const status = mgr.getStatus?.();
+      const sourceId = status?.sourceId ?? mgr.sourceId;
+      const sourceName = status?.sourceName ?? sourceId;
+      if (!vn) {
+        return {
+          sourceId,
+          sourceName,
+          enabled: false,
+          isRunning: false,
+          clientCount: 0,
+          clients: [],
+        };
+      }
+      return {
+        sourceId,
+        sourceName,
+        enabled: true,
+        isRunning: vn.isRunning(),
+        clientCount: vn.getClientCount(),
+        clients: vn.getClientDetails(),
+      };
     });
+
+    res.json({ sources });
   } catch (error) {
     logger.error('Error getting virtual node status:', error);
     res.status(500).json({ error: 'Failed to get virtual node status' });
@@ -2307,9 +2389,10 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), async (_
 });
 
 // Get all channels (unfiltered, for export/config purposes)
-apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (_req, res) => {
+apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (req, res) => {
   try {
-    const allChannels = await databaseService.channels.getAllChannels();
+    const allChannelsSourceId = req.query.sourceId as string | undefined;
+    const allChannels = await databaseService.channels.getAllChannels(allChannelsSourceId);
     logger.debug(`📡 Serving all ${allChannels.length} channels (unfiltered)`);
     res.json(allChannels);
   } catch (error) {
@@ -2318,9 +2401,10 @@ apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (_r
   }
 });
 
-apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (_req, res) => {
+apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (req, res) => {
   try {
-    const allChannels = await databaseService.channels.getAllChannels();
+    const channelsSourceId = req.query.sourceId as string | undefined;
+    const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
 
     // Channel 0 will be created automatically when device config syncs
     // It should have an empty name as per Meshtastic protocol
@@ -2489,7 +2573,7 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
       return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
     }
 
-    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = req.body;
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, sourceId: chanSourceId } = req.body;
 
     // Validate name if provided (allow empty names for unnamed channels)
     if (name !== undefined && name !== null) {
@@ -2547,8 +2631,11 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
     await databaseService.channels.upsertChannel(updatedChannelData);
 
     // Send channel configuration to Meshtastic device
+    const chanUpdateManager = (chanSourceId
+      ? (sourceManagerRegistry.getManager(chanSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
     try {
-      await meshtasticManager.setChannelConfig(channelId, {
+      await chanUpdateManager.setChannelConfig(channelId, {
         name: updatedChannelData.name,
         psk: updatedChannelData.psk === '' ? undefined : updatedChannelData.psk,
         role: updatedChannelData.role,
@@ -2585,13 +2672,20 @@ apiRouter.delete('/channels/:id', requirePermission('channel_0', 'write'), async
       return res.status(400).json({ error: 'Cannot delete primary channel' });
     }
 
-    // Purge messages for this channel
-    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId);
-    // Delete the channel record
-    await databaseService.channels.deleteChannel(channelId);
+    // sourceId is required so the channel and its messages are removed from a single source
+    const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+    if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '' || typeof rawSourceId !== 'string') {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+    const deleteChannelSourceId: string = rawSourceId;
 
-    logger.info(`🗑️ Deleted channel ${channelId}: ${deletedCount} messages purged`);
-    res.json({ success: true, message: `Channel ${channelId} deleted`, messagesDeleted: deletedCount });
+    // Purge messages for this channel (scoped to the chosen source)
+    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId, deleteChannelSourceId);
+    // Delete the channel record (scoped to the chosen source)
+    await databaseService.channels.deleteChannel(channelId, deleteChannelSourceId);
+
+    logger.info(`🗑️ Deleted channel ${channelId} (source=${deleteChannelSourceId}): ${deletedCount} messages purged`);
+    res.json({ success: true, message: `Channel ${channelId} deleted`, sourceId: deleteChannelSourceId, messagesDeleted: deletedCount });
   } catch (error) {
     logger.error('Error deleting channel:', error);
     res.status(500).json({ error: 'Failed to delete channel' });
@@ -2606,7 +2700,7 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
       return res.status(400).json({ error: 'Invalid slot ID. Must be between 0-7' });
     }
 
-    const { channel } = req.body;
+    const { channel, sourceId: importSourceId } = req.body;
 
     if (!channel || typeof channel !== 'object') {
       return res.status(400).json({ error: 'Invalid import data. Expected channel object' });
@@ -2676,8 +2770,11 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
     await databaseService.channels.upsertChannel(importedChannelData);
 
     // Send channel configuration to Meshtastic device
+    const importManager = (importSourceId
+      ? (sourceManagerRegistry.getManager(importSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
     try {
-      await meshtasticManager.setChannelConfig(slotId, {
+      await importManager.setChannelConfig(slotId, {
         name: importedChannelData.name,
         psk: importedChannelData.psk,
         role: importedChannelData.role,
@@ -2706,7 +2803,7 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
 // Reorder device channel slots (drag-and-drop)
 apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), async (req, res) => {
   try {
-    const { newOrder } = req.body;
+    const { newOrder, sourceId: reorderSourceId } = req.body;
 
     // Validate: newOrder must be an array of 8 slot indices [0-7], each used exactly once
     if (!Array.isArray(newOrder) || newOrder.length !== 8) {
@@ -2730,8 +2827,11 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
     const channelsBySlot = new Map(allChannels.map(ch => [ch.id, ch]));
 
     // Begin edit settings transaction
+    const reorderManager = (reorderSourceId
+      ? (sourceManagerRegistry.getManager(reorderSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
     logger.info(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
-    await meshtasticManager.beginEditSettings();
+    await reorderManager.beginEditSettings();
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     for (let newSlot = 0; newSlot < 8; newSlot++) {
@@ -2743,7 +2843,7 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
       const role = newSlot === 0 ? 1 : (sourceChannel?.role === 1 ? 2 : (sourceChannel?.role ?? 0));
 
       if (sourceChannel && sourceChannel.role !== 0) {
-        await meshtasticManager.setChannelConfig(newSlot, {
+        await reorderManager.setChannelConfig(newSlot, {
           name: sourceChannel.name || '',
           psk: sourceChannel.psk || undefined,
           role,
@@ -2764,7 +2864,7 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
         });
       } else {
         // Empty/disabled slot
-        await meshtasticManager.setChannelConfig(newSlot, {
+        await reorderManager.setChannelConfig(newSlot, {
           name: '',
           psk: undefined,
           role: 0,
@@ -2781,7 +2881,7 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
     }
 
     // Commit to device
-    await meshtasticManager.commitEditSettings();
+    await reorderManager.commitEditSettings();
     logger.info(`✅ Channel reorder committed`);
 
     // Migrate messages — derive moves directly from newOrder mapping
@@ -2841,7 +2941,8 @@ apiRouter.post('/channels/decode-url', requirePermission('configuration', 'read'
 // Encode current configuration to Meshtastic URL
 apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'), async (req, res) => {
   try {
-    const { channelIds, includeLoraConfig } = req.body;
+    const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
+    const encodeUrlManager = encodeUrlSourceId ? (sourceManagerRegistry.getManager(encodeUrlSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
@@ -2874,7 +2975,7 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
     let loraConfig = undefined;
     if (includeLoraConfig) {
       logger.info('📡 includeLoraConfig is TRUE, fetching device config...');
-      const deviceConfig = await meshtasticManager.getDeviceConfig();
+      const deviceConfig = await encodeUrlManager.getDeviceConfig();
       logger.info('📡 Device config lora:', JSON.stringify(deviceConfig?.lora, null, 2));
       if (deviceConfig?.lora) {
         loraConfig = {
@@ -2918,7 +3019,7 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
 // Import configuration from URL
 apiRouter.post('/channels/import-config', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const { url: configUrl } = req.body;
+    const { url: configUrl, sourceId: configSourceId } = req.body;
 
     if (!configUrl || typeof configUrl !== 'string') {
       return res.status(400).json({ error: 'URL is required' });
@@ -2939,15 +3040,19 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     logger.info(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
 
     // Begin edit settings transaction to batch all changes
+    const configImportManager = (configSourceId
+      ? (sourceManagerRegistry.getManager(configSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
     try {
       logger.info(`🔄 Beginning edit settings transaction for import`);
-      await meshtasticManager.beginEditSettings();
+      await configImportManager.beginEditSettings();
       // Allow device time to enter edit mode before sending config messages
       await new Promise((resolve) => setTimeout(resolve, 500));
       logger.info(`✅ Edit settings transaction started`);
     } catch (error) {
       logger.error(`❌ Failed to begin edit settings transaction:`, error);
-      throw new Error('Failed to start configuration transaction');
+      const errMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to start configuration transaction: ${errMsg}`);
     }
 
     // Snapshot channels before change for message migration
@@ -2968,7 +3073,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
           }
 
           // Write channel to device via Meshtastic manager
-          await meshtasticManager.setChannelConfig(i, {
+          await configImportManager.setChannelConfig(i, {
             name: channel.name || '',
             psk: channel.psk === 'none' ? undefined : channel.psk,
             role: role,
@@ -3004,7 +3109,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
         };
 
         logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
-        await meshtasticManager.setLoRaConfig(loraConfigToImport);
+        await configImportManager.setLoRaConfig(loraConfigToImport);
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -3047,7 +3152,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
           loraImported ? ' + LoRa config' : ''
         })...`
       );
-      await meshtasticManager.commitEditSettings();
+      await configImportManager.commitEditSettings();
       logger.info(`✅ Configuration changes committed successfully`);
     } catch (error) {
       logger.error(`❌ Failed to commit configuration changes:`, error);
@@ -3064,16 +3169,18 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     });
   } catch (error) {
     logger.error('Error importing configuration:', error);
-    res.status(500).json({ error: 'Failed to import configuration' });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: `Failed to import configuration: ${errMsg}` });
   }
 });
 
-apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (_req, res) => {
+apiRouter.get('/stats', requirePermission('dashboard', 'read'), async (req, res) => {
   try {
-    const messageCount = await databaseService.messages.getMessageCount();
-    const nodeCount = await databaseService.nodes.getNodeCount();
-    const channelCount = await databaseService.channels.getChannelCount();
-    const messagesByDay = await databaseService.getMessagesByDayAsync(7);
+    const statsSourceId = req.query.sourceId as string | undefined;
+    const messageCount = await databaseService.messages.getMessageCount(statsSourceId);
+    const nodeCount = await databaseService.nodes.getNodeCount(statsSourceId);
+    const channelCount = await databaseService.channels.getChannelCount(statsSourceId);
+    const messagesByDay = await databaseService.getMessagesByDayAsync(7, statsSourceId);
 
     res.json({
       messageCount,
@@ -3111,7 +3218,8 @@ apiRouter.post('/import', requireAdmin(), async (req, res) => {
 apiRouter.post('/cleanup/messages', requireAdmin(), async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
-    const deletedCount = await databaseService.cleanupOldMessagesAsync(days);
+    const cleanupSourceId = req.body.sourceId as string | undefined;
+    const deletedCount = await databaseService.cleanupOldMessagesAsync(days, cleanupSourceId);
     res.json({ deletedCount });
   } catch (error) {
     logger.error('Error cleaning up messages:', error);
@@ -3122,7 +3230,8 @@ apiRouter.post('/cleanup/messages', requireAdmin(), async (req, res) => {
 apiRouter.post('/cleanup/nodes', requireAdmin(), async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
-    const deletedCount = await databaseService.cleanupInactiveNodesAsync(days);
+    const cleanupSourceId = req.body.sourceId as string | undefined;
+    const deletedCount = await databaseService.cleanupInactiveNodesAsync(days, cleanupSourceId);
     res.json({ deletedCount });
   } catch (error) {
     logger.error('Error cleaning up nodes:', error);
@@ -3130,9 +3239,10 @@ apiRouter.post('/cleanup/nodes', requireAdmin(), async (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/channels', requireAdmin(), async (_req, res) => {
+apiRouter.post('/cleanup/channels', requireAdmin(), async (req, res) => {
   try {
-    const deletedCount = await databaseService.cleanupInvalidChannelsAsync();
+    const cleanupSourceId = req.body?.sourceId as string | undefined;
+    const deletedCount = await databaseService.cleanupInvalidChannelsAsync(cleanupSourceId);
     res.json({ deletedCount });
   } catch (error) {
     logger.error('Error cleaning up channels:', error);
@@ -3143,7 +3253,7 @@ apiRouter.post('/cleanup/channels', requireAdmin(), async (_req, res) => {
 // Send message endpoint
 apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
   try {
-    const { text, channel, destination, replyId, emoji } = req.body;
+    const { text, channel, destination, replyId, emoji, sourceId: reqSourceId } = req.body;
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'Message text is required' });
     }
@@ -3169,10 +3279,12 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     // Channel must be 0-7 for Meshtastic. If undefined or invalid, default to 0 (Primary)
     let meshChannel = channel !== undefined && channel >= 0 && channel <= 7 ? channel : 0;
 
-    // For DMs, use the channel we last heard the target node on (from NodeInfo)
-    // This ensures we send on a channel the target node has configured
+    // For DMs, use the channel we last heard the target node on (from NodeInfo).
+    // Scope the lookup to the source that will actually send the message so the
+    // channel reflects the correct mesh — a node may be on different channels
+    // across sources.
     if (destinationNum) {
-      const targetNode = await databaseService.nodes.getNode(destinationNum);
+      const targetNode = await databaseService.nodes.getNode(destinationNum, reqSourceId);
       if (targetNode && targetNode.channel !== undefined && targetNode.channel !== null) {
         meshChannel = targetNode.channel;
         logger.info(`📨 DM to ${destination} - Using target node's channel: ${meshChannel}`);
@@ -3210,10 +3322,15 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
       }
     }
 
+    // Route to the correct source manager when sourceId is provided
+    const activeManager = (reqSourceId
+      ? (sourceManagerRegistry.getManager(reqSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
     // Pass userId so sent messages are automatically marked as read for the sender
-    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id);
+    await activeManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id);
 
     res.json({ success: true });
   } catch (error) {
@@ -3225,18 +3342,22 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
 // Traceroute endpoint
 apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (req, res) => {
   try {
-    const { destination } = req.body;
+    const { destination, sourceId: traceSourceId } = req.body;
     if (!destination) {
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel — scope to this source so the channel
+    // reflects the mesh this traceroute will actually traverse.
+    const node = await databaseService.nodes.getNode(destinationNum, traceSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    await meshtasticManager.sendTraceroute(destinationNum, channel);
+    const traceManager = (traceSourceId
+      ? (sourceManagerRegistry.getManager(traceSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    await traceManager.sendTraceroute(destinationNum, channel);
     res.json({
       success: true,
       message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}`,
@@ -3250,24 +3371,27 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
 // Position request endpoint
 apiRouter.post('/position/request', requirePermission('messages', 'write'), async (req, res) => {
   try {
-    const { destination } = req.body;
+    const { destination, sourceId: posSourceId } = req.body;
     if (!destination) {
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, posSourceId);
     // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
     const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
       ? req.body.channel
       : (node?.channel ?? 0);
 
-    const { packetId, requestId } = await meshtasticManager.sendPositionRequest(destinationNum, channel);
+    const posManager = (posSourceId
+      ? (sourceManagerRegistry.getManager(posSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    const { packetId, requestId } = await posManager.sendPositionRequest(destinationNum, channel);
 
     // Get local node info to create system message
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = posManager.getLocalNodeInfo();
     logger.info(
       `📍 localNodeInfo for system message: ${
         localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
@@ -3320,21 +3444,24 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 // NodeInfo request endpoint (Exchange Node Info - triggers key exchange)
 apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), async (req, res) => {
   try {
-    const { destination } = req.body;
+    const { destination, sourceId: niSourceId } = req.body;
     if (!destination) {
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, niSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const { packetId, requestId } = await meshtasticManager.sendNodeInfoRequest(destinationNum, channel);
+    const niManager = (niSourceId
+      ? (sourceManagerRegistry.getManager(niSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    const { packetId, requestId } = await niManager.sendNodeInfoRequest(destinationNum, channel);
 
     // Get local node info to create system message
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = niManager.getLocalNodeInfo();
     logger.info(
       `📇 localNodeInfo for system message: ${
         localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
@@ -3396,8 +3523,13 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
     // Eligibility check: only allow requests to local node or 0-hop nodes
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum;
-    const node = await databaseService.nodes.getNode(destinationNum);
+    const { sourceId: neighborSourceId } = req.body;
+    const neighborManager = (neighborSourceId
+      ? (sourceManagerRegistry.getManager(neighborSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    const localNodeNum = neighborManager.getLocalNodeInfo()?.nodeNum;
+    // Scope to the target source so hopsAway/channel reflect this mesh
+    const node = await databaseService.nodes.getNode(destinationNum, neighborSourceId);
     const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
     const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
 
@@ -3425,7 +3557,7 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
 
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const { packetId, requestId } = await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
+    const { packetId, requestId } = await neighborManager.sendNeighborInfoRequest(destinationNum, channel);
     neighborInfoRequestTimestamps.set(Number(destinationNum), now);
 
     logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
@@ -3445,7 +3577,7 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
 // Telemetry request endpoint (request telemetry from remote node)
 apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), async (req, res) => {
   try {
-    const { destination, telemetryType } = req.body;
+    const { destination, telemetryType, sourceId: telSourceId } = req.body;
     if (!destination) {
       return res.status(400).json({ error: 'Destination node number is required' });
     }
@@ -3458,11 +3590,14 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, telSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const { packetId, requestId } = await meshtasticManager.sendTelemetryRequest(
+    const telManager = (telSourceId
+      ? (sourceManagerRegistry.getManager(telSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    const { packetId, requestId } = await telManager.sendTelemetryRequest(
       destinationNum,
       channel,
       telemetryType as 'device' | 'environment' | 'airQuality' | 'power' | undefined
@@ -3505,7 +3640,8 @@ apiRouter.get('/traceroutes/recent', async (req, res) => {
       limit = Math.max(limit, 100);
     }
 
-    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit);
+    const recentSourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, recentSourceId);
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
@@ -3539,6 +3675,10 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
     const fromNodeNum = parseInt(req.params.fromNodeNum);
     const toNodeNum = parseInt(req.params.toNodeNum);
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    // Scope to a specific source when provided so multi-source deployments
+    // don't conflate traceroute history for the same node pair across
+    // unrelated transports (e.g. local TCP vs MQTT).
+    const historySourceId = req.query.sourceId as string | undefined;
 
     // Validate node numbers
     if (isNaN(fromNodeNum) || isNaN(toNodeNum)) {
@@ -3558,7 +3698,7 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
       return;
     }
 
-    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
+    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, historySourceId);
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;
@@ -3584,18 +3724,20 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
   }
 });
 
-// Get longest active route segment (within last 7 days)
-apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (_req, res) => {
+// Get longest active route segment (within last 7 days), scoped per source.
+apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment();
+    const segSourceId = req.query.sourceId as string | undefined;
+    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment(segSourceId);
     if (!segment) {
       res.json(null);
       return;
     }
 
-    // Enrich with node names
-    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum);
-    const toNode = await databaseService.nodes.getNode(segment.toNodeNum);
+    // Enrich with node names, scoped to the same source as the segment so
+    // display data doesn't bleed between sources.
+    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum, segSourceId);
+    const toNode = await databaseService.nodes.getNode(segment.toNodeNum, segSourceId);
 
     const enrichedSegment = {
       ...segment,
@@ -3610,18 +3752,19 @@ apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'
   }
 });
 
-// Get record holder route segment
-apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (_req, res) => {
+// Get record holder route segment, scoped per source.
+apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment();
+    const segSourceId = req.query.sourceId as string | undefined;
+    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment(segSourceId);
     if (!segment) {
       res.json(null);
       return;
     }
 
-    // Enrich with node names
-    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum);
-    const toNode = await databaseService.nodes.getNode(segment.toNodeNum);
+    // Enrich with node names, scoped to the same source as the segment.
+    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum, segSourceId);
+    const toNode = await databaseService.nodes.getNode(segment.toNodeNum, segSourceId);
 
     const enrichedSegment = {
       ...segment,
@@ -3636,10 +3779,12 @@ apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read')
   }
 });
 
-// Clear record holder route segment
-apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), async (_req, res) => {
+// Clear record holder route segment, scoped per source so clearing one source
+// doesn't wipe another source's record holder.
+apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), async (req, res) => {
   try {
-    await databaseService.clearRecordHolderSegmentAsync();
+    const segSourceId = req.query.sourceId as string | undefined;
+    await databaseService.clearRecordHolderSegmentAsync(segSourceId);
     res.json({ success: true, message: 'Record holder cleared' });
   } catch (error) {
     logger.error('Error clearing record holder:', error);
@@ -3663,9 +3808,10 @@ const getEffectivePosition = (node: Awaited<ReturnType<typeof databaseService.no
 };
 
 // Get all neighbor info (latest per node pair)
-apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, res) => {
+apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const neighborInfo = databaseService.getLatestNeighborInfoPerNode();
+    const neighborInfoSourceId = req.query.sourceId as string | undefined;
+    const neighborInfo = databaseService.getLatestNeighborInfoPerNodeScoped(neighborInfoSourceId);
 
     // Get max node age setting (default 24 hours)
     const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
@@ -3675,11 +3821,13 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, 
     // Build a set of all link keys for bidirectionality detection
     const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 
-    // Enrich with node names, bidirectionality, and filter by node age
+    // Enrich with node names, bidirectionality, and filter by node age.
+    // Scope node lookups to the same source as the neighbor info query so
+    // name/position/lastHeard data match the mesh the caller is viewing.
     const enrichedNeighborInfo = (await Promise.all(neighborInfo
       .map(async ni => {
-        const node = await databaseService.nodes.getNode(ni.nodeNum);
-        const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
+        const node = await databaseService.nodes.getNode(ni.nodeNum, neighborInfoSourceId);
+        const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum, neighborInfoSourceId);
         const nodePos = getEffectivePosition(node);
         const neighborPos = getEffectivePosition(neighbor);
 
@@ -3718,11 +3866,13 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (_req, 
 apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), async (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum);
-    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum);
+    const neighborSourceId = req.query.sourceId as string | undefined;
+    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId);
 
-    // Enrich with node names
+    // Enrich with node names. Scope to the same source as the neighbor
+    // query so position/name data matches the mesh the caller is viewing.
     const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {
-      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
+      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum, neighborSourceId);
       const neighborPos = getEffectivePosition(neighbor);
 
       return {
@@ -3778,13 +3928,14 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    const telSourceId = req.query.sourceId as string | undefined;
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
     // Check if node has private position override
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum, telSourceId);
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
@@ -3792,14 +3943,14 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     // For PostgreSQL/MySQL, use async repo directly
     if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
       const limit = Math.min(hoursParam * 60, 5000);
-      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime);
+      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime, undefined, 0, undefined, telSourceId);
     } else {
       // Use averaged query for graph data to reduce data points
       // Dynamic bucketing automatically adjusts interval based on time range:
       // - 0-24h: 3-minute intervals (high detail)
       // - 1-7d: 30-minute intervals (medium detail)
       // - 7d+: 2-hour intervals (low detail, full coverage)
-      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam);
+      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam, telSourceId);
     }
 
     // Filter out location telemetry if private and unauthorized
@@ -3991,7 +4142,8 @@ apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePerm
 // Check which nodes have telemetry data
 apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const allNodes = await databaseService.nodes.getAllNodes();
+    const telAvailSourceId = req.query.sourceId as string | undefined;
+    const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId);
     // Filter nodes based on channel read permissions
     const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
 
@@ -4060,7 +4212,9 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
 // Connection status endpoint
 apiRouter.get('/connection', optionalAuth(), async (req, res) => {
   try {
-    const status = await meshtasticManager.getConnectionStatus();
+    const connSourceId = req.query.sourceId as string | undefined;
+    const connManager = (connSourceId ? (sourceManagerRegistry.getManager(connSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const status = await connManager.getConnectionStatus();
     // Hide nodeIp from anonymous users
     if (!req.session.userId) {
       const { nodeIp, ...statusWithoutNodeIp } = status;
@@ -4075,9 +4229,11 @@ apiRouter.get('/connection', optionalAuth(), async (req, res) => {
 });
 
 // Check if TX is disabled
-apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
+apiRouter.get('/device/tx-status', optionalAuth(), async (req, res) => {
   try {
-    const deviceConfig = await meshtasticManager.getDeviceConfig();
+    const txSourceId = req.query.sourceId as string | undefined;
+    const txManager = (txSourceId ? (sourceManagerRegistry.getManager(txSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const deviceConfig = await txManager.getDeviceConfig();
     const txEnabled = deviceConfig?.lora?.txEnabled !== false; // Default to true if undefined
     res.json({ txEnabled });
   } catch (error) {
@@ -4088,9 +4244,11 @@ apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
 
 // Get security keys (public and private) for the local node
 // Private key is sensitive - requires authentication
-apiRouter.get('/device/security-keys', requireAuth(), async (_req, res) => {
+apiRouter.get('/device/security-keys', requireAuth(), async (req, res) => {
   try {
-    const keys = meshtasticManager.getSecurityKeys();
+    const skSourceId = req.query.sourceId as string | undefined;
+    const skManager = (skSourceId ? (sourceManagerRegistry.getManager(skSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const keys = skManager.getSecurityKeys();
     res.json(keys);
   } catch (error) {
     logger.error('Error getting security keys:', error);
@@ -4115,20 +4273,42 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       deviceNodeNums?: number[];
     } = {};
 
+    // Optional sourceId scoping — when provided, use the matching manager and filter DB queries
+    const pollSourceId = (req.query.sourceId as string | undefined) || undefined;
+    const activeManager = (pollSourceId
+      ? (sourceManagerRegistry.getManager(pollSourceId) ?? meshtasticManager)
+      : meshtasticManager) as typeof meshtasticManager;
+
     // Pre-compute shared values used across multiple sections
     const user = (req as any).user;
     const userId = req.user?.id ?? null;
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    const allMemoryNodes = await meshtasticManager.getAllNodesAsync();
+    const localNodeInfo = activeManager.getLocalNodeInfo();
+    // Nodes are stored per-source (composite PK (nodeNum, sourceId) since migration
+    // 029). Scope strictly to this source so two sources with overlapping meshes
+    // each show only what they have actually heard. When no sourceId is given
+    // (legacy/no-source callers), fall back to the global unscoped query.
+    const allMemoryNodes = await activeManager.getAllNodesAsync(pollSourceId);
     const filteredMemoryNodes = await filterNodesByChannelPermission(allMemoryNodes, user);
-    const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
-    const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
-    const hasInfoRead = req.user?.isAdmin || await hasPermission(req.user!, 'info', 'read');
-    const canViewPrivate = user ? await hasPermission(user, 'nodes_private', 'read') : false;
+
+    // Load full permission set once to avoid N sequential DB queries per permission check
+    const userPermissionSet = (user && !user.isAdmin && userId)
+      ? await databaseService.getUserPermissionSetAsync(userId, pollSourceId)
+      : null;
+    // In-memory permission check using the pre-loaded permission set
+    const checkPerm = (resource: string, action: 'read' | 'write'): boolean => {
+      if (!user) return false;
+      if (user.isAdmin) return true;
+      return (userPermissionSet as Record<string, { read: boolean; write: boolean }> | null)?.[resource]?.[action] ?? false;
+    };
+
+    const hasChannelsRead = checkPerm('channel_0', 'read');
+    const hasMessagesRead = checkPerm('messages', 'read');
+    const hasInfoRead = checkPerm('info', 'read');
+    const canViewPrivate = checkPerm('nodes_private', 'read');
 
     // 1. Connection status (always available)
     try {
-      const connectionStatus = await meshtasticManager.getConnectionStatus();
+      const connectionStatus = await activeManager.getConnectionStatus();
       // Hide nodeIp from anonymous users
       if (!req.session.userId) {
         const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
@@ -4153,7 +4333,39 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // 3. Messages (requires any channel permission OR messages permission)
     try {
       if (hasChannelsRead || hasMessagesRead) {
-        let messages = await meshtasticManager.getRecentMessages(100);
+        // Fetch all messages globally (no sourceId filter) so cross-source messages are included.
+        // When a sourceId is specified, remap each message's channel slot index to match the
+        // requesting source's slot layout using name+PSK channel equivalence.
+        const dbMessagesRaw = await databaseService.messages.getMessages(100);
+
+        let messages: MeshMessage[];
+        if (pollSourceId) {
+          // Build a channel equivalence map: (otherSourceId_slotIndex) -> requestingSource slotIndex
+          const allChannelsGlobal = await databaseService.channels.getAllChannels();
+          const myChannels = allChannelsGlobal.filter(c => (c as any).sourceId === pollSourceId);
+          const channelRemap = new Map<string, number>();
+          for (const myChannel of myChannels) {
+            if (!myChannel.name || myChannel.role === 0) continue;
+            for (const otherChannel of allChannelsGlobal) {
+              if ((otherChannel as any).sourceId === pollSourceId) continue;
+              if (otherChannel.name === myChannel.name && otherChannel.psk === myChannel.psk) {
+                channelRemap.set(`${(otherChannel as any).sourceId}_${otherChannel.id}`, myChannel.id);
+              }
+            }
+          }
+          // Remap each cross-source message's channel to the requesting source's equivalent slot
+          messages = dbMessagesRaw.map(msg => {
+            const msgSourceId = (msg as any).sourceId;
+            let channel = msg.channel;
+            if (channel !== -1 && msgSourceId && msgSourceId !== pollSourceId) {
+              const remapped = channelRemap.get(`${msgSourceId}_${channel}`);
+              if (remapped !== undefined) channel = remapped;
+            }
+            return transformDbMessageToMeshMessage({ ...msg, channel } as any as DbMessage);
+          });
+        } else {
+          messages = dbMessagesRaw.map(msg => transformDbMessageToMeshMessage(msg as any as DbMessage));
+        }
 
         // Filter messages based on permissions
         if (hasChannelsRead && !hasMessagesRead) {
@@ -4184,7 +4396,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       for (const [channelIdStr, count] of Object.entries(allUnreadChannels)) {
         const channelId = parseInt(channelIdStr);
         const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
-        const hasChannelRead = req.user?.isAdmin || await hasPermission(req.user!, channelResource, 'read');
+        const hasChannelRead = checkPerm(channelResource, 'read');
 
         if (hasChannelRead) {
           filteredUnreadChannels[channelId] = count;
@@ -4212,7 +4424,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 5. Channels (filtered based on per-channel read permissions)
     try {
-      const allChannels = await databaseService.channels.getAllChannels();
+      const allChannels = await databaseService.channels.getAllChannels(pollSourceId);
 
       // Filter channels async
       const filteredChannels: typeof allChannels = [];
@@ -4224,7 +4436,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
         // Check per-channel read permission
         const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
-        const hasChannelRead = req.user?.isAdmin || await hasPermission(req.user!, channelResource, 'read');
+        const hasChannelRead = checkPerm(channelResource, 'read');
 
         if (!hasChannelRead) {
           continue; // User doesn't have permission to see this channel
@@ -4264,7 +4476,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       if (hasInfoRead) {
         // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
-        const allDbNodes = await databaseService.nodes.getAllNodes();
+        const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId);
         const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user);
 
         const nodesWithTelemetry: string[] = [];
@@ -4274,7 +4486,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
         const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
-        const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync();
+        // Use scoped repo call when sourceId provided (bypasses shared cache)
+        const nodeTelemetryTypes = pollSourceId
+          ? await databaseService.telemetry.getAllNodesTelemetryTypes(pollSourceId)
+          : await databaseService.getAllNodesTelemetryTypesAsync();
 
         dbNodes.forEach(node => {
           const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -4315,27 +4530,19 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 7. Config (always available with optionalAuth)
     try {
-      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+      // Use the active manager's local node info — source-scoped, not the global settings key
+      const managerNodeInfo = activeManager.getLocalNodeInfo();
 
-      let deviceMetadata = undefined;
-      let localNodeInfo = undefined;
-      if (localNodeNumStr) {
-        const localNodeNum = parseInt(localNodeNumStr, 10);
-        const currentNode = await databaseService.nodes.getNode(localNodeNum);
+      const deviceMetadata = managerNodeInfo ? {
+        firmwareVersion: managerNodeInfo.firmwareVersion,
+        rebootCount: managerNodeInfo.rebootCount,
+      } : undefined;
 
-        if (currentNode) {
-          deviceMetadata = {
-            firmwareVersion: currentNode.firmwareVersion,
-            rebootCount: currentNode.rebootCount,
-          };
-
-          localNodeInfo = {
-            nodeId: currentNode.nodeId,
-            longName: currentNode.longName,
-            shortName: currentNode.shortName,
-          };
-        }
-      }
+      const pollLocalNodeInfo = managerNodeInfo ? {
+        nodeId: managerNodeInfo.nodeId,
+        longName: managerNodeInfo.longName,
+        shortName: managerNodeInfo.shortName,
+      } : undefined;
 
       result.config = {
         ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
@@ -4343,7 +4550,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         meshtasticUseTls: false,
         baseUrl: BASE_URL,
         deviceMetadata: deviceMetadata,
-        localNodeInfo: localNodeInfo,
+        localNodeInfo: pollLocalNodeInfo,
       };
     } catch (error) {
       logger.error('Error in config section of poll:', error);
@@ -4359,7 +4566,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       const hasConfigRead = req.user?.isAdmin || await hasPermission(req.user!, 'configuration', 'read');
       if (hasConfigRead) {
-        const config = await meshtasticManager.getDeviceConfig();
+        const config = await activeManager.getDeviceConfig();
         if (config) {
           // Hide node address from anonymous users
           if (!req.session.userId && config.basic) {
@@ -4389,7 +4596,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
 
-      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit);
+      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId);
       const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
       // Add hopCount for each traceroute
@@ -4416,7 +4623,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     }
 
     // 10. Device node numbers (nodes in the connected radio's local database)
-    result.deviceNodeNums = meshtasticManager.getDeviceNodeNums();
+    result.deviceNodeNums = activeManager.getDeviceNodeNums();
 
     res.json(result);
   } catch (error) {
@@ -4428,7 +4635,11 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 // User-initiated disconnect endpoint
 apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {
-    await meshtasticManager.userDisconnect();
+    const { sourceId: disconnectSourceId } = req.body;
+    const disconnectManager = (disconnectSourceId
+      ? (sourceManagerRegistry.getManager(disconnectSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    await disconnectManager.userDisconnect();
 
     // Audit log
     databaseService.auditLogAsync(
@@ -4449,7 +4660,11 @@ apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'
 // User-initiated reconnect endpoint
 apiRouter.post('/connection/reconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {
-    const success = await meshtasticManager.userReconnect();
+    const { sourceId: reconnectSourceId } = req.body;
+    const reconnectManager = (reconnectSourceId
+      ? (sourceManagerRegistry.getManager(reconnectSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    const success = await reconnectManager.userReconnect();
 
     // Audit log
     databaseService.auditLogAsync(
@@ -4471,9 +4686,11 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 });
 
 // Get detailed connection info (authenticated users only)
-apiRouter.get('/connection/info', requireAuth(), async (_req, res) => {
+apiRouter.get('/connection/info', requireAuth(), async (req, res) => {
   try {
-    const status = await meshtasticManager.getConnectionStatus();
+    const ciSourceId = req.query.sourceId as string | undefined;
+    const ciManager = (ciSourceId ? (sourceManagerRegistry.getManager(ciSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const status = await ciManager.getConnectionStatus();
     const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
@@ -4513,7 +4730,11 @@ apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
     }
 
     // Set the override
-    await meshtasticManager.setNodeIpOverride(nodeIp);
+    const { sourceId: connConfigSourceId } = req.body;
+    const connConfigManager = (connConfigSourceId
+      ? (sourceManagerRegistry.getManager(connConfigSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    await connConfigManager.setNodeIpOverride(nodeIp);
 
     // Audit log
     databaseService.auditLogAsync(
@@ -4538,14 +4759,22 @@ apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
 // Configuration endpoint for frontend
 apiRouter.get('/config', optionalAuth(), async (req, res) => {
   try {
-    // Get the local node number from settings to include rebootCount
-    const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+    // Get the local node number from settings to include rebootCount.
+    // Accepts ?sourceId= so multi-source deployments resolve the local node
+    // (and reboot count / display names) for the specific source the caller
+    // is rendering, rather than whichever source happened to write the
+    // global localNodeNum setting last.
+    const configSourceId = req.query.sourceId as string | undefined;
+    const localNodeNumStr = await databaseService.settings.getSettingForSource(
+      configSourceId ?? null,
+      'localNodeNum',
+    );
 
     let deviceMetadata = undefined;
     let localNodeInfo = undefined;
     if (localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);
-      const currentNode = await databaseService.nodes.getNode(localNodeNum);
+      const currentNode = await databaseService.nodes.getNode(localNodeNum, configSourceId);
 
       if (currentNode) {
         deviceMetadata = {
@@ -4582,9 +4811,11 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
 });
 
 // Device configuration endpoint
-apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (_req, res) => {
+apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (req, res) => {
   try {
-    const config = await meshtasticManager.getDeviceConfig();
+    const dcSourceId = req.query.sourceId as string | undefined;
+    const dcManager = (dcSourceId ? (sourceManagerRegistry.getManager(dcSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const config = await dcManager.getDeviceConfig();
     if (config) {
       res.json(config);
     } else {
@@ -4602,13 +4833,15 @@ apiRouter.get('/device-config', requirePermission('configuration', 'read'), asyn
 apiRouter.get('/device/backup', requirePermission('configuration', 'read'), async (req, res) => {
   try {
     const saveToFile = req.query.save === 'true';
+    const backupSourceId = req.query.sourceId as string | undefined;
+    const backupManager = backupSourceId ? (sourceManagerRegistry.getManager(backupSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     logger.info(`📦 Device backup requested (save=${saveToFile})...`);
 
     // Generate YAML backup using the device backup service
-    const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
+    const yamlBackup = await deviceBackupService.generateBackup(backupManager);
 
     // Get node ID for filename
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = backupManager.getLocalNodeInfo();
     const nodeId = localNodeInfo?.nodeId || '!unknown';
 
     if (saveToFile) {
@@ -5012,12 +5245,16 @@ apiRouter.post('/maintenance/run', requirePermission('configuration', 'write'), 
 });
 
 // Refresh nodes from device endpoint
-apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_req, res) => {
+apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     logger.debug('🔄 Manual node database refresh requested...');
 
+    const { sourceId: refreshSourceId } = req.body || {};
+    const refreshManager = (refreshSourceId
+      ? (sourceManagerRegistry.getManager(refreshSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
     // Trigger full node database refresh
-    await meshtasticManager.refreshNodeDatabase();
+    await refreshManager.refreshNodeDatabase();
 
     const nodeCount = await databaseService.nodes.getNodeCount();
     const channelCount = await databaseService.channels.getChannelCount();
@@ -5040,12 +5277,16 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_re
 });
 
 // Refresh channels from device endpoint
-apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), async (_req, res) => {
+apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), async (req, res) => {
   try {
     logger.debug('🔄 Manual channel refresh requested...');
 
+    const { sourceId: chanRefreshSourceId } = req.body;
+    const chanRefreshManager = (chanRefreshSourceId
+      ? (sourceManagerRegistry.getManager(chanRefreshSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
     // Trigger full node database refresh (includes channels)
-    await meshtasticManager.refreshNodeDatabase();
+    await chanRefreshManager.refreshNodeDatabase();
 
     const channelCount = await databaseService.channels.getChannelCount();
 
@@ -5068,12 +5309,15 @@ apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), asyn
 // Settings endpoints
 apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'write'), (req, res) => {
   try {
-    const { intervalMinutes } = req.body;
+    const { intervalMinutes, sourceId: traceIntervalSourceId } = req.body;
     if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 60) {
       return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).' });
     }
 
-    meshtasticManager.setTracerouteInterval(intervalMinutes);
+    const traceIntervalManager = (traceIntervalSourceId
+      ? (sourceManagerRegistry.getManager(traceIntervalSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    traceIntervalManager.setTracerouteInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting traceroute interval:', error);
@@ -5082,9 +5326,10 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
 });
 
 // Get auto-traceroute node filter settings
-apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), async (req, res) => {
   try {
-    const settings = await databaseService.getTracerouteFilterSettingsAsync();
+    const traceNodesSourceId = req.query.sourceId as string | undefined;
+    const settings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesSourceId);
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching auto-traceroute node filter:', error);
@@ -5238,7 +5483,8 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       return res.status(400).json({ error: 'filterHopsMin cannot be greater than filterHopsMax.' });
     }
 
-    // Update all settings
+    // Update all settings (scoped to source when provided)
+    const traceNodesPostSourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
     await databaseService.setTracerouteFilterSettingsAsync({
       enabled,
       nodeNums,
@@ -5258,10 +5504,10 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       filterHopsEnabled: validatedFilterHopsEnabled,
       filterHopsMin: validatedFilterHopsMin,
       filterHopsMax: validatedFilterHopsMax,
-    });
+    }, traceNodesPostSourceId);
 
     // Get the updated settings to return (includes resolved default values)
-    const updatedSettings = await databaseService.getTracerouteFilterSettingsAsync();
+    const updatedSettings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesPostSourceId);
 
     res.json({
       success: true,
@@ -5274,9 +5520,10 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
 });
 
 // Get auto-traceroute log (recent auto-traceroute attempts with success/fail status)
-apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'), async (req, res) => {
   try {
-    const log = await databaseService.getAutoTracerouteLogAsync(10);
+    const traceLogSourceId = req.query.sourceId as string | undefined;
+    const log = await databaseService.getAutoTracerouteLogAsync(10, traceLogSourceId);
     res.json({
       success: true,
       log,
@@ -5288,9 +5535,10 @@ apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'),
 });
 
 // Get auto time sync settings
-apiRouter.get('/settings/time-sync-nodes', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/time-sync-nodes', requirePermission('settings', 'read'), async (req, res) => {
   try {
-    const settings = await databaseService.getTimeSyncFilterSettingsAsync();
+    const sourceId = (req.query.sourceId as string | undefined) || undefined;
+    const settings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching auto time sync settings:', error);
@@ -5302,6 +5550,7 @@ apiRouter.get('/settings/time-sync-nodes', requirePermission('settings', 'read')
 apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write'), async (req, res) => {
   try {
     const { enabled, nodeNums, filterEnabled, expirationHours, intervalMinutes } = req.body;
+    const sourceId = (req.query.sourceId as string | undefined) || (req.body.sourceId as string | undefined) || undefined;
 
     // Validate input
     if (enabled !== undefined && typeof enabled !== 'boolean') {
@@ -5346,19 +5595,21 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
       filterEnabled,
       expirationHours: expirationHours !== undefined ? Number(expirationHours) : undefined,
       intervalMinutes: intervalMinutes !== undefined ? Number(intervalMinutes) : undefined,
-    });
+    }, sourceId);
 
     // Update the meshtastic manager interval if connected
+    const timeSyncSourceId = sourceId;
+    const timeSyncManager = timeSyncSourceId ? (sourceManagerRegistry.getManager(timeSyncSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     if (intervalMinutes !== undefined) {
-      meshtasticManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
+      timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
     } else if (enabled !== undefined) {
       // If only enabled/disabled changed, use existing interval
       const currentInterval = await databaseService.getAutoTimeSyncIntervalMinutesAsync();
-      meshtasticManager.setTimeSyncInterval(enabled ? currentInterval : 0);
+      timeSyncManager.setTimeSyncInterval(enabled ? currentInterval : 0);
     }
 
     // Get the updated settings to return
-    const updatedSettings = await databaseService.getTimeSyncFilterSettingsAsync();
+    const updatedSettings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
 
     res.json({
       success: true,
@@ -5371,15 +5622,25 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
 });
 
 // Get auto-ping settings and active sessions
-apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
   try {
-    const settings = {
-      autoPingEnabled: await databaseService.settings.getSetting('autoPingEnabled') === 'true',
-      autoPingIntervalSeconds: parseInt(await databaseService.settings.getSetting('autoPingIntervalSeconds') || '30', 10),
-      autoPingMaxPings: parseInt(await databaseService.settings.getSetting('autoPingMaxPings') || '20', 10),
-      autoPingTimeoutSeconds: parseInt(await databaseService.settings.getSetting('autoPingTimeoutSeconds') || '60', 10),
+    const autoPingSourceId = req.query.sourceId as string | undefined;
+    const autoPingManager = autoPingSourceId ? (sourceManagerRegistry.getManager(autoPingSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    // Per-source settings layered on top of globals (source override wins)
+    const sourceOverrides = autoPingSourceId
+      ? await databaseService.settings.getSourceSettings(autoPingSourceId)
+      : {};
+    const readSetting = async (key: string): Promise<string | null> => {
+      if (key in sourceOverrides) return sourceOverrides[key];
+      return await databaseService.settings.getSetting(key);
     };
-    const sessions = await meshtasticManager.getAutoPingSessions();
+    const settings = {
+      autoPingEnabled: (await readSetting('autoPingEnabled')) === 'true',
+      autoPingIntervalSeconds: parseInt((await readSetting('autoPingIntervalSeconds')) || '30', 10),
+      autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
+      autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
+    };
+    const sessions = await autoPingManager.getAutoPingSessions();
     res.json({ settings, sessions });
   } catch (error) {
     logger.error('Error fetching auto-ping settings:', error);
@@ -5391,37 +5652,56 @@ apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), asyn
 apiRouter.post('/settings/auto-ping', requirePermission('settings', 'write'), async (req, res) => {
   try {
     const { autoPingEnabled, autoPingIntervalSeconds, autoPingMaxPings, autoPingTimeoutSeconds } = req.body;
+    const autoPingSourceId = req.query.sourceId as string | undefined;
+    const writeSetting = async (key: string, value: string) => {
+      if (autoPingSourceId) {
+        await databaseService.settings.setSourceSetting(autoPingSourceId, key, value);
+      } else {
+        await databaseService.settings.setSetting(key, value);
+      }
+    };
+    const sourceOverrides = autoPingSourceId
+      ? await databaseService.settings.getSourceSettings(autoPingSourceId)
+      : {};
+    const readSetting = async (key: string): Promise<string | null> => {
+      if (key in sourceOverrides) return sourceOverrides[key];
+      return await databaseService.settings.getSetting(key);
+    };
 
     if (autoPingEnabled !== undefined) {
-      await databaseService.settings.setSetting('autoPingEnabled', String(autoPingEnabled));
+      await writeSetting('autoPingEnabled', String(autoPingEnabled));
+      sourceOverrides['autoPingEnabled'] = String(autoPingEnabled);
     }
     if (autoPingIntervalSeconds !== undefined) {
       const val = parseInt(String(autoPingIntervalSeconds), 10);
       if (isNaN(val) || val < 10) {
         return res.status(400).json({ error: 'Interval must be at least 10 seconds.' });
       }
-      await databaseService.settings.setSetting('autoPingIntervalSeconds', String(val));
+      await writeSetting('autoPingIntervalSeconds', String(val));
+      sourceOverrides['autoPingIntervalSeconds'] = String(val);
     }
     if (autoPingMaxPings !== undefined) {
       const val = parseInt(String(autoPingMaxPings), 10);
       if (isNaN(val) || val < 1 || val > 100) {
         return res.status(400).json({ error: 'Max pings must be between 1 and 100.' });
       }
-      await databaseService.settings.setSetting('autoPingMaxPings', String(val));
+      await writeSetting('autoPingMaxPings', String(val));
+      sourceOverrides['autoPingMaxPings'] = String(val);
     }
     if (autoPingTimeoutSeconds !== undefined) {
       const val = parseInt(String(autoPingTimeoutSeconds), 10);
       if (isNaN(val) || val < 10) {
         return res.status(400).json({ error: 'Timeout must be at least 10 seconds.' });
       }
-      await databaseService.settings.setSetting('autoPingTimeoutSeconds', String(val));
+      await writeSetting('autoPingTimeoutSeconds', String(val));
+      sourceOverrides['autoPingTimeoutSeconds'] = String(val);
     }
 
     const settings = {
-      autoPingEnabled: await databaseService.settings.getSetting('autoPingEnabled') === 'true',
-      autoPingIntervalSeconds: parseInt(await databaseService.settings.getSetting('autoPingIntervalSeconds') || '30', 10),
-      autoPingMaxPings: parseInt(await databaseService.settings.getSetting('autoPingMaxPings') || '20', 10),
-      autoPingTimeoutSeconds: parseInt(await databaseService.settings.getSetting('autoPingTimeoutSeconds') || '60', 10),
+      autoPingEnabled: (await readSetting('autoPingEnabled')) === 'true',
+      autoPingIntervalSeconds: parseInt((await readSetting('autoPingIntervalSeconds')) || '30', 10),
+      autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
+      autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
     };
 
     res.json({ success: true, settings });
@@ -5438,7 +5718,9 @@ apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'
     if (isNaN(nodeNum)) {
       return res.status(400).json({ error: 'Invalid node number.' });
     }
-    meshtasticManager.stopAutoPingSession(nodeNum, 'force_stopped');
+    const { sourceId: stopPingSourceId } = req.body || {};
+    const stopPingManager = stopPingSourceId ? (sourceManagerRegistry.getManager(stopPingSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    stopPingManager.stopAutoPingSession(nodeNum, 'force_stopped');
     res.json({ success: true });
   } catch (error) {
     logger.error('Error stopping auto-ping session:', error);
@@ -5447,9 +5729,10 @@ apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'
 });
 
 // Get auto key repair log (recent key repair attempts with success/fail status)
-apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'), async (req, res) => {
   try {
-    const log = await databaseService.getKeyRepairLogAsync(50);
+    const krSourceId = req.query.sourceId as string | undefined;
+    const log = await databaseService.getKeyRepairLogAsync(50, krSourceId);
     res.json({
       success: true,
       log,
@@ -5461,9 +5744,10 @@ apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'),
 });
 
 // Auto-delete-by-distance log
-apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 'read'), async (_req, res) => {
+apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 'read'), async (req, res) => {
   try {
-    const entries = await databaseService.misc.getDistanceDeleteLog(10);
+    const distLogSourceId = req.query.sourceId as string | undefined;
+    const entries = await databaseService.misc.getDistanceDeleteLog(10, distLogSourceId);
     res.json(entries);
   } catch (error) {
     logger.error('Error fetching distance-delete log:', error);
@@ -5472,9 +5756,13 @@ apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 're
 });
 
 // Auto-delete-by-distance run now
-apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings', 'write'), async (_req, res) => {
+apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings', 'write'), async (req, res) => {
   try {
-    const result = await autoDeleteByDistanceService.runNow();
+    const distDelSourceId =
+      (req.body && req.body.sourceId) ||
+      (req.query.sourceId as string | undefined) ||
+      undefined;
+    const result = await autoDeleteByDistanceService.runNow(distDelSourceId);
     res.json(result);
   } catch (error) {
     logger.error('Error running distance-delete:', error);
@@ -5487,18 +5775,19 @@ apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings'
 // Mark all nodes as welcomed (for auto-welcome feature)
 apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'write'), async (req, res) => {
   try {
-    const count = await databaseService.markAllNodesAsWelcomedAsync();
-    logger.info(`👋 Manually marked ${count} nodes as welcomed via API`);
+    const sourceId = (req.query.sourceId as string | undefined) ?? (req.body?.sourceId as string | undefined) ?? null;
+    const count = await databaseService.markAllNodesAsWelcomedAsync(sourceId);
+    logger.info(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
 
     // Audit log
     databaseService.auditLogAsync(
       req.user!.id,
       'mark_all_welcomed',
       'nodes',
-      `Marked ${count} nodes as welcomed`,
+      `Marked ${count} nodes as welcomed${sourceId ? ` for source ${sourceId}` : ''}`,
       req.ip || null,
       null,
-      JSON.stringify({ count })
+      JSON.stringify({ count, sourceId })
     );
 
     res.json({ success: true, count, message: `Marked ${count} nodes as welcomed` });
@@ -5757,11 +6046,19 @@ apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (r
 });
 
 // Auto-announce endpoints
-apiRouter.post('/announce/send', requirePermission('automation', 'write'), async (_req, res) => {
+apiRouter.post('/announce/send', requirePermission('automation', 'write'), async (req, res) => {
   try {
-    await meshtasticManager.sendAutoAnnouncement();
-    // Update last announcement time
-    await databaseService.settings.setSetting('lastAnnouncementTime', Date.now().toString());
+    const { sourceId: announceSourceId } = req.body;
+    const announceManager = (announceSourceId
+      ? (sourceManagerRegistry.getManager(announceSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+    await announceManager.sendAutoAnnouncement();
+    // Update last announcement time (per-source when known)
+    if (announceSourceId) {
+      await databaseService.settings.setSourceSetting(announceSourceId, 'lastAnnouncementTime', Date.now().toString());
+    } else {
+      await databaseService.settings.setSetting('lastAnnouncementTime', Date.now().toString());
+    }
     res.json({ success: true, message: 'Announcement sent successfully' });
   } catch (error) {
     logger.error('Error sending announcement:', error);
@@ -5769,9 +6066,10 @@ apiRouter.post('/announce/send', requirePermission('automation', 'write'), async
   }
 });
 
-apiRouter.get('/announce/last', requirePermission('automation', 'read'), async (_req, res) => {
+apiRouter.get('/announce/last', requirePermission('automation', 'read'), async (req, res) => {
   try {
-    const lastAnnouncementTime = await databaseService.settings.getSetting('lastAnnouncementTime');
+    const announceLastSourceId = (req.query.sourceId as string) || null;
+    const lastAnnouncementTime = await databaseService.settings.getSettingForSource(announceLastSourceId, 'lastAnnouncementTime');
     res.json({ lastAnnouncementTime: lastAnnouncementTime ? parseInt(lastAnnouncementTime) : null });
   } catch (error) {
     logger.error('Error fetching last announcement time:', error);
@@ -5786,7 +6084,9 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
     if (!message) {
       return res.status(400).json({ error: 'Missing message parameter' });
     }
-    const preview = await meshtasticManager.previewAnnouncementMessage(message);
+    const previewSourceId = req.query.sourceId as string | undefined;
+    const previewManager = previewSourceId ? (sourceManagerRegistry.getManager(previewSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const preview = await previewManager.previewAnnouncementMessage(message);
     res.json({ preview });
   } catch (error) {
     logger.error('Error generating announcement preview:', error);
@@ -5800,7 +6100,9 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
     const nodeCount = await databaseService.nodes.getNodeCount();
     await databaseService.purgeAllNodesAsync();
     // Trigger a node refresh after purging
-    await meshtasticManager.refreshNodeDatabase();
+    const { sourceId: purgeNodesSourceId } = req.body || {};
+    const purgeNodesManager = (purgeNodesSourceId ? (sourceManagerRegistry.getManager(purgeNodesSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await purgeNodesManager.refreshNodeDatabase();
 
     // Audit log
     databaseService.auditLogAsync(
@@ -5882,9 +6184,11 @@ apiRouter.post('/purge/traceroutes', requireAdmin(), async (req, res) => {
 
 // Configuration endpoints
 // GET current configuration
-apiRouter.get('/config/current', requirePermission('configuration', 'read'), (_req, res) => {
+apiRouter.get('/config/current', requirePermission('configuration', 'read'), (req, res) => {
   try {
-    const config = meshtasticManager.getCurrentConfig();
+    const ccSourceId = req.query.sourceId as string | undefined;
+    const ccManager = (ccSourceId ? (sourceManagerRegistry.getManager(ccSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const config = ccManager.getCurrentConfig();
     res.json(config);
   } catch (error) {
     logger.error('Error getting current config:', error);
@@ -5894,8 +6198,9 @@ apiRouter.get('/config/current', requirePermission('configuration', 'read'), (_r
 
 apiRouter.post('/config/device', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setDeviceConfig(config);
+    const { sourceId: cfgDevSourceId, ...config } = req.body;
+    const cfgDevManager = (cfgDevSourceId ? (sourceManagerRegistry.getManager(cfgDevSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgDevManager.setDeviceConfig(config);
     res.json({ success: true, message: 'Device configuration sent' });
   } catch (error) {
     logger.error('Error setting device config:', error);
@@ -5905,8 +6210,9 @@ apiRouter.post('/config/device', requirePermission('configuration', 'write'), as
 
 apiRouter.post('/config/network', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setNetworkConfig(config);
+    const { sourceId: cfgNetSourceId, ...config } = req.body;
+    const cfgNetManager = (cfgNetSourceId ? (sourceManagerRegistry.getManager(cfgNetSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgNetManager.setNetworkConfig(config);
     res.json({ success: true, message: 'Network configuration sent' });
   } catch (error) {
     logger.error('Error setting network config:', error);
@@ -5916,7 +6222,8 @@ apiRouter.post('/config/network', requirePermission('configuration', 'write'), a
 
 apiRouter.post('/config/lora', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
+    const { sourceId: cfgLoraSourceId, ...config } = req.body;
+    const cfgLoraManager = (cfgLoraSourceId ? (sourceManagerRegistry.getManager(cfgLoraSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
 
     // IMPORTANT: Always force txEnabled to true
     // MeshMonitor users need TX enabled to send messages
@@ -5927,7 +6234,7 @@ apiRouter.post('/config/lora', requirePermission('configuration', 'write'), asyn
     };
 
     logger.info(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
-    await meshtasticManager.setLoRaConfig(loraConfigToSet);
+    await cfgLoraManager.setLoRaConfig(loraConfigToSet);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
     logger.error('Error setting LoRa config:', error);
@@ -5937,8 +6244,9 @@ apiRouter.post('/config/lora', requirePermission('configuration', 'write'), asyn
 
 apiRouter.post('/config/position', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setPositionConfig(config);
+    const { sourceId: cfgPosSourceId, ...config } = req.body;
+    const cfgPosManager = (cfgPosSourceId ? (sourceManagerRegistry.getManager(cfgPosSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgPosManager.setPositionConfig(config);
     res.json({ success: true, message: 'Position configuration sent' });
   } catch (error) {
     logger.error('Error setting position config:', error);
@@ -5948,8 +6256,9 @@ apiRouter.post('/config/position', requirePermission('configuration', 'write'), 
 
 apiRouter.post('/config/mqtt', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setMQTTConfig(config);
+    const { sourceId: cfgMqttSourceId, ...config } = req.body;
+    const cfgMqttManager = (cfgMqttSourceId ? (sourceManagerRegistry.getManager(cfgMqttSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgMqttManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });
   } catch (error) {
     logger.error('Error setting MQTT config:', error);
@@ -5960,8 +6269,9 @@ apiRouter.post('/config/mqtt', requirePermission('configuration', 'write'), asyn
 apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write'), async (req, res) => {
   logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
   try {
-    const config = req.body;
-    await meshtasticManager.setNeighborInfoConfig(config);
+    const { sourceId: cfgNiSourceId, ...config } = req.body;
+    const cfgNiManager = (cfgNiSourceId ? (sourceManagerRegistry.getManager(cfgNiSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgNiManager.setNeighborInfoConfig(config);
     res.json({ success: true, message: 'NeighborInfo configuration sent' });
   } catch (error) {
     logger.error('Error setting NeighborInfo config:', error);
@@ -5971,8 +6281,9 @@ apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write
 
 apiRouter.post('/config/power', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setPowerConfig(config);
+    const { sourceId: cfgPwrSourceId, ...config } = req.body;
+    const cfgPwrManager = (cfgPwrSourceId ? (sourceManagerRegistry.getManager(cfgPwrSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgPwrManager.setPowerConfig(config);
     res.json({ success: true, message: 'Power configuration sent' });
   } catch (error) {
     logger.error('Error setting power config:', error);
@@ -5982,8 +6293,9 @@ apiRouter.post('/config/power', requirePermission('configuration', 'write'), asy
 
 apiRouter.post('/config/display', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setDisplayConfig(config);
+    const { sourceId: cfgDispSourceId, ...config } = req.body;
+    const cfgDispManager = (cfgDispSourceId ? (sourceManagerRegistry.getManager(cfgDispSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgDispManager.setDisplayConfig(config);
     res.json({ success: true, message: 'Display configuration sent' });
   } catch (error) {
     logger.error('Error setting display config:', error);
@@ -5993,8 +6305,9 @@ apiRouter.post('/config/display', requirePermission('configuration', 'write'), a
 
 apiRouter.post('/config/module/telemetry', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const config = req.body;
-    await meshtasticManager.setTelemetryConfig(config);
+    const { sourceId: cfgTelSourceId, ...config } = req.body;
+    const cfgTelManager = (cfgTelSourceId ? (sourceManagerRegistry.getManager(cfgTelSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgTelManager.setTelemetryConfig(config);
     res.json({ success: true, message: 'Telemetry configuration sent' });
   } catch (error) {
     logger.error('Error setting telemetry config:', error);
@@ -6007,7 +6320,8 @@ apiRouter.post('/config/module/telemetry', requirePermission('configuration', 'w
 apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { moduleType } = req.params;
-    const config = req.body;
+    const { sourceId: cfgModSourceId, ...config } = req.body;
+    const cfgModManager = (cfgModSourceId ? (sourceManagerRegistry.getManager(cfgModSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
 
     // Validate moduleType
     const validModuleTypes = ['extnotif', 'storeforward', 'rangetest', 'cannedmsg', 'audio',
@@ -6017,7 +6331,7 @@ apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 
       return;
     }
 
-    await meshtasticManager.setGenericModuleConfig(moduleType, config);
+    await cfgModManager.setGenericModuleConfig(moduleType, config);
     res.json({ success: true, message: `${moduleType} configuration sent` });
   } catch (error) {
     logger.error(`Error setting ${req.params.moduleType} config:`, error);
@@ -6027,12 +6341,13 @@ apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 
 
 apiRouter.post('/config/owner', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const { longName, shortName, isUnmessagable, isLicensed } = req.body;
+    const { longName, shortName, isUnmessagable, isLicensed, sourceId: ownerSourceId } = req.body;
     if (!longName || !shortName) {
       res.status(400).json({ error: 'longName and shortName are required' });
       return;
     }
-    await meshtasticManager.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
+    const ownerManager = (ownerSourceId ? (sourceManagerRegistry.getManager(ownerSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await ownerManager.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
     res.json({ success: true, message: 'Node owner updated' });
   } catch (error) {
     logger.error('Error setting node owner:', error);
@@ -6042,12 +6357,13 @@ apiRouter.post('/config/owner', requirePermission('configuration', 'write'), asy
 
 apiRouter.post('/config/request', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const { configType } = req.body;
+    const { configType, sourceId: cfgReqSourceId } = req.body;
     if (configType === undefined) {
       res.status(400).json({ error: 'configType is required' });
       return;
     }
-    await meshtasticManager.requestConfig(configType);
+    const cfgReqManager = (cfgReqSourceId ? (sourceManagerRegistry.getManager(cfgReqSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgReqManager.requestConfig(configType);
     res.json({ success: true, message: 'Config request sent' });
   } catch (error) {
     logger.error('Error requesting config:', error);
@@ -6057,12 +6373,13 @@ apiRouter.post('/config/request', requirePermission('configuration', 'write'), a
 
 apiRouter.post('/config/module/request', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const { configType } = req.body;
+    const { configType, sourceId: cfgModReqSourceId } = req.body;
     if (configType === undefined) {
       res.status(400).json({ error: 'configType is required' });
       return;
     }
-    await meshtasticManager.requestModuleConfig(configType);
+    const cfgModReqManager = (cfgModReqSourceId ? (sourceManagerRegistry.getManager(cfgModReqSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await cfgModReqManager.requestModuleConfig(configType);
     res.json({ success: true, message: 'Module config request sent' });
   } catch (error) {
     logger.error('Error requesting module config:', error);
@@ -6072,8 +6389,10 @@ apiRouter.post('/config/module/request', requirePermission('configuration', 'wri
 
 apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const seconds = req.body?.seconds || 10;
-    await meshtasticManager.rebootDevice(seconds);
+    const { seconds: rebootSeconds, sourceId: rebootSourceId } = req.body || {};
+    const seconds = rebootSeconds || 10;
+    const rebootManager = (rebootSourceId ? (sourceManagerRegistry.getManager(rebootSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    await rebootManager.rebootDevice(seconds);
     res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
   } catch (error) {
     logger.error('Error rebooting device:', error);
@@ -6085,14 +6404,15 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
 // Admin load config endpoint - requires admin role
 apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, configType, channelIndex } = req.body;
+    const { nodeNum, configType, channelIndex, sourceId: adminLoadSourceId } = req.body;
 
     if (!configType) {
       return res.status(400).json({ error: 'configType is required' });
     }
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const adminLoadManager = (adminLoadSourceId ? (sourceManagerRegistry.getManager(adminLoadSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (adminLoadManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = adminLoadManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     let config: any = null;
@@ -6100,7 +6420,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
     try {
       if (isLocalNode) {
         // Local node - use existing config or request it
-        let currentConfig = meshtasticManager.getCurrentConfig();
+        let currentConfig = adminLoadManager.getCurrentConfig();
         
         // Map config types to their numeric values (same as remote node mapping)
         const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
@@ -6170,18 +6490,18 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           logger.info(`Config type '${configType}' not available, requesting from device...`);
           try {
             if (configInfo.isModule) {
-              await meshtasticManager.requestModuleConfig(configInfo.type);
+              await adminLoadManager.requestModuleConfig(configInfo.type);
             } else {
-              await meshtasticManager.requestConfig(configInfo.type);
+              await adminLoadManager.requestConfig(configInfo.type);
             }
             // Wait a bit for response
             await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (error) {
             logger.warn(`Failed to request ${configType} config:`, error);
           }
-          
+
           // Check again
-          const retryConfig = meshtasticManager.getCurrentConfig();
+          const retryConfig = adminLoadManager.getCurrentConfig();
           if (!retryConfig) {
             return res.status(404).json({ error: `Device configuration not yet loaded. Please ensure the device is connected and try again in a few seconds.` });
           }
@@ -6252,9 +6572,12 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 fixedLatitude: 0,
                 fixedLongitude: 0
               };
-              // If fixedPosition is enabled, get the coordinates from the node's stored position
+              // If fixedPosition is enabled, get the coordinates from the node's stored position.
+              // Scope to adminLoadSourceId so multi-source deployments resolve the correct
+              // copy of the local node — otherwise we might pull fixedPosition coords from a
+              // stale row on a different source that shares the same nodeNum.
               if (finalConfig.deviceConfig.position.fixedPosition && localNodeNum) {
-                const nodeData = await databaseService.nodes.getNode(localNodeNum);
+                const nodeData = await databaseService.nodes.getNode(localNodeNum, adminLoadSourceId);
                 if (nodeData?.latitude && nodeData?.longitude) {
                   config.fixedLatitude = nodeData.latitude;
                   config.fixedLongitude = nodeData.longitude;
@@ -6399,7 +6722,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         }
 
         // Request config from remote node
-        const remoteConfig = await meshtasticManager.requestRemoteConfig(
+        const remoteConfig = await adminLoadManager.requestRemoteConfig(
           destinationNodeNum,
           configInfo.type,
           configInfo.isModule
@@ -6461,9 +6784,11 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               fixedLatitude: 0,
               fixedLongitude: 0
             };
-            // If fixedPosition is enabled, get the coordinates from the node's stored position
+            // If fixedPosition is enabled, get the coordinates from the node's stored position.
+            // Scope to adminLoadSourceId so the remote node lookup resolves the row
+            // belonging to the source the admin is operating on.
             if (remoteConfig.fixedPosition) {
-              const nodeData = await databaseService.nodes.getNode(destinationNodeNum);
+              const nodeData = await databaseService.nodes.getNode(destinationNodeNum, adminLoadSourceId);
               if (nodeData?.latitude && nodeData?.longitude) {
                 config.fixedLatitude = nodeData.latitude;
                 config.fixedLongitude = nodeData.longitude;
@@ -6531,7 +6856,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         }
         if (isLocalNode) {
           // Request channel config
-          await meshtasticManager.requestConfig(0); // CHANNEL_CONFIG = 0
+          await adminLoadManager.requestConfig(0); // CHANNEL_CONFIG = 0
           // Note: Channel config loading requires waiting for response, which is complex
           // For now, return a placeholder
           config = {
@@ -6567,10 +6892,11 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
 // This ensures we have a valid session passkey before making multiple requests
 apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum } = req.body;
+    const { nodeNum, sourceId: espSourceId } = req.body;
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const espManager = (espSourceId ? (sourceManagerRegistry.getManager(espSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (espManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = espManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
@@ -6579,17 +6905,17 @@ apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res)
     }
 
     // Check if we already have a valid session passkey
-    let sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
+    let sessionPasskey = espManager.getSessionPasskey(destinationNodeNum);
     if (!sessionPasskey) {
       logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
-      sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
+      sessionPasskey = await espManager.requestRemoteSessionPasskey(destinationNodeNum);
       if (!sessionPasskey) {
         return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}` });
       }
     }
 
     // Return status with expiry info
-    const status = meshtasticManager.getSessionPasskeyStatus(destinationNodeNum);
+    const status = espManager.getSessionPasskeyStatus(destinationNodeNum);
     return res.json({
       success: true,
       message: 'Session passkey available',
@@ -6605,10 +6931,11 @@ apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res)
 // This just checks the status without triggering a new request
 apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum } = req.body;
+    const { nodeNum, sourceId: spsSourceId } = req.body;
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const spsManager = (spsSourceId ? (sourceManagerRegistry.getManager(spsSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (spsManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = spsManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
@@ -6621,7 +6948,7 @@ apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res)
       });
     }
 
-    const status = meshtasticManager.getSessionPasskeyStatus(destinationNodeNum);
+    const status = spsManager.getSessionPasskeyStatus(destinationNodeNum);
     return res.json({ success: true, isLocalNode: false, ...status });
   } catch (error: any) {
     logger.error('Error getting session passkey status:', error);
@@ -6632,14 +6959,15 @@ apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res)
 // Admin get channel endpoint - requires admin role
 apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, channelIndex } = req.body;
+    const { nodeNum, channelIndex, sourceId: gcSourceId } = req.body;
 
     if (channelIndex === undefined) {
       return res.status(400).json({ error: 'channelIndex is required' });
     }
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const gcManager = (gcSourceId ? (sourceManagerRegistry.getManager(gcSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (gcManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = gcManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
@@ -6666,7 +6994,7 @@ apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
       }
     } else {
       // For remote node, request channel
-      const channel = await meshtasticManager.requestRemoteChannel(destinationNodeNum, channelIndex);
+      const channel = await gcManager.requestRemoteChannel(destinationNodeNum, channelIndex);
       if (channel) {
         // Convert channel response to our format
         // Protobuf may use snake_case or camelCase depending on how it's decoded
@@ -6723,20 +7051,24 @@ apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
 // Admin load owner endpoint - requires admin role
 apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum } = req.body;
+    const { nodeNum, sourceId: loSourceId } = req.body;
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const loManager = (loSourceId ? (sourceManagerRegistry.getManager(loSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (loManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = loManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
       // For local node, use cached info and database (public key is obtained from security config at connection)
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = loManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        // Get the public key from database if available (stored from security config)
+        // Get the public key from database if available (stored from security config).
+        // Scope the lookup to loSourceId so we read the local node row for this
+        // specific source, not a possibly-stale row with the same nodeNum on
+        // another source.
         let publicKeyBase64: string | undefined;
         if (localNodeInfo.nodeNum) {
-          const nodeData = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
+          const nodeData = await databaseService.nodes.getNode(localNodeInfo.nodeNum, loSourceId);
           publicKeyBase64 = nodeData?.publicKey || undefined;
         }
         return res.json({ owner: {
@@ -6751,7 +7083,7 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
       }
     } else {
       // For remote node, request owner info
-      const owner = await meshtasticManager.requestRemoteOwner(destinationNodeNum);
+      const owner = await loManager.requestRemoteOwner(destinationNodeNum);
       if (owner) {
         return res.json({ owner: {
           longName: owner.longName || '' ,
@@ -6772,18 +7104,21 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
 // Admin get device metadata endpoint - requires admin role
 apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum } = req.body;
+    const { nodeNum, sourceId: gdmSourceId } = req.body;
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const gdmManager = (gdmSourceId ? (sourceManagerRegistry.getManager(gdmSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (gdmManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = gdmManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
       // For local node, return cached device metadata from local node info
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = gdmManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        // Get node data from database for additional info
-        const nodeData = localNodeInfo.nodeNum ? await databaseService.nodes.getNode(localNodeInfo.nodeNum) : null;
+        // Get node data from database for additional info.
+        // Scope to gdmSourceId so multi-source deployments read the row
+        // belonging to the source whose device metadata is being requested.
+        const nodeData = localNodeInfo.nodeNum ? await databaseService.nodes.getNode(localNodeInfo.nodeNum, gdmSourceId) : null;
         return res.json({
           deviceMetadata: {
             firmwareVersion: localNodeInfo.firmwareVersion || 'Unknown',
@@ -6803,14 +7138,15 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
       }
     } else {
       // For remote node, request device metadata
-      const metadata = await meshtasticManager.requestRemoteDeviceMetadata(destinationNodeNum);
+      const metadata = await gdmManager.requestRemoteDeviceMetadata(destinationNodeNum);
       if (metadata) {
         // Successfully retrieved metadata - update hasRemoteAdmin flag and save metadata
         try {
           await databaseService.updateNodeRemoteAdminStatusAsync(
             destinationNodeNum,
             true,
-            JSON.stringify(metadata)
+            JSON.stringify(metadata),
+            gdmManager.sourceId
           );
           logger.info(`✅ Updated hasRemoteAdmin=true and saved metadata for node ${destinationNodeNum}`);
         } catch (dbError) {
@@ -6845,11 +7181,12 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
 // Admin reboot endpoint - sends reboot command to a node
 apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, seconds = 10 } = req.body;
+    const { nodeNum, seconds = 10, sourceId: arSourceId } = req.body;
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const arManager = (arSourceId ? (sourceManagerRegistry.getManager(arSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (arManager.getLocalNodeInfo()?.nodeNum || 0);
 
-    await meshtasticManager.sendRebootCommand(destinationNodeNum, Number(seconds));
+    await arManager.sendRebootCommand(destinationNodeNum, Number(seconds));
 
     logger.info(`✅ Sent reboot command to node ${destinationNodeNum} (in ${seconds} seconds)`);
     res.json({ success: true, message: `Reboot command sent (node will reboot in ${seconds} seconds)` });
@@ -6888,11 +7225,12 @@ apiRouter.delete('/admin/suppressed-ghosts/:nodeNum', requireAdmin(), async (req
 // Admin set-time endpoint - sets time on a node to current server time
 apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum } = req.body;
+    const { nodeNum, sourceId: astSourceId } = req.body;
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const astManager = (astSourceId ? (sourceManagerRegistry.getManager(astSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (astManager.getLocalNodeInfo()?.nodeNum || 0);
 
-    await meshtasticManager.sendSetTimeCommand(destinationNodeNum);
+    await astManager.sendSetTimeCommand(destinationNodeNum);
 
     logger.info(`✅ Sent set-time command to node ${destinationNodeNum}`);
     res.json({ success: true, message: 'Time sync command sent successfully' });
@@ -6906,14 +7244,15 @@ apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
 // Admin endpoint: Export configuration for remote nodes
 apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, channelIds, includeLoraConfig } = req.body;
+    const { nodeNum, channelIds, includeLoraConfig, sourceId: aecSourceId } = req.body;
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
     }
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const aecManager = (aecSourceId ? (sourceManagerRegistry.getManager(aecSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (aecManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = aecManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     const channelUrlService = (await import('./services/channelUrlService.js')).default;
@@ -6934,7 +7273,7 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
         }
       } else {
         // For remote node, fetch channel
-        const channel = await meshtasticManager.requestRemoteChannel(destinationNodeNum, channelId);
+        const channel = await aecManager.requestRemoteChannel(destinationNodeNum, channelId);
         if (channel) {
           const settings = channel.settings || {};
           const name = settings.name || '';
@@ -6978,7 +7317,7 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
     let loraConfig = undefined;
     if (includeLoraConfig) {
       if (isLocalNode) {
-        const deviceConfig = await meshtasticManager.getDeviceConfig();
+        const deviceConfig = await aecManager.getDeviceConfig();
         if (deviceConfig?.lora) {
           loraConfig = {
             usePreset: deviceConfig.lora.usePreset,
@@ -6998,7 +7337,7 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
         }
       } else {
         // For remote node, fetch LoRa config
-        const loraConfigData = await meshtasticManager.requestRemoteConfig(destinationNodeNum, 5, false); // LORA_CONFIG = 5
+        const loraConfigData = await aecManager.requestRemoteConfig(destinationNodeNum, 5, false); // LORA_CONFIG = 5
         if (loraConfigData) {
           loraConfig = {
             usePreset: loraConfigData.usePreset,
@@ -7035,14 +7374,15 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
 // Admin endpoint: Import configuration for remote nodes
 apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
   try {
-    const { nodeNum, url: configUrl } = req.body;
+    const { nodeNum, url: configUrl, sourceId: aicSourceId } = req.body;
 
     if (!configUrl || typeof configUrl !== 'string') {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const aicManager = (aicSourceId ? (sourceManagerRegistry.getManager(aicSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (aicManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = aicManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     logger.info(`📥 Importing configuration from URL to node ${destinationNodeNum}: ${configUrl}`);
@@ -7065,7 +7405,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
     if (isLocalNode) {
       // Use existing local import logic
       try {
-        await meshtasticManager.beginEditSettings();
+        await aicManager.beginEditSettings();
       } catch (error) {
         logger.error(`❌ Failed to begin edit settings transaction:`, error);
         throw new Error('Failed to start configuration transaction');
@@ -7080,7 +7420,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
             if (role === undefined) {
               role = i === 0 ? 1 : 2;
             }
-            await meshtasticManager.setChannelConfig(i, {
+            await aicManager.setChannelConfig(i, {
               name: channel.name || '',
               psk: channel.psk === 'none' ? undefined : channel.psk,
               role: role,
@@ -7102,7 +7442,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
             ...decoded.loraConfig,
             txEnabled: true,
           };
-          await meshtasticManager.setLoRaConfig(loraConfigToImport);
+          await aicManager.setLoRaConfig(loraConfigToImport);
           loraImported = true;
           requiresReboot = true;
         } catch (error) {
@@ -7110,13 +7450,13 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
         }
       }
 
-      await meshtasticManager.commitEditSettings();
+      await aicManager.commitEditSettings();
     } else {
-      // For remote node, use admin commands via meshtasticManager
+      // For remote node, use admin commands via aicManager
       // Ensure session passkey
-      let sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
+      let sessionPasskey = aicManager.getSessionPasskey(destinationNodeNum);
       if (!sessionPasskey) {
-        sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
+        sessionPasskey = await aicManager.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
         }
@@ -7139,7 +7479,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
               downlinkEnabled: channel.downlinkEnabled,
               positionPrecision: channel.positionPrecision,
             }, sessionPasskey);
-            await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+            await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
             importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
             // Small delay between channel updates for remote nodes
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -7157,7 +7497,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
             txEnabled: true,
           };
           const adminMessage = protobufService.createSetLoRaConfigMessage(loraConfigToImport, sessionPasskey);
-          await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+          await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
           loraImported = true;
           requiresReboot = true;
         } catch (error) {
@@ -7183,25 +7523,26 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
 
 apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
   try {
-    const { command, nodeNum, ...params } = req.body;
+    const { command, nodeNum, sourceId: acSourceId, ...params } = req.body;
 
     if (!command) {
       return res.status(400).json({ error: 'Command is required' });
     }
 
-    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const acManager = (acSourceId ? (sourceManagerRegistry.getManager(acSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (acManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = acManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     // Get or request session passkey for remote nodes
     let sessionPasskey: Uint8Array | null = null;
     if (!isLocalNode) {
-      sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
+      sessionPasskey = acManager.getSessionPasskey(destinationNodeNum);
       if (sessionPasskey) {
         logger.info(`🔑 Using cached session passkey for admin command to remote node ${destinationNodeNum}`);
       } else {
         logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one for admin command...`);
-        sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
+        sessionPasskey = await acManager.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           logger.error(`❌ Failed to obtain session passkey for remote node ${destinationNodeNum} after 45s`);
           return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}. The node may be unreachable or not responding.` });
@@ -7267,7 +7608,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
             altitude || 0,
             sessionPasskey || undefined
           );
-          await meshtasticManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
+          await acManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
 
           // Immediately update the local node's position in the database so it's correct
           // before any stale position broadcast arrives from the device firmware.
@@ -7339,7 +7680,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         {
           let configToSend = params.config;
           if (isLocalNode) {
-            const existingKeys = meshtasticManager.getSecurityKeys();
+            const existingKeys = acManager.getSecurityKeys();
             configToSend = {
               ...params.config,
               // Include existing keys if not explicitly provided
@@ -7416,12 +7757,12 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     }
 
     // Send the admin command
-    await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+    await acManager.sendAdminCommand(adminMessage, destinationNodeNum);
 
     // For setSecurityConfig on the local node, update the cached config immediately
     // so the frontend reads back the correct values before the next config sync
     if (command === 'setSecurityConfig' && isLocalNode && params.config) {
-      meshtasticManager.updateCachedDeviceConfig('security', {
+      acManager.updateCachedDeviceConfig('security', {
         isManaged: params.config.isManaged,
         serialEnabled: params.config.serialEnabled,
         debugLogApiEnabled: params.config.debugLogApiEnabled,
@@ -7450,7 +7791,8 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         await databaseService.updateNodeRemoteAdminStatusAsync(
           destinationNodeNum,
           true,
-          null  // Don't overwrite existing metadata, just set the flag
+          null,  // Don't overwrite existing metadata, just set the flag
+          acManager.sourceId
         );
         logger.info(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
       } catch (dbError) {
@@ -7471,10 +7813,12 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
 
 apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const seconds = req.body?.seconds || 0;
+    const { seconds: purgeSeconds, sourceId: purgeSourceId } = req.body || {};
+    const seconds = purgeSeconds || 0;
+    const purgeManager = (purgeSourceId ? (sourceManagerRegistry.getManager(purgeSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
 
     // Purge the device's node database
-    await meshtasticManager.purgeNodeDb(seconds);
+    await purgeManager.purgeNodeDb(seconds);
 
     // Also purge the local database
     logger.info('🗑️ Purging local node database');
@@ -7855,43 +8199,65 @@ apiRouter.put('/push/vapid-subject', requireAdmin(), async (req, res) => {
 });
 
 // Subscribe to push notifications
-apiRouter.post('/push/subscribe', optionalAuth(), async (req, res) => {
-  try {
-    const { subscription } = req.body;
+apiRouter.post(
+  '/push/subscribe',
+  optionalAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'body' }),
+  async (req, res) => {
+    try {
+      const { subscription, sourceId } = req.body;
 
-    if (!subscription || !subscription.endpoint || !subscription.keys) {
-      return res.status(400).json({ error: 'Invalid subscription data' });
+      if (!subscription || !subscription.endpoint || !subscription.keys) {
+        return res.status(400).json({ error: 'Invalid subscription data' });
+      }
+      if (!sourceId || typeof sourceId !== 'string') {
+        return res.status(400).json({ error: 'sourceId is required' });
+      }
+
+      // Validate source exists
+      const source = await databaseService.sources.getSource(sourceId);
+      if (!source) {
+        return res.status(400).json({ error: `Unknown sourceId: ${sourceId}` });
+      }
+
+      const userId = req.session?.userId;
+      const userAgent = req.headers['user-agent'];
+
+      await pushNotificationService.saveSubscription(userId, subscription, userAgent, sourceId);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.error('Error saving push subscription:', error);
+      res.status(500).json({ error: error.message || 'Failed to save subscription' });
     }
-
-    const userId = req.session?.userId;
-    const userAgent = req.headers['user-agent'];
-
-    await pushNotificationService.saveSubscription(userId, subscription, userAgent);
-
-    res.json({ success: true });
-  } catch (error: any) {
-    logger.error('Error saving push subscription:', error);
-    res.status(500).json({ error: error.message || 'Failed to save subscription' });
   }
-});
+);
 
 // Unsubscribe from push notifications
-apiRouter.post('/push/unsubscribe', optionalAuth(), async (req, res) => {
-  try {
-    const { endpoint } = req.body;
+apiRouter.post(
+  '/push/unsubscribe',
+  optionalAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'body' }),
+  async (req, res) => {
+    try {
+      const { endpoint, sourceId } = req.body;
 
-    if (!endpoint) {
-      return res.status(400).json({ error: 'Endpoint is required' });
+      if (!endpoint) {
+        return res.status(400).json({ error: 'Endpoint is required' });
+      }
+      if (!sourceId || typeof sourceId !== 'string') {
+        return res.status(400).json({ error: 'sourceId is required' });
+      }
+
+      await pushNotificationService.removeSubscription(endpoint);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.error('Error removing push subscription:', error);
+      res.status(500).json({ error: error.message || 'Failed to remove subscription' });
     }
-
-    await pushNotificationService.removeSubscription(endpoint);
-
-    res.json({ success: true });
-  } catch (error: any) {
-    logger.error('Error removing push subscription:', error);
-    res.status(500).json({ error: error.message || 'Failed to remove subscription' });
   }
-});
+);
 
 // Test push notification (admin only)
 apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
@@ -7926,14 +8292,22 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
 });
 
 // Get notification preferences (unified for Web Push and Apprise)
-apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
+apiRouter.get(
+  '/push/preferences',
+  requireAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'query' }),
+  async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const prefs = await getUserNotificationPreferencesAsync(userId);
+    const sourceId = typeof req.query.sourceId === 'string' && req.query.sourceId
+      ? req.query.sourceId
+      : undefined;
+
+    const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
 
     if (prefs) {
       res.json(prefs);
@@ -7963,15 +8337,24 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
     logger.error('Error loading notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to load preferences' });
   }
-});
+  }
+);
 
 // Save notification preferences (unified for Web Push and Apprise)
-apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
+apiRouter.post(
+  '/push/preferences',
+  requireAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'body' }),
+  async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
+
+    const sourceId = typeof req.body?.sourceId === 'string' && req.body.sourceId
+      ? req.body.sourceId
+      : undefined;
 
     const {
       enableWebPush,
@@ -8074,11 +8457,11 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       mutedDMs: mutedDMs ?? [],
     };
 
-    const success = await saveUserNotificationPreferencesAsync(userId, prefs);
+    const success = await saveUserNotificationPreferencesAsync(userId, prefs, sourceId);
 
     if (success) {
       logger.info(
-        `✅ Saved notification preferences for user ${userId} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`
+        `✅ Saved notification preferences for user ${userId} source=${sourceId ?? '(default)'} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`
       );
       res.json({ success: true });
     } else {
@@ -8088,7 +8471,8 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
     logger.error('Error saving notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to save preferences' });
   }
-});
+  }
+);
 
 // ==========================================
 // Apprise Notification Endpoints
@@ -8110,15 +8494,32 @@ apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
 });
 
 // Send test Apprise notification (admin only)
-apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
+apiRouter.post(
+  '/apprise/test',
+  requireAdmin(),
+  requirePermission('settings', 'write', { sourceIdFrom: 'body' }),
+  async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Not authenticated' });
     }
 
-    // Get user's Apprise URLs from their preferences
-    const prefs = await getUserNotificationPreferencesAsync(userId);
+    const sourceId = typeof req.body?.sourceId === 'string' && req.body.sourceId
+      ? req.body.sourceId
+      : undefined;
+    if (!sourceId) {
+      return res.status(400).json({ success: false, message: 'sourceId is required' });
+    }
+
+    // Resolve source for sourceName
+    const source = await databaseService.sources.getSource(sourceId);
+    if (!source) {
+      return res.status(400).json({ success: false, message: `Unknown sourceId: ${sourceId}` });
+    }
+
+    // Get user's Apprise URLs from their preferences (per-source)
+    const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
     if (!prefs || !prefs.appriseUrls || prefs.appriseUrls.length === 0) {
       return res.json({
         success: false,
@@ -8140,6 +8541,8 @@ apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
         title: 'Test Notification',
         body,
         type: 'info',
+        sourceId,
+        sourceName: source.name ?? sourceId,
       },
       prefs.appriseUrls
     );
@@ -8153,7 +8556,8 @@ apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
     logger.error('Error sending test Apprise notification:', error);
     res.status(500).json({ error: error.message || 'Failed to send test notification' });
   }
-});
+  }
+);
 
 // Get configured Apprise URLs (admin only)
 apiRouter.get('/apprise/urls', requireAdmin(), async (_req, res) => {
@@ -8846,17 +9250,8 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     }
 
     // Common environment variables for all trigger types
-    // When Virtual Node is enabled, route scripts through it to avoid opening a
-    // second TCP connection to the physical node (which kills MeshMonitor's connection)
-    let meshtasticIp: string;
-    let meshtasticPort: string;
-    if (env.enableVirtualNode) {
-      meshtasticIp = '127.0.0.1';
-      meshtasticPort = String(env.virtualNodePort);
-    } else {
-      meshtasticIp = process.env.MESHTASTIC_NODE_IP || process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
-      meshtasticPort = process.env.MESHTASTIC_NODE_PORT || process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
-    }
+    const meshtasticIp = process.env.MESHTASTIC_NODE_IP || process.env.MESHTASTIC_IP || process.env.NODE_IP || '127.0.0.1';
+    const meshtasticPort = process.env.MESHTASTIC_NODE_PORT || process.env.MESHTASTIC_PORT || process.env.NODE_PORT || '4403';
     scriptEnv.IP = meshtasticIp;
     scriptEnv.PORT = meshtasticPort;
     scriptEnv.MESHTASTIC_IP = meshtasticIp;
@@ -9215,43 +9610,6 @@ if (BASE_URL) {
 }
 
 // Function to rewrite HTML with BASE_URL at runtime
-const rewriteHtml = (htmlContent: string, baseUrl: string, analyticsScript?: string): string => {
-  if (!baseUrl) return htmlContent;
-
-  // Add <base> tag to set the base URL for all relative paths
-  // This ensures that all relative URLs (like /api/config) resolve from the base URL
-  // instead of the current page URL (like /api/auth/oidc/callback)
-  const baseTag = `<base href="${baseUrl}/">`;
-
-  // Insert the base tag right after <head>
-  let rewritten = htmlContent.replace(/<head>/, `<head>\n    ${baseTag}`);
-
-  // Inject analytics script after the base tag if provided
-  if (analyticsScript) {
-    rewritten = rewritten.replace(
-      baseTag,
-      `${baseTag}\n    ${analyticsScript}`
-    );
-  }
-
-  // Replace asset paths in the HTML
-  rewritten = rewritten
-    .replace(/href="\/assets\//g, `href="${baseUrl}/assets/`)
-    .replace(/src="\/assets\//g, `src="${baseUrl}/assets/`)
-    .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`)
-    .replace(/href="\/favicon\.ico"/g, `href="${baseUrl}/favicon.ico"`)
-    .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
-    .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
-    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`)
-    // CORS detection script
-    .replace(/src="\/cors-detection\.js"/g, `src="${baseUrl}/cors-detection.js"`)
-    // PWA-related paths
-    .replace(/href="\/manifest\.webmanifest"/g, `href="${baseUrl}/manifest.webmanifest"`)
-    .replace(/src="\/registerSW\.js"/g, `src="${baseUrl}/registerSW.js"`);
-
-  return rewritten;
-};
-
 // Cache for rewritten HTML to avoid repeated file reads
 let cachedHtml: string | null = null;
 let cachedRewrittenHtml: string | null = null;
@@ -9366,29 +9724,45 @@ if (BASE_URL) {
     res.type('html').send(cachedRewrittenHtml);
   });
 } else {
-  // Normal static file serving for root deployment
-  app.use(express.static(buildPath));
+  // Normal static file serving for root deployment.
+  //
+  // IMPORTANT: `index: false` disables express.static's automatic index.html
+  // serving. We handle index.html ourselves (below) so we can inject the
+  // configured analytics script into <head>. Without this flag, a request
+  // for `/` would be served by static middleware with the raw index.html,
+  // bypassing analytics injection entirely — which is the bug that caused
+  // GA4 tags to silently not appear on root deployments.
+  app.use(express.static(buildPath, { index: false }));
 
   // Serve embed page (before SPA fallback)
-  app.get('/embed/:profileId', createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
-    if (!cachedEmbedHtml) {
+  app.get('/embed/:profileId', createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {
+    if (!cachedRewrittenEmbedHtml) {
       const embedHtmlPath = path.join(buildPath, 'embed.html');
       if (!fs.existsSync(embedHtmlPath)) {
         return res.status(404).send('Embed page not found');
       }
       cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
+      const embedAnalyticsScript = await getAnalyticsScript();
+      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
     }
     res.setHeader('Content-Type', 'text/html');
-    res.send(cachedEmbedHtml);
+    res.send(cachedRewrittenEmbedHtml);
   });
 
   // Catch all handler for SPA routing - skip API routes
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Skip if this is an API route
     if (req.path.startsWith('/api')) {
       return next();
     }
-    res.sendFile(path.join(buildPath, 'index.html'));
+    // Serve cached rewritten HTML (with analytics injected)
+    if (!cachedRewrittenHtml) {
+      const htmlPath = path.join(buildPath, 'index.html');
+      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
+      const analyticsScript = await getAnalyticsScript();
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
+    }
+    res.type('html').send(cachedRewrittenHtml);
   });
 }
 
@@ -9429,17 +9803,6 @@ function gracefulShutdown(reason: string): void {
       logger.debug('✅ Meshtastic connection closed');
     } catch (error) {
       logger.error('Error disconnecting from Meshtastic:', error);
-    }
-
-    // Stop virtual node server
-    const virtualNodeServer = (global as any).virtualNodeServer;
-    if (virtualNodeServer) {
-      try {
-        virtualNodeServer.stop();
-        logger.debug('✅ Virtual node server stopped');
-      } catch (error) {
-        logger.error('Error stopping virtual node server:', error);
-      }
     }
 
     // Close database connections
@@ -9515,6 +9878,16 @@ let server: ReturnType<typeof app.listen>;
     process.exit(1);
   }
 
+  // Eagerly load Meshtastic protobuf definitions so source-independent routes
+  // (e.g. /api/channels/decode-url) work even before any source manager has started.
+  try {
+    const { loadProtobufDefinitions } = await import('./protobufLoader.js');
+    await loadProtobufDefinitions();
+    logger.info('✅ Protobuf definitions loaded');
+  } catch (error) {
+    logger.error('❌ Failed to load protobuf definitions:', error);
+  }
+
   // Eagerly populate embed origins cache so first CORS check works
   refreshEmbedOriginsCache();
 
@@ -9533,15 +9906,22 @@ let server: ReturnType<typeof app.listen>;
       try {
         const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
       if (env.oidcEnabled) enabledFeatures.push('OIDC');
-      if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
       if (env.accessLogEnabled) enabledFeatures.push('Access Logging');
       if (pushNotificationService.isAvailable()) enabledFeatures.push('Web Push');
       if (appriseNotificationService.isAvailable()) enabledFeatures.push('Apprise');
 
-      serverEventNotificationService.notifyServerStart({
-        version: packageJson.version,
-        features: enabledFeatures,
-      });
+      // Phase C: dispatch server-start per source so per-source subscribers/permissions apply
+      const enabledSources = await databaseService.sources.getEnabledSources();
+      if (enabledSources.length === 0) {
+        logger.debug('No enabled sources — skipping server-start notification');
+      }
+      for (const src of enabledSources) {
+        await serverEventNotificationService.notifyServerStart(
+          { version: packageJson.version, features: enabledFeatures },
+          src.id,
+          src.name
+        );
+      }
     } catch (error) {
       logger.error('Failed to send server start notification:', error);
     }

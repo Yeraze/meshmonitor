@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { kmToMiles } from '../utils/distance';
 import { useSettings } from '../contexts/SettingsContext';
@@ -47,6 +48,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const { distanceUnit } = useSettings();
 
@@ -90,7 +92,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   // Fetch log entries
   const fetchLog = useCallback(async () => {
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings/distance-delete/log`);
+      const response = await csrfFetch(`${baseUrl}/api/settings/distance-delete/log${sourceQuery}`);
       if (response.ok) {
         const data = await response.json();
         setLogEntries(data);
@@ -98,7 +100,13 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
     } catch (error) {
       // Silently fail — log is not critical
     }
-  }, [csrfFetch, baseUrl]);
+  }, [csrfFetch, baseUrl, sourceQuery]);
+
+  // Reset log entries when the selected source changes so stale per-source
+  // history doesn't briefly flash before the new fetch lands.
+  useEffect(() => {
+    setLogEntries([]);
+  }, [sourceQuery]);
 
   useEffect(() => {
     fetchLog();
@@ -123,7 +131,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
       if (!isNaN(lat)) settings.autoDeleteByDistanceLat = String(lat);
       if (!isNaN(lon)) settings.autoDeleteByDistanceLon = String(lon);
 
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
@@ -172,7 +180,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   const handleRunNow = useCallback(async () => {
     setIsRunning(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings/distance-delete/run-now`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings/distance-delete/run-now${sourceQuery}`, {
         method: 'POST',
       });
       if (response.ok) {
@@ -190,7 +198,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
     } finally {
       setIsRunning(false);
     }
-  }, [csrfFetch, baseUrl, showToast, t, fetchLog]);
+  }, [csrfFetch, baseUrl, showToast, t, fetchLog, sourceQuery]);
 
   // Use Current Node Position
   const handleUseNodePosition = useCallback(() => {

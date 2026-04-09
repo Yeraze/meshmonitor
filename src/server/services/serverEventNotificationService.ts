@@ -6,30 +6,46 @@ interface ServerStartInfo {
   features: string[];
 }
 
+interface SourceConnectionState {
+  hasInitialConnection: boolean;
+  wasConnected: boolean;
+  lastDisconnectTime: number;
+}
+
 /**
  * Server Event Notification Service
  *
  * Sends notifications for server-level events:
  * - Server start (with version and enabled features)
- * - Node connection status changes (disconnect/reconnect)
+ * - Node connection status changes (disconnect/reconnect), tracked per source
  *
- * The initial boot connection is skipped - we only notify on:
- * - Disconnects that happen after the initial connection
- * - Reconnects after a disconnect
+ * The initial boot connection per source is skipped — we only notify on:
+ * - Disconnects that happen after the initial connection for that source
+ * - Reconnects after a disconnect for that source
  */
 class ServerEventNotificationService {
-  private hasInitialConnection: boolean = false;
-  private wasConnected: boolean = false;
   private serverStartTime: number = 0;
-  private lastDisconnectTime: number = 0;
+  // Per-source connection state — Phase C
+  private sourceState: Map<string, SourceConnectionState> = new Map();
+
+  private getOrInitState(sourceId: string): SourceConnectionState {
+    let state = this.sourceState.get(sourceId);
+    if (!state) {
+      state = { hasInitialConnection: false, wasConnected: false, lastDisconnectTime: 0 };
+      this.sourceState.set(sourceId, state);
+    }
+    return state;
+  }
 
   /**
-   * Call this when the server starts to send a startup notification
+   * Call this when the server starts to send a startup notification.
+   * Phase C: server-start is a global event but is dispatched per source so each source's
+   * subscribers (with permission) hear about it.
    */
-  public async notifyServerStart(info: ServerStartInfo): Promise<void> {
+  public async notifyServerStart(info: ServerStartInfo, sourceId: string, sourceName: string): Promise<void> {
     this.serverStartTime = Date.now();
-    this.hasInitialConnection = false;
-    this.wasConnected = false;
+    // Reset per-source state on a fresh server start
+    this.sourceState.set(sourceId, { hasInitialConnection: false, wasConnected: false, lastDisconnectTime: 0 });
 
     try {
       const featuresText = info.features.length > 0
@@ -37,48 +53,54 @@ class ServerEventNotificationService {
         : 'No optional features enabled';
 
       const payload = {
-        title: `MeshMonitor Started (v${info.version})`,
-        body: featuresText,
+        title: `[${sourceName}] MeshMonitor Started (v${info.version})`,
+        body: `[${sourceName}] ${featuresText}`,
         type: 'info' as const,
+        sourceId,
+        sourceName,
       };
 
       await notificationService.broadcastToPreferenceUsers('notifyOnServerEvents', payload);
-      logger.info(`Server start notification sent for v${info.version}`);
+      logger.info(`Server start notification sent for v${info.version} on source ${sourceId}`);
     } catch (error) {
       logger.error('Error sending server start notification:', error);
     }
   }
 
   /**
-   * Call this when the node connection is established
-   * This is called from meshtasticManager's handleConnected
+   * Call this when a source's node connection is established.
+   * This is called from meshtasticManager's handleConnected.
    */
-  public async notifyNodeConnected(): Promise<void> {
-    // Skip the initial boot connection
-    if (!this.hasInitialConnection) {
-      this.hasInitialConnection = true;
-      this.wasConnected = true;
-      logger.debug('Initial node connection established (no notification sent)');
+  public async notifyNodeConnected(sourceId: string, sourceName: string): Promise<void> {
+    const state = this.getOrInitState(sourceId);
+
+    // Skip the initial boot connection for this source
+    if (!state.hasInitialConnection) {
+      state.hasInitialConnection = true;
+      state.wasConnected = true;
+      logger.debug(`Initial node connection established for source ${sourceId} (no notification sent)`);
       return;
     }
 
     // Only notify if we were previously disconnected
-    if (!this.wasConnected) {
-      this.wasConnected = true;
+    if (!state.wasConnected) {
+      state.wasConnected = true;
 
       try {
-        const disconnectDuration = this.lastDisconnectTime > 0
-          ? this.formatDuration(Date.now() - this.lastDisconnectTime)
+        const disconnectDuration = state.lastDisconnectTime > 0
+          ? this.formatDuration(Date.now() - state.lastDisconnectTime)
           : 'unknown duration';
 
         const payload = {
-          title: 'Node Reconnected',
-          body: `Connection to Meshtastic node restored (was offline for ${disconnectDuration})`,
+          title: `[${sourceName}] Node Reconnected`,
+          body: `[${sourceName}] Connection to Meshtastic node restored (was offline for ${disconnectDuration})`,
           type: 'success' as const,
+          sourceId,
+          sourceName,
         };
 
         await notificationService.broadcastToPreferenceUsers('notifyOnServerEvents', payload);
-        logger.info('Node reconnect notification sent');
+        logger.info(`Node reconnect notification sent for source ${sourceId}`);
       } catch (error) {
         logger.error('Error sending node reconnect notification:', error);
       }
@@ -86,34 +108,38 @@ class ServerEventNotificationService {
   }
 
   /**
-   * Call this when the node connection is lost
-   * This is called from meshtasticManager's handleDisconnected
+   * Call this when a source's node connection is lost.
+   * This is called from meshtasticManager's handleDisconnected.
    */
-  public async notifyNodeDisconnected(): Promise<void> {
+  public async notifyNodeDisconnected(sourceId: string, sourceName: string): Promise<void> {
+    const state = this.getOrInitState(sourceId);
+
     // Skip if we haven't had an initial connection yet
-    if (!this.hasInitialConnection) {
-      logger.debug('Node disconnect before initial connection (no notification sent)');
+    if (!state.hasInitialConnection) {
+      logger.debug(`Node disconnect before initial connection on source ${sourceId} (no notification sent)`);
       return;
     }
 
     // Skip if we're already marked as disconnected
-    if (!this.wasConnected) {
-      logger.debug('Already disconnected (no duplicate notification)');
+    if (!state.wasConnected) {
+      logger.debug(`Source ${sourceId} already disconnected (no duplicate notification)`);
       return;
     }
 
-    this.wasConnected = false;
-    this.lastDisconnectTime = Date.now();
+    state.wasConnected = false;
+    state.lastDisconnectTime = Date.now();
 
     try {
       const payload = {
-        title: 'Node Disconnected',
-        body: 'Lost connection to Meshtastic node',
+        title: `[${sourceName}] Node Disconnected`,
+        body: `[${sourceName}] Lost connection to Meshtastic node`,
         type: 'warning' as const,
+        sourceId,
+        sourceName,
       };
 
       await notificationService.broadcastToPreferenceUsers('notifyOnServerEvents', payload);
-      logger.info('Node disconnect notification sent');
+      logger.info(`Node disconnect notification sent for source ${sourceId}`);
     } catch (error) {
       logger.error('Error sending node disconnect notification:', error);
     }
@@ -141,29 +167,34 @@ class ServerEventNotificationService {
   }
 
   /**
-   * Reset state (for testing or manual reset)
+   * Reset state (for testing or manual reset).
+   * If sourceId is given, only that source's state is reset; otherwise resets everything.
    */
-  public reset(): void {
-    this.hasInitialConnection = false;
-    this.wasConnected = false;
+  public reset(sourceId?: string): void {
+    if (sourceId) {
+      this.sourceState.delete(sourceId);
+      return;
+    }
+    this.sourceState.clear();
     this.serverStartTime = 0;
-    this.lastDisconnectTime = 0;
   }
 
   /**
-   * Get current state (for debugging)
+   * Get current state for a source (for debugging).
+   * Returns zeroed state if source has never been seen.
    */
-  public getState(): {
+  public getState(sourceId: string): {
     hasInitialConnection: boolean;
     wasConnected: boolean;
     serverStartTime: number;
     lastDisconnectTime: number;
   } {
+    const state = this.sourceState.get(sourceId);
     return {
-      hasInitialConnection: this.hasInitialConnection,
-      wasConnected: this.wasConnected,
+      hasInitialConnection: state?.hasInitialConnection ?? false,
+      wasConnected: state?.wasConnected ?? false,
       serverStartTime: this.serverStartTime,
-      lastDisconnectTime: this.lastDisconnectTime,
+      lastDisconnectTime: state?.lastDisconnectTime ?? 0,
     };
   }
 }

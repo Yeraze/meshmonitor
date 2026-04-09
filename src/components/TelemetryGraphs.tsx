@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ChartData } from '../types/ui';
 import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
+import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
@@ -394,6 +395,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const { solarMonitoringEnabled, timeFormat } = useSettings();
     const { hasPermission } = useAuth();
     const canEditSettings = hasPermission('settings', 'write');
+    const { sourceId } = useSource();
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{
       x: number;
@@ -412,6 +414,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       nodeId,
       hours: telemetryHours,
       baseUrl,
+      sourceId,
     });
 
     // Calculate time bounds for solar estimates based on telemetry data

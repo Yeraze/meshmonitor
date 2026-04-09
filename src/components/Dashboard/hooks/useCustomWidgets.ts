@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useCsrfFetch } from '../../../hooks/useCsrfFetch';
+import { useSource } from '../../../contexts/SourceContext';
 import { logger } from '../../../utils/logger';
 import { type CustomWidget } from '../types';
 import { type WidgetType } from '../../AddWidgetModal';
@@ -28,11 +29,13 @@ export function useCustomWidgets({
   setCustomWidgets,
 }: UseCustomWidgetsOptions): UseCustomWidgetsResult {
   const csrfFetch = useCsrfFetch();
+  const { sourceId } = useSource();
+  const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
 
   // Save widgets to server
   const saveWidgets = useCallback(async (widgets: CustomWidget[]) => {
     try {
-      await csrfFetch(`${baseUrl}/api/settings`, {
+      await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dashboardWidgets: JSON.stringify(widgets) }),
@@ -40,7 +43,7 @@ export function useCustomWidgets({
     } catch (error) {
       logger.error('Error saving widgets:', error);
     }
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Add a new widget
   const addWidget = useCallback((type: WidgetType) => {

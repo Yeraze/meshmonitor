@@ -21,9 +21,9 @@ export class MessagesRepository extends BaseRepository {
    * Insert a new message (ignores duplicates).
    * Keeps branching: different upsert syntax and result shapes per dialect.
    */
-  async insertMessage(messageData: DbMessage): Promise<boolean> {
+  async insertMessage(messageData: DbMessage, sourceId?: string): Promise<boolean> {
     const { messages } = this.tables;
-    const values = {
+    const values: any = {
       id: messageData.id,
       fromNodeNum: messageData.fromNodeNum,
       toNodeNum: messageData.toNodeNum,
@@ -51,6 +51,9 @@ export class MessagesRepository extends BaseRepository {
       createdAt: messageData.createdAt,
       decryptedBy: messageData.decryptedBy ?? null,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     const result = await this.insertIgnore(messages, values);
     return this.getAffectedRows(result) > 0;
@@ -89,11 +92,12 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages with pagination, ordered by rxTime/timestamp desc
    */
-  async getMessages(limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+  async getMessages(limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
       .from(messages)
+      .where(this.withSourceScope(messages, sourceId))
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
       .limit(limit)
       .offset(offset);
@@ -104,12 +108,12 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages by channel
    */
-  async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+  async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
       .from(messages)
-      .where(eq(messages.channel, channel))
+      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
       .limit(limit)
       .offset(offset);
@@ -120,7 +124,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get direct messages between two nodes
    */
-  async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
+  async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
@@ -132,7 +136,8 @@ export class MessagesRepository extends BaseRepository {
           or(
             and(eq(messages.fromNodeId, nodeId1), eq(messages.toNodeId, nodeId2)),
             and(eq(messages.fromNodeId, nodeId2), eq(messages.toNodeId, nodeId1))
-          )
+          ),
+          this.withSourceScope(messages, sourceId)
         )
       )
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
@@ -145,12 +150,12 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages after a timestamp
    */
-  async getMessagesAfterTimestamp(timestamp: number): Promise<DbMessage[]> {
+  async getMessagesAfterTimestamp(timestamp: number, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
       .from(messages)
-      .where(gt(messages.timestamp, timestamp))
+      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId)))
       .orderBy(messages.timestamp);
 
     return this.normalizeBigInts(result) as DbMessage[];
@@ -159,9 +164,10 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get total message count
    */
-  async getMessageCount(): Promise<number> {
+  async getMessageCount(sourceId?: string): Promise<number> {
     const { messages } = this.tables;
-    const result = await this.db.select({ count: count() }).from(messages);
+    const result = await this.db.select({ count: count() }).from(messages)
+      .where(this.withSourceScope(messages, sourceId));
     return Number(result[0].count);
   }
 
@@ -182,29 +188,33 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Purge all messages from a channel
+   * Purge all messages from a channel (optionally scoped to a single source).
+   * When sourceId is provided, only messages belonging to that source are deleted.
    */
-  async purgeChannelMessages(channel: number): Promise<number> {
+  async purgeChannelMessages(channel: number, sourceId?: string): Promise<number> {
     const { messages } = this.tables;
+    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId));
     const [{ deletedCount }] = await this.db
       .select({ deletedCount: count() })
       .from(messages)
-      .where(eq(messages.channel, channel));
-    await this.db.delete(messages).where(eq(messages.channel, channel));
+      .where(condition);
+    await this.db.delete(messages).where(condition);
     return deletedCount;
   }
 
   /**
-   * Purge direct messages to/from a node
+   * Purge direct messages to/from a node (optionally scoped to a single source).
+   * When sourceId is provided, only messages belonging to that source are deleted.
    */
-  async purgeDirectMessages(nodeNum: number): Promise<number> {
+  async purgeDirectMessages(nodeNum: number, sourceId?: string): Promise<number> {
     const { messages } = this.tables;
     const condition = and(
       or(
         eq(messages.fromNodeNum, nodeNum),
         eq(messages.toNodeNum, nodeNum)
       ),
-      sql`${messages.toNodeId} != '!ffffffff'`
+      sql`${messages.toNodeId} != '!ffffffff'`,
+      this.withSourceScope(messages, sourceId)
     );
     const [{ deletedCount }] = await this.db
       .select({ deletedCount: count() })

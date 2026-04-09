@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatTime, formatDate } from '../utils/datetime';
 import { Channel } from '../types/device';
@@ -103,6 +104,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
@@ -273,7 +275,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setIsSaving(true);
     try {
       // Sync to backend first
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

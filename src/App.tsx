@@ -72,6 +72,8 @@ import { UIProvider, useUI } from './contexts/UIContext';
 import { AutomationProvider, useAutomation } from './contexts/AutomationContext';
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
+import { useSource } from './contexts/SourceContext';
+import { useNavigate } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
@@ -84,10 +86,16 @@ import { SaveBarProvider } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
-// Track pending favorite requests outside component to persist across remounts
-// Maps nodeNum -> expected isFavorite state
-const pendingFavoriteRequests = new Map<number, boolean>();
-const pendingIgnoredRequests = new Map<number, boolean>();
+// Track pending favorite/ignored requests outside component to persist across
+// remounts (App is re-keyed on source switch). Keys are composite strings
+// `${sourceId}:${nodeNum}` so that an optimistic toggle on Source A does not
+// bleed into Source B's view of the same node (bug: single nodeNum key meant
+// clicking favorite on Source 1 forced the same optimistic state onto Source
+// 2's poll response because both sources share nodeNums on overlapping meshes).
+const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number) =>
+  `${sourceId ?? ''}:${nodeNum}`;
+const pendingFavoriteRequests = new Map<string, boolean>();
+const pendingIgnoredRequests = new Map<string, boolean>();
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -111,10 +119,11 @@ function App() {
   const { t } = useTranslation();
   const { authStatus, hasPermission, loading: authLoading } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
+  const { sourceId, sourceName } = useSource();
+  const navigate = useNavigate();
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
   const [configIssues, setConfigIssues] = useState<
     Array<{
       type: 'cookie_secure' | 'allowed_origins';
@@ -232,7 +241,7 @@ function App() {
 
     if (pathParts.length > 0) {
       // Remove any trailing segments that look like app routes
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
       const baseSegments = [];
 
       for (const segment of pathParts) {
@@ -261,7 +270,7 @@ function App() {
   useHealth({ baseUrl, reloadOnVersionChange: true });
 
   // Monitor device TX status to show warning banner when TX is disabled
-  const { isTxDisabled } = useTxStatus({ baseUrl });
+  const { isTxDisabled } = useTxStatus({ baseUrl, sourceId });
 
   // Settings from context
   const {
@@ -882,8 +891,10 @@ function App() {
           configBaseUrl = initialBaseUrl;
         }
 
-        // Load settings from server
-        const settingsResponse = await authFetch(`${baseUrl}/api/settings`);
+        // Load settings from server (per-source if a sourceId is active, so
+        // per-source automation values win over global defaults)
+        const settingsQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+        const settingsResponse = await authFetch(`${baseUrl}/api/settings${settingsQuery}`);
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
 
@@ -1191,22 +1202,6 @@ function App() {
   }, []);
 
   // Check for default admin password
-  useEffect(() => {
-    const checkDefaultPassword = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/auth/check-default-password`);
-        if (response.ok) {
-          const data = await response.json();
-          setIsDefaultPassword(data.isDefaultPassword);
-        }
-      } catch (error) {
-        logger.error('Error checking default password:', error);
-      }
-    };
-
-    checkDefaultPassword();
-  }, [baseUrl]);
-
   // Check for configuration issues
   useEffect(() => {
     const checkConfigIssues = async () => {
@@ -1496,7 +1491,8 @@ function App() {
     const fetchPositionHistory = async () => {
       try {
         // Fetch all position history (no time limit) to show complete movement trail
-        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history`);
+        const phQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history${phQuery}`);
         if (response.ok) {
           const history = await response.json();
           setPositionHistory(history);
@@ -1507,7 +1503,7 @@ function App() {
     };
 
     fetchPositionHistory();
-  }, [selectedNodeId, nodes, baseUrl]);
+  }, [selectedNodeId, nodes, baseUrl, sourceId]);
 
   // Open popup for selected node
   useEffect(() => {
@@ -2032,7 +2028,8 @@ function App() {
   const requestFullNodeDatabase = async () => {
     try {
       logger.debug('📡 Requesting full node database refresh...');
-      const response = await authFetch(`${baseUrl}/api/nodes/refresh`, {
+      const refreshQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+      const response = await authFetch(`${baseUrl}/api/nodes/refresh${refreshQuery}`, {
         method: 'POST',
       });
 
@@ -2271,7 +2268,8 @@ function App() {
       // Use the provided baseUrl or fall back to the state value
       const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
       try {
-        const channelsResponse = await authFetch(`${urlBase}/api/channels`);
+        const channelsUrl = sourceId ? `${urlBase}/api/channels?sourceId=${encodeURIComponent(sourceId)}` : `${urlBase}/api/channels`;
+        const channelsResponse = await authFetch(channelsUrl);
         if (channelsResponse.ok) {
           const channelsData = await channelsResponse.json();
 
@@ -2319,7 +2317,7 @@ function App() {
         logger.error('Error fetching channels:', error);
       }
     },
-    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels]
+    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels, sourceId]
   );
 
   // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint
@@ -2347,21 +2345,24 @@ function App() {
             (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
               let updatedNode = { ...serverNode };
 
-              // Handle pending favorite requests
-              const pendingFavoriteState = pendingFavorite.get(serverNode.nodeNum);
+              // Handle pending favorite requests — key is scoped by sourceId
+              // so Source A's optimistic toggles don't leak into Source B's view.
+              const favKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+              const pendingFavoriteState = pendingFavorite.get(favKey);
               if (pendingFavoriteState !== undefined) {
                 if (serverNode.isFavorite === pendingFavoriteState) {
-                  pendingFavorite.delete(serverNode.nodeNum);
+                  pendingFavorite.delete(favKey);
                 } else {
                   updatedNode.isFavorite = pendingFavoriteState;
                 }
               }
 
-              // Handle pending ignored requests
-              const pendingIgnoredState = pendingIgnored.get(serverNode.nodeNum);
+              // Handle pending ignored requests — same per-source scoping
+              const ignKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+              const pendingIgnoredState = pendingIgnored.get(ignKey);
               if (pendingIgnoredState !== undefined) {
                 if (serverNode.isIgnored === pendingIgnoredState) {
-                  pendingIgnored.delete(serverNode.nodeNum);
+                  pendingIgnored.delete(ignKey);
                 } else {
                   updatedNode.isIgnored = pendingIgnoredState;
                 }
@@ -2651,7 +2652,7 @@ function App() {
 
   const handleDisconnect = async () => {
     try {
-      await api.disconnectFromNode();
+      await api.disconnectFromNode(sourceId);
       setConnectionStatus('user-disconnected');
       showToast(t('toast.disconnected_from_node'), 'info');
     } catch (error) {
@@ -2663,7 +2664,7 @@ function App() {
   const handleReconnect = async () => {
     try {
       setConnectionStatus('connecting');
-      await api.reconnectToNode();
+      await api.reconnectToNode(sourceId);
       showToast(t('toast.reconnecting_to_node'), 'info');
       // Status will update via polling
     } catch (error) {
@@ -2677,7 +2678,7 @@ function App() {
   const handleNodeClick = async () => {
     if (authStatus?.authenticated) {
       try {
-        const info = await api.getConnectionInfo();
+        const info = await api.getConnectionInfo(sourceId);
         setNodeConnectionInfo({
           nodeIp: info.nodeIp,
           tcpPort: info.tcpPort,
@@ -2728,7 +2729,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum }),
+        body: JSON.stringify({ destination: nodeNum, sourceId }),
       });
 
       logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
@@ -2987,6 +2988,7 @@ function App() {
           channel: 0, // Backend may expect channel 0 for DMs
           destination: destinationNodeId,
           replyId: replyId,
+          sourceId: sourceId || undefined,
         }),
       });
 
@@ -3046,6 +3048,7 @@ function App() {
           destination: toNodeId, // Server expects 'destination' not 'toNodeId'
           replyId: replyId,
           emoji: EMOJI_FLAG,
+          sourceId: sourceId || undefined,
         };
       } else {
         // For channel messages: use channel
@@ -3054,6 +3057,7 @@ function App() {
           channel: originalMessage.channel,
           replyId: replyId,
           emoji: EMOJI_FLAG,
+          sourceId: sourceId || undefined,
         };
       }
 
@@ -3419,7 +3423,7 @@ function App() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, sourceId }),
     });
 
     if (!response.ok) {
@@ -3514,6 +3518,7 @@ function App() {
           text: messageText,
           channel: messageChannel,
           replyId: replyId,
+          sourceId: sourceId || undefined,
         }),
       });
 
@@ -3567,7 +3572,7 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bellText, channel }),
+        body: JSON.stringify({ text: bellText, channel, sourceId: sourceId || undefined }),
       });
 
       if (response.ok) {
@@ -3592,7 +3597,7 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bellText, channel: 0, destination: destinationNodeId }),
+        body: JSON.stringify({ text: bellText, channel: 0, destination: destinationNodeId, sourceId: sourceId || undefined }),
       });
 
       if (response.ok) {
@@ -3692,8 +3697,8 @@ function App() {
       // DMs include a destination parameter, channel messages include a channel parameter
       const endpoint = `${baseUrl}/api/messages/send`;
       const body = isDM
-        ? { text: message.text, destination: destinationNodeId }
-        : { text: message.text, channel: messageChannel };
+        ? { text: message.text, destination: destinationNodeId, sourceId: sourceId || undefined }
+        : { text: message.text, channel: messageChannel, sourceId: sourceId || undefined };
 
       const response = await authFetch(endpoint, {
         method: 'POST',
@@ -4030,8 +4035,9 @@ function App() {
       return;
     }
 
-    // Prevent multiple rapid clicks on the same node
-    if (pendingFavoriteRequests.has(node.nodeNum)) {
+    // Prevent multiple rapid clicks on the same node (scoped to current source)
+    const favKey = favoritePendingKey(sourceId, node.nodeNum);
+    if (pendingFavoriteRequests.has(favKey)) {
       return;
     }
 
@@ -4041,7 +4047,7 @@ function App() {
 
     try {
       // Mark this request as pending with the expected new state
-      pendingFavoriteRequests.set(node.nodeNum, newFavoriteStatus);
+      pendingFavoriteRequests.set(favKey, newFavoriteStatus);
 
       // Optimistically update the UI - use flushSync to force immediate render
       // This prevents the polling from overwriting the optimistic update before it renders
@@ -4063,6 +4069,7 @@ function App() {
         body: JSON.stringify({
           isFavorite: newFavoriteStatus,
           syncToDevice: true, // Enable two-way sync to Meshtastic device
+          sourceId,
         }),
       });
 
@@ -4099,7 +4106,7 @@ function App() {
         prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
       );
       // Remove from pending on error since we reverted
-      pendingFavoriteRequests.delete(node.nodeNum);
+      pendingFavoriteRequests.delete(favKey);
       showToast(t('toast.failed_update_favorite'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingFavoriteRequests
@@ -4130,7 +4137,7 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite-lock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locked: newLocked }),
+        body: JSON.stringify({ locked: newLocked, sourceId }),
       });
 
       if (!response.ok) {
@@ -4159,8 +4166,9 @@ function App() {
       return;
     }
 
-    // Prevent multiple rapid clicks on the same node
-    if (pendingIgnoredRequests.has(node.nodeNum)) {
+    // Prevent multiple rapid clicks on the same node (scoped to current source)
+    const ignKey = favoritePendingKey(sourceId, node.nodeNum);
+    if (pendingIgnoredRequests.has(ignKey)) {
       return;
     }
 
@@ -4170,7 +4178,7 @@ function App() {
 
     try {
       // Mark this request as pending with the expected new state
-      pendingIgnoredRequests.set(node.nodeNum, newIgnoredStatus);
+      pendingIgnoredRequests.set(ignKey, newIgnoredStatus);
 
       // Optimistically update the UI - use flushSync to force immediate render
       // This prevents the polling from overwriting the optimistic update before it renders
@@ -4190,6 +4198,7 @@ function App() {
         body: JSON.stringify({
           isIgnored: newIgnoredStatus,
           syncToDevice: true, // Enable two-way sync to Meshtastic device
+          sourceId,
         }),
       });
 
@@ -4226,7 +4235,7 @@ function App() {
         prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
       );
       // Remove from pending on error since we reverted
-      pendingIgnoredRequests.delete(node.nodeNum);
+      pendingIgnoredRequests.delete(ignKey);
       showToast(t('toast.failed_update_ignored'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingIgnoredRequests
@@ -4468,10 +4477,11 @@ function App() {
         onShowLoginModal={() => setShowLoginModal(true)}
         onLogout={() => setActiveTab('nodes')}
         onNodeClick={handleNodeClick}
+        sourceName={sourceName}
+        onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
       />
 
       <AppBanners
-        isDefaultPassword={isDefaultPassword}
         isTxDisabled={isTxDisabled}
         configIssues={configIssues}
         updateAvailable={updateAvailable}
@@ -5073,6 +5083,7 @@ function App() {
         {activeTab === 'configuration' && (
           <ErrorBoundary fallbackTitle="Configuration failed to load">
           <ConfigurationTab
+            key={sourceId || 'default'}
             baseUrl={baseUrl}
             nodes={nodes}
             channels={channels}
@@ -5089,6 +5100,7 @@ function App() {
         {activeTab === 'admin' && authStatus?.user?.isAdmin && (
           <ErrorBoundary fallbackTitle="Admin Commands failed to load">
           <AdminCommandsTab
+            key={sourceId || 'default'}
             nodes={nodes}
             currentNodeId={currentNodeId}
             channels={channels}
@@ -5186,7 +5198,7 @@ const AppWithToast = () => {
     const pathParts = pathname.split('/').filter(Boolean);
 
     if (pathParts.length > 0) {
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
       const baseSegments = [];
 
       for (const segment of pathParts) {
@@ -5212,7 +5224,7 @@ const AppWithToast = () => {
         <DataProvider>
           <MessagingProvider baseUrl={initialBaseUrl}>
             <UIProvider>
-              <AutomationProvider>
+              <AutomationProvider baseUrl={initialBaseUrl}>
               <ToastProvider>
                 <SaveBarProvider>
                   <App />

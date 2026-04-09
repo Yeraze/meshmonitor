@@ -31,9 +31,9 @@ export class NeighborsRepository extends BaseRepository {
    * Callers must delete old records for the node first to avoid duplicates
    * (there is no unique constraint on nodeNum + neighborNodeNum).
    */
-  async insertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
+  async insertNeighborInfo(neighborData: DbNeighborInfo, sourceId?: string): Promise<void> {
     const { neighborInfo } = this.tables;
-    const values = {
+    const values: any = {
       nodeNum: neighborData.nodeNum,
       neighborNodeNum: neighborData.neighborNodeNum,
       snr: neighborData.snr ?? null,
@@ -41,6 +41,9 @@ export class NeighborsRepository extends BaseRepository {
       timestamp: neighborData.timestamp,
       createdAt: neighborData.createdAt,
     };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
 
     await this.db.insert(neighborInfo).values(values);
   }
@@ -49,17 +52,23 @@ export class NeighborsRepository extends BaseRepository {
    * Insert multiple neighbor info records in a single query.
    * Callers must delete old records for the node first.
    */
-  async insertNeighborInfoBatch(records: DbNeighborInfo[]): Promise<void> {
+  async insertNeighborInfoBatch(records: DbNeighborInfo[], sourceId?: string): Promise<void> {
     if (records.length === 0) return;
     const { neighborInfo } = this.tables;
-    const values = records.map(r => ({
-      nodeNum: r.nodeNum,
-      neighborNodeNum: r.neighborNodeNum,
-      snr: r.snr ?? null,
-      lastRxTime: r.lastRxTime ?? null,
-      timestamp: r.timestamp,
-      createdAt: r.createdAt,
-    }));
+    const values = records.map(r => {
+      const row: any = {
+        nodeNum: r.nodeNum,
+        neighborNodeNum: r.neighborNodeNum,
+        snr: r.snr ?? null,
+        lastRxTime: r.lastRxTime ?? null,
+        timestamp: r.timestamp,
+        createdAt: r.createdAt,
+      };
+      if (sourceId) {
+        row.sourceId = sourceId;
+      }
+      return row;
+    });
 
     await this.db.insert(neighborInfo).values(values);
   }
@@ -68,19 +77,19 @@ export class NeighborsRepository extends BaseRepository {
    * Backwards-compatible alias for insertNeighborInfo
    * @deprecated Use insertNeighborInfo instead
    */
-  async upsertNeighborInfo(neighborData: DbNeighborInfo): Promise<void> {
-    return this.insertNeighborInfo(neighborData);
+  async upsertNeighborInfo(neighborData: DbNeighborInfo, sourceId?: string): Promise<void> {
+    return this.insertNeighborInfo(neighborData, sourceId);
   }
 
   /**
    * Get neighbors for a node
    */
-  async getNeighborsForNode(nodeNum: number): Promise<DbNeighborInfo[]> {
+  async getNeighborsForNode(nodeNum: number, sourceId?: string): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select()
       .from(neighborInfo)
-      .where(eq(neighborInfo.nodeNum, nodeNum))
+      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId)))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];
@@ -89,22 +98,28 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get all neighbor info
    */
-  async getAllNeighborInfo(): Promise<DbNeighborInfo[]> {
+  async getAllNeighborInfo(sourceId?: string): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select()
       .from(neighborInfo)
+      .where(this.withSourceScope(neighborInfo, sourceId))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];
   }
 
   /**
-   * Delete neighbor info for a node
+   * Delete neighbor info for a node, optionally scoped to a source.
+   * When sourceId is provided, only rows for that source are removed so
+   * deleting a node from one source does not also wipe neighbor info for
+   * the same nodeNum on other sources.
    */
-  async deleteNeighborInfoForNode(nodeNum: number): Promise<void> {
+  async deleteNeighborInfoForNode(nodeNum: number, sourceId?: string): Promise<void> {
     const { neighborInfo } = this.tables;
-    await this.db.delete(neighborInfo).where(eq(neighborInfo.nodeNum, nodeNum));
+    await this.db
+      .delete(neighborInfo)
+      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId)));
   }
 
   /**

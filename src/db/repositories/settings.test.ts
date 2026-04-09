@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating the settings table per backend
@@ -271,7 +273,7 @@ describe('SettingsRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('SettingsRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('SettingsRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -298,7 +300,7 @@ describe('SettingsRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('SettingsRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('SettingsRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

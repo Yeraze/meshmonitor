@@ -22,6 +22,8 @@ export interface TxStatusData {
 interface UseTxStatusOptions {
   /** Base URL for API requests (default: '') */
   baseUrl?: string;
+  /** Source ID for multi-source deployments */
+  sourceId?: string | null;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
   /** Refetch interval in milliseconds (default: 30000) */
@@ -55,13 +57,17 @@ interface UseTxStatusOptions {
  */
 export function useTxStatus({
   baseUrl = '',
+  sourceId,
   enabled = true,
   refetchInterval = 30000,
 }: UseTxStatusOptions = {}) {
   const query = useQuery({
-    queryKey: ['txStatus', baseUrl],
+    queryKey: ['txStatus', baseUrl, sourceId],
     queryFn: async (): Promise<TxStatusData> => {
-      const response = await fetch(`${baseUrl}/api/device/tx-status`, {
+      const url = sourceId
+        ? `${baseUrl}/api/device/tx-status?sourceId=${encodeURIComponent(sourceId)}`
+        : `${baseUrl}/api/device/tx-status`;
+      const response = await fetch(url, {
         credentials: 'include',
       });
 

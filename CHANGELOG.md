@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- **Multi-Source Architecture (4.0)**: Connect MeshMonitor to multiple Meshtastic gateways simultaneously and manage them from a unified dashboard.
+  - **Multiple sources**: Add TCP or MQTT sources via the Sources API; each source runs its own `MeshtasticManager` instance with independent connection lifecycle
+  - **Data isolation**: All data tables (`nodes`, `messages`, `telemetry`, `traceroutes`, `channels`, `neighbors`, `packets`, `ignored_nodes`, `channel_database`) carry a `sourceId` column for per-source scoping (migrations 020–022)
+  - **Source-scoped permissions**: Administrators can grant per-source `sources:read` access, controlling which users see which gateway's data
+  - **Dashboard page**: New map-centric landing page replaces the source list — left sidebar with source cards (status dot, node count, kebab admin menu) and a full-screen live map for the selected source
+  - **Unified views**: Cross-source Messages and Telemetry pages show fleet-wide activity across all connected gateways
+  - **Real-time updates**: WebSocket rooms are scoped per source; clients only receive events for the sources they have access to
+  - **Backward compatible**: Existing single-source deployments upgrade automatically — legacy rows are assigned to the default source on startup
+
 - **Homepage Refresh** ([#2542](https://github.com/Yeraze/meshmonitor/pull/2542)): MeshMonitor.org homepage redesigned for clarity and accuracy.
   - **New hero section**: Updated headline ("Your mesh. Your data."), new tagline, and hero image showing the interactive map
   - **Desktop Application card**: New feature card highlighting the native Windows/macOS app — no server or Docker required, system tray integration

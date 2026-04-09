@@ -3,9 +3,9 @@
  * Includes: push_subscriptions, user_notification_preferences, read_messages
  * Supports SQLite, PostgreSQL, and MySQL
  */
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, boolean as myBoolean, bigint as myBigint, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, uniqueIndex as sqliteUniqueIndex, index as sqliteIndex } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, uniqueIndex as pgUniqueIndex, index as pgIndex } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, boolean as myBoolean, bigint as myBigint, serial as mySerial, uniqueIndex as myUniqueIndex, index as myIndex } from 'drizzle-orm/mysql-core';
 import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
 // ============ PUSH SUBSCRIPTIONS ============
@@ -13,6 +13,7 @@ import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 export const pushSubscriptionsSqlite = sqliteTable('push_subscriptions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  sourceId: text('source_id').notNull(),
   endpoint: text('endpoint').notNull(),
   p256dhKey: text('p256dh_key').notNull(),
   authKey: text('auth_key').notNull(),
@@ -20,11 +21,15 @@ export const pushSubscriptionsSqlite = sqliteTable('push_subscriptions', {
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
   lastUsedAt: integer('last_used_at'),
-});
+}, (t) => ({
+  userEndpointSource: sqliteUniqueIndex('idx_push_subscriptions_user_endpoint_source').on(t.userId, t.endpoint, t.sourceId),
+  userSource: sqliteIndex('idx_push_subscriptions_user_source').on(t.userId, t.sourceId),
+}));
 
 export const pushSubscriptionsPostgres = pgTable('push_subscriptions', {
   id: pgSerial('id').primaryKey(),
   userId: pgInteger('userId').references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  sourceId: pgText('sourceId').notNull(),
   endpoint: pgText('endpoint').notNull(),
   p256dhKey: pgText('p256dhKey').notNull(),
   authKey: pgText('authKey').notNull(),
@@ -32,13 +37,17 @@ export const pushSubscriptionsPostgres = pgTable('push_subscriptions', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
   lastUsedAt: pgBigint('lastUsedAt', { mode: 'number' }),
-});
+}, (t) => ({
+  userEndpointSource: pgUniqueIndex('idx_push_subscriptions_user_endpoint_source').on(t.userId, t.endpoint, t.sourceId),
+  userSource: pgIndex('idx_push_subscriptions_user_source').on(t.userId, t.sourceId),
+}));
 
 // ============ USER NOTIFICATION PREFERENCES ============
 
 export const userNotificationPreferencesSqlite = sqliteTable('user_notification_preferences', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id').notNull().unique().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  sourceId: text('source_id').notNull(),
   notifyOnMessage: integer('enable_web_push', { mode: 'boolean' }).default(true),
   notifyOnDirectMessage: integer('enable_direct_messages', { mode: 'boolean' }).default(true),
   notifyOnEmoji: integer('notify_on_emoji', { mode: 'boolean' }).default(false),
@@ -58,11 +67,14 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   mutedDMs: text('muted_dms'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
-});
+}, (t) => ({
+  userSource: sqliteUniqueIndex('idx_user_notification_preferences_user_source').on(t.userId, t.sourceId),
+}));
 
 export const userNotificationPreferencesPostgres = pgTable('user_notification_preferences', {
   id: pgSerial('id').primaryKey(),
-  userId: pgInteger('userId').notNull().unique().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  sourceId: pgText('sourceId').notNull(),
   notifyOnMessage: pgBoolean('notifyOnMessage').default(true),
   notifyOnDirectMessage: pgBoolean('notifyOnDirectMessage').default(true),
   notifyOnChannelMessage: pgBoolean('notifyOnChannelMessage').default(false),
@@ -83,7 +95,9 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   mutedDMs: pgText('mutedDMs'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
-});
+}, (t) => ({
+  userSource: pgUniqueIndex('idx_user_notification_preferences_user_source').on(t.userId, t.sourceId),
+}));
 
 // ============ READ MESSAGES ============
 
@@ -105,6 +119,7 @@ export const readMessagesPostgres = pgTable('read_messages', {
 export const pushSubscriptionsMysql = mysqlTable('push_subscriptions', {
   id: mySerial('id').primaryKey(),
   userId: myInt('userId').references(() => usersMysql.id, { onDelete: 'cascade' }),
+  sourceId: myVarchar('sourceId', { length: 64 }).notNull(),
   endpoint: myText('endpoint').notNull(),
   p256dhKey: myVarchar('p256dhKey', { length: 512 }).notNull(),
   authKey: myVarchar('authKey', { length: 128 }).notNull(),
@@ -112,11 +127,14 @@ export const pushSubscriptionsMysql = mysqlTable('push_subscriptions', {
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
   lastUsedAt: myBigint('lastUsedAt', { mode: 'number' }),
-});
+}, (t) => ({
+  userSource: myIndex('idx_push_subscriptions_user_source').on(t.userId, t.sourceId),
+}));
 
 export const userNotificationPreferencesMysql = mysqlTable('user_notification_preferences', {
   id: mySerial('id').primaryKey(),
-  userId: myInt('userId').notNull().unique().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  sourceId: myVarchar('sourceId', { length: 64 }).notNull(),
   notifyOnMessage: myBoolean('notifyOnMessage').default(true),
   notifyOnDirectMessage: myBoolean('notifyOnDirectMessage').default(true),
   notifyOnChannelMessage: myBoolean('notifyOnChannelMessage').default(false),
@@ -137,7 +155,9 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   mutedDMs: myText('mutedDMs'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
-});
+}, (t) => ({
+  userSource: myUniqueIndex('idx_user_notification_preferences_user_source').on(t.userId, t.sourceId),
+}));
 
 export const readMessagesMysql = mysqlTable('read_messages', {
   id: mySerial('id').primaryKey(),

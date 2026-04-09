@@ -36,11 +36,11 @@ const TestComponent = () => {
   );
 };
 
-// Skip ToastContainer tests in CI - they have timing issues with fake timers
-// Tests work locally but timeout in CI environment
-describe.skip('ToastContainer and useToast', () => {
+describe('ToastContainer and useToast', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // shouldAdvanceTime lets real-time polling (e.g. waitFor) progress while
+    // we still manually fast-forward the toast auto-dismiss timer.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
@@ -235,7 +235,7 @@ describe.skip('ToastContainer and useToast', () => {
         position: 'fixed',
         top: '20px',
         right: '20px',
-        zIndex: '9999'
+        zIndex: '10001'
       });
     });
 
@@ -351,7 +351,8 @@ describe.skip('ToastContainer and useToast', () => {
 
       // Toast should still be created but with empty content
       await waitFor(() => {
-        const toastDivs = document.querySelectorAll('div[style*="backgroundColor"]');
+        // Inline styles render as kebab-case in the DOM
+        const toastDivs = document.querySelectorAll('div[style*="background-color"]');
         expect(toastDivs.length).toBeGreaterThan(0);
       });
     });

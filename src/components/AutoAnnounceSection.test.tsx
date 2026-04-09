@@ -4,8 +4,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import enTranslations from '../../public/locales/en.json';
 import AutoAnnounceSection from './AutoAnnounceSection';
 import { Channel } from '../types/device';
+
+// Override the global i18n mock (from src/test/setup.ts) with real translations
+// from en.json so text-based assertions like `getByText('Auto Announce')` work.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      const translations = enTranslations as unknown as Record<string, string>;
+      let result = translations[key] ?? key;
+      if (options) {
+        Object.entries(options).forEach(([k, v]) => {
+          result = result.replace(`{{${k}}}`, String(v));
+        });
+      }
+      return result;
+    },
+    i18n: { changeLanguage: vi.fn(), language: 'en' },
+  }),
+  Trans: ({ children }: { children: React.ReactNode }) => children,
+  initReactI18next: { type: '3rdParty', init: vi.fn() },
+}));
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
@@ -19,11 +40,35 @@ vi.mock('./ToastContainer', () => ({
   useToast: () => ({ showToast: mockShowToast })
 }));
 
+// Mock useSaveBar — component registers with SaveBar context which isn't
+// mounted in isolation. Tests can assert on the registered handler via mockUseSaveBar.
+const mockUseSaveBar = vi.fn();
+vi.mock('../hooks/useSaveBar', () => ({
+  useSaveBar: (opts: unknown) => mockUseSaveBar(opts)
+}));
+
+// Mock useSourceQuery — hook depends on React Query context
+vi.mock('../hooks/useSourceQuery', () => ({
+  useSourceQuery: () => ({ sourceId: null, baseUrl: '' })
+}));
+
 // Mock fetch for last announcement time
 global.fetch = vi.fn();
 
-// Skip component tests in CI - jsdom has compatibility issues with webidl-conversions
-// Tests work locally but fail in some CI environments
+// Skip: component has diverged substantially from the original test expectations.
+// Three interlocking problems make this a wholesale rewrite rather than a patch:
+//   1. The component now uses the external SaveBar pattern — there is no inline
+//      "Save Changes" button, so ~25 tests asserting `getByText('Save Changes')`
+//      all fail. Save assertions need to be rewritten against the mocked
+//      useSaveBar handler (see mockUseSaveBar above).
+//   2. The "Broadcast Channel" label has `htmlFor="announceChannel"` but the
+//      corresponding form control is a list of per-channel checkboxes, not a
+//      single input. `getByLabelText(/Broadcast Channel/)` throws.
+//   3. Almost every interactive test uses `userEvent.setup({ delay: null })`
+//      with fake timers, which deadlocks under vitest 4 (same issue fixed in
+//      Toast.test.tsx — switch to `fireEvent` or use `vi.useFakeTimers({
+//      shouldAdvanceTime: true })`).
+// Tracked as Tier 2 follow-up — needs a from-scratch test file.
 describe.skip('AutoAnnounceSection Component', () => {
   const mockChannels: Channel[] = [
     { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },

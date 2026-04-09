@@ -18,6 +18,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating the neighbor_info table per backend
@@ -29,7 +31,8 @@ const SQLITE_CREATE = `
     snr REAL,
     lastRxTime INTEGER,
     timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    sourceId TEXT
   )
 `;
 
@@ -42,7 +45,8 @@ const POSTGRES_CREATE = `
     snr DOUBLE PRECISION,
     "lastRxTime" BIGINT,
     timestamp BIGINT NOT NULL,
-    "createdAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   )
 `;
 
@@ -55,7 +59,8 @@ const MYSQL_CREATE = `
     snr DOUBLE,
     \`lastRxTime\` BIGINT,
     \`timestamp\` BIGINT NOT NULL,
-    \`createdAt\` BIGINT NOT NULL
+    \`createdAt\` BIGINT NOT NULL,
+    \`sourceId\` VARCHAR(36)
   )
 `;
 
@@ -331,7 +336,7 @@ describe('NeighborsRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('NeighborsRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('NeighborsRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -358,7 +363,7 @@ describe('NeighborsRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('NeighborsRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('NeighborsRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

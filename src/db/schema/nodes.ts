@@ -2,14 +2,14 @@
  * Drizzle schema definition for the nodes table
  * Supports SQLite, PostgreSQL, and MySQL
  */
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, doublePrecision as pgDoublePrecision, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real, primaryKey as sqlitePrimaryKey, uniqueIndex as sqliteUniqueIndex } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, doublePrecision as pgDoublePrecision, boolean as pgBoolean, bigint as pgBigint, primaryKey as pgPrimaryKey, uniqueIndex as pgUniqueIndex } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, primaryKey as myPrimaryKey, uniqueIndex as myUniqueIndex } from 'drizzle-orm/mysql-core';
 
 // SQLite schema
 export const nodesSqlite = sqliteTable('nodes', {
-  nodeNum: integer('nodeNum').primaryKey(),
-  nodeId: text('nodeId').notNull().unique(),
+  nodeNum: integer('nodeNum').notNull(),
+  nodeId: text('nodeId').notNull(),
   longName: text('longName'),
   shortName: text('shortName'),
   hwModel: integer('hwModel'),
@@ -73,12 +73,17 @@ export const nodesSqlite = sqliteTable('nodes', {
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
-});
+  // Source association — required as part of composite PK after migration 029
+  sourceId: text('sourceId').notNull(),
+}, (table) => ({
+  pk: sqlitePrimaryKey({ columns: [table.nodeNum, table.sourceId] }),
+  nodeIdSourceUniq: sqliteUniqueIndex('nodes_nodeId_sourceId_uniq').on(table.nodeId, table.sourceId),
+}));
 
 // PostgreSQL schema
 export const nodesPostgres = pgTable('nodes', {
-  nodeNum: pgBigint('nodeNum', { mode: 'number' }).primaryKey(),
-  nodeId: pgText('nodeId').notNull().unique(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull(),
+  nodeId: pgText('nodeId').notNull(),
   longName: pgText('longName'),
   shortName: pgText('shortName'),
   hwModel: pgInteger('hwModel'),
@@ -143,12 +148,17 @@ export const nodesPostgres = pgTable('nodes', {
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
-});
+  // Source association — required as part of composite PK after migration 029
+  sourceId: pgText('sourceId').notNull(),
+}, (table) => ({
+  pk: pgPrimaryKey({ columns: [table.nodeNum, table.sourceId] }),
+  nodeIdSourceUniq: pgUniqueIndex('nodes_nodeId_sourceId_uniq').on(table.nodeId, table.sourceId),
+}));
 
 // MySQL schema
 export const nodesMysql = mysqlTable('nodes', {
-  nodeNum: myBigint('nodeNum', { mode: 'number' }).primaryKey(),
-  nodeId: myVarchar('nodeId', { length: 32 }).notNull().unique(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
+  nodeId: myVarchar('nodeId', { length: 32 }).notNull(),
   longName: myVarchar('longName', { length: 255 }),
   shortName: myVarchar('shortName', { length: 32 }),
   hwModel: myInt('hwModel'),
@@ -212,7 +222,12 @@ export const nodesMysql = mysqlTable('nodes', {
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
-});
+  // Source association — required as part of composite PK after migration 029
+  sourceId: myVarchar('sourceId', { length: 36 }).notNull(),
+}, (table) => ({
+  pk: myPrimaryKey({ columns: [table.nodeNum, table.sourceId] }),
+  nodeIdSourceUniq: myUniqueIndex('nodes_nodeId_sourceId_uniq').on(table.nodeId, table.sourceId),
+}));
 
 // Type inference
 export type NodeSqlite = typeof nodesSqlite.$inferSelect;

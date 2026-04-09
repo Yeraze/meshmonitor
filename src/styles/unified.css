@@ -1,0 +1,313 @@
+/**
+ * Styles for Unified Messages and Unified Telemetry pages.
+ * Uses --ctp-* CSS custom properties so the pages respect the active theme.
+ */
+
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+
+.unified-page {
+  min-height: 100vh;
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-family: var(--font-family, sans-serif);
+}
+
+/* ── Header bar ─────────────────────────────────────────────────────────── */
+
+.unified-header {
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface0);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.unified-header__back {
+  background: var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.unified-header__back:hover {
+  background: var(--ctp-surface2);
+}
+
+.unified-header__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.unified-header__title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ctp-text);
+}
+
+.unified-header__title p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+}
+
+/* Source legend pills */
+.unified-source-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.unified-source-pill {
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Controls: time range / type filter */
+.unified-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.unified-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.unified-btn-group button {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.unified-btn-group button.active {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.unified-btn-group button:not(.active) {
+  background: var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+}
+
+.unified-select {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.unified-body {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.unified-body--wide {
+  max-width: 1200px;
+}
+
+.unified-empty {
+  text-align: center;
+  padding: 64px;
+  color: var(--ctp-subtext0);
+}
+
+.unified-error {
+  text-align: center;
+  padding: 32px;
+  color: var(--ctp-red);
+}
+
+/* ── Date divider (messages) ─────────────────────────────────────────────── */
+
+.unified-date-divider {
+  text-align: center;
+  margin: 20px 0 10px;
+  font-size: 12px;
+  color: var(--ctp-overlay0);
+  position: relative;
+}
+
+.unified-date-divider span {
+  background: var(--ctp-base);
+  padding: 0 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.unified-date-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ctp-surface0);
+}
+
+/* ── Message card ────────────────────────────────────────────────────────── */
+
+.unified-msg-card {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.unified-msg-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.unified-msg-card__source-tag {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.unified-msg-card__channel {
+  color: var(--ctp-subtext0);
+  font-size: 12px;
+}
+
+.unified-msg-card__sender {
+  color: var(--ctp-overlay1);
+  font-size: 12px;
+}
+
+.unified-msg-card__time {
+  margin-left: auto;
+  color: var(--ctp-overlay0);
+  font-size: 11px;
+}
+
+.unified-msg-card__text {
+  color: var(--ctp-text);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* ── Telemetry source group ──────────────────────────────────────────────── */
+
+.unified-telem-source {
+  margin-bottom: 32px;
+}
+
+.unified-telem-source__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.unified-telem-source__bar {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.unified-telem-source__name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.unified-telem-source__count {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+}
+
+.unified-telem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+}
+
+/* ── Telemetry node card ─────────────────────────────────────────────────── */
+
+.unified-node-card {
+  background: var(--ctp-mantle);
+  border-radius: 8px;
+  border: 1px solid var(--ctp-surface0);
+  border-top-width: 2px;
+  padding: 14px;
+}
+
+.unified-node-card__header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.unified-node-card__name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ctp-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unified-node-card__age {
+  font-size: 11px;
+  color: var(--ctp-overlay0);
+  flex-shrink: 0;
+}
+
+.unified-node-card__readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.unified-reading {
+  min-width: 64px;
+}
+
+.unified-reading__label {
+  font-size: 10px;
+  color: var(--ctp-overlay0);
+  margin-bottom: 1px;
+}
+
+.unified-reading__value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ctp-text);
+}
+
+.unified-reading__unit {
+  font-size: 10px;
+  color: var(--ctp-subtext0);
+  margin-left: 2px;
+}

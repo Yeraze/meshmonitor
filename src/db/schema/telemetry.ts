@@ -23,6 +23,8 @@ export const telemetrySqlite = sqliteTable('telemetry', {
   channel: integer('channel'),
   precisionBits: integer('precisionBits'),
   gpsAccuracy: real('gpsAccuracy'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // PostgreSQL schema
@@ -42,6 +44,8 @@ export const telemetryPostgres = pgTable('telemetry', {
   channel: pgInteger('channel'),
   precisionBits: pgInteger('precisionBits'),
   gpsAccuracy: pgDoublePrecision('gpsAccuracy'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
@@ -60,6 +64,8 @@ export const telemetryMysql = mysqlTable('telemetry', {
   channel: myInt('channel'),
   precisionBits: myInt('precisionBits'),
   gpsAccuracy: myDouble('gpsAccuracy'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

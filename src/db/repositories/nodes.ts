@@ -28,14 +28,22 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Get a node by nodeNum
+   * Get a node by nodeNum, optionally scoped to a source.
+   *
+   * When sourceId is provided, the WHERE clause is scoped per-source — required
+   * after migration 029 made (nodeNum, sourceId) the composite PK. When omitted,
+   * returns the first matching row across any source (legacy / cross-source
+   * lookups retained for back-compat with non-threaded callers).
    */
-  async getNode(nodeNum: number): Promise<DbNode | null> {
+  async getNode(nodeNum: number, sourceId?: string): Promise<DbNode | null> {
     const { nodes } = this.tables;
+    const whereClause = sourceId
+      ? and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId))
+      : eq(nodes.nodeNum, nodeNum);
     const result = await this.db
       .select()
       .from(nodes)
-      .where(eq(nodes.nodeNum, nodeNum))
+      .where(whereClause)
       .limit(1);
 
     if (result.length === 0) return null;
@@ -62,14 +70,21 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Get a node by nodeId
+   * Get a node by nodeId, optionally scoped to a source.
+   *
+   * After migration 029, (nodeId, sourceId) is the composite unique key. When
+   * sourceId is provided, the lookup is scoped per-source. When omitted,
+   * returns the first matching row across any source (back-compat fallback).
    */
-  async getNodeByNodeId(nodeId: string): Promise<DbNode | null> {
+  async getNodeByNodeId(nodeId: string, sourceId?: string): Promise<DbNode | null> {
     const { nodes } = this.tables;
+    const whereClause = sourceId
+      ? and(eq(nodes.nodeId, nodeId), eq(nodes.sourceId, sourceId))
+      : eq(nodes.nodeId, nodeId);
     const result = await this.db
       .select()
       .from(nodes)
-      .where(eq(nodes.nodeId, nodeId))
+      .where(whereClause)
       .limit(1);
 
     if (result.length === 0) return null;
@@ -79,11 +94,12 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get all nodes ordered by update time
    */
-  async getAllNodes(): Promise<DbNode[]> {
+  async getAllNodes(sourceId?: string): Promise<DbNode[]> {
     const { nodes } = this.tables;
     const result = await this.db
       .select()
       .from(nodes)
+      .where(this.withSourceScope(nodes, sourceId))
       .orderBy(desc(nodes.updatedAt));
 
     return this.normalizeBigInts(result) as DbNode[];
@@ -92,7 +108,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get active nodes (heard within sinceDays)
    */
-  async getActiveNodes(sinceDays: number = 7): Promise<DbNode[]> {
+  async getActiveNodes(sinceDays: number = 7, sourceId?: string): Promise<DbNode[]> {
     // lastHeard is stored in seconds (Unix timestamp)
     const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const { nodes } = this.tables;
@@ -100,7 +116,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(nodes)
-      .where(gt(nodes.lastHeard, cutoff))
+      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)))
       .orderBy(desc(nodes.lastHeard));
 
     return this.normalizeBigInts(result) as DbNode[];
@@ -109,9 +125,10 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get total node count
    */
-  async getNodeCount(): Promise<number> {
+  async getNodeCount(sourceId?: string): Promise<number> {
     const { nodes } = this.tables;
-    const result = await this.db.select({ count: count() }).from(nodes);
+    const result = await this.db.select({ count: count() }).from(nodes)
+      .where(this.withSourceScope(nodes, sourceId));
     return Number(result[0].count);
   }
 
@@ -121,15 +138,18 @@ export class NodesRepository extends BaseRepository {
    * - Update path: coerceBigintField needed for MySQL/Postgres BIGINT timestamps (harmless for SQLite, now unified)
    * - Insert path: MySQL uses onDuplicateKeyUpdate vs onConflictDoUpdate
    */
-  async upsertNode(nodeData: Partial<DbNode>): Promise<void> {
+  async upsertNode(nodeData: Partial<DbNode>, sourceId?: string): Promise<void> {
     if (nodeData.nodeNum === undefined || nodeData.nodeNum === null || !nodeData.nodeId) {
       logger.error('Cannot upsert node: missing nodeNum or nodeId');
       return;
     }
+    // Fall back to 'default' source for callers that predate multi-source.
+    // After migration 029 the primary key is (nodeNum, sourceId) so a value is always needed.
+    const effectiveSourceId = sourceId ?? 'default';
 
     const now = this.now();
     const { nodes } = this.tables;
-    const existingNode = await this.getNode(nodeData.nodeNum);
+    const existingNode = await this.getNode(nodeData.nodeNum, effectiveSourceId);
 
     if (existingNode) {
       // Update existing node - coerceBigintField is safe for all dialects (just Math.floor)
@@ -173,7 +193,7 @@ export class NodesRepository extends BaseRepository {
           positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
           updatedAt: now,
         })
-        .where(eq(nodes.nodeNum, nodeData.nodeNum));
+        .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
     } else {
       // Insert new node - coerce BIGINT fields for PostgreSQL
       const newNode = {
@@ -214,7 +234,11 @@ export class NodesRepository extends BaseRepository {
         positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
         createdAt: now,
         updatedAt: now,
-      };
+      } as any;
+
+      // Only set sourceId on INSERT — once a node is associated with a source,
+      // that association must not be overwritten by subsequent upserts.
+      newNode.sourceId = effectiveSourceId;
 
       // All databases use atomic upsert to prevent race conditions where
       // concurrent getNode() calls both return null and then both try to INSERT
@@ -257,7 +281,7 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       };
 
-      await this.upsert(nodes, newNode, nodes.nodeNum, upsertSet);
+      await this.upsert(nodes, newNode, [nodes.nodeNum, nodes.sourceId], upsertSet);
     }
   }
 
@@ -273,28 +297,38 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Update the lastMessageHops for a node
+   * Update the lastMessageHops for a node, scoped per-source.
+   *
+   * After migration 029 (nodeNum, sourceId) is the composite PK, so packet
+   * handlers must always supply the sourceId of the manager that received
+   * the packet.
    */
-  async updateNodeMessageHops(nodeNum: number, hops: number): Promise<void> {
+  async updateNodeMessageHops(nodeNum: number, hops: number, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
     await this.db
       .update(nodes)
       .set({ lastMessageHops: hops, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Mark all existing nodes as welcomed
+   * Mark all existing nodes as welcomed.
+   * If `sourceId` is provided, only nodes belonging to that source are updated;
+   * otherwise all nodes are updated (legacy behavior).
    */
-  async markAllNodesAsWelcomed(): Promise<number> {
+  async markAllNodesAsWelcomed(sourceId?: string | null): Promise<number> {
     const now = this.now();
     const { nodes } = this.tables;
+
+    const whereClause = sourceId
+      ? and(isNull(nodes.welcomedAt), eq(nodes.sourceId, sourceId))
+      : isNull(nodes.welcomedAt);
 
     const toUpdate = await this.db
       .select({ nodeNum: nodes.nodeNum })
       .from(nodes)
-      .where(isNull(nodes.welcomedAt));
+      .where(whereClause);
 
     for (const node of toUpdate) {
       await this.db
@@ -306,9 +340,11 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Atomically mark a specific node as welcomed if not already welcomed
+   * Atomically mark a specific node as welcomed if not already welcomed,
+   * scoped per-source. After migration 029 (nodeNum, sourceId) is the
+   * composite PK so the auto-welcome path must always pass a real sourceId.
    */
-  async markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string): Promise<boolean> {
+  async markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string, sourceId: string): Promise<boolean> {
     const now = this.now();
     const { nodes } = this.tables;
 
@@ -319,6 +355,7 @@ export class NodesRepository extends BaseRepository {
         and(
           eq(nodes.nodeNum, nodeNum),
           eq(nodes.nodeId, nodeId),
+          eq(nodes.sourceId, sourceId),
           isNull(nodes.welcomedAt)
         )
       );
@@ -327,7 +364,7 @@ export class NodesRepository extends BaseRepository {
       await this.db
         .update(nodes)
         .set({ welcomedAt: now, updatedAt: now })
-        .where(eq(nodes.nodeNum, nodeNum));
+        .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
       return true;
     }
     return false;
@@ -336,15 +373,18 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get nodes with key security issues
    */
-  async getNodesWithKeySecurityIssues(): Promise<DbNode[]> {
+  async getNodesWithKeySecurityIssues(sourceId?: string): Promise<DbNode[]> {
     const { nodes } = this.tables;
     const result = await this.db
       .select()
       .from(nodes)
       .where(
-        or(
-          eq(nodes.keyIsLowEntropy, true),
-          eq(nodes.duplicateKeyDetected, true)
+        and(
+          or(
+            eq(nodes.keyIsLowEntropy, true),
+            eq(nodes.duplicateKeyDetected, true)
+          ),
+          this.withSourceScope(nodes, sourceId)
         )
       )
       .orderBy(desc(nodes.lastHeard));
@@ -355,7 +395,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get all nodes that have public keys
    */
-  async getNodesWithPublicKeys(): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
+  async getNodesWithPublicKeys(sourceId?: string): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
     const { nodes } = this.tables;
     const result = await this.db
       .select({ nodeNum: nodes.nodeNum, publicKey: nodes.publicKey })
@@ -363,7 +403,8 @@ export class NodesRepository extends BaseRepository {
       .where(
         and(
           isNotNull(nodes.publicKey),
-          ne(nodes.publicKey, '')
+          ne(nodes.publicKey, ''),
+          this.withSourceScope(nodes, sourceId)
         )
       );
 
@@ -371,12 +412,16 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Update security flags for a node
+   * Update security flags for a node, scoped per-source.
+   *
+   * After migration 029, (nodeNum, sourceId) is the composite PK so the
+   * duplicate-key scanner must always pass a real sourceId.
    */
   async updateNodeSecurityFlags(
     nodeNum: number,
     duplicateKeyDetected: boolean,
-    keySecurityIssueDetails?: string
+    keySecurityIssueDetails: string | undefined,
+    sourceId: string
   ): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
@@ -388,18 +433,22 @@ export class NodesRepository extends BaseRepository {
         keySecurityIssueDetails: keySecurityIssueDetails ?? null,
         updatedAt: now,
       })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Update low entropy flag for a node
+   * Update low entropy flag for a node, scoped per-source.
+   *
+   * After migration 029 (nodeNum, sourceId) is the composite PK so the
+   * scanner must always pass a real sourceId.
    */
   async updateNodeLowEntropyFlag(
     nodeNum: number,
     keyIsLowEntropy: boolean,
-    details?: string
+    details: string | undefined,
+    sourceId: string
   ): Promise<void> {
-    const node = await this.getNode(nodeNum);
+    const node = await this.getNode(nodeNum, sourceId);
     if (!node) return;
 
     let combinedDetails = details || '';
@@ -434,22 +483,24 @@ export class NodesRepository extends BaseRepository {
         keySecurityIssueDetails: combinedDetails || null,
         updatedAt: now,
       })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Delete a node by nodeNum
+   * Delete a node by nodeNum scoped to sourceId
    */
-  async deleteNodeRecord(nodeNum: number): Promise<boolean> {
+  async deleteNodeRecord(nodeNum: number, sourceId: string): Promise<boolean> {
     const { nodes } = this.tables;
     const existing = await this.db
       .select({ nodeNum: nodes.nodeNum })
       .from(nodes)
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
 
     if (existing.length === 0) return false;
 
-    await this.db.delete(nodes).where(eq(nodes.nodeNum, nodeNum));
+    await this.db
+      .delete(nodes)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
     return true;
   }
 
@@ -483,9 +534,9 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Set node favorite status
+   * Set node favorite status (scoped to sourceId)
    */
-  async setNodeFavorite(nodeNum: number, isFavorite: boolean, favoriteLocked?: boolean): Promise<void> {
+  async setNodeFavorite(nodeNum: number, isFavorite: boolean, sourceId: string, favoriteLocked?: boolean): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
@@ -497,33 +548,33 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .update(nodes)
       .set(setData)
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Set only the favoriteLocked flag (without changing isFavorite)
+   * Set only the favoriteLocked flag (without changing isFavorite), scoped to sourceId
    */
-  async setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean): Promise<void> {
+  async setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
     await this.db
       .update(nodes)
       .set({ favoriteLocked, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
-   * Set node ignored status
+   * Set node ignored status (scoped to sourceId)
    */
-  async setNodeIgnored(nodeNum: number, isIgnored: boolean): Promise<void> {
+  async setNodeIgnored(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
     await this.db
       .update(nodes)
       .set({ isIgnored, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -584,14 +635,14 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Update node's last traceroute request timestamp
+   * Update node's last traceroute request timestamp, scoped per-source.
    */
-  async updateNodeLastTracerouteRequest(nodeNum: number, timestamp: number): Promise<void> {
+  async updateNodeLastTracerouteRequest(nodeNum: number, timestamp: number, sourceId: string): Promise<void> {
     const { nodes } = this.tables;
     await this.db
       .update(nodes)
       .set({ lastTracerouteRequest: timestamp })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -606,16 +657,19 @@ export class NodesRepository extends BaseRepository {
     localNodeNum: number,
     activeNodeCutoffSeconds: number,
     threeHoursAgoMs: number,
-    expirationMsAgo: number
+    expirationMsAgo: number,
+    sourceId?: string
   ): Promise<DbNode[]> {
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
+      const sourceFilter = sourceId ? sql` AND n.sourceId = ${sourceId}` : sql``;
       // SQLite uses raw SQL for the complex subquery
       const results = await db.all<DbNode>(sql`
         SELECT n.*
         FROM nodes n
         WHERE n.nodeNum != ${localNodeNum}
           AND n.lastHeard > ${activeNodeCutoffSeconds}
+          ${sourceFilter}
           AND (
             -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
             (
@@ -636,11 +690,13 @@ export class NodesRepository extends BaseRepository {
       return results.map(r => this.normalizeNode(r));
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
+      const sourceFilter = sourceId ? sql` AND n.sourceId = ${sourceId}` : sql``;
       const results = await db.execute(sql`
         SELECT n.*
         FROM nodes n
         WHERE n.nodeNum != ${localNodeNum}
           AND n.lastHeard > ${activeNodeCutoffSeconds}
+          ${sourceFilter}
           AND (
             (
               (SELECT COUNT(*) FROM traceroutes t
@@ -667,11 +723,13 @@ export class NodesRepository extends BaseRepository {
       const fromNodeNum = this.col('fromNodeNum');
       const toNodeNum = this.col('toNodeNum');
       const lastTracerouteRequest = this.col('lastTracerouteRequest');
+      const sourceFilter = sourceId ? sql` AND n."sourceId" = ${sourceId}` : sql``;
       const results = await db.execute(sql`
         SELECT n.*
         FROM nodes n
         WHERE n.${nodeNum} != ${localNodeNum}
           AND n.${lastHeard} > ${activeNodeCutoffSeconds}
+          ${sourceFilter}
           AND (
             (
               (SELECT COUNT(*) FROM traceroutes t
@@ -726,7 +784,8 @@ export class NodesRepository extends BaseRepository {
   async getNodeNeedingRemoteAdminCheckAsync(
     localNodeNum: number,
     activeNodeCutoff: number,
-    expirationMsAgo: number
+    expirationMsAgo: number,
+    sourceId?: string
   ): Promise<DbNode | null> {
     const { nodes } = this.tables;
     const results = await this.db
@@ -741,7 +800,8 @@ export class NodesRepository extends BaseRepository {
           or(
             isNull(nodes.lastRemoteAdminCheck),
             lt(nodes.lastRemoteAdminCheck, expirationMsAgo)
-          )
+          ),
+          this.withSourceScope(nodes, sourceId)
         )
       )
       .orderBy(desc(nodes.lastHeard))
@@ -760,7 +820,8 @@ export class NodesRepository extends BaseRepository {
   async updateNodeRemoteAdminStatusAsync(
     nodeNum: number,
     hasRemoteAdmin: boolean,
-    metadata: string | null
+    metadata: string | null,
+    sourceId: string
   ): Promise<void> {
     const now = Date.now();
     const { nodes } = this.tables;
@@ -779,7 +840,7 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .update(nodes)
       .set(updateData as any)
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -792,7 +853,8 @@ export class NodesRepository extends BaseRepository {
   async getNodeNeedingTimeSyncAsync(
     activeNodeCutoff: number,
     expirationMsAgo: number,
-    filterNodeNums?: number[]
+    filterNodeNums?: number[],
+    sourceId?: string
   ): Promise<DbNode | null> {
     const { nodes } = this.tables;
     const baseConditions = [
@@ -808,6 +870,9 @@ export class NodesRepository extends BaseRepository {
     if (filterNodeNums && filterNodeNums.length > 0) {
       baseConditions.push(inArray(nodes.nodeNum, filterNodeNums));
     }
+
+    const sourceScope = this.withSourceScope(nodes, sourceId);
+    if (sourceScope) baseConditions.push(sourceScope);
 
     const results = await this.db
       .select()
@@ -825,14 +890,14 @@ export class NodesRepository extends BaseRepository {
    * @param nodeNum The node number to update
    * @param timestamp The timestamp to set
    */
-  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number): Promise<void> {
+  async updateNodeTimeSyncAsync(nodeNum: number, timestamp: number, sourceId: string): Promise<void> {
     const now = this.now();
     const { nodes } = this.tables;
 
     await this.db
       .update(nodes)
       .set({ lastTimeSync: timestamp, updatedAt: now })
-      .where(eq(nodes.nodeNum, nodeNum));
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
   /**
@@ -840,20 +905,26 @@ export class NodesRepository extends BaseRepository {
    */
   async getInactiveMonitoredNodes(
     nodeIds: string[],
-    cutoffSeconds: number
+    cutoffSeconds: number,
+    sourceId?: string
   ): Promise<Array<{ nodeNum: number; nodeId: string; longName: string | null; shortName: string | null; lastHeard: number | null }>> {
     if (nodeIds.length === 0) return [];
 
     try {
       const { nodes } = this.tables;
+      const conditions = [
+        inArray(nodes.nodeId, nodeIds),
+        isNotNull(nodes.lastHeard),
+        lt(nodes.lastHeard, cutoffSeconds),
+      ];
+      // Phase C: scope to a specific source so per-source inactive checks don't bleed across sources
+      if (sourceId) {
+        conditions.push(eq(nodes.sourceId, sourceId));
+      }
       const rows = await this.db
         .select({ nodeNum: nodes.nodeNum, nodeId: nodes.nodeId, longName: nodes.longName, shortName: nodes.shortName, lastHeard: nodes.lastHeard })
         .from(nodes)
-        .where(and(
-          inArray(nodes.nodeId, nodeIds),
-          isNotNull(nodes.lastHeard),
-          lt(nodes.lastHeard, cutoffSeconds)
-        ))
+        .where(and(...conditions))
         .orderBy(asc(nodes.lastHeard));
       return rows.map((r: any) => ({ ...r, nodeNum: Number(r.nodeNum) }));
     } catch (error) {

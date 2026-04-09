@@ -70,6 +70,8 @@ const requirePacketPermissions: RequestHandler = async (req, res, next) => {
   try {
     const user = (req as any).user;
     const userId = user?.id ?? null;
+    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    (req as any).scopedSourceId = sourceIdQ;
 
     // Get user permissions (works for both authenticated and anonymous users)
     const permissions = userId !== null
@@ -86,8 +88,10 @@ const requirePacketPermissions: RequestHandler = async (req, res, next) => {
       return next();
     }
 
-    // Check packetmonitor:read permission
-    const hasPacketMonitorRead = permissions.packetmonitor?.read === true;
+    // Check packetmonitor:read permission (scoped to source if provided)
+    const hasPacketMonitorRead = userId !== null
+      ? await databaseService.checkPermissionAsync(userId, 'packetmonitor', 'read', sourceIdQ)
+      : false;
 
     if (!hasPacketMonitorRead) {
       logger.warn(`❌ Permission denied for packet access - packetmonitor:read=${hasPacketMonitorRead}`);

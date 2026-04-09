@@ -144,15 +144,6 @@ describe('TelemetryGraphs Component', () => {
     });
   });
 
-  // Skip: This test is inherently flaky due to React Query caching and async timing.
-  // The loading state is shown briefly before data loads, making it difficult to
-  // reliably test. Other tests verify the component works correctly with data.
-  it.skip('should render loading state initially', async () => {
-    // This test would verify that telemetry.loading is shown before data loads
-    // but the timing is unreliable due to React Query's synchronous cache behavior
-    expect(true).toBe(true);
-  });
-
   it('should fetch telemetry data on mount', async () => {
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 

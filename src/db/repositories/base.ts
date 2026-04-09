@@ -4,7 +4,7 @@
  * Provides common functionality for all repository implementations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { sql } from 'drizzle-orm';
+import { sql, eq, SQL } from 'drizzle-orm';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { MySql2Database } from 'drizzle-orm/mysql2';
@@ -214,6 +214,21 @@ export abstract class BaseRepository {
       .insert(table)
       .values(values)
       .onConflictDoNothing();
+  }
+
+  /**
+   * Return a Drizzle WHERE condition that filters by sourceId.
+   *
+   * Returns `undefined` when no sourceId is given — Drizzle's `and(...)` treats
+   * undefined entries as no-ops, so existing callers that omit sourceId continue
+   * to see all rows regardless of their source_id value.
+   *
+   * Usage:
+   *   .where(and(eq(nodes.nodeNum, num), this.withSourceScope(nodes, sourceId)))
+   */
+  protected withSourceScope(table: any, sourceId?: string): SQL | undefined {
+    if (!sourceId) return undefined;
+    return eq(table.sourceId, sourceId);
   }
 
   /**

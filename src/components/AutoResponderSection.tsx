@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import {
   AutoResponderTrigger,
@@ -35,6 +36,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localTriggers, setLocalTriggers] = useState<AutoResponderTrigger[]>(triggers);
@@ -500,7 +502,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setIsSaving(true);
     try {
       // Sync to backend
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -531,7 +533,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localTriggers, localSkipIncompleteNodes, baseUrl, csrfFetch, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange]);
+  }, [localEnabled, localTriggers, localSkipIncompleteNodes, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange]);
 
   // Register with SaveBar
   useSaveBar({

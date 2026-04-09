@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { logger } from '../../../utils/logger';
+import { useSource } from '../../../contexts/SourceContext';
 import { type FavoriteChart, type NodeInfo, type CustomWidget } from '../types';
 
 interface UseDashboardDataOptions {
@@ -33,10 +34,11 @@ interface UseDashboardDataResult {
   refresh: () => Promise<void>;
 }
 
-// Query keys for cache management
+// Query keys for cache management — scoped by sourceId so each source's
+// dashboard config is cached independently.
 export const dashboardQueryKeys = {
-  settings: ['dashboard', 'settings'] as const,
-  nodes: ['dashboard', 'nodes'] as const,
+  settings: (sourceId: string | null) => ['dashboard', 'settings', sourceId] as const,
+  nodes: (sourceId: string | null) => ['dashboard', 'nodes', sourceId] as const,
 };
 
 /**
@@ -46,6 +48,8 @@ export const dashboardQueryKeys = {
 export function useDashboardData(options?: UseDashboardDataOptions): UseDashboardDataResult {
   const { refetchInterval = 30000, enabled = true } = options ?? {};
   const queryClient = useQueryClient();
+  const { sourceId } = useSource();
+  const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
 
   // Local state for user modifications (before saving to server)
   const [localFavorites, setLocalFavorites] = useState<FavoriteChart[] | null>(null);
@@ -55,14 +59,14 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
 
   // Fetch settings (favorites, custom order, widgets, solar visibility)
   const settingsQuery = useQuery({
-    queryKey: dashboardQueryKeys.settings,
+    queryKey: dashboardQueryKeys.settings(sourceId),
     queryFn: async (): Promise<{
       favorites: FavoriteChart[];
       customOrder: string[];
       widgets: CustomWidget[];
       solarVisibility: Record<string, boolean>;
     }> => {
-      const settings = await api.get<SettingsResponse>('/api/settings');
+      const settings = await api.get<SettingsResponse>(`/api/settings${sourceQuery}`);
 
       const favoritesArray: FavoriteChart[] = settings.telemetryFavorites
         ? JSON.parse(settings.telemetryFavorites)
@@ -96,9 +100,9 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
 
   // Fetch nodes
   const nodesQuery = useQuery({
-    queryKey: dashboardQueryKeys.nodes,
+    queryKey: dashboardQueryKeys.nodes(sourceId),
     queryFn: async (): Promise<Map<string, NodeInfo>> => {
-      const nodesData = await api.get<NodeInfo[]>('/api/nodes');
+      const nodesData = await api.get<NodeInfo[]>(`/api/nodes${sourceQuery}`);
       const nodesMap = new Map<string, NodeInfo>();
       nodesData.forEach((node: NodeInfo) => {
         if (node.user?.id) {
@@ -220,10 +224,10 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
   // Manual refresh function
   const refresh = useCallback(async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.settings }),
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.nodes }),
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.settings(sourceId) }),
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.nodes(sourceId) }),
     ]);
-  }, [queryClient]);
+  }, [queryClient, sourceId]);
 
   return {
     favorites,

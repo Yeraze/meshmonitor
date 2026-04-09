@@ -59,12 +59,30 @@ This prevents mobile apps from accidentally or maliciously modifying your physic
 
 ## Configuration
 
-### Environment Variables
+> **Breaking change in 4.0:** Virtual Node is now configured **per source** through the Dashboard UI. The legacy environment variables `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, and `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` have been removed. Each `meshtastic_tcp` source owns its own Virtual Node endpoint, so two sources on different nodes can each expose a VN on different ports.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_VIRTUAL_NODE` | `true` | Enable/disable the Virtual Node Server |
-| `VIRTUAL_NODE_PORT` | `4404` | TCP port for mobile app connections |
+### Enabling Virtual Node on a Source
+
+1. Open the MeshMonitor Dashboard and sign in as an admin.
+2. On the source card for the `meshtastic_tcp` node you want to expose, open the kebab menu and choose **Edit**.
+3. In the **Virtual Node** section, toggle **Enable Virtual Node**.
+4. Enter the TCP port mobile apps should connect to (the historical default was `4404`). It must not collide with the source's upstream TCP port or another source's VN port.
+5. Optionally enable **Allow admin commands** — leave off unless you trust every connected client (see [Security Filtering](#security-filtering)).
+6. Click **Save**. The endpoint hot-swaps without restarting the upstream TCP connection.
+
+Configuration lives in the `sources.config` JSON column as:
+
+```json
+{
+  "host": "192.168.1.100",
+  "port": 4403,
+  "virtualNode": {
+    "enabled": true,
+    "port": 4404,
+    "allowAdminCommands": false
+  }
+}
+```
 
 ### Docker Compose Example
 
@@ -75,26 +93,24 @@ services:
     container_name: meshmonitor
     ports:
       - "8080:3001"      # Web interface
-      - "4404:4404"      # Virtual Node Server
+      - "4404:4404"      # Virtual Node endpoint (enable on the source after first boot)
     volumes:
       - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-      - ENABLE_VIRTUAL_NODE=true
-      - VIRTUAL_NODE_PORT=4404
+      - MESHTASTIC_NODE_IP=192.168.1.100   # auto-creates default source on first boot
     restart: unless-stopped
 
 volumes:
   meshmonitor-data:
 ```
 
+On first boot MeshMonitor auto-creates a default `meshtastic_tcp` source from `MESHTASTIC_NODE_IP`. Virtual Node is **off** by default — enable it via Dashboard → Edit Source as described above. Expose the VN port in your compose/Helm config so it's reachable when you turn it on.
+
 ### Kubernetes/Helm Example
 
 ```yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  enableVirtualNode: "true"
-  virtualNodePort: "4404"
 
 service:
   type: LoadBalancer
@@ -107,6 +123,8 @@ service:
       targetPort: 4404
 ```
 
+After the pod starts, open the Dashboard and enable Virtual Node on the auto-created source.
+
 ## Mobile App Setup
 
 ### iOS (Official Meshtastic App)
@@ -116,7 +134,7 @@ service:
 3. Select **TCP** as the connection type
 4. Enter your MeshMonitor server details:
    - **Address**: Your MeshMonitor server IP or hostname
-   - **Port**: `4404` (or your custom VIRTUAL_NODE_PORT)
+   - **Port**: `4404` (or the port you configured on the source)
 5. Tap **Connect**
 
 The app will connect to MeshMonitor's Virtual Node Server instead of directly to your physical node.
@@ -179,12 +197,9 @@ docker logs meshmonitor | grep -i "virtual"
 
 **Mobile app can't connect:**
 
-1. Verify the Virtual Node Server is enabled:
-   ```bash
-   docker exec meshmonitor printenv | grep VIRTUAL_NODE
-   ```
+1. Verify the Virtual Node is enabled on the correct source. Hit `/api/virtual-node/status` (requires auth) — the response is `{ "sources": [ { sourceId, sourceName, enabled, isRunning, clientCount, clients } ] }`. Any source with `enabled: true` and `isRunning: true` is accepting connections. You can also see a `VN:<port>` badge on the source card in the Dashboard sidebar.
 
-2. Check that port 4404 is exposed in your Docker configuration
+2. Check that the VN port is exposed in your Docker configuration
 
 3. Ensure firewall rules allow TCP traffic on port 4404:
    ```bash
@@ -278,60 +293,32 @@ Text messages, positions, telemetry, and traceroutes are allowed and work normal
 
 ### Custom Port
 
-To use a different port (e.g., to avoid conflicts):
-
-```yaml
-environment:
-  - VIRTUAL_NODE_PORT=14404
-ports:
-  - "14404:14404"
-```
+Edit the source in the Dashboard and change the Virtual Node port field. Be sure to publish the new port in your compose/Helm config so it's reachable from outside the container. Ports must be unique across sources — the API rejects collisions with a 409.
 
 ### Disabling Virtual Node
 
-If you don't need multiple mobile connections:
+Edit the source in the Dashboard and uncheck **Enable Virtual Node**, then save. The endpoint shuts down without restarting the upstream TCP connection.
 
-```yaml
-environment:
-  - ENABLE_VIRTUAL_NODE=false
-```
+### Multiple Sources in One MeshMonitor Instance
 
-This frees up the port and reduces memory usage slightly.
-
-### Multiple MeshMonitor Instances
-
-You can run multiple MeshMonitor instances, each with its own Virtual Node Server, to monitor multiple physical nodes:
+MeshMonitor 4.0 supports multiple sources in a single instance — you no longer need to run multiple containers to expose multiple Meshtastic nodes. Add each node as its own source in the Dashboard and enable Virtual Node on each with a unique port:
 
 ```yaml
 services:
-  meshmonitor-node1:
+  meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     ports:
       - "8080:3001"
-      - "4404:4404"
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-      - ENABLE_VIRTUAL_NODE=true
+      - "4404:4404"   # Source A virtual node
+      - "4405:4405"   # Source B virtual node
     volumes:
-      - node1-data:/data
-
-  meshmonitor-node2:
-    image: ghcr.io/yeraze/meshmonitor:latest
-    ports:
-      - "8081:3001"
-      - "4405:4404"  # Different external port
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.101
-      - ENABLE_VIRTUAL_NODE=true
-    volumes:
-      - node2-data:/data
+      - meshmonitor-data:/data
 
 volumes:
-  node1-data:
-  node2-data:
+  meshmonitor-data:
 ```
 
-Mobile apps can then connect to different MeshMonitor instances (and different physical nodes) by changing the port.
+Then in the Dashboard: add two `meshtastic_tcp` sources pointing at each physical node and enable Virtual Node on each with the matching port (4404 for A, 4405 for B). Mobile apps connect to the appropriate port to reach the corresponding node.
 
 ## Technical Details
 
@@ -384,7 +371,7 @@ Mobile apps will disconnect when MeshMonitor restarts. They should automatically
 
 ### Can I disable the Virtual Node and use direct connections?
 
-Yes. Set `ENABLE_VIRTUAL_NODE=false` and connect your mobile apps directly to the physical node on port 4403. However, this means:
+Yes. In the Dashboard, edit the source and uncheck **Enable Virtual Node**, then connect your mobile apps directly to the physical node on port 4403. However, this means:
 - Only one mobile connection may be stable
 - No configuration caching
 - Messages from mobile apps won't appear in MeshMonitor's web UI

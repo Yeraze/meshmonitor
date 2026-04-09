@@ -119,8 +119,8 @@ ELAPSED=0
 NODE_CONNECTED=false
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-    # Check if we can reach the API
-    if curl -s http://localhost:$TEST_PORT/api/connection 2>/dev/null | grep -q "connected"; then
+    # Check if the node is actually connected (not just API responsive)
+    if curl -s http://localhost:$TEST_PORT/api/connection 2>/dev/null | grep -q '"connected":true'; then
         NODE_CONNECTED=true
         echo -e "${GREEN}✓ PASS${NC}: Node connected"
         break
@@ -664,6 +664,10 @@ if [ "$HTTP_CODE" = "200" ]; then
 else
     echo -e "${RED}✗ FAIL${NC}: Import failed (HTTP $HTTP_CODE)"
     echo "$IMPORT_BODY"
+    echo ""
+    echo "=== Container logs (last 50 lines) ==="
+    docker logs --tail=50 "$CONTAINER_NAME" 2>&1 || true
+    echo "==="
     exit 1
 fi
 echo ""

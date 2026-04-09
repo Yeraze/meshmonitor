@@ -41,6 +41,8 @@ export const channelDatabaseSqlite = sqliteTable('channel_database', {
   createdBy: integer('created_by').references(() => usersSqlite.id, { onDelete: 'set null' }),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // ============ CHANNEL DATABASE PERMISSIONS (SQLite) ============
@@ -75,6 +77,8 @@ export const channelDatabasePostgres = pgTable('channel_database', {
   createdBy: pgInteger('createdBy').references(() => usersPostgres.id, { onDelete: 'set null' }),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // ============ CHANNEL DATABASE PERMISSIONS (PostgreSQL) ============
@@ -109,6 +113,8 @@ export const channelDatabaseMysql = mysqlTable('channel_database', {
   createdBy: myInt('createdBy').references(() => usersMysql.id, { onDelete: 'set null' }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // ============ CHANNEL DATABASE PERMISSIONS (MySQL) ============

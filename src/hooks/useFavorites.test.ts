@@ -41,6 +41,7 @@ function createWrapper() {
 describe('useFavorites hooks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCsrfFetch.mockReset();
     global.fetch = vi.fn();
   });
 
@@ -241,7 +242,7 @@ describe('useFavorites hooks', () => {
 
       const { client, wrapper } = createWrapper();
       // Pre-seed the cache so we can observe the optimistic update
-      client.setQueryData(['favorites', '!abc123'], new Set<string>(['temperature']));
+      client.setQueryData(['favorites', null, '!abc123'], new Set<string>(['temperature']));
 
       const { result } = renderHook(() => useToggleFavorite(), { wrapper });
 
@@ -254,7 +255,7 @@ describe('useFavorites hooks', () => {
 
       // Wait for onMutate to complete: it cancels queries then writes optimistic data
       await waitFor(() => {
-        const cached = client.getQueryData<Set<string>>(['favorites', '!abc123']);
+        const cached = client.getQueryData<Set<string>>(['favorites', null, '!abc123']);
         expect(cached?.has('batteryLevel')).toBe(true);
       });
 
@@ -278,7 +279,7 @@ describe('useFavorites hooks', () => {
       const onError = vi.fn();
       const { client, wrapper } = createWrapper();
       // Pre-seed the cache with original favorites
-      client.setQueryData(['favorites', '!abc123'], new Set<string>(['temperature']));
+      client.setQueryData(['favorites', null, '!abc123'], new Set<string>(['temperature']));
 
       const { result } = renderHook(() => useToggleFavorite({ onError }), { wrapper });
 
@@ -291,7 +292,7 @@ describe('useFavorites hooks', () => {
       await waitFor(() => expect(result.current.isError).toBe(true));
 
       // Cache should be rolled back to previous snapshot via onError handler
-      const cached = client.getQueryData<Set<string>>(['favorites', '!abc123']);
+      const cached = client.getQueryData<Set<string>>(['favorites', null, '!abc123']);
       expect(cached?.has('temperature')).toBe(true);
 
       expect(onError).toHaveBeenCalledWith('Server returned 500');

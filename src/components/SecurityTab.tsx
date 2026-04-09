@@ -5,6 +5,7 @@ import api from '../services/api';
 import { TabType } from '../types/ui';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { logger } from '../utils/logger';
+import { useSource } from '../contexts/SourceContext';
 import '../styles/SecurityTab.css';
 
 interface SecurityNode {
@@ -78,6 +79,7 @@ interface SecurityTabProps {
 export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, setNewMessage }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const { sourceId } = useSource();
   const [issues, setIssues] = useState<SecurityIssuesResponse | null>(null);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,11 +107,14 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
 
   const fetchSecurityData = async () => {
     try {
+      const srcParam = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
       const [issuesData, statusData, mismatchData, deadNodesData] = await Promise.all([
-        api.get<SecurityIssuesResponse>('/api/security/issues'),
-        api.get<ScannerStatus>('/api/security/scanner/status'),
+        api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
+        api.get<ScannerStatus>(`/api/security/scanner/status${srcParam}`),
         api.get<{ events: any[] }>('/api/security/key-mismatches'),
-        api.get<DeadNodesResponse>('/api/security/dead-nodes')
+        sourceId
+          ? api.get<DeadNodesResponse>(`/api/security/dead-nodes${srcParam}`)
+          : Promise.resolve({ nodes: [], count: 0, thresholdDays: 7 } as unknown as DeadNodesResponse),
       ]);
 
       setIssues(issuesData);
@@ -130,7 +135,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     // Refresh every 30 seconds
     const interval = setInterval(fetchSecurityData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [sourceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load digest settings
   useEffect(() => {
@@ -187,9 +192,13 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   }, [t]);
 
   const triggerScan = useCallback(async () => {
+    if (!sourceId) {
+      setError(t('security.failed_scan'));
+      return;
+    }
     setScanning(true);
     try {
-      await api.post('/api/security/scanner/scan', {});
+      await api.post('/api/security/scanner/scan', { sourceId });
 
       // Wait a moment then refresh data
       setTimeout(fetchSecurityData, 2000);
@@ -198,7 +207,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [sourceId, t]);
 
   const formatDate = (timestamp: number | null) => {
     if (!timestamp) return t('security.never');
@@ -293,7 +302,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       // If pathname is /meshmonitor, extract that; otherwise use /
       const pathParts = window.location.pathname.split('/').filter(p => p);
       const basePath = pathParts.length > 0 ? `/${pathParts[0]}/` : '/';
-      const exportUrl = `${basePath}api/security/export?format=${format}`;
+      const exportUrl = `${basePath}api/security/export?format=${format}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`;
 
       const response = await fetch(exportUrl, {
         credentials: 'include'
@@ -366,7 +375,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
 
     setIsDeletingNodes(true);
     try {
-      await api.post('/api/security/dead-nodes/bulk-delete', { nodeNums: Array.from(selectedDeadNodes) });
+      await api.post('/api/security/dead-nodes/bulk-delete', { nodeNums: Array.from(selectedDeadNodes), ...(sourceId ? { sourceId } : {}) });
       setSelectedDeadNodes(new Set());
       await fetchSecurityData();
     } catch (err) {

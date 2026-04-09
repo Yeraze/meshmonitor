@@ -1,5 +1,6 @@
 import { Socket } from 'net';
 import { EventEmitter } from 'events';
+import type { ITransport } from './transports/transport.js';
 import { logger } from '../utils/logger.js';
 
 export interface TcpTransportConfig {
@@ -7,7 +8,7 @@ export interface TcpTransportConfig {
   port: number;
 }
 
-export class TcpTransport extends EventEmitter {
+export class TcpTransport extends EventEmitter implements ITransport {
   private socket: Socket | null = null;
   private buffer: Buffer = Buffer.alloc(0);
   private reconnectAttempts = 0;
@@ -24,6 +25,17 @@ export class TcpTransport extends EventEmitter {
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private readonly HEALTH_CHECK_INTERVAL_MS = 60000; // Check every minute
   private readonly BUFFER_STALE_TIMEOUT_MS = 30000; // 30s: if buffer has data but no frames parsed, reset it
+
+  // Configurable keepalive heartbeat (issue 2609).
+  // When `heartbeatIntervalMs > 0`, the transport calls `heartbeatPayloadFactory()`
+  // on a timer and writes the returned bytes to the socket. This is used to keep
+  // quiet Meshtastic nodes (CLIENT_MUTE) from being declared stale by the
+  // passive-data health check. A successful heartbeat write also resets
+  // `lastDataReceived`, so the heartbeat doubles as the liveness signal for the
+  // stale detector.
+  private heartbeatIntervalMs: number = 0;
+  private heartbeatPayloadFactory: (() => Uint8Array | Promise<Uint8Array>) | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   // Configurable TCP timing
   private connectTimeoutMs: number = 10000; // 10 second default
@@ -64,6 +76,44 @@ export class TcpTransport extends EventEmitter {
     this.reconnectInitialDelayMs = initialDelayMs;
     this.reconnectMaxDelayMs = maxDelayMs;
     logger.debug(`⏱️  Reconnect timing: initial=${initialDelayMs}ms, max=${maxDelayMs}ms`);
+  }
+
+  /**
+   * Configure a keepalive heartbeat (issue 2609).
+   *
+   * When `intervalMs > 0`, the transport will periodically call `getPayload()`
+   * and write the returned bytes to the socket. A successful write also marks
+   * the connection as having fresh activity (`lastDataReceived`), which
+   * prevents the stale-connection detector from reconnecting quiet nodes that
+   * receive little inbound mesh traffic.
+   *
+   * Pass `intervalMs = 0` to disable the heartbeat. Safe to call before or
+   * after `connect()`. If called while connected and the interval changes,
+   * the existing timer is replaced.
+   *
+   * @param intervalMs Heartbeat period in milliseconds (0 disables)
+   * @param getPayload Factory returning the raw bytes to write each tick.
+   *                   Kept as a callback so the transport never needs to know
+   *                   about protobufs or any higher-level framing.
+   */
+  setHeartbeatInterval(
+    intervalMs: number,
+    getPayload: () => Uint8Array | Promise<Uint8Array>
+  ): void {
+    this.heartbeatIntervalMs = intervalMs;
+    this.heartbeatPayloadFactory = getPayload;
+
+    // Replace any running timer. If disabled, just stop.
+    this.stopHeartbeat();
+    if (intervalMs > 0 && this.isConnected) {
+      this.startHeartbeat();
+    }
+
+    if (intervalMs > 0) {
+      logger.debug(`💓 Heartbeat configured: every ${Math.floor(intervalMs / 1000)}s`);
+    } else {
+      logger.debug('💓 Heartbeat disabled');
+    }
   }
 
   async connect(host: string, port: number = 4403): Promise<void> {
@@ -116,6 +166,11 @@ export class TcpTransport extends EventEmitter {
         // Start stale connection monitoring
         this.startHealthCheck();
 
+        // Start keepalive heartbeat if configured (issue 2609)
+        if (this.heartbeatIntervalMs > 0 && this.heartbeatPayloadFactory) {
+          this.startHeartbeat();
+        }
+
         logger.debug(`✅ TCP connected to ${this.config?.host}:${this.config?.port}`);
         this.emit('connect');
         resolve();
@@ -140,6 +195,9 @@ export class TcpTransport extends EventEmitter {
         this.isConnecting = false;
         const wasConnected = this.isConnected;
         this.isConnected = false;
+
+        // Stop heartbeat on disconnect; it will be restarted on the next connect
+        this.stopHeartbeat();
 
         if (wasConnected) {
           logger.debug('🔌 TCP connection closed');
@@ -185,6 +243,8 @@ export class TcpTransport extends EventEmitter {
 
     // Stop stale connection monitoring
     this.stopHealthCheck();
+    // Stop keepalive heartbeat
+    this.stopHeartbeat();
 
     if (this.socket) {
       this.socket.removeAllListeners();
@@ -364,6 +424,61 @@ export class TcpTransport extends EventEmitter {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
       logger.debug('⏱️  Stale connection monitoring stopped');
+    }
+  }
+
+  /**
+   * Start the keepalive heartbeat timer. No-op if heartbeat is not configured,
+   * the transport is not connected, or a timer is already running (idempotent).
+   *
+   * Each tick: build the payload via the configured factory, send it, and on
+   * success mark `lastDataReceived` so the stale-connection detector treats
+   * the successful write as a liveness signal (issue 2609). If the send fails,
+   * the socket 'error'/'close' handlers take over and reconnect normally.
+   */
+  private startHeartbeat(): void {
+    if (this.heartbeatIntervalMs <= 0 || !this.heartbeatPayloadFactory) {
+      return;
+    }
+    if (this.heartbeatTimer) {
+      // Already running — don't stack timers
+      return;
+    }
+    if (!this.isConnected) {
+      // Will be started by the 'connect' handler when we're actually online
+      return;
+    }
+
+    this.heartbeatTimer = setInterval(async () => {
+      if (!this.isConnected || !this.heartbeatPayloadFactory) {
+        return;
+      }
+      try {
+        const payload = await this.heartbeatPayloadFactory();
+        await this.send(payload);
+        // Successful heartbeat write counts as fresh activity for the
+        // stale-connection detector. Without this, quiet nodes still cycle.
+        this.lastDataReceived = Date.now();
+        logger.debug(`💓 Heartbeat sent (${payload.length} bytes)`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.warn(`💔 Heartbeat send failed: ${msg}`);
+        // Intentionally do NOT update lastDataReceived on failure — let the
+        // stale detector fire so a truly dead link gets reconnected.
+      }
+    }, this.heartbeatIntervalMs);
+
+    logger.debug(`💓 Heartbeat started: every ${Math.floor(this.heartbeatIntervalMs / 1000)}s`);
+  }
+
+  /**
+   * Stop the keepalive heartbeat timer. Safe to call when not running.
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+      logger.debug('💓 Heartbeat stopped');
     }
   }
 

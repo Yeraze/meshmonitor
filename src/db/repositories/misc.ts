@@ -4,7 +4,7 @@
  * Handles solar estimates and auto-traceroute nodes database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, asc, and, gte, lte, lt, inArray, sql } from 'drizzle-orm';
+import { eq, desc, asc, and, gte, lte, lt, inArray, sql, isNull } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbCustomTheme, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -147,31 +147,44 @@ export class MiscRepository extends BaseRepository {
   // ============ AUTO-TRACEROUTE NODES ============
 
   /**
-   * Get all auto-traceroute nodes
+   * Get all auto-traceroute nodes.
+   * When sourceId is provided, return only rows scoped to that source OR
+   * legacy unscoped rows (sourceId IS NULL). When omitted, return everything.
    */
-  async getAutoTracerouteNodes(): Promise<number[]> {
+  async getAutoTracerouteNodes(sourceId?: string): Promise<number[]> {
     const { autoTracerouteNodes } = this.tables;
-    const results = await this.db
+    const query = this.db
       .select({ nodeNum: autoTracerouteNodes.nodeNum })
-      .from(autoTracerouteNodes)
-      .orderBy(asc(autoTracerouteNodes.createdAt));
+      .from(autoTracerouteNodes);
+    const results = sourceId
+      ? await query
+          .where(eq(autoTracerouteNodes.sourceId, sourceId))
+          .orderBy(asc(autoTracerouteNodes.createdAt))
+      : await query.orderBy(asc(autoTracerouteNodes.createdAt));
     return results.map((r: any) => Number(r.nodeNum));
   }
 
   /**
-   * Set auto-traceroute nodes (replaces all existing entries)
+   * Set auto-traceroute nodes (replaces all existing entries for the given
+   * source, or globally when sourceId is omitted).
    */
-  async setAutoTracerouteNodes(nodeNums: number[]): Promise<void> {
+  async setAutoTracerouteNodes(nodeNums: number[], sourceId?: string): Promise<void> {
     const now = this.now();
     const { autoTracerouteNodes } = this.tables;
 
-    // Delete all existing entries
-    await this.db.delete(autoTracerouteNodes);
+    // Delete existing entries scoped to this source (or all when unscoped).
+    if (sourceId) {
+      await this.db
+        .delete(autoTracerouteNodes)
+        .where(eq(autoTracerouteNodes.sourceId, sourceId));
+    } else {
+      await this.db.delete(autoTracerouteNodes);
+    }
     // Insert new entries
     for (const nodeNum of nodeNums) {
       await this.db
         .insert(autoTracerouteNodes)
-        .values({ nodeNum, createdAt: now });
+        .values({ nodeNum, createdAt: now, sourceId: sourceId ?? null });
     }
   }
 
@@ -179,19 +192,42 @@ export class MiscRepository extends BaseRepository {
    * Add a single auto-traceroute node.
    * Keeps branching: MySQL lacks onConflictDoNothing.
    */
-  async addAutoTracerouteNode(nodeNum: number): Promise<void> {
+  async addAutoTracerouteNode(nodeNum: number, sourceId?: string): Promise<void> {
     const now = this.now();
     const { autoTracerouteNodes } = this.tables;
 
-    await this.insertIgnore(autoTracerouteNodes, { nodeNum, createdAt: now });
+    // Pre-check for the (nodeNum, sourceId) tuple. Needed because SQLite/MySQL
+    // treat NULL as distinct in UNIQUE constraints, so insertIgnore would
+    // allow duplicate unscoped rows.
+    const whereClause = sourceId
+      ? and(eq(autoTracerouteNodes.nodeNum, nodeNum), eq(autoTracerouteNodes.sourceId, sourceId))
+      : and(eq(autoTracerouteNodes.nodeNum, nodeNum), isNull(autoTracerouteNodes.sourceId));
+    const existing = await this.db
+      .select({ id: autoTracerouteNodes.id })
+      .from(autoTracerouteNodes)
+      .where(whereClause)
+      .limit(1);
+    if (existing.length > 0) return;
+
+    await this.insertIgnore(autoTracerouteNodes, {
+      nodeNum,
+      createdAt: now,
+      sourceId: sourceId ?? null,
+    });
   }
 
   /**
    * Remove a single auto-traceroute node
    */
-  async removeAutoTracerouteNode(nodeNum: number): Promise<void> {
+  async removeAutoTracerouteNode(nodeNum: number, sourceId?: string): Promise<void> {
     const { autoTracerouteNodes } = this.tables;
-    await this.db.delete(autoTracerouteNodes).where(eq(autoTracerouteNodes.nodeNum, nodeNum));
+    const where = sourceId
+      ? and(
+          eq(autoTracerouteNodes.nodeNum, nodeNum),
+          eq(autoTracerouteNodes.sourceId, sourceId)
+        )
+      : eq(autoTracerouteNodes.nodeNum, nodeNum);
+    await this.db.delete(autoTracerouteNodes).where(where);
   }
 
   // ============ UPGRADE HISTORY ============
@@ -518,31 +554,44 @@ export class MiscRepository extends BaseRepository {
   // ============ AUTO TIME SYNC NODES ============
 
   /**
-   * Get all auto time sync nodes
+   * Get all auto time sync nodes.
+   * When sourceId is provided, return only rows scoped to that source.
+   * When omitted, return everything.
    */
-  async getAutoTimeSyncNodes(): Promise<number[]> {
+  async getAutoTimeSyncNodes(sourceId?: string): Promise<number[]> {
     const { autoTimeSyncNodes } = this.tables;
-    const results = await this.db
+    const query = this.db
       .select({ nodeNum: autoTimeSyncNodes.nodeNum })
-      .from(autoTimeSyncNodes)
-      .orderBy(asc(autoTimeSyncNodes.createdAt));
+      .from(autoTimeSyncNodes);
+    const results = sourceId
+      ? await query
+          .where(eq(autoTimeSyncNodes.sourceId, sourceId))
+          .orderBy(asc(autoTimeSyncNodes.createdAt))
+      : await query.orderBy(asc(autoTimeSyncNodes.createdAt));
     return results.map((r: any) => Number(r.nodeNum));
   }
 
   /**
-   * Set auto time sync nodes (replaces existing)
+   * Set auto time sync nodes (replaces all existing entries for the given
+   * source, or globally when sourceId is omitted).
    */
-  async setAutoTimeSyncNodes(nodeNums: number[]): Promise<void> {
+  async setAutoTimeSyncNodes(nodeNums: number[], sourceId?: string): Promise<void> {
     const now = this.now();
     const { autoTimeSyncNodes } = this.tables;
 
-    // Delete all existing entries
-    await this.db.delete(autoTimeSyncNodes);
+    // Delete existing entries scoped to this source (or all when unscoped).
+    if (sourceId) {
+      await this.db
+        .delete(autoTimeSyncNodes)
+        .where(eq(autoTimeSyncNodes.sourceId, sourceId));
+    } else {
+      await this.db.delete(autoTimeSyncNodes);
+    }
     // Insert new entries
     for (const nodeNum of nodeNums) {
       await this.db
         .insert(autoTimeSyncNodes)
-        .values({ nodeNum, createdAt: now });
+        .values({ nodeNum, createdAt: now, sourceId: sourceId ?? null });
     }
   }
 
@@ -550,19 +599,29 @@ export class MiscRepository extends BaseRepository {
    * Add a single auto time sync node.
    * Keeps branching: MySQL lacks onConflictDoNothing.
    */
-  async addAutoTimeSyncNode(nodeNum: number): Promise<void> {
+  async addAutoTimeSyncNode(nodeNum: number, sourceId?: string): Promise<void> {
     const now = this.now();
     const { autoTimeSyncNodes } = this.tables;
 
-    await this.insertIgnore(autoTimeSyncNodes, { nodeNum, createdAt: now });
+    await this.insertIgnore(autoTimeSyncNodes, {
+      nodeNum,
+      createdAt: now,
+      sourceId: sourceId ?? null,
+    });
   }
 
   /**
    * Remove a single auto time sync node
    */
-  async removeAutoTimeSyncNode(nodeNum: number): Promise<void> {
+  async removeAutoTimeSyncNode(nodeNum: number, sourceId?: string): Promise<void> {
     const { autoTimeSyncNodes } = this.tables;
-    await this.db.delete(autoTimeSyncNodes).where(eq(autoTimeSyncNodes.nodeNum, nodeNum));
+    const where = sourceId
+      ? and(
+          eq(autoTimeSyncNodes.nodeNum, nodeNum),
+          eq(autoTimeSyncNodes.sourceId, sourceId)
+        )
+      : eq(autoTimeSyncNodes.nodeNum, nodeNum);
+    await this.db.delete(autoTimeSyncNodes).where(where);
   }
 
   // ============ CUSTOM THEMES ============
@@ -759,12 +818,21 @@ export class MiscRepository extends BaseRepository {
   // ============ DISTANCE DELETE LOG ============
 
   /**
-   * Get auto-delete-by-distance log entries
+   * Get auto-delete-by-distance log entries.
+   * If sourceId is provided, scope to that source. NULL sourceId is the
+   * legacy/unscoped bucket; an unfiltered call returns all rows.
    */
-  async getDistanceDeleteLog(limit: number = 10): Promise<any[]> {
-    const rows = await this.executeQuery(
-      sql`SELECT * FROM auto_distance_delete_log ORDER BY timestamp DESC LIMIT ${limit}`
-    );
+  async getDistanceDeleteLog(limit: number = 10, sourceId?: string): Promise<any[]> {
+    const { autoDistanceDeleteLog } = this.tables;
+    const baseQuery = (this.db as any)
+      .select()
+      .from(autoDistanceDeleteLog);
+    const query = sourceId
+      ? baseQuery.where(eq(autoDistanceDeleteLog.sourceId, sourceId))
+      : baseQuery;
+    const rows = await query
+      .orderBy(desc(autoDistanceDeleteLog.timestamp))
+      .limit(limit);
     return (rows as any[]).map((e: any) => ({
       ...e,
       details: e.details ? JSON.parse(e.details) : [],
@@ -779,12 +847,18 @@ export class MiscRepository extends BaseRepository {
     nodesDeleted: number;
     thresholdKm: number;
     details: string;
+    sourceId?: string;
   }): Promise<void> {
+    const { autoDistanceDeleteLog } = this.tables;
     const now = Date.now();
-    await this.executeRun(
-      sql`INSERT INTO auto_distance_delete_log (timestamp, nodes_deleted, threshold_km, details, created_at)
-          VALUES (${entry.timestamp}, ${entry.nodesDeleted}, ${entry.thresholdKm}, ${entry.details}, ${now})`
-    );
+    await (this.db as any).insert(autoDistanceDeleteLog).values({
+      timestamp: entry.timestamp,
+      nodesDeleted: entry.nodesDeleted,
+      thresholdKm: entry.thresholdKm,
+      details: entry.details,
+      createdAt: now,
+      sourceId: entry.sourceId ?? null,
+    });
   }
 
   // ============ PACKET LOG ============
@@ -847,11 +921,11 @@ export class MiscRepository extends BaseRepository {
   /**
    * Insert a packet log entry
    */
-  async insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
+  async insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>, sourceId?: string): Promise<number> {
     const { packetLog } = this.tables;
 
     try {
-      const values = {
+      const values: any = {
         packet_id: packet.packet_id ?? null,
         timestamp: packet.timestamp,
         from_node: packet.from_node,
@@ -878,6 +952,9 @@ export class MiscRepository extends BaseRepository {
         decrypted_by: packet.decrypted_by ?? null,
         decrypted_channel_id: packet.decrypted_channel_id ?? null,
       };
+      if (sourceId) {
+        values.sourceId = sourceId;
+      }
 
       await this.db.insert(packetLog).values(values);
       return 0;

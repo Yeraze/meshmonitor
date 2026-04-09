@@ -167,35 +167,43 @@ describe('notificationService.getServiceStatus', () => {
 
 describe('notificationService.notifyNewNode', () => {
   it('calls broadcastToPreferenceUsers on push and apprise', async () => {
-    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 1);
+    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 1, 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnNewNode',
-      expect.objectContaining({ title: '🆕 New Node Discovered' })
+      expect.objectContaining({ title: expect.stringContaining('🆕 New Node Discovered') }),
+      undefined,
+      'src1'
     );
     expect(mockApprise.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnNewNode',
-      expect.objectContaining({ title: '🆕 New Node Discovered' })
+      expect.objectContaining({ title: expect.stringContaining('🆕 New Node Discovered') }),
+      undefined,
+      'src1'
     );
   });
 
   it('includes hops away in body when provided', async () => {
-    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 2);
+    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 2, 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnNewNode',
-      expect.objectContaining({ body: expect.stringContaining('2 hops') })
+      expect.objectContaining({ body: expect.stringContaining('2 hops') }),
+      undefined,
+      'src1'
     );
   });
 
   it('uses singular hop when hopsAway is 1', async () => {
-    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 1);
+    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 1, 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnNewNode',
-      expect.objectContaining({ body: expect.stringContaining('1 hop away') })
+      expect.objectContaining({ body: expect.stringContaining('1 hop away') }),
+      undefined,
+      'src1'
     );
   });
 
   it('omits hops text when hopsAway is undefined', async () => {
-    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, undefined);
+    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, undefined, 'src1', 'Source One');
     const call = mockPush.broadcastToPreferenceUsers.mock.calls[0];
     expect(call[1].body).not.toContain('hop');
   });
@@ -203,7 +211,7 @@ describe('notificationService.notifyNewNode', () => {
   it('does not throw on broadcast error', async () => {
     mockPush.broadcastToPreferenceUsers.mockRejectedValue(new Error('Push error'));
     await expect(
-      notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', undefined, undefined)
+      notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', undefined, undefined, 'src1', 'Source One')
     ).resolves.toBeUndefined();
   });
 });
@@ -212,33 +220,39 @@ describe('notificationService.notifyNewNode', () => {
 
 describe('notificationService.notifyTraceroute', () => {
   it('calls broadcastToPreferenceUsers with traceroute preference', async () => {
-    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct');
+    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct', 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnTraceroute',
-      expect.objectContaining({ title: expect.stringContaining('Traceroute') })
+      expect.objectContaining({ title: expect.stringContaining('Traceroute') }),
+      undefined,
+      'src1'
     );
   });
 
   it('includes node IDs in the notification title', async () => {
-    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct');
+    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct', 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnTraceroute',
-      expect.objectContaining({ title: '🗺️ Traceroute: !aaa → !bbb' })
+      expect.objectContaining({ title: expect.stringContaining('🗺️ Traceroute: !aaa → !bbb') }),
+      undefined,
+      'src1'
     );
   });
 
   it('uses route text as body', async () => {
-    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Via relay node');
+    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Via relay node', 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnTraceroute',
-      expect.objectContaining({ body: 'Via relay node' })
+      expect.objectContaining({ body: expect.stringContaining('Via relay node') }),
+      undefined,
+      'src1'
     );
   });
 
   it('does not throw on broadcast error', async () => {
     mockApprise.broadcastToPreferenceUsers.mockRejectedValue(new Error('Apprise error'));
     await expect(
-      notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct')
+      notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct', 'src1', 'Source One')
     ).resolves.toBeUndefined();
   });
 });
@@ -249,30 +263,33 @@ describe('notificationService.broadcastToPreferenceUsers', () => {
   it('calls all sub-services with the preference key', async () => {
     await notificationService.broadcastToPreferenceUsers(
       'notifyOnInactiveNode',
-      { title: 'Inactive', body: 'Node offline' }
+      { title: 'Inactive', body: 'Node offline', sourceId: 'src1', sourceName: 'Source One' }
     );
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnInactiveNode',
       expect.objectContaining({ title: 'Inactive' }),
-      undefined
+      undefined,
+      'src1'
     );
     expect(mockApprise.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnInactiveNode',
       expect.objectContaining({ title: 'Inactive' }),
-      undefined
+      undefined,
+      'src1'
     );
   });
 
   it('passes targetUserId when specified', async () => {
     await notificationService.broadcastToPreferenceUsers(
       'notifyOnServerEvents',
-      { title: 'Server', body: 'Event' },
+      { title: 'Server', body: 'Event', sourceId: 'src1', sourceName: 'Source One' },
       42
     );
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnServerEvents',
       expect.any(Object),
-      42
+      42,
+      'src1'
     );
   });
 });

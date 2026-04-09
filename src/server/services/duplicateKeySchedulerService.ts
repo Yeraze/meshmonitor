@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { detectDuplicateKeys, checkLowEntropyKey } from '../../services/lowEntropyKeyService.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import type { DbNode } from '../../db/types.js';
 
 /** Threshold for excessive packets per hour (spam detection) */
@@ -11,55 +12,52 @@ const TIME_OFFSET_THRESHOLD_MINUTES = parseInt(process.env.TIME_OFFSET_THRESHOLD
 const TIME_OFFSET_THRESHOLD_MS = TIME_OFFSET_THRESHOLD_MINUTES * 60 * 1000;
 
 /**
- * Scheduled security scanning service
- * Periodically scans all nodes for:
- * - Duplicate public keys
- * - Low-entropy keys
- * - Excessive packet rates (spam detection)
- * - Clock time offset detection
+ * Scheduled security scanning service — per-source.
+ *
+ * The scan interval remains a single operator-level setting, but each scan
+ * cycle iterates every registered source manager and runs an independent
+ * scan against that source's scoped data. Duplicate-key detection, spam
+ * detection and time-offset detection all operate per-source so a problem on
+ * one mesh never contaminates another.
  */
 class DuplicateKeySchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private initialScanTimer: NodeJS.Timeout | null = null;
   private scanInterval: number;
-  private isScanning: boolean = false;
-  private lastScanTime: number | null = null;
+  // Per-source scan state. Keys = sourceId.
+  private isScanning: Map<string, boolean> = new Map();
+  private lastScanTime: Map<string, number> = new Map();
 
   /**
-   * @param intervalHours - How often to scan for duplicates (in hours). Default: 24 hours
+   * @param intervalHours - How often to scan (hours). Default: 24 hours.
    */
   constructor(intervalHours: number = 24) {
-    this.scanInterval = intervalHours * 60 * 60 * 1000; // Convert to milliseconds
+    this.scanInterval = intervalHours * 60 * 60 * 1000;
   }
 
   /**
-   * Start the duplicate key scanner
+   * Start the scheduler. One timer fires on interval and sweeps every source.
    */
   start(): void {
     if (this.intervalId) {
-      logger.warn('🔐 Duplicate key scanner already running');
+      logger.warn('🔐 Security scanner already running');
       return;
     }
 
-    logger.info(`🔐 Starting security scanner (runs every ${this.scanInterval / (60 * 60 * 1000)} hours)`);
+    logger.info(`🔐 Starting security scanner (runs every ${this.scanInterval / (60 * 60 * 1000)} hours, per source)`);
 
-    // Run initial scan after 5 minutes
     this.initialScanTimer = setTimeout(() => {
       this.initialScanTimer = null;
-      this.runScan();
+      this.runScanAllSources();
     }, 5 * 60 * 1000);
 
-    // Schedule recurring scans
     this.intervalId = setInterval(() => {
-      this.runScan();
+      this.runScanAllSources();
     }, this.scanInterval);
 
     logger.info('✅ Security scanner initialized');
   }
 
-  /**
-   * Stop the duplicate key scanner
-   */
   stop(): void {
     if (this.initialScanTimer) {
       clearTimeout(this.initialScanTimer);
@@ -73,189 +71,187 @@ class DuplicateKeySchedulerService {
   }
 
   /**
-   * Run a single scan for duplicate keys
+   * Run a scan across every registered source. Sources run independently —
+   * a collision in source A does not block a scan of source B.
    */
-  async runScan(): Promise<void> {
-    if (this.isScanning) {
-      logger.debug('🔐 Security scan already in progress, skipping');
+  async runScanAllSources(): Promise<void> {
+    const managers = sourceManagerRegistry.getAllManagers();
+    if (managers.length === 0) {
+      logger.debug('🔐 No source managers registered — skipping scheduled security scan');
+      return;
+    }
+    await Promise.all(managers.map(m => this.runScan(m.sourceId).catch(err => {
+      logger.error(`Error scanning source ${m.sourceId}:`, err);
+    })));
+  }
+
+  /**
+   * Run a single scan for a specific source.
+   */
+  async runScan(sourceId: string): Promise<void> {
+    if (!sourceId) {
+      logger.warn('🔐 runScan() called without a sourceId — refusing');
       return;
     }
 
-    this.isScanning = true;
+    if (this.isScanning.get(sourceId)) {
+      logger.debug(`🔐 Security scan already in progress for source ${sourceId}, skipping`);
+      return;
+    }
+
+    this.isScanning.set(sourceId, true);
     let scanSuccessful = true;
 
     try {
-      logger.info('🔐 Running scheduled security scan...');
+      logger.info(`🔐 Running scheduled security scan for source ${sourceId}...`);
 
-      // Get all nodes with public keys
-      const nodesWithKeys = await databaseService.nodes.getNodesWithPublicKeys();
+      // Get all nodes with public keys for this source only
+      const nodesWithKeys = await databaseService.nodes.getNodesWithPublicKeys(sourceId);
 
       if (nodesWithKeys.length === 0) {
-        logger.info('ℹ️  No nodes with public keys found, skipping scan');
-        // Fetch all nodes once for the sub-scans
-        const earlyAllNodes = await databaseService.nodes.getAllNodes();
-        const earlyNodeMap = new Map<number, DbNode>(earlyAllNodes.map(n => [n.nodeNum, n]));
+        logger.info(`ℹ️  [${sourceId}] No nodes with public keys found, skipping key scan`);
+        const earlyAllNodes = await databaseService.nodes.getAllNodes(sourceId);
+        const earlyNodeMap = new Map<number, DbNode>(earlyAllNodes.map(n => [Number(n.nodeNum), n]));
 
-        // Still run spam and time offset detection, and update lastScanTime via finally path
         await Promise.all([
-          this.runSpamDetection(earlyNodeMap),
-          this.runTimeOffsetDetection(earlyNodeMap)
+          this.runSpamDetection(sourceId, earlyNodeMap),
+          this.runTimeOffsetDetection(sourceId, earlyNodeMap)
         ]);
-        this.lastScanTime = Math.floor(Date.now() / 1000);
+        this.lastScanTime.set(sourceId, Math.floor(Date.now() / 1000));
         return;
       }
 
-      logger.debug(`🔐 Scanning ${nodesWithKeys.length} nodes for security issues (duplicates and low-entropy keys)`);
+      logger.debug(`🔐 [${sourceId}] Scanning ${nodesWithKeys.length} nodes for security issues`);
 
-      // Fetch all nodes once and build a lookup map to avoid N+1 queries
-      const allNodesList = await databaseService.nodes.getAllNodes();
-      const nodeMap = new Map<number, DbNode>(allNodesList.map(n => [n.nodeNum, n]));
+      const allNodesList = await databaseService.nodes.getAllNodes(sourceId);
+      const nodeMap = new Map<number, DbNode>(allNodesList.map(n => [Number(n.nodeNum), n]));
 
-      // First, check all nodes for low-entropy keys
+      // Low-entropy key detection
       let lowEntropyCount = 0;
       for (const nodeData of nodesWithKeys) {
         if (!nodeData.publicKey) continue;
 
-        const node = nodeMap.get(nodeData.nodeNum);
+        const node = nodeMap.get(Number(nodeData.nodeNum));
         if (!node) continue;
 
         const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
 
         if (isLowEntropy && !node.keyIsLowEntropy) {
-          // Flag this node as having low-entropy key
-          await databaseService.nodes.updateNodeLowEntropyFlag(nodeData.nodeNum, true, 'Known low-entropy key detected');
-          node.keyIsLowEntropy = true; // Keep map in sync
+          await databaseService.nodes.updateNodeLowEntropyFlag(Number(nodeData.nodeNum), true, 'Known low-entropy key detected', sourceId);
+          node.keyIsLowEntropy = true;
           lowEntropyCount++;
-          logger.warn(`🔐 Low-entropy key detected on node ${nodeData.nodeNum}`);
+          logger.warn(`🔐 [${sourceId}] Low-entropy key detected on node ${nodeData.nodeNum}`);
         } else if (!isLowEntropy && node.keyIsLowEntropy) {
-          // Clear the flag if it was previously set but key is not low-entropy
-          await databaseService.nodes.updateNodeLowEntropyFlag(nodeData.nodeNum, false, undefined);
-          node.keyIsLowEntropy = false; // Keep map in sync
+          await databaseService.nodes.updateNodeLowEntropyFlag(Number(nodeData.nodeNum), false, undefined, sourceId);
+          node.keyIsLowEntropy = false;
         }
       }
 
-      // CRITICAL: Also check nodes that previously had security flags but no longer have keys
-      // This ensures flags are cleared when nodes go offline or clear their keys
-      const nodesWithKeysSet = new Set(nodesWithKeys.map(n => n.nodeNum));
+      const nodesWithKeysSet = new Set(nodesWithKeys.map(n => Number(n.nodeNum)));
       for (const node of allNodesList) {
-        if (nodesWithKeysSet.has(node.nodeNum)) continue;
-
-        // If this node has no key but has the low-entropy flag set, clear it
+        if (nodesWithKeysSet.has(Number(node.nodeNum))) continue;
         if (node.keyIsLowEntropy) {
-          logger.info(`🔐 Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
-          await databaseService.nodes.updateNodeLowEntropyFlag(node.nodeNum, false, undefined);
-          node.keyIsLowEntropy = false; // Keep map in sync
+          logger.info(`🔐 [${sourceId}] Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
+          await databaseService.nodes.updateNodeLowEntropyFlag(Number(node.nodeNum), false, undefined, sourceId);
+          node.keyIsLowEntropy = false;
         }
       }
 
       if (lowEntropyCount > 0) {
-        logger.info(`🔐 Found ${lowEntropyCount} nodes with low-entropy keys`);
+        logger.info(`🔐 [${sourceId}] Found ${lowEntropyCount} nodes with low-entropy keys`);
       }
 
-      // Detect duplicates
+      // Duplicate detection — scoped to THIS source. A node sharing a key with
+      // a node on a different source is NOT a duplicate.
       const duplicates = detectDuplicateKeys(nodesWithKeys);
 
       if (duplicates.size === 0) {
-        logger.info(`✅ Duplicate key scan complete: No duplicates found among ${nodesWithKeys.length} nodes`);
+        logger.info(`✅ [${sourceId}] Duplicate key scan complete: No duplicates found among ${nodesWithKeys.length} nodes`);
 
-        // Clear any previously set duplicate flags
         for (const node of allNodesList) {
           if (node.duplicateKeyDetected) {
             const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
-            await databaseService.nodes.updateNodeSecurityFlags(node.nodeNum, false, details);
+            await databaseService.nodes.updateNodeSecurityFlags(Number(node.nodeNum), false, details, sourceId);
           }
         }
       } else {
-        // Build set of all nodes that currently have duplicates
         const currentDuplicateNodes = new Set<number>();
         for (const [, nodeNums] of duplicates) {
-          nodeNums.forEach(num => currentDuplicateNodes.add(num));
+          nodeNums.forEach(num => currentDuplicateNodes.add(Number(num)));
         }
 
-        // Clear duplicate flags from nodes that are no longer duplicates
         let clearedCount = 0;
         for (const node of allNodesList) {
-          if (node.duplicateKeyDetected && !currentDuplicateNodes.has(node.nodeNum)) {
+          if (node.duplicateKeyDetected && !currentDuplicateNodes.has(Number(node.nodeNum))) {
             const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
-            await databaseService.nodes.updateNodeSecurityFlags(node.nodeNum, false, details);
+            await databaseService.nodes.updateNodeSecurityFlags(Number(node.nodeNum), false, details, sourceId);
             clearedCount++;
-            logger.debug(`🔐 Cleared duplicate flag from node ${node.nodeNum} (no longer has duplicates)`);
           }
         }
 
         if (clearedCount > 0) {
-          logger.info(`🔐 Cleared duplicate flags from ${clearedCount} nodes that no longer have duplicates`);
+          logger.info(`🔐 [${sourceId}] Cleared duplicate flags from ${clearedCount} nodes`);
         }
 
-        // Update database with duplicate flags
         let updateCount = 0;
         for (const [keyHash, nodeNums] of duplicates) {
           for (const nodeNum of nodeNums) {
-            const node = nodeMap.get(nodeNum);
+            const node = nodeMap.get(Number(nodeNum));
             if (!node) continue;
 
-            const otherNodes = nodeNums.filter(n => n !== nodeNum);
+            const otherNodes = nodeNums.filter(n => Number(n) !== Number(nodeNum));
             const details = node.keyIsLowEntropy
               ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
               : `Key shared with nodes: ${otherNodes.join(', ')}`;
 
-            await databaseService.nodes.updateNodeSecurityFlags(nodeNum, true, details);
-
+            await databaseService.nodes.updateNodeSecurityFlags(Number(nodeNum), true, details, sourceId);
             updateCount++;
           }
 
-          logger.warn(`🔐 Duplicate key detected: ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
+          logger.warn(`🔐 [${sourceId}] Duplicate key detected: ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
         }
 
-        logger.info(`✅ Duplicate key scan complete: ${updateCount} nodes flagged across ${duplicates.size} duplicate groups`);
+        logger.info(`✅ [${sourceId}] Duplicate key scan complete: ${updateCount} nodes flagged across ${duplicates.size} duplicate groups`);
       }
 
-      // Run spam detection and time offset detection in parallel (they are independent)
-      // Pass the nodeMap so sub-scans reuse the same data instead of fetching again
       await Promise.all([
-        this.runSpamDetection(nodeMap),
-        this.runTimeOffsetDetection(nodeMap)
+        this.runSpamDetection(sourceId, nodeMap),
+        this.runTimeOffsetDetection(sourceId, nodeMap)
       ]);
 
-      // Update last scan time (Unix timestamp in seconds)
-      this.lastScanTime = Math.floor(Date.now() / 1000);
+      this.lastScanTime.set(sourceId, Math.floor(Date.now() / 1000));
 
     } catch (error) {
       scanSuccessful = false;
-      logger.error('Error during security scan:', error);
+      logger.error(`Error during security scan for source ${sourceId}:`, error);
     } finally {
-      this.isScanning = false;
-      // Only update lastScanTime if scan completed without top-level error
+      this.isScanning.set(sourceId, false);
       if (!scanSuccessful) {
-        // Don't update lastScanTime on failure so status reflects the last successful scan
+        // Leave lastScanTime unchanged on failure.
       }
     }
   }
 
   /**
-   * Run spam detection (excessive packet rate check)
-   * Sub-scan errors are intentionally caught here so other scans still run.
+   * Spam detection, scoped to a single source.
+   * Uses per-source localNodeNum and per-source packet counts.
    */
-  private async runSpamDetection(sharedNodeMap: Map<number, DbNode>): Promise<void> {
+  private async runSpamDetection(sourceId: string, sharedNodeMap: Map<number, DbNode>): Promise<void> {
     try {
-      logger.info('🔐 Running spam detection (excessive packet rate check)...');
+      logger.info(`🔐 [${sourceId}] Running spam detection...`);
 
-      // Get the local node number to exclude from spam detection
-      // (local node has high packet counts due to admin/config traffic)
-      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getSettingForSource(sourceId, 'localNodeNum');
       const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-      // Get packet counts per node for the last hour
-      const packetCounts = await databaseService.getPacketCountsPerNodeLastHourAsync();
+      const packetCounts = await databaseService.getPacketCountsPerNodeLastHourAsync(sourceId);
 
       if (packetCounts.length === 0) {
-        logger.info('ℹ️  No packet data available for spam detection');
+        logger.info(`ℹ️  [${sourceId}] No packet data available for spam detection`);
         return;
       }
 
-      // Reuse the shared node map from the parent scan to avoid redundant getAllNodes() calls
       const allNodes = Array.from(sharedNodeMap.values());
-      const nodesWithCurrentPackets = new Set(packetCounts.map(p => p.nodeNum));
+      const nodesWithCurrentPackets = new Set(packetCounts.map(p => Number(p.nodeNum)));
       const nodeMap = sharedNodeMap;
 
       let flaggedCount = 0;
@@ -263,153 +259,140 @@ class DuplicateKeySchedulerService {
 
       const now = Math.floor(Date.now() / 1000);
 
-      // Check each node with packet activity
       for (const { nodeNum, packetCount } of packetCounts) {
-        // Skip the local node - it has high packet counts due to admin traffic
-        if (localNodeNum && nodeNum === localNodeNum) {
-          continue;
-        }
+        if (localNodeNum && Number(nodeNum) === localNodeNum) continue;
 
-        const node = nodeMap.get(nodeNum);
+        const node = nodeMap.get(Number(nodeNum));
         if (!node) continue;
 
         const isExcessive = packetCount > EXCESSIVE_PACKETS_THRESHOLD;
         const wasExcessive = node.isExcessivePackets;
         const stateChanged = isExcessive !== !!wasExcessive;
 
-        // Only write to DB if state or rate actually changed
         if (stateChanged) {
-          await databaseService.updateNodeSpamFlagsAsync(nodeNum, isExcessive, packetCount, now);
+          await databaseService.updateNodeSpamFlagsAsync(Number(nodeNum), isExcessive, packetCount, now, sourceId);
           if (isExcessive) {
             flaggedCount++;
-            logger.warn(`🚨 Excessive packets detected: Node ${nodeNum} (${node.shortName || 'Unknown'}) sent ${packetCount} packets in the last hour (threshold: ${EXCESSIVE_PACKETS_THRESHOLD})`);
+            logger.warn(`🚨 [${sourceId}] Excessive packets: Node ${nodeNum} sent ${packetCount} pkt/hr`);
           } else {
             clearedCount++;
-            logger.info(`✅ Spam flag cleared: Node ${nodeNum} (${node.shortName || 'Unknown'}) now at ${packetCount} packets/hour`);
           }
         }
-        // Note: we skip the DB write when state hasn't changed to reduce write amplification
       }
 
-      // Clear flags from nodes that have no packet activity in the last hour
-      // Also clear flags from the local node (it's excluded from spam detection)
       for (const node of allNodes) {
-        const isLocalNode = localNodeNum && node.nodeNum === localNodeNum;
+        const isLocalNode = localNodeNum && Number(node.nodeNum) === localNodeNum;
 
         if (node.isExcessivePackets) {
           if (isLocalNode) {
-            // Clear spam flag from local node - it's excluded from detection
-            await databaseService.updateNodeSpamFlagsAsync(node.nodeNum, false, 0, now);
+            await databaseService.updateNodeSpamFlagsAsync(Number(node.nodeNum), false, 0, now, sourceId);
             clearedCount++;
-            logger.info(`✅ Spam flag cleared: Local node ${node.nodeNum} (${node.shortName || 'Unknown'}) - excluded from spam detection`);
-          } else if (!nodesWithCurrentPackets.has(node.nodeNum)) {
-            await databaseService.updateNodeSpamFlagsAsync(node.nodeNum, false, 0, now);
+          } else if (!nodesWithCurrentPackets.has(Number(node.nodeNum))) {
+            await databaseService.updateNodeSpamFlagsAsync(Number(node.nodeNum), false, 0, now, sourceId);
             clearedCount++;
-            logger.info(`✅ Spam flag cleared: Node ${node.nodeNum} (${node.shortName || 'Unknown'}) - no packets in last hour`);
           }
         }
       }
 
       if (flaggedCount > 0) {
-        logger.info(`🚨 Spam detection complete: ${flaggedCount} nodes flagged for excessive packets`);
+        logger.info(`🚨 [${sourceId}] Spam detection complete: ${flaggedCount} flagged`);
       } else {
-        logger.info(`✅ Spam detection complete: No nodes exceeding ${EXCESSIVE_PACKETS_THRESHOLD} packets/hour`);
+        logger.info(`✅ [${sourceId}] Spam detection complete: no nodes exceeding ${EXCESSIVE_PACKETS_THRESHOLD} pkt/hr`);
       }
-
-      if (clearedCount > 0) {
-        logger.info(`✅ Cleared spam flags from ${clearedCount} nodes`);
-      }
-
     } catch (error) {
-      logger.error('Error during spam detection:', error);
+      logger.error(`Error during spam detection for source ${sourceId}:`, error);
     }
   }
 
   /**
-   * Detect nodes with significant clock offset.
-   * Compares the node's self-reported packetTimestamp against the server's timestamp
-   * from the most recent telemetry record.
-   * Sub-scan errors are intentionally caught here so other scans still run.
+   * Time offset detection, scoped to a single source.
    */
-  private async runTimeOffsetDetection(sharedNodeMap: Map<number, DbNode>): Promise<void> {
+  private async runTimeOffsetDetection(sourceId: string, sharedNodeMap: Map<number, DbNode>): Promise<void> {
     try {
-      logger.info('🔐 Running time offset detection...');
+      logger.info(`🔐 [${sourceId}] Running time offset detection...`);
 
-      const latestTimestamps = await databaseService.getLatestPacketTimestampsPerNodeAsync();
-      // Reuse the shared node map from the parent scan to avoid redundant getAllNodes() calls
+      const latestTimestamps = await databaseService.getLatestPacketTimestampsPerNodeAsync(sourceId);
       const allNodes = Array.from(sharedNodeMap.values());
-      const nodesWithTimestamps = new Set(latestTimestamps.map(t => t.nodeNum));
+      const nodesWithTimestamps = new Set(latestTimestamps.map(t => Number(t.nodeNum)));
       const nodeMap = sharedNodeMap;
 
       let flaggedCount = 0;
       let clearedCount = 0;
 
       for (const { nodeNum, timestamp, packetTimestamp } of latestTimestamps) {
-        const node = nodeMap.get(nodeNum);
+        const node = nodeMap.get(Number(nodeNum));
         if (!node) continue;
 
-        // Both timestamp and packetTimestamp are in milliseconds
         const offsetMs = timestamp - packetTimestamp;
         const offsetSeconds = Math.round(offsetMs / 1000);
         const isOffsetExcessive = Math.abs(offsetMs) > TIME_OFFSET_THRESHOLD_MS;
         const wasOffsetIssue = node.isTimeOffsetIssue;
         const stateChanged = isOffsetExcessive !== !!wasOffsetIssue;
 
-        // Only write to DB if state actually changed
         if (stateChanged) {
-          await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, isOffsetExcessive, offsetSeconds);
+          await databaseService.updateNodeTimeOffsetFlagsAsync(Number(nodeNum), isOffsetExcessive, offsetSeconds, sourceId);
           if (isOffsetExcessive) {
             flaggedCount++;
-            logger.warn(`🕐 Time offset detected: Node ${nodeNum} (${node.shortName || 'Unknown'}) offset ${offsetSeconds}s (threshold: ${TIME_OFFSET_THRESHOLD_MINUTES}min)`);
+            logger.warn(`🕐 [${sourceId}] Time offset: Node ${nodeNum} offset ${offsetSeconds}s`);
           } else {
             clearedCount++;
-            logger.info(`✅ Time offset cleared: Node ${nodeNum} (${node.shortName || 'Unknown'}) now at ${offsetSeconds}s`);
           }
         }
-        // Note: we skip the DB write when state hasn't changed to reduce write amplification
       }
 
-      // Clear flags from nodes with no recent timestamp data
       for (const node of allNodes) {
-        if (node.isTimeOffsetIssue && !nodesWithTimestamps.has(node.nodeNum)) {
-          await databaseService.updateNodeTimeOffsetFlagsAsync(node.nodeNum, false, null);
+        if (node.isTimeOffsetIssue && !nodesWithTimestamps.has(Number(node.nodeNum))) {
+          await databaseService.updateNodeTimeOffsetFlagsAsync(Number(node.nodeNum), false, null, sourceId);
           clearedCount++;
-          logger.info(`✅ Time offset cleared: Node ${node.nodeNum} (${node.shortName || 'Unknown'}) - no timestamp data`);
         }
       }
 
       if (flaggedCount > 0) {
-        logger.info(`🕐 Time offset detection complete: ${flaggedCount} nodes flagged`);
+        logger.info(`🕐 [${sourceId}] Time offset detection complete: ${flaggedCount} flagged`);
       } else {
-        logger.info(`✅ Time offset detection complete: No nodes exceeding ${TIME_OFFSET_THRESHOLD_MINUTES} minute threshold`);
-      }
-
-      if (clearedCount > 0) {
-        logger.info(`✅ Cleared time offset flags from ${clearedCount} nodes`);
+        logger.info(`✅ [${sourceId}] Time offset detection complete: no nodes exceeding threshold`);
       }
     } catch (error) {
-      logger.error('Error during time offset detection:', error);
+      logger.error(`Error during time offset detection for source ${sourceId}:`, error);
     }
   }
 
   /**
-   * Get scanner status
+   * Get scanner status for a specific source, or a map of all sources.
    */
-  getStatus(): { running: boolean; scanningNow: boolean; intervalHours: number; lastScanTime: number | null } {
+  getStatus(sourceId?: string): any {
+    if (sourceId) {
+      return {
+        running: this.intervalId !== null,
+        scanningNow: this.isScanning.get(sourceId) === true,
+        intervalHours: this.scanInterval / (60 * 60 * 1000),
+        lastScanTime: this.lastScanTime.get(sourceId) ?? null,
+      };
+    }
+    const sources: Record<string, { scanningNow: boolean; lastScanTime: number | null }> = {};
+    const allKeys = new Set<string>([
+      ...this.isScanning.keys(),
+      ...this.lastScanTime.keys(),
+      ...sourceManagerRegistry.getAllManagers().map(m => m.sourceId),
+    ]);
+    for (const sid of allKeys) {
+      sources[sid] = {
+        scanningNow: this.isScanning.get(sid) === true,
+        lastScanTime: this.lastScanTime.get(sid) ?? null,
+      };
+    }
     return {
       running: this.intervalId !== null,
-      scanningNow: this.isScanning,
       intervalHours: this.scanInterval / (60 * 60 * 1000),
-      lastScanTime: this.lastScanTime
+      sources,
     };
   }
 }
 
-// Export singleton instance
-// Default: scan every 24 hours
-// Can be configured via environment variable: DUPLICATE_KEY_SCAN_INTERVAL_HOURS
+// Default: scan every 24 hours. Override via DUPLICATE_KEY_SCAN_INTERVAL_HOURS.
 const intervalHours = process.env.DUPLICATE_KEY_SCAN_INTERVAL_HOURS
   ? parseInt(process.env.DUPLICATE_KEY_SCAN_INTERVAL_HOURS, 10)
   : 24;
 
 export const duplicateKeySchedulerService = new DuplicateKeySchedulerService(intervalHours);
+export { DuplicateKeySchedulerService };

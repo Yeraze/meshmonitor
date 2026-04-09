@@ -61,6 +61,8 @@ export interface NotificationPreferences {
  */
 export interface PushSubscriptionInput {
   userId?: number | null;
+  /** Phase D: required — which source this subscription belongs to */
+  sourceId: string;
   endpoint: string;
   p256dhKey: string;
   authKey: string;
@@ -80,13 +82,20 @@ export class NotificationsRepository extends BaseRepository {
   /**
    * Get all push subscriptions
    */
-  async getAllSubscriptions(): Promise<DbPushSubscription[]> {
+  async getAllSubscriptions(sourceId?: string): Promise<DbPushSubscription[]> {
+    // Phase D: sourceId required at route layer; legacy callers may pass undefined to get all
     try {
       const { pushSubscriptions } = this.tables;
-      const rows = await this.db
-        .select()
-        .from(pushSubscriptions)
-        .orderBy(desc(pushSubscriptions.createdAt));
+      const rows = sourceId
+        ? await this.db
+            .select()
+            .from(pushSubscriptions)
+            .where(eq(pushSubscriptions.sourceId, sourceId))
+            .orderBy(desc(pushSubscriptions.createdAt))
+        : await this.db
+            .select()
+            .from(pushSubscriptions)
+            .orderBy(desc(pushSubscriptions.createdAt));
       return rows.map((row: any) => this.mapSubscriptionRow(row));
     } catch (error) {
       logger.error('Failed to get all subscriptions:', error);
@@ -97,14 +106,17 @@ export class NotificationsRepository extends BaseRepository {
   /**
    * Get push subscriptions for a specific user
    */
-  async getUserSubscriptions(userId: number | null | undefined): Promise<DbPushSubscription[]> {
+  async getUserSubscriptions(userId: number | null | undefined, sourceId?: string): Promise<DbPushSubscription[]> {
     try {
       const { pushSubscriptions } = this.tables;
-      const rows = userId
+      const filters = [] as any[];
+      if (userId) filters.push(eq(pushSubscriptions.userId, userId));
+      if (sourceId) filters.push(eq(pushSubscriptions.sourceId, sourceId));
+      const rows = filters.length > 0
         ? await this.db
             .select()
             .from(pushSubscriptions)
-            .where(eq(pushSubscriptions.userId, userId))
+            .where(and(...filters))
             .orderBy(desc(pushSubscriptions.createdAt))
         : await this.db
             .select()
@@ -124,8 +136,13 @@ export class NotificationsRepository extends BaseRepository {
   async saveSubscription(input: PushSubscriptionInput): Promise<void> {
     const now = this.now();
     const { pushSubscriptions } = this.tables;
+    if (!input.sourceId) {
+      throw new Error('saveSubscription requires sourceId');
+    }
+    const sourceId = input.sourceId;
     const values = {
       userId: input.userId ?? null,
+      sourceId,
       endpoint: input.endpoint,
       p256dhKey: input.p256dhKey,
       authKey: input.authKey,
@@ -136,6 +153,7 @@ export class NotificationsRepository extends BaseRepository {
     };
     const setData = {
       userId: input.userId ?? null,
+      sourceId,
       p256dhKey: input.p256dhKey,
       authKey: input.authKey,
       userAgent: input.userAgent ?? null,
@@ -173,7 +191,7 @@ export class NotificationsRepository extends BaseRepository {
   /**
    * Get notification preferences for a user
    */
-  async getUserPreferences(userId: number): Promise<NotificationPreferences | null> {
+  async getUserPreferences(userId: number, sourceId?: string): Promise<NotificationPreferences | null> {
     if (!Number.isInteger(userId) || userId <= 0) {
       logger.error(`Invalid userId: ${userId}`);
       return null;
@@ -181,10 +199,16 @@ export class NotificationsRepository extends BaseRepository {
 
     try {
       const { userNotificationPreferences } = this.tables;
+      const whereClause = sourceId
+        ? and(
+            eq(userNotificationPreferences.userId, userId),
+            eq(userNotificationPreferences.sourceId, sourceId)
+          )
+        : eq(userNotificationPreferences.userId, userId);
       const rows = await this.db
         .select()
         .from(userNotificationPreferences)
-        .where(eq(userNotificationPreferences.userId, userId))
+        .where(whereClause)
         .limit(1);
 
       if (rows.length === 0) {
@@ -202,7 +226,7 @@ export class NotificationsRepository extends BaseRepository {
    * Save notification preferences for a user (insert or update).
    * Keeps branching: MySQL uses onDuplicateKeyUpdate, SQLite lacks notifyOnChannelMessage column.
    */
-  async saveUserPreferences(userId: number, prefs: NotificationPreferences): Promise<boolean> {
+  async saveUserPreferences(userId: number, prefs: NotificationPreferences, sourceId?: string): Promise<boolean> {
     if (!Number.isInteger(userId) || userId <= 0) {
       logger.error(`Invalid userId: ${userId}`);
       return false;
@@ -210,6 +234,7 @@ export class NotificationsRepository extends BaseRepository {
 
     const now = this.now();
     const { userNotificationPreferences } = this.tables;
+    const effectiveSourceId = sourceId ?? '';
 
     const setData = {
       notifyOnMessage: prefs.enableWebPush,
@@ -239,11 +264,12 @@ export class NotificationsRepository extends BaseRepository {
           .insert(userNotificationPreferences)
           .values({
             userId,
+            sourceId: effectiveSourceId,
             ...setData,
             createdAt: now,
           })
           .onConflictDoUpdate({
-            target: userNotificationPreferences.userId,
+            target: [userNotificationPreferences.userId, userNotificationPreferences.sourceId],
             set: setData,
           });
       } else if (this.isMySQL()) {
@@ -252,6 +278,7 @@ export class NotificationsRepository extends BaseRepository {
           .insert(userNotificationPreferences)
           .values({
             userId,
+            sourceId: effectiveSourceId,
             notifyOnChannelMessage: false,
             ...setData,
             createdAt: now,
@@ -263,12 +290,13 @@ export class NotificationsRepository extends BaseRepository {
           .insert(userNotificationPreferences)
           .values({
             userId,
+            sourceId: effectiveSourceId,
             notifyOnChannelMessage: false,
             ...setData,
             createdAt: now,
           })
           .onConflictDoUpdate({
-            target: userNotificationPreferences.userId,
+            target: [userNotificationPreferences.userId, userNotificationPreferences.sourceId],
             set: setData,
           });
       }
@@ -718,6 +746,7 @@ export class NotificationsRepository extends BaseRepository {
     return this.normalizeBigInts({
       id: row.id,
       userId: row.userId,
+      sourceId: row.sourceId,
       endpoint: row.endpoint,
       p256dhKey: row.p256dhKey,
       authKey: row.authKey,

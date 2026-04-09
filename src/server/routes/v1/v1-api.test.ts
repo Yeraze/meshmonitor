@@ -1244,9 +1244,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return 403 when user lacks nodes:read permission', async () => {
     const databaseService = await import('../../../services/database.js');
-    vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValueOnce({
-      nodes: { read: false }
-    });
+    vi.mocked(databaseService.default.checkPermissionAsync).mockResolvedValueOnce(false);
 
     const response = await request(app)
       .get('/api/v1/nodes/2882400001/position-history')
@@ -1270,6 +1268,10 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
       nodes_private: { read: false },
       channel_0: { viewOnMap: true, read: true, write: true }
     } as any);
+    // checkPermissionAsync now drives the route - nodes:read=true, nodes_private:read=false
+    vi.mocked(databaseService.default.checkPermissionAsync).mockImplementation(
+      async (_uid: any, resource: any) => resource === 'nodes'
+    );
 
     const response = await request(app)
       .get('/api/v1/nodes/2882400001/position-history')

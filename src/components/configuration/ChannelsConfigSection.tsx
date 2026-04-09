@@ -24,6 +24,7 @@ import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
 import { logger } from '../../utils/logger';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useSource } from '../../contexts/SourceContext';
 import { formatPrecisionAccuracy } from '../../utils/distance';
 
 // Default public PSK (base64 encoded value of single byte 0x01)
@@ -123,6 +124,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { distanceUnit } = useSettings();
+  const { sourceId } = useSource();
   const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -175,7 +177,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     if (!hasReorderChanges) return;
     setIsReordering(true);
     try {
-      await apiService.reorderDeviceChannels(slotOrder);
+      await apiService.reorderDeviceChannels(slotOrder, sourceId);
       showToast(t('channels_config.reorder_success', 'Channels reordered successfully. Device will reboot.'), 'success');
       originalOrder.current = [...slotOrder];
       onChannelsUpdated?.();
@@ -244,7 +246,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         uplinkEnabled: editingChannel.uplinkEnabled,
         downlinkEnabled: editingChannel.downlinkEnabled,
         positionPrecision: editingChannel.positionPrecision
-      });
+      }, sourceId);
 
       showToast(t('channels_config.toast_channel_updated', { slot: editingChannel.slotId }), 'success');
       setShowEditModal(false);
@@ -278,7 +280,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         role: 0, // DISABLED
         uplinkEnabled: false,
         downlinkEnabled: false,
-      });
+      }, sourceId);
       // 2. Delete channel record and messages from database
       try {
         await apiService.delete(`/api/channels/${slotId}`);
@@ -368,7 +370,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       };
 
       // Import the channel
-      await apiService.importChannel(importSlotId, normalizedChannelData);
+      await apiService.importChannel(importSlotId, normalizedChannelData, sourceId);
 
       showToast(t('channels_config.toast_channel_imported', { slot: importSlotId }), 'success');
       setShowImportModal(false);

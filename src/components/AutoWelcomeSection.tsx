@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoWelcomeSectionProps {
@@ -39,6 +40,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
@@ -82,7 +84,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   const handleMarkAllWelcomed = async () => {
     setIsMarkingWelcomed(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/settings/mark-all-welcomed`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings/mark-all-welcomed${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -109,7 +111,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     setIsSaving(true);
     try {
       // Sync to backend first
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

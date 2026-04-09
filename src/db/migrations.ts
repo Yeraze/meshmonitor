@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 19 migrations in sequential order for use by the migration runner.
+ * Registers all 22 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -31,6 +31,17 @@ import { migration as renameSystemBackupColumnsMigration, runMigration016Postgre
 import { migration as apiTokensNameMigration, runMigration017Postgres, runMigration017Mysql } from '../server/migrations/017_add_api_tokens_name_column.js';
 import { migration as addMuteColumnsMigration, runMigration018Postgres, runMigration018Mysql } from '../server/migrations/018_add_mute_columns.js';
 import { migration as addChannelToTraceroutesMigration, runMigration019Postgres, runMigration019Mysql } from '../server/migrations/019_add_channel_to_traceroutes.js';
+import { migration as createSourcesMigration, runMigration020Postgres, runMigration020Mysql } from '../server/migrations/020_create_sources.js';
+import { migration as addSourceIdColumnsMigration, runMigration021Postgres, runMigration021Mysql } from '../server/migrations/021_add_source_id_columns.js';
+import { migration as addSourceIdToPermissionsMigration, runMigration022Postgres, runMigration022Mysql } from '../server/migrations/022_add_source_id_to_permissions.js';
+import { migration as multiSourceChannelsMigration, runMigration023Postgres, runMigration023Mysql } from '../server/migrations/023_multi_source_channels.js';
+import { migration as addSourceIdToTracerouteTablesMigration, runMigration024Postgres, runMigration024Mysql } from '../server/migrations/024_add_source_id_to_traceroute_tables.js';
+import { migration as addSourceIdToTimeSyncNodesMigration, runMigration025Postgres, runMigration025Mysql } from '../server/migrations/025_add_source_id_to_time_sync_nodes.js';
+import { migration as addSourceIdToDistanceDeleteLogMigration, runMigration026Postgres, runMigration026Mysql } from '../server/migrations/026_add_source_id_to_distance_delete_log.js';
+import { migration as addSourceIdToKeyRepairLogMigration, runMigration027Postgres, runMigration027Mysql } from '../server/migrations/027_add_source_id_to_key_repair_log.js';
+import { migration as addSourceIdToNotificationsMigration, runMigration028Postgres, runMigration028Mysql } from '../server/migrations/028_add_source_id_to_notifications.js';
+import { migration as nodesCompositePkMigration, runMigration029Postgres, runMigration029Mysql } from '../server/migrations/029_nodes_composite_pk.js';
+import { migration as addSourceIdToRouteSegmentsMigration, runMigration030Postgres, runMigration030Mysql } from '../server/migrations/030_add_source_id_to_route_segments.js';
 
 // ============================================================================
 // Registry
@@ -262,4 +273,165 @@ registry.register({
   sqlite: (db) => addChannelToTraceroutesMigration.up(db),
   postgres: (client) => runMigration019Postgres(client),
   mysql: (pool) => runMigration019Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 020: Create sources table for multi-source support (4.0 Phase 1)
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 20,
+  name: 'create_sources',
+  settingsKey: 'migration_020_create_sources',
+  sqlite: (db) => createSourcesMigration.up(db),
+  postgres: (client) => runMigration020Postgres(client),
+  mysql: (pool) => runMigration020Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 021: Add sourceId columns to all data tables (Phase 2)
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 21,
+  name: 'add_source_id_columns',
+  settingsKey: 'migration_021_add_source_id_columns',
+  sqlite: (db) => addSourceIdColumnsMigration.up(db),
+  postgres: (client) => runMigration021Postgres(client),
+  mysql: (pool) => runMigration021Mysql(pool),
+});
+
+// Migration 022: Add sourceId to permissions table (Phase 3)
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 22,
+  name: 'add_source_id_to_permissions',
+  settingsKey: 'migration_022_add_source_id_to_permissions',
+  sqlite: (db) => addSourceIdToPermissionsMigration.up(db),
+  postgres: (client) => runMigration022Postgres(client),
+  mysql: (pool) => runMigration022Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 023: Multi-source channels table rebuild
+// Changes channels table PK to surrogate key + UNIQUE(sourceId, id) so each
+// source has its own independent set of channel slots (0-7).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 23,
+  name: 'multi_source_channels',
+  settingsKey: 'migration_023_multi_source_channels',
+  sqlite: (db) => multiSourceChannelsMigration.up(db),
+  postgres: (client) => runMigration023Postgres(client),
+  mysql: (pool) => runMigration023Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 024: Per-source auto-traceroute scheduler (Phase 2b)
+// Adds sourceId to auto_traceroute_nodes and auto_traceroute_log, replaces
+// UNIQUE(nodeNum) with UNIQUE(nodeNum, sourceId).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 24,
+  name: 'add_source_id_to_traceroute_tables',
+  settingsKey: 'migration_024_add_source_id_to_traceroute_tables',
+  sqlite: (db) => addSourceIdToTracerouteTablesMigration.up(db),
+  postgres: (client) => runMigration024Postgres(client),
+  mysql: (pool) => runMigration024Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 025: Per-source auto time-sync scheduler (Phase 2c)
+// Adds sourceId to auto_time_sync_nodes, replaces UNIQUE(nodeNum) with
+// UNIQUE(nodeNum, sourceId).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 25,
+  name: 'add_source_id_to_time_sync_nodes',
+  settingsKey: 'migration_025_add_source_id_to_time_sync_nodes',
+  sqlite: (db) => addSourceIdToTimeSyncNodesMigration.up(db),
+  postgres: (client) => runMigration025Postgres(client),
+  mysql: (pool) => runMigration025Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 026: Per-source auto-delete-by-distance log (Phase 2d)
+// Adds nullable sourceId to auto_distance_delete_log so each source's
+// run-now history is scoped independently.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 26,
+  name: 'add_source_id_to_distance_delete_log',
+  settingsKey: 'migration_026_add_source_id_to_distance_delete_log',
+  sqlite: (db) => addSourceIdToDistanceDeleteLogMigration.up(db),
+  postgres: (client) => runMigration026Postgres(client),
+  mysql: (pool) => runMigration026Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 027: Per-source auto-key-repair log (Phase 2e)
+// Adds nullable sourceId to auto_key_repair_log so each source's key-repair
+// attempts are tracked independently.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 27,
+  name: 'add_source_id_to_key_repair_log',
+  settingsKey: 'migration_027_add_source_id_to_key_repair_log',
+  sqlite: (db) => addSourceIdToKeyRepairLogMigration.up(db),
+  postgres: (client) => runMigration027Postgres(client),
+  mysql: (pool) => runMigration027Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 028: Per-source notifications (Phase A)
+// Adds sourceId to push_subscriptions and user_notification_preferences,
+// deletes legacy NULL-sourceId rows, and replaces old unique constraints
+// with composite uniques that include sourceId.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 28,
+  name: 'add_source_id_to_notifications',
+  settingsKey: 'migration_028_add_source_id_to_notifications',
+  sqlite: (db) => addSourceIdToNotificationsMigration.up(db),
+  postgres: (client) => runMigration028Postgres(client),
+  mysql: (pool) => runMigration028Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 029: Nodes composite PK (nodeNum, sourceId) — Phase 1 of nodes
+// per-source refactor. Backfills NULL sourceIds to the first registered source
+// and rebuilds the PK + unique constraints to be source-scoped.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 29,
+  name: 'nodes_composite_pk',
+  settingsKey: 'migration_029_nodes_composite_pk',
+  sqlite: (db) => nodesCompositePkMigration.up(db),
+  postgres: (client) => runMigration029Postgres(client),
+  mysql: (pool) => runMigration029Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 030: Add sourceId to route_segments and rebuild from traceroutes.
+// route_segments previously had no sourceId column — this migration adds it,
+// clears the table, and replays every traceroute to regenerate segment rows
+// with the correct per-source attribution using each traceroute's stored
+// routePositions snapshot.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 30,
+  name: 'add_source_id_to_route_segments',
+  settingsKey: 'migration_030_add_source_id_to_route_segments',
+  sqlite: (db) => addSourceIdToRouteSegmentsMigration.up(db),
+  postgres: (client) => runMigration030Postgres(client),
+  mysql: (pool) => runMigration030Mysql(pool),
 });

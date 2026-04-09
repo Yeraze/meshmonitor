@@ -8,9 +8,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
-import { POLL_QUERY_KEY, type PollData, type RawMessage } from './usePoll';
+import { sourcePollQueryKey, type PollData, type RawMessage } from './usePoll';
 import type { DeviceInfo, Channel } from '../types/device';
 import { appBasename } from '../init';
+import { useSource } from '../contexts/SourceContext';
 
 /**
  * WebSocket connection state
@@ -82,10 +83,12 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
 
   const socketRef = useRef<Socket | null>(null);
   const queryClient = useQueryClient();
+  const { sourceId } = useSource();
 
   // Helper to update a node in the cache
   const updateNodeInCache = useCallback((nodeNum: number, nodeUpdate: Partial<DeviceInfo>) => {
-    queryClient.setQueryData<PollData>(POLL_QUERY_KEY, (old) => {
+    const key = sourcePollQueryKey(sourceId);
+    queryClient.setQueryData<PollData>(key, (old) => {
       if (!old?.nodes) return old;
 
       const updatedNodes = old.nodes.map((node) => {
@@ -108,33 +111,34 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
 
       return { ...old, nodes: updatedNodes };
     });
-  }, [queryClient]);
+  }, [queryClient, sourceId]);
 
   // Helper to add a new message to the cache
   // Messages are ordered newest-first, so new messages go at the beginning
   const addMessageToCache = useCallback((message: RawMessage) => {
-    queryClient.setQueryData<PollData>(POLL_QUERY_KEY, (old) => {
-      if (!old) return old;
-
-      // Check if message already exists
-      const existingMessages = old.messages || [];
-      const messageExists = existingMessages.some(m => m.id === message.id);
-
-      if (messageExists) {
+    const key = sourcePollQueryKey(sourceId);
+    queryClient.setQueryData<PollData>(key, (old) => {
+      if (!old) {
+        queryClient.invalidateQueries({ queryKey: key });
         return old;
       }
 
-      // Add new message at the beginning (messages are sorted newest-first)
+      const existingMessages = old.messages || [];
+      if (existingMessages.some(m => m.id === message.id)) {
+        return old;
+      }
+
       return {
         ...old,
         messages: [message, ...existingMessages],
       };
     });
-  }, [queryClient]);
+  }, [queryClient, sourceId]);
 
   // Helper to update connection status in cache
   const updateConnectionInCache = useCallback((status: ConnectionStatusEvent) => {
-    queryClient.setQueryData<PollData>(POLL_QUERY_KEY, (old) => {
+    const key = sourcePollQueryKey(sourceId);
+    queryClient.setQueryData<PollData>(key, (old) => {
       if (!old) return old;
 
       return {
@@ -148,11 +152,12 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
         },
       };
     });
-  }, [queryClient]);
+  }, [queryClient, sourceId]);
 
   // Helper to update channels in cache
   const updateChannelInCache = useCallback((channel: Channel) => {
-    queryClient.setQueryData<PollData>(POLL_QUERY_KEY, (old) => {
+    const key = sourcePollQueryKey(sourceId);
+    queryClient.setQueryData<PollData>(key, (old) => {
       if (!old?.channels) return old;
 
       const channelExists = old.channels.some(c => c.id === channel.id);
@@ -168,7 +173,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
 
       return { ...old, channels: updatedChannels };
     });
-  }, [queryClient]);
+  }, [queryClient, sourceId]);
 
   useEffect(() => {
     if (!enabled) {
@@ -189,7 +194,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     const socket = io(socketUrl, {
       path: socketPath,
       withCredentials: true,
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -224,9 +229,13 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       }));
     });
 
-    // Server acknowledgement
+    // Server acknowledgement — join source room if we're in a source-specific view
     socket.on('connected', (data: { socketId: string; timestamp: number }) => {
       console.log('[WebSocket] Server acknowledged connection:', data.socketId);
+      if (sourceId) {
+        socket.emit('join-source', sourceId);
+        console.log('[WebSocket] Joined source room:', sourceId);
+      }
     });
 
     // Data events
@@ -235,10 +244,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
 
     socket.on('message:new', (data: RawMessage) => {
-      // Add message directly to cache - processPollData will run when cache updates
-      // and handle timestamp conversion, notification sounds via the useEffect
       addMessageToCache(data);
-      // Invalidate unread counts so badges update promptly (#2316)
       queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
     });
 
@@ -251,21 +257,15 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
 
     socket.on('traceroute:complete', (_data: TracerouteCompleteEvent) => {
-      // For traceroutes, invalidate the cache to refetch latest data
-      // This ensures the traceroute display updates properly
-      queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
     socket.on('routing:update', (_data: { requestId: number; status: string }) => {
-      // For routing updates (ACK/NAK), we could update message delivery status
-      // For now, invalidate to refetch
-      queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
     socket.on('telemetry:batch', (_data: { [nodeNum: number]: unknown[] }) => {
-      // For batched telemetry, invalidate the telemetry-related queries
-      // The poll will refetch with updated telemetry data
-      queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
     socket.on('firmware:status', (data: unknown) => {
@@ -278,7 +278,9 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, queryClient, updateNodeInCache, addMessageToCache, updateConnectionInCache, updateChannelInCache]);
+  // pollKey is derived from sourceId (primitive) — omit it here to avoid a new array
+  // reference on every render triggering socket reconnects.
+  }, [enabled, queryClient, sourceId, updateNodeInCache, addMessageToCache, updateConnectionInCache, updateChannelInCache]);
 
   return state;
 }

@@ -162,12 +162,61 @@ export function initializeWebSocket(
     const username = (socket as any).username || 'unknown';
     logger.info(`[WebSocket] Client connected: ${socket.id} (user: ${username})`);
 
+    // Per-socket joined sourceId (set on join-source). Used to remap cross-source
+    // message channel slot indexes so replies from other sources land in the
+    // correct channel bucket on the client.
+    let joinedSourceId: string | null = null;
+
     // Subscribe to data events
-    const handler = (event: DataEvent) => {
+    const handler = async (event: DataEvent) => {
+      // Source-aware filtering: if the client has joined source rooms, only forward
+      // events that match one of those rooms. Legacy clients (no rooms) get all events.
+      // Exception: message:new events are globally visible across sources — broadcast to all.
+      const sourceRooms = Array.from(socket.rooms).filter(r => r.startsWith('source:'));
+      if (sourceRooms.length > 0 && event.sourceId && event.type !== 'message:new') {
+        if (!sourceRooms.includes(`source:${event.sourceId}`)) {
+          return; // Skip — event is from a source this client didn't join
+        }
+      }
+
       // Transform message data to client format before emitting
       if (event.type === 'message:new') {
-        const transformedMessage = transformMessageForClient(event.data as DbMessage);
-        socket.emit(event.type, transformedMessage);
+        const dbMsg = event.data as DbMessage;
+        let outgoing: any = transformMessageForClient(dbMsg);
+
+        // Cross-source channel slot remap: if this message originated from a
+        // different source than the one this socket joined, remap its channel
+        // index to the equivalent slot (name+PSK match) on the joined source.
+        try {
+          const msgSourceId = event.sourceId ?? (dbMsg as any).sourceId;
+          if (
+            joinedSourceId &&
+            msgSourceId &&
+            msgSourceId !== joinedSourceId &&
+            outgoing.channel !== -1
+          ) {
+            const allChannels = await databaseService.channels.getAllChannels();
+            const myChannels = allChannels.filter(
+              (c: any) => c.sourceId === joinedSourceId
+            );
+            const otherChannel = allChannels.find(
+              (c: any) => c.sourceId === msgSourceId && c.id === outgoing.channel
+            );
+            if (otherChannel && otherChannel.name && otherChannel.role !== 0) {
+              const myEquivalent = myChannels.find(
+                (c: any) =>
+                  c.name === otherChannel.name && c.psk === (otherChannel as any).psk
+              );
+              if (myEquivalent) {
+                outgoing = { ...outgoing, channel: myEquivalent.id };
+              }
+            }
+          }
+        } catch (err) {
+          logger.warn('[WebSocket] Channel remap failed:', err);
+        }
+
+        socket.emit(event.type, outgoing);
       } else {
         socket.emit(event.type, event.data);
       }
@@ -183,6 +232,46 @@ export function initializeWebSocket(
     // Handle client ping (for connection health monitoring)
     socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
+    });
+
+    // Room management — clients join a source room to receive only that source's events
+    socket.on('join-source', async (sourceId: string) => {
+      if (typeof sourceId !== 'string' || sourceId.length === 0) return;
+      const sockUserId = (socket as any).userId as number | undefined;
+      const sockIsAdmin = (socket as any).isAdmin as boolean | undefined;
+      try {
+        if (!sockIsAdmin) {
+          if (sockUserId === undefined) {
+            socket.emit('join-source:error', { sourceId, error: 'unauthorized' });
+            return;
+          }
+          const allowed = await databaseService.checkPermissionAsync(
+            sockUserId,
+            'messages',
+            'read',
+            sourceId
+          );
+          if (!allowed) {
+            logger.warn(`[WebSocket] Socket ${socket.id} denied join-source ${sourceId}`);
+            socket.emit('join-source:error', { sourceId, error: 'forbidden' });
+            return;
+          }
+        }
+        socket.join(`source:${sourceId}`);
+        joinedSourceId = sourceId;
+        logger.debug(`[WebSocket] Socket ${socket.id} joined room source:${sourceId}`);
+      } catch (err) {
+        logger.error('[WebSocket] join-source permission check failed:', err);
+        socket.emit('join-source:error', { sourceId, error: 'internal' });
+      }
+    });
+
+    socket.on('leave-source', (sourceId: string) => {
+      if (typeof sourceId === 'string' && sourceId.length > 0) {
+        socket.leave(`source:${sourceId}`);
+        if (joinedSourceId === sourceId) joinedSourceId = null;
+        logger.debug(`[WebSocket] Socket ${socket.id} left room source:${sourceId}`);
+      }
     });
 
     // Handle disconnect

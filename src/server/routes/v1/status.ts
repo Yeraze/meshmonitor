@@ -8,15 +8,19 @@
 import express from 'express';
 import databaseService from '../../../services/database.js';
 import meshtasticManager from '../../meshtasticManager.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { logger } from '../../../utils/logger.js';
 
 const router = express.Router();
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
+    const statusSourceId = req.query.sourceId as string | undefined;
+    const statusManager = statusSourceId ? (sourceManagerRegistry.getManager(statusSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
     const localNodeId = await databaseService.settings.getSetting('localNodeId');
-    const connectionStatus = await meshtasticManager.getConnectionStatus();
+    const connectionStatus = await statusManager.getConnectionStatus();
 
     let longName: string | null = null;
     let shortName: string | null = null;

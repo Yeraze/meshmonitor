@@ -12,6 +12,7 @@ import { DashboardHeader, DashboardFilters, DashboardGrid } from './components';
 import { useDashboardData, useDashboardFilters, useCustomWidgets } from './hooks';
 import { type DashboardProps } from './types';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useSource } from '../../contexts/SourceContext';
 
 // Telemetry types that should show solar by default (power/environmental)
 const SOLAR_DEFAULT_ON_TYPES = new Set([
@@ -35,6 +36,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
     const { solarMonitoringEnabled, preferredDashboardSortOption, distanceUnit } = useSettings();
+    const { sourceId } = useSource();
+    const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
 
     // Modal state
     const [showAddWidgetModal, setShowAddWidgetModal] = useState(false);
@@ -80,7 +83,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
 
       // Save to server
       try {
-        await csrfFetch(`${baseUrl}/api/settings`, {
+        await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dashboardSolarVisibility: JSON.stringify(newSolarVisibility) }),
@@ -88,7 +91,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       } catch (err) {
         logger.error('Error saving solar visibility:', err);
       }
-    }, [solarVisibility, setSolarVisibility, csrfFetch, baseUrl]);
+    }, [solarVisibility, setSolarVisibility, csrfFetch, baseUrl, sourceQuery]);
 
     // Filters hook
     const {
@@ -187,7 +190,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
 
           // Save to server
           try {
-            await csrfFetch(`${baseUrl}/api/settings`, {
+            await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ telemetryCustomOrder: JSON.stringify(newCustomOrder) }),
@@ -197,7 +200,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
           }
         }
       },
-      [filteredAndSortedFavorites, setCustomOrder, setSortOption, csrfFetch, baseUrl]
+      [filteredAndSortedFavorites, setCustomOrder, setSortOption, csrfFetch, baseUrl, sourceQuery]
     );
 
     // Remove favorite
@@ -218,7 +221,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
           });
 
           // Save to server
-          await csrfFetch(`${baseUrl}/api/settings`, {
+          await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ telemetryFavorites: JSON.stringify(newFavorites) }),
@@ -229,7 +232,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
           window.location.reload();
         }
       },
-      [favorites, setFavorites, baseUrl, csrfFetch]
+      [favorites, setFavorites, baseUrl, csrfFetch, sourceQuery]
     );
 
     if (loading) {

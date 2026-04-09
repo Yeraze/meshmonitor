@@ -3,8 +3,22 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import AutoPingSection from './AutoPingSection';
+
+// Override the global i18n mock from src/test/setup.ts — the component calls
+// `t(key, defaultValue)` with an English default, and these tests assert on
+// English text like "Auto Ping", "Ping Interval", etc. Return the default.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, defaultValue?: string | Record<string, unknown>) => {
+      if (typeof defaultValue === 'string') return defaultValue;
+      return key;
+    },
+    i18n: { changeLanguage: vi.fn(), language: 'en' },
+  }),
+  Trans: ({ children }: { children: React.ReactNode }) => children,
+  initReactI18next: { type: '3rdParty', init: vi.fn() },
+}));
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
@@ -24,9 +38,17 @@ vi.mock('../hooks/useSaveBar', () => ({
   useSaveBar: (opts: any) => mockUseSaveBar(opts)
 }));
 
-// Skip component tests in CI - jsdom has compatibility issues with webidl-conversions
-// Tests work locally but fail in some CI environments
-describe.skip('AutoPingSection Component', () => {
+// Mock the useSourceQuery hook — returns a query suffix string
+vi.mock('../hooks/useSourceQuery', () => ({
+  useSourceQuery: () => ''
+}));
+
+// Mock the useSource context hook
+vi.mock('../contexts/SourceContext', () => ({
+  useSource: () => ({ sourceId: null })
+}));
+
+describe('AutoPingSection Component', () => {
   const defaultProps = {
     baseUrl: '',
   };
@@ -65,8 +87,12 @@ describe.skip('AutoPingSection Component', () => {
       render(<AutoPingSection {...defaultProps} />);
       await waitFor(() => {
         expect(screen.getByText('DM Commands')).toBeInTheDocument();
-        expect(screen.getByText(/ping 5/)).toBeInTheDocument();
-        expect(screen.getByText(/ping stop/)).toBeInTheDocument();
+        // Target the <code> tags specifically — the description paragraph
+        // also contains the literal text "ping stop".
+        expect(screen.getByText('ping 5')).toBeInTheDocument();
+        expect(screen.getByText('ping 5').tagName).toBe('CODE');
+        expect(screen.getByText('ping stop')).toBeInTheDocument();
+        expect(screen.getByText('ping stop').tagName).toBe('CODE');
       });
     });
 

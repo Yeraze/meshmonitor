@@ -6,9 +6,10 @@ services:
       - "8080:3001"
     volumes:
       - meshmonitor-data:/data
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.5.106  # Change to your node's IP
     restart: unless-stopped
+    # MeshMonitor 4.0+: configure your Meshtastic source (host/port) through
+    # the Dashboard UI after first boot. Sign in as admin (default: admin/changeme)
+    # and click "+ Add Source".
 
 volumes:
   meshmonitor-data:

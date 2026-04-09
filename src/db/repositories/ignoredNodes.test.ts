@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating the ignored_nodes table per backend
@@ -27,7 +29,8 @@ const SQLITE_CREATE = `
     longName TEXT,
     shortName TEXT,
     ignoredBy TEXT,
-    ignoredAt INTEGER NOT NULL
+    ignoredAt INTEGER NOT NULL,
+    sourceId TEXT
   )
 `;
 
@@ -39,7 +42,8 @@ const POSTGRES_CREATE = `
     "longName" TEXT,
     "shortName" TEXT,
     "ignoredBy" TEXT,
-    "ignoredAt" BIGINT NOT NULL
+    "ignoredAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   )
 `;
 
@@ -51,7 +55,8 @@ const MYSQL_CREATE = `
     \`longName\` TEXT,
     \`shortName\` TEXT,
     \`ignoredBy\` TEXT,
-    \`ignoredAt\` BIGINT NOT NULL
+    \`ignoredAt\` BIGINT NOT NULL,
+    \`sourceId\` VARCHAR(36)
   )
 `;
 
@@ -206,7 +211,7 @@ describe('IgnoredNodesRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('IgnoredNodesRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('IgnoredNodesRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -233,7 +238,7 @@ describe('IgnoredNodesRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('IgnoredNodesRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('IgnoredNodesRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

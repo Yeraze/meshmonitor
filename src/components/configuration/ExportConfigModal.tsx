@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
 import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
+import { useSource } from '../../contexts/SourceContext';
 
 interface ExportConfigModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   isLoadingChannels = false
 }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
   const [includeLoraConfig, setIncludeLoraConfig] = useState(true);
@@ -58,7 +60,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
           setSelectedChannels(enabledChannelIds);
         } else {
           // Fetch ALL channels (unfiltered) for export
-          apiService.getAllChannels().then(allChannels => {
+          apiService.getAllChannels(sourceId).then(allChannels => {
             setChannels(allChannels);
             // Select only channels that are not disabled (role !== 0)
             const enabledChannelIds = new Set(
@@ -77,7 +79,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
       setError(null);
       setGeneratedUrl(''); // Clear any previous URL
     }
-  }, [isOpen, nodeNum, _channels]);
+  }, [isOpen, nodeNum, _channels, sourceId]);
 
   const generateUrl = useCallback(async () => {
     if (selectedChannels.size === 0) {
@@ -88,13 +90,13 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
     setError(null);
     try {
       const channelIds = Array.from(selectedChannels).sort((a, b) => a - b);
-      const url = await apiService.encodeChannelUrl(channelIds, includeLoraConfig, nodeNum);
+      const url = await apiService.encodeChannelUrl(channelIds, includeLoraConfig, nodeNum, sourceId);
       setGeneratedUrl(url);
     } catch (err: any) {
       setError(err.message || 'Failed to generate URL');
       setGeneratedUrl('');
     }
-  }, [selectedChannels, includeLoraConfig, nodeNum]);
+  }, [selectedChannels, includeLoraConfig, nodeNum, sourceId]);
 
   useEffect(() => {
     // Generate URL whenever selections change

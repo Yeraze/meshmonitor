@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import meshcoreManager from '../meshcoreManager.js';
+import meshtasticManagerDefault from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { ResourceType } from '../../types/permission.js';
@@ -48,10 +50,22 @@ const requireChannelsWrite: RequestHandler = async (req, res, next) => {
   const userId = user?.id ?? null;
   const channelId = parseInt(req.params.channelId, 10);
 
-  // Get user permissions (async for multi-database support)
-  const permissions = userId !== null
-    ? await databaseService.getUserPermissionSetAsync(userId)
-    : {};
+  // Resolve sourceId from body or query — required for channel-write routes
+  const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+  if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '') {
+    return res.status(400).json({
+      error: 'Bad request',
+      message: 'sourceId is required for channel write operations'
+    });
+  }
+  if (typeof rawSourceId !== 'string') {
+    return res.status(400).json({
+      error: 'Bad request',
+      message: 'Invalid sourceId'
+    });
+  }
+  const sourceId: string = rawSourceId;
+  (req as any).scopedSourceId = sourceId;
 
   // Check if user is admin
   const isAdmin = user?.isAdmin ?? false;
@@ -60,15 +74,17 @@ const requireChannelsWrite: RequestHandler = async (req, res, next) => {
     return next();
   }
 
-  // Check specific channel write permission
+  // Check specific channel write permission scoped to source
   const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-  const hasChannelWrite = permissions[channelResource]?.write === true;
+  const hasChannelWrite = userId !== null
+    ? await databaseService.checkPermissionAsync(userId, channelResource, 'write', sourceId)
+    : false;
 
   if (!hasChannelWrite) {
-    logger.warn(`❌ Permission denied for channel message deletion - ${channelResource}:write=${hasChannelWrite}`);
+    logger.warn(`❌ Permission denied for channel message deletion - ${channelResource}:write source=${sourceId}`);
     return res.status(403).json({
       error: 'Forbidden',
-      message: `You need ${channelResource}:write permission to delete messages from this channel`
+      message: `You need ${channelResource}:write permission for source ${sourceId} to delete messages from this channel`
     });
   }
 
@@ -315,6 +331,8 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
   try {
     const channelId = parseInt(req.params.channelId, 10);
     const user = (req as any).user;
+    // requireChannelsWrite already validated sourceId exists and stashed it on the request
+    const sourceId: string = (req as any).scopedSourceId;
 
     if (isNaN(channelId)) {
       return res.status(400).json({
@@ -323,9 +341,9 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
       });
     }
 
-    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId);
+    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId, sourceId);
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} messages from channel ${channelId}`);
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} messages from channel ${channelId} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -333,7 +351,7 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
         user.id,
         'channel_messages_purged',
         'messages',
-        `Purged ${deletedCount} messages from channel ${channelId}`,
+        `Purged ${deletedCount} messages from channel ${channelId} (source=${sourceId})`,
         req.ip || ''
       );
     }
@@ -341,6 +359,7 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
     res.json({
       message: 'Channel messages purged successfully',
       channelId,
+      sourceId,
       deletedCount
     });
   } catch (error: any) {
@@ -375,9 +394,19 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res
       });
     }
 
-    const deletedCount = await databaseService.messages.purgeDirectMessages(nodeNum);
+    // sourceId is required so the purge is scoped to a single source.
+    const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+    if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '' || typeof rawSourceId !== 'string') {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'sourceId is required'
+      });
+    }
+    const sourceId: string = rawSourceId;
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} direct messages with node ${nodeNum}`);
+    const deletedCount = await databaseService.messages.purgeDirectMessages(nodeNum, sourceId);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} direct messages with node ${nodeNum} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -385,7 +414,7 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res
         user.id,
         'dm_messages_purged',
         'messages',
-        `Purged ${deletedCount} direct messages with node ${nodeNum}`,
+        `Purged ${deletedCount} direct messages with node ${nodeNum} (source=${sourceId})`,
         req.ip || ''
       );
     }
@@ -393,6 +422,7 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res
     res.json({
       message: 'Direct messages purged successfully',
       nodeNum,
+      sourceId,
       deletedCount
     });
   } catch (error: any) {
@@ -582,12 +612,23 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, async (req, res) => {
       });
     }
 
+    // Phase 3C2: require sourceId in body (query fallback for DELETE) to scope the delete
+    const delSourceId = (req.body && typeof req.body.sourceId === 'string' && req.body.sourceId.length > 0
+      ? req.body.sourceId
+      : (typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0 ? req.query.sourceId as string : null));
+    if (!delSourceId) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'sourceId is required (body or query)'
+      });
+    }
+
     // Get node name for logging (async for multi-database support)
-    const nodes = await databaseService.nodes.getAllNodes();
+    const nodes = await databaseService.nodes.getAllNodes(delSourceId);
     const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
-    const result = await databaseService.deleteNodeAsync(nodeNum);
+    const result = await databaseService.deleteNodeAsync(nodeNum, delSourceId);
 
     if (!result.nodeDeleted) {
       return res.status(404).json({
@@ -649,8 +690,11 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Get the meshtasticManager instance
-    const meshtasticManager = (global as any).meshtasticManager;
+    // Get the meshtasticManager instance (source-aware)
+    const { sourceId: purgeSourceId } = req.body || {};
+    const meshtasticManager = purgeSourceId
+      ? (sourceManagerRegistry.getManager(purgeSourceId) as typeof meshtasticManagerDefault ?? (global as any).meshtasticManager)
+      : (global as any).meshtasticManager;
     if (!meshtasticManager) {
       return res.status(500).json({
         error: 'Internal server error',
@@ -685,7 +729,13 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     }
 
     // Also delete from local database (async for multi-database support)
-    const result = await databaseService.deleteNodeAsync(nodeNum);
+    if (!purgeSourceId) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'sourceId is required in body'
+      });
+    }
+    const result = await databaseService.deleteNodeAsync(nodeNum, purgeSourceId);
 
     if (!result.nodeDeleted) {
       logger.warn(`⚠️ Node ${nodeNum} was removed from device but not found in local database`);

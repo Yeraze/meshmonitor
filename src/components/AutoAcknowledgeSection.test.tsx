@@ -19,8 +19,14 @@ vi.mock('./ToastContainer', () => ({
   useToast: () => ({ showToast: mockShowToast })
 }));
 
-// Skip component tests in CI - jsdom has compatibility issues with webidl-conversions
-// Tests work locally but fail in some CI environments
+// Skip: component has diverged substantially from the original test expectations.
+// The current AutoAcknowledgeSection has ~40 props (was ~10), uses the external
+// SaveBar pattern instead of inline "Save Changes" / "Saving..." buttons, split
+// the message template into separate multihop/direct variants, and added
+// tapback/reply/skip-incomplete/ignored-nodes settings. Nearly every test in
+// this file references UI that no longer exists (inline save button, single
+// message template label, etc). A wholesale rewrite against the current DOM
+// is required — tracked as Tier 2 follow-up.
 describe.skip('AutoAcknowledgeSection Component', () => {
   const mockChannels: Channel[] = [
     { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },
@@ -37,6 +43,9 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     onUseDMChange: vi.fn()
   };
 
+  // NOTE: Cast to any — the component has grown 24+ new props since these
+  // tests were written. The suite is skipped pending a wholesale rewrite,
+  // but we still need TypeScript to accept the file.
   const defaultProps = {
     enabled: true,
     regex: '^(test|ping)',
@@ -47,7 +56,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     useDM: false,
     baseUrl: '',
     ...mockCallbacks
-  };
+  } as any;
 
   beforeEach(() => {
     vi.clearAllMocks();

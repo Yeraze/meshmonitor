@@ -20,6 +20,67 @@ import { DatabaseType } from '../types.js';
 
 const { Pool: PgPool } = pg;
 
+// ---------------------------------------------------------------------------
+// Availability probes
+//
+// Each test file skips its PostgreSQL / MySQL describe block via
+// `describe.skipIf(!postgresAvailable)` so the vitest summary accurately
+// reflects how many tests actually ran. These probes are evaluated once per
+// process at module load time (Node's module cache guarantees single
+// evaluation even if many test files import this file concurrently).
+// ---------------------------------------------------------------------------
+
+async function probePostgres(): Promise<boolean> {
+  try {
+    const pool = new PgPool({
+      host: 'localhost',
+      port: 5433,
+      user: 'test',
+      password: 'test',
+      database: 'meshmonitor_test',
+      connectionTimeoutMillis: 3000,
+    });
+    const client = await pool.connect();
+    client.release();
+    await pool.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function probeMysql(): Promise<boolean> {
+  try {
+    const pool = mysql.createPool({
+      host: 'localhost',
+      port: 3307,
+      user: 'test',
+      password: 'test',
+      database: 'meshmonitor_test',
+      connectionLimit: 1,
+      connectTimeout: 3000,
+    });
+    const conn = await pool.getConnection();
+    conn.release();
+    await pool.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the PostgreSQL test container is reachable on port 5433.
+ * Computed once per process. Use with `describe.skipIf(!postgresAvailable)`.
+ */
+export const postgresAvailable: boolean = await probePostgres();
+
+/**
+ * True when the MySQL test container is reachable on port 3307.
+ * Computed once per process. Use with `describe.skipIf(!mysqlAvailable)`.
+ */
+export const mysqlAvailable: boolean = await probeMysql();
+
 /**
  * A test backend wrapping a Drizzle database instance with helpers.
  */

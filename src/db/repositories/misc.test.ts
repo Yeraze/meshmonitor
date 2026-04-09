@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating all misc tables (no FK constraints in tests)
@@ -31,9 +33,11 @@ const SQLITE_CREATE = `
   );
   CREATE TABLE IF NOT EXISTS auto_traceroute_nodes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nodeNum INTEGER NOT NULL UNIQUE,
+    nodeNum INTEGER NOT NULL,
     enabled INTEGER DEFAULT 1,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    sourceId TEXT,
+    UNIQUE(nodeNum, sourceId)
   );
   CREATE TABLE IF NOT EXISTS upgrade_history (
     id TEXT PRIMARY KEY,
@@ -93,9 +97,11 @@ const POSTGRES_CREATE = `
   );
   CREATE TABLE auto_traceroute_nodes (
     id SERIAL PRIMARY KEY,
-    "nodeNum" BIGINT NOT NULL UNIQUE,
+    "nodeNum" BIGINT NOT NULL,
     enabled BOOLEAN DEFAULT true,
-    "createdAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL,
+    "sourceId" TEXT,
+    UNIQUE("nodeNum", "sourceId")
   );
   CREATE TABLE upgrade_history (
     id TEXT PRIMARY KEY,
@@ -156,9 +162,11 @@ const MYSQL_CREATE = `
   );
   CREATE TABLE auto_traceroute_nodes (
     id SERIAL PRIMARY KEY,
-    nodeNum BIGINT NOT NULL UNIQUE,
+    nodeNum BIGINT NOT NULL,
     enabled BOOLEAN DEFAULT true,
-    createdAt BIGINT NOT NULL
+    createdAt BIGINT NOT NULL,
+    sourceId VARCHAR(64),
+    UNIQUE(nodeNum, sourceId)
   );
   CREATE TABLE upgrade_history (
     id VARCHAR(64) PRIMARY KEY,
@@ -591,7 +599,7 @@ describe('MiscRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('MiscRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('MiscRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -618,7 +626,7 @@ describe('MiscRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('MiscRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('MiscRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

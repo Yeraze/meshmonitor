@@ -15,14 +15,10 @@ const router = express.Router();
 /**
  * Check if user has nodes:read permission
  */
-async function hasNodesReadPermission(userId: number | null, isAdmin: boolean): Promise<boolean> {
+async function hasNodesReadPermission(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<boolean> {
   if (isAdmin) return true;
-
-  const permissions = userId !== null
-    ? await databaseService.getUserPermissionSetAsync(userId)
-    : {};
-
-  return permissions.nodes?.read === true;
+  if (userId === null) return false;
+  return databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
 }
 
 /**
@@ -51,8 +47,10 @@ router.get('/', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    // Check permission
-    if (!await hasNodesReadPermission(userId, isAdmin)) {
+    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+
+    // Check permission (scoped to source if provided)
+    if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
@@ -69,6 +67,9 @@ router.get('/', async (req: Request, res: Response) => {
       nodes = databaseService.getActiveNodes(sinceDays);
     } else {
       nodes = await databaseService.nodes.getAllNodes() as unknown as DbNode[];
+    }
+    if (sourceIdQ) {
+      nodes = nodes.filter((n: any) => n.sourceId === sourceIdQ);
     }
 
     // Filter nodes based on channel read permissions
@@ -106,8 +107,10 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    // Check permission
-    if (!await hasNodesReadPermission(userId, isAdmin)) {
+    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+
+    // Check permission (scoped to source if provided)
+    if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',

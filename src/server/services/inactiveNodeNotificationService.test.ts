@@ -18,6 +18,7 @@ const mockFindUserByUsernameAsync = vi.fn();
 const mockCheckPermissionAsync = vi.fn();
 const mockGetUserPermissionSetAsync = vi.fn();
 
+const mockGetSource = vi.fn();
 vi.mock('../../services/database.js', () => ({
   default: {
     notifications: {
@@ -27,10 +28,21 @@ vi.mock('../../services/database.js', () => ({
     nodes: {
       getInactiveMonitoredNodes: mockGetInactiveMonitoredNodesAsync,
     },
+    sources: {
+      getSource: mockGetSource,
+    },
     findUserByIdAsync: mockFindUserByIdAsync,
     findUserByUsernameAsync: mockFindUserByUsernameAsync,
     checkPermissionAsync: mockCheckPermissionAsync,
     getUserPermissionSetAsync: mockGetUserPermissionSetAsync,
+  },
+}));
+
+// Phase C: mock the source manager registry so the inactivity scan has at least one source
+const mockGetAllManagers = vi.fn();
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {
+    getAllManagers: mockGetAllManagers,
   },
 }));
 
@@ -57,6 +69,11 @@ describe('InactiveNodeNotificationService', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-15T12:00:00Z'));
+
+    // Phase C defaults: one source, name resolves, all permissions allowed
+    mockGetAllManagers.mockReturnValue([{ sourceId: 'src1' }]);
+    mockGetSource.mockResolvedValue({ id: 'src1', name: 'Source One' });
+    mockCheckPermissionAsync.mockResolvedValue(true);
 
     const module = await import('./inactiveNodeNotificationService.js');
     service = module.inactiveNodeNotificationService;
@@ -114,7 +131,8 @@ describe('InactiveNodeNotificationService', () => {
 
       expect(mockGetInactiveMonitoredNodesAsync).toHaveBeenCalledWith(
         monitoredNodes,
-        expect.any(Number)
+        expect.any(Number),
+        'src1'
       );
     });
 
@@ -200,7 +218,8 @@ describe('InactiveNodeNotificationService', () => {
 
       expect(mockGetInactiveMonitoredNodesAsync).toHaveBeenCalledWith(
         ['!aabbccdd'],
-        expectedCutoff
+        expectedCutoff,
+        'src1'
       );
     });
   });

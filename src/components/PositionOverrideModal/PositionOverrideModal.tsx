@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
+import { useSource } from '../../contexts/SourceContext';
 import './PositionOverrideModal.css';
 
 interface Node {
@@ -38,6 +39,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   baseUrl,
 }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
   const [enabled, setEnabled] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [latitude, setLatitude] = useState<string>('');
@@ -63,7 +65,8 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
       loadedForNodeRef.current = nodeId;
       setLoading(true);
       setError(null);
-      fetch(`${baseUrl}/api/nodes/${nodeId}/position-override`, {
+      const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+      fetch(`${baseUrl}/api/nodes/${nodeId}/position-override${sourceQuery}`, {
         credentials: 'include',
       })
         .then(res => {
@@ -92,7 +95,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
     if (!isOpen) {
       loadedForNodeRef.current = null;
     }
-  }, [isOpen, nodeId, baseUrl]);
+  }, [isOpen, nodeId, baseUrl, sourceId]);
 
   // Reset error state when values change
   useEffect(() => {

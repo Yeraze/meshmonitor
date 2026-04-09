@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSourceQuery } from '../hooks/useSourceQuery';
 import { DEVICE_ROLES } from '../utils/deviceRole';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { useSaveBar } from '../hooks/useSaveBar';
@@ -68,6 +69,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(intervalMinutes > 0);
   const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 15);
@@ -139,7 +141,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   useEffect(() => {
     const fetchNodes = async () => {
       try {
-        const response = await csrfFetch(`${baseUrl}/api/nodes`);
+        const response = await csrfFetch(`${baseUrl}/api/nodes${sourceQuery}`);
         if (response.ok) {
           const data = await response.json();
           setAvailableNodes(data);
@@ -149,15 +151,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       }
     };
     fetchNodes();
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Fetch current filter settings and schedule settings together to avoid race conditions
   useEffect(() => {
     const fetchAllSettings = async () => {
       try {
         const [filterResponse, settingsResponse] = await Promise.all([
-          csrfFetch(`${baseUrl}/api/settings/traceroute-nodes`),
-          csrfFetch(`${baseUrl}/api/settings`),
+          csrfFetch(`${baseUrl}/api/settings/traceroute-nodes${sourceQuery}`),
+          csrfFetch(`${baseUrl}/api/settings${sourceQuery}`),
         ]);
 
         if (filterResponse.ok) {
@@ -211,13 +213,19 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       }
     };
     fetchAllSettings();
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
+
+  // Reset initial settings when the selected source changes so the
+  // SaveBar change-detection compares against the new source's baseline.
+  useEffect(() => {
+    setInitialSettings(null);
+  }, [sourceQuery]);
 
   // Fetch auto-traceroute log
   useEffect(() => {
     const fetchTracerouteLog = async () => {
       try {
-        const response = await csrfFetch(`${baseUrl}/api/settings/traceroute-log`);
+        const response = await csrfFetch(`${baseUrl}/api/settings/traceroute-log${sourceQuery}`);
         if (response.ok) {
           const data = await response.json();
           setTracerouteLog(data.log || []);
@@ -238,7 +246,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     }, 30000);
 
     return () => clearInterval(intervalId);
-  }, [baseUrl, csrfFetch, localEnabled]);
+  }, [baseUrl, csrfFetch, localEnabled, sourceQuery]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -458,7 +466,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       const intervalToSave = localEnabled ? localInterval : 0;
 
       // Save traceroute interval and schedule settings
-      const intervalResponse = await csrfFetch(`${baseUrl}/api/settings`, {
+      const intervalResponse = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -477,8 +485,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         throw new Error(`Server returned ${intervalResponse.status}`);
       }
 
-      // Save node filter settings
-      const filterResponse = await csrfFetch(`${baseUrl}/api/settings/traceroute-nodes`, {
+      // Save node filter settings (scoped to current source)
+      const filterResponse = await csrfFetch(`${baseUrl}/api/settings/traceroute-nodes${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -545,7 +553,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange]);
+  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange, sourceQuery]);
 
   // Register with SaveBar
   useSaveBar({

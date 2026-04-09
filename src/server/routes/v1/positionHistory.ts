@@ -16,27 +16,19 @@ const router = express.Router();
 /**
  * Check if user has nodes:read permission
  */
-async function hasNodesReadPermission(userId: number | null, isAdmin: boolean): Promise<boolean> {
+async function hasNodesReadPermission(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<boolean> {
   if (isAdmin) return true;
-
-  const permissions = userId !== null
-    ? await databaseService.getUserPermissionSetAsync(userId)
-    : {};
-
-  return permissions.nodes?.read === true;
+  if (userId === null) return false;
+  return databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
 }
 
 /**
  * Check if user has nodes_private:read permission
  */
-async function hasNodesPrivateReadPermission(userId: number | null, isAdmin: boolean): Promise<boolean> {
+async function hasNodesPrivateReadPermission(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<boolean> {
   if (isAdmin) return true;
-
-  const permissions = userId !== null
-    ? await databaseService.getUserPermissionSetAsync(userId)
-    : {};
-
-  return permissions.nodes_private?.read === true;
+  if (userId === null) return false;
+  return databaseService.checkPermissionAsync(userId, 'nodes_private', 'read', sourceId);
 }
 
 /**
@@ -57,8 +49,10 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    // Check nodes:read permission
-    if (!await hasNodesReadPermission(userId, isAdmin)) {
+    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+
+    // Check nodes:read permission (scoped to source)
+    if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
@@ -87,7 +81,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const node = await databaseService.nodes.getNode(nodeNum);
 
     if (node?.positionOverrideIsPrivate === true) {
-      if (!await hasNodesPrivateReadPermission(userId, isAdmin)) {
+      if (!await hasNodesPrivateReadPermission(userId, isAdmin, sourceIdQ)) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',

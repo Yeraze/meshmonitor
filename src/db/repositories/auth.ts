@@ -5,7 +5,7 @@
  * Includes: users, permissions, sessions, audit_log, api_tokens
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, desc, and } from 'drizzle-orm';
+import { eq, lt, desc, and, isNull } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import {
@@ -94,6 +94,7 @@ export interface DbPermission {
   canDelete?: boolean; // PostgreSQL/MySQL only
   grantedAt?: number;
   grantedBy?: number | null;
+  sourceId?: string | null;
 }
 
 /**
@@ -108,6 +109,7 @@ export interface CreatePermissionInput {
   canDelete?: boolean; // PostgreSQL/MySQL only
   grantedAt?: number;
   grantedBy?: number | null;
+  sourceId?: string | null;
 }
 
 /**
@@ -366,6 +368,35 @@ export class AuthRepository extends BaseRepository {
       await this.db.delete(permissions).where(eq(permissions.id, p.id));
     }
     return toDelete.length;
+  }
+
+  /**
+   * Delete permissions for a user scoped to a specific sourceId (or global when sourceId is null/undefined).
+   * Only removes permissions in the given scope — leaves other scopes untouched.
+   */
+  async deletePermissionsForUserByScope(userId: number, sourceId?: string | null): Promise<number> {
+    const { permissions } = this.tables;
+    const scopeCondition = sourceId
+      ? eq((permissions as any).sourceId, sourceId)
+      : this.isSourceIdNull(permissions);
+
+    const toDelete = await this.db
+      .select({ id: permissions.id })
+      .from(permissions)
+      .where(and(eq(permissions.userId, userId), scopeCondition));
+
+    for (const p of toDelete) {
+      await this.db.delete(permissions).where(eq(permissions.id, p.id));
+    }
+    return toDelete.length;
+  }
+
+  /**
+   * Returns a condition that matches rows where sourceId IS NULL.
+   * Used for global (non-source-scoped) permission queries.
+   */
+  private isSourceIdNull(permissions: any) {
+    return isNull(permissions.sourceId);
   }
 
   // ============ API TOKENS ============

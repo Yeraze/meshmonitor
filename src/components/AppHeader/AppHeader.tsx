@@ -27,6 +27,10 @@ interface AppHeaderProps {
   onShowLoginModal: () => void;
   onLogout: () => void;
   onNodeClick?: () => void;
+  /** Source name to display when in multi-source mode */
+  sourceName?: string | null;
+  /** Called when the user clicks the back-to-sources button */
+  onBackToSources?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -45,6 +49,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onShowLoginModal,
   onLogout,
   onNodeClick,
+  sourceName,
+  onBackToSources,
 }) => {
   const { t } = useTranslation();
 
@@ -102,9 +108,21 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   return (
     <header className="app-header">
       <div className="header-left">
+        {onBackToSources && (
+          <button
+            className="back-to-sources-btn"
+            onClick={onBackToSources}
+            title="Back to source list"
+          >
+            ← Sources
+          </button>
+        )}
         <div className="header-title">
           <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="header-logo" />
           <h1>MeshMonitor</h1>
+          {sourceName && (
+            <span className="header-source-name">{sourceName}</span>
+          )}
         </div>
         <div className="node-info">{renderNodeInfo()}</div>
       </div>

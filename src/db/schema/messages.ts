@@ -37,6 +37,8 @@ export const messagesSqlite = sqliteTable('messages', {
   createdAt: integer('createdAt').notNull(),
   // Decryption source - 'node' or 'server' (server = read-only)
   decryptedBy: text('decrypted_by'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // PostgreSQL schema
@@ -69,6 +71,8 @@ export const messagesPostgres = pgTable('messages', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   // Decryption source - 'node' or 'server' (server = read-only)
   decryptedBy: pgText('decrypted_by'),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
@@ -101,6 +105,8 @@ export const messagesMysql = mysqlTable('messages', {
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   // Decryption source - 'node' or 'server' (server = read-only)
   decryptedBy: myVarchar('decrypted_by', { length: 16 }),
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

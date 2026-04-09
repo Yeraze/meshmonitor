@@ -53,9 +53,10 @@ router.get('/', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
+    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
 
-    // Get all channels
-    const allChannels = await databaseService.channels.getAllChannels();
+    // Get all channels (scoped to source if provided)
+    const allChannels = await databaseService.channels.getAllChannels(sourceIdQ);
 
     // If admin, return all channels
     if (isAdmin) {
@@ -66,16 +67,15 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Get user permissions
-    const permissions = userId !== null
-      ? await databaseService.getUserPermissionSetAsync(userId)
-      : {};
-
-    // Filter channels by read permission
-    const accessibleChannels = allChannels.filter(channel => {
+    // Filter channels by read permission (scoped to source)
+    const accessibleChannels: any[] = [];
+    for (const channel of allChannels) {
       const channelResource = `channel_${channel.id}` as ResourceType;
-      return permissions[channelResource]?.read === true;
-    });
+      const allowed = userId !== null
+        ? await databaseService.checkPermissionAsync(userId, channelResource, 'read', sourceIdQ)
+        : false;
+      if (allowed) accessibleChannels.push(channel);
+    }
 
     res.json({
       success: true,
@@ -113,15 +113,15 @@ router.get('/:channelId', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
+    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
 
-    // Check permission (unless admin)
+    // Check permission (unless admin), scoped to source if provided
     if (!isAdmin) {
-      const permissions = userId !== null
-        ? await databaseService.getUserPermissionSetAsync(userId)
-        : {};
-
       const channelResource = `channel_${channelId}` as ResourceType;
-      if (permissions[channelResource]?.read !== true) {
+      const allowed = userId !== null
+        ? await databaseService.checkPermissionAsync(userId, channelResource, 'read', sourceIdQ)
+        : false;
+      if (!allowed) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',
@@ -131,7 +131,7 @@ router.get('/:channelId', async (req: Request, res: Response) => {
       }
     }
 
-    const channel = await databaseService.channels.getChannelById(channelId);
+    const channel = await databaseService.channels.getChannelById(channelId, sourceIdQ);
 
     if (!channel) {
       return res.status(404).json({

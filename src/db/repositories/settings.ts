@@ -165,4 +165,71 @@ export class SettingsRepository extends BaseRepository {
   async setSettingJson<T>(key: string, value: T): Promise<void> {
     await this.setSetting(key, JSON.stringify(value));
   }
+
+  // ─── Per-source settings helpers ────────────────────────────────────────
+
+  private sourcePrefix(sourceId: string): string {
+    return `source:${sourceId}:`;
+  }
+
+  /**
+   * Get all settings for a specific source (returns bare keys without prefix)
+   */
+  async getSourceSettings(sourceId: string): Promise<Record<string, string>> {
+    const prefix = this.sourcePrefix(sourceId);
+    const all = await this.getAllSettings();
+    const result: Record<string, string> = {};
+    for (const [k, v] of Object.entries(all)) {
+      if (k.startsWith(prefix)) {
+        result[k.slice(prefix.length)] = v;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get a setting for a specific source, falling back to the global value when
+   * no per-source override exists. Pass `null`/`undefined` for sourceId to get
+   * the plain global setting.
+   */
+  async getSettingForSource(sourceId: string | null | undefined, key: string): Promise<string | null> {
+    if (sourceId) {
+      const prefixed = await this.getSetting(`${this.sourcePrefix(sourceId)}${key}`);
+      if (prefixed !== null && prefixed !== undefined) return prefixed;
+    }
+    return await this.getSetting(key);
+  }
+
+  /**
+   * Set a single per-source setting
+   */
+  async setSourceSetting(sourceId: string, key: string, value: string): Promise<void> {
+    await this.setSetting(`${this.sourcePrefix(sourceId)}${key}`, value);
+  }
+
+  /**
+   * Set multiple per-source settings
+   */
+  async setSourceSettings(sourceId: string, kv: Record<string, string>): Promise<void> {
+    const prefix = this.sourcePrefix(sourceId);
+    const prefixed: Record<string, string> = {};
+    for (const [k, v] of Object.entries(kv)) {
+      prefixed[`${prefix}${k}`] = v;
+    }
+    await this.setSettings(prefixed);
+  }
+
+  /**
+   * Delete all per-source settings for a source
+   */
+  async deleteSourceSettings(sourceId: string): Promise<void> {
+    const prefix = this.sourcePrefix(sourceId);
+    const { settings } = this.tables;
+    const rows = await this.db.select({ key: settings.key }).from(settings);
+    for (const row of rows) {
+      if ((row as any).key.startsWith(prefix)) {
+        await this.db.delete(settings).where(eq(settings.key, (row as any).key));
+      }
+    }
+  }
 }

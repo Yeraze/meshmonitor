@@ -6,6 +6,13 @@
 - Only the backend talks to the Node. the Frontend never talks directly to the node.
 
 
+## Git Worktree Policy
+
+- **Core application changes** (anything affecting the running app): work directly on the live checkout at `/home/yeraze/Development/meshmonitor`
+- **Documentation-only changes** (content for [https://meshmonitor.org](https://meshmonitor.org)) or **CI/CD pipeline-only changes**: may be done in a worktree
+- When using a worktree, always start from the latest `origin/main` unless a specific branch or commit is required
+- When working in a worktree, **deployment for user review is NOT required** before creating a PR — that requirement applies only to core application features on the main checkout
+
 ## Code Modification Rules
 
 - After bulk find-and-replace or sed operations, always verify that modified functions have correct async/await signatures before running tests. Check that route handlers and callbacks are marked async if await was added inside them.
@@ -108,7 +115,7 @@ Migrations use a centralized registry in `src/db/migrations.ts`. Each migration 
 4. Make migrations **idempotent** — use try/catch for SQLite (`duplicate column`), `IF NOT EXISTS` for PostgreSQL, `information_schema` checks for MySQL
 5. **Column naming**: SQLite uses `snake_case`, PostgreSQL/MySQL use `camelCase` (quoted in PG raw SQL)
 
-**Current migration count:** 16 (latest: `016_rename_system_backup_columns`)
+**Current migration count:** 22 (latest: `022_add_source_id_to_permissions`)
 
 ## Testing
 

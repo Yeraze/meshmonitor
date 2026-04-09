@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
+import { useSource } from '../contexts/SourceContext';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -26,6 +27,7 @@ interface AdminCommandsTabProps {
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { sourceId } = useSource();
 
   // Use consolidated state hook for config-related state
   const {
@@ -312,7 +314,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         isLocalNode: boolean;
         hasPasskey: boolean;
         remainingSeconds: number | null;
-      }>('/api/admin/session-passkey-status', { nodeNum: selectedNodeNum });
+      }>('/api/admin/session-passkey-status', { nodeNum: selectedNodeNum, ...(sourceId ? { sourceId } : {}) });
 
       if (response.isLocalNode) {
         setPasskeyStatus(null);
@@ -414,7 +416,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         try {
           const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
             nodeNum: selectedNodeNum,
-            configType
+            configType,
+            ...(sourceId ? { sourceId } : {})
           });
           if (result?.config) {
             loadFn(result);
@@ -434,7 +437,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         setSectionLoadStatus(prev => ({ ...prev, owner: 'loading' }));
         try {
           const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
-            nodeNum: selectedNodeNum
+            nodeNum: selectedNodeNum,
+            ...(sourceId ? { sourceId } : {})
           });
           if (result?.owner) {
             const owner = result.owner;
@@ -658,9 +662,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             try {
               const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
                 nodeNum: selectedNodeNum,
-                channelIndex: index
+                channelIndex: index,
+                ...(sourceId ? { sourceId } : {})
               });
-              
+
               if (channel?.channel) {
                 const ch = channel.channel;
                 loadedChannels.push(createChannelFromResponse(ch, index, now));
@@ -687,7 +692,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               hasPasskey: boolean;
               remainingSeconds: number | null;
             }>('/api/admin/ensure-session-passkey', {
-              nodeNum: selectedNodeNum
+              nodeNum: selectedNodeNum,
+              ...(sourceId ? { sourceId } : {})
             });
             // Update passkey status display
             if (passkeyResponse.hasPasskey) {
@@ -701,10 +707,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           }
 
           // Send all requests in parallel
-          const channelRequests = Array.from({ length: 8 }, (_, index) => 
+          const channelRequests = Array.from({ length: 8 }, (_, index) =>
             apiService.post<{ channel?: any }>('/api/admin/get-channel', {
               nodeNum: selectedNodeNum,
-              channelIndex: index
+              channelIndex: index,
+              ...(sourceId ? { sourceId } : {})
             }).then(result => ({ index, result, error: null }))
               .catch(error => ({ index, result: null, error }))
           );
@@ -792,10 +799,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             if (channelsToRetry.length > 0) {
               await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
               
-              const retryRequests = channelsToRetry.map(index => 
+              const retryRequests = channelsToRetry.map(index =>
                 apiService.post<{ channel?: any }>('/api/admin/get-channel', {
                   nodeNum: selectedNodeNum,
-                  channelIndex: index
+                  channelIndex: index,
+                  ...(sourceId ? { sourceId } : {})
                 }).then(result => ({ index, result, error: null }))
                   .catch(error => ({ index, result: null, error }))
               );
@@ -842,7 +850,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     try {
       const result = await apiService.post<{ deviceMetadata: any }>('/api/admin/get-device-metadata', {
-        nodeNum: selectedNodeNum
+        nodeNum: selectedNodeNum,
+        ...(sourceId ? { sourceId } : {})
       });
       if (result?.deviceMetadata) {
         setDeviceMetadata(result.deviceMetadata);
@@ -873,7 +882,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     try {
       await apiService.post('/api/admin/reboot', {
         nodeNum: selectedNodeNum,
-        seconds: 5
+        seconds: 5,
+        ...(sourceId ? { sourceId } : {})
       });
       showToast(t('admin_commands.reboot_sent', 'Reboot command sent successfully'), 'success');
     } catch (error: any) {
@@ -893,7 +903,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     try {
       await apiService.post('/api/admin/set-time', {
-        nodeNum: selectedNodeNum
+        nodeNum: selectedNodeNum,
+        ...(sourceId ? { sourceId } : {})
       });
       showToast(t('admin_commands.set_time_sent', 'Time sync command sent successfully'), 'success');
     } catch (error: any) {
@@ -934,7 +945,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             hasPasskey: boolean;
             remainingSeconds: number | null;
           }>('/api/admin/ensure-session-passkey', {
-            nodeNum: selectedNodeNum
+            nodeNum: selectedNodeNum,
+            ...(sourceId ? { sourceId } : {})
           });
           // Update passkey status display
           if (passkeyResponse.hasPasskey) {
@@ -957,7 +969,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
             }
             const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
-              nodeNum: selectedNodeNum
+              nodeNum: selectedNodeNum,
+              ...(sourceId ? { sourceId } : {})
             });
             if (result?.owner) {
               setOwnerConfig({
@@ -998,7 +1011,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
           const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
             nodeNum: selectedNodeNum,
-            configType
+            configType,
+            ...(sourceId ? { sourceId } : {})
           });
 
           if (result?.config) {
@@ -1182,9 +1196,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           try {
             const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
               nodeNum: selectedNodeNum,
-              channelIndex: index
+              channelIndex: index,
+              ...(sourceId ? { sourceId } : {})
             });
-            
+
             if (channel?.channel) {
               const ch = channel.channel;
               loadedChannels.push(createChannelFromResponse(ch, index, now));
@@ -1215,7 +1230,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             hasPasskey: boolean;
             remainingSeconds: number | null;
           }>('/api/admin/ensure-session-passkey', {
-            nodeNum: selectedNodeNum
+            nodeNum: selectedNodeNum,
+            ...(sourceId ? { sourceId } : {})
           });
           // Update passkey status display
           if (passkeyResponse.hasPasskey) {
@@ -1235,7 +1251,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         const channelRequests = Array.from({ length: 8 }, (_, index) => 
           apiService.post<{ channel?: any }>('/api/admin/get-channel', {
             nodeNum: selectedNodeNum,
-            channelIndex: index
+            channelIndex: index,
+            ...(sourceId ? { sourceId } : {})
           }).then(result => ({ index, result, error: null }))
             .catch(error => ({ index, result: null, error }))
         );
@@ -1347,7 +1364,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             const retryRequests = channelsToRetry.map(index => 
               apiService.post<{ channel?: any }>('/api/admin/get-channel', {
                 nodeNum: selectedNodeNum,
-                channelIndex: index
+                channelIndex: index,
+                ...(sourceId ? { sourceId } : {})
               }).then(result => ({ index, result, error: null }))
                 .catch(error => ({ index, result: null, error }))
             );
@@ -1389,6 +1407,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       const result = await apiService.post<{ success: boolean; message: string }>('/api/admin/commands', {
         command,
         nodeNum: selectedNodeNum,
+        ...(sourceId ? { sourceId } : {}),
         ...params
       });
       showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
@@ -1400,7 +1419,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedNodeNum, showToast, t]);
+  }, [selectedNodeNum, sourceId, showToast, t]);
 
   const handleReboot = useCallback(async () => {
     if (!confirm(t('admin_commands.reboot_confirmation', { seconds: rebootSeconds }))) {
@@ -1925,7 +1944,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     try {
       const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
         nodeNum: selectedNodeNum,
-        channelIndex: channelIndex
+        channelIndex: channelIndex,
+        ...(sourceId ? { sourceId } : {})
       });
       
       const now = Date.now();
@@ -2072,7 +2092,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         // For remote node, get channel data and export it manually
         const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
           nodeNum: selectedNodeNum,
-          channelIndex: channelId
+          channelIndex: channelId,
+          ...(sourceId ? { sourceId } : {})
         });
 
         if (!channel?.channel) {
@@ -2199,7 +2220,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           uplinkEnabled: normalizeBoolean(channelData.uplinkEnabled, true),
           downlinkEnabled: normalizeBoolean(channelData.downlinkEnabled, true)
         };
-        await apiService.importChannel(importSlotId, normalizedChannelData);
+        await apiService.importChannel(importSlotId, normalizedChannelData, sourceId);
         showToast(t('admin_commands.channel_imported_successfully', { importSlotId }), 'success');
         // Refresh channels
         if (_onChannelsUpdated) {
@@ -3881,7 +3902,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             
             if (isLocalNode) {
               // For local nodes, fetch from API
-              const allChannels = await apiService.getAllChannels();
+              const allChannels = await apiService.getAllChannels(sourceId);
               setRemoteNodeChannels(allChannels);
             } else {
               // For remote nodes, only load channels (not all configs)

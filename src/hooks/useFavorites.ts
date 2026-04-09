@@ -7,6 +7,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCsrfFetch } from './useCsrfFetch';
+import { useSource } from '../contexts/SourceContext';
 
 /**
  * Represents a favorite chart entry stored in settings
@@ -45,10 +46,12 @@ interface UseFavoritesOptions {
  * ```
  */
 export function useFavorites({ nodeId, baseUrl = '', enabled = true }: UseFavoritesOptions) {
+  const { sourceId } = useSource();
+  const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
   return useQuery({
-    queryKey: ['favorites', nodeId],
+    queryKey: ['favorites', sourceId, nodeId],
     queryFn: async (): Promise<Set<string>> => {
-      const response = await fetch(`${baseUrl}/api/settings`);
+      const response = await fetch(`${baseUrl}/api/settings${sourceQuery}`);
 
       if (!response.ok) {
         return new Set();
@@ -120,6 +123,8 @@ interface UseToggleFavoriteOptions {
 export function useToggleFavorite({ baseUrl = '', onSuccess, onError }: UseToggleFavoriteOptions = {}) {
   const queryClient = useQueryClient();
   const csrfFetch = useCsrfFetch();
+  const { sourceId } = useSource();
+  const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
 
   return useMutation({
     mutationFn: async ({ nodeId, telemetryType, currentFavorites }: ToggleFavoriteParams): Promise<Set<string>> => {
@@ -132,7 +137,7 @@ export function useToggleFavorite({ baseUrl = '', onSuccess, onError }: UseToggl
       }
 
       // Fetch existing favorites for all nodes
-      const settingsResponse = await fetch(`${baseUrl}/api/settings`);
+      const settingsResponse = await fetch(`${baseUrl}/api/settings${sourceQuery}`);
       let allFavorites: FavoriteChart[] = [];
 
       if (settingsResponse.ok) {
@@ -150,7 +155,7 @@ export function useToggleFavorite({ baseUrl = '', onSuccess, onError }: UseToggl
       });
 
       // Save updated favorites
-      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,10 +176,10 @@ export function useToggleFavorite({ baseUrl = '', onSuccess, onError }: UseToggl
     // Optimistic update: update cache immediately before server responds
     onMutate: async ({ nodeId, telemetryType, currentFavorites }) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['favorites', nodeId] });
+      await queryClient.cancelQueries({ queryKey: ['favorites', sourceId, nodeId] });
 
       // Snapshot the previous value
-      const previousFavorites = queryClient.getQueryData<Set<string>>(['favorites', nodeId]);
+      const previousFavorites = queryClient.getQueryData<Set<string>>(['favorites', sourceId, nodeId]);
 
       // Optimistically update to the new value
       const newFavorites = new Set(currentFavorites);
@@ -184,7 +189,7 @@ export function useToggleFavorite({ baseUrl = '', onSuccess, onError }: UseToggl
         newFavorites.add(telemetryType);
       }
 
-      queryClient.setQueryData(['favorites', nodeId], newFavorites);
+      queryClient.setQueryData(['favorites', sourceId, nodeId], newFavorites);
 
       // Return context with the snapshotted value
       return { previousFavorites, nodeId };
@@ -193,14 +198,14 @@ export function useToggleFavorite({ baseUrl = '', onSuccess, onError }: UseToggl
     // On error, roll back to the previous value
     onError: (error, _variables, context) => {
       if (context?.previousFavorites !== undefined) {
-        queryClient.setQueryData(['favorites', context.nodeId], context.previousFavorites);
+        queryClient.setQueryData(['favorites', sourceId, context.nodeId], context.previousFavorites);
       }
       onError?.(error instanceof Error ? error.message : 'Failed to save favorite');
     },
 
     // On success, update cache with server response
     onSuccess: (newFavorites, { nodeId }) => {
-      queryClient.setQueryData(['favorites', nodeId], newFavorites);
+      queryClient.setQueryData(['favorites', sourceId, nodeId], newFavorites);
       onSuccess?.();
     },
   });

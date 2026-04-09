@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // ============ TABLE CREATION SQL ============
@@ -47,7 +49,8 @@ const SQLITE_CREATE = `
     last_decrypted_at INTEGER,
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    sourceId TEXT
   );
 
   CREATE TABLE IF NOT EXISTS channel_database_permissions (
@@ -92,7 +95,8 @@ const POSTGRES_CREATE = `
     "lastDecryptedAt" BIGINT,
     "createdBy" INTEGER REFERENCES users(id) ON DELETE SET NULL,
     "createdAt" BIGINT NOT NULL,
-    "updatedAt" BIGINT NOT NULL
+    "updatedAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   );
 
   CREATE TABLE channel_database_permissions (
@@ -140,6 +144,7 @@ const MYSQL_CREATE = `
     createdBy INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
+    sourceId VARCHAR(36),
     FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
   );
 
@@ -494,7 +499,7 @@ describe('ChannelDatabaseRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('ChannelDatabaseRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('ChannelDatabaseRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -524,7 +529,7 @@ describe('ChannelDatabaseRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('ChannelDatabaseRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('ChannelDatabaseRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

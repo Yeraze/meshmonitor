@@ -109,7 +109,7 @@ function normalizeIgnoredNodeIds(rawValue: string): string {
 export interface SettingsCallbacks {
   refreshTileHostnameCache?: () => void | Promise<void>;
   setTracerouteInterval?: (interval: number) => void;
-  setRemoteAdminScannerInterval?: (interval: number) => void;
+  setRemoteAdminScannerInterval?: (interval: number, sourceId?: string | null) => void;
   setLocalStatsInterval?: (interval: number) => void;
   setKeyRepairSettings?: (settings: {
     enabled: boolean;
@@ -125,8 +125,8 @@ export interface SettingsCallbacks {
   restartGeofenceEngine?: () => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
-  restartAutoDeleteByDistanceService?: (intervalHours: number) => void;
-  stopAutoDeleteByDistanceService?: () => void;
+  restartAutoDeleteByDistanceService?: (intervalHours: number, sourceId?: string | null) => void;
+  stopAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
 }
 
 let callbacks: SettingsCallbacks = {};
@@ -139,11 +139,30 @@ export function setSettingsCallbacks(cb: SettingsCallbacks): void {
 
 const router = Router();
 
-// GET /settings — read all settings (public)
-router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
+// GET /settings — read settings (public)
+// ?sourceId=<id>  → global settings merged with per-source overrides (source wins)
+router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
-    const settings = await databaseService.settings.getAllSettings();
-    res.json(settings);
+    const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : null;
+
+    const globalSettings = await databaseService.settings.getAllSettings();
+
+    if (sourceId) {
+      // Strip source: prefixed keys from global (they are internal implementation detail)
+      const cleaned: Record<string, string> = {};
+      for (const [k, v] of Object.entries(globalSettings)) {
+        if (!k.startsWith('source:')) cleaned[k] = v;
+      }
+      const sourceSettings = await databaseService.settings.getSourceSettings(sourceId);
+      res.json({ ...cleaned, ...sourceSettings });
+    } else {
+      // Return only non-namespaced keys for global view
+      const cleaned: Record<string, string> = {};
+      for (const [k, v] of Object.entries(globalSettings)) {
+        if (!k.startsWith('source:')) cleaned[k] = v;
+      }
+      res.json(cleaned);
+    }
   } catch (error) {
     logger.error('Error fetching settings:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });
@@ -151,9 +170,11 @@ router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
 });
 
 // POST /settings — save settings
+// ?sourceId=<id>  → save as per-source settings (skips global side-effects)
 router.post('/', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   try {
     const settings = req.body;
+    const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : null;
 
     // Get current settings for before/after comparison
     const currentSettings = await databaseService.settings.getAllSettings();
@@ -515,6 +536,12 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     }
 
     // Save to database
+    if (sourceId) {
+      // Per-source: store with source: prefix, skip global side-effects
+      await databaseService.settings.setSourceSettings(sourceId, filteredSettings);
+      return res.json({ success: true });
+    }
+
     await databaseService.settings.setSettings(filteredSettings);
 
     // ─── Side effects ───────────────────────────────────────────────────
@@ -550,7 +577,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     if ('remoteAdminScannerIntervalMinutes' in filteredSettings) {
       const interval = parseInt(filteredSettings.remoteAdminScannerIntervalMinutes);
       if (!isNaN(interval) && interval >= 0 && interval <= 60) {
-        callbacks.setRemoteAdminScannerInterval?.(interval);
+        callbacks.setRemoteAdminScannerInterval?.(interval, sourceId);
       }
     }
 
@@ -682,11 +709,11 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
             '24',
           10
         );
-        callbacks.restartAutoDeleteByDistanceService?.(intervalHours);
-        logger.info(`✅ Auto-delete-by-distance service restarted (interval: ${intervalHours}h)`);
+        callbacks.restartAutoDeleteByDistanceService?.(intervalHours, sourceId);
+        logger.info(`✅ Auto-delete-by-distance service restarted (source: ${sourceId ?? 'default'}, interval: ${intervalHours}h)`);
       } else {
-        callbacks.stopAutoDeleteByDistanceService?.();
-        logger.info('⏹️ Auto-delete-by-distance service stopped');
+        callbacks.stopAutoDeleteByDistanceService?.(sourceId);
+        logger.info(`⏹️ Auto-delete-by-distance service stopped (source: ${sourceId ?? 'default'})`);
       }
     }
 

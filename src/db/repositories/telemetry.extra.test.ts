@@ -51,7 +51,8 @@ describe('TelemetryRepository (expanded)', () => {
         packetId INTEGER,
         channel INTEGER,
         precisionBits INTEGER,
-        gpsAccuracy INTEGER
+        gpsAccuracy INTEGER,
+        sourceId TEXT
       )
     `);
 

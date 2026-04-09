@@ -271,7 +271,8 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
           text: 'Test message',
           fromNodeNum: 0x11223344,
           toNodeNum: 0xffffffff,
-        })
+        }),
+        expect.anything()
       );
     });
 
@@ -285,7 +286,8 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
         expect.objectContaining({
           text: 'Broadcast msg',
           fromNodeNum: 0x11223344,
-        })
+        }),
+        expect.any(String)
       );
     });
 
@@ -308,7 +310,8 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
         expect.objectContaining({
           text: 'DM text',
           channel: -1, // Direct messages use channel -1
-        })
+        }),
+        expect.any(String)
       );
     });
 

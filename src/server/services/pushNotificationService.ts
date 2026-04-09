@@ -18,6 +18,10 @@ export interface PushNotificationPayload {
   data?: any;
   requireInteraction?: boolean;
   silent?: boolean;
+  /** Phase C: source this notification originated from (optional for back-compat with broadcastWithFiltering paths). */
+  sourceId?: string;
+  /** Phase C: human-readable source name. */
+  sourceName?: string;
 }
 
 class PushNotificationService {
@@ -168,12 +172,16 @@ class PushNotificationService {
   public async saveSubscription(
     userId: number | undefined,
     subscription: PushSubscription,
-    userAgent?: string
+    userAgent: string | undefined,
+    sourceId: string
   ): Promise<void> {
     try {
       const keys = subscription.keys;
       if (!keys || !keys.p256dh || !keys.auth) {
         throw new Error('Invalid subscription: missing keys');
+      }
+      if (!sourceId) {
+        throw new Error('sourceId is required for saveSubscription');
       }
 
       if (!databaseService.notificationsRepo) {
@@ -182,13 +190,14 @@ class PushNotificationService {
 
       await databaseService.notificationsRepo.saveSubscription({
         userId: userId ?? null,
+        sourceId,
         endpoint: subscription.endpoint,
         p256dhKey: keys.p256dh,
         authKey: keys.auth,
         userAgent: userAgent ?? null,
       });
 
-      logger.info(`✅ Saved push subscription for ${userId ? `user ${userId}` : 'anonymous user'}`);
+      logger.info(`✅ Saved push subscription for ${userId ? `user ${userId}` : 'anonymous user'} on source ${sourceId}`);
     } catch (error) {
       logger.error('❌ Failed to save push subscription:', error);
       throw error;
@@ -232,14 +241,14 @@ class PushNotificationService {
   /**
    * Get all active subscriptions (async)
    */
-  public async getAllSubscriptionsAsync(): Promise<DbPushSubscription[]> {
+  public async getAllSubscriptionsAsync(sourceId?: string): Promise<DbPushSubscription[]> {
     try {
       if (!databaseService.notificationsRepo) {
         logger.debug('Notifications repository not initialized');
         return [];
       }
 
-      return databaseService.notificationsRepo.getAllSubscriptions();
+      return databaseService.notificationsRepo.getAllSubscriptions(sourceId);
     } catch (error) {
       logger.error('❌ Failed to get all subscriptions:', error);
       return [];
@@ -376,18 +385,28 @@ class PushNotificationService {
       channelId: number;
       isDirectMessage: boolean;
       viaMqtt?: boolean;
+      sourceId: string;
+      sourceName: string;
     }
   ): Promise<{ sent: number; failed: number; filtered: number }> {
-    const subscriptions = await this.getAllSubscriptionsAsync();
+    // Phase B: only subscriptions bound to this source
+    const subscriptions = await this.getAllSubscriptionsAsync(filterContext.sourceId);
     let sent = 0;
     let failed = 0;
     let filtered = 0;
 
-    logger.info(`📢 Broadcasting push notification to ${subscriptions.length} subscriptions with filtering`);
+    logger.info(`📢 Broadcasting push notification for source ${filterContext.sourceId} to ${subscriptions.length} subscriptions with filtering`);
 
     // Get local node name for prefix
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
+
+    // Prefix title with source name
+    const prefixedPayload: PushNotificationPayload = {
+      ...payload,
+      title: `[${filterContext.sourceName}] ${payload.title}`,
+      body: `[${filterContext.sourceName}] ${payload.body}`,
+    };
 
     for (const subscription of subscriptions) {
       // Get user preferences
@@ -400,11 +419,11 @@ class PushNotificationService {
         continue;
       }
 
-      // Apply node name prefix if user has it enabled
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
-      const notificationPayload = prefixedBody !== payload.body
-        ? { ...payload, body: prefixedBody }
-        : payload;
+      // Apply node name prefix if user has it enabled (per-source prefs)
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, prefixedPayload.body, localNodeName, filterContext.sourceId);
+      const notificationPayload = prefixedBody !== prefixedPayload.body
+        ? { ...prefixedPayload, body: prefixedBody }
+        : prefixedPayload;
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {
@@ -434,6 +453,8 @@ class PushNotificationService {
       channelId: number;
       isDirectMessage: boolean;
       viaMqtt?: boolean;
+      sourceId: string;
+      sourceName: string;
     }
   ): Promise<boolean> {
     // Anonymous users get all notifications (no filtering) - they've opted in by subscribing
@@ -442,14 +463,26 @@ class PushNotificationService {
       return false;
     }
 
-    // Check if user has web push enabled
-    const prefs = await getUserNotificationPreferencesAsync(userId);
+    // Phase B: permission check — user must have messages:read on this source
+    try {
+      const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', filterContext.sourceId);
+      if (!allowed) {
+        logger.debug(`🔒 User ${userId} lacks messages:read on source ${filterContext.sourceId}`);
+        return true;
+      }
+    } catch (error) {
+      logger.error(`Permission check failed for user ${userId}:`, error);
+      return true;
+    }
+
+    // Check if user has web push enabled (per-source preferences)
+    const prefs = await getUserNotificationPreferencesAsync(userId, filterContext.sourceId);
     if (prefs && !prefs.enableWebPush) {
-      logger.debug(`🔇 Web Push disabled for user ${userId}`);
+      logger.debug(`🔇 Web Push disabled for user ${userId} on source ${filterContext.sourceId}`);
       return true; // Filter - user has disabled web push
     }
 
-    // Use shared filtering utility
+    // Use shared filtering utility (will re-check permission, prefs per source)
     return shouldFilterNotificationAsync(userId, filterContext);
   }
 
@@ -460,8 +493,12 @@ class PushNotificationService {
   public async broadcastToPreferenceUsers(
     preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnServerEvents',
     payload: PushNotificationPayload,
-    targetUserId?: number
+    targetUserId?: number,
+    sourceId?: string
   ): Promise<{ sent: number; failed: number; filtered: number }> {
+    // Phase C: scope preference broadcasts by sourceId so prefs/permissions are per-source.
+    // sourceId defaults to the payload's sourceId if not explicitly given.
+    const effectiveSourceId = sourceId ?? payload.sourceId;
     const subscriptions = await this.getAllSubscriptionsAsync();
     let sent = 0;
     let failed = 0;
@@ -503,8 +540,23 @@ class PushNotificationService {
         continue;
       }
 
-      // Check if user has this preference enabled
-      const prefs = await getUserNotificationPreferencesAsync(userId);
+      // Phase C: per-source permission check
+      if (effectiveSourceId) {
+        try {
+          const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', effectiveSourceId);
+          if (!allowed) {
+            filtered++;
+            continue;
+          }
+        } catch (err) {
+          logger.error(`Permission check failed for user ${userId}:`, err);
+          filtered++;
+          continue;
+        }
+      }
+
+      // Check if user has this preference enabled (per-source if sourceId provided)
+      const prefs = await getUserNotificationPreferencesAsync(userId, effectiveSourceId);
       if (!prefs || !prefs.enableWebPush || !prefs[preferenceKey]) {
         filtered++;
         continue;

@@ -10,10 +10,21 @@ import databaseService from '../services/database.js';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
-export interface VirtualNodeConfig {
+export interface VirtualNodeServerOptions {
   port: number;
   meshtasticManager: MeshtasticManager;
   allowAdminCommands?: boolean; // Allow admin commands through virtual node (default: false for security)
+}
+
+/**
+ * Per-source virtual node configuration stored inside sources.config.virtualNode
+ * for meshtastic_tcp sources. Combined with a MeshtasticManager reference at
+ * construction time to form VirtualNodeServerOptions.
+ */
+export interface VirtualNodeConfig {
+  enabled: boolean;
+  port: number;
+  allowAdminCommands: boolean;
 }
 
 interface ConnectedClient {
@@ -47,7 +58,7 @@ interface QueuedMessage {
  * - Broadcasts incoming messages to all connected clients
  */
 export class VirtualNodeServer extends EventEmitter {
-  private config: VirtualNodeConfig;
+  private config: VirtualNodeServerOptions;
   private allowAdminCommands: boolean;
   private server: Server | null = null;
   private clients: Map<string, ConnectedClient> = new Map();
@@ -72,7 +83,7 @@ export class VirtualNodeServer extends EventEmitter {
     8,   // NODEINFO_APP (can trigger config changes)
   ];
 
-  constructor(config: VirtualNodeConfig) {
+  constructor(config: VirtualNodeServerOptions) {
     super();
     this.config = config;
     this.allowAdminCommands = config.allowAdminCommands ?? false; // Default to false for security
@@ -391,8 +402,8 @@ export class VirtualNodeServer extends EventEmitter {
                     const targetNodeNum = Number(adminMsg.setFavoriteNode);
                     logger.info(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
-                    // Update database
-                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true);
+                    // Update database (virtual node server has no source context — default)
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true, 'default');
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is now favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -403,8 +414,8 @@ export class VirtualNodeServer extends EventEmitter {
                     const targetNodeNum = Number(adminMsg.removeFavoriteNode);
                     logger.info(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
-                    // Update database
-                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false);
+                    // Update database (virtual node server has no source context — default)
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false, 'default');
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is no longer favorite`);
 
                     // Don't block - let the command through to the physical node

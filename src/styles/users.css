@@ -165,6 +165,23 @@
   margin-bottom: 24px;
 }
 
+.permission-scope-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+}
+
+.permission-scope-select {
+  padding: 4px 8px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 4px;
+  color: var(--ctp-text);
+  font-size: 0.9em;
+}
+
 .permission-item {
   display: flex;
   justify-content: space-between;

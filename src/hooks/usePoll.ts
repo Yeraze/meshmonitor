@@ -29,6 +29,7 @@ import { useCsrfFetch } from './useCsrfFetch';
 import type { DeviceInfo, Channel, LocalNodeInfo } from '../types/device';
 import { appBasename } from '../init';
 import { useWebSocketConnected } from '../contexts/WebSocketContext';
+import { useSource } from '../contexts/SourceContext';
 
 /**
  * Connection status from the server
@@ -193,6 +194,14 @@ const DEFAULT_POLL_INTERVAL = 5000;
 export const POLL_QUERY_KEY = ['poll'] as const;
 
 /**
+ * Build a per-source poll query key. Use this when invalidating/reading cache
+ * for a specific source rather than the global poll.
+ */
+export function sourcePollQueryKey(sourceId: string | null) {
+  return sourceId ? (['poll', sourceId] as const) : POLL_QUERY_KEY;
+}
+
+/**
  * Hook to poll the consolidated /api/poll endpoint
  *
  * Uses TanStack Query for automatic request deduplication, caching, and retry.
@@ -233,16 +242,22 @@ export function usePoll({
   const wsConnected = useWebSocketConnected();
   const isWsConnected = webSocketConnected ?? wsConnected;
 
+  // Read active source from context — scopes all poll queries to that source
+  const { sourceId } = useSource();
+
   // Determine the effective poll interval based on WebSocket connection status
   // When WebSocket is connected, poll less frequently (30s) as a backup
   // When disconnected, poll frequently (5s) for real-time updates
   const effectiveInterval = pollInterval ?? (isWsConnected ? WEBSOCKET_POLL_INTERVAL : DEFAULT_POLL_INTERVAL);
 
   return useQuery({
-    queryKey: POLL_QUERY_KEY,
+    queryKey: sourceId ? ['poll', sourceId] : POLL_QUERY_KEY,
     queryFn: async ({ signal }): Promise<PollData> => {
       // Pass the AbortSignal to allow TanStack Query to cancel in-flight requests
-      const response = await authFetch(`${baseUrl}/api/poll`, undefined, signal);
+      const url = sourceId
+        ? `${baseUrl}/api/poll?sourceId=${encodeURIComponent(sourceId)}`
+        : `${baseUrl}/api/poll`;
+      const response = await authFetch(url, undefined, signal);
 
       if (!response.ok) {
         throw new Error(`Poll request failed: ${response.status}`);

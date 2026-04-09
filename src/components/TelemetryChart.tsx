@@ -26,6 +26,7 @@ import type { TelemetryNodeInfo } from '../types/device';
 import type { ChartData } from '../types/ui';
 import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
+import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
@@ -228,6 +229,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
   }) => {
     const { t } = useTranslation();
     const { timeFormat } = useSettings();
+    const { sourceId } = useSource();
 
     // Helper to get translated telemetry label
     const getTranslatedLabel = useCallback(
@@ -247,6 +249,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       nodeId: favorite.nodeId,
       hours,
       baseUrl,
+      sourceId,
       enabled: true,
     });
 

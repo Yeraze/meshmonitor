@@ -35,6 +35,8 @@ export const packetLogSqlite = sqliteTable('packet_log', {
   decrypted_by: text('decrypted_by'), // 'node' | 'server' | null
   decrypted_channel_id: integer('decrypted_channel_id'), // FK to channel_database.id
   transport_mechanism: integer('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: text('sourceId'),
 });
 
 // PostgreSQL schema
@@ -68,6 +70,8 @@ export const packetLogPostgres = pgTable('packet_log', {
   decrypted_by: pgText('decrypted_by'), // 'node' | 'server' | null
   decrypted_channel_id: pgInteger('decrypted_channel_id'), // FK to channel_database.id
   transport_mechanism: pgInteger('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: pgText('sourceId'),
 });
 
 // MySQL schema
@@ -101,6 +105,8 @@ export const packetLogMysql = mysqlTable('packet_log', {
   decrypted_by: myVarchar('decrypted_by', { length: 16 }), // 'node' | 'server' | null
   decrypted_channel_id: myInt('decrypted_channel_id'), // FK to channel_database.id
   transport_mechanism: myInt('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
+  // Source association (nullable — NULL = legacy default source)
+  sourceId: myVarchar('sourceId', { length: 36 }),
 });
 
 // Type inference

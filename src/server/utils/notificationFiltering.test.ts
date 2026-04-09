@@ -18,6 +18,7 @@ vi.mock('../../services/database.js', () => ({
       getUsersWithServiceEnabled: vi.fn(),
     },
     getSettingAsync: vi.fn(),
+    checkPermissionAsync: vi.fn(),
   },
 }));
 
@@ -47,6 +48,7 @@ beforeEach(() => {
   mockDb.notifications.saveUserPreferences.mockResolvedValue(true);
   mockDb.notifications.getUsersWithServiceEnabled.mockReturnValue([1, 2, 3]);
   mockDb.getSettingAsync.mockResolvedValue(null);
+  mockDb.checkPermissionAsync.mockResolvedValue(true);
 });
 
 // ─── getUserNotificationPreferencesAsync ─────────────────────────────────────
@@ -71,7 +73,7 @@ describe('getUserNotificationPreferencesAsync', () => {
   it('returns preferences from database when found', async () => {
     const result = await getUserNotificationPreferencesAsync(42);
     expect(result).toEqual(defaultPrefs);
-    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledWith(42);
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledWith(42, undefined);
   });
 
   it('falls back to settings table when no preferences in notifications table', async () => {
@@ -115,7 +117,7 @@ describe('saveUserNotificationPreferencesAsync', () => {
   it('saves preferences and returns true', async () => {
     const result = await saveUserNotificationPreferencesAsync(10, defaultPrefs);
     expect(result).toBe(true);
-    expect(mockDb.notifications.saveUserPreferences).toHaveBeenCalledWith(10, defaultPrefs);
+    expect(mockDb.notifications.saveUserPreferences).toHaveBeenCalledWith(10, defaultPrefs, undefined);
   });
 
   it('returns false on database error', async () => {
@@ -157,6 +159,8 @@ describe('shouldFilterNotificationAsync', () => {
     channelId: 1,
     isDirectMessage: false,
     viaMqtt: false,
+    sourceId: 'default',
+    sourceName: 'Default',
   };
 
   it('returns false (allow) for invalid userId', async () => {
