@@ -354,6 +354,63 @@ export class VirtualNodeServer extends EventEmitter {
         const normalizedPortNum = meshtasticProtobufService.normalizePortNum(portnum);
         const isSelfAddressed = toRadio.packet.from === toRadio.packet.to;
 
+        // ── Issue #2602: ack-and-drop removeByNodenum ──────────────────────
+        // The Meshtastic mobile app exposes a "delete node" gesture that
+        // ships an AdminMessage with `removeByNodenum`. If we forward that
+        // to the physical node it either (a) succeeds and deletes a real
+        // node from the device's NodeDB or (b) fails because the node never
+        // lived on the device (which is the bug in #2602 — synthetic /
+        // restamped MeshMonitor entries that the app sees as "real").
+        //
+        // In either case the user wants the deletion to come from
+        // MeshMonitor's UI, not from the embedded Meshtastic app. Intercept
+        // these requests at the boundary, ack them with errorReason=NONE so
+        // the app doesn't hang, and drop them silently. This applies
+        // *regardless* of allowAdminCommands — the global guidance from
+        // #2602 is "deletion is a MeshMonitor-only operation."
+        if (normalizedPortNum === 6) { // ADMIN_APP
+          const earlyAdminPayload = toRadio.packet.decoded?.payload;
+          if (earlyAdminPayload) {
+            try {
+              const adminMsg = protobufService.decodeAdminMessage(
+                earlyAdminPayload instanceof Uint8Array ? earlyAdminPayload : new Uint8Array(earlyAdminPayload)
+              );
+              if (adminMsg && adminMsg.removeByNodenum !== undefined && adminMsg.removeByNodenum !== null) {
+                const targetNodeNum = Number(adminMsg.removeByNodenum);
+                logger.warn(`🛡️  Virtual node: Intercepted removeByNodenum for node ${targetNodeNum} from ${clientId} — ack-and-drop (issue #2602; deletions must go through MeshMonitor UI)`);
+
+                // Fabricate a routing ACK so the requesting client doesn't
+                // wait forever. Only send it back to the originating
+                // client — never broadcast (other clients shouldn't see a
+                // ghost ack for a request they didn't make).
+                const requestId = Number(toRadio.packet.id) >>> 0;
+                const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
+                const ackFromNodeNum = localNodeInfo?.nodeNum ?? targetNodeNum;
+                const requesterNodeNum = Number(toRadio.packet.from) || ackFromNodeNum;
+
+                const ackBytes = await meshtasticProtobufService.createFakeRoutingAck(
+                  requestId,
+                  requesterNodeNum,
+                  ackFromNodeNum,
+                );
+                if (ackBytes) {
+                  await this.sendToClient(clientId, ackBytes);
+                  logger.debug(`Virtual node: Sent fake routing ack (requestId=${requestId}) to ${clientId} after dropping removeByNodenum`);
+                } else {
+                  logger.warn(`Virtual node: Could not fabricate routing ack for dropped removeByNodenum from ${clientId}`);
+                }
+                return;
+              }
+            } catch (decodeError) {
+              // Don't fail open here — if we can't decode an ADMIN_APP
+              // packet we let the existing block-or-allow logic below
+              // handle it the same way it always has.
+              logger.debug(`Virtual node: removeByNodenum probe could not decode admin message; falling through (${(decodeError as Error).message})`);
+            }
+          }
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         // Only enforce blocking if allowAdminCommands is false (default)
         if (!this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
           // Universal check: block addContact from ALL clients (including localhost)
@@ -689,14 +746,37 @@ export class VirtualNodeServer extends EventEmitter {
 
   /**
    * Send NodeInfo entries from the database to a client.
+   *
+   * Issue #2602: We must NOT ship the broadcast pseudo-node (`!ffffffff`,
+   * nodeNum 0xFFFFFFFF) or any other synthetic placeholder rows to the
+   * Meshtastic client. Those rows exist only as FK targets for messages
+   * (broadcast) or as topology breadcrumbs (NeighborInfo / traceroute hops);
+   * they are not real radio peers and the connected app would render them as
+   * zombies on its node list and map. Filter them here.
+   *
+   * We also scope the active-node query to this manager's sourceId so a
+   * multi-source MeshMonitor doesn't bleed nodes from one source into another
+   * source's virtual node clients.
    */
   private async sendNodeInfosFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
+    const sourceId = this.config.meshtasticManager.sourceId;
     const maxNodeAgeHours = parseInt(await databaseService.getSettingAsync('maxNodeAgeHours') || '24');
     const maxNodeAgeDays = maxNodeAgeHours / 24;
-    const allNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+    const allNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, sourceId);
     let sent = 0;
 
+    // Broadcast pseudo-node — see issue #2602. Existing installations may
+    // already have this row stamped with `lastHeard` from before the fix in
+    // meshtasticManager.processTextMessageProtobuf, so we cannot rely on the
+    // activity filter alone to keep it out.
+    const BROADCAST_NODE_NUM = 4294967295;
+
     for (const node of allNodes) {
+      // Defensive filter: never ship synthetic / pseudo-nodes to the client.
+      if (node.nodeNum === BROADCAST_NODE_NUM || node.nodeId === '!ffffffff') {
+        continue;
+      }
+
       const client = this.clients.get(clientId);
       if (!client || client.socket.destroyed) {
         return { sent, disconnected: true };

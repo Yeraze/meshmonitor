@@ -4229,7 +4229,14 @@ class MeshtasticManager implements ISourceManager {
         const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
         if (toNum === 4294967295) {
-          // For broadcast messages, use a special broadcast node
+          // For broadcast messages, we need a `!ffffffff` row in the nodes
+          // table because messages.toNodeNum has a NOT NULL FK to nodes.nodeNum.
+          // BUT: do NOT stamp `lastHeard` on this synthetic row. Stamping it
+          // causes getActiveNodes() to return it, which the virtual node server
+          // then ships to connected Meshtastic apps as a real node — see
+          // issue #2602 (zombie nodes on the map). The broadcast pseudo-node
+          // is not a real radio peer; it must never appear in the activity-
+          // filtered node list.
           const broadcastNodeNum = 4294967295;
           const existingBroadcastNode = await databaseService.nodes.getNode(broadcastNodeNum);
           if (!existingBroadcastNode) {
@@ -4238,12 +4245,11 @@ class MeshtasticManager implements ISourceManager {
               nodeId: '!ffffffff',
               longName: 'Broadcast',
               shortName: 'BCAST',
-              lastHeard: Date.now() / 1000,
               createdAt: Date.now(),
               updatedAt: Date.now()
             };
             await databaseService.nodes.upsertNode(broadcastNodeData, this.sourceId);
-            logger.debug(`📝 Created broadcast node entry`);
+            logger.debug(`📝 Created broadcast node entry (no lastHeard — pseudo-node)`);
           }
         }
 
@@ -5296,38 +5302,45 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🗺️ Raw routeBack: ${JSON.stringify(rawRouteBack)}, Filtered: ${JSON.stringify(routeBack)}`);
       }
 
-      // Issue 2610: every intermediate hop in the traceroute is a node
-      // that just relayed traffic — it is apparently active and on-air.
-      // Update its lastHeard so the stale-node filter stops hiding it.
-      // from/to are already handled above; skip them here to avoid a
-      // redundant upsert.
+      // Traceroute intermediate hops are nodes that relayed traffic on our
+      // behalf but the local node never directly received a packet from them.
+      //
+      // Issue 2610 originally stamped a fresh `lastHeard` on these so the
+      // stale-node filter would surface them on the dashboard. Issue 2602
+      // showed that this same stamping leaked them to virtual node clients
+      // via `sendNodeInfosFromDb`, where the connected Meshtastic app would
+      // show them on the map and then fail to delete them because they do
+      // not exist in the physical node's NodeDB.
+      //
+      // Resolution: keep the stub row so future lookups resolve a name, but
+      // do NOT touch `lastHeard` — we have not directly heard from the hop.
+      // `gt(lastHeard, cutoff)` excludes rows with NULL lastHeard, so the
+      // node stays out of both the dashboard and the VN until a real packet
+      // arrives. from/to are already handled above; skip them here to avoid
+      // a redundant upsert.
       const intermediateHops = new Set<number>();
       for (const hopNum of route) intermediateHops.add(hopNum);
       for (const hopNum of routeBack) intermediateHops.add(hopNum);
       intermediateHops.delete(fromNum);
       intermediateHops.delete(toNum);
-      const hopLastHeard = Date.now() / 1000;
       for (const hopNum of intermediateHops) {
         const hopId = `!${hopNum.toString(16).padStart(8, '0')}`;
         const existing = await databaseService.nodes.getNode(hopNum, this.sourceId ?? undefined);
         if (existing) {
-          // Known node — only touch lastHeard, don't clobber the name
-          await databaseService.nodes.upsertNode({
-            nodeNum: hopNum,
-            nodeId: hopId,
-            lastHeard: hopLastHeard,
-          }, this.sourceId);
-        } else {
-          // Unknown hop — create a stub row with a placeholder name so
-          // future lookups resolve. Real NodeInfo will overwrite it.
-          await databaseService.nodes.upsertNode({
-            nodeNum: hopNum,
-            nodeId: hopId,
-            longName: `Node ${hopId}`,
-            shortName: hopId.slice(-4),
-            lastHeard: hopLastHeard,
-          }, this.sourceId);
+          // Known node — leave it alone. Real packets from this node will
+          // continue to update lastHeard via the normal processMeshPacket
+          // path; we must not stamp it from a relay event.
+          continue;
         }
+        // Unknown hop — create a stub row with a placeholder name so future
+        // lookups resolve. Real NodeInfo will overwrite the placeholder
+        // fields and stamp a real lastHeard at that time.
+        await databaseService.nodes.upsertNode({
+          nodeNum: hopNum,
+          nodeId: hopId,
+          longName: `Node ${hopId}`,
+          shortName: hopId.slice(-4),
+        }, this.sourceId);
       }
 
       // All node lookups in traceroute processing are scoped to this
@@ -5979,15 +5992,18 @@ class MeshtasticManager implements ISourceManager {
         const prevNode = await databaseService.nodes.getNode(prevNodeNum);
         const nextNode = await databaseService.nodes.getNode(nextNodeNum);
 
-        // Ensure the node exists in the database first (foreign key constraint)
+        // Ensure the node exists in the database first (foreign key constraint).
+        // Issue #2602: do NOT stamp lastHeard for intermediate hops we've never
+        // actually heard from directly. Stamping it here used to make these stub
+        // rows pass the activity-time filter used by the Virtual Node Server,
+        // leaking "zombie" nodes onto connected Meshtastic clients.
         if (!node) {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           await databaseService.nodes.upsertNode({
             nodeNum,
             nodeId,
             longName: `Node ${nodeId}`,
-            shortName: nodeId.slice(-4),
-            lastHeard: Date.now() / 1000
+            shortName: nodeId.slice(-4)
           }, this.sourceId);
           node = await databaseService.nodes.getNode(nodeNum);
         }
@@ -6146,7 +6162,6 @@ class MeshtasticManager implements ISourceManager {
 
       const senderHopsAway = senderNode?.hopsAway || 0;
       const nowMs = Date.now();
-      const nowSeconds = Math.floor(nowMs / 1000);
 
       // Process each neighbor in the list
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
@@ -6173,7 +6188,17 @@ class MeshtasticManager implements ISourceManager {
         const neighborNums = validNeighbors.map(n => n.nodeNum);
         const existingNodes = await databaseService.nodes.getNodesByNums(neighborNums);
 
-        // Create placeholder nodes for any neighbors not yet in the database
+        // Create placeholder nodes for any neighbors not yet in the database.
+        //
+        // Issue #2602: do NOT stamp `lastHeard` here. We have not directly heard
+        // from this neighbor — only the reporter has. Stamping a fresh timestamp
+        // creates a "zombie" row that passes the activity filter in
+        // `getActiveNodes` and gets exposed to virtual node clients via
+        // `sendNodeInfosFromDb`, where it shows up on the connected Meshtastic
+        // app's map. The user then cannot delete the node from the app because
+        // it does not exist in the physical node's NodeDB. Leaving lastHeard
+        // NULL means `gt(lastHeard, cutoff)` evaluates to NULL → row excluded
+        // from VN exposure until we actually receive a packet from the node.
         for (const vn of validNeighbors) {
           if (!existingNodes.has(vn.nodeNum)) {
             const neighborNodeId = `!${vn.nodeNum.toString(16).padStart(8, '0')}`;
@@ -6183,9 +6208,8 @@ class MeshtasticManager implements ISourceManager {
               longName: `Node ${neighborNodeId}`,
               shortName: neighborNodeId.slice(-4),
               hopsAway: senderHopsAway + 1,
-              lastHeard: nowSeconds
             }, this.sourceId);
-            logger.info(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
+            logger.info(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1} (no lastHeard — indirectly discovered)`);
           }
         }
 
