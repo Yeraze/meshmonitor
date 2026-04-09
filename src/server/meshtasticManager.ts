@@ -5296,6 +5296,40 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🗺️ Raw routeBack: ${JSON.stringify(rawRouteBack)}, Filtered: ${JSON.stringify(routeBack)}`);
       }
 
+      // Issue 2610: every intermediate hop in the traceroute is a node
+      // that just relayed traffic — it is apparently active and on-air.
+      // Update its lastHeard so the stale-node filter stops hiding it.
+      // from/to are already handled above; skip them here to avoid a
+      // redundant upsert.
+      const intermediateHops = new Set<number>();
+      for (const hopNum of route) intermediateHops.add(hopNum);
+      for (const hopNum of routeBack) intermediateHops.add(hopNum);
+      intermediateHops.delete(fromNum);
+      intermediateHops.delete(toNum);
+      const hopLastHeard = Date.now() / 1000;
+      for (const hopNum of intermediateHops) {
+        const hopId = `!${hopNum.toString(16).padStart(8, '0')}`;
+        const existing = await databaseService.nodes.getNode(hopNum, this.sourceId ?? undefined);
+        if (existing) {
+          // Known node — only touch lastHeard, don't clobber the name
+          await databaseService.nodes.upsertNode({
+            nodeNum: hopNum,
+            nodeId: hopId,
+            lastHeard: hopLastHeard,
+          }, this.sourceId);
+        } else {
+          // Unknown hop — create a stub row with a placeholder name so
+          // future lookups resolve. Real NodeInfo will overwrite it.
+          await databaseService.nodes.upsertNode({
+            nodeNum: hopNum,
+            nodeId: hopId,
+            longName: `Node ${hopId}`,
+            shortName: hopId.slice(-4),
+            lastHeard: hopLastHeard,
+          }, this.sourceId);
+        }
+      }
+
       // All node lookups in traceroute processing are scoped to this
       // manager's source so name/position data matches the mesh the
       // traceroute came from — otherwise a second source's stale row could
