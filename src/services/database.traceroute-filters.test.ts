@@ -4,7 +4,7 @@
  * These tests verify the AND filter logic that runs after nodes are fetched
  * from the database but before the OR/UNION filters are applied.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // The filter logic extracted as pure functions for testability.
 // These mirror the inline filter logic in getNodeNeedingTraceroute / getNodeNeedingTracerouteAsync.
@@ -30,7 +30,20 @@ function applyHopRangeFilter(nodes: TestNode[], enabled: boolean, min: number, m
 }
 
 describe('Auto-Traceroute Filters', () => {
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  // Pin time so the boundary-case "heard 1 hour ago with a 1-hour window"
+  // doesn't flake on slow CI: the `nowSeconds` captured at describe-load and
+  // the `Date.now()` inside applyLastHeardFilter must see the same second.
+  const FIXED_NOW_MS = 1_700_000_000_000;
+  const nowSeconds = Math.floor(FIXED_NOW_MS / 1000);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_NOW_MS);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   // Helper to create a node with lastHeard relative to now
   const makeNode = (nodeNum: number, hoursAgo: number | null, hopsAway: number | null = null): TestNode => ({

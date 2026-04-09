@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
+import { appBasename } from '../../init';
 
 interface DashboardSidebarProps {
   sources: DashboardSource[];
@@ -151,10 +152,19 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         const nodeCount = nodeCounts.get(source.id) ?? 0;
         const isSelected = selectedSourceId === source.id;
 
+        // Show the Meshtastic logo as a faint watermark for any meshtastic-typed
+        // source. Other source types render without a watermark.
+        const isMeshtastic =
+          source.type === 'meshtastic_tcp' || source.type === 'meshtastic_mqtt';
+        const cardClassName =
+          'dashboard-source-card' +
+          (isSelected ? ' selected' : '') +
+          (isMeshtastic ? ' has-meshtastic-watermark' : '');
+
         return (
           <div
             key={source.id}
-            className={`dashboard-source-card${isSelected ? ' selected' : ''}`}
+            className={cardClassName}
             onClick={() => onSelectSource(source.id)}
             role="button"
             tabIndex={0}
@@ -166,7 +176,16 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               <span className="dashboard-source-card-name" title={source.name}>
                 {source.name}
               </span>
-              <span className="dashboard-source-card-badge">{source.type}</span>
+              {source.type === 'meshtastic_tcp' || source.type === 'meshtastic_mqtt' ? (
+                <img
+                  src={`${appBasename}/meshtastic-icon.svg`}
+                  alt="Meshtastic"
+                  title={source.type}
+                  className="dashboard-source-card-type-icon"
+                />
+              ) : (
+                <span className="dashboard-source-card-badge">{source.type}</span>
+              )}
               {(() => {
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (

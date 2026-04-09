@@ -256,6 +256,11 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
 });
 
 // Get source status (connection state from registry)
+//
+// Includes a `nodeCount` field so the dashboard sidebar can show how many nodes
+// each source has heard without having to fetch every source's full node list
+// (the sidebar polls /status for every source on a 15s interval, but the
+// expensive /nodes endpoint is only fetched for the *selected* source).
 router.get('/:id/status', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
@@ -269,7 +274,9 @@ router.get('/:id/status', requirePermission('sources', 'read'), async (req: Requ
       sourceType: source.type,
       connected: false,
     };
-    res.json(status);
+    // Cheap COUNT(*) — never throws on empty source.
+    const nodeCount = await databaseService.nodes.getNodeCount(source.id).catch(() => 0);
+    res.json({ ...status, nodeCount });
   } catch (error) {
     logger.error('Error fetching source status:', error);
     res.status(500).json({ error: 'Failed to fetch source status' });

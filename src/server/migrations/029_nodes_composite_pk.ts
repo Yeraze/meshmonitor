@@ -153,6 +153,18 @@ export const migration = {
       WHERE type = 'index' AND tbl_name = 'nodes' AND sql IS NOT NULL
     `).all() as Array<{ name: string; sql: string }>;
 
+    // SQLite's documented table-rebuild pattern REQUIRES foreign_keys=OFF
+    // (https://www.sqlite.org/lang_altertable.html, section "Making Other Kinds
+    // Of Table Schema Changes"). Without this, DROP TABLE / RENAME TABLE can
+    // trip FOREIGN KEY constraint failures from unrelated orphan rows in the
+    // database — we saw this on upgrade with 955 legacy nodes and pre-existing
+    // user_notification_preferences rows. The pragma is a no-op inside an
+    // active transaction, so it MUST be set before tx() runs.
+    const prevForeignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+    if (prevForeignKeys) {
+      db.pragma('foreign_keys = OFF');
+    }
+
     const tx = db.transaction(() => {
       // Count nodes requiring backfill (rows with NULL sourceId).
       const nullNodesRow = db.prepare(`SELECT COUNT(*) as c FROM nodes WHERE sourceId IS NULL`).get() as { c: number };
@@ -223,6 +235,22 @@ export const migration = {
 
     try {
       tx();
+
+      // Per SQLite docs: after a table rebuild with FKs disabled, verify that
+      // the rebuild didn't leave any orphaned rows. foreign_key_check returns
+      // one row per violating row — empty result means the schema is healthy.
+      if (prevForeignKeys) {
+        const violations = db.prepare(`PRAGMA foreign_key_check`).all() as Array<{ table: string; rowid: number; parent: string; fkid: number }>;
+        if (violations.length > 0) {
+          // Log but don't fail — these violations pre-existed the migration
+          // and we don't want to prevent the upgrade from completing. The same
+          // rows were already being tolerated before the rebuild.
+          logger.warn(
+            `Migration 029 (SQLite): foreign_key_check reports ${violations.length} pre-existing orphan row(s); tolerating:`,
+            violations.slice(0, 5),
+          );
+        }
+      }
     } catch (err: any) {
       const msg = String(err?.message || err);
       if (/already exists/i.test(msg) || /duplicate column/i.test(msg)) {
@@ -230,6 +258,12 @@ export const migration = {
         return;
       }
       throw err;
+    } finally {
+      // Always restore the original FK state — even on success, we must not
+      // leave the database in a looser mode than we found it.
+      if (prevForeignKeys) {
+        db.pragma('foreign_keys = ON');
+      }
     }
 
     logger.info('Migration 029 complete (SQLite)');

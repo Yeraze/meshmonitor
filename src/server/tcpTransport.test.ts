@@ -77,18 +77,22 @@ describe('TcpTransport — heartbeat (issue 2609)', () => {
     expect(sendSpy).toHaveBeenCalledWith(payload);
   });
 
-  it('updates lastDataReceived on successful heartbeat send (fixes stale detector cycling on quiet nodes)', async () => {
-    // Start the clock an hour in the past so a naive "lastDataReceived" would be ancient
-    (transport as any).lastDataReceived = Date.now() - 3_600_000;
+  it('does NOT update lastDataReceived on heartbeat send (kernel buffers mask dead hosts; liveness must come from the firmware reply)', async () => {
+    // The firmware replies to every ToRadio.heartbeat with a FromRadio.queueStatus.
+    // That reply arrives via handleIncomingData() and refreshes lastDataReceived
+    // naturally. Updating lastDataReceived from the *send* side would mask dead
+    // hosts because socket.write() to a dead remote keeps "succeeding" for many
+    // minutes while the kernel send buffer fills.
+    const initial = Date.now() - 3_600_000;
+    (transport as any).lastDataReceived = initial;
 
     transport.setHeartbeatInterval(5_000, () => new Uint8Array([0x00]));
     (transport as any).startHeartbeat();
 
-    const before = (transport as any).lastDataReceived;
     await vi.advanceTimersByTimeAsync(5_000);
-    const after = (transport as any).lastDataReceived;
 
-    expect(after).toBeGreaterThan(before);
+    expect((transport as any).lastDataReceived).toBe(initial);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
   it('does not update lastDataReceived when send throws (so stale detector can still fire on dead links)', async () => {
