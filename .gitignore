@@ -29,7 +29,8 @@ dev-dist
 .env
 .env.local
 .env.ble
-.env.productioncoverage/
+.env.production
+coverage/
 
 # Temporary archives
 *.tar
