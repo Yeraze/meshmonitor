@@ -81,12 +81,17 @@ function DashboardInner() {
     setSelectedSourceId(firstEnabled?.id ?? sources[0].id);
   }, [isSuccess, sources, selectedSourceId]);
 
-  // Build node-count map — selected source gets real count, others get 0
+  // Build node-count map. Each source's count comes from its /status response
+  // (added in sourceRoutes.ts), polled in parallel by useSourceStatuses. The
+  // currently-selected source uses the live `sourceData.nodes.length` so the
+  // counter updates immediately as new nodes arrive instead of waiting for the
+  // next status poll.
   const nodeCounts = new Map<string, number>(
-    sources.map((s) => [
-      s.id,
-      s.id === selectedSourceId ? sourceData.nodes.length : 0,
-    ]),
+    sources.map((s) => {
+      if (s.id === selectedSourceId) return [s.id, sourceData.nodes.length];
+      const status = statusMap.get(s.id);
+      return [s.id, status?.nodeCount ?? 0];
+    }),
   );
 
   // ----- admin actions -----

@@ -30,6 +30,8 @@ export interface SourceStatus {
   sourceName?: string;
   sourceType?: string;
   connected: boolean;
+  /** Total nodes heard by this source — populated by GET /api/sources/:id/status. */
+  nodeCount?: number;
   [key: string]: unknown;
 }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Meshtastic-styled icon: stylized antenna mast with three concentric mesh
+  waves. Used both as the per-source type badge and as a faint watermark
+  behind source tiles in the dashboard sidebar (src/styles/dashboard.css).
+  Uses currentColor so it picks up text color in the badge context, and
+  inherits opacity from the background-image rule for the watermark.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <!-- antenna mast -->
+  <line x1="32" y1="20" x2="32" y2="56" />
+  <!-- antenna base/dish -->
+  <circle cx="32" cy="20" r="3" fill="currentColor" stroke="none" />
+  <!-- inner wave -->
+  <path d="M22 26 Q32 18 42 26" />
+  <!-- middle wave -->
+  <path d="M16 22 Q32 8 48 22" />
+  <!-- outer wave -->
+  <path d="M10 18 Q32 -2 54 18" />
+  <!-- ground line -->
+  <line x1="22" y1="56" x2="42" y2="56" />
+</svg>
