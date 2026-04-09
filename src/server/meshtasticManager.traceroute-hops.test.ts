@@ -1,10 +1,25 @@
 /**
- * MeshtasticManager — Traceroute intermediate hop lastHeard updates (issue 2610)
+ * MeshtasticManager — Traceroute intermediate hop handling (issues 2610 + 2602)
  *
- * Verifies that when processTracerouteMessage runs, every node that appears
- * in route[] and routeBack[] gets its lastHeard updated. A node relaying a
- * traceroute response is apparently alive and on-air, so the stale-node
- * filter shouldn't hide it from the UI.
+ * History:
+ *   - Issue 2610 (March 2026): processTracerouteMessage was modified to stamp
+ *     a fresh `lastHeard` on every intermediate hop in route[] and routeBack[]
+ *     so the dashboard's stale-node filter would surface them.
+ *   - Issue 2602 (April 2026): That same stamping leaked the hops out to
+ *     virtual node clients via sendNodeInfosFromDb, where the connected
+ *     Meshtastic app rendered them as zombies on the map and could not delete
+ *     them (they don't exist on the physical node).
+ *
+ * Resolution: stop touching `lastHeard` from the hop loop entirely. Known
+ * hops are skipped (their lastHeard updates only when a real packet from them
+ * arrives). Unknown hops still get a stub row so future name lookups resolve
+ * — but with a NULL `lastHeard`, so `gt(lastHeard, cutoff)` excludes them
+ * from both the dashboard and the VN until a real packet arrives.
+ *
+ * The from/to nodes of the traceroute itself are still stamped with
+ * `lastHeard` by the explicit upsert block at the top of
+ * processTracerouteMessage — those represent actual radio peers (the
+ * requester and responder), not relay-only intermediates.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -202,7 +217,7 @@ vi.mock('../utils/nodeHelpers.js', () => ({
   isNodeComplete: vi.fn(),
 }));
 
-describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 2610)', () => {
+describe('MeshtasticManager — traceroute intermediate hop handling (issues 2610 + 2602)', () => {
   let manager: any;
 
   beforeEach(async () => {
@@ -233,21 +248,23 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
     decoded: { portnum: 70 },
   });
 
-  /**
-   * Pull every upsertNode call that touched a given nodeNum and return the
-   * lastHeard values passed, in order. Handy for asserting that a specific
-   * hop was updated without caring about call order vs. from/to upserts.
-   */
-  const lastHeardsFor = (nodeNum: number): number[] => {
+  /** All upsertNode calls that targeted a specific nodeNum. */
+  const upsertCallsFor = (nodeNum: number): Array<Record<string, unknown>> => {
     return mockUpsertNode.mock.calls
       .filter(call => call[0]?.nodeNum === nodeNum)
-      .map(call => call[0]?.lastHeard)
-      .filter((lh): lh is number => typeof lh === 'number');
+      .map(call => call[0]);
   };
 
-  it('updates lastHeard for intermediate hops in the forward route', async () => {
-    // Set up: hops 0xaaaa1111 and 0xaaaa2222 are known nodes with old lastHeard
-    const stale = Date.now() / 1000 - 86_400 * 10; // 10 days ago
+  /** Subset of those calls that explicitly include a `lastHeard` field. */
+  const upsertCallsWithLastHeardFor = (nodeNum: number): Array<Record<string, unknown>> => {
+    return upsertCallsFor(nodeNum).filter(call => 'lastHeard' in call);
+  };
+
+  it('does NOT touch a known intermediate hop in the forward route (#2602)', async () => {
+    // Hops 0xaaaa1111 and 0xaaaa2222 already exist in the DB. The hop loop
+    // must skip them entirely so the (stale) lastHeard is preserved and
+    // they don't accidentally surface in getActiveNodes / VN clients.
+    const stale = Math.floor(Date.now() / 1000) - 86_400 * 10; // 10 days ago
     mockGetNode.mockImplementation((nodeNum: number) => {
       if (nodeNum === 0xaaaa1111 || nodeNum === 0xaaaa2222) {
         return { nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Existing', shortName: 'EX', lastHeard: stale };
@@ -266,18 +283,14 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     await (manager as any).processTracerouteMessage(packet, routeDiscovery);
 
-    // Each intermediate hop must have been upserted with a fresh lastHeard.
-    const hop1 = lastHeardsFor(0xaaaa1111);
-    const hop2 = lastHeardsFor(0xaaaa2222);
-    expect(hop1.length).toBeGreaterThan(0);
-    expect(hop2.length).toBeGreaterThan(0);
-    // Fresh means "after the stale value", not "equal to some exact now"
-    expect(Math.max(...hop1)).toBeGreaterThan(stale);
-    expect(Math.max(...hop2)).toBeGreaterThan(stale);
+    // Neither intermediate hop should have been upserted at all — they
+    // already exist and the hop loop skips them.
+    expect(upsertCallsFor(0xaaaa1111)).toEqual([]);
+    expect(upsertCallsFor(0xaaaa2222)).toEqual([]);
   });
 
-  it('updates lastHeard for intermediate hops in the return route', async () => {
-    const stale = Date.now() / 1000 - 86_400 * 10;
+  it('does NOT touch a known intermediate hop in the return route (#2602)', async () => {
+    const stale = Math.floor(Date.now() / 1000) - 86_400 * 10;
     mockGetNode.mockImplementation((nodeNum: number) => ({
       nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND', lastHeard: stale,
     }));
@@ -292,20 +305,26 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     await (manager as any).processTracerouteMessage(packet, routeDiscovery);
 
-    const hop3 = lastHeardsFor(0xbbbb3333);
-    const hop4 = lastHeardsFor(0xbbbb4444);
-    expect(hop3.length).toBeGreaterThan(0);
-    expect(hop4.length).toBeGreaterThan(0);
-    expect(Math.max(...hop3)).toBeGreaterThan(stale);
-    expect(Math.max(...hop4)).toBeGreaterThan(stale);
+    expect(upsertCallsFor(0xbbbb3333)).toEqual([]);
+    expect(upsertCallsFor(0xbbbb4444)).toEqual([]);
   });
 
-  it('creates a stub row for a previously-unknown intermediate hop', async () => {
-    // from/to exist but the intermediate hop is totally unknown
-    const stale = Date.now() / 1000 - 86_400;
+  it('creates a stub row for an unknown intermediate hop WITHOUT a lastHeard (#2602)', async () => {
+    // from/to exist but the intermediate hop is totally unknown.
+    // Make getNode stateful: once we upsert a stub, subsequent reads must
+    // return it (otherwise downstream code paths like
+    // estimateIntermediatePositions would re-upsert it and we'd be testing
+    // implementation noise instead of the actual property under test).
+    const stale = Math.floor(Date.now() / 1000) - 86_400;
+    const fakeStore = new Map<number, any>();
     mockGetNode.mockImplementation((nodeNum: number) => {
+      if (fakeStore.has(nodeNum)) return fakeStore.get(nodeNum);
       if (nodeNum === 0xcccc5555) return undefined; // unknown hop
       return { nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND', lastHeard: stale };
+    });
+    mockUpsertNode.mockImplementation((data: any) => {
+      fakeStore.set(data.nodeNum, { ...data });
+      return Promise.resolve(undefined);
     });
 
     const packet = makeTraceroutePacket(0xdddddddd, 0x11111111);
@@ -318,19 +337,20 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     await (manager as any).processTracerouteMessage(packet, routeDiscovery);
 
-    // The stub upsert should include a placeholder longName/shortName
-    // (not just lastHeard) so future lookups can resolve the node.
-    const stubCall = mockUpsertNode.mock.calls.find(
-      call => call[0]?.nodeNum === 0xcccc5555 && typeof call[0]?.longName === 'string',
-    );
-    expect(stubCall).toBeDefined();
-    expect(stubCall?.[0]?.longName).toContain('cccc5555');
-    expect(stubCall?.[0]?.shortName).toBeDefined();
-    expect(typeof stubCall?.[0]?.lastHeard).toBe('number');
+    // The stub upsert MUST exist (so future lookups can find a name) and
+    // NONE of the calls for this hop may include a `lastHeard` field — we
+    // have not directly heard from this node, only seen it relay traffic
+    // on our behalf.
+    const stubCalls = upsertCallsFor(0xcccc5555);
+    expect(stubCalls.length).toBeGreaterThanOrEqual(1);
+    expect(upsertCallsWithLastHeardFor(0xcccc5555)).toEqual([]);
+    const stub = stubCalls[0] as any;
+    expect(stub.longName).toContain('cccc5555');
+    expect(stub.shortName).toBeDefined();
   });
 
-  it('does not overwrite longName when updating a known hop', async () => {
-    const stale = Date.now() / 1000 - 86_400 * 5;
+  it('never clobbers the longName of a known hop (no upsert at all)', async () => {
+    const stale = Math.floor(Date.now() / 1000) - 86_400 * 5;
     mockGetNode.mockImplementation((nodeNum: number) => {
       if (nodeNum === 0xeeee6666) {
         return { nodeNum, nodeId: `!eeee6666`, longName: 'Real Node Name', shortName: 'REAL', lastHeard: stale };
@@ -348,20 +368,27 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     await (manager as any).processTracerouteMessage(packet, routeDiscovery);
 
-    // Every upsert for this known hop must NOT include longName — we only
-    // touch lastHeard, never clobber the human-chosen name.
-    const callsForHop = mockUpsertNode.mock.calls.filter(call => call[0]?.nodeNum === 0xeeee6666);
-    expect(callsForHop.length).toBeGreaterThan(0);
-    for (const call of callsForHop) {
-      expect(call[0]?.longName).toBeUndefined();
-    }
+    // Known node — the hop loop must skip it entirely. No upserts means
+    // no risk of clobbering longName, shortName, or lastHeard.
+    expect(upsertCallsFor(0xeeee6666)).toEqual([]);
   });
 
-  it('filters invalid/reserved node numbers out of the hop update loop', async () => {
-    const stale = Date.now() / 1000 - 86_400;
-    mockGetNode.mockImplementation((nodeNum: number) => ({
-      nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND', lastHeard: stale,
-    }));
+  it('filters invalid/reserved node numbers out of the hop loop entirely', async () => {
+    const stale = Math.floor(Date.now() / 1000) - 86_400;
+    const fakeStore = new Map<number, any>();
+    mockGetNode.mockImplementation((nodeNum: number) => {
+      if (fakeStore.has(nodeNum)) return fakeStore.get(nodeNum);
+      // Make 0xaaaa7777 an *unknown* hop so it gets stub-created (lets us
+      // observe that the hop loop ran for the valid value). Reserved values
+      // are filtered out before the loop ever runs, so they should never
+      // hit upsertNode regardless of getNode return value.
+      if (nodeNum === 0xaaaa7777) return undefined;
+      return { nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND', lastHeard: stale };
+    });
+    mockUpsertNode.mockImplementation((data: any) => {
+      fakeStore.set(data.nodeNum, { ...data });
+      return Promise.resolve(undefined);
+    });
 
     const packet = makeTraceroutePacket(0xdddddddd, 0x11111111);
     // Reserved: 0-3, 255, 65535, 4294967295 — must never be upserted as hops
@@ -374,18 +401,19 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     await (manager as any).processTracerouteMessage(packet, routeDiscovery);
 
-    // Only the valid hop was upserted from the filtered route
-    expect(lastHeardsFor(0xaaaa7777).length).toBeGreaterThan(0);
-    // Every reserved value must not have been upserted via the hop loop
+    // The valid (unknown) hop was stub-created — proves the loop did execute
+    // and the filter let the right value through. And critically: no upsert
+    // for this hop carried a `lastHeard` field.
+    expect(upsertCallsFor(0xaaaa7777).length).toBeGreaterThanOrEqual(1);
+    expect(upsertCallsWithLastHeardFor(0xaaaa7777)).toEqual([]);
+    // Reserved values must never have been upserted via the hop loop.
     for (const reserved of [0, 1, 2, 3, 255, 65535, 4294967295]) {
-      // from/to shouldn't collide with these; if they ever did, the test
-      // would need revisiting. Assert no upsertNode call touched them.
-      expect(lastHeardsFor(reserved)).toEqual([]);
+      expect(upsertCallsFor(reserved)).toEqual([]);
     }
   });
 
   it('does not double-upsert the from/to nodes via the hop loop', async () => {
-    const stale = Date.now() / 1000 - 86_400;
+    const stale = Math.floor(Date.now() / 1000) - 86_400;
     mockGetNode.mockImplementation((nodeNum: number) => ({
       nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND', lastHeard: stale,
     }));
@@ -396,6 +424,7 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     // Pathological case: from/to also appear in the route arrays. The hop
     // loop should dedupe them so they aren't upserted redundantly.
+    // 0xaaaa8888 is known so the hop loop skips it.
     const routeDiscovery = {
       route: [toNum, 0xaaaa8888, fromNum],
       routeBack: [],
@@ -405,13 +434,17 @@ describe('MeshtasticManager — traceroute intermediate hop lastHeard (issue 261
 
     await (manager as any).processTracerouteMessage(packet, routeDiscovery);
 
-    // From/to each get exactly one upsert from the explicit from/to block
-    // at the top of processTracerouteMessage — not an extra one from the
-    // hop loop. (The block runs once for each.)
-    expect(lastHeardsFor(fromNum).length).toBe(1);
-    expect(lastHeardsFor(toNum).length).toBe(1);
+    // From/to each get exactly one upsert (from the explicit from/to block
+    // at the top of processTracerouteMessage), and that upsert DOES carry
+    // lastHeard because they are real radio peers from this packet's POV.
+    const fromWithLh = upsertCallsWithLastHeardFor(fromNum);
+    const toWithLh = upsertCallsWithLastHeardFor(toNum);
+    expect(fromWithLh.length).toBe(1);
+    expect(toWithLh.length).toBe(1);
+    expect(Number(fromWithLh[0].lastHeard)).toBeGreaterThan(stale);
+    expect(Number(toWithLh[0].lastHeard)).toBeGreaterThan(stale);
 
-    // And the real intermediate hop still got updated
-    expect(lastHeardsFor(0xaaaa8888).length).toBeGreaterThan(0);
+    // Known intermediate hop — never upserted by the hop loop.
+    expect(upsertCallsFor(0xaaaa8888)).toEqual([]);
   });
 });

@@ -1321,6 +1321,70 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Fabricate a routing-ack FromRadio response for a request that we
+   * intentionally swallowed inside MeshMonitor. The Meshtastic client
+   * sees this as if the physical radio acknowledged the request with
+   * `errorReason=NONE`, so its UI doesn't hang waiting for an ACK.
+   *
+   * Used by virtualNodeServer to ack-and-drop admin commands that we
+   * deliberately don't forward to the device — see issue #2602
+   * (`removeByNodenum` from a connected app must not delete nodes from
+   *  MeshMonitor's view of the mesh).
+   *
+   * @param requestId - the `id` field of the original request packet that
+   *                    the client used as `wantAck` correlation
+   * @param requesterNodeNum - the node that sent the request (becomes `to`)
+   * @param ackFromNodeNum  - the node that "answered" (becomes `from`),
+   *                          typically the local physical node
+   */
+  async createFakeRoutingAck(
+    requestId: number,
+    requesterNodeNum: number,
+    ackFromNodeNum: number,
+  ): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const Data = root.lookupType('meshtastic.Data');
+      const Routing = root.lookupType('meshtastic.Routing');
+
+      // errorReason = NONE (0)
+      const routing = Routing.create({ errorReason: 0 });
+      const routingBytes = Routing.encode(routing).finish();
+
+      const data = Data.create({
+        portnum: PortNum.ROUTING_APP,
+        payload: routingBytes,
+        requestId: requestId,
+      });
+
+      const meshPacket = MeshPacket.create({
+        from: ackFromNodeNum,
+        to: requesterNodeNum,
+        id: Math.floor(Math.random() * 0xffffffff),
+        decoded: data,
+        // Direct (channel 0 is fine — routing replies travel on the same
+        // channel slot the client used and the client only matches on
+        // requestId anyway).
+        channel: 0,
+        rxTime: Math.floor(Date.now() / 1000),
+      });
+
+      const fromRadio = FromRadio.create({ packet: meshPacket });
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create fake routing ack:', error);
+      return null;
+    }
+  }
+
+  /**
    * Create a FromRadio message containing a text message MeshPacket
    * Used to replay historical messages to virtual node clients
    *
