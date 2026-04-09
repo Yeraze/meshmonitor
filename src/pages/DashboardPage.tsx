@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCsrf } from '../contexts/CsrfContext';
@@ -28,7 +29,17 @@ import '../styles/dashboard.css';
 function DashboardInner() {
   const { authStatus } = useAuth();
   const { getToken } = useCsrf();
+  const queryClient = useQueryClient();
   const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon } = useSettings();
+
+  /**
+   * Invalidate the source list cache after a mutation so the sidebar
+   * reflects the new/edited/toggled/deleted source immediately instead of
+   * waiting for the 15s poll interval. Same key as `useDashboardSources`.
+   */
+  const refreshSources = () => {
+    queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
+  };
 
   const isAuthenticated = authStatus?.authenticated ?? false;
   const isAdmin = authStatus?.user?.isAdmin ?? false;
@@ -171,6 +182,7 @@ function DashboardInner() {
         return;
       }
       setShowSourceModal(false);
+      refreshSources();
     } catch {
       setFormError('Network error');
     } finally {
@@ -180,7 +192,7 @@ function DashboardInner() {
 
   const onToggleSource = async (id: string, enabled: boolean) => {
     const csrfToken = getToken();
-    await fetch(`${appBasename}/api/sources/${id}`, {
+    const res = await fetch(`${appBasename}/api/sources/${id}`, {
       method: 'PUT',
       credentials: 'include',
       headers: {
@@ -189,6 +201,7 @@ function DashboardInner() {
       },
       body: JSON.stringify({ enabled }),
     });
+    if (res.ok) refreshSources();
   };
 
   const onDeleteSource = (id: string) => {
@@ -198,7 +211,7 @@ function DashboardInner() {
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
     const csrfToken = getToken();
-    await fetch(`${appBasename}/api/sources/${deleteConfirm}`, {
+    const res = await fetch(`${appBasename}/api/sources/${deleteConfirm}`, {
       method: 'DELETE',
       credentials: 'include',
       headers: {
@@ -210,6 +223,7 @@ function DashboardInner() {
       setSelectedSourceId(null);
     }
     setDeleteConfirm(null);
+    if (res.ok) refreshSources();
   };
 
   // ----- render -----
