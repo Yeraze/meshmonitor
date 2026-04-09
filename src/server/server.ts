@@ -44,6 +44,7 @@ import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
+import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
@@ -924,7 +925,10 @@ setSettingsCallbacks({
  */
 apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
   try {
-    const allNodes = await meshtasticManager.getAllNodesAsync();
+    const nodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
+    const allNodes = await meshtasticManager.getAllNodesAsync(nodesSourceId);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions
@@ -940,7 +944,10 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
 apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
-    const allDbNodes = await databaseService.nodes.getActiveNodes(days);
+    const activeNodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
+    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId);
 
     // Filter nodes based on channel read permissions
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user);
@@ -992,9 +999,14 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
       : null;
     const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
 
-    // Check privacy for position history
+    // Check privacy for position history — scope to caller's source so the
+    // privacy setting reflects this source's node (same nodeNum may exist in
+    // multiple sources with different privacy flags).
+    const posHistSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum, posHistSourceId);
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
     if (isPrivate && !canViewPrivate) {
@@ -1273,9 +1285,10 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
     await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked, lockSourceId);
 
     // If unlocking, also add to auto-favorite tracking list if node is currently favorited
-    // so that automation can manage it going forward
+    // so that automation can manage it going forward (scoped to the same source that owns
+    // the lock flag — same nodeNum may have different favorite state on other sources).
     if (!locked) {
-      const node = await databaseService.nodes.getNode(nodeNum);
+      const node = await databaseService.nodes.getNode(nodeNum, lockSourceId);
       if (node?.isFavorite) {
         const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
         const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
@@ -1311,17 +1324,18 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async
     const afManager = afSourceId ? (sourceManagerRegistry.getManager(afSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
     const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : afManager.getLocalNodeInfo()?.nodeNum;
-    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt) : null;
+    // Scope node lookups to afSourceId so auto-favorite status reflects the caller's source
+    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, afSourceId) : null;
     const firmwareVersion = afManager.getLocalNodeInfo()?.firmwareVersion || null;
     const supportsFavorites = afManager.supportsFavorites();
 
     const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
     const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
 
-    // Get node details for each auto-favorited node
+    // Get node details for each auto-favorited node (scoped to this source)
     const autoFavoriteNodes = (await Promise.all(autoFavoriteNodeNums
       .map(async nodeNum => {
-        const node = await databaseService.nodes.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum, afSourceId);
         if (!node) return null;
         return {
           nodeNum: node.nodeNum,
@@ -1825,8 +1839,14 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
       return;
     }
 
-    // Check if the node exists
-    const node = await databaseService.nodes.getNode(parsedNodeNum);
+    const { sourceId: scanSourceId } = req.body;
+    const scanManager = (scanSourceId
+      ? (sourceManagerRegistry.getManager(scanSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager);
+
+    // Check if the node exists on the scoped source (same nodeNum may exist
+    // on other sources that aren't the scan target).
+    const node = await databaseService.nodes.getNode(parsedNodeNum, scanSourceId);
     if (!node) {
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
@@ -1838,11 +1858,6 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
     }
 
     logger.info(`Manual remote admin scan requested for node ${parsedNodeNum}`);
-
-    const { sourceId: scanSourceId } = req.body;
-    const scanManager = (scanSourceId
-      ? (sourceManagerRegistry.getManager(scanSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
 
     // Perform the scan
     const result = await scanManager.scanNodeForRemoteAdmin(parsedNodeNum);
@@ -1901,8 +1916,12 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Verify the node actually has a security issue
-    const node = await databaseService.nodes.getNode(nodeNum);
+    const { sourceId: warnSourceId } = req.body || {};
+    const warnManager = (warnSourceId ? (sourceManagerRegistry.getManager(warnSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+
+    // Verify the node actually has a security issue on the target source
+    // (security flags are per-source — the same nodeNum may be safe on another source).
+    const node = await databaseService.nodes.getNode(nodeNum, warnSourceId);
     if (!node) {
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
@@ -1927,9 +1946,6 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
     const warningMessage = `⚠️ SECURITY WARNING: Your encryption key has been identified as compromised (${
       node.keyIsLowEntropy ? 'low-entropy' : 'duplicate'
     }). Your direct messages may not be private. Please regenerate your key in Settings > Security.`;
-
-    const { sourceId: warnSourceId } = req.body || {};
-    const warnManager = (warnSourceId ? (sourceManagerRegistry.getManager(warnSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
     const messageId = await warnManager.sendTextMessage(
       warningMessage,
       0, // Channel 0
@@ -1959,49 +1975,75 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
 // Scan all nodes for duplicate keys and update database
 apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), async (_req, res) => {
   try {
+    // Duplicate detection is scoped per-source — a node on source A sharing a
+    // public key with a node on source B is NOT treated as a duplicate, because
+    // they may legitimately be the same physical device surfaced by two
+    // transports. This matches the background scheduler in
+    // duplicateKeySchedulerService which also iterates per-source, and the
+    // updateNodeSecurityFlags helper requires a sourceId for correctness under
+    // the composite (nodeNum, sourceId) primary key.
     const { detectDuplicateKeys } = await import('../services/lowEntropyKeyService.js');
-    const nodesWithKeys = await databaseService.getNodesWithPublicKeysAsync();
-    const duplicates = detectDuplicateKeys(nodesWithKeys);
 
-    // Clear existing duplicate flags first
-    const allNodes = await databaseService.nodes.getAllNodes();
-    for (const node of allNodes) {
-      if (node.duplicateKeyDetected) {
-        await databaseService.nodes.upsertNode({
-          nodeNum: node.nodeNum,
-          nodeId: node.nodeId,
-          duplicateKeyDetected: false,
-          keySecurityIssueDetails: node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined,
-        });
+    const managers = sourceManagerRegistry.getAllManagers() as any[];
+    const sourceIds: string[] = managers.length > 0 ? managers.map(m => m.sourceId) : ['default'];
+
+    let totalScanned = 0;
+    let totalDuplicateGroups = 0;
+    const affectedNodes: number[] = [];
+
+    for (const sourceId of sourceIds) {
+      const nodesWithKeys = await databaseService.nodes.getNodesWithPublicKeys(sourceId);
+      totalScanned += nodesWithKeys.length;
+
+      const allSourceNodes = await databaseService.nodes.getAllNodes(sourceId);
+
+      // Clear existing duplicate flags for this source
+      for (const node of allSourceNodes) {
+        if (node.duplicateKeyDetected) {
+          const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
+          await databaseService.nodes.updateNodeSecurityFlags(
+            Number(node.nodeNum),
+            false,
+            details,
+            sourceId,
+          );
+        }
       }
-    }
 
-    // Update database with new duplicate flags
-    for (const [keyHash, nodeNums] of duplicates) {
-      for (const nodeNum of nodeNums) {
-        const node = await databaseService.nodes.getNode(nodeNum);
-        if (!node) continue;
+      const duplicates = detectDuplicateKeys(nodesWithKeys);
+      totalDuplicateGroups += duplicates.size;
 
-        const otherNodes = nodeNums.filter(n => n !== nodeNum);
-        const details = node.keyIsLowEntropy
-          ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
-          : `Key shared with nodes: ${otherNodes.join(', ')}`;
+      const sourceNodeMap = new Map<number, typeof allSourceNodes[0]>(
+        allSourceNodes.map(n => [Number(n.nodeNum), n])
+      );
 
-        await databaseService.nodes.upsertNode({
-          nodeNum,
-          nodeId: node.nodeId,
-          duplicateKeyDetected: true,
-          keySecurityIssueDetails: details,
-        });
+      for (const [keyHash, nodeNums] of duplicates) {
+        for (const nodeNum of nodeNums) {
+          const node = sourceNodeMap.get(Number(nodeNum));
+          if (!node) continue;
+
+          const otherNodes = nodeNums.filter(n => n !== nodeNum);
+          const details = node.keyIsLowEntropy
+            ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
+            : `Key shared with nodes: ${otherNodes.join(', ')}`;
+
+          await databaseService.nodes.updateNodeSecurityFlags(
+            Number(nodeNum),
+            true,
+            details,
+            sourceId,
+          );
+          affectedNodes.push(Number(nodeNum));
+        }
+        logger.info(`🔐 [${sourceId}] Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
       }
-      logger.info(`🔐 Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
     }
 
     res.json({
       success: true,
-      duplicatesFound: duplicates.size,
-      affectedNodes: Array.from(duplicates.values()).flat(),
-      totalNodesScanned: nodesWithKeys.length,
+      duplicatesFound: totalDuplicateGroups,
+      affectedNodes,
+      totalNodesScanned: totalScanned,
     });
   } catch (error) {
     logger.error('Error scanning for duplicate keys:', error);
@@ -2622,13 +2664,20 @@ apiRouter.delete('/channels/:id', requirePermission('channel_0', 'write'), async
       return res.status(400).json({ error: 'Cannot delete primary channel' });
     }
 
-    // Purge messages for this channel
-    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId);
-    // Delete the channel record
-    await databaseService.channels.deleteChannel(channelId);
+    // sourceId is required so the channel and its messages are removed from a single source
+    const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+    if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '' || typeof rawSourceId !== 'string') {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+    const deleteChannelSourceId: string = rawSourceId;
 
-    logger.info(`🗑️ Deleted channel ${channelId}: ${deletedCount} messages purged`);
-    res.json({ success: true, message: `Channel ${channelId} deleted`, messagesDeleted: deletedCount });
+    // Purge messages for this channel (scoped to the chosen source)
+    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId, deleteChannelSourceId);
+    // Delete the channel record (scoped to the chosen source)
+    await databaseService.channels.deleteChannel(channelId, deleteChannelSourceId);
+
+    logger.info(`🗑️ Deleted channel ${channelId} (source=${deleteChannelSourceId}): ${deletedCount} messages purged`);
+    res.json({ success: true, message: `Channel ${channelId} deleted`, sourceId: deleteChannelSourceId, messagesDeleted: deletedCount });
   } catch (error) {
     logger.error('Error deleting channel:', error);
     res.status(500).json({ error: 'Failed to delete channel' });
@@ -3222,10 +3271,12 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     // Channel must be 0-7 for Meshtastic. If undefined or invalid, default to 0 (Primary)
     let meshChannel = channel !== undefined && channel >= 0 && channel <= 7 ? channel : 0;
 
-    // For DMs, use the channel we last heard the target node on (from NodeInfo)
-    // This ensures we send on a channel the target node has configured
+    // For DMs, use the channel we last heard the target node on (from NodeInfo).
+    // Scope the lookup to the source that will actually send the message so the
+    // channel reflects the correct mesh — a node may be on different channels
+    // across sources.
     if (destinationNum) {
-      const targetNode = await databaseService.nodes.getNode(destinationNum);
+      const targetNode = await databaseService.nodes.getNode(destinationNum, reqSourceId);
       if (targetNode && targetNode.channel !== undefined && targetNode.channel !== null) {
         meshChannel = targetNode.channel;
         logger.info(`📨 DM to ${destination} - Using target node's channel: ${meshChannel}`);
@@ -3290,8 +3341,9 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel — scope to this source so the channel
+    // reflects the mesh this traceroute will actually traverse.
+    const node = await databaseService.nodes.getNode(destinationNum, traceSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     const traceManager = (traceSourceId
@@ -3318,8 +3370,8 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, posSourceId);
     // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
     const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
       ? req.body.channel
@@ -3391,8 +3443,8 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, niSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     const niManager = (niSourceId
@@ -3468,7 +3520,8 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
       ? (sourceManagerRegistry.getManager(neighborSourceId) as typeof meshtasticManager ?? meshtasticManager)
       : meshtasticManager);
     const localNodeNum = neighborManager.getLocalNodeInfo()?.nodeNum;
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Scope to the target source so hopsAway/channel reflect this mesh
+    const node = await databaseService.nodes.getNode(destinationNum, neighborSourceId);
     const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
     const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
 
@@ -3529,8 +3582,8 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    // Look up the node to get its channel
-    const node = await databaseService.nodes.getNode(destinationNum);
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, telSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     const telManager = (telSourceId
@@ -3614,6 +3667,10 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
     const fromNodeNum = parseInt(req.params.fromNodeNum);
     const toNodeNum = parseInt(req.params.toNodeNum);
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    // Scope to a specific source when provided so multi-source deployments
+    // don't conflate traceroute history for the same node pair across
+    // unrelated transports (e.g. local TCP vs MQTT).
+    const historySourceId = req.query.sourceId as string | undefined;
 
     // Validate node numbers
     if (isNaN(fromNodeNum) || isNaN(toNodeNum)) {
@@ -3633,7 +3690,7 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
       return;
     }
 
-    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
+    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, historySourceId);
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;
@@ -3659,18 +3716,20 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) =
   }
 });
 
-// Get longest active route segment (within last 7 days)
-apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (_req, res) => {
+// Get longest active route segment (within last 7 days), scoped per source.
+apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment();
+    const segSourceId = req.query.sourceId as string | undefined;
+    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment(segSourceId);
     if (!segment) {
       res.json(null);
       return;
     }
 
-    // Enrich with node names
-    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum);
-    const toNode = await databaseService.nodes.getNode(segment.toNodeNum);
+    // Enrich with node names, scoped to the same source as the segment so
+    // display data doesn't bleed between sources.
+    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum, segSourceId);
+    const toNode = await databaseService.nodes.getNode(segment.toNodeNum, segSourceId);
 
     const enrichedSegment = {
       ...segment,
@@ -3685,18 +3744,19 @@ apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'
   }
 });
 
-// Get record holder route segment
-apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (_req, res) => {
+// Get record holder route segment, scoped per source.
+apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (req, res) => {
   try {
-    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment();
+    const segSourceId = req.query.sourceId as string | undefined;
+    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment(segSourceId);
     if (!segment) {
       res.json(null);
       return;
     }
 
-    // Enrich with node names
-    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum);
-    const toNode = await databaseService.nodes.getNode(segment.toNodeNum);
+    // Enrich with node names, scoped to the same source as the segment.
+    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum, segSourceId);
+    const toNode = await databaseService.nodes.getNode(segment.toNodeNum, segSourceId);
 
     const enrichedSegment = {
       ...segment,
@@ -3711,10 +3771,12 @@ apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read')
   }
 });
 
-// Clear record holder route segment
-apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), async (_req, res) => {
+// Clear record holder route segment, scoped per source so clearing one source
+// doesn't wipe another source's record holder.
+apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), async (req, res) => {
   try {
-    await databaseService.clearRecordHolderSegmentAsync();
+    const segSourceId = req.query.sourceId as string | undefined;
+    await databaseService.clearRecordHolderSegmentAsync(segSourceId);
     res.json({ success: true, message: 'Record holder cleared' });
   } catch (error) {
     logger.error('Error clearing record holder:', error);
@@ -3751,11 +3813,13 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (req, r
     // Build a set of all link keys for bidirectionality detection
     const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 
-    // Enrich with node names, bidirectionality, and filter by node age
+    // Enrich with node names, bidirectionality, and filter by node age.
+    // Scope node lookups to the same source as the neighbor info query so
+    // name/position/lastHeard data match the mesh the caller is viewing.
     const enrichedNeighborInfo = (await Promise.all(neighborInfo
       .map(async ni => {
-        const node = await databaseService.nodes.getNode(ni.nodeNum);
-        const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
+        const node = await databaseService.nodes.getNode(ni.nodeNum, neighborInfoSourceId);
+        const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum, neighborInfoSourceId);
         const nodePos = getEffectivePosition(node);
         const neighborPos = getEffectivePosition(neighbor);
 
@@ -3797,9 +3861,10 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), asyn
     const neighborSourceId = req.query.sourceId as string | undefined;
     const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId);
 
-    // Enrich with node names
+    // Enrich with node names. Scope to the same source as the neighbor
+    // query so position/name data matches the mesh the caller is viewing.
     const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {
-      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum);
+      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum, neighborSourceId);
       const neighborPos = getEffectivePosition(neighbor);
 
       return {
@@ -3862,7 +3927,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
 
     // Check if node has private position override
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum);
+    const node = await databaseService.nodes.getNode(nodeNum, telSourceId);
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
@@ -3877,7 +3942,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
       // - 0-24h: 3-minute intervals (high detail)
       // - 1-7d: 30-minute intervals (medium detail)
       // - 7d+: 2-hour intervals (low detail, full coverage)
-      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam);
+      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam, telSourceId);
     }
 
     // Filter out location telemetry if private and unauthorized
@@ -4686,14 +4751,22 @@ apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
 // Configuration endpoint for frontend
 apiRouter.get('/config', optionalAuth(), async (req, res) => {
   try {
-    // Get the local node number from settings to include rebootCount
-    const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+    // Get the local node number from settings to include rebootCount.
+    // Accepts ?sourceId= so multi-source deployments resolve the local node
+    // (and reboot count / display names) for the specific source the caller
+    // is rendering, rather than whichever source happened to write the
+    // global localNodeNum setting last.
+    const configSourceId = req.query.sourceId as string | undefined;
+    const localNodeNumStr = await databaseService.settings.getSettingForSource(
+      configSourceId ?? null,
+      'localNodeNum',
+    );
 
     let deviceMetadata = undefined;
     let localNodeInfo = undefined;
     if (localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);
-      const currentNode = await databaseService.nodes.getNode(localNodeNum);
+      const currentNode = await databaseService.nodes.getNode(localNodeNum, configSourceId);
 
       if (currentNode) {
         deviceMetadata = {
@@ -6491,9 +6564,12 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 fixedLatitude: 0,
                 fixedLongitude: 0
               };
-              // If fixedPosition is enabled, get the coordinates from the node's stored position
+              // If fixedPosition is enabled, get the coordinates from the node's stored position.
+              // Scope to adminLoadSourceId so multi-source deployments resolve the correct
+              // copy of the local node — otherwise we might pull fixedPosition coords from a
+              // stale row on a different source that shares the same nodeNum.
               if (finalConfig.deviceConfig.position.fixedPosition && localNodeNum) {
-                const nodeData = await databaseService.nodes.getNode(localNodeNum);
+                const nodeData = await databaseService.nodes.getNode(localNodeNum, adminLoadSourceId);
                 if (nodeData?.latitude && nodeData?.longitude) {
                   config.fixedLatitude = nodeData.latitude;
                   config.fixedLongitude = nodeData.longitude;
@@ -6700,9 +6776,11 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               fixedLatitude: 0,
               fixedLongitude: 0
             };
-            // If fixedPosition is enabled, get the coordinates from the node's stored position
+            // If fixedPosition is enabled, get the coordinates from the node's stored position.
+            // Scope to adminLoadSourceId so the remote node lookup resolves the row
+            // belonging to the source the admin is operating on.
             if (remoteConfig.fixedPosition) {
-              const nodeData = await databaseService.nodes.getNode(destinationNodeNum);
+              const nodeData = await databaseService.nodes.getNode(destinationNodeNum, adminLoadSourceId);
               if (nodeData?.latitude && nodeData?.longitude) {
                 config.fixedLatitude = nodeData.latitude;
                 config.fixedLongitude = nodeData.longitude;
@@ -6976,10 +7054,13 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
       // For local node, use cached info and database (public key is obtained from security config at connection)
       const localNodeInfo = loManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        // Get the public key from database if available (stored from security config)
+        // Get the public key from database if available (stored from security config).
+        // Scope the lookup to loSourceId so we read the local node row for this
+        // specific source, not a possibly-stale row with the same nodeNum on
+        // another source.
         let publicKeyBase64: string | undefined;
         if (localNodeInfo.nodeNum) {
-          const nodeData = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
+          const nodeData = await databaseService.nodes.getNode(localNodeInfo.nodeNum, loSourceId);
           publicKeyBase64 = nodeData?.publicKey || undefined;
         }
         return res.json({ owner: {
@@ -7026,8 +7107,10 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
       // For local node, return cached device metadata from local node info
       const localNodeInfo = gdmManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        // Get node data from database for additional info
-        const nodeData = localNodeInfo.nodeNum ? await databaseService.nodes.getNode(localNodeInfo.nodeNum) : null;
+        // Get node data from database for additional info.
+        // Scope to gdmSourceId so multi-source deployments read the row
+        // belonging to the source whose device metadata is being requested.
+        const nodeData = localNodeInfo.nodeNum ? await databaseService.nodes.getNode(localNodeInfo.nodeNum, gdmSourceId) : null;
         return res.json({
           deviceMetadata: {
             firmwareVersion: localNodeInfo.firmwareVersion || 'Unknown',
@@ -9519,43 +9602,6 @@ if (BASE_URL) {
 }
 
 // Function to rewrite HTML with BASE_URL at runtime
-const rewriteHtml = (htmlContent: string, baseUrl: string, analyticsScript?: string): string => {
-  if (!baseUrl) return htmlContent;
-
-  // Add <base> tag to set the base URL for all relative paths
-  // This ensures that all relative URLs (like /api/config) resolve from the base URL
-  // instead of the current page URL (like /api/auth/oidc/callback)
-  const baseTag = `<base href="${baseUrl}/">`;
-
-  // Insert the base tag right after <head>
-  let rewritten = htmlContent.replace(/<head>/, `<head>\n    ${baseTag}`);
-
-  // Inject analytics script after the base tag if provided
-  if (analyticsScript) {
-    rewritten = rewritten.replace(
-      baseTag,
-      `${baseTag}\n    ${analyticsScript}`
-    );
-  }
-
-  // Replace asset paths in the HTML
-  rewritten = rewritten
-    .replace(/href="\/assets\//g, `href="${baseUrl}/assets/`)
-    .replace(/src="\/assets\//g, `src="${baseUrl}/assets/`)
-    .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`)
-    .replace(/href="\/favicon\.ico"/g, `href="${baseUrl}/favicon.ico"`)
-    .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
-    .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
-    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`)
-    // CORS detection script
-    .replace(/src="\/cors-detection\.js"/g, `src="${baseUrl}/cors-detection.js"`)
-    // PWA-related paths
-    .replace(/href="\/manifest\.webmanifest"/g, `href="${baseUrl}/manifest.webmanifest"`)
-    .replace(/src="\/registerSW\.js"/g, `src="${baseUrl}/registerSW.js"`);
-
-  return rewritten;
-};
-
 // Cache for rewritten HTML to avoid repeated file reads
 let cachedHtml: string | null = null;
 let cachedRewrittenHtml: string | null = null;
@@ -9670,29 +9716,45 @@ if (BASE_URL) {
     res.type('html').send(cachedRewrittenHtml);
   });
 } else {
-  // Normal static file serving for root deployment
-  app.use(express.static(buildPath));
+  // Normal static file serving for root deployment.
+  //
+  // IMPORTANT: `index: false` disables express.static's automatic index.html
+  // serving. We handle index.html ourselves (below) so we can inject the
+  // configured analytics script into <head>. Without this flag, a request
+  // for `/` would be served by static middleware with the raw index.html,
+  // bypassing analytics injection entirely — which is the bug that caused
+  // GA4 tags to silently not appear on root deployments.
+  app.use(express.static(buildPath, { index: false }));
 
   // Serve embed page (before SPA fallback)
-  app.get('/embed/:profileId', createEmbedCspMiddleware(), (_req: express.Request, res: express.Response) => {
-    if (!cachedEmbedHtml) {
+  app.get('/embed/:profileId', createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {
+    if (!cachedRewrittenEmbedHtml) {
       const embedHtmlPath = path.join(buildPath, 'embed.html');
       if (!fs.existsSync(embedHtmlPath)) {
         return res.status(404).send('Embed page not found');
       }
       cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
+      const embedAnalyticsScript = await getAnalyticsScript();
+      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
     }
     res.setHeader('Content-Type', 'text/html');
-    res.send(cachedEmbedHtml);
+    res.send(cachedRewrittenEmbedHtml);
   });
 
   // Catch all handler for SPA routing - skip API routes
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Skip if this is an API route
     if (req.path.startsWith('/api')) {
       return next();
     }
-    res.sendFile(path.join(buildPath, 'index.html'));
+    // Serve cached rewritten HTML (with analytics injected)
+    if (!cachedRewrittenHtml) {
+      const htmlPath = path.join(buildPath, 'index.html');
+      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
+      const analyticsScript = await getAnalyticsScript();
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
+    }
+    res.type('html').send(cachedRewrittenHtml);
   });
 }
 
