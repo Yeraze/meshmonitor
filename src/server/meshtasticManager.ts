@@ -283,7 +283,7 @@ interface AutoPingSession {
 
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
-  private sourceConfigOverride: { host?: string; port?: number } | null = null;
+  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number } | null = null;
   private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
   private isConnected = false;
@@ -418,7 +418,7 @@ class MeshtasticManager implements ISourceManager {
    * Apply a source config after construction.
    * Used to configure the legacy singleton when sources are loaded from DB at startup.
    */
-  configureSource(config: { host?: string; port?: number }, sourceId?: string): void {
+  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number }, sourceId?: string): void {
     this.sourceConfigOverride = config;
     if (sourceId) this.sourceId = sourceId;
   }
@@ -478,10 +478,14 @@ class MeshtasticManager implements ISourceManager {
     };
   }
 
-  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; virtualNode?: VirtualNodeConfig }) {
+  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig }) {
     this.sourceId = sourceId;
     if (sourceConfig) {
-      this.sourceConfigOverride = { host: sourceConfig.host, port: sourceConfig.port };
+      this.sourceConfigOverride = {
+        host: sourceConfig.host,
+        port: sourceConfig.port,
+        heartbeatIntervalSeconds: sourceConfig.heartbeatIntervalSeconds,
+      };
     }
     if (sourceConfig?.virtualNode?.enabled) {
       this.virtualNodeServer = new VirtualNodeServer({
@@ -571,6 +575,28 @@ class MeshtasticManager implements ISourceManager {
    * This ensures .env values are respected even if the manager is instantiated before dotenv loads.
    * Per-source config (set via source record) takes priority over env vars and DB overrides.
    */
+  /**
+   * Build an encoded ToRadio Heartbeat packet (issue 2609).
+   *
+   * Meshtastic firmware treats an incoming Heartbeat in `ToRadio` as a
+   * no-op "client is still alive" marker — the device does not generate a
+   * response. MeshMonitor sends this periodically to keep quiet nodes
+   * (CLIENT_MUTE) from getting reconnected by the stale-data health check.
+   * The transport resets `lastDataReceived` on a successful write, so the
+   * heartbeat also doubles as the liveness signal for that detector.
+   */
+  private encodeHeartbeatToRadio(): Uint8Array {
+    const root = getProtobufRoot();
+    if (!root) {
+      throw new Error('Protobuf definitions not loaded — cannot build heartbeat');
+    }
+    const ToRadio = root.lookupType('meshtastic.ToRadio');
+    const Heartbeat = root.lookupType('meshtastic.Heartbeat');
+    const heartbeat = Heartbeat.create({});
+    const toRadio = ToRadio.create({ heartbeat });
+    return ToRadio.encode(toRadio).finish();
+  }
+
   private async getConfig(): Promise<MeshtasticConfig> {
     // Per-source config takes priority (set when this manager was created from a source record)
     if (this.sourceConfigOverride?.host) {
@@ -691,6 +717,20 @@ class MeshtasticManager implements ISourceManager {
         tcpTransport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
         tcpTransport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
         tcpTransport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
+
+        // Optional per-source keepalive heartbeat (issue 2609). When configured,
+        // we periodically send a Meshtastic Heartbeat ToRadio to the device so
+        // quiet nodes (CLIENT_MUTE) don't look idle to the stale-connection
+        // detector. Default 0 = disabled, preserves prior behavior.
+        const heartbeatSeconds = this.sourceConfigOverride?.heartbeatIntervalSeconds ?? 0;
+        if (heartbeatSeconds > 0) {
+          tcpTransport.setHeartbeatInterval(
+            heartbeatSeconds * 1000,
+            () => this.encodeHeartbeatToRadio()
+          );
+          logger.info(`💓 Heartbeat enabled for source ${this.sourceId}: every ${heartbeatSeconds}s`);
+        }
+
         this.transport = tcpTransport;
       }
 
@@ -1764,7 +1804,9 @@ class MeshtasticManager implements ISourceManager {
     try {
       const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+      // Scope to this source so systemNodeCount telemetry reflects only nodes visible
+      // to this manager, not a cross-source union.
+      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
       const nodeCount = nodes.length;
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       const now = Date.now();
@@ -2056,8 +2098,10 @@ class MeshtasticManager implements ISourceManager {
       return;
     }
 
-    // Compute initial state from current node positions (no events fired)
-    const allNodes = await databaseService.nodes.getAllNodes();
+    // Compute initial state from current node positions (no events fired).
+    // Scope to this manager's source so a two-source deployment doesn't mix node
+    // positions from a different mesh into this geofence engine's state.
+    const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
     for (const trigger of enabledTriggers) {
       const insideSet = new Set<number>();
       for (const node of allNodes) {
@@ -5252,7 +5296,13 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🗺️ Raw routeBack: ${JSON.stringify(rawRouteBack)}, Filtered: ${JSON.stringify(routeBack)}`);
       }
 
-      const fromNode = await databaseService.nodes.getNode(fromNum);
+      // All node lookups in traceroute processing are scoped to this
+      // manager's source so name/position data matches the mesh the
+      // traceroute came from — otherwise a second source's stale row could
+      // corrupt the rendered route text and the persisted routePositions
+      // snapshot.
+      const tracerouteScopeSourceId = this.sourceId ?? undefined;
+      const fromNode = await databaseService.nodes.getNode(fromNum, tracerouteScopeSourceId);
       const fromName = fromNode?.longName || fromNodeId;
 
       // Get distance unit from settings (default to km)
@@ -5263,8 +5313,8 @@ class MeshtasticManager implements ISourceManager {
 
       // Helper function to calculate and format distance
       const calcDistance = async (node1Num: number, node2Num: number): Promise<string | null> => {
-        const n1 = await databaseService.nodes.getNode(node1Num);
-        const n2 = await databaseService.nodes.getNode(node2Num);
+        const n1 = await databaseService.nodes.getNode(node1Num, tracerouteScopeSourceId);
+        const n2 = await databaseService.nodes.getNode(node2Num, tracerouteScopeSourceId);
         if (n1?.latitude && n1?.longitude && n2?.latitude && n2?.longitude) {
           const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
           totalDistanceKm += distKm;
@@ -5280,7 +5330,7 @@ class MeshtasticManager implements ISourceManager {
       // Handle direct connection (0 hops)
       if (route.length === 0 && snrTowards.length > 0) {
         const snr = (snrTowards[0] / 4).toFixed(1);
-        const toNode = await databaseService.nodes.getNode(toNum);
+        const toNode = await databaseService.nodes.getNode(toNum, tracerouteScopeSourceId);
         const toName = toNode?.longName || toNodeId;
         const dist = await calcDistance(toNum, fromNum);
         routeText += `Forward path:\n`;
@@ -5291,7 +5341,7 @@ class MeshtasticManager implements ISourceManager {
           routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB\n`;
         }
       } else if (route.length > 0) {
-        const toNode = await databaseService.nodes.getNode(toNum);
+        const toNode = await databaseService.nodes.getNode(toNum, tracerouteScopeSourceId);
         const toName = toNode?.longName || toNodeId;
         routeText += `Forward path (${route.length + 2} nodes):\n`;
 
@@ -5305,7 +5355,7 @@ class MeshtasticManager implements ISourceManager {
         for (let index = 0; index < route.length; index++) {
           const nodeNum = route[index];
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-          const node = await databaseService.nodes.getNode(nodeNum);
+          const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const rawSnr = snrTowards[index];
           const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
@@ -5340,8 +5390,8 @@ class MeshtasticManager implements ISourceManager {
       // Track total distance for return path separately
       let returnTotalDistanceKm = 0;
       const calcDistanceReturn = async (node1Num: number, node2Num: number): Promise<string | null> => {
-        const n1 = await databaseService.nodes.getNode(node1Num);
-        const n2 = await databaseService.nodes.getNode(node2Num);
+        const n1 = await databaseService.nodes.getNode(node1Num, tracerouteScopeSourceId);
+        const n2 = await databaseService.nodes.getNode(node2Num, tracerouteScopeSourceId);
         if (n1?.latitude && n1?.longitude && n2?.latitude && n2?.longitude) {
           const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
           returnTotalDistanceKm += distKm;
@@ -5356,7 +5406,7 @@ class MeshtasticManager implements ISourceManager {
 
       if (routeBack.length === 0 && snrBack.length > 0) {
         const snr = (snrBack[0] / 4).toFixed(1);
-        const toNode = await databaseService.nodes.getNode(toNum);
+        const toNode = await databaseService.nodes.getNode(toNum, tracerouteScopeSourceId);
         const toName = toNode?.longName || toNodeId;
         const dist = await calcDistanceReturn(fromNum, toNum);
         routeText += `\nReturn path:\n`;
@@ -5367,7 +5417,7 @@ class MeshtasticManager implements ISourceManager {
           routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB\n`;
         }
       } else if (routeBack.length > 0) {
-        const toNode = await databaseService.nodes.getNode(toNum);
+        const toNode = await databaseService.nodes.getNode(toNum, tracerouteScopeSourceId);
         const toName = toNode?.longName || toNodeId;
         routeText += `\nReturn path (${routeBack.length + 2} nodes):\n`;
 
@@ -5381,7 +5431,7 @@ class MeshtasticManager implements ISourceManager {
         for (let index = 0; index < routeBack.length; index++) {
           const nodeNum = routeBack[index];
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-          const node = await databaseService.nodes.getNode(nodeNum);
+          const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const rawSnr = snrBack[index];
           const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
@@ -5472,7 +5522,7 @@ class MeshtasticManager implements ISourceManager {
       const allUniqueNodes = [...new Set([...allPathNodes, ...allBackNodes])];
 
       for (const nodeNum of allUniqueNodes) {
-        const node = await databaseService.nodes.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
         if (node?.latitude && node?.longitude) {
           routePositions[nodeNum] = {
             lat: node.latitude,
@@ -5540,13 +5590,13 @@ class MeshtasticManager implements ISourceManager {
         this.pendingAutoresponderTraceroutes.delete(fromNum);
 
         // Build compact route string using short names (must fit within 200 bytes)
-        const fromNode = await databaseService.nodes.getNode(fromNum);
+        const fromNode = await databaseService.nodes.getNode(fromNum, tracerouteScopeSourceId);
         const fromShort = fromNode?.shortName || fromNodeId.slice(-4);
         const localShort = this.localNodeInfo?.shortName || 'ME';
 
         let compactPath = localShort;
         for (const hopNum of route) {
-          const hopNode = await databaseService.nodes.getNode(hopNum);
+          const hopNode = await databaseService.nodes.getNode(hopNum, tracerouteScopeSourceId);
           compactPath += '>' + (hopNode?.shortName || `!${hopNum.toString(16).slice(-4)}`);
         }
         compactPath += '>' + fromShort;
@@ -5583,8 +5633,12 @@ class MeshtasticManager implements ISourceManager {
           const node1Num = fullRoute[i];
           const node2Num = fullRoute[i + 1];
 
-          const node1 = await databaseService.nodes.getNode(node1Num);
-          const node2 = await databaseService.nodes.getNode(node2Num);
+          // Scope node lookups to this manager's source so route segment
+          // positions are computed from the correct per-source copy of each
+          // node — otherwise a second source's stale position could produce
+          // bogus distances for segments belonging to this source's traceroute.
+          const node1 = await databaseService.nodes.getNode(node1Num, this.sourceId ?? undefined);
+          const node2 = await databaseService.nodes.getNode(node2Num, this.sourceId ?? undefined);
 
           // Only calculate if both nodes have position data
           if (node1?.latitude && node1?.longitude && node2?.latitude && node2?.longitude) {
@@ -5614,10 +5668,10 @@ class MeshtasticManager implements ISourceManager {
               createdAt: Date.now()
             };
 
-            await databaseService.traceroutes.insertRouteSegment(segment);
+            await databaseService.traceroutes.insertRouteSegment(segment, this.sourceId ?? undefined);
 
-            // Check if this is a new record holder
-            await databaseService.updateRecordHolderSegmentAsync(segment);
+            // Check if this is a new record holder (per-source)
+            await databaseService.updateRecordHolderSegmentAsync(segment, this.sourceId ?? undefined);
 
             logger.debug(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
           }
@@ -8446,8 +8500,10 @@ class MeshtasticManager implements ISourceManager {
             });
             resolvedTarget = resolvedTarget.trim();
 
-            // Look up target node by long name, short name, or node ID
-            const allNodes = await databaseService.nodes.getAllNodes();
+            // Look up target node by long name, short name, or node ID.
+            // Scope to this manager's source so another source's node list can't
+            // resolve a name that doesn't exist on this mesh.
+            const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
             const searchLower = resolvedTarget.toLowerCase();
             const targetNode = allNodes.find(n => {
               const nid = n.nodeId?.toLowerCase() || '';
@@ -8701,10 +8757,11 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    // Add NODECOUNT - active nodes based on maxNodeAgeHours setting
+    // Add NODECOUNT - active nodes based on maxNodeAgeHours setting (scoped to this source
+    // so auto-responder scripts see the count for their own source, not a cross-source union)
     const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
     const maxNodeAgeDays = maxNodeAgeHours / 24;
-    const activeNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+    const activeNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
     scriptEnv.NODECOUNT = String(activeNodes.length);
 
     // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
@@ -9214,8 +9271,11 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      // Get all nodes ordered by lastHeard ascending (oldest first), excluding local node
-      const allNodes = await databaseService.nodes.getAllNodes();
+      // Get all nodes ordered by lastHeard ascending (oldest first), excluding local node.
+      // Scoped to this source so auto heap management only considers candidates on this
+      // manager's source — otherwise a two-source deployment could purge Source B's nodes
+      // when Source A is under heap pressure.
+      const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
       const localNodeNum = this.localNodeInfo?.nodeNum ?? fromNum;
       const candidates = allNodes
         .filter(n => Number(n.nodeNum) !== localNodeNum)
@@ -9370,26 +9430,26 @@ class MeshtasticManager implements ISourceManager {
       result = result.replace(/{FEATURES}/g, features.join(' '));
     }
 
-    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
+    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting (scoped to this source)
     if (result.includes('{NODECOUNT}')) {
       const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
       result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
     }
 
-    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
+    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes (scoped to this source)
     if (result.includes('{DIRECTCOUNT}')) {
       const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
 
-    // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard)
+    // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard, scoped to this source)
     if (result.includes('{TOTALNODES}')) {
-      const allNodes = await databaseService.nodes.getAllNodes();
+      const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
       result = result.replace(/{TOTALNODES}/g, allNodes.length.toString());
     }
 
@@ -9630,24 +9690,24 @@ class MeshtasticManager implements ISourceManager {
     if (result.includes('{NODECOUNT}')) {
       const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
       logger.info(`📢 Token replacement - NODECOUNT: ${nodes.length} active nodes (maxNodeAgeHours: ${maxNodeAgeHours})`);
       result = result.replace(/{NODECOUNT}/g, encode(nodes.length.toString()));
     }
 
-    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
+    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes (scoped to this source)
     if (result.includes('{DIRECTCOUNT}')) {
       const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays);
+      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
       result = result.replace(/{DIRECTCOUNT}/g, encode(directCount.toString()));
     }
 
-    // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard)
+    // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard, scoped to this source)
     if (result.includes('{TOTALNODES}')) {
-      const allNodes = await databaseService.nodes.getAllNodes();
+      const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
       logger.info(`📢 Token replacement - TOTALNODES: ${allNodes.length} total nodes`);
       result = result.replace(/{TOTALNODES}/g, encode(allNodes.length.toString()));
     }

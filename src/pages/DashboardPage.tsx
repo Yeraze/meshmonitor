@@ -53,6 +53,7 @@ function DashboardInner() {
   const [formVnEnabled, setFormVnEnabled] = useState(false);
   const [formVnPort, setFormVnPort] = useState('');
   const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
+  const [formHeartbeat, setFormHeartbeat] = useState('0'); // seconds, 0 = disabled (issue 2609)
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -86,6 +87,7 @@ function DashboardInner() {
     setFormVnEnabled(false);
     setFormVnPort('');
     setFormVnAllowAdmin(false);
+    setFormHeartbeat('0');
     setFormError('');
     setShowSourceModal(true);
   };
@@ -102,6 +104,7 @@ function DashboardInner() {
     setFormVnEnabled(vn?.enabled === true);
     setFormVnPort(vn?.port != null ? String(vn.port) : '');
     setFormVnAllowAdmin(vn?.allowAdminCommands === true);
+    setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     setFormError('');
     setShowSourceModal(true);
   };
@@ -111,6 +114,15 @@ function DashboardInner() {
     if (!formHost.trim()) { setFormError('Host is required'); return; }
     const port = parseInt(formPort, 10);
     if (isNaN(port) || port < 1 || port > 65535) { setFormError('Port must be 1–65535'); return; }
+
+    // Heartbeat interval (issue 2609): 0 = disabled, otherwise a positive
+    // number of seconds. We clamp to a sane range to prevent pathological
+    // configurations (sub-second floods or 24h naps that defeat the point).
+    const heartbeatSeconds = parseInt(formHeartbeat, 10);
+    if (isNaN(heartbeatSeconds) || heartbeatSeconds < 0 || heartbeatSeconds > 3600) {
+      setFormError('Heartbeat must be 0 (disabled) or 1–3600 seconds');
+      return;
+    }
 
     let vnConfig: { enabled: boolean; port: number; allowAdminCommands: boolean } | undefined;
     if (formVnEnabled) {
@@ -131,6 +143,7 @@ function DashboardInner() {
     try {
       const csrfToken = getToken();
       const cfg: Record<string, any> = { host: formHost.trim(), port };
+      if (heartbeatSeconds > 0) cfg.heartbeatIntervalSeconds = heartbeatSeconds;
       if (vnConfig) cfg.virtualNode = vnConfig;
       const body = {
         name: formName.trim(),
@@ -309,6 +322,22 @@ function DashboardInner() {
                 onChange={(e) => setFormPort(e.target.value)}
                 placeholder="4403"
               />
+            </label>
+
+            <label className="dashboard-form-field">
+              <span className="dashboard-form-label">Heartbeat (seconds, 0 = off)</span>
+              <input
+                className="dashboard-form-input"
+                type="number"
+                min={0}
+                max={3600}
+                value={formHeartbeat}
+                onChange={(e) => setFormHeartbeat(e.target.value)}
+                placeholder="0"
+              />
+              <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                Sends a periodic keepalive to the node. Try 30–60s for CLIENT_MUTE or other quiet nodes that receive little mesh traffic, otherwise leave at 0.
+              </p>
             </label>
 
             <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
