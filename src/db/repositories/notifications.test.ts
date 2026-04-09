@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // --- SQL for creating tables per backend ---
@@ -828,7 +830,7 @@ describe('NotificationsRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('NotificationsRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('NotificationsRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -861,7 +863,7 @@ describe('NotificationsRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('NotificationsRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('NotificationsRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

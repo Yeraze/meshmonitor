@@ -86,10 +86,16 @@ import { SaveBarProvider } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
-// Track pending favorite requests outside component to persist across remounts
-// Maps nodeNum -> expected isFavorite state
-const pendingFavoriteRequests = new Map<number, boolean>();
-const pendingIgnoredRequests = new Map<number, boolean>();
+// Track pending favorite/ignored requests outside component to persist across
+// remounts (App is re-keyed on source switch). Keys are composite strings
+// `${sourceId}:${nodeNum}` so that an optimistic toggle on Source A does not
+// bleed into Source B's view of the same node (bug: single nodeNum key meant
+// clicking favorite on Source 1 forced the same optimistic state onto Source
+// 2's poll response because both sources share nodeNums on overlapping meshes).
+const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number) =>
+  `${sourceId ?? ''}:${nodeNum}`;
+const pendingFavoriteRequests = new Map<string, boolean>();
+const pendingIgnoredRequests = new Map<string, boolean>();
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -2339,21 +2345,24 @@ function App() {
             (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
               let updatedNode = { ...serverNode };
 
-              // Handle pending favorite requests
-              const pendingFavoriteState = pendingFavorite.get(serverNode.nodeNum);
+              // Handle pending favorite requests — key is scoped by sourceId
+              // so Source A's optimistic toggles don't leak into Source B's view.
+              const favKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+              const pendingFavoriteState = pendingFavorite.get(favKey);
               if (pendingFavoriteState !== undefined) {
                 if (serverNode.isFavorite === pendingFavoriteState) {
-                  pendingFavorite.delete(serverNode.nodeNum);
+                  pendingFavorite.delete(favKey);
                 } else {
                   updatedNode.isFavorite = pendingFavoriteState;
                 }
               }
 
-              // Handle pending ignored requests
-              const pendingIgnoredState = pendingIgnored.get(serverNode.nodeNum);
+              // Handle pending ignored requests — same per-source scoping
+              const ignKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+              const pendingIgnoredState = pendingIgnored.get(ignKey);
               if (pendingIgnoredState !== undefined) {
                 if (serverNode.isIgnored === pendingIgnoredState) {
-                  pendingIgnored.delete(serverNode.nodeNum);
+                  pendingIgnored.delete(ignKey);
                 } else {
                   updatedNode.isIgnored = pendingIgnoredState;
                 }
@@ -4026,8 +4035,9 @@ function App() {
       return;
     }
 
-    // Prevent multiple rapid clicks on the same node
-    if (pendingFavoriteRequests.has(node.nodeNum)) {
+    // Prevent multiple rapid clicks on the same node (scoped to current source)
+    const favKey = favoritePendingKey(sourceId, node.nodeNum);
+    if (pendingFavoriteRequests.has(favKey)) {
       return;
     }
 
@@ -4037,7 +4047,7 @@ function App() {
 
     try {
       // Mark this request as pending with the expected new state
-      pendingFavoriteRequests.set(node.nodeNum, newFavoriteStatus);
+      pendingFavoriteRequests.set(favKey, newFavoriteStatus);
 
       // Optimistically update the UI - use flushSync to force immediate render
       // This prevents the polling from overwriting the optimistic update before it renders
@@ -4096,7 +4106,7 @@ function App() {
         prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
       );
       // Remove from pending on error since we reverted
-      pendingFavoriteRequests.delete(node.nodeNum);
+      pendingFavoriteRequests.delete(favKey);
       showToast(t('toast.failed_update_favorite'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingFavoriteRequests
@@ -4156,8 +4166,9 @@ function App() {
       return;
     }
 
-    // Prevent multiple rapid clicks on the same node
-    if (pendingIgnoredRequests.has(node.nodeNum)) {
+    // Prevent multiple rapid clicks on the same node (scoped to current source)
+    const ignKey = favoritePendingKey(sourceId, node.nodeNum);
+    if (pendingIgnoredRequests.has(ignKey)) {
       return;
     }
 
@@ -4167,7 +4178,7 @@ function App() {
 
     try {
       // Mark this request as pending with the expected new state
-      pendingIgnoredRequests.set(node.nodeNum, newIgnoredStatus);
+      pendingIgnoredRequests.set(ignKey, newIgnoredStatus);
 
       // Optimistically update the UI - use flushSync to force immediate render
       // This prevents the polling from overwriting the optimistic update before it renders
@@ -4224,7 +4235,7 @@ function App() {
         prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
       );
       // Remove from pending on error since we reverted
-      pendingIgnoredRequests.delete(node.nodeNum);
+      pendingIgnoredRequests.delete(ignKey);
       showToast(t('toast.failed_update_ignored'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingIgnoredRequests

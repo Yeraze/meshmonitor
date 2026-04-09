@@ -3,6 +3,24 @@
  *
  * Handles persistence of node ignored status independently of the nodes table.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
+ *
+ * **IMPORTANT — scoping model**
+ *
+ * The `ignored_nodes` table is intentionally GLOBAL, not per-source. Ignoring a
+ * node hides it across every source the user has access to. The rationale:
+ * node identity (nodeNum) is globally unique on the mesh, so a spammer or
+ * misbehaving device should be silenced regardless of which transport surfaced
+ * them.
+ *
+ * The `sourceId` column on this table is informational only — it records which
+ * source first flagged the node. The upsert conflict target is `nodeNum` alone,
+ * so re-ignoring the same node from a different source updates the existing row
+ * in place and does NOT create a second record. Callers must treat lookup,
+ * removal, and iteration as global operations.
+ *
+ * When a node is un-ignored via the API, `server.ts` sweeps every source's
+ * `nodes` row for that nodeNum to clear per-source ignore flags — see the
+ * `DELETE /api/ignored-nodes/:nodeId` handler for the full pattern.
  */
 import { eq } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';

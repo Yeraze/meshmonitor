@@ -20,6 +20,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating all auth tables per backend (no FK constraints in tests)
@@ -706,7 +708,7 @@ describe('AuthRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('AuthRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('AuthRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -734,7 +736,7 @@ describe('AuthRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('AuthRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('AuthRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

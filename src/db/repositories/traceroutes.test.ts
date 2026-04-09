@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 import { DbTraceroute, DbRouteSegment } from '../types.js';
 
@@ -52,7 +54,8 @@ const SQLITE_CREATE = `
     toLatitude REAL,
     toLongitude REAL,
     timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    sourceId TEXT
   );
 `;
 
@@ -89,7 +92,8 @@ const POSTGRES_CREATE = `
     "toLatitude" DOUBLE PRECISION,
     "toLongitude" DOUBLE PRECISION,
     timestamp BIGINT NOT NULL,
-    "createdAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL,
+    "sourceId" TEXT
   );
 `;
 
@@ -125,7 +129,8 @@ const MYSQL_CREATE = `
     toLatitude DOUBLE,
     toLongitude DOUBLE,
     timestamp BIGINT NOT NULL,
-    createdAt BIGINT NOT NULL
+    createdAt BIGINT NOT NULL,
+    sourceId VARCHAR(36)
   )
 `;
 
@@ -526,7 +531,7 @@ describe('TraceroutesRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('TraceroutesRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('TraceroutesRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -554,7 +559,7 @@ describe('TraceroutesRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('TraceroutesRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('TraceroutesRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

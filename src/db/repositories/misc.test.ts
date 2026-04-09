@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating all misc tables (no FK constraints in tests)
@@ -597,7 +599,7 @@ describe('MiscRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('MiscRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('MiscRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -624,7 +626,7 @@ describe('MiscRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('MiscRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('MiscRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

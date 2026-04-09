@@ -331,6 +331,8 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
   try {
     const channelId = parseInt(req.params.channelId, 10);
     const user = (req as any).user;
+    // requireChannelsWrite already validated sourceId exists and stashed it on the request
+    const sourceId: string = (req as any).scopedSourceId;
 
     if (isNaN(channelId)) {
       return res.status(400).json({
@@ -339,9 +341,9 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
       });
     }
 
-    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId);
+    const deletedCount = await databaseService.messages.purgeChannelMessages(channelId, sourceId);
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} messages from channel ${channelId}`);
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} messages from channel ${channelId} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -349,7 +351,7 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
         user.id,
         'channel_messages_purged',
         'messages',
-        `Purged ${deletedCount} messages from channel ${channelId}`,
+        `Purged ${deletedCount} messages from channel ${channelId} (source=${sourceId})`,
         req.ip || ''
       );
     }
@@ -357,6 +359,7 @@ router.delete('/channels/:channelId', requireChannelsWrite, async (req, res) => 
     res.json({
       message: 'Channel messages purged successfully',
       channelId,
+      sourceId,
       deletedCount
     });
   } catch (error: any) {
@@ -391,9 +394,19 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res
       });
     }
 
-    const deletedCount = await databaseService.messages.purgeDirectMessages(nodeNum);
+    // sourceId is required so the purge is scoped to a single source.
+    const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+    if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '' || typeof rawSourceId !== 'string') {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'sourceId is required'
+      });
+    }
+    const sourceId: string = rawSourceId;
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} direct messages with node ${nodeNum}`);
+    const deletedCount = await databaseService.messages.purgeDirectMessages(nodeNum, sourceId);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} direct messages with node ${nodeNum} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -401,7 +414,7 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res
         user.id,
         'dm_messages_purged',
         'messages',
-        `Purged ${deletedCount} direct messages with node ${nodeNum}`,
+        `Purged ${deletedCount} direct messages with node ${nodeNum} (source=${sourceId})`,
         req.ip || ''
       );
     }
@@ -409,6 +422,7 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, async (req, res
     res.json({
       message: 'Direct messages purged successfully',
       nodeNum,
+      sourceId,
       deletedCount
     });
   } catch (error: any) {

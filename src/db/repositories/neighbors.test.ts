@@ -18,6 +18,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating the neighbor_info table per backend
@@ -334,7 +336,7 @@ describe('NeighborsRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('NeighborsRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('NeighborsRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -361,7 +363,7 @@ describe('NeighborsRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('NeighborsRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('NeighborsRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

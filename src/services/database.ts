@@ -1786,8 +1786,8 @@ class DatabaseService {
                 createdAt: Date.now()
               };
 
-              this.insertRouteSegment(segment);
-              this.updateRecordHolderSegment(segment);
+              this.insertRouteSegment(segment, (traceroute as any).sourceId ?? undefined);
+              this.updateRecordHolderSegment(segment, (traceroute as any).sourceId ?? undefined);
               segmentsCreated++;
             }
           }
@@ -1820,8 +1820,8 @@ class DatabaseService {
                 createdAt: Date.now()
               };
 
-              this.insertRouteSegment(segment);
-              this.updateRecordHolderSegment(segment);
+              this.insertRouteSegment(segment, (traceroute as any).sourceId ?? undefined);
+              this.updateRecordHolderSegment(segment, (traceroute as any).sourceId ?? undefined);
               segmentsCreated++;
             }
           }
@@ -3697,15 +3697,22 @@ class DatabaseService {
     return Number(result.changes) > 0;
   }
 
-  purgeChannelMessages(channel: number): number {
+  purgeChannelMessages(channel: number, sourceId?: string): number {
     // For PostgreSQL/MySQL, fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
-        this.messagesRepo.purgeChannelMessages(channel).catch(err => {
+        this.messagesRepo.purgeChannelMessages(channel, sourceId).catch(err => {
           logger.debug('Failed to purge channel messages:', err);
         });
       }
       return 0;
+    }
+
+    // When sourceId is provided, restrict deletion to that source
+    if (sourceId) {
+      const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ? AND source_id = ?');
+      const result = stmt.run(channel, sourceId);
+      return Number(result.changes);
     }
 
     const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ?');
@@ -3713,11 +3720,11 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  purgeDirectMessages(nodeNum: number): number {
+  purgeDirectMessages(nodeNum: number, sourceId?: string): number {
     // For PostgreSQL/MySQL, fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
-        this.messagesRepo.purgeDirectMessages(nodeNum).catch(err => {
+        this.messagesRepo.purgeDirectMessages(nodeNum, sourceId).catch(err => {
           logger.debug('Failed to purge direct messages:', err);
         });
       }
@@ -3725,7 +3732,19 @@ class DatabaseService {
     }
 
     // Delete all DMs to/from this node
-    // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel
+    // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel.
+    // When sourceId is provided, restrict deletion to that source.
+    if (sourceId) {
+      const stmt = this.db.prepare(`
+        DELETE FROM messages
+        WHERE (fromNodeNum = ? OR toNodeNum = ?)
+        AND toNodeId != '!ffffffff'
+        AND source_id = ?
+      `);
+      const result = stmt.run(nodeNum, nodeNum, sourceId);
+      return Number(result.changes);
+    }
+
     const stmt = this.db.prepare(`
       DELETE FROM messages
       WHERE (fromNodeNum = ? OR toNodeNum = ?)
@@ -4614,14 +4633,14 @@ class DatabaseService {
   // Cache for PostgreSQL telemetry data
   private _telemetryCache: Map<string, DbTelemetry[]> = new Map();
 
-  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
+  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): DbTelemetry[] {
     // For PostgreSQL/MySQL, use async repo and cache (no averaging yet)
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cacheKey = `${nodeId}-${sinceTimestamp || 0}-${maxHours || 24}`;
+      const cacheKey = `${nodeId}-${sinceTimestamp || 0}-${maxHours || 24}-${sourceId || 'all'}`;
       if (this.telemetryRepo) {
         // Calculate limit based on maxHours
         const limit = Math.min((maxHours || 24) * 60, 5000); // ~1 per minute, max 5000
-        this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp).then(telemetry => {
+        this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp, undefined, 0, undefined, sourceId).then(telemetry => {
           // Convert to local DbTelemetry type
           this._telemetryCache.set(cacheKey, telemetry.map(t => ({
             id: t.id,
@@ -4696,6 +4715,12 @@ class DatabaseService {
     `;
     const params: any[] = [intervalMs, intervalMs, nodeId, ...rawValueTypes];
 
+    // Scope to this source so nodes that exist in multiple sources don't mix telemetry
+    if (sourceId !== undefined) {
+      query += ` AND source_id = ?`;
+      params.push(sourceId);
+    }
+
     if (sinceTimestamp !== undefined) {
       query += ` AND timestamp >= ?`;
       params.push(sinceTimestamp);
@@ -4725,6 +4750,10 @@ class DatabaseService {
         WHERE nodeId = ?
       `;
       const countParams: any[] = [nodeId];
+      if (sourceId !== undefined) {
+        countQuery += ` AND source_id = ?`;
+        countParams.push(sourceId);
+      }
       if (sinceTimestamp !== undefined) {
         countQuery += ` AND timestamp >= ?`;
         countParams.push(sinceTimestamp);
@@ -4761,6 +4790,11 @@ class DatabaseService {
         AND telemetryType IN (${rawValueTypes.map(() => '?').join(', ')})
     `;
     const rawParams: any[] = [nodeId, ...rawValueTypes];
+
+    if (sourceId !== undefined) {
+      rawQuery += ` AND source_id = ?`;
+      rawParams.push(sourceId);
+    }
 
     if (sinceTimestamp !== undefined) {
       rawQuery += ` AND timestamp >= ?`;
@@ -7661,26 +7695,26 @@ class DatabaseService {
     let nodeDeleted = false;
 
     try {
-      // Delete DMs to/from this node
+      // Delete DMs to/from this node (scoped to this source)
       if (this.messagesRepo) {
-        messagesDeleted = await this.messagesRepo.purgeDirectMessages(nodeNum);
+        messagesDeleted = await this.messagesRepo.purgeDirectMessages(nodeNum, sourceId);
       }
 
-      // Delete traceroutes for this node
+      // Delete traceroutes for this node (scoped to this source)
       if (this.traceroutesRepo) {
-        traceroutesDeleted = await this.traceroutesRepo.deleteTraceroutesForNode(nodeNum);
-        // Also delete route segments
-        await this.traceroutesRepo.deleteRouteSegmentsForNode(nodeNum);
+        traceroutesDeleted = await this.traceroutesRepo.deleteTraceroutesForNode(nodeNum, sourceId);
+        // Also delete route segments (no-op when scoped — route_segments lacks sourceId column)
+        await this.traceroutesRepo.deleteRouteSegmentsForNode(nodeNum, sourceId);
       }
 
-      // Delete telemetry for this node
+      // Delete telemetry for this node (scoped to this source)
       if (this.telemetryRepo) {
-        telemetryDeleted = await this.telemetryRepo.purgeNodeTelemetry(nodeNum);
+        telemetryDeleted = await this.telemetryRepo.purgeNodeTelemetry(nodeNum, sourceId);
       }
 
-      // Delete neighbor info for this node
+      // Delete neighbor info for this node (scoped to this source)
       if (this.neighborsRepo) {
-        await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum);
+        await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum, sourceId);
       }
 
       // Delete the node itself (scoped to sourceId)
@@ -7738,11 +7772,11 @@ class DatabaseService {
   }
 
   // Route segment operations
-  insertRouteSegment(segmentData: DbRouteSegment): void {
+  insertRouteSegment(segmentData: DbRouteSegment, sourceId?: string): void {
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.insertRouteSegment(segmentData).catch((error) => {
+        this.traceroutesRepo.insertRouteSegment(segmentData, sourceId).catch((error) => {
           logger.error('[DatabaseService] Failed to insert route segment:', error);
         });
       }
@@ -7752,8 +7786,8 @@ class DatabaseService {
     // SQLite path
     const stmt = this.db.prepare(`
       INSERT INTO route_segments (
-        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt, sourceId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -7764,54 +7798,75 @@ class DatabaseService {
       segmentData.distanceKm,
       segmentData.isRecordHolder ? 1 : 0,
       segmentData.timestamp,
-      segmentData.createdAt
+      segmentData.createdAt,
+      sourceId ?? null,
     );
   }
 
-  getLongestActiveRouteSegment(): DbRouteSegment | null {
+  getLongestActiveRouteSegment(sourceId?: string): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
     // Get the longest segment from recent traceroutes (within last 7 days)
     const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    const stmt = this.db.prepare(`
-      SELECT * FROM route_segments
-      WHERE timestamp > ?
-      ORDER BY distanceKm DESC
-      LIMIT 1
-    `);
-    const segment = stmt.get(cutoff) as DbRouteSegment | null;
+    const stmt = sourceId !== undefined
+      ? this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE timestamp > ? AND sourceId IS ?
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `)
+      : this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE timestamp > ?
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `);
+    const segment = (sourceId !== undefined
+      ? stmt.get(cutoff, sourceId)
+      : stmt.get(cutoff)) as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  getRecordHolderRouteSegment(): DbRouteSegment | null {
+  getRecordHolderRouteSegment(sourceId?: string): DbRouteSegment | null {
     // For PostgreSQL/MySQL, use async version
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM route_segments
-      WHERE isRecordHolder = 1
-      ORDER BY distanceKm DESC
-      LIMIT 1
-    `);
-    const segment = stmt.get() as DbRouteSegment | null;
+    const stmt = sourceId !== undefined
+      ? this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE isRecordHolder = 1 AND sourceId IS ?
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `)
+      : this.db.prepare(`
+          SELECT * FROM route_segments
+          WHERE isRecordHolder = 1
+          ORDER BY distanceKm DESC
+          LIMIT 1
+        `);
+    const segment = (sourceId !== undefined
+      ? stmt.get(sourceId)
+      : stmt.get()) as DbRouteSegment | null;
     return segment ? this.normalizeBigInts(segment) : null;
   }
 
-  updateRecordHolderSegment(newSegment: DbRouteSegment): void {
+  updateRecordHolderSegment(newSegment: DbRouteSegment, sourceId?: string): void {
     // For PostgreSQL/MySQL, use async approach
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.getRecordHolderRouteSegment().then(currentRecord => {
+        this.traceroutesRepo.getRecordHolderRouteSegment(sourceId).then(currentRecord => {
           if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-            this.traceroutesRepo!.clearAllRecordHolders().then(() => {
+            // Clear existing record holder flag (per-source so one source's
+            // new record doesn't unseat another source's record holder).
+            this.traceroutesRepo!.clearRecordHolderBySource(sourceId).then(() => {
               this.traceroutesRepo!.insertRouteSegment({
                 ...newSegment,
                 isRecordHolder: true
-              }).catch(err => logger.debug('Failed to insert record holder segment:', err));
-            }).catch(err => logger.debug('Failed to clear record holder segments:', err));
+              }, sourceId).catch((err: unknown) => logger.debug('Failed to insert record holder segment:', err));
+            }).catch((err: unknown) => logger.debug('Failed to clear record holder segments:', err));
             logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
           }
         }).catch(err => logger.debug('Failed to get record holder segment:', err));
@@ -7819,28 +7874,33 @@ class DatabaseService {
       return;
     }
 
-    const currentRecord = this.getRecordHolderRouteSegment();
+    const currentRecord = this.getRecordHolderRouteSegment(sourceId);
 
     // If no current record or new segment is longer, update
     if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-      // Clear all existing record holders
-      this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+      // Clear existing record holders for this source (IS NULL when scope is
+      // global, exact match when scoped — keeps per-source records independent).
+      if (sourceId !== undefined) {
+        this.db.prepare('UPDATE route_segments SET isRecordHolder = 0 WHERE sourceId IS ?').run(sourceId);
+      } else {
+        this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+      }
 
       // Insert new record holder
       this.insertRouteSegment({
         ...newSegment,
         isRecordHolder: true
-      });
+      }, sourceId);
 
       logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
     }
   }
 
-  clearRecordHolderSegment(): void {
+  clearRecordHolderSegment(sourceId?: string): void {
     // For PostgreSQL/MySQL, use async approach
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.clearAllRecordHolders().catch(err =>
+        this.traceroutesRepo.clearRecordHolderBySource(sourceId).catch((err: unknown) =>
           logger.debug('Failed to clear record holder segments:', err)
         );
       }
@@ -7848,15 +7908,19 @@ class DatabaseService {
       return;
     }
 
-    this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+    if (sourceId !== undefined) {
+      this.db.prepare('UPDATE route_segments SET isRecordHolder = 0 WHERE sourceId IS ?').run(sourceId);
+    } else {
+      this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+    }
     logger.debug('🗑️ Cleared record holder route segment');
   }
 
-  cleanupOldRouteSegments(days: number = 30): number {
+  cleanupOldRouteSegments(days: number = 30, sourceId?: string): number {
     // For PostgreSQL/MySQL, fire-and-forget async cleanup
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.cleanupOldRouteSegments(days).catch(err => {
+        this.traceroutesRepo.cleanupOldRouteSegments(days, sourceId).catch((err: unknown) => {
           logger.debug('Failed to cleanup old route segments:', err);
         });
       }
@@ -7864,6 +7928,15 @@ class DatabaseService {
     }
 
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    if (sourceId !== undefined) {
+      const stmt = this.db.prepare(`
+        DELETE FROM route_segments
+        WHERE timestamp < ? AND isRecordHolder = 0 AND sourceId IS ?
+      `);
+      const result = stmt.run(cutoff, sourceId);
+      return Number(result.changes);
+    }
+
     const stmt = this.db.prepare(`
       DELETE FROM route_segments
       WHERE timestamp < ? AND isRecordHolder = 0
@@ -10776,12 +10849,12 @@ class DatabaseService {
     return this.getAllTraceroutesForRecalculation();
   }
 
-  async clearRecordHolderSegmentAsync(): Promise<void> {
-    this.clearRecordHolderSegment();
+  async clearRecordHolderSegmentAsync(sourceId?: string): Promise<void> {
+    this.clearRecordHolderSegment(sourceId);
   }
 
-  async updateRecordHolderSegmentAsync(segment: DbRouteSegment): Promise<void> {
-    this.updateRecordHolderSegment(segment);
+  async updateRecordHolderSegmentAsync(segment: DbRouteSegment, sourceId?: string): Promise<void> {
+    this.updateRecordHolderSegment(segment, sourceId);
   }
 
   // Group 5: Neighbors/Telemetry
@@ -10793,8 +10866,8 @@ class DatabaseService {
     return this.getNeighborsForNode(nodeNum);
   }
 
-  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): Promise<DbTelemetry[]> {
-    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours);
+  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): Promise<DbTelemetry[]> {
+    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours, sourceId);
   }
 
   // Group 6: Ghost Nodes (in-memory, but async-compatible wrappers)

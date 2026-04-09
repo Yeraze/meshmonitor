@@ -41,6 +41,7 @@ import { migration as addSourceIdToDistanceDeleteLogMigration, runMigration026Po
 import { migration as addSourceIdToKeyRepairLogMigration, runMigration027Postgres, runMigration027Mysql } from '../server/migrations/027_add_source_id_to_key_repair_log.js';
 import { migration as addSourceIdToNotificationsMigration, runMigration028Postgres, runMigration028Mysql } from '../server/migrations/028_add_source_id_to_notifications.js';
 import { migration as nodesCompositePkMigration, runMigration029Postgres, runMigration029Mysql } from '../server/migrations/029_nodes_composite_pk.js';
+import { migration as addSourceIdToRouteSegmentsMigration, runMigration030Postgres, runMigration030Mysql } from '../server/migrations/030_add_source_id_to_route_segments.js';
 
 // ============================================================================
 // Registry
@@ -416,4 +417,21 @@ registry.register({
   sqlite: (db) => nodesCompositePkMigration.up(db),
   postgres: (client) => runMigration029Postgres(client),
   mysql: (pool) => runMigration029Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 030: Add sourceId to route_segments and rebuild from traceroutes.
+// route_segments previously had no sourceId column — this migration adds it,
+// clears the table, and replays every traceroute to regenerate segment rows
+// with the correct per-source attribution using each traceroute's stored
+// routePositions snapshot.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 30,
+  name: 'add_source_id_to_route_segments',
+  settingsKey: 'migration_030_add_source_id_to_route_segments',
+  sqlite: (db) => addSourceIdToRouteSegmentsMigration.up(db),
+  postgres: (client) => runMigration030Postgres(client),
+  mysql: (pool) => runMigration030Mysql(pool),
 });

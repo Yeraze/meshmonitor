@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // ============ TABLE CREATION SQL ============
@@ -497,7 +499,7 @@ describe('ChannelDatabaseRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('ChannelDatabaseRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('ChannelDatabaseRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -527,7 +529,7 @@ describe('ChannelDatabaseRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('ChannelDatabaseRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('ChannelDatabaseRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

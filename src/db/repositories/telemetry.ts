@@ -305,11 +305,11 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Purge telemetry for a node.
+   * Purge telemetry for a node, optionally scoped to a source.
    * Delegates to deleteTelemetryByNode.
    */
-  async purgeNodeTelemetry(nodeNum: number): Promise<number> {
-    return this.deleteTelemetryByNode(nodeNum);
+  async purgeNodeTelemetry(nodeNum: number, sourceId?: string): Promise<number> {
+    return this.deleteTelemetryByNode(nodeNum, sourceId);
   }
 
   /**
@@ -462,24 +462,28 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Delete all telemetry for a specific node.
+   * Delete all telemetry for a specific node, optionally scoped to a source.
+   * When sourceId is provided, only rows for that source are removed so
+   * deleting a node from one source does not wipe telemetry for the same
+   * nodeNum on other sources.
    * Keeps branching: MySQL doesn't support .returning().
    */
-  async deleteTelemetryByNode(nodeNum: number): Promise<number> {
+  async deleteTelemetryByNode(nodeNum: number, sourceId?: string): Promise<number> {
     const { telemetry } = this.tables;
+    const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId));
 
     if (this.isMySQL()) {
       const countResult = await this.db
         .select({ id: telemetry.id })
         .from(telemetry)
-        .where(eq(telemetry.nodeNum, nodeNum));
+        .where(condition);
       const cnt = countResult.length;
-      await this.db.delete(telemetry).where(eq(telemetry.nodeNum, nodeNum));
+      await this.db.delete(telemetry).where(condition);
       return cnt;
     } else {
       const deleted = await (this.db as any)
         .delete(telemetry)
-        .where(eq(telemetry.nodeNum, nodeNum))
+        .where(condition)
         .returning({ id: telemetry.id });
       return deleted.length;
     }

@@ -188,29 +188,33 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Purge all messages from a channel
+   * Purge all messages from a channel (optionally scoped to a single source).
+   * When sourceId is provided, only messages belonging to that source are deleted.
    */
-  async purgeChannelMessages(channel: number): Promise<number> {
+  async purgeChannelMessages(channel: number, sourceId?: string): Promise<number> {
     const { messages } = this.tables;
+    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId));
     const [{ deletedCount }] = await this.db
       .select({ deletedCount: count() })
       .from(messages)
-      .where(eq(messages.channel, channel));
-    await this.db.delete(messages).where(eq(messages.channel, channel));
+      .where(condition);
+    await this.db.delete(messages).where(condition);
     return deletedCount;
   }
 
   /**
-   * Purge direct messages to/from a node
+   * Purge direct messages to/from a node (optionally scoped to a single source).
+   * When sourceId is provided, only messages belonging to that source are deleted.
    */
-  async purgeDirectMessages(nodeNum: number): Promise<number> {
+  async purgeDirectMessages(nodeNum: number, sourceId?: string): Promise<number> {
     const { messages } = this.tables;
     const condition = and(
       or(
         eq(messages.fromNodeNum, nodeNum),
         eq(messages.toNodeNum, nodeNum)
       ),
-      sql`${messages.toNodeId} != '!ffffffff'`
+      sql`${messages.toNodeId} != '!ffffffff'`,
+      this.withSourceScope(messages, sourceId)
     );
     const [{ deletedCount }] = await this.db
       .select({ deletedCount: count() })

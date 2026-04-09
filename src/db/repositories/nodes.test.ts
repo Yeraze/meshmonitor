@@ -17,6 +17,8 @@ import {
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
+  postgresAvailable,
+  mysqlAvailable,
 } from './test-utils.js';
 
 // SQL for creating the nodes table per backend
@@ -738,7 +740,7 @@ describe('NodesRepository - SQLite Backend', () => {
 });
 
 // --- PostgreSQL Backend ---
-describe('NodesRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('NodesRepository - PostgreSQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
@@ -765,7 +767,7 @@ describe('NodesRepository - PostgreSQL Backend', () => {
 });
 
 // --- MySQL Backend ---
-describe('NodesRepository - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('NodesRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {

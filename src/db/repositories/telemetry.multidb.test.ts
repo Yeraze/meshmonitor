@@ -13,6 +13,7 @@ import pg from 'pg';
 import { telemetrySqlite, telemetryPostgres } from '../schema/telemetry.js';
 import { TelemetryRepository } from './telemetry.js';
 import * as schema from '../schema/index.js';
+import { postgresAvailable } from './test-utils.js';
 
 const { Pool } = pg;
 
@@ -107,7 +108,7 @@ describe('TelemetryRepository - SQLite Backend', () => {
   });
 });
 
-describe('TelemetryRepository - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('TelemetryRepository - PostgreSQL Backend', () => {
   let pool: pg.Pool;
   let drizzleDb: ReturnType<typeof drizzlePostgres>;
   let repo: TelemetryRepository;
