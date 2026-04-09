@@ -55,11 +55,20 @@ vi.mock('../hooks/useSourceQuery', () => ({
 // Mock fetch for last announcement time
 global.fetch = vi.fn();
 
-// Skip the full suite until tests are updated to match the component's current
-// structure. Initial un-skip work got past the prior i18n/SaveBar/useSourceQuery
-// blockers, but the tests still expect an older DOM (different label
-// associations, buttons, form layout). A targeted rewrite is needed — tracked
-// as Tier 2 follow-up.
+// Skip: component has diverged substantially from the original test expectations.
+// Three interlocking problems make this a wholesale rewrite rather than a patch:
+//   1. The component now uses the external SaveBar pattern — there is no inline
+//      "Save Changes" button, so ~25 tests asserting `getByText('Save Changes')`
+//      all fail. Save assertions need to be rewritten against the mocked
+//      useSaveBar handler (see mockUseSaveBar above).
+//   2. The "Broadcast Channel" label has `htmlFor="announceChannel"` but the
+//      corresponding form control is a list of per-channel checkboxes, not a
+//      single input. `getByLabelText(/Broadcast Channel/)` throws.
+//   3. Almost every interactive test uses `userEvent.setup({ delay: null })`
+//      with fake timers, which deadlocks under vitest 4 (same issue fixed in
+//      Toast.test.tsx — switch to `fireEvent` or use `vi.useFakeTimers({
+//      shouldAdvanceTime: true })`).
+// Tracked as Tier 2 follow-up — needs a from-scratch test file.
 describe.skip('AutoAnnounceSection Component', () => {
   const mockChannels: Channel[] = [
     { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },
