@@ -232,6 +232,52 @@ describe('useProcessedNodes', () => {
       expect(result.current.processedNodes).toHaveLength(1);
       expect(result.current.processedNodes[0].user?.longName).toBe('Beta Node');
     });
+
+    // Issue 2610: the filter/search box should find older nodes that are
+    // normally hidden by the maxNodeAgeHours cutoff. List/map still hide
+    // them when browsing (no filter text), but active search escapes the
+    // cutoff so users can locate a node they know exists in the db.
+    it('should bypass age filter when text filter is active (issue 2610)', () => {
+      // Gamma Node is 10 days old vs 72h maxAge — normally hidden.
+      // With the search text matching its name, it should appear.
+      mockUseUIReturn.mockReturnValue({
+        nodeFilter: 'Gamma',
+      });
+
+      const { result } = renderHook(() => useProcessedNodes(), {
+        wrapper: createWrapper(),
+      });
+
+      expect(result.current.processedNodes).toHaveLength(1);
+      expect(result.current.processedNodes[0].user?.longName).toBe('Gamma Node');
+    });
+
+    it('should still hide stale nodes when no text filter is active (issue 2610)', () => {
+      // Sanity check that the empty-filter path keeps the age cutoff.
+      mockUseUIReturn.mockReturnValue({
+        nodeFilter: '',
+      });
+
+      const { result } = renderHook(() => useProcessedNodes(), {
+        wrapper: createWrapper(),
+      });
+
+      // Gamma (10 days old) should still be absent
+      expect(result.current.processedNodes.find(n => n.nodeNum === 11111)).toBeUndefined();
+    });
+
+    it('should treat whitespace-only filter as empty (age filter applies)', () => {
+      mockUseUIReturn.mockReturnValue({
+        nodeFilter: '   ',
+      });
+
+      const { result } = renderHook(() => useProcessedNodes(), {
+        wrapper: createWrapper(),
+      });
+
+      // Whitespace-only is not a real search — stale nodes stay hidden
+      expect(result.current.processedNodes.find(n => n.nodeNum === 11111)).toBeUndefined();
+    });
   });
 
   describe('advanced filters', () => {

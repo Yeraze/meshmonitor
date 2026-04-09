@@ -180,12 +180,21 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
   const processedNodes = useMemo((): DeviceInfo[] => {
     const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
 
-    // Step 1: Age filter (favorites are always visible)
-    const ageFiltered = nodes.filter(node => {
-      if (node.isFavorite) return true;
-      if (!node.lastHeard) return false;
-      return node.lastHeard >= cutoffTime;
-    });
+    // Step 1: Age filter (favorites are always visible).
+    //
+    // Issue 2610: when the user is actively searching (text filter is
+    // non-empty) bypass the age cutoff so they can find older nodes that
+    // are still in the database. The list/map only hide stale nodes to
+    // keep browsing tidy — once you're explicitly looking for something
+    // by name or id, finding it matters more than freshness.
+    const isSearching = textFilter.trim().length > 0;
+    const ageFiltered = isSearching
+      ? nodes
+      : nodes.filter(node => {
+          if (node.isFavorite) return true;
+          if (!node.lastHeard) return false;
+          return node.lastHeard >= cutoffTime;
+        });
 
     // Step 2: Text filter
     const textFiltered = filterNodesByText(ageFiltered, textFilter);
