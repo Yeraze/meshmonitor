@@ -20,8 +20,11 @@ import { createStream } from 'rotating-file-stream';
 
 describe('setupAccessLogger', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(createStream).mockClear();
+    // resetAllMocks (not clearAllMocks) — earlier tests set mockImplementation
+    // on fs.mkdirSync (to throw) and createStream (to throw); clearAllMocks only
+    // clears call history, leaving those implementations in place and poisoning
+    // later tests.
+    vi.resetAllMocks();
   });
 
   describe('Disabled State', () => {
@@ -301,8 +304,7 @@ describe('setupAccessLogger', () => {
   });
 
   describe('Custom Log Paths', () => {
-    // TODO: Fix test isolation issue with Vitest 4.0 - this test passes in isolation but fails in suite
-    it.skip('should handle custom log path', () => {
+    it('should handle custom log path', () => {
       vi.mocked(getEnvironmentConfig).mockReturnValue({
         accessLogEnabled: true,
         accessLogPath: '/custom/path/to/logs/app.log',
