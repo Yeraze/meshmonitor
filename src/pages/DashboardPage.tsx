@@ -19,6 +19,8 @@ import {
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import LoginModal from '../components/LoginModal';
+import UserMenu from '../components/UserMenu';
+import { ToastProvider } from '../components/ToastContainer';
 import { appBasename } from '../init';
 import '../styles/dashboard.css';
 
@@ -43,7 +45,6 @@ function DashboardInner() {
 
   const isAuthenticated = authStatus?.authenticated ?? false;
   const isAdmin = authStatus?.user?.isAdmin ?? false;
-  const username = authStatus?.user?.username ?? null;
 
   const defaultCenter = {
     lat: defaultMapCenterLat ?? 30.0,
@@ -247,7 +248,7 @@ function DashboardInner() {
             </button>
           )}
           {isAuthenticated ? (
-            <span style={{ fontSize: 13, color: 'var(--ctp-subtext1)', fontWeight: 500 }}>👤 {username}</span>
+            <UserMenu />
           ) : (
             <button
               className="dashboard-signin-btn"
@@ -420,7 +421,9 @@ function DashboardInner() {
 export default function DashboardPage() {
   return (
     <SettingsProvider>
-      <DashboardInner />
+      <ToastProvider>
+        <DashboardInner />
+      </ToastProvider>
     </SettingsProvider>
   );
 }
