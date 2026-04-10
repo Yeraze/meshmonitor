@@ -330,6 +330,52 @@
   color: var(--ctp-sapphire);
 }
 
+/* ── Sidebar footer ─────────────────────────────────────────────────────── */
+
+.dashboard-sidebar-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--ctp-surface0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.dashboard-sidebar-version {
+  font-size: 10px;
+  color: var(--ctp-subtext0);
+  opacity: 0.6;
+}
+
+.dashboard-sidebar-footer-icons {
+  display: flex;
+  gap: 6px;
+}
+
+.dashboard-sidebar-footer-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--ctp-subtext0);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s;
+}
+
+.dashboard-sidebar-footer-btn:hover:not(:disabled) {
+  background-color: var(--ctp-surface0);
+}
+
+.dashboard-sidebar-footer-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ── Map panel ───────────────────────────────────────────────────────────── */
 
 .dashboard-map-container {

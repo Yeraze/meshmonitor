@@ -4834,6 +4834,7 @@ function App() {
         {activeTab === 'settings' && (
           <ErrorBoundary fallbackTitle="Settings failed to load">
           <SettingsTab
+            mode="source"
             maxNodeAgeHours={maxNodeAgeHours}
             inactiveNodeThresholdHours={inactiveNodeThresholdHours}
             inactiveNodeCheckIntervalMinutes={inactiveNodeCheckIntervalMinutes}
