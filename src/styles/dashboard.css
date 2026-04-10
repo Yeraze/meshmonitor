@@ -95,23 +95,21 @@
   overflow: hidden;
 }
 
-/* Faint Meshtastic watermark behind the tile. Uses a ::before overlay so it
-   sits behind the content but above the card background, and doesn't steal
-   pointer events from the card's click handler. */
+/* Faint Meshtastic logo watermark behind the tile. Uses a ::before overlay so
+   it sits behind the content but above the card background, and doesn't steal
+   pointer events from the card's click handler.  The official Meshtastic logo
+   fills the entire card as a subtle background graphic identifying the source
+   type at a glance.  Inlined as a data URL to avoid BASE_URL path issues. */
 .dashboard-source-card.has-meshtastic-watermark::before {
   content: '';
   position: absolute;
-  right: -10px;
-  bottom: -12px;
-  width: 80px;
-  height: 80px;
-  background-image: url('/meshtastic-icon.svg');
-  background-size: contain;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Cpath d='M125 0Q0 0 0 125v262q0 125 125 125h262q125 0 125-125V125Q512 0 387 0Z' fill='%2367ea94'/%3E%3Cpath d='m250.908 330.267-57.782 84.738-12.188-8.311 63.864-93.657a7.378 7.378 0 0 1 12.18-.011l64.012 93.51-12.173 8.333z' fill='%232c2d3c' transform='translate(-135.496 -390.354)scale(1.79)'/%3E%3Cpath d='m87.642 581.398 67.115-98.421-12.119-8.264-67.115 98.421z' fill='%232c2d3c' transform='translate(-63.403 -699.639)scale(1.81)'/%3E%3C/svg%3E");
+  background-size: cover;
   background-repeat: no-repeat;
-  background-position: bottom right;
-  opacity: 0.06;
+  background-position: center;
+  opacity: 0.07;
   pointer-events: none;
-  color: var(--ctp-text);
 }
 
 .dashboard-source-card > * {

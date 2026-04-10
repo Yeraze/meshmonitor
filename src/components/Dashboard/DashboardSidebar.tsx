@@ -5,7 +5,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
-import { appBasename } from '../../init';
 
 interface DashboardSidebarProps {
   sources: DashboardSource[];
@@ -176,14 +175,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               <span className="dashboard-source-card-name" title={source.name}>
                 {source.name}
               </span>
-              {source.type === 'meshtastic_tcp' || source.type === 'meshtastic_mqtt' ? (
-                <img
-                  src={`${appBasename}/meshtastic-icon.svg`}
-                  alt="Meshtastic"
-                  title={source.type}
-                  className="dashboard-source-card-type-icon"
-                />
-              ) : (
+              {source.type !== 'meshtastic_tcp' && source.type !== 'meshtastic_mqtt' && (
                 <span className="dashboard-source-card-badge">{source.type}</span>
               )}
               {(() => {
