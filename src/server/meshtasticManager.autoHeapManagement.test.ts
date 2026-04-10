@@ -149,13 +149,22 @@ vi.mock('./services/dataEventEmitter.js', () => ({
   },
 }));
 
-vi.mock('./messageQueueService.js', () => ({
-  messageQueueService: {
+vi.mock('./messageQueueService.js', () => {
+  const mockInstance = {
     enqueue: vi.fn(),
     setSendCallback: vi.fn(),
+    handleAck: vi.fn(),
+    handleFailure: vi.fn(),
+    recordExternalSend: vi.fn(),
     clear: vi.fn(),
-  },
-}));
+    getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false })),
+  };
+  function MessageQueueService() { return mockInstance as any; }
+  return {
+    messageQueueService: mockInstance,
+    MessageQueueService,
+  };
+});
 
 vi.mock('./utils/cronScheduler.js', () => ({
   validateCron: vi.fn(() => true),

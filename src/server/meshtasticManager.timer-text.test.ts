@@ -9,11 +9,22 @@ vi.mock('../services/database', () => ({
 }));
 
 // Mock the message queue service
-vi.mock('./messageQueueService', () => ({
-  messageQueueService: {
+vi.mock('./messageQueueService.js', () => {
+  const mockInstance = {
     enqueue: vi.fn(),
-  },
-}));
+    setSendCallback: vi.fn(),
+    handleAck: vi.fn(),
+    handleFailure: vi.fn(),
+    recordExternalSend: vi.fn(),
+    clear: vi.fn(),
+    getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false })),
+  };
+  function MessageQueueService() { return mockInstance as any; }
+  return {
+    messageQueueService: mockInstance,
+    MessageQueueService,
+  };
+});
 
 // Mock logger
 vi.mock('./logger', () => ({
