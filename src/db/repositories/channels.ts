@@ -158,7 +158,7 @@ export class ChannelsRepository extends BaseRepository {
 
       const newChannel: any = {
         id: data.id,
-        name: data.name,
+        name: data.name || `Channel ${data.id}`,
         psk: data.psk ?? null,
         role: data.role ?? null,
         uplinkEnabled: data.uplinkEnabled ?? true,
