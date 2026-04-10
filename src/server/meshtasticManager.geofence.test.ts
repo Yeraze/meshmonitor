@@ -15,11 +15,24 @@ vi.mock('../services/database.js', () => ({
   },
 }));
 
-vi.mock('./messageQueueService.js', () => ({
-  messageQueueService: {
+vi.mock('./messageQueueService.js', () => {
+  // MeshtasticManager instantiates its own MessageQueueService per-instance;
+  // every constructed instance shares this single mock so assertions against
+  // `enqueue`/`setSendCallback` work regardless of which manager made the call.
+  const mockInstance = {
     enqueue: vi.fn(),
-  },
-}));
+    setSendCallback: vi.fn(),
+    handleAck: vi.fn(),
+    handleFailure: vi.fn(),
+    recordExternalSend: vi.fn(),
+    clear: vi.fn(),
+    getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false })),
+  };
+  return {
+    messageQueueService: mockInstance,
+    MessageQueueService: vi.fn(() => mockInstance),
+  };
+});
 
 vi.mock('./logger.js', () => ({
   default: {

@@ -46,6 +46,10 @@ vi.mock('../services/database.js', () => ({
     settings: {
       getSetting: mockGetSetting,
       setSetting: mockSetSetting,
+      // Per-source settings lookup — delegates to the same stub used for
+      // global settings so tests can assert against `mockGetSetting`.
+      getSettingForSource: vi.fn((_sourceId: string, key: string) => mockGetSetting(key)),
+      setSettingForSource: vi.fn((_sourceId: string, key: string, value: string) => mockSetSetting(key, value)),
     },
     nodes: {
       getNode: mockGetNode,
@@ -168,13 +172,22 @@ vi.mock('./services/dataEventEmitter.js', () => ({
   },
 }));
 
-vi.mock('./messageQueueService.js', () => ({
-  messageQueueService: {
+vi.mock('./messageQueueService.js', () => {
+  const mockInstance = {
     enqueue: vi.fn(),
     setSendCallback: vi.fn(),
+    handleAck: vi.fn(),
+    handleFailure: vi.fn(),
+    recordExternalSend: vi.fn(),
     clear: vi.fn(),
-  },
-}));
+    getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false })),
+  };
+  function MessageQueueService() { return mockInstance as any; }
+  return {
+    messageQueueService: mockInstance,
+    MessageQueueService,
+  };
+});
 
 vi.mock('./utils/cronScheduler.js', () => ({
   validateCron: vi.fn(() => true),

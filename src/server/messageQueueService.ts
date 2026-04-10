@@ -26,7 +26,7 @@ export interface QueuedMessage {
   onFailure?: (reason: string) => void;
 }
 
-class MessageQueueService {
+export class MessageQueueService {
   private queue: QueuedMessage[] = [];
   private processing = false;
   private lastSendTime = 0;

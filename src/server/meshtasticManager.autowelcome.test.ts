@@ -83,14 +83,26 @@ vi.mock('../services/database.js', () => ({
   },
 }));
 
-// Mock the message queue service
-vi.mock('./messageQueueService.js', () => ({
-  messageQueueService: {
+// Mock the message queue service — unify the singleton and per-instance
+// constructor return value so assertions on `messageQueueService.enqueue`
+// still work for code that now routes through `new MessageQueueService()`.
+vi.mock('./messageQueueService.js', () => {
+  const mockInstance = {
     enqueue: vi.fn(),
     setSendCallback: vi.fn(),
+    handleAck: vi.fn(),
+    handleFailure: vi.fn(),
     recordExternalSend: vi.fn(),
-  },
-}));
+    clear: vi.fn(),
+    getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false })),
+  };
+  // Regular function — arrow functions can't be called with `new`.
+  function MessageQueueService() { return mockInstance as any; }
+  return {
+    messageQueueService: mockInstance,
+    MessageQueueService,
+  };
+});
 
 // Mock the meshtasticProtobufService
 vi.mock('../services/meshtasticProtobufService.js', () => ({

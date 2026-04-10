@@ -14,7 +14,6 @@ import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
-import { messageQueueService } from '../../messageQueueService.js';
 import { MAX_MESSAGE_BYTES } from '../../constants/meshtastic.js';
 
 /** Maximum number of message parts allowed when splitting long messages */
@@ -479,7 +478,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       messageParts.forEach((part, index) => {
         const isFirstMessage = index === 0;
 
-        const queueId = messageQueueService.enqueue(
+        const queueId = activeManager.messageQueue.enqueue(
           part,
           destinationNum || 0, // 0 for channel messages (broadcast)
           isFirstMessage ? replyId : undefined, // Only first message gets replyId

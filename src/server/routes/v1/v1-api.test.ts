@@ -247,7 +247,24 @@ vi.mock('../../../services/database.js', () => {
   };
 });
 
-// Mock meshtasticManager
+// Mock meshtasticManager — includes a per-instance messageQueue stub so that
+// v1/messages.ts calls (which now route through `activeManager.messageQueue`
+// instead of the old singleton) land on a mock we can assert against.
+// Must be hoisted because vi.mock() factories run before module-level code.
+const { mockMessageQueue } = vi.hoisted(() => {
+  let v1QueueIdCounter = 0;
+  return {
+    mockMessageQueue: {
+      enqueue: vi.fn((_text: string, _destination: number, _replyId?: number, _onSuccess?: () => void, _onFailure?: (reason: string) => void, _channel?: number) => {
+        v1QueueIdCounter++;
+        return `queue-${v1QueueIdCounter}-${Date.now()}`;
+      }),
+      clear: vi.fn(),
+      getStatus: vi.fn(() => ({ queueLength: 0, pendingAcks: 0, processing: false }))
+    }
+  };
+});
+
 vi.mock('../../meshtasticManager.js', () => {
   return {
     default: {
@@ -268,7 +285,8 @@ vi.mock('../../meshtasticManager.js', () => {
           remaining = remaining.substring(maxChars);
         }
         return chunks;
-      })
+      }),
+      messageQueue: mockMessageQueue
     }
   };
 });
@@ -959,11 +977,11 @@ describe('POST /api/v1/messages - Error Handling', () => {
 describe('POST /api/v1/messages - Multi-Message Breakup', () => {
   it('should send short messages directly without splitting', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
     vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     const response = await request(app)
       .post('/api/v1/messages')
@@ -980,16 +998,16 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.data).toHaveProperty('requestId', 123456789);
     // Should call sendTextMessage directly, not queue
     expect(meshtasticManager.default.sendTextMessage).toHaveBeenCalledTimes(1);
-    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+    expect(mockMessageQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it('should split and queue long messages for channel broadcast', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
     vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Create a message longer than 200 bytes
     const longMessage = 'A'.repeat(250);
@@ -1017,17 +1035,17 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(meshtasticManager.default.sendTextMessage).not.toHaveBeenCalled();
     // Should call splitMessageForMeshtastic and enqueue
     expect(meshtasticManager.default.splitMessageForMeshtastic).toHaveBeenCalledWith(longMessage, 200);
-    expect(messageQueueService.enqueue).toHaveBeenCalled();
+    expect(mockMessageQueue.enqueue).toHaveBeenCalled();
   });
 
   it('should split and queue long direct messages', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
     const databaseService = await import('../../../services/database.js');
 
     // Reset mocks and restore default permission behavior
     vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
     vi.mocked(databaseService.default.checkPermissionAsync).mockResolvedValue(true);
 
     // Create a message longer than 200 bytes
@@ -1050,18 +1068,18 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.data).toHaveProperty('toNodeId', '!a1b2c3d4');
 
     // Should call enqueue with correct destination
-    expect(messageQueueService.enqueue).toHaveBeenCalled();
-    const enqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
+    expect(mockMessageQueue.enqueue).toHaveBeenCalled();
+    const enqueueCall = vi.mocked(mockMessageQueue.enqueue).mock.calls[0];
     expect(enqueueCall[1]).toBe(0xa1b2c3d4); // Destination node number
   });
 
   it('should only set replyId on first message part', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
     vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Create a message longer than 200 bytes with a replyId
     const longMessage = 'C'.repeat(450);
@@ -1077,21 +1095,21 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
       .expect(202);
 
     // First call should have replyId
-    const firstEnqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[0];
+    const firstEnqueueCall = vi.mocked(mockMessageQueue.enqueue).mock.calls[0];
     expect(firstEnqueueCall[2]).toBe(999888777); // replyId
 
     // Subsequent calls should NOT have replyId
-    const secondEnqueueCall = vi.mocked(messageQueueService.enqueue).mock.calls[1];
+    const secondEnqueueCall = vi.mocked(mockMessageQueue.enqueue).mock.calls[1];
     expect(secondEnqueueCall[2]).toBeUndefined();
   });
 
   it('should handle messages exactly at the byte limit', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
     vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Message exactly at 200 bytes (ASCII characters = 1 byte each)
     const exactMessage = 'D'.repeat(200);
@@ -1109,16 +1127,16 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.data).toHaveProperty('deliveryState', 'pending');
     expect(response.body.data).toHaveProperty('messageCount', 1);
     expect(meshtasticManager.default.sendTextMessage).toHaveBeenCalledTimes(1);
-    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+    expect(mockMessageQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it('should handle multi-byte UTF-8 characters correctly', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
     vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Emoji characters are 4 bytes each in UTF-8
     // 51 emoji = 204 bytes > 200 limit, but only 51 characters
@@ -1160,10 +1178,10 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
 
   it('should set correct channel for broadcast split messages', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     const longMessage = 'F'.repeat(300);
 
@@ -1177,17 +1195,17 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
       .expect(202);
 
     // Each enqueue call should have the correct channel
-    const calls = vi.mocked(messageQueueService.enqueue).mock.calls;
+    const calls = vi.mocked(mockMessageQueue.enqueue).mock.calls;
     for (const call of calls) {
       expect(call[5]).toBe(5); // channel parameter (6th argument)
     }
   });
 
   it('should return 413 when message would require more than 3 parts', async () => {
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Message of 800 characters would require 4 parts (200 chars each)
     const veryLongMessage = 'X'.repeat(800);
@@ -1206,14 +1224,14 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.message).toContain('Would require 4 parts');
     expect(response.body.message).toContain('maximum is 3 parts');
     // Should NOT queue any messages
-    expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+    expect(mockMessageQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it('should allow messages that split into exactly 3 parts', async () => {
-    const { messageQueueService } = await import('../../messageQueueService.js');
+    // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(messageQueueService.enqueue).mockClear();
+    vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Message of 600 characters should split into exactly 3 parts (200 chars each)
     const maxAllowedMessage = 'Y'.repeat(600);
@@ -1229,7 +1247,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
 
     expect(response.body.success).toBe(true);
     expect(response.body.data.messageCount).toBe(3);
-    expect(messageQueueService.enqueue).toHaveBeenCalledTimes(3);
+    expect(mockMessageQueue.enqueue).toHaveBeenCalledTimes(3);
   });
 });
 
