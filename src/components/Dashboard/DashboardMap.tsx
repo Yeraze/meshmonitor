@@ -6,7 +6,7 @@
  * that have valid GPS positions.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -22,6 +22,7 @@ export interface DashboardMapProps {
   tilesetId: string;
   customTilesets: CustomTileset[];
   defaultCenter: { lat: number; lng: number };
+  sourceId: string | null;
 }
 
 /** Extract lat/lng from a node — handles both flat (API) and nested (position) shapes. */
@@ -41,18 +42,23 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
 
 interface MapBoundsUpdaterProps {
   positions: [number, number][];
+  sourceId: string | null;
 }
 
-function MapBoundsUpdater({ positions }: MapBoundsUpdaterProps) {
+function MapBoundsUpdater({ positions, sourceId }: MapBoundsUpdaterProps) {
   const map = useMap();
+  const hasFittedRef = useRef(false);
 
   useEffect(() => {
+    // Only auto-fit once on initial load, then let the user control the view
+    if (hasFittedRef.current) return;
     if (positions.length === 0) return;
     const bounds = L.latLngBounds(positions);
     if (bounds.isValid()) {
       map.fitBounds(bounds, { padding: [40, 40] });
+      hasFittedRef.current = true;
     }
-  }, [map, positions]);
+  }, [map, positions, sourceId]);
 
   return null;
 }
@@ -67,6 +73,7 @@ export default function DashboardMap({
   tilesetId,
   customTilesets,
   defaultCenter,
+  sourceId,
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
 
@@ -93,7 +100,7 @@ export default function DashboardMap({
           maxZoom={tileset.maxZoom}
         />
 
-        {hasNodes && <MapBoundsUpdater positions={nodePositions} />}
+        <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
 
         {nodesWithPosition.map(({ node, pos }) => {
           const hops = node.hopsAway ?? 999;

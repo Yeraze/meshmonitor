@@ -284,6 +284,7 @@ function DashboardInner() {
           tilesetId={mapTileset}
           customTilesets={customTilesets}
           defaultCenter={defaultCenter}
+          sourceId={selectedSourceId}
         />
       </div>
 
