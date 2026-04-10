@@ -3724,11 +3724,13 @@ class MeshtasticManager implements ISourceManager {
     if (channel.settings) {
       // Only save channels that are actually configured and useful
       // Use the device-provided name if non-empty; otherwise fall back to a
-      // generic label.  Firmware sends an empty string for channels without a
-      // custom name (the "MediumFast" preset name is NOT included in the
-      // channel name field).  Storing "" caused unnamed channels to lose their
-      // display name on fresh databases (#2619).
-      const channelName = channel.settings.name || `Channel ${channel.index}`;
+      // generic label for secondary channels (1-7).  Firmware sends an empty
+      // string for channels without a custom name (the "MediumFast" preset
+      // name is NOT in the channel name field).  Storing "" caused unnamed
+      // secondary channels to lose their display name on fresh databases
+      // (#2619).  Channel 0 keeps "" so the primary channel name comes from
+      // device config, not a generic fallback.
+      const channelName = channel.settings.name || (channel.index === 0 ? '' : `Channel ${channel.index}`);
       const displayName = channelName || `Channel ${channel.index}`; // For logging only
       const hasValidConfig = channel.settings.name !== undefined ||
                             channel.settings.psk ||
