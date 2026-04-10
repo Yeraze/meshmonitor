@@ -317,17 +317,21 @@ export class TelemetryRepository extends BaseRepository {
    * Deletes only position-related telemetry types (latitude, longitude, altitude, etc.)
    * Keeps branching: MySQL doesn't support .returning().
    */
-  async purgePositionHistory(nodeNum: number): Promise<number> {
+  async purgePositionHistory(nodeNum: number, sourceId?: string): Promise<number> {
     const positionTypes = [
       'latitude', 'longitude', 'altitude',
       'ground_speed', 'ground_track',
       'estimated_latitude', 'estimated_longitude',
     ];
     const { telemetry } = this.tables;
-    const condition = and(
+    const conditions = [
       eq(telemetry.nodeNum, nodeNum),
-      inArray(telemetry.telemetryType, positionTypes)
-    );
+      inArray(telemetry.telemetryType, positionTypes),
+    ];
+    if (sourceId) {
+      conditions.push(eq(telemetry.sourceId, sourceId));
+    }
+    const condition = and(...conditions);
 
     if (this.isMySQL()) {
       const countResult = await this.db

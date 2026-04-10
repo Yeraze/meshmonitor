@@ -403,17 +403,39 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('message', 'Invalid node number');
     });
 
+    it('should return 400 when sourceId is missing', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message', 'sourceId is required');
+    });
+
     it('should successfully purge traceroutes for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(15);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/traceroutes')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 15);
       expect(response.body).toHaveProperty('message', 'Node traceroutes purged successfully');
-      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456);
+      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456, 'source-a');
+    });
+
+    it('should scope purge to the provided sourceId', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(8);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+
+      await request(app)
+        .delete('/api/messages/nodes/123456/traceroutes')
+        .send({ sourceId: 'source-b' });
+
+      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456, 'source-b');
     });
 
     it('should successfully purge traceroutes for user with messages:write', async () => {
@@ -424,10 +446,12 @@ describe('Message Deletion Routes', () => {
       mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(8);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/traceroutes')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(200);
-      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456);
+      expect(mockTraceroutesRepo.deleteTraceroutesForNode).toHaveBeenCalledWith(123456, 'source-a');
     });
 
     it('should log audit event for traceroutes purge', async () => {
@@ -435,7 +459,9 @@ describe('Message Deletion Routes', () => {
       mockTraceroutesRepo.deleteTraceroutesForNode.mockResolvedValue(20);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      await request(app).delete('/api/messages/nodes/123456/traceroutes');
+      await request(app)
+        .delete('/api/messages/nodes/123456/traceroutes')
+        .send({ sourceId: 'source-a' });
 
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
@@ -468,17 +494,39 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('message', 'Invalid node number');
     });
 
+    it('should return 400 when sourceId is missing', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      const response = await request(app).delete('/api/messages/nodes/123456/position-history');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message', 'sourceId is required');
+    });
+
     it('should successfully purge position history for admin', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       mockTelemetryRepo.purgePositionHistory.mockResolvedValue(18);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/position-history');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/position-history')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 18);
       expect(response.body).toHaveProperty('message', 'Node position history purged successfully');
-      expect(mockTelemetryRepo.purgePositionHistory).toHaveBeenCalledWith(123456);
+      expect(mockTelemetryRepo.purgePositionHistory).toHaveBeenCalledWith(123456, 'source-a');
+    });
+
+    it('should scope purge to the provided sourceId', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      mockTelemetryRepo.purgePositionHistory.mockResolvedValue(3);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+
+      await request(app)
+        .delete('/api/messages/nodes/123456/position-history')
+        .send({ sourceId: 'source-b' });
+
+      expect(mockTelemetryRepo.purgePositionHistory).toHaveBeenCalledWith(123456, 'source-b');
     });
 
     it('should log audit event for position history purge', async () => {
@@ -486,7 +534,9 @@ describe('Message Deletion Routes', () => {
       mockTelemetryRepo.purgePositionHistory.mockResolvedValue(5);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      await request(app).delete('/api/messages/nodes/123456/position-history');
+      await request(app)
+        .delete('/api/messages/nodes/123456/position-history')
+        .send({ sourceId: 'source-a' });
 
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,
@@ -580,17 +630,39 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('message', 'Invalid node number');
     });
 
+    it('should return 400 when sourceId is missing', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message', 'sourceId is required');
+    });
+
     it('should successfully purge telemetry for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       mockTelemetryRepo.purgeNodeTelemetry.mockResolvedValue(45);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/telemetry')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('deletedCount', 45);
       expect(response.body).toHaveProperty('message', 'Node telemetry purged successfully');
-      expect(mockTelemetryRepo.purgeNodeTelemetry).toHaveBeenCalledWith(123456);
+      expect(mockTelemetryRepo.purgeNodeTelemetry).toHaveBeenCalledWith(123456, 'source-a');
+    });
+
+    it('should scope purge to the provided sourceId', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      mockTelemetryRepo.purgeNodeTelemetry.mockResolvedValue(10);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+
+      await request(app)
+        .delete('/api/messages/nodes/123456/telemetry')
+        .send({ sourceId: 'source-b' });
+
+      expect(mockTelemetryRepo.purgeNodeTelemetry).toHaveBeenCalledWith(123456, 'source-b');
     });
 
     it('should successfully purge telemetry for user with messages:write', async () => {
@@ -601,10 +673,12 @@ describe('Message Deletion Routes', () => {
       mockTelemetryRepo.purgeNodeTelemetry.mockResolvedValue(12);
       vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/telemetry')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(200);
-      expect(mockTelemetryRepo.purgeNodeTelemetry).toHaveBeenCalledWith(123456);
+      expect(mockTelemetryRepo.purgeNodeTelemetry).toHaveBeenCalledWith(123456, 'source-a');
     });
 
     it('should log audit event for telemetry purge', async () => {
@@ -612,7 +686,9 @@ describe('Message Deletion Routes', () => {
       mockTelemetryRepo.purgeNodeTelemetry.mockResolvedValue(30);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
 
-      await request(app).delete('/api/messages/nodes/123456/telemetry');
+      await request(app)
+        .delete('/api/messages/nodes/123456/telemetry')
+        .send({ sourceId: 'source-a' });
 
       expect(auditLogSpy).toHaveBeenCalledWith(
         1,

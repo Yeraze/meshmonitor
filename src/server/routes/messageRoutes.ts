@@ -457,9 +457,14 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, async (req, r
       });
     }
 
-    const deletedCount = await databaseService.traceroutes.deleteTraceroutesForNode(nodeNum);
+    const sourceId = (req.body?.sourceId || req.query?.sourceId) as string | undefined;
+    if (!sourceId) {
+      return res.status(400).json({ error: 'Bad request', message: 'sourceId is required' });
+    }
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} traceroutes for node ${nodeNum}`);
+    const deletedCount = await databaseService.traceroutes.deleteTraceroutesForNode(nodeNum, sourceId);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} traceroutes for node ${nodeNum} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -467,7 +472,7 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, async (req, r
         user.id,
         'node_traceroutes_purged',
         'traceroute',
-        `Purged ${deletedCount} traceroutes for node ${nodeNum}`,
+        `Purged ${deletedCount} traceroutes for node ${nodeNum} (source=${sourceId})`,
         req.ip || ''
       );
     }
@@ -509,9 +514,14 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, async (req, res
       });
     }
 
-    const deletedCount = await databaseService.telemetry.purgeNodeTelemetry(nodeNum);
+    const sourceId = (req.body?.sourceId || req.query?.sourceId) as string | undefined;
+    if (!sourceId) {
+      return res.status(400).json({ error: 'Bad request', message: 'sourceId is required' });
+    }
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} telemetry records for node ${nodeNum}`);
+    const deletedCount = await databaseService.telemetry.purgeNodeTelemetry(nodeNum, sourceId);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} telemetry records for node ${nodeNum} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -519,7 +529,7 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, async (req, res
         user.id,
         'node_telemetry_purged',
         'telemetry',
-        `Purged ${deletedCount} telemetry records for node ${nodeNum}`,
+        `Purged ${deletedCount} telemetry records for node ${nodeNum} (source=${sourceId})`,
         req.ip || ''
       );
     }
@@ -561,9 +571,14 @@ router.delete('/nodes/:nodeNum/position-history', requireMessagesWrite, async (r
       });
     }
 
-    const deletedCount = await databaseService.telemetry.purgePositionHistory(nodeNum);
+    const sourceId = (req.body?.sourceId || req.query?.sourceId) as string | undefined;
+    if (!sourceId) {
+      return res.status(400).json({ error: 'Bad request', message: 'sourceId is required' });
+    }
 
-    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} position history records for node ${nodeNum}`);
+    const deletedCount = await databaseService.telemetry.purgePositionHistory(nodeNum, sourceId);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} position history records for node ${nodeNum} (source=${sourceId})`);
 
     // Log to audit log (async for multi-database support)
     if (user?.id) {
@@ -571,7 +586,7 @@ router.delete('/nodes/:nodeNum/position-history', requireMessagesWrite, async (r
         user.id,
         'node_position_history_purged',
         'telemetry',
-        `Purged ${deletedCount} position history records for node ${nodeNum}`,
+        `Purged ${deletedCount} position history records for node ${nodeNum} (source=${sourceId})`,
         req.ip || ''
       );
     }

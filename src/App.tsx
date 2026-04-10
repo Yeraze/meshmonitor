@@ -3137,6 +3137,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
@@ -3178,6 +3179,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
@@ -3218,6 +3220,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
@@ -3255,6 +3258,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
@@ -3292,6 +3296,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
@@ -3328,6 +3333,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
@@ -3380,6 +3386,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ sourceId }),
       });
 
       if (response.ok) {
