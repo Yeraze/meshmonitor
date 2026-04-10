@@ -19,6 +19,10 @@ interface DashboardSidebarProps {
   onEditSource: (id: string) => void;
   onToggleSource: (id: string, enabled: boolean) => void;
   onDeleteSource: (id: string) => void;
+  /** Mobile drawer state — on desktop the sidebar is always visible. */
+  mobileOpen?: boolean;
+  /** Called to close the drawer on mobile (after selecting a source or tapping backdrop). */
+  onMobileClose?: () => void;
 }
 
 function getStatusInfo(
@@ -128,11 +132,26 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onEditSource,
   onToggleSource,
   onDeleteSource,
+  mobileOpen = false,
+  onMobileClose,
 }) => {
   const navigate = useNavigate();
 
+  // On mobile, wrap source selection so the drawer auto-closes after tap.
+  const handleSelectSource = (id: string) => {
+    onSelectSource(id);
+    onMobileClose?.();
+  };
+
   return (
-    <aside className="dashboard-sidebar">
+    <>
+      {/* Mobile backdrop — only rendered (via CSS) on small screens when open. */}
+      <div
+        className={`dashboard-sidebar-backdrop${mobileOpen ? ' open' : ''}`}
+        onClick={onMobileClose}
+        aria-hidden="true"
+      />
+      <aside className={`dashboard-sidebar${mobileOpen ? ' mobile-open' : ''}`}>
       <div className="dashboard-sidebar-header">
         Sources
         {isAdmin && (
@@ -165,11 +184,11 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           <div
             key={source.id}
             className={cardClassName}
-            onClick={() => onSelectSource(source.id)}
+            onClick={() => handleSelectSource(source.id)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') onSelectSource(source.id);
+              if (e.key === 'Enter' || e.key === ' ') handleSelectSource(source.id);
             }}
           >
             <div className="dashboard-source-card-header">
@@ -276,6 +295,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         </div>
       </div>
     </aside>
+    </>
   );
 };
 
