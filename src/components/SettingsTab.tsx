@@ -87,7 +87,20 @@ interface SettingsTabProps {
   onSolarMonitoringLongitudeChange: (longitude: number) => void;
   onSolarMonitoringAzimuthChange: (azimuth: number) => void;
   onSolarMonitoringDeclinationChange: (declination: number) => void;
+  mode?: 'global' | 'source';
 }
+
+const GLOBAL_SECTIONS = new Set([
+  'settings-language', 'settings-units', 'settings-appearance', 'settings-map',
+  'settings-backup', 'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
+]);
+
+const SOURCE_SECTIONS = new Set([
+  'settings-sorting', 'settings-node-display', 'settings-telemetry',
+  'settings-notifications', 'settings-packet-monitor', 'settings-solar',
+  'settings-firmware', 'settings-reset-ui', 'settings-source-overrides',
+  'settings-management', 'settings-danger',
+]);
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
   maxNodeAgeHours,
@@ -138,8 +151,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onSolarMonitoringLatitudeChange,
   onSolarMonitoringLongitudeChange,
   onSolarMonitoringAzimuthChange,
-  onSolarMonitoringDeclinationChange
+  onSolarMonitoringDeclinationChange,
+  mode
 }) => {
+  const show = (sectionId: string) =>
+    !mode || (mode === 'global' ? GLOBAL_SECTIONS.has(sectionId) : SOURCE_SECTIONS.has(sectionId));
+
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { authStatus } = useAuth();
@@ -918,9 +935,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         ...(sourceCount >= 2 ? [{ id: 'settings-source-overrides', label: t('settings.source_overrides', 'Source Overrides') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
-      ]} />
+      ].filter(item => show(item.id))} />
       <div className="settings-content settings-multi-column">
-        <div id="settings-language" className="settings-section">
+        {show('settings-language') && <div id="settings-language" className="settings-section">
           <h3>{t('settings.language')}</h3>
           <div className="setting-item">
             <label htmlFor="language">
@@ -942,9 +959,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               Weblate
             </a>
           </p>
-        </div>
+        </div>}
 
-        <div id="settings-units" className="settings-section">
+        {show('settings-units') && <div id="settings-units" className="settings-section">
           <h3>{t('settings.units_and_formats')}</h3>
           <div className="setting-item">
             <label htmlFor="timeFormat">
@@ -1007,9 +1024,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="mi">{t('settings.dist_mi')}</option>
             </select>
           </div>
-        </div>
+        </div>}
 
-        <div id="settings-sorting" className="settings-section">
+        {show('settings-sorting') && <div id="settings-sorting" className="settings-section">
           <h3>{t('settings.sorting')}</h3>
           <div className="setting-item">
             <label htmlFor="preferredSortField">
@@ -1065,9 +1082,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="type-desc">{t('settings.dashboard_sort_type_desc')}</option>
             </select>
           </div>
-        </div>
+        </div>}
 
-        <div id="settings-appearance" className="settings-section">
+        {show('settings-appearance') && <div id="settings-appearance" className="settings-section">
           <h3>{t('settings.appearance')}</h3>
           <div className="setting-item">
             <label htmlFor="theme">
@@ -1146,9 +1163,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </select>
           </div>
           <TapbackEmojiSettings />
-        </div>
+        </div>}
 
-        <div id="settings-map" className="settings-section">
+        {show('settings-map') && <div id="settings-map" className="settings-section">
           <h3>{t('settings.map')}</h3>
           <div className="setting-item">
             <label htmlFor="mapTileset">
@@ -1237,9 +1254,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <EmbedSettings />
             </div>
           )}
-        </div>
+        </div>}
 
-        <div id="settings-node-display" className="settings-section">
+        {show('settings-node-display') && <div id="settings-node-display" className="settings-section">
           <h3>{t('settings.node_display')}</h3>
           <div className="setting-item">
             <label htmlFor="maxNodeAge">
@@ -1396,9 +1413,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </>
           )}
-        </div>
+        </div>}
 
-        <div id="settings-telemetry" className="settings-section">
+        {show('settings-telemetry') && <div id="settings-telemetry" className="settings-section">
           <h3>{t('settings.telemetry')}</h3>
           <div className="setting-item">
             <label htmlFor="telemetryVisualizationHours">
@@ -1430,9 +1447,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               className="setting-input"
             />
           </div>
-        </div>
+        </div>}
 
-        <div id="settings-notifications" className="settings-section">
+        {show('settings-notifications') && <div id="settings-notifications" className="settings-section">
           <h3>{t('settings.notifications_and_security')}</h3>
           <div className="setting-item">
             <label>
@@ -1462,9 +1479,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="setting-description">{t('settings.homoglyph_description')}</span>
             </label>
           </div>
-        </div>
+        </div>}
 
-        <div id="settings-packet-monitor" className="settings-section">
+        {show('settings-packet-monitor') && <div id="settings-packet-monitor" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
@@ -1487,9 +1504,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
             />
           </div>
-        </div>
+        </div>}
 
-        <div id="settings-solar" className="settings-section">
+        {show('settings-solar') && <div id="settings-solar" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
@@ -1590,19 +1607,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </>
           )}
-        </div>
+        </div>}
 
-        <div id="settings-backup">
+        {show('settings-backup') && <div id="settings-backup">
           <SystemBackupSection />
-        </div>
+        </div>}
 
-        <DatabaseMaintenanceSection />
+        {show('settings-maintenance') && <DatabaseMaintenanceSection />}
 
-        <AutoUpgradeTestSection baseUrl={baseUrl} />
+        {show('settings-auto-upgrade') && <AutoUpgradeTestSection baseUrl={baseUrl} />}
 
-        {isAdmin && firmwareOtaEnabled && <FirmwareUpdateSection baseUrl={baseUrl} />}
+        {show('settings-firmware') && isAdmin && firmwareOtaEnabled && <FirmwareUpdateSection baseUrl={baseUrl} />}
 
-        <div id="settings-reset-ui" className="settings-section">
+        {show('settings-reset-ui') && <div id="settings-reset-ui" className="settings-section">
           <h3>{t('settings.reset_ui_positions')}</h3>
           <p className="setting-description">{t('settings.reset_ui_positions_description')}</p>
           <button
@@ -1620,9 +1637,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           >
             {t('settings.reset_ui_positions_button')}
           </button>
-        </div>
+        </div>}
 
-        {isAdmin && (
+        {show('settings-analytics') && isAdmin && (
         <div id="settings-analytics" className="settings-section">
           <h3>{t('settings.analytics')}</h3>
 
@@ -1766,13 +1783,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
         )}
 
-        <SourceSettingsPanel
+        {show('settings-source-overrides') && <SourceSettingsPanel
           baseUrl={baseUrl}
           globalMaxNodeAgeHours={maxNodeAgeHours}
           globalTracerouteIntervalMinutes={60}
-        />
+        />}
 
-        <div id="settings-management" className="settings-section">
+        {show('settings-management') && <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>
           <p className="setting-description">{t('settings.settings_management_description')}</p>
           <div className="settings-buttons">
@@ -1784,9 +1801,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.reset_defaults')}
             </button>
           </div>
-        </div>
+        </div>}
 
-        <div id="settings-danger" className="settings-section danger-zone">
+        {show('settings-danger') && <div id="settings-danger" className="settings-section danger-zone">
           <h3>⚠️ {t('settings.danger_zone')}</h3>
           <p className="danger-zone-description">{t('settings.danger_zone_description')}</p>
 
@@ -1861,7 +1878,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </button>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

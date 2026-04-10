@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
 
 interface DashboardSidebarProps {
@@ -233,6 +234,46 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         >
           📡 Unified Telemetry
         </button>
+      </div>
+
+      <div className="dashboard-sidebar-footer">
+        <span className="dashboard-sidebar-version">v{version}</span>
+        <div className="dashboard-sidebar-footer-icons">
+          {isAdmin && (
+            <button
+              className="dashboard-sidebar-footer-btn"
+              title="Settings"
+              onClick={() => navigate('/settings')}
+            >
+              ⚙️
+            </button>
+          )}
+          <button
+            className="dashboard-sidebar-footer-btn"
+            title="News"
+            disabled
+          >
+            📰
+          </button>
+          <a
+            className="dashboard-sidebar-footer-btn"
+            href="https://github.com/Yeraze/meshmonitor"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="GitHub"
+          >
+            🐙
+          </a>
+          <a
+            className="dashboard-sidebar-footer-btn"
+            href="https://meshmonitor.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Website"
+          >
+            🔗
+          </a>
+        </div>
       </div>
     </aside>
   );
