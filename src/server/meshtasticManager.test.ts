@@ -482,6 +482,72 @@ describe('MeshtasticManager - Configuration Polling', () => {
     });
   });
 
+  describe('processNodeInfoProtobuf — channel seed-only behavior', () => {
+    // Replicates the gating logic at processNodeInfoProtobuf L6308.
+    // Device NodeDB sync may carry stale/default-0 channel values for peers
+    // that haven't sent a fresh NodeInfo packet. Live packets (processMeshPacket)
+    // are the authoritative source for `channel`, so device sync must only SEED
+    // when the existing node has no channel — never overwrite.
+    function buildNodeData(nodeInfo: any, existingNode: any | null) {
+      const shouldSeedChannel =
+        nodeInfo.channel !== undefined &&
+        (!existingNode || existingNode.channel == null);
+      const nodeData: any = {
+        nodeNum: Number(nodeInfo.num),
+        hopsAway: nodeInfo.hopsAway,
+      };
+      if (shouldSeedChannel) {
+        nodeData.channel = nodeInfo.channel;
+      }
+      return nodeData;
+    }
+
+    it('seeds channel on brand-new node', () => {
+      const nodeInfo = { num: 1129874776, channel: 4, hopsAway: 1 };
+      const result = buildNodeData(nodeInfo, null);
+      expect(result.channel).toBe(4);
+    });
+
+    it('seeds channel when existing node has null channel', () => {
+      const nodeInfo = { num: 1129874776, channel: 4 };
+      const existing = { nodeNum: 1129874776, channel: null };
+      const result = buildNodeData(nodeInfo, existing);
+      expect(result.channel).toBe(4);
+    });
+
+    it('seeds channel when existing node has undefined channel', () => {
+      const nodeInfo = { num: 1129874776, channel: 4 };
+      const existing = { nodeNum: 1129874776 }; // channel absent
+      const result = buildNodeData(nodeInfo, existing);
+      expect(result.channel).toBe(4);
+    });
+
+    it('does NOT overwrite existing channel 4 with stale device-sync 0', () => {
+      // User bug: peer is actually on channel 4 (set by live packet processing),
+      // device NodeDB sync reports channel 0 (stale default), must NOT clobber.
+      const nodeInfo = { num: 1129874776, channel: 0 };
+      const existing = { nodeNum: 1129874776, channel: 4 };
+      const result = buildNodeData(nodeInfo, existing);
+      expect(result).not.toHaveProperty('channel');
+    });
+
+    it('does NOT overwrite existing channel 0 with stale device-sync value', () => {
+      // Even when existing is the legitimate primary (0), device sync must not
+      // touch it — processMeshPacket owns channel updates.
+      const nodeInfo = { num: 1129874776, channel: 4 };
+      const existing = { nodeNum: 1129874776, channel: 0 };
+      const result = buildNodeData(nodeInfo, existing);
+      expect(result).not.toHaveProperty('channel');
+    });
+
+    it('omits channel entirely when nodeInfo has no channel field', () => {
+      const nodeInfo = { num: 1129874776 };
+      const existing = { nodeNum: 1129874776, channel: null };
+      const result = buildNodeData(nodeInfo, existing);
+      expect(result).not.toHaveProperty('channel');
+    });
+  });
+
   describe('Position estimation for traceroute nodes', () => {
     it('should estimate position for intermediate node without GPS when neighbors have GPS', () => {
       const mockDatabaseService = {

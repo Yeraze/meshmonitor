@@ -6297,6 +6297,16 @@ class MeshtasticManager implements ISourceManager {
       }
       // If device didn't provide lastHeard, don't update it at all - preserve existing value
 
+      // Channel is authoritatively managed by processMeshPacket from live RX packets.
+      // Device NodeDB sync can carry stale values (firmware's NodeDB::updateUser only
+      // refreshes `channel` on NODEINFO_APP packets, and proto3 uint32 default 0 is
+      // indistinguishable from "unset" on wire) so we only SEED channel for nodes that
+      // don't already have one — never overwrite an existing value from device sync.
+      // See: https://github.com/Yeraze/meshmonitor/issues — peer channel stuck at 0.
+      const shouldSeedChannel =
+        nodeInfo.channel !== undefined &&
+        (!existingNode || existingNode.channel == null);
+
       const nodeData: any = {
         nodeNum: Number(nodeInfo.num),
         nodeId: nodeId,
@@ -6305,12 +6315,16 @@ class MeshtasticManager implements ISourceManager {
         // Note: NodeInfo protobuf doesn't include RSSI, only MeshPacket does
         // RSSI will be updated from mesh packet if available
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
-        channel: nodeInfo.channel !== undefined ? nodeInfo.channel : undefined
+        ...(shouldSeedChannel && { channel: nodeInfo.channel }),
       };
 
       // Debug logging for channel extraction
       if (nodeInfo.channel !== undefined) {
-        logger.debug(`📡 NodeInfo for ${nodeId}: extracted channel=${nodeInfo.channel}`);
+        if (shouldSeedChannel) {
+          logger.debug(`📡 NodeInfo for ${nodeId}: seeding channel=${nodeInfo.channel} (new or unset)`);
+        } else {
+          logger.debug(`📡 NodeInfo for ${nodeId}: ignoring device-sync channel=${nodeInfo.channel} (existing=${existingNode?.channel}, managed by live packets)`);
+        }
       } else {
         logger.debug(`📡 NodeInfo for ${nodeId}: no channel field present`);
       }
