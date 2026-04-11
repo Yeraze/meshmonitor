@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - **Unified views**: Cross-source Messages and Telemetry pages show fleet-wide activity across all connected gateways
   - **Real-time updates**: WebSocket rooms are scoped per source; clients only receive events for the sources they have access to
   - **Backward compatible**: Existing single-source deployments upgrade automatically — legacy rows are assigned to the default source on startup
+  - **Fix ([#2631](https://github.com/Yeraze/meshmonitor/issues/2631))**: Fresh SQLite installs crashed with `SqliteError: no such column: source_id` when fetching node telemetry. Three raw SQL sites in `DatabaseService` referenced the column as `source_id` while the schema defines `sourceId`. Converted `purgeChannelMessages`, `purgeDirectMessages`, and `getTelemetryByNodeAveraged` to dispatch through new Drizzle-backed sync helpers on the repositories so column names come from the schema and the drift can't recur
 
 - **Homepage Refresh** ([#2542](https://github.com/Yeraze/meshmonitor/pull/2542)): MeshMonitor.org homepage redesigned for clarity and accuracy.
   - **New hero section**: Updated headline ("Your mesh. Your data."), new tagline, and hero image showing the interactive map

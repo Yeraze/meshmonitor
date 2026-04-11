@@ -3708,16 +3708,13 @@ class DatabaseService {
       return 0;
     }
 
-    // When sourceId is provided, restrict deletion to that source
-    if (sourceId) {
-      const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ? AND source_id = ?');
-      const result = stmt.run(channel, sourceId);
-      return Number(result.changes);
+    // SQLite: dispatch to Drizzle-backed repo sync helper. Column names come
+    // from the schema, so the `sourceId` vs `source_id` mismatch that caused
+    // issue #2631 on SQLite can't recur.
+    if (this.messagesRepo) {
+      return this.messagesRepo.purgeChannelMessagesSqlite(channel, sourceId);
     }
-
-    const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ?');
-    const result = stmt.run(channel);
-    return Number(result.changes);
+    return 0;
   }
 
   purgeDirectMessages(nodeNum: number, sourceId?: string): number {
@@ -3731,27 +3728,11 @@ class DatabaseService {
       return 0;
     }
 
-    // Delete all DMs to/from this node
-    // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel.
-    // When sourceId is provided, restrict deletion to that source.
-    if (sourceId) {
-      const stmt = this.db.prepare(`
-        DELETE FROM messages
-        WHERE (fromNodeNum = ? OR toNodeNum = ?)
-        AND toNodeId != '!ffffffff'
-        AND source_id = ?
-      `);
-      const result = stmt.run(nodeNum, nodeNum, sourceId);
-      return Number(result.changes);
+    // SQLite: dispatch to Drizzle-backed repo sync helper.
+    if (this.messagesRepo) {
+      return this.messagesRepo.purgeDirectMessagesSqlite(nodeNum, sourceId);
     }
-
-    const stmt = this.db.prepare(`
-      DELETE FROM messages
-      WHERE (fromNodeNum = ? OR toNodeNum = ?)
-      AND toNodeId != '!ffffffff'
-    `);
-    const result = stmt.run(nodeNum, nodeNum);
-    return Number(result.changes);
+    return 0;
   }
 
   purgeNodeTraceroutes(nodeNum: number): number {
@@ -4679,144 +4660,20 @@ class DatabaseService {
       actualIntervalMinutes = 3;
     }
 
-    // Calculate the interval in milliseconds
-    const intervalMs = actualIntervalMinutes * 60 * 1000;
-
-    // Telemetry types that should use raw values instead of averaging
-    // These are discrete integer values where averaging produces meaningless floats
-    const rawValueTypes = [
-      'sats_in_view',
-      'messageHops',
-      'batteryLevel',
-      'numOnlineNodes', 'numTotalNodes',
-      'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
-      'numRxDupe', 'numTxRelay', 'numTxRelayCanceled', 'numTxDropped',
-      'systemNodeCount', 'systemDirectNodeCount',
-      'paxcounterWifi', 'paxcounterBle',
-      'particles03um', 'particles05um', 'particles10um',
-      'particles25um', 'particles50um', 'particles100um',
-      'co2', 'iaq',
-    ];
-
-    // Build the query to group and average telemetry data by time intervals
-    // Exclude raw value types from this query - they'll be fetched separately
-    let query = `
-      SELECT
-        nodeId,
-        nodeNum,
-        telemetryType,
-        CAST((timestamp / ?) * ? AS INTEGER) as timestamp,
-        AVG(value) as value,
-        unit,
-        MIN(createdAt) as createdAt
-      FROM telemetry
-      WHERE nodeId = ?
-        AND telemetryType NOT IN (${rawValueTypes.map(() => '?').join(', ')})
-    `;
-    const params: any[] = [intervalMs, intervalMs, nodeId, ...rawValueTypes];
-
-    // Scope to this source so nodes that exist in multiple sources don't mix telemetry
-    if (sourceId !== undefined) {
-      query += ` AND source_id = ?`;
-      params.push(sourceId);
+    // SQLite: delegate to Drizzle-backed repo sync helper. Keeps column names
+    // aligned with the schema (fixes issue #2631 where raw SQL used
+    // `source_id` while the schema column is `sourceId`).
+    if (!this.telemetryRepo) {
+      return [];
     }
-
-    if (sinceTimestamp !== undefined) {
-      query += ` AND timestamp >= ?`;
-      params.push(sinceTimestamp);
-    }
-
-    query += `
-      GROUP BY
-        nodeId,
-        nodeNum,
-        telemetryType,
-        CAST(timestamp / ? AS INTEGER),
-        unit
-      ORDER BY timestamp DESC
-    `;
-    params.push(intervalMs);
-
-    // Add limit based on max hours if specified
-    // Calculate points per hour based on the actual interval used
-    if (maxHours !== undefined) {
-      const pointsPerHour = 60 / actualIntervalMinutes;
-
-      // Query the actual number of distinct telemetry types for this node
-      // This is more efficient than using a blanket multiplier
-      let countQuery = `
-        SELECT COUNT(DISTINCT telemetryType) as typeCount
-        FROM telemetry
-        WHERE nodeId = ?
-      `;
-      const countParams: any[] = [nodeId];
-      if (sourceId !== undefined) {
-        countQuery += ` AND source_id = ?`;
-        countParams.push(sourceId);
-      }
-      if (sinceTimestamp !== undefined) {
-        countQuery += ` AND timestamp >= ?`;
-        countParams.push(sinceTimestamp);
-      }
-
-      const countStmt = this.db.prepare(countQuery);
-      const result = countStmt.get(...countParams) as { typeCount: number } | undefined;
-      const telemetryTypeCount = result?.typeCount || 1;
-
-      // Calculate limit: expected data points per type × number of types
-      // Add 50% padding to account for data density variations and ensure we don't cut off
-      const expectedPointsPerType = (maxHours + 1) * pointsPerHour;
-      const limit = Math.ceil(expectedPointsPerType * telemetryTypeCount * 1.5);
-
-      query += ` LIMIT ?`;
-      params.push(limit);
-    }
-
-    const stmt = this.db.prepare(query);
-    const telemetry = stmt.all(...params) as DbTelemetry[];
-
-    // Fetch raw values for types that shouldn't be averaged (sparse integer data)
-    let rawQuery = `
-      SELECT
-        nodeId,
-        nodeNum,
-        telemetryType,
-        timestamp,
-        value,
-        unit,
-        createdAt
-      FROM telemetry
-      WHERE nodeId = ?
-        AND telemetryType IN (${rawValueTypes.map(() => '?').join(', ')})
-    `;
-    const rawParams: any[] = [nodeId, ...rawValueTypes];
-
-    if (sourceId !== undefined) {
-      rawQuery += ` AND source_id = ?`;
-      rawParams.push(sourceId);
-    }
-
-    if (sinceTimestamp !== undefined) {
-      rawQuery += ` AND timestamp >= ?`;
-      rawParams.push(sinceTimestamp);
-    }
-
-    rawQuery += ` ORDER BY timestamp DESC`;
-
-    // Apply same limit logic for raw data
-    if (maxHours !== undefined) {
-      // For raw data, limit based on expected frequency (~10 per hour max for position data)
-      const rawLimit = Math.ceil((maxHours + 1) * 10 * rawValueTypes.length * 1.5);
-      rawQuery += ` LIMIT ?`;
-      rawParams.push(rawLimit);
-    }
-
-    const rawStmt = this.db.prepare(rawQuery);
-    const rawTelemetry = rawStmt.all(...rawParams) as DbTelemetry[];
-
-    // Combine averaged and raw telemetry
-    const combined = [...telemetry, ...rawTelemetry];
-    return combined.map(t => this.normalizeBigInts(t));
+    const rows = this.telemetryRepo.getTelemetryByNodeAveragedSqlite(
+      nodeId,
+      sinceTimestamp,
+      actualIntervalMinutes,
+      maxHours,
+      sourceId
+    );
+    return rows.map(t => this.normalizeBigInts(t));
   }
 
   /**

@@ -691,4 +691,138 @@ export class TelemetryRepository extends BaseRepository {
         quality: record.value,
       }));
   }
+
+  /**
+   * Telemetry types stored as discrete integer values where averaging produces
+   * meaningless floats. These are fetched raw instead of through AVG() grouping.
+   */
+  private static readonly RAW_VALUE_TYPES = [
+    'sats_in_view',
+    'messageHops',
+    'batteryLevel',
+    'numOnlineNodes', 'numTotalNodes',
+    'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
+    'numRxDupe', 'numTxRelay', 'numTxRelayCanceled', 'numTxDropped',
+    'systemNodeCount', 'systemDirectNodeCount',
+    'paxcounterWifi', 'paxcounterBle',
+    'particles03um', 'particles05um', 'particles10um',
+    'particles25um', 'particles50um', 'particles100um',
+    'co2', 'iaq',
+  ];
+
+  /**
+   * SQLite-only synchronous averaged telemetry query used by the facade's
+   * sync `getTelemetryByNodeAveraged()`. Buckets timestamps into fixed
+   * intervals and averages continuous types; fetches discrete types raw.
+   *
+   * Uses Drizzle query builders against the SQLite client so column names
+   * come from the schema (avoids the snake_case/camelCase drift that caused
+   * issue #2631).
+   */
+  getTelemetryByNodeAveragedSqlite(
+    nodeId: string,
+    sinceTimestamp: number | undefined,
+    intervalMinutes: number,
+    maxHours: number | undefined,
+    sourceId: string | undefined
+  ): DbTelemetry[] {
+    if (!this.sqliteDb) {
+      throw new Error('getTelemetryByNodeAveragedSqlite is SQLite-only');
+    }
+    const db = this.sqliteDb;
+    const telemetry = this.tables.telemetry;
+    const rawTypes = TelemetryRepository.RAW_VALUE_TYPES;
+    const intervalMs = intervalMinutes * 60 * 1000;
+
+    // Build WHERE conditions shared by averaged and count queries
+    const baseConditions = [eq(telemetry.nodeId, nodeId)];
+    if (sourceId !== undefined) {
+      baseConditions.push(eq(telemetry.sourceId, sourceId));
+    }
+    if (sinceTimestamp !== undefined) {
+      baseConditions.push(gte(telemetry.timestamp, sinceTimestamp));
+    }
+
+    // Averaged query: exclude raw types, group by time bucket
+    const bucketExpr = sql<number>`CAST((${telemetry.timestamp} / ${intervalMs}) * ${intervalMs} AS INTEGER)`;
+    const bucketGroupExpr = sql`CAST(${telemetry.timestamp} / ${intervalMs} AS INTEGER)`;
+
+    // Determine limit based on maxHours
+    let averagedLimit: number | undefined;
+    if (maxHours !== undefined) {
+      const pointsPerHour = 60 / intervalMinutes;
+      // Count distinct telemetry types for this node (excluding raw types is
+      // not strictly necessary — the multiplier is a conservative upper bound)
+      const countRows = db
+        .select({ typeCount: sql<number>`COUNT(DISTINCT ${telemetry.telemetryType})` })
+        .from(telemetry)
+        .where(and(...baseConditions))
+        .all();
+      const typeCount = Number(countRows[0]?.typeCount ?? 1) || 1;
+      const expectedPointsPerType = (maxHours + 1) * pointsPerHour;
+      averagedLimit = Math.ceil(expectedPointsPerType * typeCount * 1.5);
+    }
+
+    const averagedBuilder = db
+      .select({
+        nodeId: telemetry.nodeId,
+        nodeNum: telemetry.nodeNum,
+        telemetryType: telemetry.telemetryType,
+        timestamp: bucketExpr.as('timestamp'),
+        value: sql<number>`AVG(${telemetry.value})`.as('value'),
+        unit: telemetry.unit,
+        createdAt: sql<number>`MIN(${telemetry.createdAt})`.as('createdAt'),
+      })
+      .from(telemetry)
+      .where(and(...baseConditions, not(inArray(telemetry.telemetryType, rawTypes))))
+      .groupBy(
+        telemetry.nodeId,
+        telemetry.nodeNum,
+        telemetry.telemetryType,
+        bucketGroupExpr,
+        telemetry.unit
+      )
+      .orderBy(sql`timestamp DESC`);
+
+    const averagedRows = averagedLimit !== undefined
+      ? averagedBuilder.limit(averagedLimit).all()
+      : averagedBuilder.all();
+
+    // Raw values query: include only raw types, no averaging
+    const rawBuilder = db
+      .select({
+        nodeId: telemetry.nodeId,
+        nodeNum: telemetry.nodeNum,
+        telemetryType: telemetry.telemetryType,
+        timestamp: telemetry.timestamp,
+        value: telemetry.value,
+        unit: telemetry.unit,
+        createdAt: telemetry.createdAt,
+      })
+      .from(telemetry)
+      .where(and(...baseConditions, inArray(telemetry.telemetryType, rawTypes)))
+      .orderBy(desc(telemetry.timestamp));
+
+    let rawRows;
+    if (maxHours !== undefined) {
+      // Raw values are sparse — ~10/hour/type upper bound with 50% padding
+      const rawLimit = Math.ceil((maxHours + 1) * 10 * rawTypes.length * 1.5);
+      rawRows = rawBuilder.limit(rawLimit).all();
+    } else {
+      rawRows = rawBuilder.all();
+    }
+
+    // Convert rows to DbTelemetry shape (null unit → undefined)
+    const toDbTelemetry = (r: any): DbTelemetry => ({
+      nodeId: r.nodeId,
+      nodeNum: Number(r.nodeNum),
+      telemetryType: r.telemetryType,
+      timestamp: Number(r.timestamp),
+      value: Number(r.value),
+      unit: r.unit ?? undefined,
+      createdAt: Number(r.createdAt),
+    });
+
+    return [...averagedRows.map(toDbTelemetry), ...rawRows.map(toDbTelemetry)];
+  }
 }
