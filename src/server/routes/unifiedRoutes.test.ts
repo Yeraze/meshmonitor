@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
-import unifiedRoutes from './unifiedRoutes.js';
+import unifiedRoutes, { extractPacketIdFromRowId } from './unifiedRoutes.js';
 import databaseService from '../../services/database.js';
 
 vi.mock('../../services/database.js', () => ({
@@ -581,6 +581,98 @@ describe('Unified Routes', () => {
       const res = await request(app).get('/telemetry');
 
       expect(res.status).toBe(500);
+    });
+
+    it('keeps per-node telemetry lookups parallel and tolerates a single-node failure', async () => {
+      // When one node's telemetry fetch rejects, the endpoint should still
+      // return entries for the other nodes in the same source rather than
+      // failing the whole source. Also verifies getLatestTelemetryByNode is
+      // called once per node (parallel fan-out, not sequential).
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, longName: 'Node One', shortName: 'N1' },
+        { nodeId: '!11223344', nodeNum: 0x11223344, longName: 'Node Two', shortName: 'N2' },
+      ]);
+      mockDb.telemetry.getLatestTelemetryByNode.mockImplementation((nodeId: string) => {
+        if (nodeId === '!aabbccdd') {
+          return Promise.reject(new Error('boom'));
+        }
+        return Promise.resolve([
+          { nodeId: '!11223344', nodeNum: 0x11223344, telemetryType: 'battery_level', value: 90, timestamp: recentTs },
+        ]);
+      });
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/telemetry');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].nodeLongName).toBe('Node Two');
+      expect(mockDb.telemetry.getLatestTelemetryByNode).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ── /messages (partial-failure isolation) ────────────────────────────────
+
+  describe('GET /messages partial failures', () => {
+    it('keeps other sources working when a single source node lookup fails', async () => {
+      // nodes.getAllNodes throws for src-a but the message still comes through
+      // (without sender longName). src-b operates normally.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
+      mockDb.nodes.getAllNodes.mockImplementation((sourceId: string) => {
+        if (sourceId === 'src-a') return Promise.reject(new Error('nodes boom'));
+        return Promise.resolve([NODE_ONE]);
+      });
+      mockDb.messages.getMessagesBeforeInChannel.mockImplementation(
+        (_ch: number, _before: any, _lim: number, sourceId: string) =>
+          Promise.resolve([
+            mkMsg({
+              id: `${sourceId}_${NODE_ONE.nodeNum}_42`,
+              text: `from ${sourceId}`,
+              fromNodeNum: NODE_ONE.nodeNum,
+              timestamp: sourceId === 'src-a' ? 1000 : 2000,
+              rxTime: sourceId === 'src-a' ? 1000 : 2000,
+            }),
+          ])
+      );
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=Primary');
+
+      expect(res.status).toBe(200);
+      // Dedup on packet id 42 across sources → single entry, 2 receptions
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].receptions).toHaveLength(2);
+      expect(res.body[0].fromNodeLongName).toBe('Node One'); // src-b's node map won
+    });
+  });
+
+  // ── extractPacketIdFromRowId unit tests ──────────────────────────────────
+
+  describe('extractPacketIdFromRowId', () => {
+    it('parses the trailing numeric segment', () => {
+      expect(extractPacketIdFromRowId('src-a_1234_567890')).toBe(567890);
+    });
+
+    it('returns null for empty, non-string, or oversized input', () => {
+      expect(extractPacketIdFromRowId('')).toBeNull();
+      expect(extractPacketIdFromRowId(123 as any)).toBeNull();
+      expect(extractPacketIdFromRowId(null as any)).toBeNull();
+      expect(extractPacketIdFromRowId(undefined as any)).toBeNull();
+      expect(extractPacketIdFromRowId('x'.repeat(300))).toBeNull();
+    });
+
+    it('returns null for ids without an underscore-separated numeric tail', () => {
+      expect(extractPacketIdFromRowId('no-underscore')).toBeNull();
+      expect(extractPacketIdFromRowId('src_a_12abc')).toBeNull();
+      expect(extractPacketIdFromRowId('src_a_')).toBeNull();
+    });
+
+    it('rejects values outside unsigned 32-bit range', () => {
+      expect(extractPacketIdFromRowId('src_a_4294967295')).toBe(0xffffffff); // max valid
+      expect(extractPacketIdFromRowId('src_a_4294967296')).toBeNull(); // one over
+      expect(extractPacketIdFromRowId('src_a_99999999999')).toBeNull();
     });
   });
 });

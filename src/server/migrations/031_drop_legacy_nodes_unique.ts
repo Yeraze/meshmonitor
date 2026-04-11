@@ -94,6 +94,49 @@ export async function runMigration031Postgres(client: any): Promise<void> {
     await client.query(`DROP INDEX IF EXISTS "${row.indexname}"`);
   }
 
+  // Verification: re-run the same discovery queries and confirm nothing
+  // survived the drops. If anything remains we log an error so operators see
+  // the failure in logs (we do NOT throw — the app still starts, since the
+  // degraded state is the pre-031 behavior the migration is trying to fix).
+  const verifyConstraints = await client.query(`
+    SELECT c.conname
+    FROM pg_constraint c
+    WHERE c.conrelid = 'nodes'::regclass
+      AND c.contype = 'u'
+      AND (
+        SELECT array_agg(a.attname ORDER BY a.attnum)
+        FROM unnest(c.conkey) AS k(attnum)
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+      ) = ARRAY['nodeId']::name[]
+  `);
+  const verifyIndexes = await client.query(`
+    SELECT i.relname AS indexname
+    FROM pg_index ix
+    JOIN pg_class i ON i.oid = ix.indexrelid
+    JOIN pg_class t ON t.oid = ix.indrelid
+    WHERE t.relname = 'nodes'
+      AND ix.indisunique
+      AND NOT ix.indisprimary
+      AND (
+        SELECT array_agg(a.attname ORDER BY a.attnum)
+        FROM unnest(ix.indkey) AS k(attnum)
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+      ) = ARRAY['nodeId']::name[]
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint c WHERE c.conindid = i.oid
+      )
+  `);
+
+  if (verifyConstraints.rows.length > 0 || verifyIndexes.rows.length > 0) {
+    logger.error(
+      'Migration 031 verification FAILED: legacy unique on nodes.nodeId still present. ' +
+      `constraints=${JSON.stringify(verifyConstraints.rows)} ` +
+      `indexes=${JSON.stringify(verifyIndexes.rows)}`
+    );
+  } else {
+    logger.info('Migration 031 (PostgreSQL): verified no legacy unique on nodes.nodeId remains');
+  }
+
   logger.info('Migration 031 complete (PostgreSQL)');
 }
 
