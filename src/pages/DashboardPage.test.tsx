@@ -61,7 +61,15 @@ vi.mock('../contexts/SettingsContext', () => ({
 }));
 
 vi.mock('../components/Dashboard/DashboardSidebar', () => ({
-  default: () => <div data-testid="dashboard-sidebar" />,
+  default: ({ onAddSource, isAdmin }: { onAddSource: () => void; isAdmin: boolean }) => (
+    <div data-testid="dashboard-sidebar">
+      {isAdmin && (
+        <button type="button" onClick={onAddSource}>
+          + Add Source
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('../components/Dashboard/DashboardMap', () => ({

@@ -60,6 +60,38 @@
   overflow: hidden;
 }
 
+/* ── Hamburger toggle (mobile only) ──────────────────────────────────────── */
+
+.dashboard-topbar-hamburger {
+  display: none; /* Hidden on desktop — shown via media query below */
+  background: none;
+  border: none;
+  color: var(--ctp-text);
+  font-size: 22px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.dashboard-topbar-hamburger:hover {
+  background-color: var(--ctp-surface0);
+}
+
+/* ── Sidebar backdrop (mobile overlay) ──────────────────────────────────── */
+
+.dashboard-sidebar-backdrop {
+  display: none; /* Hidden on desktop */
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 
 .dashboard-sidebar {
@@ -564,4 +596,63 @@
 
 .dashboard-form-input::placeholder {
   color: var(--ctp-overlay0);
+}
+
+/* ── Mobile: collapsible sidebar ─────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Show hamburger toggle in the topbar */
+  .dashboard-topbar-hamburger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Tighten up the topbar on mobile so the logo/title still fit */
+  .dashboard-topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .dashboard-topbar-title {
+    font-size: 1.2rem;
+  }
+
+  /* Sidebar becomes a slide-in overlay drawer */
+  .dashboard-sidebar {
+    position: fixed;
+    top: var(--header-height, 64px);
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    z-index: 999;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .dashboard-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Backdrop fades in when drawer is open */
+  .dashboard-sidebar-backdrop {
+    display: block;
+    top: var(--header-height, 64px);
+  }
+
+  .dashboard-sidebar-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Map fills the full body width since the sidebar is now overlaid */
+  .dashboard-map-container {
+    width: 100%;
+  }
+
+  /* Shrink add-source button label on mobile — icon only */
+  .dashboard-add-source-btn {
+    padding: 6px 10px;
+  }
 }

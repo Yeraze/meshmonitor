@@ -55,6 +55,8 @@ function DashboardInner() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  // Mobile drawer state — hamburger toggles; source selection auto-closes.
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Source add/edit modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
@@ -237,16 +239,19 @@ function DashboardInner() {
     <div className="dashboard-page">
       {/* Top bar */}
       <header className="dashboard-topbar">
+        <button
+          className="dashboard-topbar-hamburger"
+          aria-label={mobileSidebarOpen ? 'Close sources' : 'Open sources'}
+          aria-expanded={mobileSidebarOpen}
+          onClick={() => setMobileSidebarOpen((v) => !v)}
+        >
+          {mobileSidebarOpen ? '✕' : '☰'}
+        </button>
         <div className="dashboard-topbar-logo">
           <img src={`${appBasename}/logo.png`} alt="MeshMonitor Logo" className="dashboard-topbar-logo-img" />
           <span className="dashboard-topbar-title">MeshMonitor</span>
         </div>
         <div className="dashboard-topbar-actions">
-          {isAdmin && (
-            <button className="dashboard-add-source-btn" onClick={onAddSource}>
-              + Add Source
-            </button>
-          )}
           {isAuthenticated ? (
             <UserMenu />
           ) : (
@@ -274,6 +279,8 @@ function DashboardInner() {
           onEditSource={onEditSource}
           onToggleSource={onToggleSource}
           onDeleteSource={onDeleteSource}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
         />
 
         <DashboardMap
