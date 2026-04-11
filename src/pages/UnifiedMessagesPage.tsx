@@ -21,7 +21,7 @@
  *    receptions, so this is a pure view filter).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
@@ -217,9 +217,11 @@ export default function UnifiedMessagesPage() {
         out.push(m);
       }
     }
-    // Sort desc — polling can bring in new top-of-feed entries that merge with
-    // older pages; re-sort defensively so the feed is always monotonic.
-    out.sort((a, b) => b.timestamp - a.timestamp);
+    // Sort ascending (oldest → newest) so the chat-style layout pins the
+    // newest message to the bottom of the scroll container. Polling can bring
+    // in new entries on any page; re-sort defensively so the feed is always
+    // monotonic regardless of how TanStack merged the pages.
+    out.sort((a, b) => a.timestamp - b.timestamp);
     return out;
   }, [data?.pages]);
 
@@ -275,7 +277,69 @@ export default function UnifiedMessagesPage() {
     [filteredMessages]
   );
 
-  // ── Infinite scroll sentinel ──────────────────────────────────────────
+  // ── Scroll container management (chat-style: newest at bottom) ────────
+  // The scroll wrapper is the only scroll surface on this page. We manage
+  // scrollTop imperatively so that:
+  //   • on first load for a channel the user lands at the bottom,
+  //   • polling that appends a new tail keeps the user pinned at the bottom
+  //     IFF they were already there (otherwise we don't yank them away from
+  //     whatever they were reading),
+  //   • fetching an older page (prepend) preserves the user's visible spot
+  //     by shifting scrollTop by the exact growth in content height.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef<boolean>(true);
+  const prevStateRef = useRef<{ len: number; firstKey: string; scrollHeight: number }>({
+    len: 0,
+    firstKey: '',
+    scrollHeight: 0,
+  });
+
+  // Reset bookkeeping when the channel changes so the next render pins
+  // to bottom.
+  useEffect(() => {
+    prevStateRef.current = { len: 0, firstKey: '', scrollHeight: 0 };
+    wasAtBottomRef.current = true;
+  }, [selectedChannel]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const prev = prevStateRef.current;
+    const curLen = feedMessages.length;
+    const curFirstKey = feedMessages[0]?.dedupKey ?? '';
+
+    if (curLen === 0) {
+      prevStateRef.current = { len: 0, firstKey: '', scrollHeight: 0 };
+      return;
+    }
+
+    if (prev.len === 0) {
+      // Initial load for this channel: pin to the bottom.
+      el.scrollTop = el.scrollHeight;
+    } else if (curFirstKey !== prev.firstKey) {
+      // Prepended older messages from fetchNextPage. Keep the user's current
+      // viewpoint stable by shifting scrollTop by the delta in content height.
+      el.scrollTop = el.scrollTop + (el.scrollHeight - prev.scrollHeight);
+    } else if (wasAtBottomRef.current) {
+      // Appended new tail messages from polling. Stick to bottom iff the user
+      // was already pinned there.
+      el.scrollTop = el.scrollHeight;
+    }
+
+    prevStateRef.current = {
+      len: curLen,
+      firstKey: curFirstKey,
+      scrollHeight: el.scrollHeight,
+    };
+  }, [feedMessages]);
+
+  // ── Infinite scroll sentinel (at the TOP — scrolls up loads older) ────
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = sentinelRef.current;
@@ -297,11 +361,12 @@ export default function UnifiedMessagesPage() {
   const openStats = useCallback((msg: UnifiedMessage) => setStatsFor(msg), []);
   const closeStats = useCallback(() => setStatsFor(null), []);
 
-  // Date-divider bookkeeping — walk the feed top-down (newest first).
+  // Date-divider bookkeeping — walk the feed top-down chronologically
+  // (oldest first) so each divider appears on the first message of its day.
   let lastDateLabel = '';
 
   return (
-    <div className="unified-page">
+    <div className="unified-page unified-page--chat">
       <div className="unified-header">
         <button className="unified-header__back" onClick={() => navigate('/')}>
           ← Sources
@@ -354,6 +419,7 @@ export default function UnifiedMessagesPage() {
         </div>
       </div>
 
+      <div className="unified-scroll" ref={scrollRef} onScroll={handleScroll}>
       <div className="unified-body">
         {!isAuthenticated && <div className="unified-empty">Sign in to view messages.</div>}
         {isAuthenticated && channelsError && <div className="unified-error">Failed to load channels.</div>}
@@ -364,6 +430,20 @@ export default function UnifiedMessagesPage() {
         {isAuthenticated && !loadingMessages && feedMessages.length === 0 && !messagesError && (
           <div className="unified-empty">
             {selectedChannel ? 'No messages on this channel yet.' : 'Choose a channel to begin.'}
+          </div>
+        )}
+
+        {/* Infinite scroll sentinel — at the TOP of the feed. Scroll up to
+            here and the intersection observer fires fetchNextPage, which
+            prepends older messages while the scroll-position preserving
+            useLayoutEffect keeps the user's viewpoint stable. */}
+        {feedMessages.length > 0 && (
+          <div ref={sentinelRef} className="unified-scroll-sentinel">
+            {isFetchingNextPage
+              ? 'Loading older messages…'
+              : hasNextPage
+                ? ''
+                : 'Beginning of history.'}
           </div>
         )}
 
@@ -451,17 +531,7 @@ export default function UnifiedMessagesPage() {
             </div>
           );
         })}
-
-        {/* Infinite scroll sentinel */}
-        {feedMessages.length > 0 && (
-          <div ref={sentinelRef} className="unified-scroll-sentinel">
-            {isFetchingNextPage
-              ? 'Loading older messages…'
-              : hasNextPage
-                ? ''
-                : 'End of history.'}
-          </div>
-        )}
+      </div>
       </div>
 
       {/* ── Reception stats modal ───────────────────────────────────────── */}
