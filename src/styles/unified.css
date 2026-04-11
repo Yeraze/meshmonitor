@@ -12,6 +12,28 @@
   font-family: var(--font-family, sans-serif);
 }
 
+/* Chat-style fixed-viewport layout for pages that pin content to the bottom
+   and scroll upward into history (UnifiedMessagesPage). Overrides the default
+   page flow so the messages column becomes the only scroll surface. */
+.unified-page--chat {
+  height: 100vh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.unified-page--chat .unified-header {
+  flex-shrink: 0;
+}
+
+.unified-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-anchor: none; /* we manage scroll position imperatively */
+}
+
 /* ── Header bar ─────────────────────────────────────────────────────────── */
 
 .unified-header {
@@ -222,6 +244,231 @@
   font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
+}
+
+/* ── Clickable message card (Unified Messages) ─────────────────────────── */
+
+.unified-msg-card--clickable {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.unified-msg-card--clickable:hover {
+  background: var(--ctp-surface0);
+}
+
+.unified-msg-card--clickable:focus-visible {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 2px;
+}
+
+.unified-msg-card__reception-count {
+  color: var(--ctp-green);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Reply preview (↳ quoted parent) */
+.unified-reply-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 4px 0 6px;
+  background: var(--ctp-surface0);
+  border-left: 2px solid var(--ctp-overlay0);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+}
+
+.unified-reply-preview__arrow {
+  color: var(--ctp-overlay0);
+}
+
+.unified-reply-preview__from {
+  color: var(--ctp-subtext0);
+  font-weight: 600;
+}
+
+.unified-reply-preview__text {
+  color: var(--ctp-subtext0);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Emoji reaction bubbles attached to parent message */
+.unified-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--ctp-surface1);
+}
+
+.unified-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.unified-reaction__from {
+  color: var(--ctp-subtext0);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Infinite-scroll sentinel */
+.unified-scroll-sentinel {
+  text-align: center;
+  padding: 16px 0 32px;
+  color: var(--ctp-overlay0);
+  font-size: 12px;
+  min-height: 32px;
+}
+
+/* ── Reception stats modal ─────────────────────────────────────────────── */
+
+.unified-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ctp-crust) 70%, transparent);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.unified-modal {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 12px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.unified-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.unified-modal__header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ctp-text);
+}
+
+.unified-modal__close {
+  background: none;
+  border: none;
+  color: var(--ctp-subtext0);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.unified-modal__close:hover {
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+}
+
+.unified-modal__body {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.unified-modal__summary {
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.unified-modal__sender {
+  font-weight: 700;
+  color: var(--ctp-text);
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.unified-modal__text {
+  color: var(--ctp-text);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+  margin-bottom: 6px;
+}
+
+.unified-modal__meta {
+  font-size: 11px;
+  color: var(--ctp-overlay0);
+}
+
+.unified-modal__meta code {
+  background: var(--ctp-surface0);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+}
+
+.unified-modal__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.unified-modal__table thead th {
+  text-align: left;
+  padding: 6px 10px;
+  color: var(--ctp-subtext0);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.unified-modal__table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ctp-surface0);
+  color: var(--ctp-text);
+}
+
+.unified-modal__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.unified-modal__source-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 /* ── Telemetry source group ──────────────────────────────────────────────── */

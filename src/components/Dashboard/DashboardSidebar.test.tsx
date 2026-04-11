@@ -102,7 +102,7 @@ describe('DashboardSidebar', () => {
 
   it('shows sidebar navigation links', () => {
     renderSidebar();
-    expect(screen.getByText(/Unified Messages.*coming soon/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /💬 Unified Messages/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /📡 Unified Telemetry/ })).toBeInTheDocument();
   });
 
