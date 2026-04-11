@@ -188,6 +188,45 @@ describe('Unified Routes', () => {
       expect(res.body[0].name).toBe('Primary');
     });
 
+    it('labels channel 0 as "Primary" when its name is empty', async () => {
+      // Real Meshtastic firmware leaves channel 0's name blank — the client
+      // renders the modem preset instead. Unified view must still surface it.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([
+        { id: 0, name: '', role: 1 },       // unnamed primary
+        { id: 1, name: 'telemetry', role: 2 },
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const names = res.body.map((c: any) => c.name).sort();
+      expect(names).toEqual(['Primary', 'telemetry']);
+      const primary = res.body.find((c: any) => c.name === 'Primary');
+      expect(primary.sources[0].channelNumber).toBe(0);
+    });
+
+    it('skips disabled channels even when they have a default name', async () => {
+      // Firmware leaves slots 3-7 named "Channel 3".."Channel 7" with role=0
+      // (DISABLED). These are not real channels and must not show up.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([
+        { id: 0, name: '', role: 1 },
+        { id: 1, name: 'telemetry', role: 2 },
+        { id: 3, name: 'Channel 3', role: 0 },
+        { id: 4, name: 'Channel 4', role: 0 },
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const names = res.body.map((c: any) => c.name);
+      expect(names).toEqual(expect.arrayContaining(['Primary', 'telemetry']));
+      expect(names).not.toEqual(expect.arrayContaining(['Channel 3', 'Channel 4']));
+    });
+
     it('returns 500 on database error', async () => {
       mockDb.sources.getAllSources.mockRejectedValue(new Error('DB error'));
       const app = createApp(adminUser);
@@ -373,6 +412,71 @@ describe('Unified Routes', () => {
       expect(res.body).toHaveLength(1);
       expect(res.body[0].receptions).toHaveLength(2);
       expect(res.body[0].requestId).toBe(777);
+    });
+
+    it('de-duplicates using the mesh packet id extracted from the row id when requestId is null', async () => {
+      // Real-world: received text messages store requestId=null — the mesh
+      // packet id lives as the last `_`-separated segment of the row id.
+      // Same packet received by two sources must collapse into one entry.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
+      mockDb.messages.getMessagesBeforeInChannel
+        .mockResolvedValueOnce([
+          mkMsg({
+            id: 'src-a_3303011195_69761528',
+            fromNodeNum: 3303011195,
+            requestId: null,
+            text: 'Here comes the Rain',
+            timestamp: 1000, rxTime: 1000, rxSnr: 5.2,
+          }),
+        ])
+        .mockResolvedValueOnce([
+          mkMsg({
+            id: 'src-b_3303011195_69761528',
+            fromNodeNum: 3303011195,
+            requestId: null,
+            text: 'Here comes the Rain',
+            timestamp: 1200, rxTime: 1200, rxSnr: -3.1,
+          }),
+        ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=Primary');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].receptions).toHaveLength(2);
+      expect(res.body[0].text).toBe('Here comes the Rain');
+      // Canonical timestamp = earliest heard.
+      expect(res.body[0].timestamp).toBe(1000);
+      // Both source names present.
+      const names = res.body[0].receptions.map((r: any) => r.sourceName).sort();
+      expect(names).toEqual(['Source A', 'Source B']);
+    });
+
+    it('resolves "Primary" to channel 0 even when the source has a blank name for it', async () => {
+      // Matches real firmware behavior: channel 0 is PRIMARY, name is empty.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([
+        { id: 0, name: '', role: 1 },
+        { id: 1, name: 'telemetry', role: 2 },
+      ]);
+      mockDb.messages.getMessagesBeforeInChannel.mockResolvedValue([
+        mkMsg({ id: 'a1', text: 'unnamed-primary', requestId: 11, fromNodeNum: NODE_ONE.nodeNum, timestamp: 5000, rxTime: 5000 }),
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=Primary');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].text).toBe('unnamed-primary');
+      expect(mockDb.messages.getMessagesBeforeInChannel).toHaveBeenCalledWith(
+        0,
+        undefined,
+        expect.any(Number),
+        SOURCE_A.id
+      );
     });
   });
 

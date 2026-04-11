@@ -16,6 +16,53 @@ const router = Router();
 router.use(optionalAuth());
 
 /**
+ * Resolve a channel's display name for unified views.
+ *
+ * Meshtastic channel conventions:
+ *  - Channel 0 is always the PRIMARY channel. Its name is often blank because
+ *    the Meshtastic client shows the modem preset instead; we label it
+ *    "Primary" so it surfaces in the unified channel picker.
+ *  - Channels with `role === 0` are DISABLED — skip entirely.
+ *  - Any other channel with a blank name is a disabled/unused slot — skip.
+ *
+ * Returns `null` when the channel should be omitted from the unified list.
+ */
+const PRIMARY_CHANNEL_NAME = 'Primary';
+function unifiedChannelDisplayName(c: {
+  id: number;
+  name?: string | null;
+  role?: number | null;
+}): string | null {
+  if (c.role === 0) return null; // DISABLED
+  const name = (c.name ?? '').trim();
+  if (name) return name;
+  if (c.id === 0) return PRIMARY_CHANNEL_NAME;
+  return null;
+}
+
+/**
+ * Extract the Meshtastic packet id from a stored message row id.
+ *
+ * Message rows are keyed as `${sourceId}_${fromNodeNum}_${meshPacket.id}` so
+ * that the same mesh packet received by multiple sources does NOT collide on
+ * the primary key. The trailing numeric segment is the packet id set by the
+ * originating node — identical across every receiver. This is the ONLY
+ * reliable cross-source dedup key for received text messages because the
+ * `requestId` column is only populated for Virtual Node ACK tracking, not for
+ * ordinary received text.
+ *
+ * Returns `null` when the id does not end in a numeric segment (defensive —
+ * should not happen for rows inserted by the current ingestion path).
+ */
+function extractPacketIdFromRowId(rowId: string): number | null {
+  const parts = rowId.split('_');
+  if (parts.length < 2) return null;
+  const last = parts[parts.length - 1];
+  const n = Number.parseInt(last, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * GET /api/unified/channels
  *
  * Returns a de-duplicated list of channel names across every source the user
@@ -52,8 +99,8 @@ router.get('/channels', async (req: Request, res: Response) => {
         try {
           const chans = await databaseService.channels.getAllChannels(source.id);
           for (const c of chans) {
-            const name = (c.name ?? '').trim();
-            if (!name) continue; // skip unnamed/disabled slots
+            const name = unifiedChannelDisplayName(c as any);
+            if (!name) continue; // disabled or unused slot
             const list = byName.get(name) ?? [];
             list.push({
               sourceId: source.id,
@@ -165,11 +212,13 @@ router.get('/messages', async (req: Request, res: Response) => {
         if (!canRead) return;
 
         // Resolve channel name → channel number for THIS source.
+        // Uses the same display-name rules as GET /channels so that the
+        // unnamed Primary (channel 0) can be selected from the dropdown.
         let channelNumber: number | undefined;
         if (channelName) {
           try {
             const chans = await databaseService.channels.getAllChannels(source.id);
-            const match = chans.find((c) => (c.name ?? '').trim() === channelName);
+            const match = chans.find((c) => unifiedChannelDisplayName(c as any) === channelName);
             if (!match) return; // source has no matching channel → skip
             channelNumber = (match as any).id;
           } catch (err) {
@@ -213,12 +262,18 @@ router.get('/messages', async (req: Request, res: Response) => {
         for (const m of msgs) {
           const canonical = (m.rxTime ?? m.timestamp) as number;
           const reqId = (m.requestId ?? null) as number | null;
-          // Dedup key: prefer (fromNodeNum, requestId). Fallback for rows
-          // with null requestId (should be rare) groups by text + ~1s window.
           const fromNum = Number(m.fromNodeNum);
-          const dedupKey = reqId != null
-            ? `${fromNum}:${reqId}`
-            : `${fromNum}:${m.text ?? ''}:${Math.floor(canonical / 1000)}`;
+          // Dedup key priority:
+          //   1. Mesh packet id (extracted from the row id) — the only field
+          //      that is identical across sources for the same mesh packet.
+          //   2. requestId — populated for Virtual Node ACK tracking.
+          //   3. Text + 1s window — last-resort fallback, single-source only.
+          const packetId = extractPacketIdFromRowId(String((m as any).id ?? ''));
+          const dedupKey = packetId != null
+            ? `${fromNum}:p${packetId}`
+            : reqId != null
+              ? `${fromNum}:r${reqId}`
+              : `${fromNum}:${m.text ?? ''}:${Math.floor(canonical / 1000)}`;
 
           const reception: Reception = {
             sourceId: source.id,
