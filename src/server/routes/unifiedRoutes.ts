@@ -82,7 +82,11 @@ router.get('/messages', async (req: Request, res: Response) => {
 router.get('/telemetry', async (req: Request, res: Response) => {
   try {
     const hours = Math.min(parseInt(req.query.hours as string || '24', 10), 168);
-    const cutoff = Math.floor(Date.now() / 1000) - hours * 3600;
+    // Telemetry timestamps are stored in milliseconds (see meshtasticManager.ts
+    // `Store in milliseconds (Unix timestamp in ms)`), so the cutoff must also
+    // be in ms. Previously the cutoff was computed in seconds, so the `hours`
+    // filter was effectively a no-op (ms values always exceed the s cutoff).
+    const cutoff = Date.now() - hours * 3600 * 1000;
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;
 
