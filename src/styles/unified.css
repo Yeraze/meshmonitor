@@ -114,6 +114,16 @@
   cursor: pointer;
 }
 
+/* Search input reuses .unified-select styling but needs text cursor + width. */
+.unified-search {
+  cursor: text;
+  min-width: 180px;
+}
+
+.unified-search::placeholder {
+  color: var(--ctp-overlay0);
+}
+
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
 .unified-body {

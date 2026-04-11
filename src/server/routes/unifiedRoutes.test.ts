@@ -163,7 +163,8 @@ describe('Unified Routes', () => {
   // ── /telemetry ────────────────────────────────────────────────────────────
 
   describe('GET /telemetry', () => {
-    const recentTs = Math.floor(Date.now() / 1000) - 100; // 100s ago
+    // Telemetry timestamps are stored in milliseconds (see meshtasticManager).
+    const recentTs = Date.now() - 100 * 1000; // 100s ago (ms)
 
     it('returns telemetry for all accessible sources', async () => {
       mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
@@ -190,7 +191,7 @@ describe('Unified Routes', () => {
       mockDb.nodes.getAllNodes.mockResolvedValue([
         { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, longName: 'Node One', shortName: 'N1' },
       ]);
-      const oldTs = Math.floor(Date.now() / 1000) - 7200; // 2 hours ago
+      const oldTs = Date.now() - 7200 * 1000; // 2 hours ago (ms)
       mockDb.telemetry.getLatestTelemetryByNode.mockResolvedValue([
         { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, telemetryType: 'battery_level', value: 80, timestamp: oldTs },
       ]);
