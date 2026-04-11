@@ -122,6 +122,39 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Get messages in a channel strictly before a cursor timestamp (cursor-based pagination).
+   *
+   * @param channel    Channel number to filter on
+   * @param before     Exclusive upper-bound for COALESCE(rxTime, timestamp) in ms.
+   *                   If undefined, no upper bound is applied (returns newest `limit` rows).
+   * @param limit      Max rows to return
+   * @param sourceId   Optional source scope
+   */
+  async getMessagesBeforeInChannel(
+    channel: number,
+    before: number | undefined,
+    limit: number = 100,
+    sourceId?: string
+  ): Promise<DbMessage[]> {
+    const { messages } = this.tables;
+    const timeExpr = sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`;
+    const conditions: (SQL | undefined)[] = [
+      eq(messages.channel, channel),
+      this.withSourceScope(messages, sourceId),
+    ];
+    if (before !== undefined) {
+      conditions.push(sql`${timeExpr} < ${before}`);
+    }
+    const result = await this.db
+      .select()
+      .from(messages)
+      .where(and(...conditions))
+      .orderBy(desc(timeExpr))
+      .limit(limit);
+    return this.normalizeBigInts(result) as DbMessage[];
+  }
+
+  /**
    * Get direct messages between two nodes
    */
   async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {

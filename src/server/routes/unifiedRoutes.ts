@@ -16,54 +16,260 @@ const router = Router();
 router.use(optionalAuth());
 
 /**
- * GET /api/unified/messages?limit=50
+ * GET /api/unified/channels
  *
- * Returns messages from all sources the user can read, merged by timestamp
- * (newest first). Each message includes `sourceId` and `sourceName`.
+ * Returns a de-duplicated list of channel names across every source the user
+ * has `messages:read` permission for. Each entry includes the list of sources
+ * that host a channel with that name (and what number it lives on per source),
+ * so the frontend can render a single "Primary" entry even when sources use
+ * different channel slots for it.
+ *
+ * Response shape:
+ * ```
+ * [
+ *   { name: "Primary", sources: [{ sourceId, sourceName, channelNumber }] },
+ *   { name: "LongFast", sources: [...] }
+ * ]
+ * ```
  */
-router.get('/messages', async (req: Request, res: Response) => {
+router.get('/channels', async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 200);
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;
 
-    // Fetch all sources
     const sources = await databaseService.sources.getAllSources();
 
-    // For each source, check if user has messages read permission and fetch messages
-    const sourceMsgResults = await Promise.allSettled(
+    type ChannelSourceRef = { sourceId: string; sourceName: string; channelNumber: number };
+    const byName = new Map<string, ChannelSourceRef[]>();
+
+    await Promise.all(
       sources.map(async (source) => {
-        // Permission check: admin sees all, otherwise check per-source then global
         const canRead = isAdmin || (user
           ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
           : false);
+        if (!canRead) return;
 
-        if (!canRead) return [];
-
-        const messages = await databaseService.messages.getMessages(limit, 0, source.id);
-        return messages.map(m => ({
-          ...m,
-          sourceId: source.id,
-          sourceName: source.name,
-        }));
+        try {
+          const chans = await databaseService.channels.getAllChannels(source.id);
+          for (const c of chans) {
+            const name = (c.name ?? '').trim();
+            if (!name) continue; // skip unnamed/disabled slots
+            const list = byName.get(name) ?? [];
+            list.push({
+              sourceId: source.id,
+              sourceName: source.name,
+              channelNumber: (c as any).id,
+            });
+            byName.set(name, list);
+          }
+        } catch (err) {
+          logger.warn(`Failed to load channels for source ${source.id}:`, err);
+        }
       })
     );
 
-    // Merge and sort by timestamp descending
-    const allMessages: Array<Record<string, unknown>> = [];
-    for (const result of sourceMsgResults) {
-      if (result.status === 'fulfilled') {
-        allMessages.push(...result.value);
-      }
+    const result = Array.from(byName.entries())
+      .map(([name, srcs]) => ({ name, sources: srcs }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching unified channels:', error);
+    res.status(500).json({ error: 'Failed to fetch unified channels' });
+  }
+});
+
+/**
+ * GET /api/unified/messages?channel=<name>&before=<ms>&limit=<N>
+ *
+ * Returns messages from every source the user has `messages:read` permission
+ * for, merged into one stream and **de-duplicated across sources**.
+ *
+ * The same mesh packet received by multiple sources collapses into a single
+ * entry whose `receptions[]` array records how each source heard it (hop
+ * count, SNR, RSSI, rxTime). This lets the frontend compare reception quality
+ * across the fleet while still rendering one bubble per message.
+ *
+ * Query params:
+ *   ?channel=<name>   Filter by channel NAME (not number — sources may place
+ *                     the same name on different slots). If omitted, returns
+ *                     messages from all channels across all sources (legacy).
+ *   ?before=<ms>      Cursor: only include messages whose canonical time
+ *                     (COALESCE(rxTime, timestamp)) is strictly less than
+ *                     this. Used for infinite-scroll pagination.
+ *   ?limit=<N>        Max de-duplicated messages to return (default 100,
+ *                     cap 500).
+ *
+ * Response item shape:
+ *   {
+ *     dedupKey, requestId, fromNodeNum, fromNodeId,
+ *     fromNodeLongName, fromNodeShortName,
+ *     toNodeNum, toNodeId,
+ *     channel, channelName,
+ *     text, emoji, replyId,
+ *     timestamp,        // canonical (earliest rxTime seen)
+ *     receptions: [{ sourceId, sourceName, hopStart, hopLimit,
+ *                    rxSnr, rxRssi, rxTime, timestamp }]
+ *   }
+ */
+router.get('/messages', async (req: Request, res: Response) => {
+  try {
+    const channelName = ((req.query.channel as string) || '').trim();
+    const beforeRaw = req.query.before as string | undefined;
+    const before = beforeRaw ? parseInt(beforeRaw, 10) : undefined;
+    const limit = Math.min(parseInt((req.query.limit as string) || '100', 10), 500);
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+
+    const sources = await databaseService.sources.getAllSources();
+
+    type Reception = {
+      sourceId: string;
+      sourceName: string;
+      hopStart: number | null;
+      hopLimit: number | null;
+      rxSnr: number | null;
+      rxRssi: number | null;
+      rxTime: number | null;
+      timestamp: number;
+    };
+    type Merged = {
+      dedupKey: string;
+      requestId: number | null;
+      fromNodeNum: number;
+      fromNodeId: string;
+      fromNodeLongName?: string;
+      fromNodeShortName?: string;
+      toNodeNum: number;
+      toNodeId: string;
+      channel: number;
+      channelName: string;
+      text: string;
+      emoji: number | null;
+      replyId: number | null;
+      timestamp: number;
+      receptions: Reception[];
+    };
+
+    const merged = new Map<string, Merged>();
+
+    // Fetch 2x limit per source so dedup can't starve the result set when
+    // multiple sources all heard the same packet.
+    const fetchLimit = limit * 2;
+
+    await Promise.all(
+      sources.map(async (source) => {
+        const canRead = isAdmin || (user
+          ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
+          : false);
+        if (!canRead) return;
+
+        // Resolve channel name → channel number for THIS source.
+        let channelNumber: number | undefined;
+        if (channelName) {
+          try {
+            const chans = await databaseService.channels.getAllChannels(source.id);
+            const match = chans.find((c) => (c.name ?? '').trim() === channelName);
+            if (!match) return; // source has no matching channel → skip
+            channelNumber = (match as any).id;
+          } catch (err) {
+            logger.warn(`Failed to resolve channel '${channelName}' for source ${source.id}:`, err);
+            return;
+          }
+        }
+
+        // Fetch messages.
+        let msgs: Awaited<ReturnType<typeof databaseService.messages.getMessages>>;
+        if (channelNumber !== undefined) {
+          msgs = await databaseService.messages.getMessagesBeforeInChannel(
+            channelNumber,
+            before,
+            fetchLimit,
+            source.id
+          );
+        } else {
+          // Legacy: no channel filter. Cursor-less offset fetch.
+          msgs = await databaseService.messages.getMessages(fetchLimit, 0, source.id);
+          if (before !== undefined) {
+            msgs = msgs.filter((m) => (m.rxTime ?? m.timestamp) < before);
+          }
+        }
+
+        // Build node-name lookup for this source so we can resolve sender
+        // display names server-side (avoids needing a second /nodes call).
+        let nodeMap = new Map<number, { longName?: string; shortName?: string }>();
+        try {
+          const nodes = await databaseService.nodes.getAllNodes(source.id);
+          for (const n of nodes) {
+            nodeMap.set(Number(n.nodeNum), {
+              longName: n.longName ?? undefined,
+              shortName: n.shortName ?? undefined,
+            });
+          }
+        } catch (err) {
+          logger.warn(`Failed to load nodes for source ${source.id}:`, err);
+        }
+
+        for (const m of msgs) {
+          const canonical = (m.rxTime ?? m.timestamp) as number;
+          const reqId = (m.requestId ?? null) as number | null;
+          // Dedup key: prefer (fromNodeNum, requestId). Fallback for rows
+          // with null requestId (should be rare) groups by text + ~1s window.
+          const fromNum = Number(m.fromNodeNum);
+          const dedupKey = reqId != null
+            ? `${fromNum}:${reqId}`
+            : `${fromNum}:${m.text ?? ''}:${Math.floor(canonical / 1000)}`;
+
+          const reception: Reception = {
+            sourceId: source.id,
+            sourceName: source.name,
+            hopStart: m.hopStart ?? null,
+            hopLimit: m.hopLimit ?? null,
+            rxSnr: m.rxSnr ?? null,
+            rxRssi: m.rxRssi ?? null,
+            rxTime: m.rxTime ?? null,
+            timestamp: m.timestamp,
+          };
+
+          const existing = merged.get(dedupKey);
+          if (existing) {
+            existing.receptions.push(reception);
+            // Canonical = earliest heard
+            if (canonical < existing.timestamp) existing.timestamp = canonical;
+          } else {
+            const sender = nodeMap.get(fromNum);
+            merged.set(dedupKey, {
+              dedupKey,
+              requestId: reqId,
+              fromNodeNum: fromNum,
+              fromNodeId: m.fromNodeId,
+              fromNodeLongName: sender?.longName,
+              fromNodeShortName: sender?.shortName,
+              toNodeNum: Number(m.toNodeNum),
+              toNodeId: m.toNodeId,
+              channel: m.channel,
+              channelName,
+              text: m.text ?? '',
+              emoji: m.emoji ?? null,
+              replyId: m.replyId ?? null,
+              timestamp: canonical,
+              receptions: [reception],
+            });
+          }
+        }
+      })
+    );
+
+    // Sort receptions within each merged entry so the frontend modal renders
+    // them in a stable order (earliest-heard first).
+    for (const m of merged.values()) {
+      m.receptions.sort((a, b) => a.timestamp - b.timestamp);
     }
 
-    allMessages.sort((a, b) => {
-      const ta = (a.timestamp as number) ?? 0;
-      const tb = (b.timestamp as number) ?? 0;
-      return tb - ta;
-    });
+    const allMerged = Array.from(merged.values());
+    allMerged.sort((a, b) => b.timestamp - a.timestamp);
 
-    res.json(allMessages.slice(0, limit));
+    res.json(allMerged.slice(0, limit));
   } catch (error) {
     logger.error('Error fetching unified messages:', error);
     res.status(500).json({ error: 'Failed to fetch unified messages' });
