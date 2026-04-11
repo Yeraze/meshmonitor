@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 22 migrations in sequential order for use by the migration runner.
+ * Registers all 31 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -42,6 +42,7 @@ import { migration as addSourceIdToKeyRepairLogMigration, runMigration027Postgre
 import { migration as addSourceIdToNotificationsMigration, runMigration028Postgres, runMigration028Mysql } from '../server/migrations/028_add_source_id_to_notifications.js';
 import { migration as nodesCompositePkMigration, runMigration029Postgres, runMigration029Mysql } from '../server/migrations/029_nodes_composite_pk.js';
 import { migration as addSourceIdToRouteSegmentsMigration, runMigration030Postgres, runMigration030Mysql } from '../server/migrations/030_add_source_id_to_route_segments.js';
+import { migration as dropLegacyNodesUniqueMigration, runMigration031Postgres, runMigration031Mysql } from '../server/migrations/031_drop_legacy_nodes_unique.js';
 
 // ============================================================================
 // Registry
@@ -434,4 +435,21 @@ registry.register({
   sqlite: (db) => addSourceIdToRouteSegmentsMigration.up(db),
   postgres: (client) => runMigration030Postgres(client),
   mysql: (pool) => runMigration030Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 031: Drop legacy standalone UNIQUE on nodes.nodeId.
+// Migration 029's Postgres path used an ILIKE pattern against
+// pg_get_constraintdef that failed to match the quoted column name, so the
+// old constraint survived on upgraded databases and blocked cross-source node
+// upserts. This migration drops it explicitly using pg_attribute.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 31,
+  name: 'drop_legacy_nodes_unique',
+  settingsKey: 'migration_031_drop_legacy_nodes_unique',
+  sqlite: (db) => dropLegacyNodesUniqueMigration.up(db),
+  postgres: (client) => runMigration031Postgres(client),
+  mysql: (pool) => runMigration031Mysql(pool),
 });
