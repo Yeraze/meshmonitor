@@ -51,15 +51,29 @@ function unifiedChannelDisplayName(c: {
  * `requestId` column is only populated for Virtual Node ACK tracking, not for
  * ordinary received text.
  *
- * Returns `null` when the id does not end in a numeric segment (defensive —
- * should not happen for rows inserted by the current ingestion path).
+ * Defensive validation (rowId comes from DB so trusted, but cheap to harden):
+ *  - non-string or empty → null
+ *  - unreasonably long (>256 chars) → null, guards against malformed input
+ *  - trailing segment must be a non-negative finite integer within the
+ *    Meshtastic packet id range (unsigned 32-bit)
+ *
+ * Returns `null` when the id cannot be parsed to a valid packet id.
  */
-function extractPacketIdFromRowId(rowId: string): number | null {
+const MAX_ROW_ID_LENGTH = 256;
+const MAX_PACKET_ID = 0xffffffff; // unsigned 32-bit
+export function extractPacketIdFromRowId(rowId: unknown): number | null {
+  if (typeof rowId !== 'string' || rowId.length === 0 || rowId.length > MAX_ROW_ID_LENGTH) {
+    return null;
+  }
   const parts = rowId.split('_');
   if (parts.length < 2) return null;
   const last = parts[parts.length - 1];
+  // Reject anything that isn't pure digits — Number.parseInt would otherwise
+  // accept things like "12abc" → 12.
+  if (!/^\d+$/.test(last)) return null;
   const n = Number.parseInt(last, 10);
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n) || n < 0 || n > MAX_PACKET_ID) return null;
+  return n;
 }
 
 /**
@@ -212,23 +226,49 @@ router.get('/messages', async (req: Request, res: Response) => {
           : false);
         if (!canRead) return;
 
-        // Resolve channel name → channel number for THIS source.
-        // Uses the same display-name rules as GET /channels so that the
-        // unnamed Primary (channel 0) can be selected from the dropdown.
+        // Resolve channel name → channel number AND build node-name map in
+        // parallel. Both are independent reads against this source's DB slice
+        // and used only inside this per-source block, so we can fan them out
+        // instead of running them back-to-back.
+        const nodeMap = new Map<number, { longName?: string; shortName?: string }>();
         let channelNumber: number | undefined;
+
+        const [chansResult, nodesResult] = await Promise.allSettled([
+          channelName
+            ? databaseService.channels.getAllChannels(source.id)
+            : Promise.resolve(null),
+          databaseService.nodes.getAllNodes(source.id),
+        ]);
+
         if (channelName) {
-          try {
-            const chans = await databaseService.channels.getAllChannels(source.id);
-            const match = chans.find((c) => unifiedChannelDisplayName(c as any) === channelName);
-            if (!match) return; // source has no matching channel → skip
-            channelNumber = (match as any).id;
-          } catch (err) {
-            logger.warn(`Failed to resolve channel '${channelName}' for source ${source.id}:`, err);
+          if (chansResult.status === 'rejected') {
+            logger.warn(
+              `Failed to resolve channel '${channelName}' for source ${source.id}:`,
+              chansResult.reason
+            );
             return;
           }
+          const chans = chansResult.value;
+          const match = chans?.find(
+            (c) => unifiedChannelDisplayName(c as any) === channelName
+          );
+          if (!match) return; // source has no matching channel → skip
+          channelNumber = (match as any).id;
         }
 
-        // Fetch messages.
+        if (nodesResult.status === 'fulfilled') {
+          for (const n of nodesResult.value) {
+            nodeMap.set(Number(n.nodeNum), {
+              longName: n.longName ?? undefined,
+              shortName: n.shortName ?? undefined,
+            });
+          }
+        } else {
+          logger.warn(`Failed to load nodes for source ${source.id}:`, nodesResult.reason);
+        }
+
+        // Fetch messages. Kept sequential after the channel lookup because the
+        // query depends on `channelNumber`.
         let msgs: Awaited<ReturnType<typeof databaseService.messages.getMessages>>;
         if (channelNumber !== undefined) {
           msgs = await databaseService.messages.getMessagesBeforeInChannel(
@@ -243,21 +283,6 @@ router.get('/messages', async (req: Request, res: Response) => {
           if (before !== undefined) {
             msgs = msgs.filter((m) => (m.rxTime ?? m.timestamp) < before);
           }
-        }
-
-        // Build node-name lookup for this source so we can resolve sender
-        // display names server-side (avoids needing a second /nodes call).
-        let nodeMap = new Map<number, { longName?: string; shortName?: string }>();
-        try {
-          const nodes = await databaseService.nodes.getAllNodes(source.id);
-          for (const n of nodes) {
-            nodeMap.set(Number(n.nodeNum), {
-              longName: n.longName ?? undefined,
-              shortName: n.shortName ?? undefined,
-            });
-          }
-        } catch (err) {
-          logger.warn(`Failed to load nodes for source ${source.id}:`, err);
         }
 
         for (const m of msgs) {
@@ -292,6 +317,18 @@ router.get('/messages', async (req: Request, res: Response) => {
             existing.receptions.push(reception);
             // Canonical = earliest heard
             if (canonical < existing.timestamp) existing.timestamp = canonical;
+            // Upgrade sender display names if a later source knows the node
+            // and the first-seen entry didn't. Common when one source's
+            // nodes.getAllNodes failed or simply hasn't learned the sender yet.
+            if (!existing.fromNodeLongName || !existing.fromNodeShortName) {
+              const sender = nodeMap.get(fromNum);
+              if (sender?.longName && !existing.fromNodeLongName) {
+                existing.fromNodeLongName = sender.longName;
+              }
+              if (sender?.shortName && !existing.fromNodeShortName) {
+                existing.fromNodeShortName = sender.shortName;
+              }
+            }
           } else {
             const sender = nodeMap.get(fromNum);
             merged.set(dedupKey, {
@@ -365,9 +402,27 @@ router.get('/telemetry', async (req: Request, res: Response) => {
         const nodes = await databaseService.nodes.getAllNodes(source.id);
         const entries: Array<Record<string, unknown>> = [];
 
-        for (const node of nodes) {
-          const latest = await databaseService.telemetry.getLatestTelemetryByNode(node.nodeId);
-          for (const t of latest) {
+        // Fan out per-node telemetry lookups in parallel rather than awaiting
+        // each one sequentially. On a multi-source deployment the sequential
+        // form was the dominant cost of /api/unified/telemetry — O(sources *
+        // nodes) serial round trips through Drizzle.
+        const perNodeLatest = await Promise.all(
+          nodes.map((node) =>
+            databaseService.telemetry
+              .getLatestTelemetryByNode(node.nodeId)
+              .then((latest) => ({ node, latest }))
+              .catch((err) => {
+                logger.warn(
+                  `Failed to load telemetry for node ${node.nodeId} (source ${source.id}):`,
+                  err
+                );
+                return { node, latest: [] as Array<{ timestamp: number }> };
+              })
+          )
+        );
+
+        for (const { node, latest } of perNodeLatest) {
+          for (const t of latest as any[]) {
             if (t.timestamp >= cutoff) {
               entries.push({
                 ...t,
