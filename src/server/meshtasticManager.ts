@@ -394,6 +394,11 @@ class MeshtasticManager implements ISourceManager {
   // Phase C: lazily-cached human-readable source name for notifications
   private cachedSourceName: string | null = null;
 
+  // Deduplicate telemetry packets to prevent identical duplicate points on charts
+  private recentTelemetryPacketIds: Set<string> = new Set();
+  private recentTelemetryPacketIdsQueue: string[] = [];
+
+
   /**
    * Lazily resolve the human-readable source name from the database.
    * Cached after first lookup. Falls back to the sourceId if the source row is missing.
@@ -4928,13 +4933,31 @@ class MeshtasticManager implements ISourceManager {
       logger.debug('📊 Processing telemetry message');
 
       const fromNum = Number(meshPacket.from);
+      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
+
+      // Deduplicate telemetry to prevent identical duplicate points on charts
+      // Some routers may rebroadcast packets resulting in exactly replicated packet data with a newer timestamp
+      if (packetId !== undefined) {
+        const dedupKey = `${fromNum}-${packetId}`;
+        if (this.recentTelemetryPacketIds.has(dedupKey)) {
+          logger.debug(`📊 Skipping duplicate telemetry packet ${packetId} from node ${fromNum}`);
+          return;
+        }
+        this.recentTelemetryPacketIds.add(dedupKey);
+        this.recentTelemetryPacketIdsQueue.push(dedupKey);
+        // Keep the last 500 packets in memory
+        if (this.recentTelemetryPacketIdsQueue.length > 500) {
+          const oldest = this.recentTelemetryPacketIdsQueue.shift();
+          if (oldest) this.recentTelemetryPacketIds.delete(oldest);
+        }
+      }
+
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
       const now = Date.now();
       const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
       // Preserve the original packet timestamp for analysis (may be inaccurate if node has wrong time)
       const packetTimestamp = telemetry.time ? Number(telemetry.time) * 1000 : undefined;
-      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
 
       // Track PKI encryption
       await this.trackPKIEncryption(meshPacket, fromNum);
@@ -5151,11 +5174,27 @@ class MeshtasticManager implements ISourceManager {
       logger.debug('📊 Processing paxcounter message');
 
       const fromNum = Number(meshPacket.from);
+      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
+
+      // Deduplicate paxcounter telemetry
+      if (packetId !== undefined) {
+        const dedupKey = `${fromNum}-${packetId}`;
+        if (this.recentTelemetryPacketIds.has(dedupKey)) {
+          logger.debug(`📊 Skipping duplicate paxcounter telemetry packet ${packetId} from node ${fromNum}`);
+          return;
+        }
+        this.recentTelemetryPacketIds.add(dedupKey);
+        this.recentTelemetryPacketIdsQueue.push(dedupKey);
+        if (this.recentTelemetryPacketIdsQueue.length > 500) {
+          const oldest = this.recentTelemetryPacketIdsQueue.shift();
+          if (oldest) this.recentTelemetryPacketIds.delete(oldest);
+        }
+      }
+
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
       const now = Date.now();
       const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
-      const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
 
       // Track PKI encryption
       await this.trackPKIEncryption(meshPacket, fromNum);
