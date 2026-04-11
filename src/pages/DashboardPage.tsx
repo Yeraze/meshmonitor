@@ -252,11 +252,6 @@ function DashboardInner() {
           <span className="dashboard-topbar-title">MeshMonitor</span>
         </div>
         <div className="dashboard-topbar-actions">
-          {isAdmin && (
-            <button className="dashboard-add-source-btn" onClick={onAddSource}>
-              + Add Source
-            </button>
-          )}
           {isAuthenticated ? (
             <UserMenu />
           ) : (
