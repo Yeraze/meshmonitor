@@ -149,7 +149,7 @@ router.get('/channels', async (req: Request, res: Response) => {
  *
  * Response item shape:
  *   {
- *     dedupKey, requestId, fromNodeNum, fromNodeId,
+ *     dedupKey, packetId, requestId, fromNodeNum, fromNodeId,
  *     fromNodeLongName, fromNodeShortName,
  *     toNodeNum, toNodeId,
  *     channel, channelName,
@@ -182,6 +182,7 @@ router.get('/messages', async (req: Request, res: Response) => {
     };
     type Merged = {
       dedupKey: string;
+      packetId: number | null;
       requestId: number | null;
       fromNodeNum: number;
       fromNodeId: string;
@@ -295,6 +296,7 @@ router.get('/messages', async (req: Request, res: Response) => {
             const sender = nodeMap.get(fromNum);
             merged.set(dedupKey, {
               dedupKey,
+              packetId,
               requestId: reqId,
               fromNodeNum: fromNum,
               fromNodeId: m.fromNodeId,

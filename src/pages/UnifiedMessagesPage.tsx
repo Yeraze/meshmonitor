@@ -43,6 +43,7 @@ interface Reception {
 
 interface UnifiedMessage {
   dedupKey: string;
+  packetId: number | null;
   requestId: number | null;
   fromNodeNum: number;
   fromNodeId: string;
@@ -250,16 +251,19 @@ export default function UnifiedMessagesPage() {
     return allMessages.filter((m) => m.receptions.some((r) => r.sourceId === sourceFilter));
   }, [allMessages, sourceFilter]);
 
-  // Build a quick index by requestId for reply preview + reaction grouping.
-  const byRequestId = useMemo(() => {
+  // Build a quick index by packet id for reply preview + reaction grouping.
+  // Meshtastic firmware sets `reply_id` to the parent's meshpacket id, not its
+  // requestId — so reactions (tapbacks) and reply previews must look up parents
+  // by packet id to match.
+  const byPacketId = useMemo(() => {
     const map = new Map<number, UnifiedMessage>();
     for (const m of allMessages) {
-      if (m.requestId != null) map.set(m.requestId, m);
+      if (m.packetId != null) map.set(m.packetId, m);
     }
     return map;
   }, [allMessages]);
 
-  // Group reactions onto their parent: parentRequestId → reactions[]
+  // Group reactions onto their parent: parent packetId → reactions[]
   const reactionsByParent = useMemo(() => {
     const map = new Map<number, UnifiedMessage[]>();
     for (const m of allMessages) {
@@ -456,10 +460,11 @@ export default function UnifiedMessagesPage() {
           const color = sourceColor(primarySourceId);
           const receptionCount = msg.receptions.length;
 
-          const reactions = msg.requestId != null ? reactionsByParent.get(msg.requestId) ?? [] : [];
+          const reactions = msg.packetId != null ? reactionsByParent.get(msg.packetId) ?? [] : [];
 
-          // Reply preview: look up parent by requestId.
-          const parent = msg.replyId != null ? byRequestId.get(msg.replyId) : undefined;
+          // Reply preview: look up parent by packet id (firmware's reply_id
+          // points at the parent's meshpacket id, not its requestId).
+          const parent = msg.replyId != null ? byPacketId.get(msg.replyId) : undefined;
 
           return (
             <div key={msg.dedupKey}>

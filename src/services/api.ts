@@ -531,11 +531,14 @@ class ApiService {
   async getChannelMessages(
     channel: number,
     limit: number = 100,
-    offset: number = 0
+    offset: number = 0,
+    sourceId?: string | null
   ): Promise<{ messages: MeshMessage[]; hasMore: boolean }> {
     await this.ensureBaseUrl();
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (sourceId) params.set('sourceId', sourceId);
     const response = await fetch(
-      `${this.baseUrl}/api/messages/channel/${channel}?limit=${limit}&offset=${offset}`,
+      `${this.baseUrl}/api/messages/channel/${channel}?${params.toString()}`,
       { credentials: 'include' }
     );
     if (!response.ok) throw new Error('Failed to fetch channel messages');
@@ -546,11 +549,14 @@ class ApiService {
     nodeId1: string,
     nodeId2: string,
     limit: number = 100,
-    offset: number = 0
+    offset: number = 0,
+    sourceId?: string | null
   ): Promise<{ messages: MeshMessage[]; hasMore: boolean }> {
     await this.ensureBaseUrl();
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (sourceId) params.set('sourceId', sourceId);
     const response = await fetch(
-      `${this.baseUrl}/api/messages/direct/${nodeId1}/${nodeId2}?limit=${limit}&offset=${offset}`,
+      `${this.baseUrl}/api/messages/direct/${nodeId1}/${nodeId2}?${params.toString()}`,
       { credentials: 'include' }
     );
     if (!response.ok) throw new Error('Failed to fetch direct messages');

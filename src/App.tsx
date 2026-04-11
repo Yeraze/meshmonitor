@@ -1561,7 +1561,7 @@ function App() {
     setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: true }));
 
     try {
-      const result = await api.getChannelMessages(selectedChannel, 100, offset);
+      const result = await api.getChannelMessages(selectedChannel, 100, offset, sourceId);
 
       if (result.messages.length > 0) {
         // Process timestamps for new messages
@@ -1632,7 +1632,7 @@ function App() {
     setDmLoadingMore(prev => ({ ...prev, [dmKey]: true }));
 
     try {
-      const result = await api.getDirectMessages(currentNodeId, selectedDMNode, 100, offset);
+      const result = await api.getDirectMessages(currentNodeId, selectedDMNode, 100, offset, sourceId);
 
       if (result.messages.length > 0) {
         // Process timestamps for new messages
