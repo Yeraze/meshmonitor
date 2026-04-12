@@ -414,8 +414,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
               </div>
               {startPos.groundSpeed !== undefined && (() => {
-                const converted = startPos.groundSpeed * 3.6;
-                const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
+                const speedKmh = startPos.groundSpeed * 3.6;
                 const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
                 const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
                 return (

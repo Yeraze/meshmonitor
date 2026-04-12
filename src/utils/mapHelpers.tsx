@@ -463,14 +463,11 @@ export const generatePositionHistoryArrows = (
     const timeStr = date.toLocaleTimeString();
 
     // Format speed (convert from m/s to km/h, then to mph if needed)
-    // Some devices may report in different units - sanity check for reasonable values
+    // Meshtastic protobuf defines ground_speed as m/s (uint32)
     let speedDisplay: string | null = null;
     let speedUnit = distanceUnit === 'mi' ? 'mph' : 'km/h';
     if (item.groundSpeed !== undefined) {
-      const converted = item.groundSpeed * 3.6;
-      // If converted speed > 200 km/h, assume raw value is already in km/h
-      const speedKmh = converted > 200 ? item.groundSpeed : converted;
-      // Convert to mph if user prefers miles
+      const speedKmh = item.groundSpeed * 3.6;
       const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
       speedDisplay = speed.toFixed(1);
     }
