@@ -105,8 +105,8 @@ const UsersTab: React.FC = () => {
 
   const fetchSources = async () => {
     try {
-      const response = await api.get<{ sources: Source[] }>('/api/sources');
-      setSources(response.sources || []);
+      const response = await api.get<Source[]>('/api/sources');
+      setSources(Array.isArray(response) ? response : []);
     } catch (err) {
       logger.debug('Failed to fetch sources:', err);
     }
