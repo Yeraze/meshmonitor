@@ -90,6 +90,7 @@ const UsersTab: React.FC = () => {
   // Source scope for permissions — all permissions are per-source
   const [sources, setSources] = useState<Source[]>([]);
   const [permissionScope, setPermissionScope] = useState<string | null>(null);
+  const [channelNames, setChannelNames] = useState<Map<number, string>>(new Map());
 
   useEffect(() => {
     fetchUsers();
@@ -105,6 +106,7 @@ const UsersTab: React.FC = () => {
       // Auto-select first source if none selected yet
       if (list.length > 0 && permissionScope === null) {
         setPermissionScope(list[0].id);
+        await fetchChannelNames(list[0].id);
       }
     } catch (err) {
       logger.debug('Failed to fetch sources:', err);
@@ -182,8 +184,23 @@ const UsersTab: React.FC = () => {
     await fetchChannelDbPermissions(user.id);
   };
 
+  const fetchChannelNames = async (sourceId: string | null) => {
+    if (!sourceId) { setChannelNames(new Map()); return; }
+    try {
+      const channels = await api.get<{ id: number; name: string }[]>(`/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`);
+      const map = new Map<number, string>();
+      if (Array.isArray(channels)) {
+        channels.forEach(ch => { if (ch.name) map.set(ch.id, ch.name); });
+      }
+      setChannelNames(map);
+    } catch {
+      setChannelNames(new Map());
+    }
+  };
+
   const handlePermissionScopeChange = async (scopeId: string | null) => {
     setPermissionScope(scopeId);
+    await fetchChannelNames(scopeId);
     if (selectedUser) {
       await loadPermissionsForUser(selectedUser, scopeId);
     }
@@ -699,7 +716,9 @@ const UsersTab: React.FC = () => {
                 
                 if (resource.startsWith('channel_')) {
                   const channelNum = resource.split('_')[1];
-                  label = channelNum === '0' ? t('users.channel_primary') : t('users.channel_n', { n: channelNum });
+                  const chName = channelNames.get(Number(channelNum));
+                  const baseLabel = channelNum === '0' ? t('users.channel_primary') : t('users.channel_n', { n: channelNum });
+                  label = chName ? `${baseLabel} (${chName})` : baseLabel;
                 } else {
                   label = labelMap[resource] || label;
                 }
