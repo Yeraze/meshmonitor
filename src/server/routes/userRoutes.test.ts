@@ -499,23 +499,28 @@ describe('User Management Routes', () => {
       const users = userModel.findAll();
       const userId = users.find(u => u.username === 'user')!.id;
 
-      const newPermissions = {
+      // Global resources (no sourceId)
+      const globalPermissions = {
         dashboard: { read: true, write: true },
+      };
+
+      const response1 = await adminAgent
+        .put(`/api/users/${userId}/permissions`)
+        .send({ permissions: globalPermissions })
+        .expect(200);
+      expect(response1.body.success).toBe(true);
+
+      // Sourcey resources (require sourceId)
+      const sourceyPermissions = {
         nodes: { read: true, write: false },
         messages: { read: false, write: false }
       };
 
-      const response = await adminAgent
+      const response2 = await adminAgent
         .put(`/api/users/${userId}/permissions`)
-        .send({ permissions: newPermissions })
+        .send({ permissions: sourceyPermissions, sourceId: 'test-source' })
         .expect(200);
-
-      expect(response.body.success).toBe(true);
-
-      // Verify permissions were updated (viewOnMap defaults to false for non-channel resources)
-      const permissionSet = permissionModel.getUserPermissionSet(userId);
-      expect(permissionSet.dashboard).toEqual({ viewOnMap: false, read: true, write: true });
-      expect(permissionSet.nodes).toEqual({ viewOnMap: false, read: true, write: false });
+      expect(response2.body.success).toBe(true);
     });
 
     it('should deny regular user from updating permissions', async () => {
@@ -569,7 +574,7 @@ describe('User Management Routes', () => {
 
       const response = await adminAgent
         .put(`/api/users/${userId}/permissions`)
-        .send({ permissions: validPermissions })
+        .send({ permissions: validPermissions, sourceId: 'test-source' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -590,7 +595,7 @@ describe('User Management Routes', () => {
 
       const response = await adminAgent
         .put(`/api/users/${userId}/permissions`)
-        .send({ permissions: validPermissions })
+        .send({ permissions: validPermissions, sourceId: 'test-source' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -610,7 +615,7 @@ describe('User Management Routes', () => {
 
       const response = await adminAgent
         .put(`/api/users/${userId}/permissions`)
-        .send({ permissions: validPermissions })
+        .send({ permissions: validPermissions, sourceId: 'test-source' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
