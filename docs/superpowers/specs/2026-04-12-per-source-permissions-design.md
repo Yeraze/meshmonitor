@@ -24,7 +24,7 @@ This design fixes the leak by committing to **strict per-source permissions** fo
 
 ## Resource Classification
 
-The 24 resources split **14 sourcey / 10 global**.
+The 24 resources split **13 sourcey / 11 global**.
 
 **Sourcey (per-source only, no global grants allowed):**
 - `channel_0`, `channel_1`, `channel_2`, `channel_3`, `channel_4`, `channel_5`, `channel_6`, `channel_7`
@@ -35,7 +35,6 @@ The 24 resources split **14 sourcey / 10 global**.
 - `packetmonitor`
 - `configuration` (device config per source)
 - `connection` (connect/disconnect a source)
-- `meshcore` (per-source device)
 - `automation` (permissions are per-source; rule definitions remain global — see out of scope)
 
 **Global (never per-source):**
@@ -47,6 +46,7 @@ The 24 resources split **14 sourcey / 10 global**.
 - `sources`
 - `info`
 - `dashboard`
+- `meshcore` (meshcoreManager is a global singleton with no source awareness)
 
 The list lives in a new constants file `src/server/constants/permissions.ts` so backend, migration, frontend, and tests all import the same source of truth.
 
