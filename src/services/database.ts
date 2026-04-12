@@ -10,6 +10,7 @@ import { PermissionModel } from '../server/models/Permission.js';
 import { APITokenModel } from '../server/models/APIToken.js';
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
+import { isResourceSourcey } from '../server/constants/permissions.js';
 
 // Drizzle ORM imports for dual-database support
 import { createSQLiteDriver } from '../db/drivers/sqlite.js';
@@ -10072,22 +10073,25 @@ class DatabaseService {
       return false;
     };
 
-    // Source-specific permission takes precedence when sourceId is provided
-    if (sourceId) {
+    if (isResourceSourcey(resource)) {
+      if (!sourceId) {
+        logger.warn(`checkPermissionAsync: sourcey resource '${resource}' checked without sourceId — denying`);
+        return false;
+      }
       for (const perm of permissions) {
         if (perm.resource === resource && (perm as any).sourceId === sourceId) {
           return check(perm);
         }
       }
+      return false;
     }
 
-    // Fall back to global permission (null/undefined sourceId)
+    // Global resources — ignore sourceId, look for NULL-sourceId row
     for (const perm of permissions) {
       if (perm.resource === resource && !(perm as any).sourceId) {
         return check(perm);
       }
     }
-
     return false;
   }
 
@@ -10099,9 +10103,9 @@ class DatabaseService {
     const permissions = await this.auth.getPermissionsForUser(userId);
     const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
 
-    // First apply global permissions (null sourceId)
+    // Always include global resources (non-sourcey resources with NULL sourceId)
     for (const perm of permissions) {
-      if (!(perm as any).sourceId) {
+      if (!isResourceSourcey(perm.resource) && !(perm as any).sourceId) {
         permissionSet[perm.resource] = {
           viewOnMap: (perm as any).canViewOnMap ?? false,
           read: perm.canRead,
@@ -10110,10 +10114,10 @@ class DatabaseService {
       }
     }
 
-    // Then override with source-specific permissions when sourceId is provided
+    // Include sourcey resources ONLY when sourceId is provided
     if (sourceId) {
       for (const perm of permissions) {
-        if ((perm as any).sourceId === sourceId) {
+        if (isResourceSourcey(perm.resource) && (perm as any).sourceId === sourceId) {
           permissionSet[perm.resource] = {
             viewOnMap: (perm as any).canViewOnMap ?? false,
             read: perm.canRead,
