@@ -8,6 +8,7 @@ import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
+import { convertSpeed } from '../utils/speedConversion';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
@@ -414,10 +415,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
               </div>
               {startPos.groundSpeed !== undefined && (() => {
-                const converted = startPos.groundSpeed * 3.6;
-                const speedKmh = converted > 200 ? startPos.groundSpeed : converted;
-                const speed = distanceUnit === 'mi' ? speedKmh * 0.621371 : speedKmh;
-                const unit = distanceUnit === 'mi' ? 'mph' : 'km/h';
+                const { speed, unit } = convertSpeed(startPos.groundSpeed, distanceUnit);
                 return (
                   <div className="route-usage">
                     <strong>Speed:</strong> {speed.toFixed(1)} {unit}

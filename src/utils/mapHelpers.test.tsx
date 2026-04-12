@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { getRoleName } from './nodeHelpers';
 import { ROLE_NAMES } from '../constants/index.js';
+import { convertSpeed } from './speedConversion';
 
 describe('mapHelpers', () => {
   describe('getRoleName', () => {
@@ -47,15 +48,12 @@ describe('mapHelpers', () => {
     });
 
     it('should use ROLE_NAMES constant consistently', () => {
-      // Verify all roles from constant are handled correctly
       Object.entries(ROLE_NAMES).forEach(([roleNum, roleName]) => {
         expect(getRoleName(parseInt(roleNum))).toBe(roleName);
       });
     });
 
     it('should match nodeHelpers getRoleName implementation', () => {
-      // Both implementations should return the same results
-      // This ensures consistency across the application
       for (let i = 0; i <= 12; i++) {
         expect(getRoleName(i)).toBe(ROLE_NAMES[i]);
       }
@@ -65,6 +63,55 @@ describe('mapHelpers', () => {
       expect(getRoleName(0)).not.toContain('Role 0');
       expect(getRoleName(12)).not.toContain('Role 12');
       expect(getRoleName(12)).toBe('Client Base');
+    });
+  });
+
+  describe('convertSpeed', () => {
+    it('should convert m/s to km/h for metric units', () => {
+      // 10 m/s = 36 km/h
+      const result = convertSpeed(10, 'km');
+      expect(result.speed).toBe(36);
+      expect(result.unit).toBe('km/h');
+    });
+
+    it('should convert m/s to mph for imperial units', () => {
+      // 10 m/s = 36 km/h = 22.4 mph
+      const result = convertSpeed(10, 'mi');
+      expect(result.speed).toBeCloseTo(22.4, 1);
+      expect(result.unit).toBe('mph');
+    });
+
+    it('should handle zero speed', () => {
+      const result = convertSpeed(0, 'km');
+      expect(result.speed).toBe(0);
+      expect(result.unit).toBe('km/h');
+    });
+
+    it('should handle high speeds without misinterpretation (regression)', () => {
+      // 80 m/s = 288 km/h — this is a valid high speed (e.g. vehicle on highway)
+      // Previously a heuristic would reinterpret speeds > 200 km/h as already in km/h
+      const result = convertSpeed(80, 'km');
+      expect(result.speed).toBe(288);
+      expect(result.unit).toBe('km/h');
+    });
+
+    it('should handle typical walking speed', () => {
+      // 1.4 m/s ≈ 5.0 km/h (walking)
+      const result = convertSpeed(1.4, 'km');
+      expect(result.speed).toBeCloseTo(5.0, 1);
+    });
+
+    it('should handle typical driving speed', () => {
+      // 27.8 m/s ≈ 100 km/h
+      const result = convertSpeed(27.8, 'km');
+      expect(result.speed).toBeCloseTo(100.1, 1);
+    });
+
+    it('should produce consistent results between metric and imperial', () => {
+      const metric = convertSpeed(10, 'km');
+      const imperial = convertSpeed(10, 'mi');
+      // mph = km/h * 0.621371
+      expect(imperial.speed).toBeCloseTo(metric.speed * 0.621371, 0);
     });
   });
 });
