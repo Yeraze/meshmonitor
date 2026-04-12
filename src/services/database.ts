@@ -9764,11 +9764,11 @@ class DatabaseService {
   async getPacketLogsAsync(options: {
     offset?: number; limit?: number; portnum?: number; from_node?: number;
     to_node?: number; channel?: number; encrypted?: boolean; since?: number;
-    relay_node?: number | 'unknown';
+    relay_node?: number | 'unknown'; sourceId?: string;
   }): Promise<DbPacketLog[]> {
     if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogs(options);
     // SQLite fallback using raw SQL on main connection
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
     let query = `
       SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
       FROM packet_log pl
@@ -9777,6 +9777,7 @@ class DatabaseService {
       WHERE 1=1
     `;
     const params: any[] = [];
+    if (sourceId !== undefined) { query += ' AND pl.sourceId = ?'; params.push(sourceId); }
     if (portnum !== undefined) { query += ' AND pl.portnum = ?'; params.push(portnum); }
     if (from_node !== undefined) { query += ' AND pl.from_node = ?'; params.push(from_node); }
     if (to_node !== undefined) { query += ' AND pl.to_node = ?'; params.push(to_node); }
@@ -9807,13 +9808,14 @@ class DatabaseService {
 
   async getPacketLogCountAsync(options: {
     portnum?: number; from_node?: number; to_node?: number; channel?: number;
-    encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
+    encrypted?: boolean; since?: number; relay_node?: number | 'unknown'; sourceId?: string;
   } = {}): Promise<number> {
     if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogCount(options);
     // SQLite fallback
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
     const params: any[] = [];
+    if (sourceId !== undefined) { query += ' AND sourceId = ?'; params.push(sourceId); }
     if (portnum !== undefined) { query += ' AND portnum = ?'; params.push(portnum); }
     if (from_node !== undefined) { query += ' AND from_node = ?'; params.push(from_node); }
     if (to_node !== undefined) { query += ' AND to_node = ?'; params.push(to_node); }
@@ -9839,8 +9841,8 @@ class DatabaseService {
     return this.clearPacketLogs();
   }
 
-  async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
-    return this.misc.getDistinctRelayNodes();
+  async getDistinctRelayNodesAsync(sourceId?: string): Promise<DbDistinctRelayNode[]> {
+    return this.misc.getDistinctRelayNodes(sourceId);
   }
 
   async updatePacketLogDecryptionAsync(
@@ -9877,11 +9879,11 @@ class DatabaseService {
     return this.cleanupOldPacketLogs();
   }
 
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
     return this.misc.getPacketCountsByNode(options);
   }
 
-  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
     return this.misc.getPacketCountsByPortnum(options);
   }
 

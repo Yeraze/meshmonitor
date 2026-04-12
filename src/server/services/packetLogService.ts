@@ -63,6 +63,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    sourceId?: string;
   }): Promise<DbPacketLog[]> {
     return databaseService.getPacketLogsAsync(options);
   }
@@ -80,6 +81,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    sourceId?: string;
   }): Promise<DbPacketLog[]> {
     return databaseService.getPacketLogsAsync(options);
   }
@@ -106,6 +108,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    sourceId?: string;
   }): Promise<number> {
     return databaseService.getPacketLogCountAsync(options || {});
   }
@@ -121,6 +124,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    sourceId?: string;
   }): Promise<number> {
     return databaseService.getPacketLogCountAsync(options || {});
   }
@@ -166,21 +170,21 @@ class PacketLogService {
   /**
    * Get packet counts grouped by node (for distribution charts)
    */
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
     return databaseService.getPacketCountsByNodeAsync(options);
   }
 
   /**
    * Get distinct relay nodes for filter dropdowns
    */
-  async getDistinctRelayNodesAsync(): Promise<DbDistinctRelayNode[]> {
-    return databaseService.getDistinctRelayNodesAsync();
+  async getDistinctRelayNodesAsync(sourceId?: string): Promise<DbDistinctRelayNode[]> {
+    return databaseService.getDistinctRelayNodesAsync(sourceId);
   }
 
   /**
    * Get packet counts grouped by portnum (for distribution charts)
    */
-  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
     return databaseService.getPacketCountsByPortnumAsync(options);
   }
 

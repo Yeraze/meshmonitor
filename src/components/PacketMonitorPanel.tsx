@@ -9,6 +9,7 @@ import { RelayNodeOption } from '../types/packet';
 import apiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useSource } from '../contexts/SourceContext';
 import { useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { usePackets } from '../hooks/usePackets';
 import { formatDateTime } from '../utils/datetime';
@@ -60,6 +61,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
+  const { sourceId } = useSource();
   const { config: deviceInfo } = useDeviceConfig();
   const { nodes } = useNodes();
 
@@ -116,6 +118,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     filters,
     hideOwnPackets,
     ownNodeNum,
+    sourceId,
   });
 
   // Virtual scrolling setup with infinite loading
@@ -167,10 +170,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   // Fetch distinct relay nodes for filter dropdown
   useEffect(() => {
     if (!canView) return;
-    getRelayNodes()
+    getRelayNodes(sourceId ?? undefined)
       .then(setRelayNodeOptions)
       .catch(() => setRelayNodeOptions([]));
-  }, [canView]);
+  }, [canView, sourceId]);
 
   // Fetch direct neighbor stats on mount for relay estimation
   useEffect(() => {
@@ -423,7 +426,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     try {
       // Use backend export endpoint with current filters
       // Note: hideOwnPackets is a client-side filter and not passed to backend
-      exportPackets(filters);
+      exportPackets(sourceId ? { ...filters, sourceId } : filters);
     } catch (error) {
       console.error('Failed to export packets:', error);
       alert(t('packet_monitor.export_failed'));

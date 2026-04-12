@@ -868,8 +868,9 @@ export class MiscRepository extends BaseRepository {
    */
   private buildPacketLogWhere(options: PacketLogFilterOptions): { conditions: any[]; } {
     const conditions: any[] = [];
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
 
+    if (sourceId !== undefined) conditions.push(sql`${sql.identifier('sourceId')} = ${sourceId}`);
     if (portnum !== undefined) conditions.push(sql`portnum = ${portnum}`);
     if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
     if (to_node !== undefined) conditions.push(sql`to_node = ${to_node}`);
@@ -1100,14 +1101,16 @@ export class MiscRepository extends BaseRepository {
    * relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
    * We match by (nodeNum & 0xFF) to find candidate node names.
    */
-  async getDistinctRelayNodes(): Promise<DbDistinctRelayNode[]> {
-    const distinctQuery = 'SELECT DISTINCT relay_node FROM packet_log WHERE relay_node IS NOT NULL';
+  async getDistinctRelayNodes(sourceId?: string): Promise<DbDistinctRelayNode[]> {
     const longName = this.col('longName');
     const shortName = this.col('shortName');
     const nodeNum = this.col('nodeNum');
 
     try {
-      const distinctRows = await this.executeQuery(sql.raw(distinctQuery));
+      const conditions: any[] = [sql`relay_node IS NOT NULL`];
+      if (sourceId !== undefined) conditions.push(sql`${sql.identifier('sourceId')} = ${sourceId}`);
+      const whereClause = this.combineConditions(conditions);
+      const distinctRows = await this.executeQuery(sql`SELECT DISTINCT relay_node FROM packet_log WHERE ${whereClause}`);
       const relayValues = (distinctRows as any[]).map((r: any) => Number(r.relay_node));
 
       const results: DbDistinctRelayNode[] = [];
@@ -1171,11 +1174,12 @@ export class MiscRepository extends BaseRepository {
    * Get packet counts grouped by from_node (for distribution charts).
    * Returns top N nodes by packet count.
    */
-  async getPacketCountsByNode(options?: { since?: number; limit?: number; portnum?: number }): Promise<DbPacketCountByNode[]> {
-    const { since, limit = 10, portnum } = options || {};
+  async getPacketCountsByNode(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
+    const { since, limit = 10, portnum, sourceId } = options || {};
 
     try {
       const conditions: any[] = [];
+      if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
       if (since !== undefined) conditions.push(sql`pl.timestamp >= ${since}`);
       if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
       const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
@@ -1210,11 +1214,12 @@ export class MiscRepository extends BaseRepository {
    * Get packet counts grouped by portnum (for distribution charts).
    * Includes port name from meshtastic constants.
    */
-  async getPacketCountsByPortnum(options?: { since?: number; from_node?: number }): Promise<DbPacketCountByPortnum[]> {
-    const { since, from_node } = options || {};
+  async getPacketCountsByPortnum(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
+    const { since, from_node, sourceId } = options || {};
 
     try {
       const conditions: any[] = [];
+      if (sourceId !== undefined) conditions.push(sql`${sql.identifier('sourceId')} = ${sourceId}`);
       if (since !== undefined) conditions.push(sql`timestamp >= ${since}`);
       if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
       const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
@@ -1367,4 +1372,5 @@ export interface PacketLogFilterOptions {
   encrypted?: boolean;
   since?: number;
   relay_node?: number | 'unknown';
+  sourceId?: string;
 }

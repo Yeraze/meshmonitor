@@ -23,15 +23,15 @@ const PACKET_FETCH_LIMIT = 100;
 const POLL_INTERVAL_MS = 5000;
 
 /**
- * Query key for packets - includes filters for proper cache isolation
+ * Query key for packets - includes filters and sourceId for proper cache isolation
  */
 export const PACKETS_QUERY_KEY = ['packets'] as const;
 
 /**
- * Build the full query key including filters
+ * Build the full query key including filters and sourceId
  */
-export function getPacketsQueryKey(filters: PacketFilters) {
-  return [...PACKETS_QUERY_KEY, filters] as const;
+export function getPacketsQueryKey(filters: PacketFilters, sourceId?: string | null) {
+  return [...PACKETS_QUERY_KEY, sourceId ?? 'all', filters] as const;
 }
 
 interface UsePacketsOptions {
@@ -43,6 +43,8 @@ interface UsePacketsOptions {
   hideOwnPackets: boolean;
   /** Own node number for filtering (hex nodeId converted to number) */
   ownNodeNum?: number;
+  /** Source ID for multi-source filtering */
+  sourceId?: string | null;
 }
 
 interface UsePacketsResult {
@@ -91,7 +93,7 @@ interface UsePacketsResult {
  * });
  * ```
  */
-export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: UsePacketsOptions): UsePacketsResult {
+export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum, sourceId }: UsePacketsOptions): UsePacketsResult {
   const queryClient = useQueryClient();
 
   // Rate limit state (not handled by React Query)
@@ -101,14 +103,20 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum }: Use
   // Scroll tracking refs
   const lastLoadedRawLengthRef = useRef<number>(0);
 
-  // Query key for this filter combination
-  const queryKey = useMemo(() => getPacketsQueryKey(filters), [filters]);
+  // Merge sourceId into filters for API calls
+  const effectiveFilters = useMemo(() => {
+    if (sourceId) return { ...filters, sourceId };
+    return filters;
+  }, [filters, sourceId]);
+
+  // Query key for this filter + source combination
+  const queryKey = useMemo(() => getPacketsQueryKey(filters, sourceId), [filters, sourceId]);
 
   // Use infinite query for paginated data with polling
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch } = useInfiniteQuery({
     queryKey,
     queryFn: async ({ pageParam = 0 }) => {
-      const response = await getPackets(pageParam, PACKET_FETCH_LIMIT, filters);
+      const response = await getPackets(pageParam, PACKET_FETCH_LIMIT, effectiveFilters);
       return response;
     },
     initialPageParam: 0,
