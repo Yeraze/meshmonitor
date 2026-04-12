@@ -46,11 +46,19 @@ interface ChannelDatabasePermission {
 }
 
 const PERMISSION_KEYS = [
-  'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 
-  'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 
-  'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 
+  'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3',
+  'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings',
+  'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit',
   'security', 'nodes_private', 'packetmonitor'
 ] as const;
+
+const SOURCEY_RESOURCES = new Set([
+  'channel_0', 'channel_1', 'channel_2', 'channel_3',
+  'channel_4', 'channel_5', 'channel_6', 'channel_7',
+  'messages', 'nodes', 'nodes_private', 'traceroute',
+  'packetmonitor', 'configuration', 'connection', 'automation',
+]);
+const isResourceSourcey = (r: string) => SOURCEY_RESOURCES.has(r);
 
 const UsersTab: React.FC = () => {
   const { t } = useTranslation();
@@ -186,22 +194,24 @@ const UsersTab: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      // Filter out empty/undefined permissions and ensure valid structure
+      // Filter out empty/undefined permissions and ensure valid structure,
+      // and restrict to resources valid for the current scope.
       const validPermissions: PermissionSet = {};
       PERMISSION_KEYS.forEach(resource => {
-        if (permissions[resource]) {
-          if (resource.startsWith('channel_')) {
-            validPermissions[resource] = {
-              viewOnMap: permissions[resource]?.viewOnMap || false,
-              read: permissions[resource]?.read || false,
-              write: permissions[resource]?.write || false
-            };
-          } else {
-            validPermissions[resource] = {
-              read: permissions[resource]?.read || false,
-              write: permissions[resource]?.write || false
-            };
-          }
+        if (!permissions[resource]) return;
+        const sourceyMatch = permissionScope === null ? !isResourceSourcey(resource) : isResourceSourcey(resource);
+        if (!sourceyMatch) return;
+        if (resource.startsWith('channel_')) {
+          validPermissions[resource] = {
+            viewOnMap: permissions[resource]?.viewOnMap || false,
+            read: permissions[resource]?.read || false,
+            write: permissions[resource]?.write || false
+          };
+        } else {
+          validPermissions[resource] = {
+            read: permissions[resource]?.read || false,
+            write: permissions[resource]?.write || false
+          };
         }
       });
 
@@ -681,11 +691,18 @@ const UsersTab: React.FC = () => {
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {permissionScope === null
+                    ? t('users.global_permissions_hint', 'Global permissions control instance-wide features.')
+                    : t('users.source_permissions_hint', 'Channel, message, and node permissions are granted per-source.')}
+                </p>
               </div>
             )}
 
             <div className="permissions-grid">
-              {PERMISSION_KEYS.map(resource => {
+              {PERMISSION_KEYS.filter(resource =>
+                permissionScope === null ? !isResourceSourcey(resource) : isResourceSourcey(resource)
+              ).map(resource => {
                 // Get label from translated map or format it
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
                 
