@@ -56,6 +56,14 @@ describe('TelemetryRepository (expanded)', () => {
       )
     `);
 
+    // Mirror the migration 032 partial unique index so repo-level dedupe
+    // behavior matches production. NULL packetId rows bypass the constraint.
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS telemetry_source_packet_type_uniq
+        ON telemetry(sourceId, nodeNum, packetId, telemetryType)
+        WHERE packetId IS NOT NULL
+    `);
+
     drizzleDb = drizzle(db, { schema });
     repo = new TelemetryRepository(drizzleDb, 'sqlite');
   });
@@ -921,6 +929,117 @@ describe('TelemetryRepository (expanded)', () => {
       );
       expect(results.length).toBe(1);
       expect(results[0].value).toBe(3.7);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // insertTelemetry dedup — regression for issue #2629
+  // Same packet arriving via multiple mesh routers must not produce duplicate
+  // rows. Migration 032 adds a partial unique index on
+  // (sourceId, nodeNum, packetId, telemetryType) WHERE packetId IS NOT NULL,
+  // and insertTelemetry uses insertIgnore so collisions become silent no-ops.
+  // -------------------------------------------------------------------------
+  describe('insertTelemetry dedup (issue #2629)', () => {
+    const baseRow = (overrides: Partial<any> = {}) => ({
+      nodeId: NODE1,
+      nodeNum: NODE1_NUM,
+      telemetryType: 'batteryLevel',
+      timestamp: NOW - HOUR,
+      value: 80,
+      unit: '%',
+      createdAt: NOW,
+      packetId: 12345,
+      ...overrides,
+    });
+
+    it('silently skips duplicate (sourceId, nodeNum, packetId, telemetryType)', async () => {
+      const first = await repo.insertTelemetry(baseRow(), 'src-a');
+      const second = await repo.insertTelemetry(baseRow(), 'src-a');
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+
+      const rows = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, 'src-a');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].packetId).toBe(12345);
+    });
+
+    it('allows the same packetId with a different telemetryType (single packet, multiple metrics)', async () => {
+      // A single Meshtastic telemetry packet commonly produces multiple rows —
+      // one per metric type — all sharing the same packetId.
+      const a = await repo.insertTelemetry(baseRow({ telemetryType: 'batteryLevel', value: 80 }), 'src-a');
+      const b = await repo.insertTelemetry(baseRow({ telemetryType: 'voltage', value: 3.7 }), 'src-a');
+      const c = await repo.insertTelemetry(baseRow({ telemetryType: 'channelUtilization', value: 12 }), 'src-a');
+
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+      expect(c).toBe(true);
+
+      const rows = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, 'src-a');
+      expect(rows).toHaveLength(3);
+      const types = new Set(rows.map(r => r.telemetryType));
+      expect(types.has('batteryLevel')).toBe(true);
+      expect(types.has('voltage')).toBe(true);
+      expect(types.has('channelUtilization')).toBe(true);
+    });
+
+    it('allows the same packetId under different sourceIds (independent meshes)', async () => {
+      const a = await repo.insertTelemetry(baseRow(), 'src-a');
+      const b = await repo.insertTelemetry(baseRow(), 'src-b');
+
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+
+      const rowsA = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, 'src-a');
+      const rowsB = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, 'src-b');
+      expect(rowsA).toHaveLength(1);
+      expect(rowsB).toHaveLength(1);
+    });
+
+    it('allows multiple NULL-packetId rows (legacy / synthesized telemetry bypasses the constraint)', async () => {
+      // packetId is left unset on both inserts → stored as NULL.
+      // The partial index has WHERE packetId IS NOT NULL so neither row
+      // participates in the uniqueness check.
+      const a = await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'batteryLevel',
+        timestamp: NOW - HOUR,
+        value: 80,
+        unit: '%',
+        createdAt: NOW,
+      }, 'src-a');
+      const b = await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'batteryLevel',
+        timestamp: NOW - 2 * HOUR,
+        value: 75,
+        unit: '%',
+        createdAt: NOW,
+      }, 'src-a');
+
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+
+      const rows = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, 'batteryLevel', 'src-a');
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row.packetId).toBeNull();
+      }
+    });
+
+    it('allows the same packetId across different nodeNums within the same source', async () => {
+      const a = await repo.insertTelemetry(baseRow({ nodeId: NODE1, nodeNum: NODE1_NUM }), 'src-a');
+      const b = await repo.insertTelemetry(baseRow({ nodeId: NODE2, nodeNum: NODE2_NUM }), 'src-a');
+
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+
+      const rows1 = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, 'src-a');
+      const rows2 = await repo.getTelemetryByNode(NODE2, 10, undefined, undefined, 0, undefined, 'src-a');
+      expect(rows1).toHaveLength(1);
+      expect(rows2).toHaveLength(1);
     });
   });
 });
