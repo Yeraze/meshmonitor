@@ -327,8 +327,8 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
     const user = (req as any).user ?? null;
 
     // Filter by channel viewOnMap permissions and mask private position channels
-    const filtered = await filterNodesByChannelPermission(nodes, user);
-    const masked = await maskNodeLocationByChannel(filtered, user);
+    const filtered = await filterNodesByChannelPermission(nodes, user, source.id);
+    const masked = await maskNodeLocationByChannel(filtered, user, source.id);
     res.json(masked);
   } catch (error) {
     logger.error('Error fetching nodes for source:', error);

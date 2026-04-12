@@ -80,7 +80,8 @@ export async function enhanceNodeForClient(
  */
 export async function filterNodesByChannelPermission<T>(
   nodes: T[],
-  user: User | null | undefined
+  user: User | null | undefined,
+  sourceId?: string
 ): Promise<T[]> {
   // Admins see all nodes
   if (user?.isAdmin) {
@@ -89,7 +90,7 @@ export async function filterNodesByChannelPermission<T>(
 
   // Get user's device channel permission set
   const permissions: PermissionSet = user
-    ? await databaseService.getUserPermissionSetAsync(user.id)
+    ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
   // Get user's virtual channel (channel database) permissions
@@ -132,13 +133,14 @@ export async function filterNodesByChannelPermission<T>(
  */
 export async function maskNodeLocationByChannel<T>(
   nodes: T[],
-  user: User | null | undefined
+  user: User | null | undefined,
+  sourceId?: string
 ): Promise<T[]> {
   if (user?.isAdmin) return nodes;
 
   // Get user's device channel permission set
   const permissions: PermissionSet = user
-    ? await databaseService.getUserPermissionSetAsync(user.id)
+    ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
   // Get user's virtual channel (channel database) permissions
@@ -199,12 +201,13 @@ export async function maskNodeLocationByChannel<T>(
  */
 export async function maskTelemetryByChannel<T>(
   records: T[],
-  user: User | null | undefined
+  user: User | null | undefined,
+  sourceId?: string
 ): Promise<T[]> {
   if (user?.isAdmin) return records;
 
   const permissions: PermissionSet = user
-    ? await databaseService.getUserPermissionSetAsync(user.id)
+    ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
   const channelDbPermissions = user
@@ -244,12 +247,13 @@ export async function maskTelemetryByChannel<T>(
  */
 export async function maskTraceroutesByChannel<T>(
   records: T[],
-  user: User | null | undefined
+  user: User | null | undefined,
+  sourceId?: string
 ): Promise<T[]> {
   if (user?.isAdmin) return records;
 
   const permissions: PermissionSet = user
-    ? await databaseService.getUserPermissionSetAsync(user.id)
+    ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
   const channelDbPermissions = user
@@ -279,7 +283,8 @@ export async function maskTraceroutesByChannel<T>(
  */
 export async function checkNodeChannelAccess(
   nodeId: string,
-  user: User | null | undefined
+  user: User | null | undefined,
+  sourceId?: string
 ): Promise<boolean> {
   if (user?.isAdmin) return true;
 
@@ -292,7 +297,7 @@ export async function checkNodeChannelAccess(
 
   // Get user's device channel permission set
   const permissions: PermissionSet = user
-    ? await databaseService.getUserPermissionSetAsync(user.id)
+    ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
   // Device channels (0-7)
