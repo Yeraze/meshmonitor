@@ -1218,8 +1218,7 @@ class DatabaseService {
         can_write INTEGER NOT NULL DEFAULT 0,
         granted_at INTEGER NOT NULL,
         granted_by INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(user_id, resource)
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
 
