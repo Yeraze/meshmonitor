@@ -35,6 +35,9 @@ export const getPackets = async (
   if (filters?.relay_node !== undefined) {
     params.append('relay_node', filters.relay_node.toString());
   }
+  if (filters?.sourceId !== undefined) {
+    params.append('sourceId', filters.sourceId);
+  }
 
   return api.get<PacketLogResponse>(`/api/packets?${params.toString()}`);
 };
@@ -42,8 +45,11 @@ export const getPackets = async (
 /**
  * Fetch packet statistics
  */
-export const getPacketStats = async (): Promise<PacketStats> => {
-  return api.get<PacketStats>('/api/packets/stats');
+export const getPacketStats = async (sourceId?: string): Promise<PacketStats> => {
+  const params = new URLSearchParams();
+  if (sourceId) params.append('sourceId', sourceId);
+  const query = params.toString();
+  return api.get<PacketStats>(`/api/packets/stats${query ? `?${query}` : ''}`);
 };
 
 /**
@@ -79,6 +85,9 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
   }
   if (filters?.relay_node !== undefined) {
     params.append('relay_node', filters.relay_node.toString());
+  }
+  if (filters?.sourceId !== undefined) {
+    params.append('sourceId', filters.sourceId);
   }
 
   // Fetch export from backend with credentials
@@ -118,7 +127,7 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
 /**
  * Fetch packet distribution statistics (by device and by type)
  */
-export const getPacketDistributionStats = async (since?: number, from_node?: number, portnum?: number): Promise<PacketDistributionStats> => {
+export const getPacketDistributionStats = async (since?: number, from_node?: number, portnum?: number, sourceId?: string): Promise<PacketDistributionStats> => {
   const params = new URLSearchParams();
   if (since !== undefined) {
     params.append('since', since.toString());
@@ -129,6 +138,9 @@ export const getPacketDistributionStats = async (since?: number, from_node?: num
   if (portnum !== undefined) {
     params.append('portnum', portnum.toString());
   }
+  if (sourceId !== undefined) {
+    params.append('sourceId', sourceId);
+  }
   const query = params.toString();
   return api.get<PacketDistributionStats>(`/api/packets/stats/distribution${query ? `?${query}` : ''}`);
 };
@@ -137,8 +149,11 @@ export const getPacketDistributionStats = async (since?: number, from_node?: num
 /**
  * Fetch distinct relay nodes for filter dropdowns
  */
-export const getRelayNodes = async (): Promise<RelayNodeOption[]> => {
-  const response = await api.get<{ relayNodes: RelayNodeOption[] }>('/api/packets/relay-nodes');
+export const getRelayNodes = async (sourceId?: string): Promise<RelayNodeOption[]> => {
+  const params = new URLSearchParams();
+  if (sourceId) params.append('sourceId', sourceId);
+  const query = params.toString();
+  const response = await api.get<{ relayNodes: RelayNodeOption[] }>(`/api/packets/relay-nodes${query ? `?${query}` : ''}`);
   return response.relayNodes;
 };
 

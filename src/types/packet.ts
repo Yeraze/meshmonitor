@@ -59,6 +59,7 @@ export interface PacketFilters {
   encrypted?: boolean;
   since?: number;
   relay_node?: number | 'unknown';
+  sourceId?: string;
 }
 
 export interface PacketMonitorSettings {

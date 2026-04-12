@@ -156,6 +156,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
     const canReadMessages = (req as any).canReadMessages as boolean;
+    const sourceId = (req as any).scopedSourceId as string | undefined;
 
     const rawPackets = await packetLogService.getPacketsAsync({
       offset,
@@ -166,7 +167,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       channel,
       encrypted,
       since,
-      relay_node
+      relay_node,
+      sourceId
     });
 
     // Filter packets by channel and message permissions
@@ -179,7 +181,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       channel,
       encrypted,
       since,
-      relay_node
+      relay_node,
+      sourceId
     });
 
     res.json({
@@ -200,11 +203,12 @@ router.get('/', requirePacketPermissions, async (req, res) => {
  * GET /api/packets/stats
  * Get packet statistics
  */
-router.get('/stats', requirePacketPermissions, async (_req, res) => {
+router.get('/stats', requirePacketPermissions, async (req, res) => {
   try {
-    const total = await packetLogService.getPacketCountAsync();
-    const encrypted = await packetLogService.getPacketCountAsync({ encrypted: true });
-    const decoded = await packetLogService.getPacketCountAsync({ encrypted: false });
+    const sourceId = (req as any).scopedSourceId as string | undefined;
+    const total = await packetLogService.getPacketCountAsync({ sourceId });
+    const encrypted = await packetLogService.getPacketCountAsync({ encrypted: true, sourceId });
+    const decoded = await packetLogService.getPacketCountAsync({ encrypted: false, sourceId });
 
     res.json({
       total,
@@ -243,12 +247,13 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
     const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
+    const sourceId = (req as any).scopedSourceId as string | undefined;
 
     // Fetch distribution data - limit to top 10 devices
     const [byDevice, byType, total] = await Promise.all([
-      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, portnum }),
-      packetLogService.getPacketCountsByPortnumAsync({ since, from_node }),
-      packetLogService.getPacketCountAsync({ since, from_node, portnum })
+      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, portnum, sourceId }),
+      packetLogService.getPacketCountsByPortnumAsync({ since, from_node, sourceId }),
+      packetLogService.getPacketCountAsync({ since, from_node, portnum, sourceId })
     ]);
 
     res.json({
@@ -268,9 +273,10 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
  * GET /api/packets/relay-nodes
  * Get distinct relay nodes that appear in packet logs (for filter dropdowns)
  */
-router.get('/relay-nodes', requirePacketPermissions, async (_req, res) => {
+router.get('/relay-nodes', requirePacketPermissions, async (req, res) => {
   try {
-    const relayNodes = await packetLogService.getDistinctRelayNodesAsync();
+    const sourceId = (req as any).scopedSourceId as string | undefined;
+    const relayNodes = await packetLogService.getDistinctRelayNodesAsync(sourceId);
     res.json({ relayNodes });
   } catch (error) {
     logger.error('❌ Error fetching relay nodes:', error);
@@ -296,6 +302,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
     const canReadMessages = (req as any).canReadMessages as boolean;
+    const sourceId = (req as any).scopedSourceId as string | undefined;
 
     // Fetch all matching packets (up to configured max)
     const maxCount = await packetLogService.getMaxCount();
@@ -308,7 +315,8 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
       channel,
       encrypted,
       since,
-      relay_node
+      relay_node,
+      sourceId
     });
 
     // Filter packets by channel and message permissions
