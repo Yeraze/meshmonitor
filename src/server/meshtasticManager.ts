@@ -369,7 +369,9 @@ class MeshtasticManager implements ISourceManager {
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
   private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp
+  private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
   private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
+  private autoResponderProcessedPackets: Set<number> = new Set(); // packetIds already auto-responded (dedup guard)
 
   // Auto-ping session tracking
   private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
@@ -1104,6 +1106,10 @@ class MeshtasticManager implements ISourceManager {
     // Stop time-offset telemetry collection
     this.stopTimeOffsetScheduler();
     this.timeOffsetSamples = [];
+
+    // Clear per-packet dedup sets (no longer relevant after disconnect)
+    this.autoAckProcessedPackets.clear();
+    this.autoResponderProcessedPackets.clear();
 
     logger.debug('Disconnected from Meshtastic node');
   }
@@ -7481,6 +7487,23 @@ class MeshtasticManager implements ISourceManager {
 
   private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, rxSnr?: number, rxRssi?: number): Promise<void> {
     try {
+      // Per-packet dedup guard: prevent duplicate auto-ack responses for the same
+      // mesh packet. This can happen when the transport delivers the same packet
+      // twice (e.g. LoRa + MQTT proxy, serial retransmission) and the non-awaited
+      // processIncomingData handler processes them concurrently (#2642).
+      if (packetId != null) {
+        if (this.autoAckProcessedPackets.has(packetId)) {
+          logger.debug(`⏭️ Skipping auto-acknowledge for packet ${packetId}: already processed`);
+          return;
+        }
+        this.autoAckProcessedPackets.add(packetId);
+        // Prevent unbounded memory growth — trim to last 500 entries
+        if (this.autoAckProcessedPackets.size > 1000) {
+          const entries = Array.from(this.autoAckProcessedPackets);
+          this.autoAckProcessedPackets = new Set(entries.slice(-500));
+        }
+      }
+
       // All auto-ack settings are per-source: each MeshtasticManager instance
       // has its own sourceId and the UI writes to `source:{sourceId}:autoAck*`
       // keys. Reading from the global namespace here would resolve to stale or
@@ -8136,6 +8159,19 @@ class MeshtasticManager implements ISourceManager {
 
   private async checkAutoResponder(message: TextMessage, isDirectMessage: boolean, packetId?: number): Promise<void> {
     try {
+      // Per-packet dedup guard: same rationale as checkAutoAcknowledge (#2642)
+      if (packetId != null) {
+        if (this.autoResponderProcessedPackets.has(packetId)) {
+          logger.debug(`⏭️ Skipping auto-responder for packet ${packetId}: already processed`);
+          return;
+        }
+        this.autoResponderProcessedPackets.add(packetId);
+        if (this.autoResponderProcessedPackets.size > 1000) {
+          const entries = Array.from(this.autoResponderProcessedPackets);
+          this.autoResponderProcessedPackets = new Set(entries.slice(-500));
+        }
+      }
+
       // All auto-responder settings are written per-source by AutoResponderSection
       // via /api/settings?sourceId=, so they live under `source:{sourceId}:*`.
       // Reading them globally here would return empty/missing values and the
