@@ -10,6 +10,7 @@ import { createLocalUser, resetUserPassword, setUserPassword } from '../auth/loc
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { PermissionSet } from '../../types/permission.js';
+import { isResourceSourcey } from '../constants/permissions.js';
 
 const router = Router();
 
@@ -396,6 +397,21 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       if (resource.startsWith('channel_') && perms.write && !perms.read) {
         return res.status(400).json({
           error: 'Invalid permissions: write permission requires read permission for channels'
+        });
+      }
+    }
+
+    // Validate scope/resource alignment: sourcey resources require a sourceId,
+    // global resources must not have one
+    for (const resource of Object.keys(permissions)) {
+      if (isResourceSourcey(resource) && !sourceId) {
+        return res.status(400).json({
+          error: `Resource '${resource}' is per-source and requires a sourceId`
+        });
+      }
+      if (!isResourceSourcey(resource) && sourceId) {
+        return res.status(400).json({
+          error: `Resource '${resource}' is global and cannot be scoped to a source`
         });
       }
     }
