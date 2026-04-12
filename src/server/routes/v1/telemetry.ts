@@ -25,7 +25,8 @@ const router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { nodeId, type, since, before, limit, offset } = req.query;
+    const { nodeId, type, since, before, limit, offset, sourceId } = req.query;
+    const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
 
     const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);
     const offsetNum = parseInt(offset as string) || 0;
@@ -37,7 +38,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (nodeId) {
       // Check channel-based access for this node
-      if (!await checkNodeChannelAccess(nodeId as string, (req as any).user)) {
+      if (!await checkNodeChannelAccess(nodeId as string, (req as any).user, sourceIdStr)) {
         return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -54,7 +55,7 @@ router.get('/', async (req: Request, res: Response) => {
         telemetry = telemetry.filter(t => t.timestamp < beforeTimestamp);
       }
       // Mask records from channels the user cannot access
-      telemetry = await maskTelemetryByChannel(telemetry, (req as any).user);
+      telemetry = await maskTelemetryByChannel(telemetry, (req as any).user, sourceIdStr);
     } else {
       // Get all telemetry by getting all nodes and their telemetry
       const nodes = await databaseService.nodes.getAllNodes();
@@ -65,7 +66,7 @@ router.get('/', async (req: Request, res: Response) => {
         telemetry.push(...nodeTelemetry);
       }
       // Mask records from channels the user cannot access
-      telemetry = await maskTelemetryByChannel(telemetry, (req as any).user);
+      telemetry = await maskTelemetryByChannel(telemetry, (req as any).user, sourceIdStr);
     }
 
     res.json({
@@ -122,9 +123,10 @@ router.get('/count', async (_req: Request, res: Response) => {
 router.get('/:nodeId', async (req: Request, res: Response) => {
   try {
     const { nodeId } = req.params;
+    const sourceIdParam = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
 
     // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, (req as any).user)) {
+    if (!await checkNodeChannelAccess(nodeId, (req as any).user, sourceIdParam)) {
       return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
     }
 

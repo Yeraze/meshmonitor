@@ -22,7 +22,8 @@ const router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { fromNodeId, toNodeId, limit } = req.query;
+    const { fromNodeId, toNodeId, limit, sourceId } = req.query;
+    const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
     const maxLimit = parseInt(limit as string) || 100;
 
     let traceroutes = databaseService.getAllTraceroutes();
@@ -39,7 +40,7 @@ router.get('/', async (req: Request, res: Response) => {
     traceroutes = traceroutes.slice(0, maxLimit);
 
     // Mask traceroutes from channels the user cannot access
-    traceroutes = await maskTraceroutesByChannel(traceroutes, (req as any).user);
+    traceroutes = await maskTraceroutesByChannel(traceroutes, (req as any).user, sourceIdStr);
 
     res.json({
       success: true,
@@ -63,6 +64,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId } = req.params;
+    const sourceIdParam = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
     const allTraceroutes = databaseService.getAllTraceroutes(100);
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
@@ -75,7 +77,7 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
     }
 
     // Mask if the traceroute's channel is inaccessible to this user
-    const visible = await maskTraceroutesByChannel([traceroute], (req as any).user);
+    const visible = await maskTraceroutesByChannel([traceroute], (req as any).user, sourceIdParam);
     if (visible.length === 0) {
       return res.status(403).json({
         success: false,
