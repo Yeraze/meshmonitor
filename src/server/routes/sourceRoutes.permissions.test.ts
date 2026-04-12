@@ -108,3 +108,71 @@ describe('sourceRoutes — per-source permission isolation', () => {
     });
   }
 });
+
+describe('sourceRoutes — cross-source channel filtering (regression)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.findUserByIdAsync.mockResolvedValue(normalUser);
+    mockDb.findUserByUsernameAsync.mockResolvedValue(null);
+
+    // User can access both sources at the source level
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+
+    // Channel permissions differ by source:
+    // sourceA: channel_0 viewOnMap granted
+    // sourceB: NO channel permissions
+    // getUserPermissionSetAsync returns a flat PermissionSet (Record<ResourceType, {...}>)
+    mockDb.getUserPermissionSetAsync.mockImplementation((_uid: number, sourceId?: string) => {
+      if (sourceId === 'sourceA') {
+        return Promise.resolve({
+          channel_0: { read: true, write: false, viewOnMap: true },
+          nodes: { read: true, write: false, viewOnMap: false },
+        });
+      }
+      // sourceB or no sourceId: no channel_0 permission
+      return Promise.resolve({
+        nodes: { read: true, write: false, viewOnMap: false },
+      });
+    });
+
+    mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
+
+    mockDb.sources.getSource.mockImplementation((id: string) =>
+      Promise.resolve({ id, name: id, type: 'meshtastic_tcp', enabled: true })
+    );
+
+    // Return a node on channel 0 for both sources
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeId: '!aabbccdd', nodeNum: 2864434397, longName: 'TestNode', shortName: 'TN', channel: 0, lastHeard: Date.now() },
+    ]);
+  });
+
+  it('nodes on channel_0 visible on sourceA (granted)', async () => {
+    const res = await request(createApp()).get('/sourceA/nodes');
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+  });
+
+  it('nodes on channel_0 filtered on sourceB (no grant — regression)', async () => {
+    const res = await request(createApp()).get('/sourceB/nodes');
+    expect(res.status).toBe(200);
+    // Node should be filtered out because sourceB has no channel_0 permissions
+    expect(res.body.length).toBe(0);
+  });
+
+  it('admin sees nodes on all sources regardless of grants', async () => {
+    const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
+    mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({});
+
+    const app = createApp();
+
+    const resA = await request(app).get('/sourceA/nodes');
+    expect(resA.status).toBe(200);
+    expect(resA.body.length).toBe(1);
+
+    const resB = await request(app).get('/sourceB/nodes');
+    expect(resB.status).toBe(200);
+    expect(resB.body.length).toBe(1);
+  });
+});

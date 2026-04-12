@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 32 migrations in sequential order for use by the migration runner.
+ * Registers all 33 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -44,6 +44,7 @@ import { migration as nodesCompositePkMigration, runMigration029Postgres, runMig
 import { migration as addSourceIdToRouteSegmentsMigration, runMigration030Postgres, runMigration030Mysql } from '../server/migrations/030_add_source_id_to_route_segments.js';
 import { migration as dropLegacyNodesUniqueMigration, runMigration031Postgres, runMigration031Mysql } from '../server/migrations/031_drop_legacy_nodes_unique.js';
 import { migration as telemetryPacketDedupeMigration, runMigration032Postgres, runMigration032Mysql } from '../server/migrations/032_telemetry_packet_dedupe.js';
+import { migration as perSourcePermissionsMigration, runMigration033Postgres, runMigration033Mysql } from '../server/migrations/033_per_source_permissions.js';
 
 // ============================================================================
 // Registry
@@ -470,4 +471,21 @@ registry.register({
   sqlite: (db) => telemetryPacketDedupeMigration.up(db),
   postgres: (client) => runMigration032Postgres(client),
   mysql: (pool) => runMigration032Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 033: Per-source permissions expansion + unique index.
+// Expands existing global grants for sourcey resources into one row per source,
+// drops the old unique constraint on (user_id, resource), creates a new unique
+// index on (user_id, resource, sourceId), and migrates orphaned channel_database
+// rows to the default source.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 33,
+  name: 'per_source_permissions',
+  settingsKey: 'migration_033_per_source_permissions',
+  sqlite: (db) => perSourcePermissionsMigration.up(db),
+  postgres: (client) => runMigration033Postgres(client),
+  mysql: (pool) => runMigration033Mysql(pool),
 });

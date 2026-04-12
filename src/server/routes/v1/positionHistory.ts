@@ -64,7 +64,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const { nodeId } = req.params;
 
     // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, user)) {
+    if (!await checkNodeChannelAccess(nodeId, user, sourceIdQ)) {
       return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
     }
 
