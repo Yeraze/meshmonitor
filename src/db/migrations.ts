@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 31 migrations in sequential order for use by the migration runner.
+ * Registers all 32 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -43,6 +43,7 @@ import { migration as addSourceIdToNotificationsMigration, runMigration028Postgr
 import { migration as nodesCompositePkMigration, runMigration029Postgres, runMigration029Mysql } from '../server/migrations/029_nodes_composite_pk.js';
 import { migration as addSourceIdToRouteSegmentsMigration, runMigration030Postgres, runMigration030Mysql } from '../server/migrations/030_add_source_id_to_route_segments.js';
 import { migration as dropLegacyNodesUniqueMigration, runMigration031Postgres, runMigration031Mysql } from '../server/migrations/031_drop_legacy_nodes_unique.js';
+import { migration as telemetryPacketDedupeMigration, runMigration032Postgres, runMigration032Mysql } from '../server/migrations/032_telemetry_packet_dedupe.js';
 
 // ============================================================================
 // Registry
@@ -452,4 +453,21 @@ registry.register({
   sqlite: (db) => dropLegacyNodesUniqueMigration.up(db),
   postgres: (client) => runMigration031Postgres(client),
   mysql: (pool) => runMigration031Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 032: Telemetry packet dedupe via soft unique constraint.
+// Adds a partial unique index on (sourceId, nodeNum, packetId, telemetryType)
+// so duplicate packets (e.g. re-broadcast through multiple mesh routers) are
+// silently dropped at insert time instead of producing duplicate rows.
+// See https://github.com/Yeraze/meshmonitor/issues/2629
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 32,
+  name: 'telemetry_packet_dedupe',
+  settingsKey: 'migration_032_telemetry_packet_dedupe',
+  sqlite: (db) => telemetryPacketDedupeMigration.up(db),
+  postgres: (client) => runMigration032Postgres(client),
+  mysql: (pool) => runMigration032Mysql(pool),
 });

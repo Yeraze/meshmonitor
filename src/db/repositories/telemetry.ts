@@ -17,9 +17,18 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Insert a telemetry record
+   * Insert a telemetry record.
+   *
+   * Uses insertIgnore so that rows colliding on the migration 032 unique
+   * index (sourceId, nodeNum, packetId, telemetryType) WHERE packetId IS NOT
+   * NULL are silently dropped. Same Meshtastic packet re-broadcast through
+   * multiple mesh routers must not produce duplicate rows.
+   *
+   * Returns true if a new row was inserted, false if it was a duplicate that
+   * got suppressed by the constraint. Rows with NULL packetId (legacy or
+   * synthesized telemetry) bypass the constraint and always insert.
    */
-  async insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): Promise<void> {
+  async insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): Promise<boolean> {
     const { telemetry } = this.tables;
     const values: any = {
       nodeId: telemetryData.nodeId,
@@ -39,7 +48,8 @@ export class TelemetryRepository extends BaseRepository {
       values.sourceId = sourceId;
     }
 
-    await this.db.insert(telemetry).values(values);
+    const result = await this.insertIgnore(telemetry, values);
+    return this.getAffectedRows(result) > 0;
   }
 
   /**
