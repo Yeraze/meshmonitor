@@ -258,6 +258,46 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * SQLite-only synchronous purge of channel messages. Mirrors
+   * `purgeChannelMessages()` but returns the count synchronously so the
+   * sync `DatabaseService` facade can use it directly. Uses Drizzle query
+   * builders so column names come from the schema.
+   */
+  purgeChannelMessagesSqlite(channel: number, sourceId?: string): number {
+    if (!this.sqliteDb) {
+      throw new Error('purgeChannelMessagesSqlite is SQLite-only');
+    }
+    const db = this.sqliteDb;
+    const messages = this.tables.messages;
+    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId));
+    const result = db.delete(messages).where(condition).run();
+    return Number(result.changes);
+  }
+
+  /**
+   * SQLite-only synchronous purge of direct messages to/from a node.
+   * Mirrors `purgeDirectMessages()` — excludes broadcast messages
+   * (`toNodeId != '!ffffffff'`) and scopes by source when provided.
+   */
+  purgeDirectMessagesSqlite(nodeNum: number, sourceId?: string): number {
+    if (!this.sqliteDb) {
+      throw new Error('purgeDirectMessagesSqlite is SQLite-only');
+    }
+    const db = this.sqliteDb;
+    const messages = this.tables.messages;
+    const condition = and(
+      or(
+        eq(messages.fromNodeNum, nodeNum),
+        eq(messages.toNodeNum, nodeNum)
+      ),
+      ne(messages.toNodeId, '!ffffffff'),
+      this.withSourceScope(messages, sourceId)
+    );
+    const result = db.delete(messages).where(condition).run();
+    return Number(result.changes);
+  }
+
+  /**
    * Cleanup old messages
    */
   async cleanupOldMessages(days: number = 30): Promise<number> {
