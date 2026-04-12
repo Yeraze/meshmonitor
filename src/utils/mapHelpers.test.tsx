@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { getRoleName } from './nodeHelpers';
 import { ROLE_NAMES } from '../constants/index.js';
-import { convertSpeed } from './mapHelpers';
+import { convertSpeed } from './speedConversion';
 
 describe('mapHelpers', () => {
   describe('getRoleName', () => {
