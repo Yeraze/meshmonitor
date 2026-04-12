@@ -429,7 +429,7 @@ export class MeshtasticProtobufService {
   /**
    * Create a text message ToRadio using proper protobuf encoding
    */
-  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {
+  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number, pkiEncrypted?: boolean): { data: Uint8Array; messageId: number } {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -453,13 +453,17 @@ export class MeshtasticProtobufService {
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
       // Ensure channel is valid (0-7) for Meshtastic, default to 0 if invalid
       const validChannel = (channel !== undefined && channel >= 0 && channel <= 7) ? channel : 0;
-      const meshPacket = MeshPacket.create({
+      const meshPacketFields: any = {
         id: messageId,
         to: destination || 0xFFFFFFFF, // Broadcast if no destination
         channel: validChannel,
         decoded: dataMessage,
-        wantAck: true
-      });
+        wantAck: true,
+      };
+      if (pkiEncrypted) {
+        meshPacketFields.pkiEncrypted = true;
+      }
+      const meshPacket = MeshPacket.create(meshPacketFields);
 
       logger.debug(`📤 Creating MeshPacket - ID: ${messageId}, to: ${(meshPacket as any).to.toString(16)}, channel: ${validChannel}, wantAck: ${(meshPacket as any).wantAck}`);
 

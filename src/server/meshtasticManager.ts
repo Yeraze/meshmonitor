@@ -6828,9 +6828,23 @@ class MeshtasticManager implements ISourceManager {
         text = applyHomoglyphOptimization(text);
       }
 
-      // Use the new protobuf service to create a proper text message
-      // Note: PKI encryption is handled automatically by the firmware if it has the recipient's public key
-      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji);
+      // For DMs, check if the target node has a public key — if so, request PKI encryption.
+      // The firmware handles the actual crypto, but for serial/TCP connections it only
+      // PKI-encrypts when the packet explicitly has pkiEncrypted=true.
+      let pkiEncrypted = false;
+      if (destination) {
+        try {
+          const targetNode = await databaseService.nodes.getNode(destination, this.sourceId);
+          if (targetNode?.publicKey) {
+            pkiEncrypted = true;
+            logger.debug(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — requesting PKI encryption (node has public key)`);
+          }
+        } catch {
+          // If lookup fails, send without PKI — firmware will use channel encryption
+        }
+      }
+
+      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, pkiEncrypted);
 
       await this.transport.send(textMessageData);
 
