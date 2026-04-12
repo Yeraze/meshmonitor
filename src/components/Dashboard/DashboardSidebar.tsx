@@ -262,13 +262,22 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         <span className="dashboard-sidebar-version">v{version}</span>
         <div className="dashboard-sidebar-footer-icons">
           {isAdmin && (
-            <button
-              className="dashboard-sidebar-footer-btn"
-              title="Settings"
-              onClick={() => navigate('/settings')}
-            >
-              ⚙️
-            </button>
+            <>
+              <button
+                className="dashboard-sidebar-footer-btn"
+                title="Users"
+                onClick={() => navigate('/users')}
+              >
+                👥
+              </button>
+              <button
+                className="dashboard-sidebar-footer-btn"
+                title="Settings"
+                onClick={() => navigate('/settings')}
+              >
+                ⚙️
+              </button>
+            </>
           )}
           <button
             className="dashboard-sidebar-footer-btn"

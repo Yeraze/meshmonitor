@@ -52,13 +52,7 @@ const PERMISSION_KEYS = [
   'security', 'nodes_private', 'packetmonitor'
 ] as const;
 
-const SOURCEY_RESOURCES = new Set([
-  'channel_0', 'channel_1', 'channel_2', 'channel_3',
-  'channel_4', 'channel_5', 'channel_6', 'channel_7',
-  'messages', 'nodes', 'nodes_private', 'traceroute',
-  'packetmonitor', 'configuration', 'connection', 'automation',
-]);
-const isResourceSourcey = (r: string) => SOURCEY_RESOURCES.has(r);
+// All permissions are per-source — no global resources except Admin toggle
 
 const UsersTab: React.FC = () => {
   const { t } = useTranslation();
@@ -93,7 +87,7 @@ const UsersTab: React.FC = () => {
   const [channelDatabaseEntries, setChannelDatabaseEntries] = useState<ChannelDatabaseEntry[]>([]);
   const [channelDbPermissions, setChannelDbPermissions] = useState<ChannelDatabasePermission[]>([]);
 
-  // Source scope for permissions (null = global, string = sourceId)
+  // Source scope for permissions — all permissions are per-source
   const [sources, setSources] = useState<Source[]>([]);
   const [permissionScope, setPermissionScope] = useState<string | null>(null);
 
@@ -106,7 +100,12 @@ const UsersTab: React.FC = () => {
   const fetchSources = async () => {
     try {
       const response = await api.get<Source[]>('/api/sources');
-      setSources(Array.isArray(response) ? response : []);
+      const list = Array.isArray(response) ? response : [];
+      setSources(list);
+      // Auto-select first source if none selected yet
+      if (list.length > 0 && permissionScope === null) {
+        setPermissionScope(list[0].id);
+      }
     } catch (err) {
       logger.debug('Failed to fetch sources:', err);
     }
@@ -194,13 +193,10 @@ const UsersTab: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      // Filter out empty/undefined permissions and ensure valid structure,
-      // and restrict to resources valid for the current scope.
+      // Filter out empty/undefined permissions and ensure valid structure
       const validPermissions: PermissionSet = {};
       PERMISSION_KEYS.forEach(resource => {
         if (!permissions[resource]) return;
-        const sourceyMatch = permissionScope === null ? !isResourceSourcey(resource) : isResourceSourcey(resource);
-        if (!sourceyMatch) return;
         if (resource.startsWith('channel_')) {
           validPermissions[resource] = {
             viewOnMap: permissions[resource]?.viewOnMap || false,
@@ -686,23 +682,18 @@ const UsersTab: React.FC = () => {
                   onChange={e => handlePermissionScopeChange(e.target.value || null)}
                   className="permission-scope-select"
                 >
-                  <option value="">{t('users.scope_global')}</option>
                   {sources.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  {permissionScope === null
-                    ? t('users.global_permissions_hint', 'Global permissions control instance-wide features.')
-                    : t('users.source_permissions_hint', 'Channel, message, and node permissions are granted per-source.')}
+                  {t('users.source_permissions_hint', 'All permissions are granted per-source.')}
                 </p>
               </div>
             )}
 
             <div className="permissions-grid">
-              {PERMISSION_KEYS.filter(resource =>
-                permissionScope === null ? !isResourceSourcey(resource) : isResourceSourcey(resource)
-              ).map(resource => {
+              {PERMISSION_KEYS.map(resource => {
                 // Get label from translated map or format it
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
                 

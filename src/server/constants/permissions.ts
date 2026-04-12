@@ -9,6 +9,7 @@ export const SOURCEY_RESOURCES = new Set<string>([
   'channel_4', 'channel_5', 'channel_6', 'channel_7',
   'messages', 'nodes', 'nodes_private', 'traceroute',
   'packetmonitor', 'configuration', 'connection', 'automation',
+  'dashboard', 'settings', 'info', 'audit', 'security',
 ]);
 
 export const isResourceSourcey = (resource: string): boolean =>
