@@ -9718,7 +9718,7 @@ class DatabaseService {
 
     // For non-SQLite, use async repository
     if (this.drizzleDbType !== 'sqlite') {
-      const id = await this.misc.insertPacketLog(packet);
+      const id = await this.misc.insertPacketLog(packet, packet.sourceId ?? undefined);
       const maxCountStr = await this.getSettingAsync('packet_log_max_count');
       const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
       await this.misc.enforcePacketLogMaxCount(maxCount);
@@ -9731,8 +9731,8 @@ class DatabaseService {
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
         channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
         relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction,
-        transport_mechanism, decrypted_by, decrypted_channel_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        transport_mechanism, decrypted_by, decrypted_channel_id, sourceId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       packet.packet_id ?? null, packet.timestamp, packet.from_node,
@@ -9742,7 +9742,8 @@ class DatabaseService {
       packet.hop_limit ?? null, packet.hop_start ?? null, packet.relay_node ?? null,
       packet.payload_size ?? null, packet.want_ack ? 1 : 0, packet.priority ?? null,
       packet.payload_preview ?? null, packet.metadata ?? null, packet.direction ?? 'rx',
-      packet.transport_mechanism ?? null, packet.decrypted_by ?? null, packet.decrypted_channel_id ?? null
+      packet.transport_mechanism ?? null, packet.decrypted_by ?? null, packet.decrypted_channel_id ?? null,
+      packet.sourceId ?? null
     );
 
     // Enforce max count

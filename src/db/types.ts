@@ -253,6 +253,7 @@ export interface DbPacketLog {
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
   transport_mechanism?: number | null;
+  sourceId?: string | null;
 }
 
 /**
