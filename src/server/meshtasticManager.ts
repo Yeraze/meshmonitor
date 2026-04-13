@@ -1047,6 +1047,7 @@ class MeshtasticManager implements ISourceManager {
       metadata: JSON.stringify({ ...metadata, direction: 'tx' }),
       direction: 'tx',
       transport_mechanism: TransportMechanism.INTERNAL,  // Outgoing packets are sent via direct connection
+      sourceId: this.sourceId,
     });
   }
 
@@ -3996,6 +3997,7 @@ class MeshtasticManager implements ISourceManager {
           decrypted_channel_id: decryptedChannelId ?? undefined,
           // Note: ?? (nullish coalescing) correctly preserves 0 (INTERNAL), only defaults on null/undefined
           transport_mechanism: meshPacket.transportMechanism ?? TransportMechanism.LORA,
+          sourceId: this.sourceId,
         });
         } // end else (not internal packet)
       }
