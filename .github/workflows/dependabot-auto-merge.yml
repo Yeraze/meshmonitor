@@ -55,7 +55,7 @@ jobs:
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-major' ||
           (steps.metadata.outputs.update-type == 'version-update:semver-minor' && steps.metadata.outputs.dependency-type != 'direct:development')
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.createComment({

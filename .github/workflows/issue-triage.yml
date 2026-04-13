@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Auto-label based on keywords
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const title = context.payload.issue.title.toLowerCase();
@@ -80,7 +80,7 @@ jobs:
     steps:
       - name: Check user permissions
         id: check-permissions
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             try {
@@ -404,7 +404,7 @@ jobs:
 
       - name: Remove needs-triage label
         if: always()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             try {
@@ -435,7 +435,7 @@ jobs:
     steps:
       - name: Check user permissions
         id: check-permissions
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             try {
@@ -465,7 +465,7 @@ jobs:
       - name: Check if this is a bug issue needing follow-up
         if: steps.check-permissions.outputs.has_write_access == 'true'
         id: check-bug
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const issue = context.payload.issue;
