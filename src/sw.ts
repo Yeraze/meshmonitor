@@ -20,12 +20,51 @@ registerRoute(
   ({ request }) => request.mode === 'navigate',
   new NetworkFirst({
     cacheName: 'html-cache',
-    networkTimeoutSeconds: 3,
+    networkTimeoutSeconds: 5,
   })
 );
 
+// Offline fallback for navigation requests (PWA cold launch with no network)
+// Since HTML is not precached (runtime BASE_URL rewriting), provide a minimal
+// app shell so users see a loading screen instead of a white screen.
+import { setCatchHandler } from 'workbox-routing';
+
+setCatchHandler(async ({ request }) => {
+  if (request.mode === 'navigate') {
+    return new Response(
+      `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MeshMonitor</title>
+  <style>
+    body { background: #1a1a1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+           display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .offline { text-align: center; }
+    .offline h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .offline p { color: #888; }
+    .offline button { margin-top: 1rem; padding: 0.5rem 1.5rem; background: #3b82f6; color: white;
+                      border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="offline">
+    <h1>MeshMonitor</h1>
+    <p>Unable to connect. Check your network and try again.</p>
+    <button onclick="location.reload()">Retry</button>
+  </div>
+</body>
+</html>`,
+      { headers: { 'Content-Type': 'text/html' } }
+    );
+  }
+  return Response.error();
+});
+
 // Handle API routes (never cache)
-registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly());
+// Use includes() instead of startsWith() to work with BASE_URL prefixes (e.g., /meshmonitor/api/)
+registerRoute(({ url }) => url.pathname.includes('/api/'), new NetworkOnly());
 
 // Handle map tiles from all supported providers (cache first)
 registerRoute(

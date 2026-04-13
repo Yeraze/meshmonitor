@@ -2,9 +2,14 @@
 let corsErrorCount = 0;
 let appLoaded = false;
 
+// Detect PWA standalone mode (iOS and standard)
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+  || window.navigator.standalone === true;
+
 // Redirect to CORS error page
 function redirectToCorsError() {
   if (appLoaded) return; // Don't redirect if app already loaded
+  if (isStandalone) return; // Don't redirect in PWA mode - fetch failures are network, not CORS
   console.log('[CORS Detection] Redirecting to error page. CORS errors:', corsErrorCount);
   const baseTag = document.querySelector('base');
   const baseUrl = baseTag ? baseTag.href.replace(/\/$/, '') : window.location.origin;
@@ -48,12 +53,16 @@ window.fetch = function(...args) {
       }
     } else if (error.name === 'TypeError' && errorMessage.includes('failed to fetch')) {
       // This could be CORS or network - check if it's an API call
-      const urlStr = typeof url === 'string' ? url : url.toString();
-      if (urlStr.includes('/api/') || urlStr.includes('/auth/')) {
-        corsErrorCount++;
-        console.log('[CORS Detection] Likely CORS error (failed to fetch API)', url, 'count:', corsErrorCount);
-        if (corsErrorCount >= 2) {
-          redirectToCorsError();
+      // In PWA standalone mode, "Failed to fetch" is almost always a network timing issue
+      // during cold launch, not a CORS error - skip counting in that case
+      if (!isStandalone) {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/api/') || urlStr.includes('/auth/')) {
+          corsErrorCount++;
+          console.log('[CORS Detection] Likely CORS error (failed to fetch API)', url, 'count:', corsErrorCount);
+          if (corsErrorCount >= 2) {
+            redirectToCorsError();
+          }
         }
       }
     }
