@@ -248,7 +248,7 @@ jobs:
 
     steps:
       - name: Comment on PR
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         continue-on-error: true  # Don't fail if we can't comment
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
