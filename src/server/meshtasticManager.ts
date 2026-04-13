@@ -4137,12 +4137,19 @@ class MeshtasticManager implements ISourceManager {
       // Preserve the 'from' and 'to' node order for virtual node traceroute requests.
       // This ensures subsequent responses correctly correlate with this request
       // to update route and signal characteristics in the database.
-      // Skip if from our own node — sendTraceroute() already recorded the request.
       else if (normalizedPortNum === PortNum.TRACEROUTE_APP) {
         const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
         const toNum = meshPacket.to ? Number(meshPacket.to) : 0;
         const localNodeNum = this.localNodeInfo?.nodeNum;
-        if (fromNum !== localNodeNum) {
+        
+        // Skip only when this is MeshMonitor's own auto-traceroute —
+        // sendTraceroute() already called recordTracerouteRequestAsync() internally.
+        // VN-client packets also have fromNum === localNodeNum but were never
+        // pre-recorded; they arrive as incoming packets with a virtualNodeRequestId.
+        const isFromLocalNode = fromNum === localNodeNum;
+        const isVirtualNodePacket = !!context?.virtualNodeRequestId;
+
+        if (!isFromLocalNode || isVirtualNodePacket) {
           await databaseService.recordTracerouteRequestAsync(fromNum, toNum, this.sourceId ?? undefined);
         }
       }
