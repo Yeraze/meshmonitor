@@ -276,6 +276,10 @@ export function requireAuth() {
  */
 export interface RequirePermissionOptions {
   sourceIdFrom?: 'params.id' | 'query' | 'body';
+  /** If the primary resource check fails, try this resource as a fallback.
+   *  Useful for endpoints consumed by the dashboard — `dashboard:read`
+   *  grants access even if the specific resource permission is missing. */
+  fallbackResource?: ResourceType;
 }
 
 export function requirePermission(

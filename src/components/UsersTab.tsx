@@ -539,8 +539,8 @@ const UsersTab: React.FC = () => {
   }
 
   const labelMap: Record<string, string> = {
-    dashboard: t('nav.dashboard'),
-    nodes: t('nav.nodes'),
+    dashboard: 'Source Status',
+    nodes: 'Node Map & List',
     messages: t('nav.messages'),
     settings: t('nav.settings'),
     configuration: t('nav.configuration'),
