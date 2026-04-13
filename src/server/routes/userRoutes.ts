@@ -10,8 +10,6 @@ import { createLocalUser, resetUserPassword, setUserPassword } from '../auth/loc
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { PermissionSet } from '../../types/permission.js';
-import { isResourceSourcey } from '../constants/permissions.js';
-
 const router = Router();
 
 // All routes require admin
@@ -401,19 +399,11 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       }
     }
 
-    // Validate scope/resource alignment: sourcey resources require a sourceId,
-    // global resources must not have one
-    for (const resource of Object.keys(permissions)) {
-      if (isResourceSourcey(resource) && !sourceId) {
-        return res.status(400).json({
-          error: `Resource '${resource}' is per-source and requires a sourceId`
-        });
-      }
-      if (!isResourceSourcey(resource) && sourceId) {
-        return res.status(400).json({
-          error: `Resource '${resource}' is global and cannot be scoped to a source`
-        });
-      }
+    // All permissions are per-source — sourceId is required
+    if (!sourceId) {
+      return res.status(400).json({
+        error: 'sourceId is required — all permissions are per-source'
+      });
     }
 
     // Delete only permissions in the given scope, then recreate

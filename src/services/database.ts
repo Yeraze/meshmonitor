@@ -10,8 +10,6 @@ import { PermissionModel } from '../server/models/Permission.js';
 import { APITokenModel } from '../server/models/APIToken.js';
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
-import { isResourceSourcey } from '../server/constants/permissions.js';
-
 // Drizzle ORM imports for dual-database support
 import { createSQLiteDriver } from '../db/drivers/sqlite.js';
 import { createPostgresDriver } from '../db/drivers/postgres.js';
@@ -1220,8 +1218,7 @@ class DatabaseService {
         can_write INTEGER NOT NULL DEFAULT 0,
         granted_at INTEGER NOT NULL,
         granted_by INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(user_id, resource)
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
 
@@ -10075,11 +10072,10 @@ class DatabaseService {
       return false;
     };
 
-    if (isResourceSourcey(resource)) {
-      if (!sourceId) {
-        logger.warn(`checkPermissionAsync: sourcey resource '${resource}' checked without sourceId — denying`);
-        return false;
-      }
+    // All resources are now sourcey (per-source).
+    // When sourceId is provided, check for an exact match.
+    // When sourceId is omitted, grant access if the user has the permission on ANY source.
+    if (sourceId) {
       for (const perm of permissions) {
         if (perm.resource === resource && (perm as any).sourceId === sourceId) {
           return check(perm);
@@ -10088,10 +10084,10 @@ class DatabaseService {
       return false;
     }
 
-    // Global resources — ignore sourceId, look for NULL-sourceId row
+    // No sourceId — check if user has this permission on any source
     for (const perm of permissions) {
-      if (perm.resource === resource && !(perm as any).sourceId) {
-        return check(perm);
+      if (perm.resource === resource && (perm as any).sourceId) {
+        if (check(perm)) return true;
       }
     }
     return false;
@@ -10105,27 +10101,29 @@ class DatabaseService {
     const permissions = await this.auth.getPermissionsForUser(userId);
     const permissionSet: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
 
-    // Always include global resources (non-sourcey resources with NULL sourceId)
-    for (const perm of permissions) {
-      if (!isResourceSourcey(perm.resource) && !(perm as any).sourceId) {
-        permissionSet[perm.resource] = {
-          viewOnMap: (perm as any).canViewOnMap ?? false,
-          read: perm.canRead,
-          write: perm.canWrite,
-        };
-      }
-    }
-
-    // Include sourcey resources ONLY when sourceId is provided
+    // All resources are per-source. When sourceId is provided, return permissions
+    // for that source. When omitted, merge permissions across all sources (grant
+    // access if the user has it on any source).
     if (sourceId) {
       for (const perm of permissions) {
-        if (isResourceSourcey(perm.resource) && (perm as any).sourceId === sourceId) {
+        if ((perm as any).sourceId === sourceId) {
           permissionSet[perm.resource] = {
             viewOnMap: (perm as any).canViewOnMap ?? false,
             read: perm.canRead,
             write: perm.canWrite,
           };
         }
+      }
+    } else {
+      // No sourceId — merge across all sources (most permissive wins)
+      for (const perm of permissions) {
+        if (!(perm as any).sourceId) continue;
+        const existing = permissionSet[perm.resource];
+        permissionSet[perm.resource] = {
+          viewOnMap: existing?.viewOnMap || ((perm as any).canViewOnMap ?? false),
+          read: existing?.read || perm.canRead,
+          write: existing?.write || perm.canWrite,
+        };
       }
     }
 

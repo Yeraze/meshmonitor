@@ -499,28 +499,18 @@ describe('User Management Routes', () => {
       const users = userModel.findAll();
       const userId = users.find(u => u.username === 'user')!.id;
 
-      // Global resources (no sourceId)
-      const globalPermissions = {
+      // All permissions are per-source and require a sourceId
+      const permissions = {
         dashboard: { read: true, write: true },
-      };
-
-      const response1 = await adminAgent
-        .put(`/api/users/${userId}/permissions`)
-        .send({ permissions: globalPermissions })
-        .expect(200);
-      expect(response1.body.success).toBe(true);
-
-      // Sourcey resources (require sourceId)
-      const sourceyPermissions = {
         nodes: { read: true, write: false },
         messages: { read: false, write: false }
       };
 
-      const response2 = await adminAgent
+      const response = await adminAgent
         .put(`/api/users/${userId}/permissions`)
-        .send({ permissions: sourceyPermissions, sourceId: 'test-source' })
+        .send({ permissions, sourceId: 'test-source' })
         .expect(200);
-      expect(response2.body.success).toBe(true);
+      expect(response.body.success).toBe(true);
     });
 
     it('should deny regular user from updating permissions', async () => {
@@ -636,7 +626,7 @@ describe('User Management Routes', () => {
 
       const response = await adminAgent
         .put(`/api/users/${userId}/permissions`)
-        .send({ permissions })
+        .send({ permissions, sourceId: 'test-source' })
         .expect(200);
 
       expect(response.body.success).toBe(true);

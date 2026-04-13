@@ -89,19 +89,48 @@ export const migration = {
       logger.info(`Migration 033 (SQLite): deleted ${delResult.changes} global sourcey grant(s)`);
     }
 
-    // Drop old unique index (try multiple possible names — SQLite may have used
-    // any of these depending on how the table was originally created)
-    const oldIndexNames = [
-      'permissions_user_id_resource_unique',
-      'sqlite_autoindex_permissions_1',
-      'permissions_user_resource_unique',
-    ];
-    for (const idxName of oldIndexNames) {
-      try {
-        db.exec(`DROP INDEX IF EXISTS ${idxName}`);
-        logger.debug(`Migration 033 (SQLite): dropped old index '${idxName}' (or it didn't exist)`);
-      } catch {
-        // Ignore — index didn't exist under this name
+    // SQLite cannot drop auto-indexes from inline UNIQUE constraints.
+    // The only way to remove the old UNIQUE(user_id, resource) is a table rebuild.
+    // Check if the old constraint still exists by inspecting the CREATE TABLE SQL.
+    const tableInfo = db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='permissions'`
+    ).get() as { sql: string } | undefined;
+
+    const hasOldConstraint = tableInfo?.sql?.includes('UNIQUE(user_id, resource)');
+
+    if (hasOldConstraint) {
+      logger.info('Migration 033 (SQLite): rebuilding permissions table to remove old UNIQUE(user_id, resource) constraint');
+
+      db.exec(`
+        CREATE TABLE permissions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          resource TEXT NOT NULL,
+          can_view_on_map INTEGER NOT NULL DEFAULT 0,
+          can_read INTEGER NOT NULL DEFAULT 0,
+          can_write INTEGER NOT NULL DEFAULT 0,
+          can_delete INTEGER NOT NULL DEFAULT 0,
+          granted_at INTEGER NOT NULL,
+          granted_by INTEGER,
+          sourceId TEXT,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+
+      db.exec(`
+        INSERT INTO permissions_new (id, user_id, resource, can_view_on_map, can_read, can_write, can_delete, granted_at, granted_by, sourceId)
+        SELECT id, user_id, resource, can_view_on_map, can_read, can_write, COALESCE(can_delete, 0), granted_at, granted_by, sourceId
+        FROM permissions
+      `);
+
+      db.exec(`DROP TABLE permissions`);
+      db.exec(`ALTER TABLE permissions_new RENAME TO permissions`);
+
+      logger.info('Migration 033 (SQLite): table rebuild complete');
+    } else {
+      // No inline constraint — just drop any named indexes that might exist
+      for (const idxName of ['permissions_user_id_resource_unique', 'permissions_user_resource_unique']) {
+        try { db.exec(`DROP INDEX IF EXISTS ${idxName}`); } catch { /* ignore */ }
       }
     }
 
