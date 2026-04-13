@@ -72,18 +72,18 @@ class AutoDeleteByDistanceService {
     const deletedNodes: DeletedNodeInfo[] = [];
 
     try {
-      // Read settings
-      const homeLat = parseFloat(await databaseService.settings.getSetting('autoDeleteByDistanceLat') || '');
-      const homeLon = parseFloat(await databaseService.settings.getSetting('autoDeleteByDistanceLon') || '');
-      const thresholdKm = parseFloat(await databaseService.settings.getSetting('autoDeleteByDistanceThresholdKm') || '100');
+      // Read settings (per-source with global fallback)
+      const homeLat = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceLat') || '');
+      const homeLon = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceLon') || '');
+      const thresholdKm = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm') || '100');
 
       if (isNaN(homeLat) || isNaN(homeLon)) {
         logger.debug('⏭️ Auto-delete-by-distance: no home coordinate configured, skipping');
         return { deletedCount: 0 };
       }
 
-      // Get local node number to protect it
-      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+      // Get local node number to protect it (per-source with global fallback)
+      const localNodeNumStr = await databaseService.settings.getSettingForSource(sourceId, 'localNodeNum');
       const localNodeNum = localNodeNumStr ? Number(localNodeNumStr) : null;
 
       // Get all nodes (must use async for PostgreSQL/MySQL)
