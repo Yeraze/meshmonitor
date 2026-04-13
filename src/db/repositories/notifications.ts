@@ -161,7 +161,7 @@ export class NotificationsRepository extends BaseRepository {
       lastUsedAt: now,
     };
 
-    await this.upsert(pushSubscriptions, values, pushSubscriptions.endpoint, setData);
+    await this.upsert(pushSubscriptions, values, [pushSubscriptions.userId, pushSubscriptions.endpoint, pushSubscriptions.sourceId], setData);
   }
 
   /**
