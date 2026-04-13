@@ -82,3 +82,45 @@ node -e "const db = require('better-sqlite3')('data/meshmonitor.db'); db.prepare
 - The test key pattern (all `0x01` bytes) is deliberately weak to simulate keys generated with insufficient randomness
 - This is only for development and testing purposes
 - The hash of this test key is added to `src/services/lowEntropyKeyService.ts` in the `LOW_ENTROPY_HASHES` array
+
+---
+
+## setup-dev-config.sh
+
+Seeds a fresh MeshMonitor instance with default dev/test configuration. Run this after nuking the database volume to restore a working test setup.
+
+### What it configures
+
+- **Two sources**: Sentry (192.168.5.106:4403) and Sandbox (host.docker.internal:4404)
+- **Auto-acknowledge**: Enabled on each source's gauntlet channel with test regex
+- **Packet monitor**: Enabled globally and per-source
+
+### Usage
+
+```bash
+# After starting the dev container:
+./scripts/setup-dev-config.sh
+
+# With custom source hosts:
+SOURCE1_HOST=192.168.1.100 SOURCE2_HOST=192.168.1.200 ./scripts/setup-dev-config.sh
+
+# Skip source creation (just configure settings for existing sources):
+SKIP_SOURCES=true ./scripts/setup-dev-config.sh
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_BASE_URL` | `http://localhost:8081/meshmonitor` | MeshMonitor base URL |
+| `API_USER` | `admin` | Login username |
+| `API_PASS` | `changeme1` | Login password |
+| `SOURCE1_NAME` | `Sentry` | Source 1 display name |
+| `SOURCE1_HOST` | `192.168.5.106` | Source 1 TCP host |
+| `SOURCE1_PORT` | `4403` | Source 1 TCP port |
+| `SOURCE1_GAUNTLET` | `7` | Source 1 gauntlet channel index |
+| `SOURCE2_NAME` | `Sandbox` | Source 2 display name |
+| `SOURCE2_HOST` | `host.docker.internal` | Source 2 TCP host |
+| `SOURCE2_PORT` | `4404` | Source 2 TCP port |
+| `SOURCE2_GAUNTLET` | `2` | Source 2 gauntlet channel index |
+| `SKIP_SOURCES` | `false` | Skip source creation, only configure settings |
