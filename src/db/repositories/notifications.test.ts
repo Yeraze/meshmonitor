@@ -78,13 +78,14 @@ const SQLITE_CREATE = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     source_id TEXT NOT NULL DEFAULT '',
-    endpoint TEXT NOT NULL UNIQUE,
+    endpoint TEXT NOT NULL,
     p256dh_key TEXT NOT NULL,
     auth_key TEXT NOT NULL,
     user_agent TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    last_used_at INTEGER
+    last_used_at INTEGER,
+    UNIQUE(user_id, endpoint, source_id)
   );
 
   CREATE TABLE IF NOT EXISTS user_notification_preferences (
@@ -204,13 +205,14 @@ const POSTGRES_CREATE = `
     id SERIAL PRIMARY KEY,
     "userId" INTEGER REFERENCES users(id) ON DELETE CASCADE,
     "sourceId" TEXT NOT NULL DEFAULT '',
-    endpoint TEXT NOT NULL UNIQUE,
+    endpoint TEXT NOT NULL,
     "p256dhKey" TEXT NOT NULL,
     "authKey" TEXT NOT NULL,
     "userAgent" TEXT,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
-    "lastUsedAt" BIGINT
+    "lastUsedAt" BIGINT,
+    UNIQUE("userId", endpoint, "sourceId")
   );
 
   CREATE TABLE user_notification_preferences (
@@ -342,7 +344,7 @@ const MYSQL_CREATE = `
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     lastUsedAt BIGINT,
-    UNIQUE KEY unique_endpoint (endpoint(512))
+    UNIQUE KEY unique_user_endpoint_source (userId, endpoint(255), sourceId)
   );
 
   CREATE TABLE user_notification_preferences (
