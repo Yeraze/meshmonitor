@@ -26,24 +26,26 @@ export class PermissionModel {
    * Grant a permission to a user
    */
   grant(input: PermissionInput): Permission {
-    const stmt = this.db.prepare(`
+    // Delete-then-insert to avoid dependency on a specific UNIQUE constraint.
+    // The old ON CONFLICT(user_id, resource) no longer exists after migration 033
+    // replaced it with UNIQUE(user_id, resource, sourceId).
+    const del = this.db.prepare(`
+      DELETE FROM permissions WHERE user_id = ? AND resource = ?
+    `);
+    const ins = this.db.prepare(`
       INSERT INTO permissions (user_id, resource, can_view_on_map, can_read, can_write, granted_at, granted_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, resource) DO UPDATE SET
-        can_view_on_map = excluded.can_view_on_map,
-        can_read = excluded.can_read,
-        can_write = excluded.can_write,
-        granted_at = excluded.granted_at,
-        granted_by = excluded.granted_by
     `);
 
-    stmt.run(
+    const now = Date.now();
+    del.run(input.userId, input.resource);
+    ins.run(
       input.userId,
       input.resource,
       input.canViewOnMap ? 1 : 0,
       input.canRead ? 1 : 0,
       input.canWrite ? 1 : 0,
-      Date.now(),
+      now,
       input.grantedBy || null
     );
 
