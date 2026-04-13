@@ -553,6 +553,22 @@ const UsersTab: React.FC = () => {
     traceroute: t('users.can_initiate_traceroutes'),
   };
 
+  const tooltipMap: Record<string, string> = {
+    dashboard: 'Controls visibility of source cards on the main dashboard. Does NOT include node or message access — grant those separately.',
+    nodes: 'Read: view node list, neighbor info, and map markers. Write: edit node names/notes.',
+    nodes_private: 'Read: view detailed position history for individual nodes.',
+    messages: 'Read: view messages and channel list. Write: send messages.',
+    settings: 'Read: view global settings. Write: change settings, map styles, GeoJSON layers.',
+    configuration: 'Read: view device configuration. Write: change device radio/module settings.',
+    info: 'Read: view device info and statistics.',
+    automation: 'Read: view automation rules. Write: create/edit automation rules.',
+    connection: 'Connect/disconnect the Meshtastic device for this source.',
+    traceroute: 'Initiate traceroute requests to mesh nodes.',
+    audit: 'Read: view the audit log. Write: purge audit log entries.',
+    security: 'Read: view security scan results. Write: run scans, manage flagged/dead nodes.',
+    packetmonitor: 'Read: view raw Meshtastic packets in the packet monitor.',
+  };
+
   return (
     <div className="users-tab">
       {error && <div className="error-message">{error}</div>}
@@ -723,9 +739,13 @@ const UsersTab: React.FC = () => {
                   label = labelMap[resource] || label;
                 }
 
+                const tooltip = resource.startsWith('channel_')
+                  ? 'View on Map: show nodes heard on this channel. Read: view messages. Write: send messages.'
+                  : tooltipMap[resource] || '';
+
                 return (
                   <div key={resource} className="permission-item">
-                    <div className="permission-label">{label}</div>
+                    <div className="permission-label" title={tooltip}>{label}</div>
                     <div className="permission-actions">
                       {resource === 'packetmonitor' ? (
                         // Packet Monitor is read-only, no write permission
