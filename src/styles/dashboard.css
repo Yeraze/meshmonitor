@@ -124,14 +124,14 @@
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
-  overflow: hidden;
 }
 
 /* Faint Meshtastic logo watermark behind the tile. Uses a ::before overlay so
    it sits behind the content but above the card background, and doesn't steal
    pointer events from the card's click handler.  The official Meshtastic logo
    fills the entire card as a subtle background graphic identifying the source
-   type at a glance.  Inlined as a data URL to avoid BASE_URL path issues. */
+   type at a glance.  Inlined as a data URL to avoid BASE_URL path issues.
+   Watermark is clipped to card bounds via border-radius + overflow on ::before. */
 .dashboard-source-card.has-meshtastic-watermark::before {
   content: '';
   position: absolute;
@@ -142,6 +142,8 @@
   background-position: center;
   opacity: 0.07;
   pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
 }
 
 .dashboard-source-card > * {
