@@ -97,6 +97,12 @@ class AutoDeleteByDistanceService {
       // If sourceId provided, scope to that source; otherwise scan all sources
       const allNodes = await databaseService.nodes.getAllNodes(sourceId);
 
+      // Throttle device syncs so firmware admin queue doesn't back up on
+      // large MQTT meshes with hundreds of nodes to ignore per cycle.
+      const SYNC_DELAY_MS = 5000;
+      let firmwareUnsupported = false;
+      let pendingSyncDelay = false;
+
       for (const node of allNodes) {
         // Protect local node
         if (localNodeNum != null && Number(node.nodeNum) === localNodeNum) {
@@ -128,20 +134,35 @@ class AutoDeleteByDistanceService {
 
           try {
             if (action === 'ignore') {
-              await databaseService.setNodeIgnoredAsync(nodeNum, true, nodeSourceId);
+              // Skip nodes already marked ignored — nothing to do in DB,
+              // and the device already knows (or tried once this session).
+              if (node.isIgnored) {
+                continue;
+              }
 
-              // Best-effort sync to device; tolerate pre-2.7 firmware
-              const manager = (sourceManagerRegistry.getManager(nodeSourceId) as typeof meshtasticManager) ?? meshtasticManager;
-              try {
-                await manager.sendIgnoredNode(nodeNum);
-              } catch (syncError) {
-                if (syncError instanceof Error && syncError.message === 'FIRMWARE_NOT_SUPPORTED') {
-                  logger.debug(`ℹ️ Auto-delete-by-distance: firmware does not support ignored nodes for ${nodeNum}, skipped device sync`);
-                } else {
-                  logger.warn(`⚠️ Auto-delete-by-distance: failed to sync ignored status to device for node ${nodeNum}:`, syncError);
+              await databaseService.setNodeIgnoredAsync(nodeNum, true, nodeSourceId);
+              processedNodes.push(nodeInfo);
+
+              // Device sync: throttled + short-circuit on unsupported firmware
+              if (!firmwareUnsupported) {
+                if (pendingSyncDelay) {
+                  await new Promise((resolve) => setTimeout(resolve, SYNC_DELAY_MS));
+                }
+                const manager = (sourceManagerRegistry.getManager(nodeSourceId) as typeof meshtasticManager) ?? meshtasticManager;
+                try {
+                  await manager.sendIgnoredNode(nodeNum);
+                  pendingSyncDelay = true;
+                } catch (syncError) {
+                  if (syncError instanceof Error && syncError.message === 'FIRMWARE_NOT_SUPPORTED') {
+                    logger.debug(`ℹ️ Auto-delete-by-distance: firmware does not support ignored nodes; skipping device sync for remaining nodes this cycle`);
+                    firmwareUnsupported = true;
+                  } else {
+                    logger.warn(`⚠️ Auto-delete-by-distance: failed to sync ignored status to device for node ${nodeNum}:`, syncError);
+                    // Still throttle after a failed send — firmware may be busy
+                    pendingSyncDelay = true;
+                  }
                 }
               }
-              processedNodes.push(nodeInfo);
             } else {
               await databaseService.deleteNodeAsync(nodeNum, nodeSourceId);
               processedNodes.push(nodeInfo);
