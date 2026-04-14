@@ -84,6 +84,7 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
         lastRemoteAdminCheck INTEGER,
         remoteAdminMetadata TEXT,
         lastTimeSync INTEGER,
+        isStoreForwardServer BOOLEAN DEFAULT 0,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         sourceId TEXT
@@ -110,6 +111,7 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
         replyId INTEGER,
         emoji INTEGER,
         viaMqtt BOOLEAN DEFAULT 0,
+        viaStoreForward BOOLEAN DEFAULT 0,
         rxSnr REAL,
         rxRssi REAL,
         ackFailed BOOLEAN DEFAULT 0,
