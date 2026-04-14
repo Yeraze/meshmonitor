@@ -782,7 +782,8 @@ export class NodesRepository extends BaseRepository {
    * - Has a public key (required for admin)
    * - Active (lastHeard recent)
    * - Not checked recently (lastRemoteAdminCheck null or expired)
-   * Returns the most recently heard node matching these criteria
+   * Prioritizes nearby nodes: orders by hopsAway ASC (NULLs last), then lastHeard DESC.
+   * Without this priority, MQTT-flooded distant nodes can starve close-by admin scans.
    */
   async getNodeNeedingRemoteAdminCheckAsync(
     localNodeNum: number,
@@ -807,7 +808,7 @@ export class NodesRepository extends BaseRepository {
           this.withSourceScope(nodes, sourceId)
         )
       )
-      .orderBy(desc(nodes.lastHeard))
+      .orderBy(sql`${nodes.hopsAway} IS NULL`, asc(nodes.hopsAway), desc(nodes.lastHeard))
       .limit(1);
 
     if (results.length === 0) return null;
