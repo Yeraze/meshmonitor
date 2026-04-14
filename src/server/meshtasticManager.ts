@@ -26,6 +26,7 @@ import { migrateAutomationChannels } from './utils/automationChannelMigration.js
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
+import { normalizeChannelRole } from './constants/channelRole.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
@@ -3765,20 +3766,27 @@ class MeshtasticManager implements ISourceManager {
           // Extract position precision from module settings if available
           const positionPrecision = channel.settings.moduleSettings?.positionPrecision;
 
-          // Defensive channel role validation:
+          // Defensive channel role validation.
+          // Rules:
           // 1. Channel 0 must be PRIMARY (role=1), never DISABLED (role=0)
           // 2. Channels 1-7 must be SECONDARY (role=2) or DISABLED (role=0), never PRIMARY (role=1)
-          // A mesh network MUST have exactly ONE PRIMARY channel, and Channel 0 is conventionally PRIMARY
-          let channelRole = channel.role !== undefined ? channel.role : undefined;
+          // 3. Proto3 default-value elision (#2666): firmware strips role=DISABLED on the
+          //    wire, so an empty secondary slot arrives with role=undefined. Treat "no
+          //    role + no name + no PSK" as DISABLED so `?? existingChannel.role` in
+          //    upsertChannel doesn't preserve the stale SECONDARY role forever.
+          const channelRole = normalizeChannelRole(channel);
+
           if (channel.index === 0 && channel.role === 0) {
             logger.warn(`⚠️  Channel 0 received with role=DISABLED (0), overriding to PRIMARY (1)`);
-            channelRole = 1;  // PRIMARY
           }
 
           if (channel.index > 0 && channel.role === 1) {
             logger.warn(`⚠️  Channel ${channel.index} received with role=PRIMARY (1), overriding to SECONDARY (2)`);
             logger.warn(`⚠️  Only Channel 0 can be PRIMARY - all other channels must be SECONDARY or DISABLED`);
-            channelRole = 2;  // SECONDARY
+          }
+
+          if (channelRole === 0 && channel.role === undefined && channel.index > 0) {
+            logger.info(`📡 Channel ${channel.index} arrived empty — normalizing role to DISABLED(0) (#2666)`);
           }
 
           logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}, positionPrecision: ${positionPrecision}`);
