@@ -149,7 +149,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
     return nodeNum.toString();
   };
 
-  const { deviceMetrics, snr, rssi, lastHeard, hopsAway, viaMqtt, user, firmwareVersion } = node;
+  const { deviceMetrics, snr, rssi, lastHeard, hopsAway, viaMqtt, isStoreForwardServer, user, firmwareVersion } = node;
   const hwModel = user?.hwModel;
   const role = user?.role;
   const publicKey = user?.publicKey;
@@ -324,6 +324,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             <div className="node-detail-label">{t('node_details.connection')}</div>
             <div className="node-detail-value">
               {t('node_details.via_mqtt')}
+            </div>
+          </div>
+        )}
+
+        {/* Store & Forward Server */}
+        {isStoreForwardServer && (
+          <div className="node-detail-card">
+            <div className="node-detail-label">{t('node_details.store_forward', 'Store & Forward')}</div>
+            <div className="node-detail-value">
+              {t('node_details.store_forward_server', 'S&F Server')}
             </div>
           </div>
         )}

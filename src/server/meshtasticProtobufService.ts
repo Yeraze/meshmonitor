@@ -788,6 +788,11 @@ export class MeshtasticProtobufService {
           const neighborInfo = NeighborInfo.decode(payload);
           return neighborInfo;
 
+        case PortNum.STORE_FORWARD_APP:
+          const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+          const sfMsg = StoreAndForward.decode(payload);
+          return sfMsg;
+
         default:
           logger.debug(`⚠️ Unhandled port number: ${portnum}`);
           return payload;

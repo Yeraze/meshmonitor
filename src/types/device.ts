@@ -23,6 +23,7 @@ export interface DeviceInfo {
   hopsAway?: number;
   lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;
+  isStoreForwardServer?: boolean;
   lastHeard?: number;
   snr?: number;
   rssi?: number;

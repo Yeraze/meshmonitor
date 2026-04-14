@@ -438,4 +438,122 @@ describe('MeshtasticProtobufService', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('processPayload - STORE_FORWARD_APP', () => {
+    it('decodes a ROUTER_HEARTBEAT payload', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+      const payload = StoreAndForward.encode(StoreAndForward.create({
+        rr: 2, // ROUTER_HEARTBEAT
+        heartbeat: { period: 900, secondary: 0 },
+      })).finish();
+
+      const result = service.processPayload(65, payload as any);
+      expect(result).toBeDefined();
+      expect(result.rr).toBe(2);
+      expect(result.heartbeat).toBeDefined();
+      expect(result.heartbeat.period).toBe(900);
+    });
+
+    it('decodes a ROUTER_TEXT_DIRECT payload', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+      const textBytes = new TextEncoder().encode('Hello from S&F');
+      const payload = StoreAndForward.encode(StoreAndForward.create({
+        rr: 8, // ROUTER_TEXT_DIRECT
+        text: textBytes,
+      })).finish();
+
+      const result = service.processPayload(65, payload as any);
+      expect(result).toBeDefined();
+      expect(result.rr).toBe(8);
+      expect(result.text).toBeDefined();
+      const decoded = new TextDecoder('utf-8').decode(
+        result.text instanceof Uint8Array ? result.text : new Uint8Array(result.text)
+      );
+      expect(decoded).toBe('Hello from S&F');
+    });
+
+    it('decodes a ROUTER_TEXT_BROADCAST payload', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+      const textBytes = new TextEncoder().encode('Broadcast replay');
+      const payload = StoreAndForward.encode(StoreAndForward.create({
+        rr: 9, // ROUTER_TEXT_BROADCAST
+        text: textBytes,
+      })).finish();
+
+      const result = service.processPayload(65, payload as any);
+      expect(result).toBeDefined();
+      expect(result.rr).toBe(9);
+    });
+
+    it('decodes a ROUTER_STATS payload', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+      const payload = StoreAndForward.encode(StoreAndForward.create({
+        rr: 7, // ROUTER_STATS
+        stats: {
+          messagesTotal: 500,
+          messagesSaved: 100,
+          messagesMax: 200,
+          upTime: 86400,
+          requests: 10,
+          requestsHistory: 5,
+          heartbeat: true,
+          returnMax: 50,
+          returnWindow: 120,
+        },
+      })).finish();
+
+      const result = service.processPayload(65, payload as any);
+      expect(result).toBeDefined();
+      expect(result.rr).toBe(7);
+      expect(result.stats).toBeDefined();
+      expect(result.stats.messagesTotal).toBe(500);
+      expect(result.stats.messagesSaved).toBe(100);
+      expect(result.stats.upTime).toBe(86400);
+    });
+
+    it('decodes a ROUTER_HISTORY payload', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+      const payload = StoreAndForward.encode(StoreAndForward.create({
+        rr: 6, // ROUTER_HISTORY
+        history: { historyMessages: 15, window: 120, lastRequest: 3 },
+      })).finish();
+
+      const result = service.processPayload(65, payload as any);
+      expect(result).toBeDefined();
+      expect(result.rr).toBe(6);
+      expect(result.history).toBeDefined();
+      expect(result.history.historyMessages).toBe(15);
+      expect(result.history.window).toBe(120);
+    });
+
+    it('decodes a CLIENT_HISTORY request payload', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
+      const payload = StoreAndForward.encode(StoreAndForward.create({
+        rr: 65, // CLIENT_HISTORY
+        history: { window: 60 },
+      })).finish();
+
+      const result = service.processPayload(65, payload as any);
+      expect(result).toBeDefined();
+      expect(result.rr).toBe(65);
+    });
+  });
 });

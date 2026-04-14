@@ -38,6 +38,7 @@ export interface DbNode {
   hopsAway?: number | null;
   lastMessageHops?: number | null;
   viaMqtt?: boolean | null;
+  isStoreForwardServer?: boolean | null;
   macaddr?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -114,6 +115,7 @@ export interface DbMessage {
   replyId?: number | null;
   emoji?: number | null;
   viaMqtt?: boolean | null;
+  viaStoreForward?: boolean | null;
   rxSnr?: number | null;
   rxRssi?: number | null;
   ackFailed?: boolean | null;

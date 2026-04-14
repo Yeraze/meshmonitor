@@ -25,7 +25,7 @@ import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
@@ -44,6 +44,7 @@ export interface ProcessingContext {
   virtualNodeRequestId?: number; // Packet ID from Virtual Node client for ACK matching
   decryptedBy?: 'node' | 'server' | null; // How the packet was decrypted
   decryptedChannelId?: number; // Channel Database entry ID for server-decrypted messages
+  viaStoreForward?: boolean; // Message was received via Store & Forward replay
 }
 
 // CHANNEL_DB_OFFSET is imported from './constants/meshtastic.js'
@@ -112,6 +113,7 @@ export interface DeviceInfo {
   altitudeOverride?: number;
   positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
+  isStoreForwardServer?: boolean;
 }
 
 export interface MeshMessage {
@@ -225,6 +227,7 @@ type TextMessage = {
   ackFromNode?: number; // Node that sent the ACK
   createdAt: number;
   decryptedBy?: 'node' | 'server' | null; // Decryption source - 'server' means read-only
+  viaStoreForward?: boolean; // Message received via Store & Forward replay
 };
 
 /**
@@ -3938,6 +3941,24 @@ class MeshtasticManager implements ISourceManager {
             } else if (portnum === PortNum.NEIGHBORINFO_APP) {
               // NEIGHBORINFO
               payloadPreview = '[NeighborInfo]';
+            } else if (portnum === PortNum.STORE_FORWARD_APP) {
+              // STORE & FORWARD - show request/response type and relevant details
+              const sf = processedPayload as any;
+              const rrVal = sf.rr ?? sf.requestResponse ?? 0;
+              const rrName = getStoreForwardRequestResponseName(rrVal);
+              if (rrVal === StoreForwardRequestResponse.ROUTER_TEXT_DIRECT || rrVal === StoreForwardRequestResponse.ROUTER_TEXT_BROADCAST) {
+                const textBytes = sf.text;
+                const preview = textBytes ? new TextDecoder('utf-8').decode(textBytes instanceof Uint8Array ? textBytes : new Uint8Array(textBytes)).substring(0, 60) : '';
+                payloadPreview = `[S&F ${rrName}: "${preview}"]`;
+              } else if (rrVal === StoreForwardRequestResponse.ROUTER_HEARTBEAT) {
+                payloadPreview = `[S&F Heartbeat: period=${sf.heartbeat?.period ?? 0}s]`;
+              } else if (rrVal === StoreForwardRequestResponse.ROUTER_STATS) {
+                payloadPreview = `[S&F Stats: saved=${sf.stats?.messagesSaved ?? 0}/${sf.stats?.messagesMax ?? 0}]`;
+              } else if (rrVal === StoreForwardRequestResponse.ROUTER_HISTORY) {
+                payloadPreview = `[S&F History: ${sf.history?.historyMessages ?? 0} msgs]`;
+              } else {
+                payloadPreview = `[S&F ${rrName}]`;
+              }
             } else {
               payloadPreview = `[${portnumName}]`;
             }
@@ -4129,6 +4150,13 @@ class MeshtasticManager implements ISourceManager {
             break;
           case PortNum.TRACEROUTE_APP:
             await this.processTracerouteMessage(meshPacket, processedPayload as any);
+            break;
+          case PortNum.STORE_FORWARD_APP:
+            await this.processStoreForwardMessage(meshPacket, processedPayload as any, {
+              ...context,
+              decryptedBy,
+              decryptedChannelId: decryptedChannelId ?? undefined,
+            });
             break;
           default:
             logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
@@ -4370,6 +4398,7 @@ class MeshtasticManager implements ISourceManager {
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
           createdAt: Date.now(),
           decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
+          viaStoreForward: context?.viaStoreForward === true ? true : undefined, // Message received via Store & Forward replay
         };
         const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
@@ -4441,8 +4470,94 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Legacy text message processing (for backward compatibility)
+   * Process a Store & Forward message (PortNum 65).
+   * Handles replayed text, heartbeats, stats, history headers, and control messages.
    */
+  private async processStoreForwardMessage(meshPacket: any, decoded: any, context?: ProcessingContext): Promise<void> {
+    try {
+      const rr = decoded.rr ?? decoded.requestResponse ?? 0;
+      const rrName = getStoreForwardRequestResponseName(rr);
+      const fromNum = Number(meshPacket.from);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+
+      switch (rr) {
+        case StoreForwardRequestResponse.ROUTER_TEXT_DIRECT:
+        case StoreForwardRequestResponse.ROUTER_TEXT_BROADCAST: {
+          // S&F server is replaying a stored text message.
+          // MeshPacket.from = original sender (firmware preserves it).
+          // decoded.text contains the original message bytes.
+          const textBytes = decoded.text;
+          if (!textBytes || textBytes.length === 0) {
+            logger.debug(`📦 S&F ${rrName} from ${fromNodeId} — empty text, skipping`);
+            break;
+          }
+
+          const messageText = new TextDecoder('utf-8').decode(
+            textBytes instanceof Uint8Array ? textBytes : new Uint8Array(textBytes)
+          );
+          logger.info(`📦 S&F ${rrName} from ${fromNodeId}: "${messageText.substring(0, 50)}"`);
+
+          // Dedup: check if we already have this message from the original transmission.
+          // The firmware preserves the original packet ID in meshPacket.id.
+          const packetId = meshPacket.id;
+          if (packetId) {
+            const existingId = `${this.sourceId}_${fromNum}_${packetId}`;
+            const existing = await databaseService.messages.getMessage(existingId);
+            if (existing) {
+              logger.debug(`📦 S&F replay is duplicate of existing message ${existingId}, skipping insertion`);
+              break;
+            }
+          }
+
+          // Feed through the standard text message pipeline.
+          // The message will be stored with the original sender attribution.
+          await this.processTextMessageProtobuf(meshPacket, messageText, {
+            ...context,
+            viaStoreForward: true,
+          });
+          break;
+        }
+
+        case StoreForwardRequestResponse.ROUTER_HEARTBEAT: {
+          const period = decoded.heartbeat?.period ?? 0;
+          const secondary = decoded.heartbeat?.secondary ?? 0;
+          logger.info(`📦 S&F heartbeat from ${fromNodeId}: period=${period}s, secondary=${secondary}`);
+
+          // Mark this node as a Store & Forward server
+          await databaseService.nodes.upsertNode({
+            nodeNum: fromNum,
+            nodeId: fromNodeId,
+            isStoreForwardServer: true,
+            lastHeard: Date.now() / 1000,
+            updatedAt: Date.now(),
+          }, this.sourceId);
+          break;
+        }
+
+        case StoreForwardRequestResponse.ROUTER_STATS: {
+          const stats = decoded.stats;
+          if (stats) {
+            logger.info(`📦 S&F stats from ${fromNodeId}: total=${stats.messagesTotal ?? 0}, saved=${stats.messagesSaved ?? 0}, max=${stats.messagesMax ?? 0}, uptime=${stats.upTime ?? 0}s`);
+          }
+          break;
+        }
+
+        case StoreForwardRequestResponse.ROUTER_HISTORY: {
+          const history = decoded.history;
+          if (history) {
+            logger.info(`📦 S&F history from ${fromNodeId}: ${history.historyMessages ?? 0} messages, window=${history.window ?? 0}min`);
+          }
+          break;
+        }
+
+        default:
+          logger.debug(`📦 S&F ${rrName} (rr=${rr}) from ${fromNodeId}`);
+          break;
+      }
+    } catch (error) {
+      logger.error('❌ Error processing Store & Forward message:', error);
+    }
+  }
 
   /**
    * Validate position coordinates
@@ -11912,6 +12027,11 @@ class MeshtasticManager implements ISourceManager {
       // Add viaMqtt if it exists
       if (node.viaMqtt !== null && node.viaMqtt !== undefined) {
         deviceInfo.viaMqtt = Boolean(node.viaMqtt);
+      }
+
+      // Add isStoreForwardServer if it exists
+      if (node.isStoreForwardServer !== null && node.isStoreForwardServer !== undefined) {
+        deviceInfo.isStoreForwardServer = Boolean(node.isStoreForwardServer);
       }
 
       // Add isFavorite if it exists

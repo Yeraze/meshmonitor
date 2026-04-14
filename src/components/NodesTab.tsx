@@ -1525,6 +1525,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       {node.viaMqtt && (
                         <span className="node-indicator-icon" title={t('nodes.via_mqtt')}>🌐</span>
                       )}
+                      {node.isStoreForwardServer && (
+                        <span className="node-indicator-icon" title={t('nodes.store_forward_server', 'Store & Forward Server')}>📦</span>
+                      )}
                       {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
                         <span className="node-indicator-icon" title={t('nodes.has_telemetry')}>📊</span>
                       )}

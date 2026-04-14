@@ -165,6 +165,45 @@ export function isPkiError(errorReason: number): boolean {
 }
 
 /**
+ * Store & Forward RequestResponse types.
+ * From meshtastic.StoreAndForward.RequestResponse enum in storeforward.proto
+ * 001-063 = From Router (server), 064-127 = From Client
+ */
+export const StoreForwardRequestResponse = {
+  UNSET: 0,
+  ROUTER_ERROR: 1,
+  ROUTER_HEARTBEAT: 2,
+  ROUTER_PING: 3,
+  ROUTER_PONG: 4,
+  ROUTER_BUSY: 5,
+  ROUTER_HISTORY: 6,
+  ROUTER_STATS: 7,
+  ROUTER_TEXT_DIRECT: 8,
+  ROUTER_TEXT_BROADCAST: 9,
+  CLIENT_ERROR: 64,
+  CLIENT_HISTORY: 65,
+  CLIENT_STATS: 66,
+  CLIENT_PING: 67,
+  CLIENT_PONG: 68,
+  CLIENT_ABORT: 106,
+} as const;
+
+export type StoreForwardRequestResponseType = typeof StoreForwardRequestResponse[keyof typeof StoreForwardRequestResponse];
+
+/**
+ * Get the name of a Store & Forward RequestResponse type
+ */
+export function getStoreForwardRequestResponseName(rr: number): string {
+  const entries = Object.entries(StoreForwardRequestResponse);
+  for (const [name, value] of entries) {
+    if (value === rr) {
+      return name;
+    }
+  }
+  return `UNKNOWN_${rr}`;
+}
+
+/**
  * Channel Database Constants
  *
  * These constants are used for server-side decryption of encrypted packets

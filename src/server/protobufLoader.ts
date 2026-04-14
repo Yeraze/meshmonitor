@@ -51,6 +51,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     await root.load(mqttProtoPath);
     logger.debug('✅ Loaded mqtt.proto for ServiceEnvelope support');
 
+    // Load storeforward.proto for Store & Forward client support
+    const storeForwardProtoPath = path.join(protoRoot, 'meshtastic/storeforward.proto');
+    await root.load(storeForwardProtoPath);
+    logger.debug('✅ Loaded storeforward.proto for Store & Forward support');
+
     logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {

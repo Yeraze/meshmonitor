@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 33 migrations in sequential order for use by the migration runner.
+ * Registers all 35 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -45,6 +45,8 @@ import { migration as addSourceIdToRouteSegmentsMigration, runMigration030Postgr
 import { migration as dropLegacyNodesUniqueMigration, runMigration031Postgres, runMigration031Mysql } from '../server/migrations/031_drop_legacy_nodes_unique.js';
 import { migration as telemetryPacketDedupeMigration, runMigration032Postgres, runMigration032Mysql } from '../server/migrations/032_telemetry_packet_dedupe.js';
 import { migration as perSourcePermissionsMigration, runMigration033Postgres, runMigration033Mysql } from '../server/migrations/033_per_source_permissions.js';
+import { migration as addViaStoreForwardMigration, runMigration034Postgres, runMigration034Mysql } from '../server/migrations/034_add_via_store_forward.js';
+import { migration as addIsStoreForwardServerMigration, runMigration035Postgres, runMigration035Mysql } from '../server/migrations/035_add_is_store_forward_server.js';
 
 // ============================================================================
 // Registry
@@ -488,4 +490,34 @@ registry.register({
   sqlite: (db) => perSourcePermissionsMigration.up(db),
   postgres: (client) => runMigration033Postgres(client),
   mysql: (pool) => runMigration033Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 034: Add viaStoreForward column to messages table.
+// Boolean flag to indicate messages received via Store & Forward replay,
+// following the same pattern as the existing viaMqtt column.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 34,
+  name: 'add_via_store_forward',
+  settingsKey: 'migration_034_add_via_store_forward',
+  sqlite: (db) => addViaStoreForwardMigration.up(db),
+  postgres: (client) => runMigration034Postgres(client),
+  mysql: (pool) => runMigration034Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 035: Add isStoreForwardServer column to nodes table.
+// Boolean flag to track nodes detected as Store & Forward servers via
+// ROUTER_HEARTBEAT packets on PortNum 65.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 35,
+  name: 'add_is_store_forward_server',
+  settingsKey: 'migration_035_add_is_store_forward_server',
+  sqlite: (db) => addIsStoreForwardServerMigration.up(db),
+  postgres: (client) => runMigration035Postgres(client),
+  mysql: (pool) => runMigration035Mysql(pool),
 });
