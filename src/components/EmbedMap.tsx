@@ -264,12 +264,22 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
 
   const tileset = getEmbedTileset(config.tileset);
 
+  // Optional URL-parameter overrides (issue #2668): ?lat=&lon=&zoom= let
+  // embedders pin a location without creating a new profile.
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlLat = parseFloat(urlParams.get('lat') ?? '');
+  const urlLon = parseFloat(urlParams.get('lon') ?? '');
+  const urlZoom = parseInt(urlParams.get('zoom') ?? '', 10);
+  const centerLat = Number.isFinite(urlLat) ? urlLat : config.defaultLat;
+  const centerLng = Number.isFinite(urlLon) ? urlLon : config.defaultLng;
+  const centerZoom = Number.isFinite(urlZoom) ? urlZoom : config.defaultZoom;
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <style>{embedPopupCss}</style>
       <MapContainer
-        center={[config.defaultLat, config.defaultLng]}
-        zoom={config.defaultZoom}
+        center={[centerLat, centerLng]}
+        zoom={centerZoom}
         style={{ width: '100%', height: '100%' }}
         zoomControl={true}
         attributionControl={true}

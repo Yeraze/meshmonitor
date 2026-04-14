@@ -25,14 +25,32 @@ router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res:
     return res.status(404).json({ error: 'Embed profile not found' });
   }
 
+  // Fall back to the global Default Map Center when the profile's coordinates
+  // are unset (0,0). Issue #2668 — embed profiles created before per-profile
+  // center was configured, or created without adjusting the default picker,
+  // would otherwise load over the Atlantic.
+  let defaultLat = profile.defaultLat;
+  let defaultLng = profile.defaultLng;
+  let defaultZoom = profile.defaultZoom;
+  if (defaultLat === 0 && defaultLng === 0) {
+    const globalLat = parseFloat(databaseService.getSetting('defaultMapCenterLat') ?? '');
+    const globalLon = parseFloat(databaseService.getSetting('defaultMapCenterLon') ?? '');
+    const globalZoom = parseInt(databaseService.getSetting('defaultMapCenterZoom') ?? '', 10);
+    if (Number.isFinite(globalLat) && Number.isFinite(globalLon)) {
+      defaultLat = globalLat;
+      defaultLng = globalLon;
+      if (Number.isFinite(globalZoom)) defaultZoom = globalZoom;
+    }
+  }
+
   // Return only public-facing configuration (exclude admin-only fields like name, allowedOrigins)
   res.json({
     id: profile.id,
     channels: profile.channels,
     tileset: profile.tileset,
-    defaultLat: profile.defaultLat,
-    defaultLng: profile.defaultLng,
-    defaultZoom: profile.defaultZoom,
+    defaultLat,
+    defaultLng,
+    defaultZoom,
     showTooltips: profile.showTooltips,
     showPopups: profile.showPopups,
     showLegend: profile.showLegend,
