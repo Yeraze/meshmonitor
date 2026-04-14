@@ -6,7 +6,6 @@ import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
-import { PermissionModel } from '../server/models/Permission.js';
 import { APITokenModel } from '../server/models/APIToken.js';
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
@@ -259,7 +258,6 @@ class DatabaseService {
   public db: BetterSqlite3Database.Database;
   private isInitialized = false;
   public userModel: UserModel;
-  public permissionModel: PermissionModel;
   public apiTokenModel: APITokenModel;
 
   // Cache for telemetry types per node (expensive GROUP BY query)
@@ -514,7 +512,6 @@ class DatabaseService {
       // Models will not work with PostgreSQL/MySQL - they need to be migrated to use repositories
       // For now, create them with the proxy db - they'll throw errors if used
       this.userModel = new UserModel(this.db);
-      this.permissionModel = new PermissionModel(this.db);
       this.apiTokenModel = new APITokenModel(this.db);
 
       // Initialize Drizzle repositories (async) - this will create the schema
@@ -589,7 +586,6 @@ class DatabaseService {
 
     // Initialize models
     this.userModel = new UserModel(this.db);
-    this.permissionModel = new PermissionModel(this.db);
     this.apiTokenModel = new APITokenModel(this.db);
 
     // Initialize Drizzle ORM and repositories

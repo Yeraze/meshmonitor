@@ -9,12 +9,16 @@
 
 import { describe, it, expect, beforeEach, beforeAll, vi, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from '../../db/schema/index.js';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import { UserModel } from '../models/User.js';
-import { PermissionModel } from '../models/Permission.js';
+import { AuthRepository } from '../../db/repositories/auth.js';
+import { PermissionTestHelper } from '../test-helpers/permissionTestHelper.js';
 import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
+import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
 
 // Mock dependencies before importing routes
 vi.mock('../../services/database.js', () => ({
@@ -64,7 +68,7 @@ describe('MeshCore Routes', () => {
   let app: Express;
   let db: Database.Database;
   let userModel: UserModel;
-  let permissionModel: PermissionModel;
+  let permissionModel: PermissionTestHelper;
   let authenticatedAgent: any;
 
   beforeAll(async () => {
@@ -85,13 +89,17 @@ describe('MeshCore Routes', () => {
     db.pragma('foreign_keys = ON');
     // Run baseline migration (creates all tables)
     baselineMigration.up(db);
+    // Add sourceId column to permissions (migration 022)
+    sourceIdPermsMigration.up(db);
 
     userModel = new UserModel(db);
-    permissionModel = new PermissionModel(db);
+    const drizzleDb = drizzle(db, { schema });
+    const authRepo = new AuthRepository(drizzleDb, 'sqlite');
+    permissionModel = new PermissionTestHelper(authRepo);
 
     // Mock database service
     (DatabaseService as any).userModel = userModel;
-    (DatabaseService as any).permissionModel = permissionModel;
+    // permissionModel wired via checkPermissionAsync / getUserPermissionSetAsync below
     (DatabaseService as any).auditLog = () => {};
     (DatabaseService as any).drizzleDbType = 'sqlite';
 
@@ -103,7 +111,7 @@ describe('MeshCore Routes', () => {
       return userModel.findByUsername(username);
     };
     (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
-      return permissionModel.check(userId, resource, action);
+      return permissionModel.check(userId, resource as any, action as any);
     };
     (DatabaseService as any).authenticateAsync = async (username: string, password: string) => {
       return userModel.authenticate(username, password);
@@ -118,7 +126,7 @@ describe('MeshCore Routes', () => {
       password: 'anonymous123',
       authProvider: 'local',
     });
-    permissionModel.grant({
+    await permissionModel.grant({
       userId: anonymousUser.id,
       resource: 'meshcore',
       canRead: true,
@@ -145,7 +153,7 @@ describe('MeshCore Routes', () => {
     });
     testUserId = user.id;
 
-    permissionModel.grant({
+    await permissionModel.grant({
       userId: user.id,
       resource: 'meshcore',
       canRead: true,

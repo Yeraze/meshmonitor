@@ -6,11 +6,15 @@
 
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from '../../db/schema/index.js';
 import express, { Express } from 'express';
 import request from 'supertest';
 import { UserModel } from '../models/User.js';
-import { PermissionModel } from '../models/Permission.js';
+import { AuthRepository } from '../../db/repositories/auth.js';
+import { PermissionTestHelper } from '../test-helpers/permissionTestHelper.js';
 import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
+import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
 import packetRoutes from './packetRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -24,7 +28,7 @@ describe('Packet Routes', () => {
   let app: Express;
   let db: Database.Database;
   let userModel: UserModel;
-  let permissionModel: PermissionModel;
+  let permissionModel: PermissionTestHelper;
   let regularUser: any;
   let adminUser: any;
   let noPermUser: any;
@@ -40,13 +44,17 @@ describe('Packet Routes', () => {
 
     // Run baseline migration (creates all tables including settings, packet_log, etc.)
     baselineMigration.up(db);
+    // Add sourceId column to permissions (migration 022)
+    sourceIdPermsMigration.up(db);
 
     userModel = new UserModel(db);
-    permissionModel = new PermissionModel(db);
+    const drizzleDb = drizzle(db, { schema });
+    const authRepo = new AuthRepository(drizzleDb, 'sqlite');
+    permissionModel = new PermissionTestHelper(authRepo);
 
     // Mock database service
     (DatabaseService as any).userModel = userModel;
-    (DatabaseService as any).permissionModel = permissionModel;
+    // permissionModel wired via checkPermissionAsync / getUserPermissionSetAsync below
     // Create a spy for auditLogAsync that we can verify in tests
     (DatabaseService as any).auditLogAsync = vi.fn();
 
@@ -212,7 +220,7 @@ describe('Packet Routes', () => {
       return userModel.findByUsername(username);
     };
     (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
-      return permissionModel.check(userId, resource, action);
+      return permissionModel.check(userId, resource as any, action as any);
     };
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
@@ -272,19 +280,19 @@ describe('Packet Routes', () => {
     });
 
     // Grant permissions
-    permissionModel.grant({
+    await permissionModel.grant({
       userId: regularUser.id,
       resource: 'packetmonitor',
       canRead: true,
       canWrite: false
     });
-    permissionModel.grant({
+    await permissionModel.grant({
       userId: regularUser.id,
       resource: 'channel_0',
       canRead: true,
       canWrite: false
     });
-    permissionModel.grant({
+    await permissionModel.grant({
       userId: regularUser.id,
       resource: 'messages',
       canRead: true,
@@ -292,7 +300,7 @@ describe('Packet Routes', () => {
     });
 
     // Admin gets all permissions
-    permissionModel.grantDefaultPermissions(adminUser.id, true);
+    await permissionModel.grantDefaultPermissions(adminUser.id, true);
 
     // Enable packet logging and add test data
     (DatabaseService as any).setSetting('packet_log_enabled', '1');
