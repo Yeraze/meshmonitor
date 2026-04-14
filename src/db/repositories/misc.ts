@@ -870,23 +870,23 @@ export class MiscRepository extends BaseRepository {
     const conditions: any[] = [];
     const { portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
 
-    if (sourceId !== undefined) conditions.push(sql`${sql.identifier('sourceId')} = ${sourceId}`);
-    if (portnum !== undefined) conditions.push(sql`portnum = ${portnum}`);
-    if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
-    if (to_node !== undefined) conditions.push(sql`to_node = ${to_node}`);
-    if (channel !== undefined) conditions.push(sql`channel = ${channel}`);
+    if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
+    if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
+    if (from_node !== undefined) conditions.push(sql`pl.from_node = ${from_node}`);
+    if (to_node !== undefined) conditions.push(sql`pl.to_node = ${to_node}`);
+    if (channel !== undefined) conditions.push(sql`pl.channel = ${channel}`);
     if (encrypted !== undefined) {
       if (this.isSQLite()) {
-        conditions.push(sql`encrypted = ${encrypted ? 1 : 0}`);
+        conditions.push(sql`pl.encrypted = ${encrypted ? 1 : 0}`);
       } else {
-        conditions.push(sql`encrypted = ${encrypted}`);
+        conditions.push(sql`pl.encrypted = ${encrypted}`);
       }
     }
-    if (since !== undefined) conditions.push(sql`timestamp >= ${since}`);
+    if (since !== undefined) conditions.push(sql`pl.timestamp >= ${since}`);
     if (relay_node === 'unknown') {
-      conditions.push(sql`relay_node IS NULL`);
+      conditions.push(sql`pl.relay_node IS NULL`);
     } else if (relay_node !== undefined) {
-      conditions.push(sql`relay_node = ${relay_node}`);
+      conditions.push(sql`pl.relay_node = ${relay_node}`);
     }
 
     return { conditions };
@@ -1051,7 +1051,7 @@ export class MiscRepository extends BaseRepository {
 
     try {
       const rows = await this.executeQuery(
-        sql`SELECT COUNT(*) as count FROM packet_log WHERE ${whereClause}`
+        sql`SELECT COUNT(*) as count FROM packet_log pl WHERE ${whereClause}`
       );
       return Number(rows[0]?.count ?? 0);
     } catch (error) {

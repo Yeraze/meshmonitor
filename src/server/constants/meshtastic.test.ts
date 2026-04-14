@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName } from './meshtastic.js';
+import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './meshtastic.js';
 
 describe('isViaMqtt', () => {
   it('should return true for MQTT transport mechanism', () => {
@@ -130,5 +130,52 @@ describe('getPortNumName', () => {
 
   it('returns UNKNOWN for unknown portnums', () => {
     expect(getPortNumName(999)).toBe('UNKNOWN_999');
+  });
+});
+
+describe('StoreForwardRequestResponse', () => {
+  it('defines router message types (1-63 range)', () => {
+    expect(StoreForwardRequestResponse.ROUTER_ERROR).toBe(1);
+    expect(StoreForwardRequestResponse.ROUTER_HEARTBEAT).toBe(2);
+    expect(StoreForwardRequestResponse.ROUTER_PING).toBe(3);
+    expect(StoreForwardRequestResponse.ROUTER_PONG).toBe(4);
+    expect(StoreForwardRequestResponse.ROUTER_BUSY).toBe(5);
+    expect(StoreForwardRequestResponse.ROUTER_HISTORY).toBe(6);
+    expect(StoreForwardRequestResponse.ROUTER_STATS).toBe(7);
+    expect(StoreForwardRequestResponse.ROUTER_TEXT_DIRECT).toBe(8);
+    expect(StoreForwardRequestResponse.ROUTER_TEXT_BROADCAST).toBe(9);
+  });
+
+  it('defines client message types (64-127 range)', () => {
+    expect(StoreForwardRequestResponse.CLIENT_ERROR).toBe(64);
+    expect(StoreForwardRequestResponse.CLIENT_HISTORY).toBe(65);
+    expect(StoreForwardRequestResponse.CLIENT_STATS).toBe(66);
+    expect(StoreForwardRequestResponse.CLIENT_PING).toBe(67);
+    expect(StoreForwardRequestResponse.CLIENT_PONG).toBe(68);
+    expect(StoreForwardRequestResponse.CLIENT_ABORT).toBe(106);
+  });
+
+  it('defines UNSET as 0', () => {
+    expect(StoreForwardRequestResponse.UNSET).toBe(0);
+  });
+});
+
+describe('getStoreForwardRequestResponseName', () => {
+  it('returns name for known router types', () => {
+    expect(getStoreForwardRequestResponseName(2)).toBe('ROUTER_HEARTBEAT');
+    expect(getStoreForwardRequestResponseName(8)).toBe('ROUTER_TEXT_DIRECT');
+    expect(getStoreForwardRequestResponseName(9)).toBe('ROUTER_TEXT_BROADCAST');
+    expect(getStoreForwardRequestResponseName(7)).toBe('ROUTER_STATS');
+  });
+
+  it('returns name for known client types', () => {
+    expect(getStoreForwardRequestResponseName(65)).toBe('CLIENT_HISTORY');
+    expect(getStoreForwardRequestResponseName(67)).toBe('CLIENT_PING');
+    expect(getStoreForwardRequestResponseName(106)).toBe('CLIENT_ABORT');
+  });
+
+  it('returns UNKNOWN for unknown values', () => {
+    expect(getStoreForwardRequestResponseName(99)).toBe('UNKNOWN_99');
+    expect(getStoreForwardRequestResponseName(255)).toBe('UNKNOWN_255');
   });
 });

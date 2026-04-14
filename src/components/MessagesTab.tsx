@@ -1311,11 +1311,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   if (isReaction) return null;
 
                   const reactions = selectedDMMessages.filter(
-                    m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                    m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_').pop()
                   );
 
                   const repliedMessage = msg.replyId
-                    ? selectedDMMessages.find(m => m.id.split('_')[1] === msg.replyId?.toString())
+                    ? selectedDMMessages.find(m => m.id.split('_').pop() === msg.replyId?.toString())
                     : null;
 
                   const currentDate = new Date(msg.timestamp);
@@ -1345,6 +1345,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 rxRssi={msg.rxRssi}
                                 relayNode={msg.relayNode}
                                 viaMqtt={msg.viaMqtt}
+                                viaStoreForward={msg.viaStoreForward}
                                 onClick={() => handleRelayClick(msg)}
                               />
                             </span>
@@ -1455,6 +1456,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                     rxRssi={msg.rxRssi}
                                     relayNode={msg.relayNode}
                                     viaMqtt={msg.viaMqtt}
+                                    viaStoreForward={msg.viaStoreForward}
                                     onClick={() => handleRelayClick(msg)}
                                   />
                                 </span>

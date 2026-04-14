@@ -8,6 +8,7 @@ interface HopCountDisplayProps {
   rxRssi?: number;
   relayNode?: number;
   viaMqtt?: boolean;
+  viaStoreForward?: boolean;
   onClick?: () => void;
 }
 
@@ -25,9 +26,22 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   rxRssi,
   relayNode,
   viaMqtt,
+  viaStoreForward,
   onClick,
 }) => {
   const { t } = useTranslation();
+
+  // Store & Forward indicator component
+  const StoreForwardIndicator = viaStoreForward ? (
+    <span
+      style={{ marginLeft: '4px', opacity: 0.8 }}
+      title={t('messages.via_store_forward', 'Received via Store & Forward')}
+      aria-label={t('messages.via_store_forward', 'Received via Store & Forward')}
+      role="img"
+    >
+      📦
+    </span>
+  ) : null;
 
   // MQTT indicator component
   const MqttIndicator = viaMqtt ? (
@@ -41,16 +55,16 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
     </span>
   ) : null;
 
-  // Return null if either hop value is missing (but show MQTT indicator if present)
+  // Return null if either hop value is missing (but show indicators if present)
   if (hopStart === undefined || hopLimit === undefined) {
-    return MqttIndicator;
+    return <>{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
   const hopCount = hopStart - hopLimit;
 
   // Guard against malformed data (negative hop counts)
   if (hopCount < 0) {
-    return MqttIndicator;
+    return <>{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
   // Check if this hop count is clickable (has relay node info)
@@ -80,6 +94,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
         <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }} title={t('messages.signal_info')}>
           ({parts.join(' / ')})
         </span>
+        {StoreForwardIndicator}
         {MqttIndicator}
       </>
     );
@@ -94,6 +109,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       >
         ({t('messages.hops', { count: hopCount, hopStart: hopStart })})
       </span>
+      {StoreForwardIndicator}
       {MqttIndicator}
     </>
   );

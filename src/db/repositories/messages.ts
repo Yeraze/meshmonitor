@@ -41,6 +41,7 @@ export class MessagesRepository extends BaseRepository {
       replyId: messageData.replyId ?? null,
       emoji: messageData.emoji ?? null,
       viaMqtt: messageData.viaMqtt ?? null,
+      viaStoreForward: messageData.viaStoreForward ?? null,
       rxSnr: messageData.rxSnr ?? null,
       rxRssi: messageData.rxRssi ?? null,
       ackFailed: messageData.ackFailed ?? null,

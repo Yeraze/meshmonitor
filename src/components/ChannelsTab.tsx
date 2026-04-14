@@ -387,7 +387,8 @@ export default function ChannelsTab({
     const messagesForChannel = channelMessages[channelId] || [];
     return (
       messagesForChannel.find(msg => {
-        const msgIdNum = parseInt(msg.id.split('_')[1] || '0');
+        const parts = msg.id.split('_');
+        const msgIdNum = parseInt(parts[parts.length - 1] || '0');
         return msgIdNum === messageId;
       }) || null
     );
@@ -778,7 +779,7 @@ export default function ChannelsTab({
                           // Find ALL reactions in the full channel message list
                           const allChannelMessages = channelMessages[messageChannel] || [];
                           const reactions = allChannelMessages.filter(
-                            m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                            m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_').pop()
                           );
 
                           // Check if we should show a date separator
@@ -893,6 +894,7 @@ export default function ChannelsTab({
                                             rxRssi={msg.rxRssi}
                                             relayNode={msg.relayNode}
                                             viaMqtt={msg.viaMqtt}
+                                            viaStoreForward={msg.viaStoreForward}
                                             onClick={() => handleRelayClick(msg)}
                                           />
                                         </span>

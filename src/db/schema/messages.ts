@@ -26,6 +26,7 @@ export const messagesSqlite = sqliteTable('messages', {
   replyId: integer('replyId'),
   emoji: integer('emoji'),
   viaMqtt: integer('viaMqtt', { mode: 'boolean' }),
+  viaStoreForward: integer('viaStoreForward', { mode: 'boolean' }),
   rxSnr: real('rxSnr'),
   rxRssi: real('rxRssi'),
   // Delivery tracking
@@ -60,6 +61,7 @@ export const messagesPostgres = pgTable('messages', {
   replyId: pgBigint('replyId', { mode: 'number' }),
   emoji: pgInteger('emoji'),
   viaMqtt: pgBoolean('viaMqtt'),
+  viaStoreForward: pgBoolean('viaStoreForward'),
   rxSnr: pgReal('rxSnr'),
   rxRssi: pgReal('rxRssi'),
   // Delivery tracking
@@ -94,6 +96,7 @@ export const messagesMysql = mysqlTable('messages', {
   replyId: myBigint('replyId', { mode: 'number' }),
   emoji: myInt('emoji'),
   viaMqtt: myBoolean('viaMqtt'),
+  viaStoreForward: myBoolean('viaStoreForward'),
   rxSnr: myDouble('rxSnr'),
   rxRssi: myDouble('rxRssi'),
   // Delivery tracking

@@ -120,7 +120,7 @@ SKIP_SOURCES=true ./scripts/setup-dev-config.sh
 | `SOURCE1_PORT` | `4403` | Source 1 TCP port |
 | `SOURCE1_GAUNTLET` | `7` | Source 1 gauntlet channel index |
 | `SOURCE2_NAME` | `Sandbox` | Source 2 display name |
-| `SOURCE2_HOST` | `host.docker.internal` | Source 2 TCP host |
-| `SOURCE2_PORT` | `4404` | Source 2 TCP port |
+| `SOURCE2_HOST` | `192.168.4.21` | Source 2 TCP host |
+| `SOURCE2_PORT` | `4403` | Source 2 TCP port |
 | `SOURCE2_GAUNTLET` | `2` | Source 2 gauntlet channel index |
 | `SKIP_SOURCES` | `false` | Skip source creation, only configure settings |

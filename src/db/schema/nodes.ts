@@ -17,6 +17,7 @@ export const nodesSqlite = sqliteTable('nodes', {
   hopsAway: integer('hopsAway'),
   lastMessageHops: integer('lastMessageHops'),
   viaMqtt: integer('viaMqtt', { mode: 'boolean' }),
+  isStoreForwardServer: integer('isStoreForwardServer', { mode: 'boolean' }),
   macaddr: text('macaddr'),
   latitude: real('latitude'),
   longitude: real('longitude'),
@@ -91,6 +92,7 @@ export const nodesPostgres = pgTable('nodes', {
   hopsAway: pgInteger('hopsAway'),
   lastMessageHops: pgInteger('lastMessageHops'),
   viaMqtt: pgBoolean('viaMqtt'),
+  isStoreForwardServer: pgBoolean('isStoreForwardServer'),
   macaddr: pgText('macaddr'),
   // Using doublePrecision for coordinates (REAL only has ~7 significant digits, causes position jumps)
   latitude: pgDoublePrecision('latitude'),
@@ -166,6 +168,7 @@ export const nodesMysql = mysqlTable('nodes', {
   hopsAway: myInt('hopsAway'),
   lastMessageHops: myInt('lastMessageHops'),
   viaMqtt: myBoolean('viaMqtt'),
+  isStoreForwardServer: myBoolean('isStoreForwardServer'),
   macaddr: myVarchar('macaddr', { length: 32 }),
   latitude: myDouble('latitude'),
   longitude: myDouble('longitude'),

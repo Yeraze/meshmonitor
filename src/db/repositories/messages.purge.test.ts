@@ -61,6 +61,7 @@ describe('MessagesRepository sync purge helpers', () => {
         replyId INTEGER,
         emoji INTEGER,
         viaMqtt INTEGER,
+        viaStoreForward INTEGER DEFAULT 0,
         rxSnr REAL,
         rxRssi REAL,
         ackFailed INTEGER,
