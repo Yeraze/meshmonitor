@@ -98,6 +98,8 @@ interface AutomationContextType {
   setAutoDeleteByDistanceLat: React.Dispatch<React.SetStateAction<number | null>>;
   autoDeleteByDistanceLon: number | null;
   setAutoDeleteByDistanceLon: React.Dispatch<React.SetStateAction<number | null>>;
+  autoDeleteByDistanceAction: 'delete' | 'ignore';
+  setAutoDeleteByDistanceAction: React.Dispatch<React.SetStateAction<'delete' | 'ignore'>>;
   timerTriggers: TimerTrigger[];
   setTimerTriggers: React.Dispatch<React.SetStateAction<TimerTrigger[]>>;
   geofenceTriggers: GeofenceTrigger[];
@@ -162,6 +164,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm] = useState<number>(100);
   const [autoDeleteByDistanceLat, setAutoDeleteByDistanceLat] = useState<number | null>(null);
   const [autoDeleteByDistanceLon, setAutoDeleteByDistanceLon] = useState<number | null>(null);
+  const [autoDeleteByDistanceAction, setAutoDeleteByDistanceAction] = useState<'delete' | 'ignore'>('delete');
   const [timerTriggers, setTimerTriggers] = useState<TimerTrigger[]>([]);
   const [geofenceTriggers, setGeofenceTriggers] = useState<GeofenceTrigger[]>([]);
 
@@ -257,6 +260,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoDeleteByDistanceThresholdKm !== undefined) setAutoDeleteByDistanceThresholdKm(num('autoDeleteByDistanceThresholdKm', 100));
         if (s.autoDeleteByDistanceLat !== undefined) setAutoDeleteByDistanceLat(s.autoDeleteByDistanceLat ? num('autoDeleteByDistanceLat', 0) : null);
         if (s.autoDeleteByDistanceLon !== undefined) setAutoDeleteByDistanceLon(s.autoDeleteByDistanceLon ? num('autoDeleteByDistanceLon', 0) : null);
+        if (s.autoDeleteByDistanceAction !== undefined) setAutoDeleteByDistanceAction(s.autoDeleteByDistanceAction === 'ignore' ? 'ignore' : 'delete');
 
         if (s.timerTriggers !== undefined) setTimerTriggers(jsonArr<TimerTrigger>('timerTriggers', []));
         if (s.geofenceTriggers !== undefined) setGeofenceTriggers(jsonArr<GeofenceTrigger>('geofenceTriggers', []));
@@ -318,6 +322,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
         autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
         autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
+        autoDeleteByDistanceAction, setAutoDeleteByDistanceAction,
         timerTriggers, setTimerTriggers,
         geofenceTriggers, setGeofenceTriggers,
       }}

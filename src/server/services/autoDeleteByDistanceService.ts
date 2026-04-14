@@ -1,11 +1,16 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { calculateDistance } from '../../utils/distance.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import meshtasticManager from '../meshtasticManager.js';
 
-interface DeletedNodeInfo {
+type DistanceAction = 'delete' | 'ignore';
+
+interface ProcessedNodeInfo {
   nodeId: string;
   nodeName: string;
   distanceKm: number;
+  action: DistanceAction;
 }
 
 class AutoDeleteByDistanceService {
@@ -69,13 +74,15 @@ class AutoDeleteByDistanceService {
     }
 
     this.isRunning = true;
-    const deletedNodes: DeletedNodeInfo[] = [];
+    const processedNodes: ProcessedNodeInfo[] = [];
 
     try {
       // Read settings (per-source with global fallback)
       const homeLat = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceLat') || '');
       const homeLon = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceLon') || '');
       const thresholdKm = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm') || '100');
+      const actionRaw = (await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceAction')) || 'delete';
+      const action: DistanceAction = actionRaw === 'ignore' ? 'ignore' : 'delete';
 
       if (isNaN(homeLat) || isNaN(homeLon)) {
         logger.debug('⏭️ Auto-delete-by-distance: no home coordinate configured, skipping');
@@ -110,16 +117,37 @@ class AutoDeleteByDistanceService {
         const distance = calculateDistance(homeLat, homeLon, node.latitude, node.longitude);
 
         if (distance > thresholdKm) {
+          const nodeSourceId = (node as any).sourceId || sourceId || 'default';
+          const nodeNum = Number(node.nodeNum);
+          const nodeInfo: ProcessedNodeInfo = {
+            nodeId: node.nodeId || `!${nodeNum.toString(16)}`,
+            nodeName: node.longName || node.shortName || `Node ${node.nodeNum}`,
+            distanceKm: Math.round(distance * 10) / 10,
+            action,
+          };
+
           try {
-            const nodeSourceId = (node as any).sourceId || sourceId || 'default';
-            await databaseService.deleteNodeAsync(Number(node.nodeNum), nodeSourceId);
-            deletedNodes.push({
-              nodeId: node.nodeId || `!${Number(node.nodeNum).toString(16)}`,
-              nodeName: node.longName || node.shortName || `Node ${node.nodeNum}`,
-              distanceKm: Math.round(distance * 10) / 10,
-            });
+            if (action === 'ignore') {
+              await databaseService.setNodeIgnoredAsync(nodeNum, true, nodeSourceId);
+
+              // Best-effort sync to device; tolerate pre-2.7 firmware
+              const manager = (sourceManagerRegistry.getManager(nodeSourceId) as typeof meshtasticManager) ?? meshtasticManager;
+              try {
+                await manager.sendIgnoredNode(nodeNum);
+              } catch (syncError) {
+                if (syncError instanceof Error && syncError.message === 'FIRMWARE_NOT_SUPPORTED') {
+                  logger.debug(`ℹ️ Auto-delete-by-distance: firmware does not support ignored nodes for ${nodeNum}, skipped device sync`);
+                } else {
+                  logger.warn(`⚠️ Auto-delete-by-distance: failed to sync ignored status to device for node ${nodeNum}:`, syncError);
+                }
+              }
+              processedNodes.push(nodeInfo);
+            } else {
+              await databaseService.deleteNodeAsync(nodeNum, nodeSourceId);
+              processedNodes.push(nodeInfo);
+            }
           } catch (error) {
-            logger.error(`❌ Auto-delete-by-distance: failed to delete node ${node.nodeNum}:`, error);
+            logger.error(`❌ Auto-delete-by-distance: failed to ${action} node ${node.nodeNum}:`, error);
           }
         }
       }
@@ -128,15 +156,16 @@ class AutoDeleteByDistanceService {
       const now = Date.now();
       this.lastRunAt = now;
 
-      await this.logRunAsync(now, deletedNodes.length, thresholdKm, deletedNodes, sourceId);
+      await this.logRunAsync(now, processedNodes.length, thresholdKm, processedNodes, sourceId);
 
-      if (deletedNodes.length > 0) {
-        logger.info(`🗑️ Auto-delete-by-distance: deleted ${deletedNodes.length} node(s) beyond ${thresholdKm} km`);
+      if (processedNodes.length > 0) {
+        const verb = action === 'ignore' ? 'ignored' : 'deleted';
+        logger.info(`🗑️ Auto-delete-by-distance: ${verb} ${processedNodes.length} node(s) beyond ${thresholdKm} km`);
       } else {
         logger.debug('✅ Auto-delete-by-distance: no nodes beyond threshold');
       }
 
-      return { deletedCount: deletedNodes.length };
+      return { deletedCount: processedNodes.length };
     } catch (error) {
       logger.error('❌ Auto-delete-by-distance: error during run:', error);
       return { deletedCount: 0 };
@@ -152,7 +181,7 @@ class AutoDeleteByDistanceService {
     timestamp: number,
     nodesDeleted: number,
     thresholdKm: number,
-    details: DeletedNodeInfo[],
+    details: ProcessedNodeInfo[],
     sourceId?: string
   ): Promise<void> {
     try {

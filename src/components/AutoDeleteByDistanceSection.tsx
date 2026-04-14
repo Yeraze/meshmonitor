@@ -21,6 +21,8 @@ interface AutoDeleteByDistanceSectionProps {
   onThresholdChange: (km: number) => void;
   onHomeLatChange: (lat: number | null) => void;
   onHomeLonChange: (lon: number | null) => void;
+  action: 'delete' | 'ignore';
+  onActionChange: (action: 'delete' | 'ignore') => void;
 }
 
 interface LogEntry {
@@ -45,6 +47,8 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   onThresholdChange,
   onHomeLatChange,
   onHomeLonChange,
+  action,
+  onActionChange,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -58,6 +62,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   const [localThresholdKm, setLocalThresholdKm] = useState(thresholdKm);
   const [localHomeLat, setLocalHomeLat] = useState<string>(homeLat != null ? String(homeLat) : '');
   const [localHomeLon, setLocalHomeLon] = useState<string>(homeLon != null ? String(homeLon) : '');
+  const [localAction, setLocalAction] = useState<'delete' | 'ignore'>(action);
 
   // Activity log
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
@@ -80,6 +85,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   useEffect(() => { setLocalThresholdKm(thresholdKm); }, [thresholdKm]);
   useEffect(() => { setLocalHomeLat(homeLat != null ? String(homeLat) : ''); }, [homeLat]);
   useEffect(() => { setLocalHomeLon(homeLon != null ? String(homeLon) : ''); }, [homeLon]);
+  useEffect(() => { setLocalAction(action); }, [action]);
 
   // Detect unsaved changes
   const hasChanges =
@@ -87,7 +93,8 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
     localIntervalHours !== intervalHours ||
     localThresholdKm !== thresholdKm ||
     (localHomeLat !== (homeLat != null ? String(homeLat) : '')) ||
-    (localHomeLon !== (homeLon != null ? String(homeLon) : ''));
+    (localHomeLon !== (homeLon != null ? String(homeLon) : '')) ||
+    localAction !== action;
 
   // Fetch log entries
   const fetchLog = useCallback(async () => {
@@ -124,6 +131,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
         autoDeleteByDistanceEnabled: String(localEnabled),
         autoDeleteByDistanceIntervalHours: String(localIntervalHours),
         autoDeleteByDistanceThresholdKm: String(localThresholdKm),
+        autoDeleteByDistanceAction: localAction,
       };
 
       const lat = parseFloat(localHomeLat);
@@ -143,6 +151,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
         onThresholdChange(localThresholdKm);
         onHomeLatChange(!isNaN(lat) ? lat : null);
         onHomeLonChange(!isNaN(lon) ? lon : null);
+        onActionChange(localAction);
         showToast(t('automation.settings_saved', 'Settings saved'), 'success');
       } else {
         const err = await response.json();
@@ -154,9 +163,9 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
       setIsSaving(false);
     }
   }, [
-    localEnabled, localIntervalHours, localThresholdKm, localHomeLat, localHomeLon,
-    csrfFetch, baseUrl, onEnabledChange, onIntervalChange, onThresholdChange,
-    onHomeLatChange, onHomeLonChange, showToast, t,
+    localEnabled, localIntervalHours, localThresholdKm, localHomeLat, localHomeLon, localAction,
+    csrfFetch, baseUrl, sourceQuery, onEnabledChange, onIntervalChange, onThresholdChange,
+    onHomeLatChange, onHomeLonChange, onActionChange, showToast, t,
   ]);
 
   const resetChanges = useCallback(() => {
@@ -165,7 +174,8 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
     setLocalThresholdKm(thresholdKm);
     setLocalHomeLat(homeLat != null ? String(homeLat) : '');
     setLocalHomeLon(homeLon != null ? String(homeLon) : '');
-  }, [enabled, intervalHours, thresholdKm, homeLat, homeLon]);
+    setLocalAction(action);
+  }, [enabled, intervalHours, thresholdKm, homeLat, homeLon, action]);
 
   useSaveBar({
     id: 'auto-delete-by-distance',
@@ -347,6 +357,55 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Action toggle: Delete vs Ignore */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.distance_delete.action', 'Action for nodes beyond threshold')}
+          </label>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.25rem' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', cursor: localEnabled ? 'pointer' : 'not-allowed' }}>
+              <input
+                type="radio"
+                name="autoDeleteByDistanceAction"
+                value="delete"
+                checked={localAction === 'delete'}
+                onChange={() => setLocalAction('delete')}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              {t('automation.distance_delete.action_delete', 'Delete node')}
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', cursor: localEnabled ? 'pointer' : 'not-allowed', marginLeft: '1rem' }}>
+              <input
+                type="radio"
+                name="autoDeleteByDistanceAction"
+                value="ignore"
+                checked={localAction === 'ignore'}
+                onChange={() => setLocalAction('ignore')}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              {t('automation.distance_delete.action_ignore', 'Ignore node')}
+            </label>
+          </div>
+          <p style={{
+            marginTop: '0.5rem',
+            marginLeft: 0,
+            padding: '0.5rem 0.75rem',
+            background: 'var(--ctp-surface0)',
+            border: '1px solid var(--ctp-surface2)',
+            borderLeft: '3px solid var(--ctp-yellow)',
+            borderRadius: '4px',
+            color: 'var(--ctp-subtext1)',
+            fontSize: '12px',
+            lineHeight: '1.5',
+          }}>
+            {localAction === 'delete'
+              ? t('automation.distance_delete.note_delete', 'A deleted node may return if it continues to broadcast. Choose Ignore to suppress it persistently on the device.')
+              : t('automation.distance_delete.note_ignore', 'Ignored nodes are hidden and synced to the connected device (requires firmware ≥ 2.7.0).')}
+          </p>
         </div>
 
         {homeLat == null && (

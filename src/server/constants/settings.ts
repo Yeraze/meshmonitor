@@ -97,6 +97,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoDeleteByDistanceThresholdKm',
   'autoDeleteByDistanceLat',
   'autoDeleteByDistanceLon',
+  'autoDeleteByDistanceAction',
   'remoteAdminScannerIntervalMinutes',
   'remoteAdminScannerExpirationHours',
   'tracerouteScheduleEnabled',
