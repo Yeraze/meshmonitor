@@ -4,6 +4,8 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { useSettings } from '../contexts/SettingsContext';
+import { formatDateTime } from '../utils/datetime';
 
 interface RemoteAdminScannerSectionProps {
   baseUrl: string;
@@ -32,6 +34,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
   const csrfFetch = useCsrfFetch();
   const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
+  const { timeFormat, dateFormat } = useSettings();
 
   // Local state
   const [localEnabled, setLocalEnabled] = useState(false);
@@ -452,7 +455,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
                     {scanLog.map((entry) => (
                       <tr key={`${entry.nodeNum}-${entry.timestamp}`} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
                         <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
-                          {new Date(entry.timestamp).toLocaleString()}
+                          {formatDateTime(new Date(entry.timestamp), timeFormat, dateFormat)}
                         </td>
                         <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)' }}>
                           {entry.nodeName || `!${entry.nodeNum.toString(16).padStart(8, '0')}`}
