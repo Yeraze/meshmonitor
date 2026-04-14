@@ -6,12 +6,16 @@
 
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from '../../db/schema/index.js';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import { UserModel } from '../models/User.js';
-import { PermissionModel } from '../models/Permission.js';
+import { AuthRepository } from '../../db/repositories/auth.js';
+import { PermissionTestHelper } from '../test-helpers/permissionTestHelper.js';
 import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
+import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
 import userRoutes from './userRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -26,7 +30,7 @@ describe('User Management Routes', () => {
   let app: Express;
   let db: Database.Database;
   let userModel: UserModel;
-  let permissionModel: PermissionModel;
+  let permissionModel: PermissionTestHelper;
   let adminAgent: any;
   let userAgent: any;
 
@@ -48,13 +52,17 @@ describe('User Management Routes', () => {
     db.pragma('foreign_keys = ON');
     // Run baseline migration (creates all tables)
     baselineMigration.up(db);
+    // Add sourceId column to permissions (migration 022)
+    sourceIdPermsMigration.up(db);
 
     userModel = new UserModel(db);
-    permissionModel = new PermissionModel(db);
+    const drizzleDb = drizzle(db, { schema });
+    const authRepo = new AuthRepository(drizzleDb, 'sqlite');
+    permissionModel = new PermissionTestHelper(authRepo);
 
     // Mock database service
     (DatabaseService as any).userModel = userModel;
-    (DatabaseService as any).permissionModel = permissionModel;
+    // permissionModel wired via checkPermissionAsync / getUserPermissionSetAsync below
     (DatabaseService as any).auditLog = () => {};  // still used by localAuth.ts
     (DatabaseService as any).auditLogAsync = () => {};
     (DatabaseService as any).drizzleDbType = 'sqlite';
@@ -99,15 +107,15 @@ describe('User Management Routes', () => {
         return true;
       },
       deletePermissionsForUser: async (userId: number) => {
-        permissionModel.revokeAll(userId);
+        await permissionModel.revokeAll(userId);
         return 0;
       },
       deletePermissionsForUserByScope: async (userId: number, _sourceId: string | null) => {
-        permissionModel.revokeAll(userId);
+        await permissionModel.revokeAll(userId);
         return 0;
       },
       createPermission: async (input: any) => {
-        const perm = permissionModel.grant({
+        const perm = await permissionModel.grant({
           userId: input.userId,
           resource: input.resource,
           canViewOnMap: input.canViewOnMap ?? false,
@@ -128,7 +136,7 @@ describe('User Management Routes', () => {
       return userModel.findByUsername(username);
     };
     (DatabaseService as any).checkPermissionAsync = async (userId: number, resource: string, action: string) => {
-      return permissionModel.check(userId, resource, action);
+      return permissionModel.check(userId, resource as any, action as any);
     };
     (DatabaseService as any).authenticateAsync = async (username: string, password: string) => {
       return userModel.authenticate(username, password);
@@ -160,7 +168,7 @@ describe('User Management Routes', () => {
       authProvider: 'local',
       isAdmin: true
     });
-    permissionModel.grantDefaultPermissions(admin.id, true);
+    await permissionModel.grantDefaultPermissions(admin.id, true);
 
     // Create regular user
     const user = await userModel.create({
@@ -170,7 +178,7 @@ describe('User Management Routes', () => {
       authProvider: 'local',
       isAdmin: false
     });
-    permissionModel.grantDefaultPermissions(user.id, false);
+    await permissionModel.grantDefaultPermissions(user.id, false);
 
     // Create authenticated agents
     adminAgent = request.agent(app);
@@ -570,7 +578,7 @@ describe('User Management Routes', () => {
       expect(response.body.success).toBe(true);
 
       // Verify permissions were saved correctly
-      const permissionSet = permissionModel.getUserPermissionSet(userId);
+      const permissionSet = await permissionModel.getUserPermissionSet(userId);
       expect(permissionSet.channel_0).toEqual({ viewOnMap: true, read: true, write: true });
     });
 
@@ -590,7 +598,7 @@ describe('User Management Routes', () => {
 
       expect(response.body.success).toBe(true);
 
-      const permissionSet = permissionModel.getUserPermissionSet(userId);
+      const permissionSet = await permissionModel.getUserPermissionSet(userId);
       expect(permissionSet.channel_0).toEqual({ viewOnMap: true, read: false, write: false });
     });
 
@@ -610,7 +618,7 @@ describe('User Management Routes', () => {
 
       expect(response.body.success).toBe(true);
 
-      const permissionSet = permissionModel.getUserPermissionSet(userId);
+      const permissionSet = await permissionModel.getUserPermissionSet(userId);
       expect(permissionSet.channel_0).toEqual({ viewOnMap: false, read: true, write: false });
     });
 

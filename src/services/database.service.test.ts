@@ -194,13 +194,6 @@ vi.mock('../server/models/User.js', () => ({
   },
 }));
 
-vi.mock('../server/models/Permission.js', () => ({
-  PermissionModel: class {
-    getPermissions = vi.fn().mockReturnValue([]);
-    setPermission = vi.fn().mockReturnValue(true);
-  },
-}));
-
 vi.mock('../server/models/APIToken.js', () => ({
   APITokenModel: class {
     getTokens = vi.fn().mockReturnValue([]);
