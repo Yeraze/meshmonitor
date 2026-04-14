@@ -38,10 +38,6 @@ const searchResults = [
 vi.mock('../../../services/database.js', () => ({
   default: {
     db: null,
-    apiTokenModel: {
-      validate: vi.fn(async (token: string) => token === VALID_TEST_TOKEN ? TEST_USER_ID : null),
-      updateLastUsed: vi.fn()
-    },
     userModel: {
       findById: vi.fn((id: number) => id === TEST_USER_ID ? testUser : null)
     },

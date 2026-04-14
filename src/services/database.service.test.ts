@@ -194,14 +194,6 @@ vi.mock('../server/models/User.js', () => ({
   },
 }));
 
-vi.mock('../server/models/APIToken.js', () => ({
-  APITokenModel: class {
-    getTokens = vi.fn().mockReturnValue([]);
-    createToken = vi.fn().mockReturnValue('token');
-    validateToken = vi.fn().mockReturnValue(null);
-  },
-}));
-
 // ─── Mock migrations ──────────────────────────────────────────────────────────
 
 vi.mock('../db/migrations.js', () => ({
