@@ -1250,26 +1250,28 @@ export class MiscRepository extends BaseRepository {
    */
   async getMapPreferences(userId: number): Promise<Record<string, any> | null> {
     try {
-      const userIdCol = this.dbType === 'postgres' ? '"userId"' : 'userId';
-      const rows = await this.executeQuery(
-        sql.raw(`SELECT * FROM user_map_preferences WHERE ${userIdCol} = ${userId} LIMIT 1`)
-      );
+      const table = this.tables.userMapPreferences;
+      const rows = await this.db
+        .select()
+        .from(table)
+        .where(eq(table.userId, userId))
+        .limit(1);
 
       if (rows.length === 0) return null;
       const row = rows[0] as any;
 
       return {
-        mapTileset: row.map_tileset ?? row.mapTileset ?? null,
-        showPaths: Boolean(row.show_paths ?? row.showPaths ?? false),
-        showNeighborInfo: Boolean(row.show_neighbor_info ?? row.showNeighborInfo ?? false),
-        showRoute: Boolean(row.show_route ?? row.showRoute ?? true),
-        showMotion: Boolean(row.show_motion ?? row.showMotion ?? true),
-        showMqttNodes: Boolean(row.show_mqtt_nodes ?? row.showMqttNodes ?? true),
-        showMeshCoreNodes: Boolean(row.show_meshcore_nodes ?? row.showMeshCoreNodes ?? true),
-        showAnimations: Boolean(row.show_animations ?? row.showAnimations ?? false),
-        showAccuracyRegions: Boolean(row.show_accuracy_regions ?? row.showAccuracyRegions ?? false),
-        showEstimatedPositions: Boolean(row.show_estimated_positions ?? row.showEstimatedPositions ?? false),
-        positionHistoryHours: row.position_history_hours ?? row.positionHistoryHours ?? null,
+        mapTileset: row.mapTileset ?? null,
+        showPaths: row.showPaths ?? false,
+        showNeighborInfo: row.showNeighborInfo ?? false,
+        showRoute: row.showRoute ?? true,
+        showMotion: row.showMotion ?? true,
+        showMqttNodes: row.showMqttNodes ?? true,
+        showMeshCoreNodes: row.showMeshcoreNodes ?? true,
+        showAnimations: row.showAnimations ?? false,
+        showAccuracyRegions: row.showAccuracyRegions ?? false,
+        showEstimatedPositions: row.showEstimatedPositions ?? false,
+        positionHistoryHours: row.positionHistoryHours ?? null,
       };
     } catch (error) {
       logger.error('[MiscRepository] Failed to get map preferences:', error);
@@ -1279,8 +1281,6 @@ export class MiscRepository extends BaseRepository {
 
   /**
    * Save map preferences for a user (upsert).
-   * Uses raw SQL via Drizzle's sql template to avoid referencing columns that
-   * may not exist across all upgrade paths (the schema varies by migration state).
    */
   async saveMapPreferences(userId: number, preferences: {
     mapTileset?: string;
@@ -1296,63 +1296,48 @@ export class MiscRepository extends BaseRepository {
     positionHistoryHours?: number | null;
   }): Promise<void> {
     try {
-      // Use the userId column name based on database type
-      // SQLite baseline uses userId (camelCase), PG/MySQL also use userId
-      const userIdCol = this.dbType === 'postgres' ? '"userId"' : 'userId';
+      const table = this.tables.userMapPreferences;
+      const existing = await this.db
+        .select({ id: table.id })
+        .from(table)
+        .where(eq(table.userId, userId))
+        .limit(1);
 
-      // Check if preferences exist
-      const existing = await this.executeQuery(
-        sql.raw(`SELECT id FROM user_map_preferences WHERE ${userIdCol} = ${userId} LIMIT 1`)
-      );
-      const hasExisting = existing.length > 0;
+      if (existing.length > 0) {
+        const set: Record<string, any> = {};
+        if (preferences.mapTileset !== undefined) set.mapTileset = preferences.mapTileset;
+        if (preferences.showPaths !== undefined) set.showPaths = preferences.showPaths;
+        if (preferences.showNeighborInfo !== undefined) set.showNeighborInfo = preferences.showNeighborInfo;
+        if (preferences.showRoute !== undefined) set.showRoute = preferences.showRoute;
+        if (preferences.showMotion !== undefined) set.showMotion = preferences.showMotion;
+        if (preferences.showMqttNodes !== undefined) set.showMqttNodes = preferences.showMqttNodes;
+        if (preferences.showMeshCoreNodes !== undefined) set.showMeshcoreNodes = preferences.showMeshCoreNodes;
+        if (preferences.showAnimations !== undefined) set.showAnimations = preferences.showAnimations;
+        if (preferences.showAccuracyRegions !== undefined) set.showAccuracyRegions = preferences.showAccuracyRegions;
+        if (preferences.showEstimatedPositions !== undefined) set.showEstimatedPositions = preferences.showEstimatedPositions;
+        if (preferences.positionHistoryHours !== undefined) set.positionHistoryHours = preferences.positionHistoryHours;
 
-      if (hasExisting) {
-        // Build dynamic UPDATE — only set columns that were provided
-        // PG uses boolean type (true/false), SQLite/MySQL use integer (1/0)
-        const bv = (v: boolean) => this.dbType === 'postgres' ? String(v) : (v ? '1' : '0');
-        const sets: string[] = [];
-        if (preferences.mapTileset !== undefined) sets.push(`map_tileset = '${preferences.mapTileset.replace(/'/g, "''")}'`);
-        if (preferences.showPaths !== undefined) sets.push(`show_paths = ${bv(preferences.showPaths)}`);
-        if (preferences.showNeighborInfo !== undefined) sets.push(`show_neighbor_info = ${bv(preferences.showNeighborInfo)}`);
-        if (preferences.showRoute !== undefined) sets.push(`show_route = ${bv(preferences.showRoute)}`);
-        if (preferences.showMotion !== undefined) sets.push(`show_motion = ${bv(preferences.showMotion)}`);
-        if (preferences.showMqttNodes !== undefined) sets.push(`show_mqtt_nodes = ${bv(preferences.showMqttNodes)}`);
-        if (preferences.showMeshCoreNodes !== undefined) sets.push(`show_meshcore_nodes = ${bv(preferences.showMeshCoreNodes)}`);
-        if (preferences.showAnimations !== undefined) sets.push(`show_animations = ${bv(preferences.showAnimations)}`);
-        if (preferences.showAccuracyRegions !== undefined) sets.push(`show_accuracy_regions = ${bv(preferences.showAccuracyRegions)}`);
-        if (preferences.showEstimatedPositions !== undefined) sets.push(`show_estimated_positions = ${bv(preferences.showEstimatedPositions)}`);
-        if (preferences.positionHistoryHours !== undefined) sets.push(`position_history_hours = ${preferences.positionHistoryHours ?? 'NULL'}`);
-
-        if (sets.length > 0) {
-          await this.executeRun(
-            sql.raw(`UPDATE user_map_preferences SET ${sets.join(', ')} WHERE ${userIdCol} = ${userId}`)
-          );
+        if (Object.keys(set).length > 0) {
+          await this.db.update(table).set(set).where(eq(table.userId, userId));
         }
       } else {
-        // INSERT — reference feature columns + createdAt/updatedAt (NOT NULL in all baselines)
-        // Quote createdAt/updatedAt for Postgres (case-sensitive identifiers)
-        // PG uses boolean type (true/false), SQLite/MySQL use integer (1/0)
-        const boolVal = (v: boolean | undefined, def: boolean) => {
-          const val = v !== undefined ? v : def;
-          return this.dbType === 'postgres' ? String(val) : (val ? '1' : '0');
-        };
         const now = Date.now();
-        const q = this.dbType === 'postgres' ? '"' : '';
-        await this.executeRun(
-          sql.raw(`INSERT INTO user_map_preferences (
-            ${userIdCol}, map_tileset, show_paths, show_neighbor_info, show_route, show_motion,
-            show_mqtt_nodes, show_meshcore_nodes, show_animations, show_accuracy_regions,
-            show_estimated_positions, position_history_hours, ${q}createdAt${q}, ${q}updatedAt${q}
-          ) VALUES (
-            ${userId}, ${preferences.mapTileset ? `'${preferences.mapTileset.replace(/'/g, "''")}'` : 'NULL'},
-            ${boolVal(preferences.showPaths, false)}, ${boolVal(preferences.showNeighborInfo, false)},
-            ${boolVal(preferences.showRoute, true)}, ${boolVal(preferences.showMotion, true)},
-            ${boolVal(preferences.showMqttNodes, true)}, ${boolVal(preferences.showMeshCoreNodes, true)},
-            ${boolVal(preferences.showAnimations, false)}, ${boolVal(preferences.showAccuracyRegions, false)},
-            ${boolVal(preferences.showEstimatedPositions, true)}, ${preferences.positionHistoryHours ?? 'NULL'},
-            ${now}, ${now}
-          )`)
-        );
+        await this.db.insert(table).values({
+          userId,
+          mapTileset: preferences.mapTileset ?? null,
+          showPaths: preferences.showPaths ?? false,
+          showNeighborInfo: preferences.showNeighborInfo ?? false,
+          showRoute: preferences.showRoute ?? true,
+          showMotion: preferences.showMotion ?? true,
+          showMqttNodes: preferences.showMqttNodes ?? true,
+          showMeshcoreNodes: preferences.showMeshCoreNodes ?? true,
+          showAnimations: preferences.showAnimations ?? false,
+          showAccuracyRegions: preferences.showAccuracyRegions ?? false,
+          showEstimatedPositions: preferences.showEstimatedPositions ?? true,
+          positionHistoryHours: preferences.positionHistoryHours ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
       }
     } catch (error) {
       logger.error('[MiscRepository] Failed to save map preferences:', error);
