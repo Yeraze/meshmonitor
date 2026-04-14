@@ -587,6 +587,7 @@ function App() {
     autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
     autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
     autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
+    autoDeleteByDistanceAction, setAutoDeleteByDistanceAction,
   } = useAutomation();
 
   // Check tab permissions and redirect if unauthorized
@@ -1161,6 +1162,9 @@ function App() {
           }
           if (settings.autoDeleteByDistanceLon !== undefined) {
             setAutoDeleteByDistanceLon(settings.autoDeleteByDistanceLon ? parseFloat(settings.autoDeleteByDistanceLon) : null);
+          }
+          if (settings.autoDeleteByDistanceAction !== undefined) {
+            setAutoDeleteByDistanceAction(settings.autoDeleteByDistanceAction === 'ignore' ? 'ignore' : 'delete');
           }
 
           if (settings.timerTriggers) {
@@ -5083,6 +5087,8 @@ function App() {
                   onThresholdChange={setAutoDeleteByDistanceThresholdKm}
                   onHomeLatChange={setAutoDeleteByDistanceLat}
                   onHomeLonChange={setAutoDeleteByDistanceLon}
+                  action={autoDeleteByDistanceAction}
+                  onActionChange={setAutoDeleteByDistanceAction}
                 />
               </div>
               <div id="ignored-nodes">
