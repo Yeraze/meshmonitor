@@ -355,6 +355,7 @@ class DatabaseService {
         const [rows] = await this.mysqlPool.query('SELECT version() as version');
         return (rows as any[])?.[0]?.version || 'Unknown';
       } else if (this.db) {
+        // eslint-disable-next-line no-restricted-syntax -- bootstrap: SQLite builtin probe (Task 2.9)
         const result = this.db.prepare('SELECT sqlite_version() as version').get() as { version: string } | undefined;
         return result?.version || 'Unknown';
       }
@@ -987,6 +988,7 @@ class DatabaseService {
     // CORE TABLES (matches 001_v37_baseline.ts exactly)
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS nodes (
         nodeNum INTEGER PRIMARY KEY,
@@ -1051,6 +1053,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -1082,6 +1085,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS channels (
         id INTEGER PRIMARY KEY,
@@ -1115,6 +1119,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -1165,6 +1170,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS neighbor_info (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1181,6 +1187,7 @@ class DatabaseService {
     // AUTH TABLES (snake_case column names for SQLite)
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1202,6 +1209,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS permissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1216,6 +1224,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         sid TEXT PRIMARY KEY,
@@ -1224,6 +1233,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS audit_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1241,6 +1251,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS api_tokens (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1263,6 +1274,7 @@ class DatabaseService {
     // NOTIFICATION TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS read_messages (
         message_id TEXT NOT NULL PRIMARY KEY,
@@ -1272,6 +1284,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1287,6 +1300,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_notification_preferences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1316,6 +1330,7 @@ class DatabaseService {
     // PACKET LOG
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS packet_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1351,6 +1366,7 @@ class DatabaseService {
     // BACKUP & UPGRADE TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS backup_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1365,6 +1381,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS system_backup_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1380,6 +1397,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS upgrade_history (
         id TEXT PRIMARY KEY,
@@ -1403,6 +1421,7 @@ class DatabaseService {
     // UI TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS custom_themes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1417,6 +1436,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_map_preferences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1436,6 +1456,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS embed_profiles (
         id TEXT PRIMARY KEY,
@@ -1463,6 +1484,7 @@ class DatabaseService {
     // SOLAR ESTIMATES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS solar_estimates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1509,6 +1531,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS auto_key_repair_state (
         nodeNum INTEGER PRIMARY KEY,
@@ -1519,6 +1542,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS auto_key_repair_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1532,6 +1556,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS auto_distance_delete_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1547,6 +1572,7 @@ class DatabaseService {
     // CHANNEL DATABASE
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS channel_database (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1566,6 +1592,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS channel_database_permissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1585,6 +1612,7 @@ class DatabaseService {
     // IGNORED NODES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS ignored_nodes (
         nodeNum INTEGER PRIMARY KEY,
@@ -1600,6 +1628,7 @@ class DatabaseService {
     // GEOFENCE COOLDOWNS
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS geofence_cooldowns (
         triggerId TEXT NOT NULL,
@@ -1613,6 +1642,7 @@ class DatabaseService {
     // MESHCORE TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meshcore_nodes (
         publicKey TEXT PRIMARY KEY,
@@ -1640,6 +1670,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meshcore_messages (
         id TEXT PRIMARY KEY,
@@ -1660,6 +1691,7 @@ class DatabaseService {
     // NEWS TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS news_cache (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1669,6 +1701,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_news_status (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1681,6 +1714,7 @@ class DatabaseService {
     `);
 
     // Create index for efficient upgrade history queries
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_upgrade_history_timestamp
       ON upgrade_history(startedAt DESC);
