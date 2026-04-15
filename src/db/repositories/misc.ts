@@ -1171,6 +1171,135 @@ export class MiscRepository extends BaseRepository {
   }
 
   /**
+   * Synchronously clear all packet log rows (SQLite only).
+   * Returns number of rows deleted.
+   */
+  clearPacketLogsSync(): number {
+    const db = this.getSqliteDb();
+    const result = db.run(sql`DELETE FROM packet_log`) as any;
+    const changes = Number(result?.changes ?? 0);
+    logger.debug(`[MiscRepository] Cleared ${changes} packet log entries (sync)`);
+    return changes;
+  }
+
+  /**
+   * Synchronously cleanup packet logs older than cutoffTimestamp (SQLite only).
+   * Returns number of rows deleted.
+   */
+  cleanupOldPacketLogsSync(cutoffTimestamp: number): number {
+    const db = this.getSqliteDb();
+    const result = db.run(sql`DELETE FROM packet_log WHERE timestamp < ${cutoffTimestamp}`) as any;
+    return Number(result?.changes ?? 0);
+  }
+
+  /**
+   * Synchronously get packet counts per from_node since a given timestamp,
+   * excluding internal traffic. (SQLite only.)
+   */
+  getPacketCountsPerNodeSinceSync(options: {
+    since: number;
+    localNodeNum: number | null;
+  }): Array<{ nodeNum: number; packetCount: number }> {
+    const db = this.getSqliteDb();
+    const { since, localNodeNum } = options;
+    const ln = localNodeNum ?? -1;
+    const rows = db.all(sql`
+      SELECT from_node as nodeNum, COUNT(*) as packetCount
+      FROM packet_log
+      WHERE timestamp >= ${since}
+        AND NOT (from_node = ${ln} AND to_node = ${ln})
+      GROUP BY from_node
+    `) as any[];
+    return rows.map((r: any) => ({
+      nodeNum: Number(r.nodeNum),
+      packetCount: Number(r.packetCount),
+    }));
+  }
+
+  /**
+   * Get packet counts per from_node since a given timestamp, excluding internal
+   * traffic (packets where both ends are the local node). Used for spam
+   * detection / last-hour broadcaster stats.
+   */
+  async getPacketCountsPerNodeSince(options: {
+    since: number;
+    localNodeNum: number | null;
+    sourceId?: string;
+  }): Promise<Array<{ nodeNum: number; packetCount: number }>> {
+    const { since, localNodeNum, sourceId } = options;
+    const ln = localNodeNum ?? -1;
+    try {
+      const conditions: any[] = [
+        sql`timestamp >= ${since}`,
+        sql`NOT (from_node = ${ln} AND to_node = ${ln})`,
+      ];
+      if (sourceId !== undefined) conditions.push(sql`${sql.identifier('sourceId')} = ${sourceId}`);
+      const whereClause = this.combineConditions(conditions);
+
+      const rows = await this.executeQuery(sql`
+        SELECT from_node as "nodeNum", COUNT(*) as "packetCount"
+        FROM packet_log
+        WHERE ${whereClause}
+        GROUP BY from_node
+      `);
+
+      return (rows as any[]).map((r: any) => ({
+        nodeNum: Number(r.nodeNum ?? r.nodenum),
+        packetCount: Number(r.packetCount ?? r.packetcount),
+      }));
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get packet counts per node since:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get top N broadcasters by packet count since a given timestamp, excluding
+   * internal traffic (packets where both ends are the local node).
+   */
+  async getTopBroadcastersSince(options: {
+    since: number;
+    limit: number;
+    localNodeNum: number | null;
+    sourceId?: string;
+  }): Promise<Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>> {
+    const { since, limit, localNodeNum, sourceId } = options;
+    const ln = localNodeNum ?? -1;
+    try {
+      const longName = this.col('longName');
+      const shortName = this.col('shortName');
+      const nodeNum = this.col('nodeNum');
+
+      const conditions: any[] = [
+        sql`p.timestamp >= ${since}`,
+        sql`NOT (p.from_node = ${ln} AND p.to_node = ${ln})`,
+      ];
+      if (sourceId !== undefined) conditions.push(sql`p.${sql.identifier('sourceId')} = ${sourceId}`);
+      const whereClause = this.combineConditions(conditions);
+
+      const rows = await this.executeQuery(sql`
+        SELECT p.from_node as "nodeNum", n.${shortName} as "shortName", n.${longName} as "longName", COUNT(*) as "packetCount"
+        FROM packet_log p
+        LEFT JOIN nodes n ON p.from_node = n.${nodeNum}
+        WHERE ${whereClause}
+        GROUP BY p.from_node, n.${shortName}, n.${longName}
+        ORDER BY "packetCount" DESC
+        LIMIT ${limit}
+      `);
+
+      return (rows as any[]).map((r: any) => ({
+        nodeNum: Number(r.nodeNum ?? r.nodenum),
+        shortName: r.shortName ?? r.shortname ?? null,
+        longName: r.longName ?? r.longname ?? null,
+        packetCount: Number(r.packetCount ?? r.packetcount),
+      }));
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to get top broadcasters since:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get packet counts grouped by from_node (for distribution charts).
    * Returns top N nodes by packet count.
    */
