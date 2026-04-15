@@ -2595,15 +2595,10 @@ class DatabaseService {
     const localNodeNumStr = this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-    const stmt = this.db.prepare(`
-      SELECT from_node as nodeNum, COUNT(*) as packetCount
-      FROM packet_log
-      WHERE timestamp >= ?
-        AND NOT (from_node = ? AND to_node = ?)
-      GROUP BY from_node
-    `);
-
-    return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1) as Array<{ nodeNum: number; packetCount: number }>;
+    return this.miscRepo!.getPacketCountsPerNodeSinceSync({
+      since: oneHourAgo,
+      localNodeNum,
+    });
   }
 
   /**
@@ -2619,62 +2614,11 @@ class DatabaseService {
       : this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const sourceFilter = sourceId ? ' AND "sourceId" = $3' : '';
-        const params: any[] = [oneHourAgo, localNodeNum || -1];
-        if (sourceId) params.push(sourceId);
-        const result = await this.postgresPool.query(`
-          SELECT from_node as "nodeNum", COUNT(*)::int as "packetCount"
-          FROM packet_log
-          WHERE timestamp >= $1
-            AND NOT (from_node = $2 AND to_node = $2)${sourceFilter}
-          GROUP BY from_node
-        `, params);
-
-        return result.rows;
-      } catch (error) {
-        logger.error('Error getting packet counts per node (PostgreSQL):', error);
-        return [];
-      }
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const sourceFilter = sourceId ? ' AND sourceId = ?' : '';
-        const params: any[] = [oneHourAgo, localNodeNum || -1, localNodeNum || -1];
-        if (sourceId) params.push(sourceId);
-        const [rows] = await this.mysqlPool.query(`
-          SELECT from_node as nodeNum, COUNT(*) as packetCount
-          FROM packet_log
-          WHERE timestamp >= ?
-            AND NOT (from_node = ? AND to_node = ?)${sourceFilter}
-          GROUP BY from_node
-        `, params) as any;
-
-        return rows.map((row: any) => ({
-          nodeNum: Number(row.nodeNum),
-          packetCount: Number(row.packetCount)
-        }));
-      } catch (error) {
-        logger.error('Error getting packet counts per node (MySQL):', error);
-        return [];
-      }
-    }
-
-    // SQLite fallback
-    if (sourceId) {
-      const stmt = this.db.prepare(`
-        SELECT from_node as nodeNum, COUNT(*) as packetCount
-        FROM packet_log
-        WHERE timestamp >= ?
-          AND NOT (from_node = ? AND to_node = ?)
-          AND sourceId = ?
-        GROUP BY from_node
-      `);
-      return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1, sourceId) as Array<{ nodeNum: number; packetCount: number }>;
-    }
-    return this.getPacketCountsPerNodeLastHour();
+    return this.miscRepo!.getPacketCountsPerNodeSince({
+      since: oneHourAgo,
+      localNodeNum,
+      sourceId,
+    });
   }
 
   /**
@@ -2689,88 +2633,12 @@ class DatabaseService {
     const localNodeNumStr = this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        const sourceClause = sourceId ? `AND p."sourceId" = $4` : '';
-        const params: any[] = [oneHourAgo, limit, localNodeNum || -1];
-        if (sourceId) params.push(sourceId);
-        const result = await this.postgresPool.query(`
-          SELECT p.from_node as "nodeNum", n."shortName", n."longName", COUNT(*)::int as "packetCount"
-          FROM packet_log p
-          LEFT JOIN nodes n ON p.from_node = n."nodeNum"
-          WHERE p.timestamp >= $1
-            AND NOT (p.from_node = $3 AND p.to_node = $3)
-            ${sourceClause}
-          GROUP BY p.from_node, n."shortName", n."longName"
-          ORDER BY "packetCount" DESC
-          LIMIT $2
-        `, params);
-
-        return result.rows;
-      } catch (error) {
-        logger.error('Error getting top broadcasters (PostgreSQL):', error);
-        return [];
-      }
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        const sourceClause = sourceId ? `AND p.sourceId = ?` : '';
-        const params: any[] = [oneHourAgo, localNodeNum || -1, localNodeNum || -1];
-        if (sourceId) params.push(sourceId);
-        params.push(limit);
-        const [rows] = await this.mysqlPool.query(`
-          SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
-          FROM packet_log p
-          LEFT JOIN nodes n ON p.from_node = n.nodeNum
-          WHERE p.timestamp >= ?
-            AND NOT (p.from_node = ? AND p.to_node = ?)
-            ${sourceClause}
-          GROUP BY p.from_node, n.shortName, n.longName
-          ORDER BY packetCount DESC
-          LIMIT ?
-        `, params) as any;
-
-        return rows.map((row: any) => ({
-          nodeNum: Number(row.nodeNum),
-          shortName: row.shortName,
-          longName: row.longName,
-          packetCount: Number(row.packetCount)
-        }));
-      } catch (error) {
-        logger.error('Error getting top broadcasters (MySQL):', error);
-        return [];
-      }
-    }
-
-    // SQLite - exclude packets where both from_node and to_node are the local node
-    if (sourceId) {
-      const stmt = this.db.prepare(`
-        SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
-        FROM packet_log p
-        LEFT JOIN nodes n ON p.from_node = n.nodeNum
-        WHERE p.timestamp >= ?
-          AND NOT (p.from_node = ? AND p.to_node = ?)
-          AND p.sourceId = ?
-        GROUP BY p.from_node
-        ORDER BY packetCount DESC
-        LIMIT ?
-      `);
-      return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1, sourceId, limit) as Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>;
-    }
-
-    const stmt = this.db.prepare(`
-      SELECT p.from_node as nodeNum, n.shortName, n.longName, COUNT(*) as packetCount
-      FROM packet_log p
-      LEFT JOIN nodes n ON p.from_node = n.nodeNum
-      WHERE p.timestamp >= ?
-        AND NOT (p.from_node = ? AND p.to_node = ?)
-      GROUP BY p.from_node
-      ORDER BY packetCount DESC
-      LIMIT ?
-    `);
-
-    return stmt.all(oneHourAgo, localNodeNum || -1, localNodeNum || -1, limit) as Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>;
+    return this.miscRepo!.getTopBroadcastersSince({
+      since: oneHourAgo,
+      limit,
+      localNodeNum,
+      sourceId,
+    });
   }
 
   /**
@@ -9220,47 +9088,14 @@ class DatabaseService {
     const enabled = await this.getSettingAsync('packet_log_enabled');
     if (enabled !== '1') return 0;
 
-    // For non-SQLite, use async repository
-    if (this.drizzleDbType !== 'sqlite') {
-      const id = await this.misc.insertPacketLog(packet, packet.sourceId ?? undefined);
-      const maxCountStr = await this.getSettingAsync('packet_log_max_count');
-      const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
-      await this.misc.enforcePacketLogMaxCount(maxCount);
-      return id;
-    }
-
-    // SQLite: use synchronous raw SQL for immediate consistency
-    const stmt = this.db.prepare(`
-      INSERT INTO packet_log (
-        packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
-        channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
-        relay_node, payload_size, want_ack, priority, payload_preview, metadata, direction,
-        transport_mechanism, decrypted_by, decrypted_channel_id, sourceId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run(
-      packet.packet_id ?? null, packet.timestamp, packet.from_node,
-      packet.from_node_id ?? null, packet.to_node ?? null, packet.to_node_id ?? null,
-      packet.channel ?? null, packet.portnum, packet.portnum_name ?? null,
-      packet.encrypted ? 1 : 0, packet.snr ?? null, packet.rssi ?? null,
-      packet.hop_limit ?? null, packet.hop_start ?? null, packet.relay_node ?? null,
-      packet.payload_size ?? null, packet.want_ack ? 1 : 0, packet.priority ?? null,
-      packet.payload_preview ?? null, packet.metadata ?? null, packet.direction ?? 'rx',
-      packet.transport_mechanism ?? null, packet.decrypted_by ?? null, packet.decrypted_channel_id ?? null,
-      packet.sourceId ?? null
-    );
-
-    // Enforce max count
-    const maxCountStr = this.getSetting('packet_log_max_count');
+    // All backends route through MiscRepository
+    const id = await this.misc.insertPacketLog(packet, packet.sourceId ?? undefined);
+    const maxCountStr = this.drizzleDbType === 'sqlite'
+      ? this.getSetting('packet_log_max_count')
+      : await this.getSettingAsync('packet_log_max_count');
     const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
-    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM packet_log');
-    const countResult = countStmt.get() as { count: number };
-    if (Number(countResult.count) > maxCount) {
-      const deleteCount = Number(countResult.count) - maxCount;
-      this.db.prepare(`DELETE FROM packet_log WHERE id IN (SELECT id FROM packet_log ORDER BY timestamp ASC LIMIT ?)`).run(deleteCount);
-    }
-
-    return Number(result.lastInsertRowid);
+    await this.misc.enforcePacketLogMaxCount(maxCount);
+    return id;
   }
 
   async getPacketLogsAsync(options: {
@@ -9268,74 +9103,22 @@ class DatabaseService {
     to_node?: number; channel?: number; encrypted?: boolean; since?: number;
     relay_node?: number | 'unknown'; sourceId?: string;
   }): Promise<DbPacketLog[]> {
-    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogs(options);
-    // SQLite fallback using raw SQL on main connection
-    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
-    let query = `
-      SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
-      FROM packet_log pl
-      LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-      LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-      WHERE 1=1
-    `;
-    const params: any[] = [];
-    if (sourceId !== undefined) { query += ' AND pl.sourceId = ?'; params.push(sourceId); }
-    if (portnum !== undefined) { query += ' AND pl.portnum = ?'; params.push(portnum); }
-    if (from_node !== undefined) { query += ' AND pl.from_node = ?'; params.push(from_node); }
-    if (to_node !== undefined) { query += ' AND pl.to_node = ?'; params.push(to_node); }
-    if (channel !== undefined) { query += ' AND pl.channel = ?'; params.push(channel); }
-    if (encrypted !== undefined) { query += ' AND pl.encrypted = ?'; params.push(encrypted ? 1 : 0); }
-    if (since !== undefined) { query += ' AND pl.timestamp >= ?'; params.push(since); }
-    if (relay_node === 'unknown') { query += ' AND pl.relay_node IS NULL'; }
-    else if (relay_node !== undefined) { query += ' AND pl.relay_node = ?'; params.push(relay_node); }
-    query += ' ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-    const stmt = this.db.prepare(query);
-    return stmt.all(...params) as DbPacketLog[];
+    return this.misc.getPacketLogs(options);
   }
 
   async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
-    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogById(id);
-    // SQLite fallback
-    const stmt = this.db.prepare(`
-      SELECT pl.*, from_nodes.longName as from_node_longName, to_nodes.longName as to_node_longName
-      FROM packet_log pl
-      LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
-      LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
-      WHERE pl.id = ?
-    `);
-    const result = stmt.get(id) as DbPacketLog | undefined;
-    return result || null;
+    return this.misc.getPacketLogById(id);
   }
 
   async getPacketLogCountAsync(options: {
     portnum?: number; from_node?: number; to_node?: number; channel?: number;
     encrypted?: boolean; since?: number; relay_node?: number | 'unknown'; sourceId?: string;
   } = {}): Promise<number> {
-    if (this.drizzleDbType !== 'sqlite') return this.misc.getPacketLogCount(options);
-    // SQLite fallback
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
-    let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
-    const params: any[] = [];
-    if (sourceId !== undefined) { query += ' AND sourceId = ?'; params.push(sourceId); }
-    if (portnum !== undefined) { query += ' AND portnum = ?'; params.push(portnum); }
-    if (from_node !== undefined) { query += ' AND from_node = ?'; params.push(from_node); }
-    if (to_node !== undefined) { query += ' AND to_node = ?'; params.push(to_node); }
-    if (channel !== undefined) { query += ' AND channel = ?'; params.push(channel); }
-    if (encrypted !== undefined) { query += ' AND encrypted = ?'; params.push(encrypted ? 1 : 0); }
-    if (since !== undefined) { query += ' AND timestamp >= ?'; params.push(since); }
-    if (relay_node === 'unknown') { query += ' AND relay_node IS NULL'; }
-    else if (relay_node !== undefined) { query += ' AND relay_node = ?'; params.push(relay_node); }
-    const stmt = this.db.prepare(query);
-    const result = stmt.get(...params) as { count: number };
-    return Number(result.count);
+    return this.misc.getPacketLogCount(options);
   }
 
   clearPacketLogs(): number {
-    const stmt = this.db.prepare('DELETE FROM packet_log');
-    const result = stmt.run();
-    logger.debug(`Cleared ${result.changes} packet log entries`);
-    return Number(result.changes);
+    return this.miscRepo!.clearPacketLogsSync();
   }
 
   async clearPacketLogsAsync(): Promise<number> {
@@ -9354,24 +9137,14 @@ class DatabaseService {
     portnum: number,
     metadata: string
   ): Promise<void> {
-    if (this.miscRepo) {
-      return this.miscRepo.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
-    }
-    // SQLite fallback
-    const stmt = this.db.prepare(`
-      UPDATE packet_log SET decrypted_by = ?, decrypted_channel_id = ?,
-      portnum = ?, encrypted = 0, metadata = ? WHERE id = ?
-    `);
-    stmt.run(decryptedBy, decryptedChannelId, portnum, metadata, id);
+    return this.miscRepo!.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
   }
 
   cleanupOldPacketLogs(): number {
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
     const cutoffTimestamp = Date.now() - (maxAgeHours * 60 * 60 * 1000);
-    const stmt = this.db.prepare('DELETE FROM packet_log WHERE timestamp < ?');
-    const result = stmt.run(cutoffTimestamp);
-    return Number(result.changes);
+    return this.miscRepo!.cleanupOldPacketLogsSync(cutoffTimestamp);
   }
 
   async cleanupOldPacketLogsAsync(): Promise<number> {
