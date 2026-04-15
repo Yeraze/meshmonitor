@@ -104,7 +104,7 @@ describe('Audit Log Routes', () => {
       `).run(userId, action, resource, details, ipAddress, valueBefore || null, valueAfter || null, Date.now());
     };
 
-    (DatabaseService as any).getAuditLogs = (options: any = {}) => {
+    (DatabaseService as any).getAuditLogsAsync = async (options: any = {}) => {
       const {
         limit = 100,
         offset = 0,
@@ -168,16 +168,7 @@ describe('Audit Log Routes', () => {
       return { logs, total: count };
     };
 
-    // Add async version for new unified API
-    (DatabaseService as any).getAuditLogsAsync = async (options: any = {}) => {
-      return (DatabaseService as any).getAuditLogs(options);
-    };
-
     (DatabaseService as any).getAuditStatsAsync = async (days: number = 30) => {
-      return (DatabaseService as any).getAuditStats(days);
-    };
-
-    (DatabaseService as any).getAuditStats = (days: number = 30) => {
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 
       return {
@@ -216,16 +207,12 @@ describe('Audit Log Routes', () => {
       };
     };
 
-    (DatabaseService as any).cleanupAuditLogs = (days: number) => {
+    (DatabaseService as any).cleanupAuditLogsAsync = async (days: number) => {
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
       const result = db.prepare(`
         DELETE FROM audit_log WHERE timestamp < ?
       `).run(cutoff);
       return result.changes;
-    };
-
-    (DatabaseService as any).cleanupAuditLogsAsync = async (days: number) => {
-      return (DatabaseService as any).cleanupAuditLogs(days);
     };
 
     // Add async method mocks for authMiddleware compatibility
