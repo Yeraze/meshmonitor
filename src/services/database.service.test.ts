@@ -115,12 +115,22 @@ const mockTelemetryRepo = vi.hoisted(() => ({
   getLatestTelemetryValueForAllNodes: vi.fn().mockResolvedValue([]),
 }));
 
-const mockSettingsRepo = vi.hoisted(() => ({
-  getSetting: vi.fn().mockResolvedValue(null),
-  setSetting: vi.fn().mockResolvedValue(undefined),
-  deleteSetting: vi.fn().mockResolvedValue(undefined),
-  getAllSettings: vi.fn().mockResolvedValue([]),
-}));
+const mockSettingsRepo = vi.hoisted(() => {
+  const store = new Map<string, string>();
+  return {
+    getSetting: vi.fn().mockImplementation(async (key: string) => store.get(key) ?? null),
+    setSetting: vi.fn().mockImplementation(async (key: string, value: string) => { store.set(key, value); }),
+    deleteSetting: vi.fn().mockImplementation(async (key: string) => { store.delete(key); }),
+    getAllSettings: vi.fn().mockImplementation(async () => Object.fromEntries(store)),
+    getSettingSync: vi.fn().mockImplementation((key: string) => store.get(key) ?? null),
+    setSettingSync: vi.fn().mockImplementation((key: string, value: string) => { store.set(key, value); }),
+    setSettingsSync: vi.fn().mockImplementation((settings: Record<string, string>) => {
+      for (const [k, v] of Object.entries(settings)) store.set(k, v);
+    }),
+    getAllSettingsSync: vi.fn().mockImplementation(() => Object.fromEntries(store)),
+    deleteAllSettingsSync: vi.fn().mockImplementation(() => { store.clear(); }),
+  };
+});
 
 const mockChannelsRepo = vi.hoisted(() => ({
   getChannels: vi.fn().mockResolvedValue([]),
@@ -167,7 +177,7 @@ const mockEmbedProfileRepo = vi.hoisted(() => ({
 
 // Use classes (not mockReturnValue) since they're called with `new`
 vi.mock('../db/repositories/index.js', () => ({
-  SettingsRepository: class { getSetting = mockSettingsRepo.getSetting; setSetting = mockSettingsRepo.setSetting; deleteSetting = mockSettingsRepo.deleteSetting; getAllSettings = mockSettingsRepo.getAllSettings; },
+  SettingsRepository: class { getSetting = mockSettingsRepo.getSetting; setSetting = mockSettingsRepo.setSetting; deleteSetting = mockSettingsRepo.deleteSetting; getAllSettings = mockSettingsRepo.getAllSettings; getSettingSync = mockSettingsRepo.getSettingSync; setSettingSync = mockSettingsRepo.setSettingSync; setSettingsSync = mockSettingsRepo.setSettingsSync; getAllSettingsSync = mockSettingsRepo.getAllSettingsSync; deleteAllSettingsSync = mockSettingsRepo.deleteAllSettingsSync; },
   ChannelsRepository: class { getChannels = mockChannelsRepo.getChannels; getChannelById = mockChannelsRepo.getChannelById; upsertChannel = mockChannelsRepo.upsertChannel; },
   NodesRepository: class { getAllNodes = mockNodesRepo.getAllNodes; getNodeByNum = mockNodesRepo.getNodeByNum; upsertNode = mockNodesRepo.upsertNode; deleteNode = mockNodesRepo.deleteNode; getNodesWithKeySecurityIssues = mockNodesRepo.getNodesWithKeySecurityIssues; },
   MessagesRepository: class { getMessage = mockMessagesRepo.getMessage; getMessages = mockMessagesRepo.getMessages; searchMessages = mockMessagesRepo.searchMessages; insertMessage = mockMessagesRepo.insertMessage; deleteMessage = mockMessagesRepo.deleteMessage; },

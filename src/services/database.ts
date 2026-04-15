@@ -9,7 +9,8 @@ import { getEnvironmentConfig } from '../server/config/environment.js';
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 // Drizzle ORM imports for dual-database support
-import { createSQLiteDriver } from '../db/drivers/sqlite.js';
+import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
+import * as drizzleSchema from '../db/schema/index.js';
 import { createPostgresDriver } from '../db/drivers/postgres.js';
 import { createMySQLDriver } from '../db/drivers/mysql.js';
 import { getDatabaseConfig, Database } from '../db/index.js';
@@ -631,7 +632,7 @@ class DatabaseService {
   /**
    * Async initialization of Drizzle ORM repositories
    */
-  private async initializeDrizzleRepositoriesAsync(dbPath: string): Promise<void> {
+  private async initializeDrizzleRepositoriesAsync(_dbPath: string): Promise<void> {
     try {
       logger.debug('[DatabaseService] Initializing Drizzle ORM repositories');
 
@@ -667,13 +668,12 @@ class DatabaseService {
         // Create MySQL schema if tables don't exist
         await this.createMySQLSchema(pool);
       } else {
-        // Use SQLite driver (default)
-        const { db } = createSQLiteDriver({
-          databasePath: dbPath,
-          enableWAL: false, // Already enabled on main connection
-          enableForeignKeys: false, // Already enabled on main connection
-        });
-        drizzleDb = db;
+        // Use SQLite driver (default).
+        // Bind Drizzle to the existing better-sqlite3 connection (this.db) so
+        // sync repository methods and raw sync paths observe schema changes
+        // (CREATE TABLE, migrations) immediately on the same connection — and
+        // so this branch runs synchronously (no awaits before repo init below).
+        drizzleDb = drizzleSqlite(this.db, { schema: drizzleSchema });
         this.drizzleDbType = 'sqlite';
       }
 
@@ -834,12 +834,14 @@ class DatabaseService {
     // Pre-3.7 detection: check BEFORE createTables() so we can distinguish
     // an existing pre-v3.7 database from a fresh install.
     // If settings table already exists at this point, it's from a previous installation.
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (see Task 2.9)
     const settingsExists = this.db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
     ).all();
     if (settingsExists.length > 0) {
       // Check for v3.7+ markers: either the old migration_077 key (pre-clean-break)
       // or the new migration_078 key (post-clean-break baseline)
+      // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (see Task 2.9)
       const v37Key = this.db.prepare(
         "SELECT value FROM settings WHERE key IN ('migration_077_ignored_nodes_nodenum_bigint', 'migration_078_create_embed_profiles')"
       ).get();
@@ -7431,9 +7433,11 @@ class DatabaseService {
       }
       return this.settingsCache.get(key) ?? null;
     }
-    const stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
-    const row = stmt.get(key) as { value: string } | undefined;
-    return row ? row.value : null;
+    // SQLite: route through repo's sync drizzle path (no raw SQL)
+    if (this.settingsRepo) {
+      return this.settingsRepo.getSettingSync(key);
+    }
+    return null;
   }
 
   getAllSettings(): Record<string, string> {
@@ -7449,13 +7453,11 @@ class DatabaseService {
       });
       return settings;
     }
-    const stmt = this.db.prepare('SELECT key, value FROM settings');
-    const rows = stmt.all() as Array<{ key: string; value: string }>;
-    const settings: Record<string, string> = {};
-    rows.forEach(row => {
-      settings[row.key] = row.value;
-    });
-    return settings;
+    // SQLite: route through repo's sync drizzle path (no raw SQL)
+    if (this.settingsRepo) {
+      return this.settingsRepo.getAllSettingsSync();
+    }
+    return {};
   }
 
   setSetting(key: string, value: string): void {
@@ -7471,15 +7473,10 @@ class DatabaseService {
       }
       return;
     }
-    const now = Date.now();
-    const stmt = this.db.prepare(`
-      INSERT INTO settings (key, value, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updatedAt = excluded.updatedAt
-    `);
-    stmt.run(key, value, now, now);
+    // SQLite: route through repo's sync drizzle path (no raw SQL)
+    if (this.settingsRepo) {
+      this.settingsRepo.setSettingSync(key, value);
+    }
   }
 
   setSettings(settings: Record<string, string>): void {
@@ -7496,20 +7493,10 @@ class DatabaseService {
       }
       return;
     }
-    const now = Date.now();
-    const stmt = this.db.prepare(`
-      INSERT INTO settings (key, value, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updatedAt = excluded.updatedAt
-    `);
-
-    this.db.transaction(() => {
-      Object.entries(settings).forEach(([key, value]) => {
-        stmt.run(key, value, now, now);
-      });
-    })();
+    // SQLite: route through repo's sync drizzle path (no raw SQL)
+    if (this.settingsRepo) {
+      this.settingsRepo.setSettingsSync(settings);
+    }
   }
 
   deleteAllSettings(): void {
@@ -7524,7 +7511,10 @@ class DatabaseService {
       return;
     }
     logger.debug('🔄 Resetting all settings to defaults');
-    this.db.exec('DELETE FROM settings');
+    // SQLite: route through repo's sync drizzle path (no raw SQL)
+    if (this.settingsRepo) {
+      this.settingsRepo.deleteAllSettingsSync();
+    }
   }
 
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
