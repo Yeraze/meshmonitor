@@ -3817,11 +3817,11 @@ class DatabaseService {
     routeSegmentsStmt.run(nodeNum, nodeNum);
 
     // Delete neighbor_info records where this node is involved (either as source or neighbor)
-    const neighborInfoStmt = this.db.prepare(`
-      DELETE FROM neighbor_info
-      WHERE nodeNum = ? OR neighborNodeNum = ?
-    `);
-    neighborInfoStmt.run(nodeNum, nodeNum);
+    if (this.neighborsRepo) {
+      this.neighborsRepo.deleteNeighborInfoInvolvingNode(nodeNum).catch(err =>
+        logger.debug('Failed to delete neighbor info involving node:', err)
+      );
+    }
 
     // Delete the node from the nodes table (scoped to sourceId)
     const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ? AND sourceId = ?');
@@ -7166,7 +7166,12 @@ class DatabaseService {
     this.db.exec('DELETE FROM telemetry');
     this.db.exec('DELETE FROM traceroutes');
     this.db.exec('DELETE FROM route_segments');
-    this.db.exec('DELETE FROM neighbor_info');
+    if (this.neighborsRepo) {
+      // Use Drizzle repo for all backends (including SQLite)
+      this.neighborsRepo.deleteAllNeighborInfo().catch(err =>
+        logger.debug('Failed to delete all neighbor info:', err)
+      );
+    }
     // Finally delete the nodes themselves
     this.db.exec('DELETE FROM nodes');
     logger.debug('✅ Successfully purged all nodes and related data');
@@ -7813,20 +7818,12 @@ class DatabaseService {
    * Delete neighbor info records older than the specified number of days
    */
   cleanupOldNeighborInfo(days: number = 30): number {
-    // For PostgreSQL/MySQL, fire-and-forget async cleanup
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.neighborsRepo) {
-        this.neighborsRepo.cleanupOldNeighborInfo(days).catch(err => {
-          logger.debug('Failed to cleanup old neighbor info:', err);
-        });
-      }
-      return 0;
+    if (this.neighborsRepo) {
+      this.neighborsRepo.cleanupOldNeighborInfo(days).catch(err => {
+        logger.debug('Failed to cleanup old neighbor info:', err);
+      });
     }
-
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const stmt = this.db.prepare('DELETE FROM neighbor_info WHERE timestamp < ?');
-    const result = stmt.run(cutoff);
-    return Number(result.changes);
+    return 0;
   }
 
   /**
@@ -7905,18 +7902,14 @@ class DatabaseService {
       return;
     }
 
-    const stmt = this.db.prepare(`
-      INSERT INTO neighbor_info (nodeNum, neighborNodeNum, snr, lastRxTime, timestamp, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-      neighborInfo.nodeNum,
-      neighborInfo.neighborNodeNum,
-      neighborInfo.snr || null,
-      neighborInfo.lastRxTime || null,
-      neighborInfo.timestamp,
-      Date.now()
-    );
+    if (this.neighborsRepo) {
+      this.neighborsRepo.upsertNeighborInfo({
+        ...neighborInfo,
+        createdAt: Date.now()
+      } as DbNeighborInfo).catch(err =>
+        logger.debug('Failed to save neighbor info:', err)
+      );
+    }
   }
 
   /**
@@ -7937,9 +7930,12 @@ class DatabaseService {
       return;
     }
 
-    // SQLite: direct delete
-    const stmt = this.db.prepare('DELETE FROM neighbor_info WHERE nodeNum = ?');
-    stmt.run(nodeNum);
+    // SQLite: use repo
+    if (this.neighborsRepo) {
+      this.neighborsRepo.deleteNeighborInfoForNode(nodeNum).catch(err =>
+        logger.debug('Failed to clear neighbor info for node:', err)
+      );
+    }
   }
 
   private convertRepoNeighborInfo(n: import('../db/types.js').DbNeighborInfo): DbNeighborInfo {
@@ -7955,88 +7951,34 @@ class DatabaseService {
   }
 
   getNeighborsForNode(nodeNum: number): DbNeighborInfo[] {
-    // For PostgreSQL/MySQL, use async repo with cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.neighborsRepo) {
-        this.neighborsRepo.getNeighborsForNode(nodeNum).then(neighbors => {
-          this._neighborsByNodeCache.set(nodeNum, neighbors.map(n => this.convertRepoNeighborInfo(n)));
-        }).catch(err => logger.debug('Failed to get neighbors for node:', err));
-      }
-      return this._neighborsByNodeCache.get(nodeNum) || [];
+    // All backends: fire async repo refresh, return cached data immediately
+    if (this.neighborsRepo) {
+      this.neighborsRepo.getNeighborsForNode(nodeNum).then(neighbors => {
+        this._neighborsByNodeCache.set(nodeNum, neighbors.map(n => this.convertRepoNeighborInfo(n)));
+      }).catch(err => logger.debug('Failed to get neighbors for node:', err));
     }
-
-    const stmt = this.db.prepare(`
-      SELECT * FROM neighbor_info
-      WHERE nodeNum = ?
-      ORDER BY timestamp DESC
-    `);
-    return stmt.all(nodeNum) as DbNeighborInfo[];
+    return this._neighborsByNodeCache.get(nodeNum) || [];
   }
 
   getAllNeighborInfo(): DbNeighborInfo[] {
-    // For PostgreSQL/MySQL, use async repo with cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.neighborsRepo) {
-        this.neighborsRepo.getAllNeighborInfo().then(neighbors => {
-          this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
-        }).catch(err => logger.debug('Failed to get all neighbor info:', err));
-      }
-      return this._neighborsCache;
+    // All backends: fire async repo refresh, return cached data immediately
+    if (this.neighborsRepo) {
+      this.neighborsRepo.getAllNeighborInfo().then(neighbors => {
+        this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
+      }).catch(err => logger.debug('Failed to get all neighbor info:', err));
     }
-
-    const stmt = this.db.prepare(`
-      SELECT * FROM neighbor_info
-      ORDER BY timestamp DESC
-    `);
-    return stmt.all() as DbNeighborInfo[];
+    return this._neighborsCache;
   }
 
   getLatestNeighborInfoPerNode(): DbNeighborInfo[] {
-    // For PostgreSQL/MySQL, use the all neighbor info cache (simplified)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Return cached data - getAllNeighborInfo is already ordered by timestamp DESC
-      // For now, just return all (filtering can be done on demand)
-      return this._neighborsCache;
-    }
-
-    const stmt = this.db.prepare(`
-      SELECT ni.*
-      FROM neighbor_info ni
-      INNER JOIN (
-        SELECT nodeNum, neighborNodeNum, MAX(timestamp) as maxTimestamp
-        FROM neighbor_info
-        GROUP BY nodeNum, neighborNodeNum
-      ) latest
-      ON ni.nodeNum = latest.nodeNum
-        AND ni.neighborNodeNum = latest.neighborNodeNum
-        AND ni.timestamp = latest.maxTimestamp
-    `);
-    return stmt.all() as DbNeighborInfo[];
+    // All backends: return the in-memory cache (populated via async repo calls)
+    // The cache is populated by getAllNeighborInfo() which fires on each read
+    return this._neighborsCache;
   }
 
   getLatestNeighborInfoPerNodeScoped(sourceId?: string): DbNeighborInfo[] {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!sourceId) return this._neighborsCache;
-      return this._neighborsCache.filter((ni: any) => ni.sourceId === sourceId);
-    }
-
     if (!sourceId) return this.getLatestNeighborInfoPerNode();
-
-    const stmt = this.db.prepare(`
-      SELECT ni.*
-      FROM neighbor_info ni
-      INNER JOIN (
-        SELECT nodeNum, neighborNodeNum, MAX(timestamp) as maxTimestamp
-        FROM neighbor_info
-        WHERE sourceId = ?
-        GROUP BY nodeNum, neighborNodeNum
-      ) latest
-      ON ni.nodeNum = latest.nodeNum
-        AND ni.neighborNodeNum = latest.neighborNodeNum
-        AND ni.timestamp = latest.maxTimestamp
-      WHERE ni.sourceId = ?
-    `);
-    return stmt.all(sourceId, sourceId) as DbNeighborInfo[];
+    return this._neighborsCache.filter((ni: any) => ni.sourceId === sourceId);
   }
 
   /**
@@ -10205,10 +10147,10 @@ class DatabaseService {
   }
 
   async cleanupOldNeighborInfoAsync(days: number = 30): Promise<number> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.neighborsRepo) {
+    if (this.neighborsRepo) {
       return this.neighborsRepo.cleanupOldNeighborInfo(days);
     }
-    return this.cleanupOldNeighborInfo(days);
+    return 0;
   }
 
   async cleanupInactiveNodesAsync(days: number = 30, sourceId?: string): Promise<number> {
@@ -10360,11 +10302,11 @@ class DatabaseService {
 
   // Group 5: Neighbors/Telemetry
   async getNeighborsForNodeAsync(nodeNum: number, sourceId?: string): Promise<DbNeighborInfo[]> {
-    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.neighborsRepo) {
+    if (this.neighborsRepo) {
       const results = await this.neighborsRepo.getNeighborsForNode(nodeNum, sourceId);
       return results.map(n => this.convertRepoNeighborInfo(n));
     }
-    return this.getNeighborsForNode(nodeNum);
+    return [];
   }
 
   async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): Promise<DbTelemetry[]> {
